@@ -8,6 +8,14 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
 
+    @Query("""
+            select distinct supplier
+            from Supplier supplier
+            left join fetch supplier.representatives link
+            left join fetch link.representative
+            where supplier.company.id = :companyId
+            order by supplier.documentNumber
+            """)
     List<Supplier> findByCompanyIdOrderByDocumentNumberAsc(UUID companyId);
 
     Optional<Supplier> findByCompanyIdAndDocumentTypeAndDocumentNumber(

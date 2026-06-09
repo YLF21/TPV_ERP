@@ -12,6 +12,7 @@ import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.security.domain.UsuarioRepository;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,11 @@ class SupplierServiceTest {
     private Empresa company;
     private Supplier supplier;
     private SalesRepresentative representative;
+
+    @AfterEach
+    void clearContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     void setUp() {
