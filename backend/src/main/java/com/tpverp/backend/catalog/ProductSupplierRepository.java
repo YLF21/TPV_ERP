@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ProductSupplierRepository extends JpaRepository<ProductSupplier, UUID> {
 
-    Optional<ProductSupplier> findByProductIdAndSupplierId(UUID productId, UUID supplierId);
+    Optional<ProductSupplier> findByProduct_IdAndSupplier_Id(UUID productId, UUID supplierId);
 
     @Query("""
             select link

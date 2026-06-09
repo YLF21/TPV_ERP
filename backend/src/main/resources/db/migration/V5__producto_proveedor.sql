@@ -7,6 +7,9 @@ alter table producto_proveedor
     drop constraint if exists producto_proveedor_referencia_proveedor_check;
 
 alter table producto_proveedor
+    drop constraint if exists producto_proveedor_referencia_proveedor_check1;
+
+alter table producto_proveedor
     add constraint ck_producto_proveedor_referencia
     check (
         referencia_proveedor is null

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -54,6 +56,14 @@ class ProductSupplierTest {
         link.registerEntry(LocalDate.of(2026, 5, 1));
 
         assertThat(link.getLastEntryDate()).isEqualTo(LocalDate.of(2026, 6, 9));
+    }
+
+    @Test
+    void repositoryUsesExplicitAssociationNavigation() {
+        assertThat(Arrays.stream(ProductSupplierRepository.class.getMethods())
+                .map(Method::getName))
+                .contains("findByProduct_IdAndSupplier_Id")
+                .doesNotContain("findByProductIdAndSupplierId");
     }
 
     private static Map<String, String> address() {
