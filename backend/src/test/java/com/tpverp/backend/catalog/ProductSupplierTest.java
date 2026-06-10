@@ -1,6 +1,7 @@
 package com.tpverp.backend.catalog;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.party.DocumentType;
@@ -56,6 +57,22 @@ class ProductSupplierTest {
         link.registerEntry(LocalDate.of(2026, 5, 1));
 
         assertThat(link.getLastEntryDate()).isEqualTo(LocalDate.of(2026, 6, 9));
+    }
+
+    @Test
+    void acceptsSupplierReferenceWithExactly128Characters() {
+        var link = new ProductSupplier(product, supplier, "a".repeat(128));
+
+        assertThat(link.getSupplierReference()).hasSize(128);
+    }
+
+    @Test
+    void rejectsSupplierReferenceWith129Characters() {
+        var link = new ProductSupplier(product, supplier, null);
+
+        assertThatThrownBy(() -> link.changeReference("a".repeat(129)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("128");
     }
 
     @Test

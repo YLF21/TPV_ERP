@@ -49,9 +49,14 @@ public class ProductSupplier {
     }
 
     public void changeReference(String reference) {
-        supplierReference = reference == null || reference.isBlank()
+        String normalized = reference == null || reference.isBlank()
                 ? null
                 : reference.trim().toUpperCase(Locale.ROOT);
+        if (normalized != null && normalized.length() > 128) {
+            throw new IllegalArgumentException(
+                    "La referencia del proveedor no puede superar 128 caracteres");
+        }
+        supplierReference = normalized;
     }
 
     public void registerEntry(LocalDate date) {

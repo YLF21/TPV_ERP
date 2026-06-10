@@ -6,6 +6,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.PR
 import com.tpverp.backend.catalog.ProductSupplierService.ProductSupplierView;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -59,9 +60,11 @@ public class ProductSupplierController {
         return ResponseEntity.noContent().build();
     }
 
-    public record LinkRequest(@NotNull UUID supplierId, String supplierReference) {
+    public record LinkRequest(
+            @NotNull UUID supplierId,
+            @Size(max = 128) String supplierReference) {
     }
 
-    public record ReferenceRequest(String supplierReference) {
+    public record ReferenceRequest(@Size(max = 128) String supplierReference) {
     }
 }
