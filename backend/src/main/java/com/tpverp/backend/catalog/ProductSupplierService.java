@@ -72,11 +72,13 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
         // Valida todo antes de escribir y delega la concurrencia al UPSERT atomico.
         Supplier supplier = activeSupplier(supplierId);
         LocalDate entryDate = Objects.requireNonNull(date, "fechaEntrada");
-        List<Product> uniqueProducts = new LinkedHashSet<>(
-                Objects.requireNonNull(productIds, "productos"))
-                .stream()
-                .map(this::product)
-                .toList();
+        var uniqueIds = new LinkedHashSet<>(
+                Objects.requireNonNull(productIds, "productos"));
+        List<Product> uniqueProducts = products.findAllByStoreIdAndIdIn(
+                organization.currentStore().getId(), uniqueIds);
+        if (uniqueProducts.size() != uniqueIds.size()) {
+            throw new IllegalArgumentException("Producto no encontrado");
+        }
         for (Product product : uniqueProducts) {
             links.upsertPurchase(
                     UUID.randomUUID(), product.getId(), supplier.getId(), entryDate);

@@ -11,6 +11,9 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -114,6 +117,77 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
                 LocalDate.of(2026, 7, 1));
         assertLink(ids, "REF-EXISTENTE", LocalDate.of(2026, 7, 1), 2L);
+    }
+
+    @Test
+    void concurrentPurchaseUpsertsProduceOneRowWithGreatestDate() throws Exception {
+        TestIds ids = insertFixture();
+        jdbc.update("""
+                delete from %s.producto_proveedor
+                where producto_id = ? and proveedor_id = ?
+                """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
+
+        var firstWritten = new CountDownLatch(1);
+        var releaseFirst = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> concurrentUpsert(
+                    ids, LocalDate.of(2026, 6, 9), firstWritten, releaseFirst));
+            assertThat(firstWritten.await(5, TimeUnit.SECONDS)).isTrue();
+            var second = executor.submit(() -> concurrentUpsert(
+                    ids, LocalDate.of(2026, 7, 1), null, null));
+
+            Thread.sleep(200);
+            assertThat(second.isDone()).isFalse();
+            releaseFirst.countDown();
+            first.get(5, TimeUnit.SECONDS);
+            second.get(5, TimeUnit.SECONDS);
+        }
+
+        assertLink(ids, null, LocalDate.of(2026, 7, 1), 1L);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from %s.producto_proveedor
+                where producto_id = ? and proveedor_id = ?
+                """.formatted(SCHEMA), Integer.class,
+                ids.productId(), ids.firstSupplierId())).isEqualTo(1);
+    }
+
+    private void concurrentUpsert(
+            TestIds ids,
+            LocalDate date,
+            CountDownLatch written,
+            CountDownLatch release) {
+        String connectionUrl = URL + (URL.contains("?") ? "&" : "?")
+                + "currentSchema=" + SCHEMA;
+        try (var connection = DriverManager.getConnection(connectionUrl, USER, PASSWORD);
+                var statement = connection.prepareStatement("""
+                        insert into producto_proveedor as current_link (
+                            id, producto_id, proveedor_id, referencia_proveedor,
+                            ultima_fecha_entrada, version)
+                        values (?, ?, ?, null, ?, 0)
+                        on conflict (producto_id, proveedor_id) do update
+                        set ultima_fecha_entrada = greatest(
+                                current_link.ultima_fecha_entrada,
+                                excluded.ultima_fecha_entrada),
+                            version = current_link.version + 1
+                        """)) {
+            connection.setAutoCommit(false);
+            statement.setObject(1, UUID.randomUUID());
+            statement.setObject(2, ids.productId());
+            statement.setObject(3, ids.firstSupplierId());
+            statement.setObject(4, date);
+            statement.executeUpdate();
+            if (written != null) {
+                written.countDown();
+                if (!release.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("No se libero la primera transaccion");
+                }
+            }
+            connection.commit();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Fallo el UPSERT concurrente", exception);
+        }
     }
 
     private void assertLink(

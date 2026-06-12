@@ -3,7 +3,9 @@ package com.tpverp.backend.catalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -167,7 +169,8 @@ class ProductSupplierServiceTest {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
-        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(products.findAllByStoreIdAndIdIn(
+                eq(store.getId()), any())).thenReturn(List.of(product));
 
         service.record(
                 supplier.getId(),
@@ -187,7 +190,8 @@ class ProductSupplierServiceTest {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
-        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(products.findAllByStoreIdAndIdIn(
+                eq(store.getId()), any())).thenReturn(List.of(product));
 
         service.record(
                 supplier.getId(),
@@ -202,19 +206,27 @@ class ProductSupplierServiceTest {
 
     @Test
     void confirmedPurchaseProcessesDuplicateProductIdsOnce() {
+        Product secondProduct = product(store.getId());
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
-        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(products.findAllByStoreIdAndIdIn(
+                eq(store.getId()), any())).thenReturn(List.of(product, secondProduct));
 
         service.record(
                 supplier.getId(),
                 LocalDate.of(2026, 6, 9),
-                List.of(product.getId(), product.getId()));
+                List.of(product.getId(), secondProduct.getId(), product.getId()));
 
-        verify(products).findById(product.getId());
+        verify(products, times(1)).findAllByStoreIdAndIdIn(
+                eq(store.getId()), any());
+        verify(products, never()).findById(any());
         verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+        verify(links).upsertPurchase(
+                any(), org.mockito.ArgumentMatchers.eq(secondProduct.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
     }
@@ -236,6 +248,25 @@ class ProductSupplierServiceTest {
         verify(products, never()).findById(any());
         verify(links, never()).upsertPurchase(any(), any(), any(), any());
         verify(links, never()).save(any());
+    }
+
+    @Test
+    void confirmedPurchaseValidatesEveryProductBeforeWriting() {
+        Product missing = product(store.getId());
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdIn(
+                eq(store.getId()), any())).thenReturn(List.of(product));
+
+        assertThatThrownBy(() -> service.record(
+                supplier.getId(),
+                LocalDate.of(2026, 6, 9),
+                List.of(product.getId(), missing.getId())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Producto no encontrado");
+
+        verify(links, never()).upsertPurchase(any(), any(), any(), any());
     }
 
     private void currentStoreAndCompany() {

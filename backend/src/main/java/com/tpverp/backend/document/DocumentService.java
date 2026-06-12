@@ -70,7 +70,7 @@ public class DocumentService {
                 organization.currentStore().getId(), DELIVERY_NOTES);
     }
 
-    // Confirma un borrador, asigna número y registra si el gateway aplicó stock.
+    // Confirma, numera y registra stock/compra en una unica transaccion.
     @Transactional
     public Documento confirm(UUID id, Authentication authentication) {
         var document = find(id);
