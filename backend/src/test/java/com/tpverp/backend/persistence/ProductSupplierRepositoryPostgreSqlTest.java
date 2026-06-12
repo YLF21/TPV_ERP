@@ -8,6 +8,8 @@ import com.tpverp.backend.party.SupplierRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
@@ -44,7 +46,9 @@ class ProductSupplierRepositoryPostgreSqlTest {
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> URL);
+        registry.add("spring.datasource.url", () -> URL
+                + (URL.contains("?") ? "&" : "?")
+                + "currentSchema=" + SCHEMA);
         registry.add("spring.datasource.username", () -> USER);
         registry.add("spring.datasource.password", () -> PASSWORD);
         registry.add("spring.flyway.schemas", () -> SCHEMA);
@@ -80,6 +84,49 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 .extracting(link -> link.getSupplier().getDocumentNumber())
                 .containsExactly("A00000001", "B00000001");
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+    }
+
+    @Test
+    void purchaseUpsertIsAtomicAndPreservesReferenceWithNonDecreasingDate() {
+        TestIds ids = insertFixture();
+        jdbc.update("""
+                delete from %s.producto_proveedor
+                where producto_id = ? and proveedor_id = ?
+                """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
+
+        productSuppliers.upsertPurchase(
+                UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
+                LocalDate.of(2026, 6, 9));
+        assertLink(ids, null, LocalDate.of(2026, 6, 9), 0L);
+
+        jdbc.update("""
+                update %s.producto_proveedor
+                set referencia_proveedor = 'REF-EXISTENTE'
+                where producto_id = ? and proveedor_id = ?
+                """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
+
+        productSuppliers.upsertPurchase(
+                UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
+                LocalDate.of(2026, 5, 1));
+        assertLink(ids, "REF-EXISTENTE", LocalDate.of(2026, 6, 9), 1L);
+
+        productSuppliers.upsertPurchase(
+                UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
+                LocalDate.of(2026, 7, 1));
+        assertLink(ids, "REF-EXISTENTE", LocalDate.of(2026, 7, 1), 2L);
+    }
+
+    private void assertLink(
+            TestIds ids, String reference, LocalDate lastEntryDate, long version) {
+        Map<String, Object> row = jdbc.queryForMap("""
+                select referencia_proveedor, ultima_fecha_entrada, version
+                from %s.producto_proveedor
+                where producto_id = ? and proveedor_id = ?
+                """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
+        assertThat(row.get("referencia_proveedor")).isEqualTo(reference);
+        assertThat(((java.sql.Date) row.get("ultima_fecha_entrada")).toLocalDate())
+                .isEqualTo(lastEntryDate);
+        assertThat(row.get("version")).isEqualTo(version);
     }
 
     private TestIds insertFixture() {

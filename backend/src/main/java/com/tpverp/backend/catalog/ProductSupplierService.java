@@ -69,19 +69,17 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
     @Override
     @Transactional
     public void record(UUID supplierId, LocalDate date, Collection<UUID> productIds) {
-        // Deduplica productos y conserva la ultima fecha aun al confirmar compras antiguas.
+        // Valida todo antes de escribir y delega la concurrencia al UPSERT atomico.
         Supplier supplier = activeSupplier(supplierId);
+        LocalDate entryDate = Objects.requireNonNull(date, "fechaEntrada");
         List<Product> uniqueProducts = new LinkedHashSet<>(
                 Objects.requireNonNull(productIds, "productos"))
                 .stream()
                 .map(this::product)
                 .toList();
         for (Product product : uniqueProducts) {
-            ProductSupplier link = links.findByProduct_IdAndSupplier_Id(
-                            product.getId(), supplier.getId())
-                    .orElseGet(() -> new ProductSupplier(product, supplier, null));
-            link.registerEntry(date);
-            links.save(link);
+            links.upsertPurchase(
+                    UUID.randomUUID(), product.getId(), supplier.getId(), entryDate);
         }
     }
 

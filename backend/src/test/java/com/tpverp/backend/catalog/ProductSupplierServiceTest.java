@@ -168,37 +168,36 @@ class ProductSupplierServiceTest {
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
         when(products.findById(product.getId())).thenReturn(Optional.of(product));
-        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
-                .thenReturn(Optional.empty());
 
         service.record(
                 supplier.getId(),
                 LocalDate.of(2026, 6, 9),
                 List.of(product.getId()));
 
-        verify(links).save(org.mockito.ArgumentMatchers.argThat(link ->
-                link.getSupplierReference() == null
-                        && link.getLastEntryDate().equals(LocalDate.of(2026, 6, 9))));
+        verify(links).upsertPurchase(
+                any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+        verify(links, never()).findByProduct_IdAndSupplier_Id(any(), any());
+        verify(links, never()).save(any());
     }
 
     @Test
-    void confirmedPurchaseDoesNotMoveLastEntryDateBackwards() {
-        var existing = new ProductSupplier(product, supplier, "REF");
-        existing.registerEntry(LocalDate.of(2026, 6, 9));
+    void confirmedPurchaseDelegatesNonDecreasingDateToAtomicUpsert() {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
         when(products.findById(product.getId())).thenReturn(Optional.of(product));
-        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
-                .thenReturn(Optional.of(existing));
 
         service.record(
                 supplier.getId(),
                 LocalDate.of(2026, 5, 1),
                 List.of(product.getId()));
 
-        assertThat(existing.getLastEntryDate()).isEqualTo(LocalDate.of(2026, 6, 9));
-        verify(links).save(existing);
+        verify(links).upsertPurchase(
+                any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 5, 1)));
     }
 
     @Test
@@ -207,8 +206,6 @@ class ProductSupplierServiceTest {
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
         when(products.findById(product.getId())).thenReturn(Optional.of(product));
-        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
-                .thenReturn(Optional.empty());
 
         service.record(
                 supplier.getId(),
@@ -216,8 +213,10 @@ class ProductSupplierServiceTest {
                 List.of(product.getId(), product.getId()));
 
         verify(products).findById(product.getId());
-        verify(links).findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId());
-        verify(links).save(any());
+        verify(links).upsertPurchase(
+                any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
     }
 
     @Test
@@ -235,6 +234,7 @@ class ProductSupplierServiceTest {
                 .hasMessageContaining("inactivo");
 
         verify(products, never()).findById(any());
+        verify(links, never()).upsertPurchase(any(), any(), any(), any());
         verify(links, never()).save(any());
     }
 
