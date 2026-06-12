@@ -1,0 +1,302 @@
+package com.tpverp.backend.document;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.party.CustomerRepository;
+import com.tpverp.backend.party.SupplierRepository;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class DocumentService {
+
+    private static final EnumSet<TipoDocumento> DELIVERY_NOTES = EnumSet.of(
+            TipoDocumento.ALBARAN_VENTA, TipoDocumento.ALBARAN_COMPRA);
+    private static final EnumSet<TipoDocumento> INVOICES = EnumSet.of(
+            TipoDocumento.FACTURA_VENTA, TipoDocumento.FACTURA_COMPRA,
+            TipoDocumento.RECTIFICATIVA_VENTA, TipoDocumento.RECTIFICATIVA_COMPRA);
+
+    private final DocumentoRepository documents;
+    private final ContadorDocumentoRepository counters;
+    private final MetodoPagoRepository paymentMethods;
+    private final DocumentoRelacionRepository relations;
+    private final StockDocumentGateway stockGateway;
+    private final CurrentOrganization organization;
+    private final CustomerRepository customers;
+    private final SupplierRepository suppliers;
+    private final ConfirmedPurchaseRecorder purchaseRecorder;
+    private final Clock clock;
+
+    public DocumentService(
+            DocumentoRepository documents,
+            ContadorDocumentoRepository counters,
+            MetodoPagoRepository paymentMethods,
+            DocumentoRelacionRepository relations,
+            StockDocumentGateway stockGateway,
+            CurrentOrganization organization,
+            CustomerRepository customers,
+            SupplierRepository suppliers,
+            ConfirmedPurchaseRecorder purchaseRecorder,
+            Clock clock) {
+        this.documents = documents;
+        this.counters = counters;
+        this.paymentMethods = paymentMethods;
+        this.relations = relations;
+        this.stockGateway = stockGateway;
+        this.organization = organization;
+        this.customers = customers;
+        this.suppliers = suppliers;
+        this.purchaseRecorder = purchaseRecorder;
+        this.clock = clock;
+    }
+
+    @Transactional
+    public Documento createDeliveryNote(
+            DocumentCommand command, Authentication authentication) {
+        requireType(command, DELIVERY_NOTES);
+        return documents.save(createDraft(command, authentication));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Documento> listDeliveryNotes() {
+        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+                organization.currentStore().getId(), DELIVERY_NOTES);
+    }
+
+    // Confirma un borrador, asigna número y registra si el gateway aplicó stock.
+    @Transactional
+    public Documento confirm(UUID id, Authentication authentication) {
+        var document = find(id);
+        var userId = organization.currentUser(authentication).getId();
+        validateConfirmation(document);
+        // La confirmacion reinicia origenStock; esta marca debe leerse antes.
+        boolean recordsPurchase = document.getTipo() == TipoDocumento.ALBARAN_COMPRA
+                || (document.getTipo() == TipoDocumento.FACTURA_COMPRA
+                && document.isOrigenStock());
+        var requiresStock = requiresStock(document) || document.isOrigenStock();
+        document.confirm(nextNumber(document), userId, Instant.now(clock), false);
+        document.setStockOrigin(requiresStock && stockGateway.confirm(document));
+        if (recordsPurchase) {
+            purchaseRecorder.record(
+                    document.getProveedorId(),
+                    document.getFecha(),
+                    document.getLineas().stream()
+                            .map(DocumentoLinea::getProductoId)
+                            .distinct()
+                            .toList());
+        }
+        return documents.save(document);
+    }
+
+    // Crea y confirma el ticket en una sola transacción.
+    @Transactional
+    public Documento createTicket(
+            DocumentCommand command,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        if (command.tipo() != TipoDocumento.TICKET) {
+            throw new IllegalArgumentException("tipo de ticket no válido");
+        }
+        var ticket = createDraft(command, authentication);
+        addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+        ticket.confirm(
+                nextNumber(ticket),
+                organization.currentUser(authentication).getId(),
+                Instant.now(clock),
+                false);
+        ticket.setStockOrigin(stockGateway.confirm(ticket));
+        return documents.save(ticket);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Documento> listTickets() {
+        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+                organization.currentStore().getId(), List.of(TipoDocumento.TICKET));
+    }
+
+    // Anula el ticket y solicita inversión de stock solo si se aplicó originalmente.
+    @Transactional
+    public Documento cancelTicket(
+            UUID id, Authentication authentication, String reason) {
+        var ticket = find(id);
+        if (ticket.getTipo() != TipoDocumento.TICKET) {
+            throw new IllegalArgumentException("el documento no es un ticket");
+        }
+        var userId = organization.currentUser(authentication).getId();
+        ticket.cancel(userId, Instant.now(clock), reason);
+        if (ticket.isOrigenStock()) {
+            stockGateway.cancel(ticket);
+        }
+        return documents.save(ticket);
+    }
+
+    @Transactional
+    public Documento createInvoice(
+            DocumentCommand command, Authentication authentication) {
+        requireType(command, INVOICES);
+        return documents.save(createDraft(command, authentication));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Documento> listInvoices() {
+        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+                organization.currentStore().getId(), INVOICES);
+    }
+
+    // Registra pagos únicamente cuando cubren exactamente el total pendiente.
+    @Transactional
+    public Documento payInvoice(UUID id, List<PaymentCommand> payments) {
+        var invoice = find(id);
+        if (!INVOICES.contains(invoice.getTipo())) {
+            throw new IllegalArgumentException("el documento no es una factura");
+        }
+        addPayments(invoice, payments, "la factura debe pagarse por completo");
+        invoice.markPaid();
+        return documents.save(invoice);
+    }
+
+    // Edita excepcionalmente ticket o albarán confirmado sin invocar stock ni auditoría.
+    @Transactional
+    public Documento adminEditConfirmed(
+            UUID id,
+            BigDecimal globalDiscount,
+            UUID customerId,
+            UUID supplierId,
+            List<DocumentLineCommand> lines) {
+        var document = find(id);
+        document.adminReplace(
+                globalDiscount, customerId, supplierId, List.copyOf(lines));
+        return documents.save(document);
+    }
+
+    // Relaciona explícitamente una factura con su documento de origen.
+    @Transactional
+    public Documento relate(UUID invoiceId, UUID originId, TipoRelacionDocumento type) {
+        var invoice = find(invoiceId);
+        relations.save(new DocumentoRelacion(invoice, find(originId), type));
+        return invoice;
+    }
+
+    private Documento createDraft(
+            DocumentCommand command, Authentication authentication) {
+        Objects.requireNonNull(command, "command");
+        if (command.lineas() == null || command.lineas().isEmpty()) {
+            throw new IllegalArgumentException("el documento debe tener líneas");
+        }
+        var store = organization.currentStore();
+        var user = organization.currentUser(authentication);
+        var document = new Documento(
+                store.getId(), command.almacenId(), command.tipo(), command.fecha(),
+                user.getId(), command.descuentoGlobal());
+        document.setParties(
+                command.clienteId(), command.proveedorId(), command.numeroExterno());
+        document.setStockOrigin(
+                command.directo()
+                        || command.tipo() == TipoDocumento.TICKET
+                        || DELIVERY_NOTES.contains(command.tipo()));
+        for (var line : command.lineas()) {
+            document.addLine(line.toEntity(document));
+        }
+        return document;
+    }
+
+    private void addPayments(
+            Documento document, List<PaymentCommand> commands, String mismatchMessage) {
+        if (commands == null || commands.isEmpty()) {
+            throw new IllegalArgumentException("se requiere al menos un pago");
+        }
+        var total = commands.stream().map(PaymentCommand::importe)
+                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (Money.euros(total).compareTo(document.getTotal()) != 0) {
+            throw new IllegalArgumentException(mismatchMessage);
+        }
+        for (var index = 0; index < commands.size(); index++) {
+            var command = commands.get(index);
+            var method = paymentMethods.findById(command.metodoPagoId())
+                    .filter(MetodoPago::isActivo)
+                    .filter(value -> value.getEmpresaId().equals(
+                            organization.currentCompany().getId()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "método de pago activo no encontrado"));
+            document.addPayment(new DocumentoPago(
+                    document, method, index + 1, command.importe(), command.principal(),
+                    command.entregado(), command.cambio(), Instant.now(clock)));
+        }
+        if (document.getPagos().stream().noneMatch(DocumentoPago::isPrincipal)) {
+            throw new IllegalArgumentException("se requiere un pago principal");
+        }
+    }
+
+    private String nextNumber(Documento document) {
+        var type = document.getTipo();
+        var period = DocumentNumbering.period(type, document.getFecha());
+        var counter = counters.findByTiendaIdAndTipoAndPeriodo(
+                        document.getTiendaId(), type.prefix(), period)
+                .orElseGet(() -> new ContadorDocumento(
+                        document.getTiendaId(), type, document.getFecha()));
+        var number = counter.siguiente(type, document.getFecha());
+        counters.save(counter);
+        return number;
+    }
+
+    private Documento find(UUID id) {
+        var storeId = organization.currentStore().getId();
+        return documents.findById(id)
+                .filter(document -> document.getTiendaId().equals(storeId))
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+    }
+
+    private boolean requiresStock(Documento document) {
+        return DELIVERY_NOTES.contains(document.getTipo());
+    }
+
+    private void validateConfirmation(Documento document) {
+        switch (document.getTipo()) {
+            case FACTURA_VENTA, RECTIFICATIVA_VENTA -> {
+                if (document.getClienteId() == null) {
+                    throw new IllegalStateException(
+                            "La factura de venta necesita cliente");
+                }
+                var customer = customers.findById(document.getClienteId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Cliente de factura no encontrado"));
+                if (!customer.hasCompleteFiscalData()) {
+                    throw new IllegalStateException(
+                            "El cliente no tiene datos fiscales completos");
+                }
+            }
+            case ALBARAN_COMPRA, FACTURA_COMPRA, RECTIFICATIVA_COMPRA -> {
+                if (document.getProveedorId() == null) {
+                    throw new IllegalStateException(
+                            "El documento de compra necesita proveedor");
+                }
+                var supplier = suppliers.findByIdAndCompanyId(
+                                document.getProveedorId(),
+                                organization.currentCompany().getId())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Proveedor de compra no encontrado"));
+                if (!supplier.isActive()) {
+                    throw new IllegalStateException(
+                            "El proveedor de compra esta inactivo");
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    private static void requireType(
+            DocumentCommand command, EnumSet<TipoDocumento> allowedTypes) {
+        Objects.requireNonNull(command, "command");
+        if (!allowedTypes.contains(command.tipo())) {
+            throw new IllegalArgumentException("tipo documental no válido");
+        }
+    }
+}

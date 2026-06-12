@@ -14,6 +14,7 @@ import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -159,6 +160,82 @@ class ProductSupplierServiceTest {
         assertThat(service.list(product.getId()))
                 .extracting(ProductSupplierService.ProductSupplierView::documentNumber)
                 .containsExactly("A00000001", "B00000001");
+    }
+
+    @Test
+    void confirmedPurchaseCreatesMissingLinkWithNullReference() {
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.empty());
+
+        service.record(
+                supplier.getId(),
+                LocalDate.of(2026, 6, 9),
+                List.of(product.getId()));
+
+        verify(links).save(org.mockito.ArgumentMatchers.argThat(link ->
+                link.getSupplierReference() == null
+                        && link.getLastEntryDate().equals(LocalDate.of(2026, 6, 9))));
+    }
+
+    @Test
+    void confirmedPurchaseDoesNotMoveLastEntryDateBackwards() {
+        var existing = new ProductSupplier(product, supplier, "REF");
+        existing.registerEntry(LocalDate.of(2026, 6, 9));
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.of(existing));
+
+        service.record(
+                supplier.getId(),
+                LocalDate.of(2026, 5, 1),
+                List.of(product.getId()));
+
+        assertThat(existing.getLastEntryDate()).isEqualTo(LocalDate.of(2026, 6, 9));
+        verify(links).save(existing);
+    }
+
+    @Test
+    void confirmedPurchaseProcessesDuplicateProductIdsOnce() {
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.empty());
+
+        service.record(
+                supplier.getId(),
+                LocalDate.of(2026, 6, 9),
+                List.of(product.getId(), product.getId()));
+
+        verify(products).findById(product.getId());
+        verify(links).findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId());
+        verify(links).save(any());
+    }
+
+    @Test
+    void confirmedPurchaseRejectsInactiveSupplierBeforeWritingRelations() {
+        supplier.deactivate();
+        when(organization.currentCompany()).thenReturn(company);
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+
+        assertThatThrownBy(() -> service.record(
+                supplier.getId(),
+                LocalDate.of(2026, 6, 9),
+                List.of(product.getId())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inactivo");
+
+        verify(products, never()).findById(any());
+        verify(links, never()).save(any());
     }
 
     private void currentStoreAndCompany() {

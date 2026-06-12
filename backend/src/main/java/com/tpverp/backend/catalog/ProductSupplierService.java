@@ -1,17 +1,21 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.document.ConfirmedPurchaseRecorder;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class ProductSupplierService {
+public class ProductSupplierService implements ConfirmedPurchaseRecorder {
 
     private final ProductRepository products;
     private final SupplierRepository suppliers;
@@ -60,6 +64,25 @@ public class ProductSupplierService {
     @Transactional
     public void unlink(UUID productId, UUID supplierId) {
         links.delete(link(productId, supplierId));
+    }
+
+    @Override
+    @Transactional
+    public void record(UUID supplierId, LocalDate date, Collection<UUID> productIds) {
+        // Deduplica productos y conserva la ultima fecha aun al confirmar compras antiguas.
+        Supplier supplier = activeSupplier(supplierId);
+        List<Product> uniqueProducts = new LinkedHashSet<>(
+                Objects.requireNonNull(productIds, "productos"))
+                .stream()
+                .map(this::product)
+                .toList();
+        for (Product product : uniqueProducts) {
+            ProductSupplier link = links.findByProduct_IdAndSupplier_Id(
+                            product.getId(), supplier.getId())
+                    .orElseGet(() -> new ProductSupplier(product, supplier, null));
+            link.registerEntry(date);
+            links.save(link);
+        }
     }
 
     private Product product(UUID productId) {
