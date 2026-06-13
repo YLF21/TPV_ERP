@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: ${TPV_TEST_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_test}
+    username: ${TPV_TEST_DB_USERNAME:tpv_erp_test}
+    password: ${TPV_TEST_DB_PASSWORD:}
+  jpa:
+    show-sql: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+tpv:
+  backup:
+    default-directory: target/test-backups

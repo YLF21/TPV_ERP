@@ -5,6 +5,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.PR
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -167,6 +169,27 @@ class ProductSupplierControllerContractTest {
     void forbidsAuthenticatedUsersWithoutProductPermission() throws Exception {
         mvc.perform(get(path()).with(user("unauthorized")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reportsDuplicateLinksAsConflict() throws Exception {
+        when(service.link(PRODUCT_ID, SUPPLIER_ID, null))
+                .thenThrow(new IllegalStateException("El proveedor ya esta vinculado al producto"));
+        doThrow(new DataIntegrityViolationException("duplicate"))
+                .when(service).unlink(PRODUCT_ID, SUPPLIER_ID);
+
+        mvc.perform(post(path())
+                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"supplierId":"%s"}
+                                """.formatted(SUPPLIER_ID)))
+                .andExpect(status().isConflict());
+        mvc.perform(delete(path() + "/" + SUPPLIER_ID)
+                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(csrf()))
+                .andExpect(status().isConflict());
     }
 
     private void assertEndpoint(

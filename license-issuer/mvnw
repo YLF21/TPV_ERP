@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+BASE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+DIST_URL=$(sed -n 's/^distributionUrl=//p' "$BASE_DIR/.mvn/wrapper/maven-wrapper.properties")
+MAVEN_HOME="$BASE_DIR/.mvn/wrapper/dists/apache-maven-3.9.11/apache-maven-3.9.11"
+if [ ! -x "$MAVEN_HOME/bin/mvn" ]; then
+  mkdir -p "$(dirname "$MAVEN_HOME")"
+  ARCHIVE="$(dirname "$MAVEN_HOME")/apache-maven-3.9.11-bin.zip"
+  curl -fsSL "$DIST_URL" -o "$ARCHIVE"
+  unzip -q -o "$ARCHIVE" -d "$(dirname "$MAVEN_HOME")"
+  rm "$ARCHIVE"
+fi
+exec "$MAVEN_HOME/bin/mvn" "$@"

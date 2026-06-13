@@ -47,7 +47,7 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
         Product product = product(productId);
         Supplier supplier = activeSupplier(supplierId);
         if (links.findByProduct_IdAndSupplier_Id(productId, supplierId).isPresent()) {
-            throw new IllegalArgumentException("El proveedor ya esta vinculado al producto");
+            throw new IllegalStateException("El proveedor ya esta vinculado al producto");
         }
         return ProductSupplierView.from(
                 links.save(new ProductSupplier(product, supplier, reference)));

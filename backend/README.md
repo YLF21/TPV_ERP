@@ -1,0 +1,65 @@
+# TPV ERP Backend
+
+Backend local modular construido con Java 25, Spring Boot 4.0.6 y PostgreSQL 18.
+
+## Preparacion local
+
+1. Crear las bases y usuarios descritos en `scripts/create-databases.sql`.
+2. Definir las variables del perfil deseado tomando `.env.example` como referencia.
+3. No guardar contrasenas reales en archivos versionados.
+
+Para desarrollo:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "dev"
+$env:TPV_DB_PASSWORD = "<contrasena-local>"
+.\mvnw.cmd spring-boot:run
+```
+
+En el primer arranque se crean:
+
+- Una instalacion y su identidad RSA protegida con Windows DPAPI.
+- Empresa y tienda de demostracion con vigencia de 30 dias.
+- Terminal local `SERVIDOR`.
+- Rol y usuario protegido `ADMIN`, con contrasena inicial `0000`.
+- Configuracion de backup a las 12:00, con 30 copias diarias y 72 mensuales.
+
+Cambiar la contrasena inicial de `ADMIN` cuando se implemente la pantalla de configuracion inicial.
+
+## Licencias
+
+La solicitud para el emisor se obtiene en:
+
+```text
+GET /api/v1/installation/license-request
+```
+
+El backend verifica las licencias con la clave publica del proveedor indicada por:
+
+```text
+TPV_LICENSE_ISSUER_PUBLIC_KEY_FILE
+```
+
+La clave privada correspondiente solo debe existir en el PKCS#12 de `license-issuer`.
+
+## API inicial
+
+- `/api/v1/installation`: estado y solicitud de licencia.
+- `/api/v1/auth`: login, renovacion y logout.
+- `/api/v1/licenses`: previsualizacion, activacion e historial.
+- `/api/v1/users` y `/api/v1/roles`: administracion de seguridad.
+- `/api/v1/terminals`: solicitud, aprobacion y desactivacion.
+- `/api/v1/backups`: configuracion, ejecucion, historial y restauracion.
+- `/api/v1/audit`: consulta y borrado administrativo confirmado.
+
+OpenAPI y Swagger UI solo se habilitan en el perfil `dev`.
+
+## Pruebas
+
+```powershell
+$env:TPV_TEST_DB_PASSWORD = "<contrasena-local-de-pruebas>"
+$env:TPV_ERP_TEST_DB_URL = "jdbc:postgresql://localhost:5432/tpv_erp_test"
+$env:TPV_ERP_TEST_DB_USER = "tpv_erp_test"
+$env:TPV_ERP_TEST_DB_PASSWORD = "<contrasena-local-de-pruebas>"
+.\mvnw.cmd test
+```

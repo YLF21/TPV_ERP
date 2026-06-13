@@ -1,0 +1,5 @@
+target/
+.mvn/wrapper/dists/
+*.p12
+*.pfx
+*.license.json

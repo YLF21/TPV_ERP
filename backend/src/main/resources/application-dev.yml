@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: ${TPV_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_dev}
+    username: ${TPV_DB_USERNAME:tpv_erp}
+    password: ${TPV_DB_PASSWORD:}
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+logging:
+  level:
+    com.tpverp.backend: DEBUG
+

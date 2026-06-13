@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${TPV_DB_URL}
+    username: ${TPV_DB_USERNAME}
+    password: ${TPV_DB_PASSWORD}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.tpverp.backend: INFO
+

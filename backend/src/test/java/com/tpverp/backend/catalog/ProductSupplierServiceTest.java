@@ -93,7 +93,7 @@ class ProductSupplierServiceTest {
                 .thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> service.link(product.getId(), supplier.getId(), null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("vinculado");
     }
 
