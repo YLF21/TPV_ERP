@@ -1,6 +1,10 @@
 spring:
   application:
     name: TPV ERP Backend
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
   profiles:
     default: dev
   jpa:
@@ -44,3 +48,5 @@ tpv:
     default-directory: ${TPV_BACKUP_DIRECTORY:${user.home}/TPV-ERP-Backups}
     pg-dump-command: ${TPV_PG_DUMP_COMMAND:pg_dump}
     pg-restore-command: ${TPV_PG_RESTORE_COMMAND:pg_restore}
+  product-images:
+    directory: ${TPV_PRODUCT_IMAGE_DIRECTORY:${user.home}/.tpv-erp/product-images}
