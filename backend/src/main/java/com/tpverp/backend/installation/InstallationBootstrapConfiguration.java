@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.core.annotation.Order;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 class InstallationBootstrapConfiguration {
@@ -65,6 +66,17 @@ class InstallationBootstrapConfiguration {
 	@Bean
 	@Order(0)
 	ApplicationRunner installationBootstrapRunner(InstallationBootstrapService service) {
+		return arguments -> service.initialize();
+	}
+
+	@Bean
+	CommercialBootstrapService commercialBootstrapService(JdbcTemplate jdbcTemplate) {
+		return new CommercialBootstrapService(jdbcTemplate);
+	}
+
+	@Bean
+	@Order(5)
+	ApplicationRunner commercialBootstrapRunner(CommercialBootstrapService service) {
 		return arguments -> service.initialize();
 	}
 

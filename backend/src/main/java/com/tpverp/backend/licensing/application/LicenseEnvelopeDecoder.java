@@ -69,6 +69,7 @@ public final class LicenseEnvelopeDecoder {
                     validUntil,
                     payload.maxWindows(),
                     payload.maxPda(),
+                    requireTaxRegime(payload.impuestos()),
                     required(envelope, "issuerKeyId"),
                     hash);
         } catch (LicenseValidationException exception) {
@@ -79,7 +80,7 @@ public final class LicenseEnvelopeDecoder {
     }
 
     private void validateHeader(JsonNode envelope) {
-        if (envelope.path("version").asInt(-1) != 1
+        if (envelope.path("version").asInt(-1) != 2
                 || !"AES-256-GCM".equals(required(envelope, "payloadEncryption"))
                 || !"RSA-OAEP-256".equals(required(envelope, "keyEncryption"))
                 || !"RSA-PSS-256".equals(required(envelope, "signatureAlgorithm"))) {
@@ -136,6 +137,7 @@ public final class LicenseEnvelopeDecoder {
         if (payload.maxWindows() < 1 || payload.maxPda() < 0) {
             throw new LicenseValidationException("Los cupos de la licencia no son validos");
         }
+        requireTaxRegime(payload.impuestos());
         LocalDate from = LocalDate.parse(payload.validFrom());
         LocalDate until = LocalDate.parse(payload.validUntil());
         if (!until.isAfter(from)) {
@@ -170,7 +172,14 @@ public final class LicenseEnvelopeDecoder {
     }
 
     private byte[] aad(String installationId, String installationReference) {
-        return ("tpv-license-v1\0" + installationId + "\0" + installationReference)
+        return ("tpv-license-v2\0" + installationId + "\0" + installationReference)
                 .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private TaxRegime requireTaxRegime(TaxRegime taxRegime) {
+        if (taxRegime == null) {
+            throw new LicenseValidationException("Falta el campo obligatorio impuestos");
+        }
+        return taxRegime;
     }
 }

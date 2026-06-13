@@ -169,7 +169,6 @@ public class BackupService {
         return ExecutionItem.from(execution);
     }
 
-    @Transactional
     public void restore(Path encryptedBackup, Path recoveryFile, String adminPassword) {
         verifyAdminPassword(adminPassword);
         byte[] brk = keyStore.loadForRestore(recoveryFile, adminPassword.toCharArray());

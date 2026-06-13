@@ -1,6 +1,7 @@
 package com.tpverp.backend.licensing;
 
 import com.tpverp.backend.installation.Instalacion;
+import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.Tienda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -50,6 +51,10 @@ public class Licencia {
     @Column(name = "max_pda", nullable = false)
     private int maxPda;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "regimen_impuesto", length = 8)
+    private TaxRegime regimenImpuesto;
+
     @Column(name = "blob_original", nullable = false, columnDefinition = "text")
     private String blobOriginal;
 
@@ -90,6 +95,7 @@ public class Licencia {
             Instant validaHasta,
             int maxWindows,
             int maxPda,
+            TaxRegime regimenImpuesto,
             String blobOriginal,
             String hash,
             int formatVersion,
@@ -117,6 +123,7 @@ public class Licencia {
         this.validaHasta = validaHasta;
         this.maxWindows = maxWindows;
         this.maxPda = maxPda;
+        this.regimenImpuesto = Objects.requireNonNull(regimenImpuesto, "regimenImpuesto");
         this.blobOriginal = required(blobOriginal, "blobOriginal");
         this.hash = required(hash, "hash");
         this.formatVersion = formatVersion;
@@ -149,6 +156,10 @@ public class Licencia {
 
     public int getMaxPda() {
         return maxPda;
+    }
+
+    public TaxRegime getRegimenImpuesto() {
+        return regimenImpuesto;
     }
 
     public boolean isActiva() {

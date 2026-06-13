@@ -9,5 +9,6 @@ public record LicensePayload(
         String validUntil,
         int maxWindows,
         int maxPda,
+        TaxRegime impuestos,
         String issuedAt) {
 }

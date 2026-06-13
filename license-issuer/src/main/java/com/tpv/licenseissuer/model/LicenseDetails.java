@@ -9,13 +9,15 @@ public record LicenseDetails(
         LocalDate validFrom,
         LocalDate validUntil,
         int maxWindows,
-        int maxPda) {
+        int maxPda,
+        TaxRegime impuestos) {
 
     public LicenseDetails {
         company = requireText(company, "company");
         store = requireText(store, "store");
         Objects.requireNonNull(validFrom, "validFrom is required");
         Objects.requireNonNull(validUntil, "validUntil is required");
+        Objects.requireNonNull(impuestos, "impuestos is required");
         if (!validUntil.isAfter(validFrom)) {
             throw new IllegalArgumentException("validUntil must be after validFrom");
         }

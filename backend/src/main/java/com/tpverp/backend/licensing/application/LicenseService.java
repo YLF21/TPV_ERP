@@ -15,6 +15,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.math.BigDecimal;
+import java.util.UUID;
 
 public class LicenseService {
 
@@ -26,6 +29,7 @@ public class LicenseService {
     private final LicenseEnvelopeDecoder decoder;
     private final Clock clock;
     private final AuditService auditService;
+    private final JdbcTemplate jdbc;
 
     public LicenseService(
             InstalacionRepository instalacionRepository,
@@ -35,7 +39,8 @@ public class LicenseService {
             TrustedIssuerKeyProvider issuerKeyProvider,
             LicenseEnvelopeDecoder decoder,
             Clock clock,
-            AuditService auditService) {
+            AuditService auditService,
+            JdbcTemplate jdbc) {
         this.instalacionRepository = instalacionRepository;
         this.tiendaRepository = tiendaRepository;
         this.licenciaRepository = licenciaRepository;
@@ -44,6 +49,7 @@ public class LicenseService {
         this.decoder = decoder;
         this.clock = clock;
         this.auditService = auditService;
+        this.jdbc = jdbc;
     }
 
     @Transactional(readOnly = true)
@@ -81,14 +87,16 @@ public class LicenseService {
                 preview.validUntil(),
                 preview.maxWindows(),
                 preview.maxPda(),
+                preview.impuestos(),
                 licenseFile,
                 preview.fileHash(),
-                1,
+                2,
                 Instant.now(clock),
                 Map.of("issuerKeyId", preview.issuerKeyId()),
                 ResultadoImportacion.ACEPTADA,
                 null,
                 true));
+        updateDefaultTax(store.getId(), preview.impuestos());
         auditService.record(
                 "LICENSE_ACTIVATED",
                 ResultadoAuditoria.EXITO,
@@ -121,12 +129,34 @@ public class LicenseService {
         return value.trim();
     }
 
+    private void updateDefaultTax(UUID storeId, TaxRegime regime) {
+        BigDecimal percentage = regime == TaxRegime.IGIC
+                ? new BigDecimal("7.00")
+                : new BigDecimal("21.00");
+        jdbc.update("update impuesto_tienda set predeterminado = false where tienda_id = ?", storeId);
+        int updated = jdbc.update(
+                "update impuesto_tienda set activo = true, predeterminado = true "
+                        + "where tienda_id = ? and porcentaje = ?",
+                storeId,
+                percentage);
+        if (updated == 0) {
+            jdbc.update(
+                    "insert into impuesto_tienda "
+                            + "(id, tienda_id, porcentaje, activo, predeterminado) "
+                            + "values (?, ?, ?, true, true)",
+                    UUID.randomUUID(),
+                    storeId,
+                    percentage);
+        }
+    }
+
     public record LicenseHistoryItem(
             String reference,
             Instant validFrom,
             Instant validUntil,
             int maxWindows,
             int maxPda,
+            TaxRegime impuestos,
             boolean active) {
 
         static LicenseHistoryItem from(Licencia license) {
@@ -136,6 +166,7 @@ public class LicenseService {
                     license.getValidaHasta(),
                     license.getMaxWindows(),
                     license.getMaxPda(),
+                    license.getRegimenImpuesto(),
                     license.isActiva());
         }
     }

@@ -13,6 +13,7 @@ import com.tpverp.backend.audit.AuditService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 class LicensingConfiguration {
@@ -38,7 +39,8 @@ class LicensingConfiguration {
             TrustedIssuerKeyProvider issuerKeyProvider,
             LicenseEnvelopeDecoder decoder,
             Clock clock,
-            AuditService auditService) {
+            AuditService auditService,
+            JdbcTemplate jdbcTemplate) {
         return new LicenseService(
                 instalacionRepository,
                 tiendaRepository,
@@ -47,6 +49,7 @@ class LicensingConfiguration {
                 issuerKeyProvider,
                 decoder,
                 clock,
-                auditService);
+                auditService,
+                jdbcTemplate);
     }
 }

@@ -72,6 +72,7 @@ public class SecurityAdministrationService {
             throw new IllegalArgumentException("Ya existe ese usuario");
         }
         Rol role = role(roleId);
+        requireAssignable(role);
         Usuario user = usuarioRepository.save(
                 new Usuario(store, normalized, passwordEncoder.encode(password), role));
         auditService.record(
@@ -97,7 +98,9 @@ public class SecurityAdministrationService {
     @Transactional
     public UserItem changeUserRole(UUID userId, UUID roleId) {
         Usuario user = user(userId);
-        user.cambiarRol(role(roleId));
+        var role = role(roleId);
+        requireAssignable(role);
+        user.cambiarRol(role);
         auditService.record(
                 "USER_ROLE_CHANGED",
                 ResultadoAuditoria.EXITO,
@@ -181,6 +184,13 @@ public class SecurityAdministrationService {
     private Rol role(UUID id) {
         return rolRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado"));
+    }
+
+    private void requireAssignable(Rol role) {
+        if (role.isProtegido()) {
+            throw new IllegalStateException(
+                    "El rol ADMIN no se puede asignar a otros usuarios");
+        }
     }
 
     private com.tpverp.backend.security.domain.Permiso permission(String code) {

@@ -10,6 +10,7 @@ public record LicensePreview(
         Instant validUntil,
         int maxWindows,
         int maxPda,
+        TaxRegime impuestos,
         String issuerKeyId,
         String fileHash) {
 }

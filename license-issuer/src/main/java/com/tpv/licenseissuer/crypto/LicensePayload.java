@@ -1,5 +1,7 @@
 package com.tpv.licenseissuer.crypto;
 
+import com.tpv.licenseissuer.model.TaxRegime;
+
 public record LicensePayload(
         String installationId,
         String installationReference,
@@ -9,5 +11,6 @@ public record LicensePayload(
         String validUntil,
         int maxWindows,
         int maxPda,
+        TaxRegime impuestos,
         String issuedAt) {
 }

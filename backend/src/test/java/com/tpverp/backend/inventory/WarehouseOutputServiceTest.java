@@ -1,0 +1,135 @@
+package com.tpverp.backend.inventory;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
+
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.Warehouse;
+import com.tpverp.backend.catalog.WarehouseRepository;
+import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.document.ContadorDocumentoRepository;
+import com.tpverp.backend.security.domain.Rol;
+import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.security.domain.Usuario;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+
+@ExtendWith(MockitoExtension.class)
+class WarehouseOutputServiceTest {
+
+    @Mock private WarehouseOutputRepository outputs;
+    @Mock private ContadorDocumentoRepository counters;
+    @Mock private StockLevelRepository stockLevels;
+    @Mock private StockMovementRepository movements;
+    @Mock private CurrentOrganization organization;
+    @Mock private ProductRepository products;
+    @Mock private WarehouseRepository warehouses;
+
+    private WarehouseOutputService service;
+    private Tienda store;
+    private Usuario user;
+    private Product product;
+    private Warehouse warehouse;
+
+    @BeforeEach
+    void setUp() {
+        service = new WarehouseOutputService(
+                outputs, counters, stockLevels, movements, organization, products,
+                warehouses, Clock.fixed(
+                        Instant.parse("2026-06-09T10:00:00Z"), ZoneOffset.UTC));
+        var address = Map.of(
+                "linea1", "Calle 1",
+                "ciudad", "Las Palmas",
+                "codigoPostal", "35001",
+                "provincia", "Las Palmas",
+                "pais", "ES");
+        store = new Tienda(
+                new Empresa("B00000000", "Empresa", address),
+                "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        var role = new Rol(store, "ADMIN");
+        user = new Usuario(store, "ADMIN", "hash", role);
+        product = new Product(
+                store.getId(), UUID.randomUUID(), null, UUID.randomUUID(),
+                "Producto", null, java.math.BigDecimal.ZERO, true);
+        warehouse = Warehouse.general(store.getId());
+        lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentUser(any())).thenReturn(user);
+        lenient().when(outputs.save(any())).thenAnswer(call -> call.getArgument(0));
+    }
+
+    @Test
+    void createsEditableDraft() {
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+
+        var output = service.create(
+                new WarehouseOutputCommand(
+                        warehouse.getId(), LocalDate.of(2026, 6, 9), "TALLER",
+                        "Consumo interno",
+                        List.of(new WarehouseOutputLineCommand(product.getId(), 2))),
+                authentication());
+
+        assertThat(output.getStatus()).isEqualTo(WarehouseOutputStatus.BORRADOR);
+        assertThat(output.getLines()).singleElement()
+                .extracting(WarehouseOutputLine::getQuantity).isEqualTo(2);
+    }
+
+    @Test
+    void confirmsWithAnnualNumberAndRemovesStock() {
+        var output = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(new WarehouseOutputLineCommand(product.getId(), 3)));
+        var stock = new StockLevel(product.getId(), warehouse.getId());
+        when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "SAL", "2026"))
+                .thenReturn(Optional.empty());
+        when(stockLevels.findByProductIdAndWarehouseId(
+                product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
+
+        var confirmed = service.confirm(output.getId(), authentication());
+
+        assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000001");
+        assertThat(stock.getQuantity()).isEqualTo(-3);
+    }
+
+    @Test
+    void rejectsConfirmationWhenWarehouseWasDeactivated() {
+        var secondary = new Warehouse(store.getId(), "SECUNDARIO");
+        secondary.deactivate(0);
+        var output = new WarehouseOutput(
+                store.getId(), secondary.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(new WarehouseOutputLineCommand(product.getId(), 1)));
+        when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(warehouses.findById(secondary.getId())).thenReturn(Optional.of(secondary));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.confirm(output.getId(), authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("disponible");
+    }
+
+    private UsernamePasswordAuthenticationToken authentication() {
+        return new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+    }
+}

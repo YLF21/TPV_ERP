@@ -75,6 +75,10 @@ public class Tienda {
         return id;
     }
 
+    public Empresa getEmpresa() {
+        return empresa;
+    }
+
     public String getNombreEfectivo() {
         return nombre == null ? empresa.getRazonSocial() : nombre;
     }

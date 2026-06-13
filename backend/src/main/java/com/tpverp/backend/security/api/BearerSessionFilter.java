@@ -36,6 +36,9 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 		if (header != null && header.startsWith("Bearer ")) {
 			var token = header.substring(7);
 			sesionRepository.findByTokenHashAndRevocadaEnIsNull(authenticationService.hash(token))
+					.filter(session -> session.getTerminal() != null
+							&& session.getTerminal().isActiva()
+							&& session.getTerminal().isAprobada())
 					.map(session -> session.getUsuario())
 					.filter(user -> user.isActivo())
 					.ifPresent(user -> {
@@ -47,7 +50,7 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 								.forEach(authorities::add);
 						SecurityContextHolder.getContext().setAuthentication(
 								new UsernamePasswordAuthenticationToken(
-										user.getNombre(), token, authorities));
+										user, token, authorities));
 					});
 		}
 		filterChain.doFilter(request, response);

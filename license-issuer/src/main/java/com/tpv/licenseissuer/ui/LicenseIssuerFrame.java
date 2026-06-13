@@ -1,6 +1,7 @@
 package com.tpv.licenseissuer.ui;
 
 import com.tpv.licenseissuer.model.LicenseDetails;
+import com.tpv.licenseissuer.model.TaxRegime;
 import com.tpv.licenseissuer.service.LicenseIssuanceService;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.Arrays;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -32,6 +34,7 @@ public final class LicenseIssuerFrame extends JFrame {
     private final JTextField validUntil = new JTextField(LocalDate.now().plusYears(1).toString(), 12);
     private final JSpinner maxWindows = new JSpinner(new SpinnerNumberModel(1, 1, 100000, 1));
     private final JSpinner maxPda = new JSpinner(new SpinnerNumberModel(0, 0, 100000, 1));
+    private final JComboBox<TaxRegime> impuestos = new JComboBox<>(TaxRegime.values());
     private final LicenseIssuanceService service = new LicenseIssuanceService();
 
     public LicenseIssuerFrame() {
@@ -64,6 +67,7 @@ public final class LicenseIssuerFrame extends JFrame {
         addRow(panel, constraints, row++, "Válida hasta (AAAA-MM-DD)", validUntil);
         addRow(panel, constraints, row++, "Máx. equipos Windows", maxWindows);
         addRow(panel, constraints, row++, "Máx. PDA", maxPda);
+        addRow(panel, constraints, row++, "Régimen de impuestos", impuestos);
         addFileRow(panel, constraints, row, "Archivo de licencia", outputPath, true, "json");
         return panel;
     }
@@ -118,7 +122,8 @@ public final class LicenseIssuerFrame extends JFrame {
                     LocalDate.parse(validFrom.getText().trim()),
                     LocalDate.parse(validUntil.getText().trim()),
                     (Integer) maxWindows.getValue(),
-                    (Integer) maxPda.getValue());
+                    (Integer) maxPda.getValue(),
+                    (TaxRegime) impuestos.getSelectedItem());
             service.issue(
                     Path.of(requestPath.getText().trim()),
                     details,

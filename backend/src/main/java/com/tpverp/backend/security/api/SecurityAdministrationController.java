@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1")
-@PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','ROLES_MANAGE')")
 public class SecurityAdministrationController {
 
     private final SecurityAdministrationService service;
@@ -31,17 +30,20 @@ public class SecurityAdministrationController {
     }
 
     @GetMapping("/users")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
     public List<SecurityAdministrationService.UserItem> users() {
         return service.users();
     }
 
     @PostMapping("/users")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
     public SecurityAdministrationService.UserItem createUser(
             @Valid @RequestBody CreateUserRequest request) {
         return service.createUser(request.name(), request.password(), request.roleId());
     }
 
     @PutMapping("/users/{userId}/role")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
     public SecurityAdministrationService.UserItem changeRole(
             @PathVariable UUID userId,
             @Valid @RequestBody ChangeRoleRequest request) {
@@ -49,6 +51,7 @@ public class SecurityAdministrationController {
     }
 
     @PatchMapping("/users/{userId}/active")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
     public ResponseEntity<Void> setActive(
             @PathVariable UUID userId,
             @Valid @RequestBody ActiveRequest request) {
@@ -57,6 +60,7 @@ public class SecurityAdministrationController {
     }
 
     @GetMapping("/roles")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public List<SecurityAdministrationService.RoleItem> roles() {
         return service.roles();
     }
@@ -70,12 +74,14 @@ public class SecurityAdministrationController {
     }
 
     @PostMapping("/roles")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public SecurityAdministrationService.RoleItem createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         return service.createRole(request.name());
     }
 
     @PutMapping("/roles/{roleId}/permissions")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public SecurityAdministrationService.RoleItem assignPermissions(
             @PathVariable UUID roleId,
             @Valid @RequestBody PermissionsRequest request) {

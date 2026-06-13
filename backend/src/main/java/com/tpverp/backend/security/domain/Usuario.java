@@ -85,6 +85,10 @@ public class Usuario {
         return rol;
     }
 
+    public Tienda getTienda() {
+        return tienda;
+    }
+
     public boolean isActivo() {
         return activo;
     }
