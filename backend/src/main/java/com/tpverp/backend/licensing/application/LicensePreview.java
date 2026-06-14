@@ -4,6 +4,8 @@ import java.time.Instant;
 
 public record LicensePreview(
         String reference,
+        String taxId,
+        TaxpayerType taxpayerType,
         String company,
         String store,
         Instant validFrom,

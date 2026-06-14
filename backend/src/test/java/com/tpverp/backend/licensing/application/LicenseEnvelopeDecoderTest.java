@@ -42,7 +42,7 @@ class LicenseEnvelopeDecoderTest {
 
     @Test
     void previewsAValidIssuerEnvelope() throws Exception {
-        String envelope = issue("installation-id", "INST-REFERENCE", 2, "IGIC");
+        String envelope = issue("installation-id", "INST-REFERENCE", 3, "IGIC");
 
         LicensePreview preview = decoder.decode(
                 envelope,
@@ -53,6 +53,8 @@ class LicenseEnvelopeDecoderTest {
 
         assertThat(preview.company()).isEqualTo("EMPRESA SL");
         assertThat(preview.store()).isEqualTo("TIENDA PRINCIPAL");
+        assertThat(preview.taxId()).isEqualTo("B12345678");
+        assertThat(preview.taxpayerType()).isEqualTo(TaxpayerType.SOCIEDAD);
         assertThat(preview.validFrom()).isEqualTo(Instant.parse("2026-06-08T00:00:00Z"));
         assertThat(preview.validUntil()).isEqualTo(Instant.parse("2027-06-09T00:00:00Z"));
         assertThat(preview.maxWindows()).isEqualTo(3);
@@ -63,7 +65,7 @@ class LicenseEnvelopeDecoderTest {
     @Test
     void rejectsATamperedEnvelope() throws Exception {
         ObjectNode envelope = (ObjectNode) objectMapper.readTree(
-                issue("installation-id", "INST-REFERENCE", 2, "IVA"));
+                issue("installation-id", "INST-REFERENCE", 3, "IVA"));
         envelope.put("installationReference", "ALTERED");
 
         assertThatThrownBy(() -> decoder.decode(
@@ -78,7 +80,7 @@ class LicenseEnvelopeDecoderTest {
 
     @Test
     void rejectsALicenseForAnotherInstallation() throws Exception {
-        String envelope = issue("another-installation", "OTHER-REFERENCE", 2, "IVA");
+        String envelope = issue("another-installation", "OTHER-REFERENCE", 3, "IVA");
 
         assertThatThrownBy(() -> decoder.decode(
                 envelope,
@@ -91,8 +93,8 @@ class LicenseEnvelopeDecoderTest {
     }
 
     @Test
-    void rejectsVersionOneLicenses() throws Exception {
-        String envelope = issue("installation-id", "INST-REFERENCE", 1, "IVA");
+    void rejectsVersionTwoLicenses() throws Exception {
+        String envelope = issue("installation-id", "INST-REFERENCE", 2, "IVA");
 
         assertThatThrownBy(() -> decoder.decode(
                 envelope,
@@ -105,8 +107,8 @@ class LicenseEnvelopeDecoderTest {
     }
 
     @Test
-    void rejectsVersionTwoPayloadsWithoutATaxRegime() throws Exception {
-        String envelope = issue("installation-id", "INST-REFERENCE", 2, null);
+    void rejectsVersionThreePayloadsWithoutATaxRegime() throws Exception {
+        String envelope = issue("installation-id", "INST-REFERENCE", 3, null);
 
         assertThatThrownBy(() -> decoder.decode(
                 envelope,
@@ -120,7 +122,7 @@ class LicenseEnvelopeDecoderTest {
 
     @Test
     void rejectsUnknownTaxRegimes() throws Exception {
-        String envelope = issue("installation-id", "INST-REFERENCE", 2, "VAT");
+        String envelope = issue("installation-id", "INST-REFERENCE", 3, "VAT");
 
         assertThatThrownBy(() -> decoder.decode(
                 envelope,
@@ -139,6 +141,8 @@ class LicenseEnvelopeDecoderTest {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("installationId", installationId);
         payload.put("installationReference", installationReference);
+        payload.put("taxId", "B12345678");
+        payload.put("taxpayerType", "SOCIEDAD");
         payload.put("company", "EMPRESA SL");
         payload.put("store", "TIENDA PRINCIPAL");
         payload.put("validFrom", "2026-06-08");

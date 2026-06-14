@@ -3,6 +3,7 @@ package com.tpverp.backend.licensing.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.tpverp.backend.organization.SpanishTaxId;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -63,6 +64,8 @@ public final class LicenseEnvelopeDecoder {
                             .digest(envelopeJson.getBytes(StandardCharsets.UTF_8)));
             return new LicensePreview(
                     "LIC-" + hash.substring(0, 20).toUpperCase(),
+                    SpanishTaxId.normalize(payload.taxId()),
+                    requireTaxpayerType(payload.taxpayerType()),
                     requireText(payload.company(), "company"),
                     requireText(payload.store(), "store"),
                     validFrom,
@@ -80,7 +83,7 @@ public final class LicenseEnvelopeDecoder {
     }
 
     private void validateHeader(JsonNode envelope) {
-        if (envelope.path("version").asInt(-1) != 2
+        if (envelope.path("version").asInt(-1) != 3
                 || !"AES-256-GCM".equals(required(envelope, "payloadEncryption"))
                 || !"RSA-OAEP-256".equals(required(envelope, "keyEncryption"))
                 || !"RSA-PSS-256".equals(required(envelope, "signatureAlgorithm"))) {
@@ -137,6 +140,8 @@ public final class LicenseEnvelopeDecoder {
         if (payload.maxWindows() < 1 || payload.maxPda() < 0) {
             throw new LicenseValidationException("Los cupos de la licencia no son validos");
         }
+        SpanishTaxId.normalize(payload.taxId());
+        requireTaxpayerType(payload.taxpayerType());
         requireTaxRegime(payload.impuestos());
         LocalDate from = LocalDate.parse(payload.validFrom());
         LocalDate until = LocalDate.parse(payload.validUntil());
@@ -172,7 +177,7 @@ public final class LicenseEnvelopeDecoder {
     }
 
     private byte[] aad(String installationId, String installationReference) {
-        return ("tpv-license-v2\0" + installationId + "\0" + installationReference)
+        return ("tpv-license-v3\0" + installationId + "\0" + installationReference)
                 .getBytes(StandardCharsets.UTF_8);
     }
 
@@ -181,5 +186,12 @@ public final class LicenseEnvelopeDecoder {
             throw new LicenseValidationException("Falta el campo obligatorio impuestos");
         }
         return taxRegime;
+    }
+
+    private TaxpayerType requireTaxpayerType(TaxpayerType taxpayerType) {
+        if (taxpayerType == null) {
+            throw new LicenseValidationException("Falta el campo obligatorio taxpayerType");
+        }
+        return taxpayerType;
     }
 }

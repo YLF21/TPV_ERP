@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.tpv.licenseissuer.model.LicenseDetails;
 import com.tpv.licenseissuer.model.TaxRegime;
+import com.tpv.licenseissuer.model.TaxpayerType;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPairGenerator;
@@ -41,7 +42,7 @@ class LicenseIssuanceServiceTest {
         new LicenseIssuanceService(
                 Clock.fixed(Instant.parse("2026-06-08T10:15:30Z"), ZoneOffset.UTC))
                 .issue(request, new LicenseDetails(
-                        "Example SL", "Main Store",
+                        "B12345678", TaxpayerType.SOCIEDAD, "Example SL", "Main Store",
                         LocalDate.parse("2026-06-08"), LocalDate.parse("2027-06-08"),
                         3, 10, TaxRegime.IGIC),
                         keyStore, "strong local password".toCharArray(), output);
@@ -50,7 +51,7 @@ class LicenseIssuanceServiceTest {
         assertTrue(Files.isRegularFile(tempDir.resolve("license-issuer-public.pem")));
         assertTrue(Files.isRegularFile(output));
         JsonObject envelope = JsonParser.parseString(Files.readString(output)).getAsJsonObject();
-        assertEquals(2, envelope.get("version").getAsInt());
+        assertEquals(3, envelope.get("version").getAsInt());
         assertEquals("inst-001", envelope.get("installationId").getAsString());
     }
 }

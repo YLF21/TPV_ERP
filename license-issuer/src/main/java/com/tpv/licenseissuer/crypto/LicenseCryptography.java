@@ -25,7 +25,7 @@ import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 
 public final class LicenseCryptography {
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final String PAYLOAD_ALGORITHM = "AES-256-GCM";
     private static final String KEY_ALGORITHM = "RSA-OAEP-256";
     private static final String SIGNATURE_ALGORITHM = "RSA-PSS-256";
@@ -53,7 +53,8 @@ public final class LicenseCryptography {
             IssuerIdentity issuer) {
         try {
             LicensePayload payload = new LicensePayload(
-                    request.id(), request.reference(), details.company(), details.store(),
+                    request.id(), request.reference(), details.taxId(), details.taxpayerType(),
+                    details.company(), details.store(),
                     details.validFrom().toString(), details.validUntil().toString(),
                     details.maxWindows(), details.maxPda(), details.impuestos(),
                     Instant.now(clock).toString());
@@ -186,7 +187,7 @@ public final class LicenseCryptography {
     }
 
     private byte[] aad(String id, String reference) {
-        return ("tpv-license-v2\0" + id + "\0" + reference).getBytes(StandardCharsets.UTF_8);
+        return ("tpv-license-v3\0" + id + "\0" + reference).getBytes(StandardCharsets.UTF_8);
     }
 
     private byte[] canonicalBytes(JsonObject object) {

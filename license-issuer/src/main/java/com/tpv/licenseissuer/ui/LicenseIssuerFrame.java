@@ -2,6 +2,7 @@ package com.tpv.licenseissuer.ui;
 
 import com.tpv.licenseissuer.model.LicenseDetails;
 import com.tpv.licenseissuer.model.TaxRegime;
+import com.tpv.licenseissuer.model.TaxpayerType;
 import com.tpv.licenseissuer.service.LicenseIssuanceService;
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
@@ -28,6 +29,8 @@ public final class LicenseIssuerFrame extends JFrame {
     private final JTextField keyStorePath = new JTextField(32);
     private final JTextField outputPath = new JTextField(32);
     private final JPasswordField password = new JPasswordField(32);
+    private final JTextField taxId = new JTextField(16);
+    private final JComboBox<TaxpayerType> taxpayerType = new JComboBox<>(TaxpayerType.values());
     private final JTextField company = new JTextField(32);
     private final JTextField store = new JTextField(32);
     private final JTextField validFrom = new JTextField(LocalDate.now().toString(), 12);
@@ -61,6 +64,8 @@ public final class LicenseIssuerFrame extends JFrame {
         addFileRow(panel, constraints, row++, "Solicitud JSON", requestPath, false, "json");
         addFileRow(panel, constraints, row++, "Identidad PKCS#12", keyStorePath, true, "p12");
         addRow(panel, constraints, row++, "Contraseña", password);
+        addRow(panel, constraints, row++, "NIF", taxId);
+        addRow(panel, constraints, row++, "Tipo de contribuyente", taxpayerType);
         addRow(panel, constraints, row++, "Empresa", company);
         addRow(panel, constraints, row++, "Tienda", store);
         addRow(panel, constraints, row++, "Válida desde (AAAA-MM-DD)", validFrom);
@@ -117,6 +122,8 @@ public final class LicenseIssuerFrame extends JFrame {
         char[] secret = password.getPassword();
         try {
             LicenseDetails details = new LicenseDetails(
+                    taxId.getText(),
+                    (TaxpayerType) taxpayerType.getSelectedItem(),
                     company.getText(),
                     store.getText(),
                     LocalDate.parse(validFrom.getText().trim()),

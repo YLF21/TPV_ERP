@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.Objects;
 
 public record LicenseDetails(
+        String taxId,
+        TaxpayerType taxpayerType,
         String company,
         String store,
         LocalDate validFrom,
@@ -13,6 +15,8 @@ public record LicenseDetails(
         TaxRegime impuestos) {
 
     public LicenseDetails {
+        taxId = normalizeTaxId(taxId);
+        Objects.requireNonNull(taxpayerType, "taxpayerType is required");
         company = requireText(company, "company");
         store = requireText(store, "store");
         Objects.requireNonNull(validFrom, "validFrom is required");
@@ -24,6 +28,17 @@ public record LicenseDetails(
         if (maxWindows < 1 || maxPda < 0) {
             throw new IllegalArgumentException("Windows quota must be positive and PDA quota cannot be negative");
         }
+    }
+
+    private static String normalizeTaxId(String value) {
+        String normalized = requireText(value, "taxId")
+                .replace(" ", "")
+                .replace("-", "")
+                .toUpperCase(java.util.Locale.ROOT);
+        if (!normalized.matches("[A-Z0-9]{9}")) {
+            throw new IllegalArgumentException("taxId is invalid");
+        }
+        return normalized;
     }
 
     private static String requireText(String value, String field) {
