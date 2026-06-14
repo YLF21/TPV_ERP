@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,13 +17,16 @@ class VerifactuActivationServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-        "SOCIEDAD,2026-12-31T23:59:59Z,false",
-        "SOCIEDAD,2027-01-01T00:00:00Z,true",
-        "AUTONOMO,2027-06-30T23:59:59Z,false",
-        "AUTONOMO,2027-07-01T00:00:00Z,true"
+        "SOCIEDAD,2026-12-31T22:59:59Z,Europe/Madrid,false",
+        "SOCIEDAD,2026-12-31T23:00:00Z,Europe/Madrid,true",
+        "SOCIEDAD,2026-12-31T23:59:59Z,Atlantic/Canary,false",
+        "SOCIEDAD,2027-01-01T00:00:00Z,Atlantic/Canary,true",
+        "AUTONOMO,2027-06-30T22:00:00Z,Europe/Madrid,true",
+        "AUTONOMO,2027-07-01T00:00:00Z,Atlantic/Canary,true"
     })
-    void aplicaLaFechaLegal(TaxpayerType type, Instant now, boolean expected) {
-        assertThat(service.isLegallyRequired(type, now)).isEqualTo(expected);
+    void aplicaLaFechaLegalEnLaZonaFiscal(
+            TaxpayerType type, Instant now, ZoneId zoneId, boolean expected) {
+        assertThat(service.isLegallyRequired(type, now, zoneId)).isEqualTo(expected);
     }
 
     @Test
@@ -33,13 +37,15 @@ class VerifactuActivationServiceTest {
         service.deactivateVoluntarily(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2026-06-15T10:00:00Z"));
+                Instant.parse("2026-06-15T10:00:00Z"),
+                ZoneId.of("Atlantic/Canary"));
 
         assertThat(configuration.isVoluntarilyActive()).isFalse();
         assertThat(service.isActive(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2026-06-15T10:00:00Z"))).isFalse();
+                Instant.parse("2026-06-15T10:00:00Z"),
+                ZoneId.of("Atlantic/Canary"))).isFalse();
     }
 
     @Test
@@ -60,12 +66,14 @@ class VerifactuActivationServiceTest {
         service.markFirstSubmission(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2026-06-14T10:05:00Z"));
+                Instant.parse("2026-06-14T10:05:00Z"),
+                ZoneId.of("Atlantic/Canary"));
 
         assertThatThrownBy(() -> service.deactivateVoluntarily(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2026-06-15T10:00:00Z")))
+                Instant.parse("2026-06-15T10:00:00Z"),
+                ZoneId.of("Atlantic/Canary")))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -77,7 +85,8 @@ class VerifactuActivationServiceTest {
         assertThatThrownBy(() -> service.deactivateVoluntarily(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2027-01-01T00:00:00Z")))
+                Instant.parse("2027-01-01T00:00:00Z"),
+                ZoneId.of("Atlantic/Canary")))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -86,9 +95,29 @@ class VerifactuActivationServiceTest {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
         var submittedAt = Instant.parse("2027-01-01T00:00:00Z");
 
-        service.markFirstSubmission(configuration, TaxpayerType.SOCIEDAD, submittedAt);
+        service.markFirstSubmission(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                submittedAt,
+                ZoneId.of("Atlantic/Canary"));
 
         assertThat(configuration.getFirstSubmissionAt()).isEqualTo(submittedAt);
+        assertThat(configuration.getActivatedAt())
+                .isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
+    }
+
+    @Test
+    void conservaComoActivacionElInicioLegalDeMadrid() {
+        var configuration = new VerifactuConfiguration(UUID.randomUUID());
+
+        service.markFirstSubmission(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                Instant.parse("2027-01-01T10:00:00Z"),
+                ZoneId.of("Europe/Madrid"));
+
+        assertThat(configuration.getActivatedAt())
+                .isEqualTo(Instant.parse("2026-12-31T23:00:00Z"));
     }
 
     @Test
@@ -98,7 +127,8 @@ class VerifactuActivationServiceTest {
         assertThatThrownBy(() -> service.markFirstSubmission(
                 configuration,
                 TaxpayerType.SOCIEDAD,
-                Instant.parse("2026-12-31T23:59:59Z")))
+                Instant.parse("2026-12-31T22:59:59Z"),
+                ZoneId.of("Europe/Madrid")))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

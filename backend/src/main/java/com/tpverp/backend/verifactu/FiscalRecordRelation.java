@@ -10,8 +10,10 @@ import jakarta.persistence.Table;
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.Immutable;
 
 @Entity
+@Immutable
 @Table(name = "registro_fiscal_relacion")
 @IdClass(FiscalRecordRelation.Key.class)
 public class FiscalRecordRelation {

@@ -52,20 +52,21 @@ public class VerifactuConfiguration {
         this.activatedAt = value;
     }
 
-    // Registra una remisión cuando existe activación voluntaria u obligación legal.
-    public void markFirstSubmission(Instant submittedAt, boolean legallyRequired) {
-        if (!voluntarilyActive && !legallyRequired) {
+    // Registra una remisión voluntaria o el instante exacto de activación legal.
+    public void markFirstSubmission(Instant submittedAt, Instant legalActivationAt) {
+        if (!voluntarilyActive && legalActivationAt == null) {
             throw new IllegalStateException("VERI*FACTU debe estar activo");
         }
         if (firstSubmissionAt != null) {
             throw new IllegalStateException("La primera remisión ya está registrada");
         }
         var value = Objects.requireNonNull(submittedAt, "submittedAt");
-        if (activatedAt != null && value.isBefore(activatedAt)) {
+        var effectiveActivation = activatedAt == null ? legalActivationAt : activatedAt;
+        if (value.isBefore(effectiveActivation)) {
             throw new IllegalArgumentException("La remisión no puede preceder a la activación");
         }
         if (activatedAt == null) {
-            activatedAt = value;
+            activatedAt = legalActivationAt;
         }
         firstSubmissionAt = value;
     }

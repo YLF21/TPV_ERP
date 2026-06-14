@@ -12,10 +12,12 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.Immutable;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 @Entity
+@Immutable
 @Table(name = "registro_fiscal")
 public class FiscalRecord {
 
@@ -117,7 +119,7 @@ public class FiscalRecord {
         this.previousHash = previousHash;
         this.hash = required(hash, "hash");
         this.snapshotHash = required(snapshotHash, "snapshotHash");
-        this.snapshot = Map.copyOf(Objects.requireNonNull(snapshot, "snapshot"));
+        this.snapshot = ImmutableJson.copy(snapshot);
         this.formatVersion = required(formatVersion, "formatVersion");
         this.algorithmVersion = required(algorithmVersion, "algorithmVersion");
         this.applicationVersion = required(applicationVersion, "applicationVersion");
@@ -141,6 +143,10 @@ public class FiscalRecord {
 
     public String getPreviousHash() {
         return previousHash;
+    }
+
+    public Map<String, Object> getSnapshot() {
+        return ImmutableJson.copy(snapshot);
     }
 
     UUID chainId() {
