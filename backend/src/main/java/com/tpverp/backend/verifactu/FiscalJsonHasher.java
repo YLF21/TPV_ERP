@@ -11,9 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class FiscalJsonHasher {
@@ -68,9 +68,9 @@ public final class FiscalJsonHasher {
             });
             return normalized;
         }
-        if (value instanceof Collection<?> collection) {
-            var normalized = new ArrayList<>(collection.size());
-            collection.forEach(nested -> normalized.add(normalize(nested)));
+        if (value instanceof List<?> list) {
+            var normalized = new ArrayList<>(list.size());
+            list.forEach(nested -> normalized.add(normalize(nested)));
             return normalized;
         }
         throw unsupported(value);

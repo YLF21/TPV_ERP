@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,7 +58,7 @@ class FiscalJsonHasherTest {
     }
 
     @Test
-    void aceptaTiposFiscalesSegurosYCollections() {
+    void aceptaTiposFiscalesSegurosYListas() {
         var snapshot = new LinkedHashMap<String, Object>();
         snapshot.put("nulo", null);
         snapshot.put("texto", "valor");
@@ -66,9 +66,17 @@ class FiscalJsonHasherTest {
         snapshot.put("decimal", new BigDecimal("10.00"));
         snapshot.put("enteroGrande", BigInteger.TEN);
         snapshot.put("enteros", List.of((byte) 1, (short) 2, 3, 4L));
-        snapshot.put("coleccion", new ArrayDeque<>(List.of("A", "B")));
+        snapshot.put("lista", List.of("A", "B"));
 
         assertThat(hasher.hash(snapshot)).hasSize(64);
+    }
+
+    @Test
+    void rechazaCollectionsQueNoSonListas() {
+        assertThatThrownBy(() -> hasher.hash(
+                Map.of("valores", new HashSet<>(List.of("A", "B")))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("java.util.HashSet");
     }
 
     @Test
