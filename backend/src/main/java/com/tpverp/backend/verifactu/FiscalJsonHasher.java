@@ -1,30 +1,32 @@
 package com.tpverp.backend.verifactu;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 public final class FiscalJsonHasher {
 
-    private final ObjectMapper mapper;
+    private final JsonMapper mapper;
 
-    // Aisla la configuracion canonica sin modificar el ObjectMapper compartido.
-    public FiscalJsonHasher(ObjectMapper source) {
-        mapper = source.copy();
-        mapper.setConfig(mapper.getSerializationConfig()
-                .with(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
-                .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-                .with(SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN));
+    // Crea un serializador canonico privado e independiente de la aplicacion.
+    public FiscalJsonHasher() {
+        mapper = JsonMapper.builder()
+                .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN)
+                .build();
     }
 
     // Calcula una huella estable del snapshot fiscal con claves JSON ordenadas.
@@ -43,19 +45,39 @@ public final class FiscalJsonHasher {
 
     // Copia la estructura para canonizar decimales sin modificar el snapshot recibido.
     private static Object normalize(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean) {
+            return value;
+        }
         if (value instanceof BigDecimal decimal) {
             return decimal.stripTrailingZeros();
         }
+        if (value instanceof BigInteger
+                || value instanceof Byte
+                || value instanceof Short
+                || value instanceof Integer
+                || value instanceof Long) {
+            return value;
+        }
         if (value instanceof Map<?, ?> map) {
-            var normalized = new LinkedHashMap<Object, Object>(map.size());
-            map.forEach((key, nested) -> normalized.put(key, normalize(nested)));
+            var normalized = new LinkedHashMap<String, Object>(map.size());
+            map.forEach((key, nested) -> {
+                if (!(key instanceof String textKey)) {
+                    throw unsupported(key);
+                }
+                normalized.put(textKey, normalize(nested));
+            });
             return normalized;
         }
-        if (value instanceof List<?> list) {
-            var normalized = new ArrayList<>(list.size());
-            list.forEach(nested -> normalized.add(normalize(nested)));
+        if (value instanceof Collection<?> collection) {
+            var normalized = new ArrayList<>(collection.size());
+            collection.forEach(nested -> normalized.add(normalize(nested)));
             return normalized;
         }
-        return value;
+        throw unsupported(value);
+    }
+
+    private static IllegalArgumentException unsupported(Object value) {
+        var type = value == null ? "null" : value.getClass().getName();
+        return new IllegalArgumentException("Tipo fiscal no permitido: " + type);
     }
 }
