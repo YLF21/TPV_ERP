@@ -61,6 +61,7 @@ create table registro_fiscal (
     version_aplicacion varchar(32) not null,
     unique (cadena_id, secuencia),
     unique (cadena_id, huella),
+    unique (cadena_id, id),
     unique (id, cadena_id),
     foreign key (cadena_id, empresa_id, instalacion_id)
         references cadena_fiscal(id, empresa_id, instalacion_id),
@@ -99,10 +100,15 @@ alter table cadena_fiscal
     references registro_fiscal(id, cadena_id);
 
 create table registro_fiscal_relacion (
-    registro_id uuid not null references registro_fiscal(id),
-    relacionado_id uuid not null references registro_fiscal(id),
+    cadena_id uuid not null,
+    registro_id uuid not null,
+    relacionado_id uuid not null,
     tipo varchar(16) not null,
-    primary key (registro_id, relacionado_id, tipo),
+    primary key (cadena_id, registro_id, relacionado_id, tipo),
+    foreign key (cadena_id, registro_id)
+        references registro_fiscal(cadena_id, id),
+    foreign key (cadena_id, relacionado_id)
+        references registro_fiscal(cadena_id, id),
     check (registro_id <> relacionado_id),
     check (tipo in ('SUBSANA', 'ANULA', 'RECTIFICA', 'SUSTITUYE'))
 );
@@ -115,7 +121,7 @@ create table estado_envio_fiscal (
     actualizado_en timestamptz not null,
     version bigint not null default 0,
     check (estado in (
-        'PENDIENTE', 'ENVIANDO', 'ACEPTADO',
+        'PENDIENTE', 'ENVIANDO', 'ENVIADO', 'ACEPTADO',
         'ACEPTADO_CON_ERRORES', 'RECHAZADO', 'DEFECTUOSO'
     ))
 );

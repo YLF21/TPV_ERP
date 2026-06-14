@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -99,6 +100,7 @@ class PostgreSqlMigrationTest {
 
             verifyProductSupplierConstraints(url, user, password, schema);
             verifyFiscalIdentityColumns(url, user, password, schema);
+            verifyFiscalIndexes(url, user, password, schema);
             verifyImmutableFiscalRecords(url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
@@ -240,6 +242,10 @@ class PostgreSqlMigrationTest {
         UUID chainId = UUID.randomUUID();
         UUID firstRecordId = UUID.randomUUID();
         UUID secondRecordId = UUID.randomUUID();
+        UUID otherCompanyId = UUID.randomUUID();
+        UUID otherStoreId = UUID.randomUUID();
+        UUID otherChainId = UUID.randomUUID();
+        UUID otherRecordId = UUID.randomUUID();
 
         try (Connection connection = DriverManager.getConnection(url, user, password);
                 Statement statement = connection.createStatement()) {
@@ -285,11 +291,79 @@ class PostgreSqlMigrationTest {
                     statement, schema, secondRecordId, chainId, companyId,
                     installationId, storeId, 2, "B".repeat(64), "A".repeat(64));
             statement.executeUpdate("""
+                    insert into %1$s.estado_envio_fiscal (
+                        registro_id, estado, actualizado_en)
+                    values ('%2$s', 'ENVIADO', now())
+                    """.formatted(schema, firstRecordId));
+            statement.executeUpdate("""
                     insert into %1$s.registro_fiscal_relacion (
-                        registro_id, relacionado_id, tipo)
-                    values ('%2$s', '%3$s', 'SUBSANA')
-                    """.formatted(schema, secondRecordId, firstRecordId));
+                        cadena_id, registro_id, relacionado_id, tipo)
+                    values ('%2$s', '%3$s', '%4$s', 'SUBSANA')
+                    """.formatted(schema, chainId, secondRecordId, firstRecordId));
+
+            insertCompanyAndStore(
+                    statement, schema, otherCompanyId, otherStoreId,
+                    "B00000004", "002", "other-fiscal-hash");
+            statement.executeUpdate("""
+                    insert into %1$s.cadena_fiscal (
+                        id, empresa_id, instalacion_id, actualizada_en)
+                    values ('%2$s', '%3$s', '%4$s', now())
+                    """.formatted(schema, otherChainId, otherCompanyId, installationId));
+            insertFiscalRecord(
+                    statement, schema, otherRecordId, otherChainId, otherCompanyId,
+                    installationId, otherStoreId, 1, "C".repeat(64), null);
         }
+
+        assertSqlState(url, user, password, "23505", """
+                insert into %1$s.registro_fiscal (
+                    id, cadena_id, empresa_id, instalacion_id, tienda_id,
+                    secuencia, operacion, tipo_documento_fiscal, serie_numero,
+                    fecha_expedicion, generado_en, zona_horaria, nif_emisor,
+                    cuota_total, importe_total, huella_anterior, huella,
+                    hash_snapshot, snapshot, version_formato, version_algoritmo,
+                    version_aplicacion)
+                select
+                    '%2$s', cadena_id, empresa_id, instalacion_id, tienda_id,
+                    2, operacion, tipo_documento_fiscal, 'DUPLICADO',
+                    fecha_expedicion, generado_en, zona_horaria, nif_emisor,
+                    cuota_total, importe_total, '%3$s', '%4$s',
+                    hash_snapshot, snapshot, version_formato, version_algoritmo,
+                    version_aplicacion
+                from %1$s.registro_fiscal where id = '%5$s'
+                """.formatted(
+                schema, UUID.randomUUID(), "A".repeat(64), "D".repeat(64), firstRecordId));
+        assertSqlState(url, user, password, "23514", """
+                insert into %1$s.registro_fiscal (
+                    id, cadena_id, empresa_id, instalacion_id, tienda_id,
+                    secuencia, operacion, tipo_documento_fiscal, serie_numero,
+                    fecha_expedicion, generado_en, zona_horaria, nif_emisor,
+                    cuota_total, importe_total, huella_anterior, huella,
+                    hash_snapshot, snapshot, version_formato, version_algoritmo,
+                    version_aplicacion)
+                select
+                    '%2$s', cadena_id, empresa_id, instalacion_id, tienda_id,
+                    3, operacion, tipo_documento_fiscal, 'HASH-INVALIDO',
+                    fecha_expedicion, generado_en, zona_horaria, nif_emisor,
+                    cuota_total, importe_total, '%3$s', 'hash-invalido',
+                    hash_snapshot, snapshot, version_formato, version_algoritmo,
+                    version_aplicacion
+                from %1$s.registro_fiscal where id = '%4$s'
+                """.formatted(schema, UUID.randomUUID(), "B".repeat(64), firstRecordId));
+        assertSqlState(url, user, password, "23514", """
+                insert into %1$s.estado_envio_fiscal (
+                    registro_id, estado, actualizado_en)
+                values ('%2$s', 'DESCONOCIDO', now())
+                """.formatted(schema, secondRecordId));
+        assertSqlState(url, user, password, "23514", """
+                insert into %1$s.registro_fiscal_relacion (
+                    cadena_id, registro_id, relacionado_id, tipo)
+                values ('%2$s', '%3$s', '%3$s', 'ANULA')
+                """.formatted(schema, chainId, firstRecordId));
+        assertSqlState(url, user, password, "23503", """
+                insert into %1$s.registro_fiscal_relacion (
+                    cadena_id, registro_id, relacionado_id, tipo)
+                values ('%2$s', '%3$s', '%4$s', 'RECTIFICA')
+                """.formatted(schema, chainId, firstRecordId, otherRecordId));
 
         assertFiscalMutationRejected(url, user, password, """
                 update %1$s.registro_fiscal
@@ -302,12 +376,67 @@ class PostgreSqlMigrationTest {
         assertFiscalMutationRejected(url, user, password, """
                 update %1$s.registro_fiscal_relacion
                 set tipo = 'ANULA'
-                where registro_id = '%2$s' and relacionado_id = '%3$s'
-                """.formatted(schema, secondRecordId, firstRecordId));
+                where cadena_id = '%2$s'
+                  and registro_id = '%3$s' and relacionado_id = '%4$s'
+                """.formatted(schema, chainId, secondRecordId, firstRecordId));
         assertFiscalMutationRejected(url, user, password, """
                 delete from %1$s.registro_fiscal_relacion
-                where registro_id = '%2$s' and relacionado_id = '%3$s'
-                """.formatted(schema, secondRecordId, firstRecordId));
+                where cadena_id = '%2$s'
+                  and registro_id = '%3$s' and relacionado_id = '%4$s'
+                """.formatted(schema, chainId, secondRecordId, firstRecordId));
+    }
+
+    private static void verifyFiscalIndexes(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet indexes = statement.executeQuery("""
+                    select indexname
+                    from pg_indexes
+                    where schemaname = '%s'
+                      and indexname in (
+                        'ix_registro_fiscal_documento',
+                        'ix_registro_fiscal_empresa_fecha',
+                        'ix_estado_envio_fiscal_estado')
+                    order by indexname
+                    """.formatted(schema))) {
+            var names = new ArrayList<String>();
+            while (indexes.next()) {
+                names.add(indexes.getString("indexname"));
+            }
+            assertThat(names).containsExactly(
+                    "ix_estado_envio_fiscal_estado",
+                    "ix_registro_fiscal_documento",
+                    "ix_registro_fiscal_empresa_fecha");
+        }
+    }
+
+    private static void insertCompanyAndStore(
+            Statement statement, String schema, UUID companyId, UUID storeId,
+            String taxId, String storeCode, String addressHash) throws SQLException {
+        statement.executeUpdate("""
+                insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
+                values ('%2$s', '%4$s', 'Otra Empresa Fiscal', '{
+                    "linea1":"Otra Calle Fiscal",
+                    "ciudad":"Las Palmas",
+                    "codigoPostal":"35001",
+                    "provincia":"Las Palmas",
+                    "pais":"ES"
+                }')
+                """.formatted(schema, companyId, storeId, taxId));
+        statement.executeUpdate("""
+                insert into %1$s.tienda (
+                    id, empresa_id, nombre, direccion, address_normalized_hash,
+                    timezone, moneda, locale, codigo_tienda)
+                values (
+                    '%2$s', '%3$s', 'Otra Tienda Fiscal', '{
+                        "linea1":"Otra Calle Fiscal",
+                        "ciudad":"Las Palmas",
+                        "codigoPostal":"35001",
+                        "provincia":"Las Palmas",
+                        "pais":"ES"
+                    }', '%5$s', 'Atlantic/Canary', 'EUR', 'es-ES', '%4$s')
+                """.formatted(schema, storeId, companyId, storeCode, addressHash));
     }
 
     private static void insertFiscalRecord(
@@ -336,12 +465,17 @@ class PostgreSqlMigrationTest {
 
     private static void assertFiscalMutationRejected(
             String url, String user, String password, String sql) {
+        assertSqlState(url, user, password, "P0001", sql);
+    }
+
+    private static void assertSqlState(
+            String url, String user, String password, String expectedSqlState, String sql) {
         assertThatThrownBy(() -> {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {
                 statement.executeUpdate(sql);
             }
         }).isInstanceOfSatisfying(SQLException.class,
-                exception -> assertThat(exception.getSQLState()).isEqualTo("P0001"));
+                exception -> assertThat(exception.getSQLState()).isEqualTo(expectedSqlState));
     }
 }
