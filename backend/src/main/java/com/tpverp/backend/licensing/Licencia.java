@@ -2,6 +2,7 @@ package com.tpverp.backend.licensing;
 
 import com.tpverp.backend.installation.Instalacion;
 import com.tpverp.backend.licensing.application.TaxRegime;
+import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Tienda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,6 +52,13 @@ public class Licencia {
     @Column(name = "max_pda", nullable = false)
     private int maxPda;
 
+    @Column(name = "tax_id", length = 9)
+    private String taxId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "taxpayer_type", length = 16)
+    private TaxpayerType taxpayerType;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "regimen_impuesto", length = 8)
     private TaxRegime regimenImpuesto;
@@ -95,6 +103,8 @@ public class Licencia {
             Instant validaHasta,
             int maxWindows,
             int maxPda,
+            String taxId,
+            TaxpayerType taxpayerType,
             TaxRegime regimenImpuesto,
             String blobOriginal,
             String hash,
@@ -123,6 +133,8 @@ public class Licencia {
         this.validaHasta = validaHasta;
         this.maxWindows = maxWindows;
         this.maxPda = maxPda;
+        this.taxId = required(taxId, "taxId");
+        this.taxpayerType = Objects.requireNonNull(taxpayerType, "taxpayerType");
         this.regimenImpuesto = Objects.requireNonNull(regimenImpuesto, "regimenImpuesto");
         this.blobOriginal = required(blobOriginal, "blobOriginal");
         this.hash = required(hash, "hash");
@@ -160,6 +172,18 @@ public class Licencia {
 
     public TaxRegime getRegimenImpuesto() {
         return regimenImpuesto;
+    }
+
+    public String getTaxId() {
+        return taxId;
+    }
+
+    public TaxpayerType getTaxpayerType() {
+        return taxpayerType;
+    }
+
+    public int getFormatVersion() {
+        return formatVersion;
     }
 
     public boolean isActiva() {

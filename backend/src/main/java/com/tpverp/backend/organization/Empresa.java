@@ -15,6 +15,8 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "empresa")
 public class Empresa {
 
+    public static final String DEMO_TAX_ID = "DEMO-00000000";
+
     @Id
     private UUID id;
 
@@ -48,6 +50,19 @@ public class Empresa {
     public String getRazonSocial() {
         return razonSocial;
     }
+
+    public String getTaxId() {
+        return taxId;
+    }
+
+    public void adoptLicensedTaxId(String licensedTaxId) {
+        String normalized = SpanishTaxId.normalize(licensedTaxId);
+        if (!DEMO_TAX_ID.equals(taxId) && !normalized.equals(SpanishTaxId.normalize(taxId))) {
+            throw new IllegalStateException("El NIF real de la empresa no puede modificarse");
+        }
+        taxId = normalized;
+    }
+    // Solo permite sustituir el identificador ficticio de la empresa demo.
 
     private static String required(String value, String field) {
         if (value == null || value.isBlank()) {

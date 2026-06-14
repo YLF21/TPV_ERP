@@ -5,6 +5,8 @@ import com.tpverp.backend.installation.InstalacionRepository;
 import com.tpverp.backend.licensing.Licencia;
 import com.tpverp.backend.licensing.LicenciaRepository;
 import com.tpverp.backend.licensing.ResultadoImportacion;
+import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.Tienda;
 import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
@@ -76,6 +78,7 @@ public class LicenseService {
 
         Instalacion installation = currentInstallation();
         Tienda store = currentStore();
+        validateTaxpayer(store.getEmpresa(), preview.taxId());
         licenciaRepository.findByTiendaIdAndInstalacionIdAndActivaTrue(
                         store.getId(), installation.getId())
                 .ifPresent(Licencia::desactivar);
@@ -87,10 +90,12 @@ public class LicenseService {
                 preview.validUntil(),
                 preview.maxWindows(),
                 preview.maxPda(),
+                preview.taxId(),
+                preview.taxpayerType(),
                 preview.impuestos(),
                 licenseFile,
                 preview.fileHash(),
-                2,
+                3,
                 Instant.now(clock),
                 Map.of("issuerKeyId", preview.issuerKeyId()),
                 ResultadoImportacion.ACEPTADA,
@@ -150,12 +155,25 @@ public class LicenseService {
         }
     }
 
+    private void validateTaxpayer(Empresa company, String licensedTaxId) {
+        String normalized = SpanishTaxId.normalize(licensedTaxId);
+        if (Empresa.DEMO_TAX_ID.equals(company.getTaxId())) {
+            company.adoptLicensedTaxId(normalized);
+            return;
+        }
+        if (!SpanishTaxId.normalize(company.getTaxId()).equals(normalized)) {
+            throw new LicenseValidationException("El NIF de la licencia no coincide con la empresa");
+        }
+    }
+
     public record LicenseHistoryItem(
             String reference,
             Instant validFrom,
             Instant validUntil,
             int maxWindows,
             int maxPda,
+            String taxId,
+            TaxpayerType taxpayerType,
             TaxRegime impuestos,
             boolean active) {
 
@@ -166,6 +184,8 @@ public class LicenseService {
                     license.getValidaHasta(),
                     license.getMaxWindows(),
                     license.getMaxPda(),
+                    license.getTaxId(),
+                    license.getTaxpayerType(),
                     license.getRegimenImpuesto(),
                     license.isActiva());
         }

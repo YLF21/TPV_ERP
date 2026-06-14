@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tpverp.backend.installation.Instalacion;
 import com.tpverp.backend.licensing.application.TaxRegime;
+import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.organization.Tienda;
 import java.time.Instant;
@@ -34,10 +35,12 @@ class LicenciaTest {
                 Instant.parse("2027-06-08T00:00:00Z"),
                 1,
                 0,
+                "B12345678",
+                TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
                 "{}",
                 "hash",
-                2,
+                3,
                 Instant.parse("2026-06-08T00:00:00Z"),
                 Map.of(),
                 ResultadoImportacion.ACEPTADA,
@@ -45,5 +48,8 @@ class LicenciaTest {
                 true);
 
         assertThat(licencia.getRegimenImpuesto()).isEqualTo(TaxRegime.IGIC);
+        assertThat(licencia.getTaxId()).isEqualTo("B12345678");
+        assertThat(licencia.getTaxpayerType()).isEqualTo(TaxpayerType.SOCIEDAD);
+        assertThat(licencia.getFormatVersion()).isEqualTo(3);
     }
 }

@@ -96,6 +96,7 @@ class PostgreSqlMigrationTest {
             }
 
             verifyProductSupplierConstraints(url, user, password, schema);
+            verifyFiscalIdentityColumns(url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {
@@ -129,7 +130,7 @@ class PostgreSqlMigrationTest {
             statement.executeUpdate("""
                     insert into %1$s.tienda (
                         id, empresa_id, nombre, direccion, address_normalized_hash,
-                        timezone, moneda, locale)
+                        timezone, moneda, locale, codigo_fiscal)
                     values (
                         '%2$s', '%3$s', 'Tienda', '{
                             "linea1":"Calle Uno",
@@ -137,7 +138,7 @@ class PostgreSqlMigrationTest {
                             "codigoPostal":"35001",
                             "provincia":"Las Palmas",
                             "pais":"ES"
-                        }', 'hash', 'Atlantic/Canary', 'EUR', 'es-ES')
+                        }', 'hash', 'Atlantic/Canary', 'EUR', 'es-ES', '001')
                     """.formatted(schema, storeId, companyId));
             statement.executeUpdate("""
                     insert into %1$s.impuesto_tienda (id, tienda_id, porcentaje)
@@ -204,6 +205,27 @@ class PostgreSqlMigrationTest {
                     """.formatted(schema, UUID.randomUUID(), firstProductId, supplierId)))
                     .isInstanceOfSatisfying(SQLException.class,
                             exception -> assertThat(exception.getSQLState()).isEqualTo("23505"));
+        }
+    }
+
+    private static void verifyFiscalIdentityColumns(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet columns = statement.executeQuery("""
+                    select count(*)
+                    from information_schema.columns
+                    where table_schema = '%s'
+                      and (
+                        (table_name = 'tienda' and column_name = 'codigo_fiscal'
+                            and is_nullable = 'NO')
+                        or
+                        (table_name = 'licencia'
+                            and column_name in ('tax_id', 'taxpayer_type'))
+                      )
+                    """.formatted(schema))) {
+            assertThat(columns.next()).isTrue();
+            assertThat(columns.getInt(1)).isEqualTo(3);
         }
     }
 }
