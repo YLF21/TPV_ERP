@@ -4,10 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class FiscalJsonHasher {
@@ -25,12 +29,33 @@ public final class FiscalJsonHasher {
 
     // Calcula una huella estable del snapshot fiscal con claves JSON ordenadas.
     public String hash(Map<String, Object> snapshot) {
+        if (snapshot == null) {
+            throw new IllegalArgumentException("snapshot es obligatorio");
+        }
         try {
-            var json = mapper.writeValueAsBytes(snapshot);
+            var json = mapper.writeValueAsBytes(normalize(snapshot));
             var digest = MessageDigest.getInstance("SHA-256").digest(json);
             return HexFormat.of().withUpperCase().formatHex(digest);
         } catch (JsonProcessingException | NoSuchAlgorithmException exception) {
             throw new IllegalStateException("No se pudo calcular el hash fiscal", exception);
         }
+    }
+
+    // Copia la estructura para canonizar decimales sin modificar el snapshot recibido.
+    private static Object normalize(Object value) {
+        if (value instanceof BigDecimal decimal) {
+            return decimal.stripTrailingZeros();
+        }
+        if (value instanceof Map<?, ?> map) {
+            var normalized = new LinkedHashMap<Object, Object>(map.size());
+            map.forEach((key, nested) -> normalized.put(key, normalize(nested)));
+            return normalized;
+        }
+        if (value instanceof List<?> list) {
+            var normalized = new ArrayList<>(list.size());
+            list.forEach(nested -> normalized.add(normalize(nested)));
+            return normalized;
+        }
+        return value;
     }
 }

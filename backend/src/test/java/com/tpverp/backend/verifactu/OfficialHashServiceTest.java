@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -69,5 +70,94 @@ class OfficialHashServiceTest {
 
         assertThat(service.hash(input))
                 .isEqualTo("6EE4110A77C636565E0E095B309E8AA4A18CFB5B3A880A0859F5F14E4E2B01A9");
+    }
+
+    @Test
+    void normalizaLosTextosObligatorios() {
+        var generatedAt = OffsetDateTime.parse("2024-01-01T19:20:30+01:00");
+        var alta = new AltaHashInput(
+                " 89890001K ", " 001 ", " 01-01-2024 ", " F1 ",
+                BigDecimal.ONE, BigDecimal.TEN, null, generatedAt);
+        var cancellation = new CancellationHashInput(
+                " 89890001K ", " 001 ", " 01-01-2024 ", null, generatedAt);
+
+        assertThat(alta)
+                .extracting(
+                        AltaHashInput::issuerTaxId,
+                        AltaHashInput::invoiceNumber,
+                        AltaHashInput::issueDate,
+                        AltaHashInput::invoiceType)
+                .containsExactly("89890001K", "001", "01-01-2024", "F1");
+        assertThat(cancellation)
+                .extracting(
+                        CancellationHashInput::issuerTaxId,
+                        CancellationHashInput::cancelledInvoiceNumber,
+                        CancellationHashInput::cancelledIssueDate)
+                .containsExactly("89890001K", "001", "01-01-2024");
+        assertThat(new AltaHashInput(
+                "89890001K", "001", "01-01-2024", "F1",
+                BigDecimal.ONE, BigDecimal.TEN, " HASH ", generatedAt).previousHash())
+                .isEqualTo("HASH");
+    }
+
+    @Test
+    void rechazaCamposObligatoriosInvalidosEnAlta() {
+        var generatedAt = OffsetDateTime.parse("2024-01-01T19:20:30+01:00");
+
+        assertInvalidAlta(null, "001", "01-01-2024", "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta(" ", "001", "01-01-2024", "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", null, "01-01-2024", "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", " ", "01-01-2024", "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", null, "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", " ", "F1", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", "01-01-2024", null, BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", "01-01-2024", " ", BigDecimal.ONE, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", "01-01-2024", "F1", null, BigDecimal.TEN, generatedAt);
+        assertInvalidAlta("89890001K", "001", "01-01-2024", "F1", BigDecimal.ONE, null, generatedAt);
+        assertInvalidAlta("89890001K", "001", "01-01-2024", "F1", BigDecimal.ONE, BigDecimal.TEN, null);
+        assertThatThrownBy(() -> new AltaHashInput(
+                "89890001K", "001", "01-01-2024", "F1",
+                BigDecimal.ONE, BigDecimal.TEN, " ", generatedAt))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rechazaCamposObligatoriosInvalidosEnAnulacion() {
+        var generatedAt = OffsetDateTime.parse("2024-01-01T19:20:30+01:00");
+
+        assertInvalidCancellation(null, "001", "01-01-2024", generatedAt);
+        assertInvalidCancellation(" ", "001", "01-01-2024", generatedAt);
+        assertInvalidCancellation("89890001K", null, "01-01-2024", generatedAt);
+        assertInvalidCancellation("89890001K", " ", "01-01-2024", generatedAt);
+        assertInvalidCancellation("89890001K", "001", null, generatedAt);
+        assertInvalidCancellation("89890001K", "001", " ", generatedAt);
+        assertInvalidCancellation("89890001K", "001", "01-01-2024", null);
+        assertThatThrownBy(() -> new CancellationHashInput(
+                "89890001K", "001", "01-01-2024", " ", generatedAt))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static void assertInvalidAlta(
+            String issuerTaxId,
+            String invoiceNumber,
+            String issueDate,
+            String invoiceType,
+            BigDecimal totalTax,
+            BigDecimal totalAmount,
+            OffsetDateTime generatedAt) {
+        assertThatThrownBy(() -> new AltaHashInput(
+                issuerTaxId, invoiceNumber, issueDate, invoiceType,
+                totalTax, totalAmount, null, generatedAt))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static void assertInvalidCancellation(
+            String issuerTaxId,
+            String invoiceNumber,
+            String issueDate,
+            OffsetDateTime generatedAt) {
+        assertThatThrownBy(() -> new CancellationHashInput(
+                issuerTaxId, invoiceNumber, issueDate, null, generatedAt))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
