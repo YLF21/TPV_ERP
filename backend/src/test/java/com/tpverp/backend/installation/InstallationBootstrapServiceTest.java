@@ -79,16 +79,20 @@ class InstallationBootstrapServiceTest {
 		service.initialize();
 
 		var installation = ArgumentCaptor.forClass(Instalacion.class);
+		var store = ArgumentCaptor.forClass(Tienda.class);
 		var role = ArgumentCaptor.forClass(Rol.class);
 		var user = ArgumentCaptor.forClass(Usuario.class);
 		var terminal = ArgumentCaptor.forClass(Terminal.class);
 		verify(instalacionRepository).save(installation.capture());
+		verify(tiendaRepository).save(store.capture());
 		verify(rolRepository).save(role.capture());
 		verify(usuarioRepository).save(user.capture());
 		verify(terminalRepository).save(terminal.capture());
 
 		assertThat(installation.getValue().getDemoHasta())
 				.isEqualTo(Instant.parse("2026-07-08T10:00:00Z"));
+		assertThat(store.getValue().getCodigoFiscal()).isEqualTo("001");
+		assertThat(store.getValue().getTimezone()).isEqualTo("Atlantic/Canary");
 		assertThat(role.getValue().getNombre()).isEqualTo("ADMIN");
 		assertThat(role.getValue().isProtegido()).isTrue();
 		assertThat(user.getValue().getNombre()).isEqualTo("ADMIN");

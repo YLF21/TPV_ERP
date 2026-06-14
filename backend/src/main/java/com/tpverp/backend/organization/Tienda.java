@@ -24,6 +24,9 @@ public class Tienda {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa empresa;
 
+    @Column(name = "codigo_fiscal", nullable = false, length = 3)
+    private String codigoFiscal;
+
     private String nombre;
 
     @JdbcTypeCode(SqlTypes.JSON)
@@ -61,12 +64,25 @@ public class Tienda {
             String timezone,
             String moneda,
             String locale) {
+        this(empresa, "001", nombre, direccion, addressNormalizedHash, timezone, moneda, locale);
+    }
+
+    public Tienda(
+            Empresa empresa,
+            String codigoFiscal,
+            String nombre,
+            Map<String, String> direccion,
+            String addressNormalizedHash,
+            String timezone,
+            String moneda,
+            String locale) {
         this.id = UUID.randomUUID();
         this.empresa = java.util.Objects.requireNonNull(empresa, "empresa");
+        this.codigoFiscal = StoreFiscalIdentity.code(codigoFiscal);
         this.nombre = optional(nombre);
         this.direccion = Empresa.direccion(direccion);
         this.addressNormalizedHash = required(addressNormalizedHash, "addressNormalizedHash");
-        this.timezone = required(timezone, "timezone");
+        this.timezone = StoreFiscalIdentity.timezone(timezone);
         this.moneda = required(moneda, "moneda").toUpperCase(java.util.Locale.ROOT);
         this.locale = required(locale, "locale");
     }
@@ -77,6 +93,14 @@ public class Tienda {
 
     public Empresa getEmpresa() {
         return empresa;
+    }
+
+    public String getCodigoFiscal() {
+        return codigoFiscal;
+    }
+
+    public String getTimezone() {
+        return timezone;
     }
 
     public String getNombreEfectivo() {
