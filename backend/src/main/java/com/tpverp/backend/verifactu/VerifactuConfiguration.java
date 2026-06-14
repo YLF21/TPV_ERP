@@ -41,24 +41,31 @@ public class VerifactuConfiguration {
 
     // Activa voluntariamente VERI*FACTU y conserva el instante efectivo.
     public void activateVoluntarily(Instant activatedAt) {
+        var value = Objects.requireNonNull(activatedAt, "activatedAt");
+        if (voluntarilyActive) {
+            return;
+        }
         if (firstSubmissionAt != null) {
             throw new IllegalStateException("VERI*FACTU ya no puede cambiar de modo");
         }
         voluntarilyActive = true;
-        this.activatedAt = Objects.requireNonNull(activatedAt, "activatedAt");
+        this.activatedAt = value;
     }
 
-    // Registra una sola vez la primera remisión, que vuelve irreversible la activación.
-    public void markFirstSubmission(Instant submittedAt) {
-        if (!voluntarilyActive || activatedAt == null) {
+    // Registra una remisión cuando existe activación voluntaria u obligación legal.
+    public void markFirstSubmission(Instant submittedAt, boolean legallyRequired) {
+        if (!voluntarilyActive && !legallyRequired) {
             throw new IllegalStateException("VERI*FACTU debe estar activo");
         }
         if (firstSubmissionAt != null) {
             throw new IllegalStateException("La primera remisión ya está registrada");
         }
         var value = Objects.requireNonNull(submittedAt, "submittedAt");
-        if (value.isBefore(activatedAt)) {
+        if (activatedAt != null && value.isBefore(activatedAt)) {
             throw new IllegalArgumentException("La remisión no puede preceder a la activación");
+        }
+        if (activatedAt == null) {
+            activatedAt = value;
         }
         firstSubmissionAt = value;
     }
@@ -74,6 +81,10 @@ public class VerifactuConfiguration {
 
     public boolean isVoluntarilyActive() {
         return voluntarilyActive;
+    }
+
+    public Instant getActivatedAt() {
+        return activatedAt;
     }
 
     public Instant getFirstSubmissionAt() {

@@ -43,10 +43,24 @@ class VerifactuActivationServiceTest {
     }
 
     @Test
+    void activacionVoluntariaRepetidaConservaLaFechaOriginal() {
+        var configuration = new VerifactuConfiguration(UUID.randomUUID());
+        var original = Instant.parse("2026-06-14T10:00:00Z");
+
+        configuration.activateVoluntarily(original);
+        configuration.activateVoluntarily(Instant.parse("2026-06-15T10:00:00Z"));
+
+        assertThat(configuration.getActivatedAt()).isEqualTo(original);
+    }
+
+    @Test
     void impideDesactivarDespuesDeLaPrimeraRemision() {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
         configuration.activateVoluntarily(Instant.parse("2026-06-14T10:00:00Z"));
-        configuration.markFirstSubmission(Instant.parse("2026-06-14T10:05:00Z"));
+        service.markFirstSubmission(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                Instant.parse("2026-06-14T10:05:00Z"));
 
         assertThatThrownBy(() -> service.deactivateVoluntarily(
                 configuration,
@@ -64,6 +78,27 @@ class VerifactuActivationServiceTest {
                 configuration,
                 TaxpayerType.SOCIEDAD,
                 Instant.parse("2027-01-01T00:00:00Z")))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void registraPrimeraRemisionCuandoLaObligacionLegalEstaActiva() {
+        var configuration = new VerifactuConfiguration(UUID.randomUUID());
+        var submittedAt = Instant.parse("2027-01-01T00:00:00Z");
+
+        service.markFirstSubmission(configuration, TaxpayerType.SOCIEDAD, submittedAt);
+
+        assertThat(configuration.getFirstSubmissionAt()).isEqualTo(submittedAt);
+    }
+
+    @Test
+    void rechazaPrimeraRemisionSinActivacionVoluntariaNiLegal() {
+        var configuration = new VerifactuConfiguration(UUID.randomUUID());
+
+        assertThatThrownBy(() -> service.markFirstSubmission(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                Instant.parse("2026-12-31T23:59:59Z")))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

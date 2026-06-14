@@ -33,6 +33,16 @@ public class VerifactuActivationService {
                 || isLegallyRequired(type, now);
     }
 
+    // Registra la primera remisión aplicando la activación voluntaria o legal vigente.
+    public void markFirstSubmission(
+            VerifactuConfiguration configuration,
+            TaxpayerType type,
+            Instant submittedAt) {
+        Objects.requireNonNull(configuration, "configuration").markFirstSubmission(
+                submittedAt,
+                isLegallyRequired(type, submittedAt));
+    }
+
     // Impide volver atrás tras la fecha legal o después de la primera remisión.
     public void deactivateVoluntarily(
             VerifactuConfiguration configuration,
