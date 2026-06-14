@@ -19,7 +19,8 @@ public final class FiscalJsonHasher {
         mapper = source.copy();
         mapper.setConfig(mapper.getSerializationConfig()
                 .with(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
-                .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS));
+                .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                .with(SerializationFeature.WRITE_BIGDECIMAL_AS_PLAIN));
     }
 
     // Calcula una huella estable del snapshot fiscal con claves JSON ordenadas.

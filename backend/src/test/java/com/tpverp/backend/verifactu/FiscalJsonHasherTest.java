@@ -29,4 +29,10 @@ class FiscalJsonHasherTest {
         assertThat(hasher.hash(Map.of("total", "10.00")))
                 .isNotEqualTo(hasher.hash(Map.of("total", "10.01")));
     }
+
+    @Test
+    void normalizaBigDecimalEnNotacionExponencialARepresentacionPlana() {
+        assertThat(hasher.hash(Map.of("total", new BigDecimal("1E+3"))))
+                .isEqualTo(hasher.hash(Map.of("total", new BigDecimal("1000"))));
+    }
 }

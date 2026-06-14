@@ -4,9 +4,13 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 
 public final class OfficialHashService {
+
+    private static final DateTimeFormatter GENERATED_AT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     // Calcula la huella oficial de un registro de alta en el orden definido por AEAT.
     public String hash(AltaHashInput input) {
@@ -18,7 +22,7 @@ public final class OfficialHashService {
                 + "&CuotaTotal=" + number(input.totalTax())
                 + "&ImporteTotal=" + number(input.totalAmount())
                 + "&Huella=" + text(input.previousHash())
-                + "&FechaHoraHusoGenRegistro=" + input.generatedAt());
+                + "&FechaHoraHusoGenRegistro=" + GENERATED_AT.format(input.generatedAt()));
     }
 
     // Calcula la huella oficial de un registro de anulacion en el orden definido por AEAT.
@@ -28,7 +32,7 @@ public final class OfficialHashService {
                 + "&NumSerieFacturaAnulada=" + text(input.cancelledInvoiceNumber())
                 + "&FechaExpedicionFacturaAnulada=" + text(input.cancelledIssueDate())
                 + "&Huella=" + text(input.previousHash())
-                + "&FechaHoraHusoGenRegistro=" + input.generatedAt());
+                + "&FechaHoraHusoGenRegistro=" + GENERATED_AT.format(input.generatedAt()));
     }
 
     private static String number(BigDecimal value) {

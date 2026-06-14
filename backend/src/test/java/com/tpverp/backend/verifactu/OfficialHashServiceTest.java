@@ -54,4 +54,20 @@ class OfficialHashServiceTest {
         assertThat(service.hash(input))
                 .isEqualTo("177547C0D57AC74748561D054A9CEC14B4C4EA23D1BEFD6F2E69E3A388F90C68");
     }
+
+    @Test
+    void conservaLosSegundosCeroEnLaFechaHora() {
+        var input = new AltaHashInput(
+                "89890001K",
+                "12345678/G33",
+                "01-01-2024",
+                "F1",
+                new BigDecimal("12.35"),
+                new BigDecimal("123.45"),
+                null,
+                OffsetDateTime.parse("2024-01-01T19:20:00+01:00"));
+
+        assertThat(service.hash(input))
+                .isEqualTo("6EE4110A77C636565E0E095B309E8AA4A18CFB5B3A880A0859F5F14E4E2B01A9");
+    }
 }
