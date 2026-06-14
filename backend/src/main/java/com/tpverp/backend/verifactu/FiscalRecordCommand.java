@@ -1,10 +1,12 @@
 package com.tpverp.backend.verifactu;
 
 import java.math.BigDecimal;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public record FiscalRecordCommand(
@@ -31,12 +33,13 @@ public record FiscalRecordCommand(
         companyId = required(companyId, "companyId");
         installationId = required(installationId, "installationId");
         storeId = required(storeId, "storeId");
+        documentId = Objects.requireNonNull(documentId, "documentId");
         operation = required(operation, "operation");
         documentType = required(documentType, "documentType");
         number = requiredText(number, "number");
         issueDate = required(issueDate, "issueDate");
         generatedAt = required(generatedAt, "generatedAt");
-        timezone = validTimezone(timezone);
+        timezone = validTimezone(timezone, generatedAt);
         issuerTaxId = validTaxId(issuerTaxId);
         snapshot = ImmutableJson.copy(required(snapshot, "snapshot"));
         formatVersion = requiredText(formatVersion, "formatVersion");
@@ -58,12 +61,17 @@ public record FiscalRecordCommand(
         }
     }
 
-    private static String validTimezone(String value) {
+    private static String validTimezone(String value, OffsetDateTime generatedAt) {
         var timezone = requiredText(value, "timezone");
         try {
-            ZoneId.of(timezone);
+            var expectedOffset = ZoneId.of(timezone).getRules()
+                    .getOffset(generatedAt.toInstant());
+            if (!generatedAt.getOffset().equals(expectedOffset)) {
+                throw new IllegalArgumentException(
+                        "generatedAt y timezone tienen offsets distintos");
+            }
             return timezone;
-        } catch (RuntimeException exception) {
+        } catch (DateTimeException exception) {
             throw new IllegalArgumentException("timezone no es valida", exception);
         }
     }

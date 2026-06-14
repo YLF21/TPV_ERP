@@ -200,10 +200,10 @@ class FiscalRecordServiceTest {
     @Test
     void rechazaUnNifEmisorInvalidoAlCrearElComando() {
         assertThatThrownBy(() -> new FiscalRecordCommand(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null,
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
                 LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T10:00:00Z"),
+                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
                 "Atlantic/Canary", "NIF-INVALIDO",
                 BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
                 "1.0", "SHA-256", "0.0.1"))
@@ -214,15 +214,59 @@ class FiscalRecordServiceTest {
     @Test
     void rechazaImportesEnUnaAnulacion() {
         assertThatThrownBy(() -> new FiscalRecordCommand(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null,
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 FiscalRecordOperation.ANULACION, FiscalDocumentType.F2, "001",
                 LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T10:00:00Z"),
+                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
                 "Atlantic/Canary", "B12345678",
                 BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
                 "1.0", "SHA-256", "0.0.1"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("anulacion");
+    }
+
+    @Test
+    void aceptaElOffsetDeCanariasAunqueLaFechaDeExpedicionSeaHistorica() {
+        var command = new FiscalRecordCommand(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
+                LocalDate.of(2020, 1, 10),
+                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
+                "Atlantic/Canary", "B12345678",
+                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
+                "1.0", "SHA-256", "0.0.1");
+
+        assertThat(command.issueDate()).isEqualTo(LocalDate.of(2020, 1, 10));
+        assertThat(command.generatedAt().getOffset().getTotalSeconds()).isEqualTo(3600);
+    }
+
+    @Test
+    void rechazaUnOffsetQueNoCoincideConLaZonaHoraria() {
+        assertThatThrownBy(() -> new FiscalRecordCommand(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
+                LocalDate.of(2020, 1, 10),
+                OffsetDateTime.parse("2026-06-14T10:00:00Z"),
+                "Atlantic/Canary", "B12345678",
+                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
+                "1.0", "SHA-256", "0.0.1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("generatedAt")
+                .hasMessageContaining("timezone");
+    }
+
+    @Test
+    void exigeDocumentoEnElComandoDeProduccion() {
+        assertThatThrownBy(() -> new FiscalRecordCommand(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null,
+                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
+                LocalDate.of(2026, 6, 14),
+                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
+                "Atlantic/Canary", "B12345678",
+                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
+                "1.0", "SHA-256", "0.0.1"))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("documentId");
     }
 
     @Test
@@ -281,7 +325,7 @@ class FiscalRecordServiceTest {
                 FiscalDocumentType.F2,
                 "001-260614-000001",
                 LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T10:00:00Z"),
+                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
                 "Atlantic/Canary",
                 "B12345678",
                 operation == FiscalRecordOperation.ALTA ? new BigDecimal("2.10") : null,
