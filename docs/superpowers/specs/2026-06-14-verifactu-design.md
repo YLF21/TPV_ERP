@@ -68,7 +68,7 @@ fiscal comenzará con el primer documento expedido después de activarla.
 
 ## Empresa, Tiendas Y Series
 
-Cada tienda tendrá un código fiscal de tres dígitos:
+Cada tienda tendrá un `codigoTienda` de tres dígitos:
 
 - Se asignará automáticamente por empresa: `001`, `002`, `003`, etc.
 - Será único dentro de la empresa.

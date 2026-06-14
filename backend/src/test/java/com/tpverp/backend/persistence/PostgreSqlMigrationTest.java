@@ -130,7 +130,7 @@ class PostgreSqlMigrationTest {
             statement.executeUpdate("""
                     insert into %1$s.tienda (
                         id, empresa_id, nombre, direccion, address_normalized_hash,
-                        timezone, moneda, locale, codigo_fiscal)
+                        timezone, moneda, locale, codigo_tienda)
                     values (
                         '%2$s', '%3$s', 'Tienda', '{
                             "linea1":"Calle Uno",
@@ -217,7 +217,7 @@ class PostgreSqlMigrationTest {
                     from information_schema.columns
                     where table_schema = '%s'
                       and (
-                        (table_name = 'tienda' and column_name = 'codigo_fiscal'
+                        (table_name = 'tienda' and column_name = 'codigo_tienda'
                             and is_nullable = 'NO')
                         or
                         (table_name = 'licencia'

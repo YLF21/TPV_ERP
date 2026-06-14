@@ -91,7 +91,7 @@ class InstallationBootstrapServiceTest {
 
 		assertThat(installation.getValue().getDemoHasta())
 				.isEqualTo(Instant.parse("2026-07-08T10:00:00Z"));
-		assertThat(store.getValue().getCodigoFiscal()).isEqualTo("001");
+		assertThat(store.getValue().getCodigoTienda()).isEqualTo("001");
 		assertThat(store.getValue().getTimezone()).isEqualTo("Atlantic/Canary");
 		assertThat(role.getValue().getNombre()).isEqualTo("ADMIN");
 		assertThat(role.getValue().isProtegido()).isTrue();

@@ -15,7 +15,7 @@
 - Create `backend/src/main/java/com/tpverp/backend/licensing/application/TaxpayerType.java`: tipos fiscales admitidos.
 - Create `license-issuer/src/main/java/com/tpv/licenseissuer/model/TaxpayerType.java`: equivalente del emisor offline.
 - Create `backend/src/main/java/com/tpverp/backend/organization/SpanishTaxId.java`: normalización y validación estructural del NIF.
-- Create `backend/src/main/java/com/tpverp/backend/organization/StoreFiscalIdentity.java`: código fiscal y zona permitida.
+- Create `backend/src/main/java/com/tpverp/backend/organization/StoreFiscalIdentity.java`: código de tienda y zona permitida.
 - Create `backend/src/main/resources/db/migration/V6__identidad_fiscal_verifactu.sql`: columnas, restricciones y asignación inicial.
 - Modify payloads, previsualización, entidad y servicio de licencias.
 - Modify `license-issuer` para capturar y firmar NIF y tipo.
@@ -284,8 +284,8 @@ Extend `PostgreSqlMigrationTest` to assert:
 
 - `licencia.tax_id` is not nullable.
 - `licencia.taxpayer_type` accepts only `SOCIEDAD|AUTONOMO`.
-- `tienda.codigo_fiscal` is not nullable.
-- `(empresa_id, codigo_fiscal)` is unique.
+- `tienda.codigo_tienda` is not nullable.
+- `(empresa_id, codigo_tienda)` is unique.
 - Existing first stores receive `001`.
 
 - [ ] **Step 4: Run tests to verify RED**
@@ -304,7 +304,7 @@ Migration:
 ```sql
 alter table licencia add column tax_id varchar(9);
 alter table licencia add column taxpayer_type varchar(16);
-alter table tienda add column codigo_fiscal varchar(3);
+alter table tienda add column codigo_tienda varchar(3);
 
 with numbered as (
     select id,
@@ -312,15 +312,15 @@ with numbered as (
     from tienda
 )
 update tienda t
-set codigo_fiscal = lpad(numbered.code::text, 3, '0')
+set codigo_tienda = lpad(numbered.code::text, 3, '0')
 from numbered
 where numbered.id = t.id;
 
-alter table tienda alter column codigo_fiscal set not null;
-alter table tienda add constraint ck_tienda_codigo_fiscal
-    check (codigo_fiscal ~ '^[0-9]{3}$' and codigo_fiscal <> '000');
-alter table tienda add constraint ux_tienda_empresa_codigo_fiscal
-    unique (empresa_id, codigo_fiscal);
+alter table tienda alter column codigo_tienda set not null;
+alter table tienda add constraint ck_tienda_codigo_tienda
+    check (codigo_tienda ~ '^[0-9]{3}$' and codigo_tienda <> '000');
+alter table tienda add constraint ux_tienda_empresa_codigo_tienda
+    unique (empresa_id, codigo_tienda);
 ```
 
 Because no version 3 licenses exist before this migration, leave historical
@@ -385,7 +385,7 @@ git commit -m "feat: validate licensed taxpayer identity"
 Capture the demo store and assert:
 
 ```java
-assertThat(store.getCodigoFiscal()).isEqualTo("001");
+assertThat(store.getCodigoTienda()).isEqualTo("001");
 assertThat(store.getTimezone()).isEqualTo("Atlantic/Canary");
 ```
 
@@ -408,7 +408,7 @@ Change the constructor to include fiscal code:
 ```java
 public Tienda(
         Empresa empresa,
-        String codigoFiscal,
+        String codigoTienda,
         String nombre,
         Map<String, String> direccion,
         String addressNormalizedHash,
@@ -420,14 +420,14 @@ public Tienda(
 Validate with `StoreFiscalIdentity`. Expose:
 
 ```java
-public String getCodigoFiscal()
+public String getCodigoTienda()
 public String getTimezone()
 ```
 
 The demo bootstrap passes `001`. Add repository lookup:
 
 ```java
-boolean existsByEmpresaIdAndCodigoFiscal(UUID empresaId, String codigoFiscal);
+boolean existsByEmpresaIdAndCodigoTienda(UUID empresaId, String codigoTienda);
 ```
 
 Future store creation will allocate the next code under a company lock; that

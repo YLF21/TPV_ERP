@@ -24,8 +24,8 @@ public class Tienda {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa empresa;
 
-    @Column(name = "codigo_fiscal", nullable = false, length = 3)
-    private String codigoFiscal;
+    @Column(name = "codigo_tienda", nullable = false, length = 3)
+    private String codigoTienda;
 
     private String nombre;
 
@@ -69,7 +69,7 @@ public class Tienda {
 
     public Tienda(
             Empresa empresa,
-            String codigoFiscal,
+            String codigoTienda,
             String nombre,
             Map<String, String> direccion,
             String addressNormalizedHash,
@@ -78,7 +78,7 @@ public class Tienda {
             String locale) {
         this.id = UUID.randomUUID();
         this.empresa = java.util.Objects.requireNonNull(empresa, "empresa");
-        this.codigoFiscal = StoreFiscalIdentity.code(codigoFiscal);
+        this.codigoTienda = StoreFiscalIdentity.code(codigoTienda);
         this.nombre = optional(nombre);
         this.direccion = Empresa.direccion(direccion);
         this.addressNormalizedHash = required(addressNormalizedHash, "addressNormalizedHash");
@@ -95,8 +95,8 @@ public class Tienda {
         return empresa;
     }
 
-    public String getCodigoFiscal() {
-        return codigoFiscal;
+    public String getCodigoTienda() {
+        return codigoTienda;
     }
 
     public String getTimezone() {

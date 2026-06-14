@@ -9,7 +9,7 @@ public interface TiendaRepository extends JpaRepository<Tienda, UUID> {
 
     List<Tienda> findByEmpresaId(UUID empresaId);
 
-    boolean existsByEmpresaIdAndCodigoFiscal(UUID empresaId, String codigoFiscal);
+    boolean existsByEmpresaIdAndCodigoTienda(UUID empresaId, String codigoTienda);
 
     Optional<Tienda> findByEmpresaIdAndAddressNormalizedHash(UUID empresaId, String addressNormalizedHash);
 }
