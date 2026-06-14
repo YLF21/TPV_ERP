@@ -52,6 +52,14 @@ class FiscalJsonHasherTest {
     }
 
     @Test
+    void normalizaDecimalesLeidosDesdeJsonb() {
+        assertThat(hasher.hash(Map.of("total", 12.1D)))
+                .isEqualTo(hasher.hash(Map.of("total", new BigDecimal("12.10"))));
+        assertThat(hasher.hash(Map.of("total", 12.1F)))
+                .isEqualTo(hasher.hash(Map.of("total", new BigDecimal("12.10"))));
+    }
+
+    @Test
     void rechazaSnapshotNulo() {
         assertThatThrownBy(() -> hasher.hash(null))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -87,8 +95,8 @@ class FiscalJsonHasherTest {
     }
 
     @Test
-    void rechazaNumerosNoSegurosYClavesNoTextuales() {
-        assertThatThrownBy(() -> hasher.hash(Map.of("decimal", 10.5D)))
+    void rechazaNumerosNoFinitosYClavesNoTextuales() {
+        assertThatThrownBy(() -> hasher.hash(Map.of("decimal", Double.NaN)))
                 .isInstanceOf(IllegalArgumentException.class);
 
         var invalidMap = new LinkedHashMap<Object, Object>();

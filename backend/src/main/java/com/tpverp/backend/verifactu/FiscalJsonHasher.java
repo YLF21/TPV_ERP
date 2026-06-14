@@ -51,6 +51,12 @@ public final class FiscalJsonHasher {
         if (value instanceof BigDecimal decimal) {
             return decimal.stripTrailingZeros();
         }
+        if (value instanceof Double decimal && Double.isFinite(decimal)) {
+            return BigDecimal.valueOf(decimal).stripTrailingZeros();
+        }
+        if (value instanceof Float decimal && Float.isFinite(decimal)) {
+            return new BigDecimal(decimal.toString()).stripTrailingZeros();
+        }
         if (value instanceof BigInteger
                 || value instanceof Byte
                 || value instanceof Short

@@ -101,11 +101,11 @@ public class FiscalRecordService {
                 command.algorithmVersion(),
                 command.applicationVersion());
 
-        records.save(record);
+        var savedRecord = records.save(record);
         states.save(new FiscalSubmissionState(
-                record.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
-        chain.advance(record, generatedAt);
-        return record;
+                savedRecord.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        chain.advance(savedRecord, generatedAt);
+        return savedRecord;
     }
 
     private FiscalContext fiscalContext(
