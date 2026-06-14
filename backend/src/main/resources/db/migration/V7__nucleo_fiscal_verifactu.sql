@@ -62,7 +62,6 @@ create table registro_fiscal (
     unique (cadena_id, secuencia),
     unique (cadena_id, huella),
     unique (cadena_id, id),
-    unique (id, cadena_id),
     foreign key (cadena_id, empresa_id, instalacion_id)
         references cadena_fiscal(id, empresa_id, instalacion_id),
     foreign key (tienda_id, empresa_id)
@@ -96,8 +95,8 @@ create table registro_fiscal (
 
 alter table cadena_fiscal
     add constraint fk_cadena_ultimo_registro
-    foreign key (ultimo_registro_id, id)
-    references registro_fiscal(id, cadena_id);
+    foreign key (id, ultimo_registro_id)
+    references registro_fiscal(cadena_id, id);
 
 create table registro_fiscal_relacion (
     cadena_id uuid not null,
@@ -134,6 +133,100 @@ create index ix_registro_fiscal_empresa_fecha
 
 create index ix_estado_envio_fiscal_estado
     on estado_envio_fiscal(estado, actualizado_en);
+
+create function validar_cabeza_cadena_fiscal(p_cadena_id uuid) returns void
+language plpgsql
+set search_path from current
+as $$
+declare
+    v_ultima_secuencia bigint;
+    v_ultimo_registro_id uuid;
+    v_ultima_huella varchar(64);
+    v_maxima_secuencia bigint;
+begin
+    select ultima_secuencia, ultimo_registro_id, ultima_huella
+      into v_ultima_secuencia, v_ultimo_registro_id, v_ultima_huella
+      from cadena_fiscal
+     where id = p_cadena_id;
+
+    select max(secuencia)
+      into v_maxima_secuencia
+      from registro_fiscal
+     where cadena_id = p_cadena_id;
+
+    if v_ultima_secuencia = 0 then
+        if v_ultimo_registro_id is not null
+                or v_ultima_huella is not null
+                or v_maxima_secuencia is not null then
+            raise exception 'La cabeza fiscal vacía está desincronizada'
+                using errcode = 'P0001';
+        end if;
+    elsif v_maxima_secuencia is distinct from v_ultima_secuencia
+            or not exists (
+                select 1
+                  from registro_fiscal
+                 where cadena_id = p_cadena_id
+                   and id = v_ultimo_registro_id
+                   and secuencia = v_ultima_secuencia
+                   and huella = v_ultima_huella
+            ) then
+        raise exception 'La cabeza fiscal está desincronizada'
+            using errcode = 'P0001';
+    end if;
+end;
+$$;
+
+create function validar_integridad_registro_fiscal() returns trigger
+language plpgsql
+set search_path from current
+as $$
+declare
+    v_huella_anterior varchar(64);
+begin
+    if new.secuencia = 1 then
+        if new.huella_anterior is not null then
+            raise exception 'El primer registro fiscal no puede tener huella anterior'
+                using errcode = 'P0001';
+        end if;
+    else
+        select huella
+          into v_huella_anterior
+          from registro_fiscal
+         where cadena_id = new.cadena_id
+           and secuencia = new.secuencia - 1;
+
+        if v_huella_anterior is null
+                or new.huella_anterior is distinct from v_huella_anterior then
+            raise exception 'La huella anterior no coincide con la cadena fiscal'
+                using errcode = 'P0001';
+        end if;
+    end if;
+
+    perform validar_cabeza_cadena_fiscal(new.cadena_id);
+    return null;
+end;
+$$;
+
+create function validar_integridad_cabeza_fiscal() returns trigger
+language plpgsql
+set search_path from current
+as $$
+begin
+    perform validar_cabeza_cadena_fiscal(new.id);
+    return null;
+end;
+$$;
+
+create constraint trigger tr_registro_fiscal_cadena
+after insert on registro_fiscal
+deferrable initially deferred
+for each row execute function validar_integridad_registro_fiscal();
+
+create constraint trigger tr_cadena_fiscal_cabeza
+after insert or update of ultimo_registro_id, ultima_huella, ultima_secuencia
+on cadena_fiscal
+deferrable initially deferred
+for each row execute function validar_integridad_cabeza_fiscal();
 
 create function impedir_mutacion_fiscal() returns trigger
 language plpgsql as $$

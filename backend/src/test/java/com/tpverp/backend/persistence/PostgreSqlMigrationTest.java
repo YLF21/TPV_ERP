@@ -101,6 +101,7 @@ class PostgreSqlMigrationTest {
             verifyProductSupplierConstraints(url, user, password, schema);
             verifyFiscalIdentityColumns(url, user, password, schema);
             verifyFiscalIndexes(url, user, password, schema);
+            verifyDeferredFiscalTriggers(url, user, password, schema);
             verifyImmutableFiscalRecords(url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
@@ -249,6 +250,7 @@ class PostgreSqlMigrationTest {
 
         try (Connection connection = DriverManager.getConnection(url, user, password);
                 Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
             statement.executeUpdate("""
                     insert into %1$s.instalacion (
                         id, referencia, public_key, creada_en, demo_hasta)
@@ -290,6 +292,8 @@ class PostgreSqlMigrationTest {
             insertFiscalRecord(
                     statement, schema, secondRecordId, chainId, companyId,
                     installationId, storeId, 2, "B".repeat(64), "A".repeat(64));
+            updateFiscalChain(
+                    statement, schema, chainId, secondRecordId, 2, "B".repeat(64));
             statement.executeUpdate("""
                     insert into %1$s.estado_envio_fiscal (
                         registro_id, estado, actualizado_en)
@@ -312,7 +316,27 @@ class PostgreSqlMigrationTest {
             insertFiscalRecord(
                     statement, schema, otherRecordId, otherChainId, otherCompanyId,
                     installationId, otherStoreId, 1, "C".repeat(64), null);
+            updateFiscalChain(
+                    statement, schema, otherChainId, otherRecordId, 1, "C".repeat(64));
+            connection.commit();
         }
+
+        assertCommitRejected(url, user, password, "P0001", connection -> {
+            UUID invalidRecordId = UUID.randomUUID();
+            try (Statement statement = connection.createStatement()) {
+                insertFiscalRecord(
+                        statement, schema, invalidRecordId, chainId, companyId,
+                        installationId, storeId, 3, "D".repeat(64), "C".repeat(64));
+                updateFiscalChain(
+                        statement, schema, chainId, invalidRecordId, 3, "D".repeat(64));
+            }
+        });
+        assertCommitRejected(url, user, password, "P0001", connection -> {
+            try (Statement statement = connection.createStatement()) {
+                updateFiscalChain(
+                        statement, schema, chainId, secondRecordId, 1, "B".repeat(64));
+            }
+        });
 
         assertSqlState(url, user, password, "23505", """
                 insert into %1$s.registro_fiscal (
@@ -411,6 +435,27 @@ class PostgreSqlMigrationTest {
         }
     }
 
+    private static void verifyDeferredFiscalTriggers(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet triggers = statement.executeQuery("""
+                    select count(*)
+                    from pg_trigger trigger
+                    join pg_class relation on relation.oid = trigger.tgrelid
+                    join pg_namespace namespace on namespace.oid = relation.relnamespace
+                    where namespace.nspname = '%s'
+                      and trigger.tgname in (
+                        'tr_registro_fiscal_cadena',
+                        'tr_cadena_fiscal_cabeza')
+                      and trigger.tgdeferrable
+                      and trigger.tginitdeferred
+                    """.formatted(schema))) {
+            assertThat(triggers.next()).isTrue();
+            assertThat(triggers.getInt(1)).isEqualTo(2);
+        }
+    }
+
     private static void insertCompanyAndStore(
             Statement statement, String schema, UUID companyId, UUID storeId,
             String taxId, String storeCode, String addressHash) throws SQLException {
@@ -463,6 +508,19 @@ class PostgreSqlMigrationTest {
                 sequence, hash, previousHashSql));
     }
 
+    private static void updateFiscalChain(
+            Statement statement, String schema, UUID chainId, UUID recordId,
+            long sequence, String hash) throws SQLException {
+        statement.executeUpdate("""
+                update %1$s.cadena_fiscal
+                set ultimo_registro_id = '%2$s',
+                    ultima_secuencia = %3$d,
+                    ultima_huella = '%4$s',
+                    actualizada_en = now()
+                where id = '%5$s'
+                """.formatted(schema, recordId, sequence, hash, chainId));
+    }
+
     private static void assertFiscalMutationRejected(
             String url, String user, String password, String sql) {
         assertSqlState(url, user, password, "P0001", sql);
@@ -477,5 +535,23 @@ class PostgreSqlMigrationTest {
             }
         }).isInstanceOfSatisfying(SQLException.class,
                 exception -> assertThat(exception.getSQLState()).isEqualTo(expectedSqlState));
+    }
+
+    private static void assertCommitRejected(
+            String url, String user, String password, String expectedSqlState,
+            SqlTransaction transaction) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(url, user, password)) {
+            connection.setAutoCommit(false);
+            transaction.execute(connection);
+            assertThatThrownBy(connection::commit)
+                    .isInstanceOfSatisfying(SQLException.class,
+                            exception -> assertThat(exception.getSQLState())
+                                    .isEqualTo(expectedSqlState));
+        }
+    }
+
+    @FunctionalInterface
+    private interface SqlTransaction {
+        void execute(Connection connection) throws SQLException;
     }
 }
