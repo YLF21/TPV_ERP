@@ -1,10 +1,14 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.document.Documento;
 import com.tpverp.backend.document.DocumentoRepository;
 import com.tpverp.backend.installation.InstalacionRepository;
 import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.TiendaRepository;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -25,6 +29,7 @@ public class FiscalRecordService {
     private final TiendaRepository stores;
     private final InstalacionRepository installations;
     private final DocumentoRepository documents;
+    private final Clock clock;
     private final OfficialHashService officialHashes;
     private final FiscalJsonHasher jsonHasher;
 
@@ -35,7 +40,8 @@ public class FiscalRecordService {
             EmpresaRepository companies,
             TiendaRepository stores,
             InstalacionRepository installations,
-            DocumentoRepository documents) {
+            DocumentoRepository documents,
+            Clock clock) {
         this.chains = chains;
         this.records = records;
         this.states = states;
@@ -43,6 +49,7 @@ public class FiscalRecordService {
         this.stores = stores;
         this.installations = installations;
         this.documents = documents;
+        this.clock = clock;
         officialHashes = new OfficialHashService();
         jsonHasher = new FiscalJsonHasher();
     }
@@ -53,8 +60,8 @@ public class FiscalRecordService {
         if (command == null) {
             throw new IllegalArgumentException("command es obligatorio");
         }
-        var generatedAt = command.generatedAt().toInstant();
-        var context = fiscalContext(command);
+        var generatedAt = Instant.now(clock);
+        var context = fiscalContext(command, generatedAt);
 
         // El UPSERT y el bloqueo evitan dos primeras secuencias simultaneas.
         chains.insertIfMissing(
@@ -62,7 +69,14 @@ public class FiscalRecordService {
         var chain = chains.findForUpdate(command.companyId(), command.installationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la cadena fiscal"));
+        if (records.existsByDocumentIdAndOperation(
+                command.documentId(), command.operation())) {
+            throw new IllegalStateException(
+                    "La operacion fiscal ya esta registrada para el documento");
+        }
         var previousHash = chain.previousHash();
+        var totalTax = amount(command.operation(), context.document().getImpuestoTotal());
+        var totalAmount = amount(command.operation(), context.document().getTotal());
         var record = new FiscalRecord(
                 chain.getId(),
                 command.companyId(),
@@ -72,15 +86,15 @@ public class FiscalRecordService {
                 chain.nextSequence(),
                 command.operation(),
                 command.documentType(),
-                command.number(),
-                command.issueDate(),
+                context.document().getNumero(),
+                context.document().getFecha(),
                 generatedAt,
                 context.timezone(),
                 context.issuerTaxId(),
-                command.totalTax(),
-                command.totalAmount(),
+                totalTax,
+                totalAmount,
                 previousHash,
-                officialHash(command, context, previousHash),
+                officialHash(command, context, totalTax, totalAmount, previousHash),
                 jsonHasher.hash(command.snapshot()),
                 command.snapshot(),
                 command.formatVersion(),
@@ -94,7 +108,8 @@ public class FiscalRecordService {
         return record;
     }
 
-    private FiscalContext fiscalContext(FiscalRecordCommand command) {
+    private FiscalContext fiscalContext(
+            FiscalRecordCommand command, Instant generatedAt) {
         var company = companies.findById(command.companyId())
                 .orElseThrow(() -> invalid("empresa"));
         var store = stores.findById(command.storeId())
@@ -113,28 +128,32 @@ public class FiscalRecordService {
         return new FiscalContext(
                 SpanishTaxId.validate(company.getTaxId()),
                 zone.getId(),
-                command.generatedAt().toInstant().atZone(zone).toOffsetDateTime());
+                generatedAt.atZone(zone).toOffsetDateTime(),
+                document);
     }
 
     private String officialHash(
             FiscalRecordCommand command,
             FiscalContext context,
+            BigDecimal totalTax,
+            BigDecimal totalAmount,
             String previousHash) {
-        var issueDate = DATE.format(command.issueDate());
+        var document = context.document();
+        var issueDate = DATE.format(document.getFecha());
         if (command.operation() == FiscalRecordOperation.ALTA) {
             return officialHashes.hash(new AltaHashInput(
                     context.issuerTaxId(),
-                    command.number(),
+                    document.getNumero(),
                     issueDate,
                     command.documentType().name(),
-                    command.totalTax(),
-                    command.totalAmount(),
+                    totalTax,
+                    totalAmount,
                     previousHash,
                     context.generatedAt()));
         }
         return officialHashes.hash(new CancellationHashInput(
                 context.issuerTaxId(),
-                command.number(),
+                document.getNumero(),
                 issueDate,
                 previousHash,
                 context.generatedAt()));
@@ -145,9 +164,15 @@ public class FiscalRecordService {
                 "No existe " + entity + " para el registro fiscal");
     }
 
+    private static BigDecimal amount(
+            FiscalRecordOperation operation, BigDecimal value) {
+        return operation == FiscalRecordOperation.ALTA ? value : null;
+    }
+
     private record FiscalContext(
             String issuerTaxId,
             String timezone,
-            OffsetDateTime generatedAt) {
+            OffsetDateTime generatedAt,
+            Documento document) {
     }
 }

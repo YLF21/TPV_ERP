@@ -5,13 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.document.Documento;
 import com.tpverp.backend.document.DocumentoRepository;
-import com.tpverp.backend.document.TipoDocumento;
 import com.tpverp.backend.installation.Instalacion;
 import com.tpverp.backend.installation.InstalacionRepository;
 import com.tpverp.backend.organization.Empresa;
@@ -19,10 +21,10 @@ import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.Tienda;
 import com.tpverp.backend.organization.TiendaRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +40,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class FiscalRecordServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-06-14T09:15:30Z");
+    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     @Mock FiscalChainRepository chains;
     @Mock FiscalRecordRepository records;
@@ -164,7 +169,7 @@ class FiscalRecordServiceTest {
         var state = ArgumentCaptor.forClass(FiscalSubmissionState.class);
         verify(chains).insertIfMissing(
                 any(UUID.class), eq(command.companyId()), eq(command.installationId()),
-                eq(command.generatedAt().toInstant()));
+                eq(NOW));
         verify(records).save(record.capture());
         verify(states).save(state.capture());
         assertThat(saved).isSameAs(record.getValue());
@@ -172,14 +177,13 @@ class FiscalRecordServiceTest {
         assertThat(saved.getPreviousHash()).isNull();
         assertThat(saved.getSnapshotHash())
                 .isEqualTo(new FiscalJsonHasher().hash(command.snapshot()));
-        var fiscalGeneratedAt = command.generatedAt().toInstant()
-                .atZone(ZoneId.of(context.store().getTimezone()))
-                .toOffsetDateTime();
         assertThat(saved.getHash()).isEqualTo(new OfficialHashService().hash(
                 new AltaHashInput(
-                        context.company().getTaxId(), command.number(), "14-06-2026",
-                        command.documentType().name(), command.totalTax(),
-                        command.totalAmount(), null, fiscalGeneratedAt)));
+                        context.company().getTaxId(), context.document().getNumero(),
+                        "10-01-2020", command.documentType().name(),
+                        context.document().getImpuestoTotal(),
+                        context.document().getTotal(), null,
+                        NOW.atZone(ZoneOffset.ofHours(1)).toOffsetDateTime())));
         assertThat(state.getValue().getRecordId()).isEqualTo(saved.getId());
         assertThat(state.getValue().getStatus())
                 .isEqualTo(FiscalSubmissionStatus.PENDIENTE);
@@ -203,10 +207,13 @@ class FiscalRecordServiceTest {
         assertThat(saved.getPreviousHash()).isEqualTo(previousHash);
         assertThat(saved.getHash()).isEqualTo(new OfficialHashService().hash(
                 new CancellationHashInput(
-                        context.company().getTaxId(), command.number(), "14-06-2026",
-                        previousHash, command.generatedAt().toInstant()
-                                .atZone(ZoneId.of(context.store().getTimezone()))
-                                .toOffsetDateTime())));
+                        context.company().getTaxId(), context.document().getNumero(),
+                        "10-01-2020", previousHash,
+                        NOW.atZone(ZoneOffset.ofHours(1)).toOffsetDateTime())));
+        var savedRecord = ArgumentCaptor.forClass(FiscalRecord.class);
+        verify(records).save(savedRecord.capture());
+        assertThat(field(savedRecord.getValue(), "totalTax")).isNull();
+        assertThat(field(savedRecord.getValue(), "totalAmount")).isNull();
     }
 
     @Test
@@ -217,32 +224,6 @@ class FiscalRecordServiceTest {
 
         verifyNoInteractions(
                 chains, records, states, companies, stores, installations, documents);
-    }
-
-    @Test
-    void rechazaImportesEnUnaAnulacion() {
-        assertThatThrownBy(() -> new FiscalRecordCommand(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                FiscalRecordOperation.ANULACION, FiscalDocumentType.F2, "001",
-                LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
-                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
-                "1.0", "SHA-256", "0.0.1"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("anulacion");
-    }
-
-    @Test
-    void aceptaUnaFechaDeExpedicionHistorica() {
-        var command = new FiscalRecordCommand(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
-                LocalDate.of(2020, 1, 10),
-                OffsetDateTime.parse("2026-06-14T10:00:00Z"),
-                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
-                "1.0", "SHA-256", "0.0.1");
-
-        assertThat(command.issueDate()).isEqualTo(LocalDate.of(2020, 1, 10));
     }
 
     @Test
@@ -272,8 +253,9 @@ class FiscalRecordServiceTest {
         when(stores.findById(command.storeId())).thenReturn(Optional.of(store));
         when(installations.findById(command.installationId()))
                 .thenReturn(Optional.of(installation()));
+        var document = document(command.storeId());
         when(documents.findById(command.documentId()))
-                .thenReturn(Optional.of(document(command.storeId())));
+                .thenReturn(Optional.of(document));
 
         assertThatThrownBy(() -> service().register(command))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -301,8 +283,9 @@ class FiscalRecordServiceTest {
         stubCompanyAndStore(command);
         when(installations.findById(command.installationId()))
                 .thenReturn(Optional.of(installation()));
+        var document = document(UUID.randomUUID());
         when(documents.findById(command.documentId()))
-                .thenReturn(Optional.of(document(UUID.randomUUID())));
+                .thenReturn(Optional.of(document));
 
         assertThatThrownBy(() -> service().register(command))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -316,13 +299,32 @@ class FiscalRecordServiceTest {
     void exigeDocumentoEnElComandoDeProduccion() {
         assertThatThrownBy(() -> new FiscalRecordCommand(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null,
-                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, "001",
-                LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T10:00:00+01:00"),
-                BigDecimal.ZERO, BigDecimal.ZERO, Map.of(),
+                FiscalRecordOperation.ALTA, FiscalDocumentType.F2, Map.of(),
                 "1.0", "SHA-256", "0.0.1"))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("documentId");
+    }
+
+    @Test
+    void rechazaUnaOperacionFiscalDuplicadaDespuesDeBloquearLaCadena() {
+        var command = command(FiscalRecordOperation.ALTA);
+        stubContext(command);
+        var chain = new FiscalChain(command.companyId(), command.installationId(), NOW);
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.existsByDocumentIdAndOperation(
+                command.documentId(), command.operation())).thenReturn(true);
+
+        assertThatThrownBy(() -> service().register(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("registrada");
+
+        var order = inOrder(chains, records);
+        order.verify(chains).findForUpdate(command.companyId(), command.installationId());
+        order.verify(records).existsByDocumentIdAndOperation(
+                command.documentId(), command.operation());
+        verify(records, never()).save(any());
+        verify(states, never()).save(any());
     }
 
     @Test
@@ -368,7 +370,7 @@ class FiscalRecordServiceTest {
 
     private FiscalRecordService service() {
         return new FiscalRecordService(
-                chains, records, states, companies, stores, installations, documents);
+                chains, records, states, companies, stores, installations, documents, CLOCK);
     }
 
     private static FiscalRecordCommand command(FiscalRecordOperation operation) {
@@ -379,11 +381,6 @@ class FiscalRecordServiceTest {
                 UUID.randomUUID(),
                 operation,
                 FiscalDocumentType.F2,
-                "001-260614-000001",
-                LocalDate.of(2026, 6, 14),
-                OffsetDateTime.parse("2026-06-14T09:00:00Z"),
-                operation == FiscalRecordOperation.ALTA ? new BigDecimal("2.10") : null,
-                operation == FiscalRecordOperation.ALTA ? new BigDecimal("12.10") : null,
                 Map.of("numero", "001-260614-000001"),
                 "1.0",
                 "SHA-256",
@@ -404,7 +401,7 @@ class FiscalRecordServiceTest {
                 FiscalRecordOperation.ALTA,
                 FiscalDocumentType.F2,
                 "001-260614-000000",
-                command.issueDate(),
+                LocalDate.of(2020, 1, 10),
                 Instant.parse("2026-06-14T09:30:00Z"),
                 "Atlantic/Canary",
                 "B12345674",
@@ -425,9 +422,10 @@ class FiscalRecordServiceTest {
         var context = stubCompanyAndStore(command);
         when(installations.findById(command.installationId()))
                 .thenReturn(Optional.of(installation()));
+        var document = document(command.storeId());
         when(documents.findById(command.documentId()))
-                .thenReturn(Optional.of(document(command.storeId())));
-        return context;
+                .thenReturn(Optional.of(document));
+        return new TestContext(context.company(), context.store(), document);
     }
 
     private TestContext stubCompanyAndStore(FiscalRecordCommand command) {
@@ -437,7 +435,7 @@ class FiscalRecordServiceTest {
         setId(store, command.storeId());
         when(companies.findById(command.companyId())).thenReturn(Optional.of(company));
         when(stores.findById(command.storeId())).thenReturn(Optional.of(store));
-        return new TestContext(company, store);
+        return new TestContext(company, store, null);
     }
 
     private static Empresa company(String taxId) {
@@ -455,9 +453,13 @@ class FiscalRecordServiceTest {
     }
 
     private static Documento document(UUID storeId) {
-        return new Documento(
-                storeId, UUID.randomUUID(), TipoDocumento.TICKET,
-                LocalDate.of(2026, 6, 14), UUID.randomUUID(), BigDecimal.ZERO);
+        var document = mock(Documento.class);
+        when(document.getTiendaId()).thenReturn(storeId);
+        lenient().when(document.getNumero()).thenReturn("001-200110-000001");
+        lenient().when(document.getFecha()).thenReturn(LocalDate.of(2020, 1, 10));
+        lenient().when(document.getImpuestoTotal()).thenReturn(new BigDecimal("2.10"));
+        lenient().when(document.getTotal()).thenReturn(new BigDecimal("12.10"));
+        return document;
     }
 
     private static Map<String, String> address() {
@@ -479,7 +481,17 @@ class FiscalRecordServiceTest {
         }
     }
 
-    private record TestContext(Empresa company, Tienda store) {
+    private static Object field(Object target, String name) {
+        try {
+            var field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private record TestContext(Empresa company, Tienda store, Documento document) {
     }
 
     @SuppressWarnings("unchecked")

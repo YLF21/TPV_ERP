@@ -129,14 +129,17 @@ public class Documento {
         return estado;
     }
 
+    // Devuelve el numero fiscal asignado al confirmar el documento.
     public String getNumero() {
         return numero;
     }
 
+    // Devuelve la fecha de expedicion conservada por el documento.
     public LocalDate getFecha() {
         return fecha;
     }
 
+    // Devuelve el importe total calculado del documento.
     public BigDecimal getTotal() {
         return total;
     }
@@ -145,6 +148,7 @@ public class Documento {
         return baseTotal;
     }
 
+    // Devuelve la cuota fiscal total calculada del documento.
     public BigDecimal getImpuestoTotal() {
         return impuestoTotal;
     }

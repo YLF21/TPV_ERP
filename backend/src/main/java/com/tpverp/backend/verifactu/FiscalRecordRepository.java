@@ -7,4 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface FiscalRecordRepository extends JpaRepository<FiscalRecord, UUID> {
 
     List<FiscalRecord> findAllByChainIdOrderBySequence(UUID chainId);
+
+    boolean existsByDocumentIdAndOperation(
+            UUID documentId, FiscalRecordOperation operation);
 }
