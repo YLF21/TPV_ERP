@@ -49,10 +49,12 @@ class PostgreSqlMigrationTest {
                             'proveedor', 'comercial', 'proveedor_comercial',
                             'producto_proveedor', 'metodo_pago', 'contador_documento',
                             'documento', 'documento_linea', 'documento_pago',
-                            'documento_relacion')
+                            'documento_relacion', 'configuracion_verifactu',
+                            'cadena_fiscal', 'registro_fiscal',
+                            'registro_fiscal_relacion', 'estado_envio_fiscal')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(36);
+                assertThat(result.getInt(1)).isEqualTo(41);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);
@@ -97,6 +99,7 @@ class PostgreSqlMigrationTest {
 
             verifyProductSupplierConstraints(url, user, password, schema);
             verifyFiscalIdentityColumns(url, user, password, schema);
+            verifyImmutableFiscalRecords(url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {
@@ -227,5 +230,118 @@ class PostgreSqlMigrationTest {
             assertThat(columns.next()).isTrue();
             assertThat(columns.getInt(1)).isEqualTo(3);
         }
+    }
+
+    private static void verifyImmutableFiscalRecords(
+            String url, String user, String password, String schema) throws Exception {
+        UUID installationId = UUID.randomUUID();
+        UUID companyId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID chainId = UUID.randomUUID();
+        UUID firstRecordId = UUID.randomUUID();
+        UUID secondRecordId = UUID.randomUUID();
+
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    insert into %1$s.instalacion (
+                        id, referencia, public_key, creada_en, demo_hasta)
+                    values (
+                        '%2$s', 'TEST-FISCAL', 'public-key',
+                        '2026-01-01T00:00:00Z', '2026-01-31T00:00:00Z')
+                    """.formatted(schema, installationId));
+            statement.executeUpdate("""
+                    insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
+                    values ('%2$s', 'B00000003', 'Empresa Fiscal', '{
+                        "linea1":"Calle Fiscal",
+                        "ciudad":"Las Palmas",
+                        "codigoPostal":"35001",
+                        "provincia":"Las Palmas",
+                        "pais":"ES"
+                    }')
+                    """.formatted(schema, companyId));
+            statement.executeUpdate("""
+                    insert into %1$s.tienda (
+                        id, empresa_id, nombre, direccion, address_normalized_hash,
+                        timezone, moneda, locale, codigo_tienda)
+                    values (
+                        '%2$s', '%3$s', 'Tienda Fiscal', '{
+                            "linea1":"Calle Fiscal",
+                            "ciudad":"Las Palmas",
+                            "codigoPostal":"35001",
+                            "provincia":"Las Palmas",
+                            "pais":"ES"
+                        }', 'fiscal-hash', 'Atlantic/Canary', 'EUR', 'es-ES', '001')
+                    """.formatted(schema, storeId, companyId));
+            statement.executeUpdate("""
+                    insert into %1$s.cadena_fiscal (
+                        id, empresa_id, instalacion_id, actualizada_en)
+                    values ('%2$s', '%3$s', '%4$s', now())
+                    """.formatted(schema, chainId, companyId, installationId));
+            insertFiscalRecord(
+                    statement, schema, firstRecordId, chainId, companyId,
+                    installationId, storeId, 1, "A".repeat(64), null);
+            insertFiscalRecord(
+                    statement, schema, secondRecordId, chainId, companyId,
+                    installationId, storeId, 2, "B".repeat(64), "A".repeat(64));
+            statement.executeUpdate("""
+                    insert into %1$s.registro_fiscal_relacion (
+                        registro_id, relacionado_id, tipo)
+                    values ('%2$s', '%3$s', 'SUBSANA')
+                    """.formatted(schema, secondRecordId, firstRecordId));
+        }
+
+        assertFiscalMutationRejected(url, user, password, """
+                update %1$s.registro_fiscal
+                set serie_numero = 'ALTERADO'
+                where id = '%2$s'
+                """.formatted(schema, firstRecordId));
+        assertFiscalMutationRejected(url, user, password, """
+                delete from %1$s.registro_fiscal where id = '%2$s'
+                """.formatted(schema, firstRecordId));
+        assertFiscalMutationRejected(url, user, password, """
+                update %1$s.registro_fiscal_relacion
+                set tipo = 'ANULA'
+                where registro_id = '%2$s' and relacionado_id = '%3$s'
+                """.formatted(schema, secondRecordId, firstRecordId));
+        assertFiscalMutationRejected(url, user, password, """
+                delete from %1$s.registro_fiscal_relacion
+                where registro_id = '%2$s' and relacionado_id = '%3$s'
+                """.formatted(schema, secondRecordId, firstRecordId));
+    }
+
+    private static void insertFiscalRecord(
+            Statement statement, String schema, UUID recordId, UUID chainId,
+            UUID companyId, UUID installationId, UUID storeId, long sequence,
+            String hash, String previousHash) throws SQLException {
+        String previousHashSql = previousHash == null ? "null" : "'" + previousHash + "'";
+        statement.executeUpdate("""
+                insert into %1$s.registro_fiscal (
+                    id, cadena_id, empresa_id, instalacion_id, tienda_id,
+                    secuencia, operacion, tipo_documento_fiscal, serie_numero,
+                    fecha_expedicion, generado_en, zona_horaria, nif_emisor,
+                    cuota_total, importe_total, huella_anterior, huella,
+                    hash_snapshot, snapshot, version_formato, version_algoritmo,
+                    version_aplicacion)
+                values (
+                    '%2$s', '%3$s', '%4$s', '%5$s', '%6$s',
+                    %7$d, 'ALTA', 'F2', '001-260101-%7$06d',
+                    '2026-01-01', now(), 'Atlantic/Canary', 'B00000003',
+                    1.00, 11.00, %9$s, '%8$s',
+                    '%8$s', '{"total":11.00}', '1.0', 'SHA-256', 'test')
+                """.formatted(
+                schema, recordId, chainId, companyId, installationId, storeId,
+                sequence, hash, previousHashSql));
+    }
+
+    private static void assertFiscalMutationRejected(
+            String url, String user, String password, String sql) {
+        assertThatThrownBy(() -> {
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate(sql);
+            }
+        }).isInstanceOfSatisfying(SQLException.class,
+                exception -> assertThat(exception.getSQLState()).isEqualTo("P0001"));
     }
 }
