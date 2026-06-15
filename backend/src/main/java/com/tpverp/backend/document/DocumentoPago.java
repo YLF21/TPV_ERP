@@ -85,6 +85,18 @@ public class DocumentoPago {
         return metodoPago;
     }
 
+    public int getPosicion() {
+        return posicion;
+    }
+
+    public BigDecimal getEntregado() {
+        return entregado;
+    }
+
+    public BigDecimal getCambio() {
+        return cambio;
+    }
+
     // Reajusta únicamente el pago principal cuando cambia administrativamente un ticket.
     public void adjustAmount(BigDecimal amount) {
         if (!principal) {

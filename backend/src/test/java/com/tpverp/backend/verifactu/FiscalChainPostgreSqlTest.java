@@ -105,19 +105,13 @@ class FiscalChainPostgreSqlTest {
         var state = states.findById(saved.getId()).orElseThrow();
 
         assertThat(persisted.getSnapshot())
+                .containsEntry("identificador", fixture.documentIds().getFirst().toString())
                 .containsEntry("numero", fixture.numbers().getFirst())
-                .containsEntry("cliente", null);
+                .containsEntry("clienteId", null);
         assertThat((List<?>) persisted.getSnapshot().get("lineas"))
-                .singleElement()
-                .satisfies(value -> {
-                    var line = (Map<?, ?>) value;
-                    assertThat(line.get("codigo")).isEqualTo("P-1");
-                    assertThat(((Number) line.get("cantidad")).intValue()).isEqualTo(1);
-                    assertThat(new BigDecimal(line.get("total").toString()))
-                            .isEqualByComparingTo("12.10");
-                });
+                .isEmpty();
         assertThat(persisted.getSnapshotHash())
-                .isEqualTo(new FiscalJsonHasher().hash(snapshot));
+                .isEqualTo(new FiscalJsonHasher().hash(persisted.getSnapshot()));
         assertThat(new FiscalJsonHasher().hash(persisted.getSnapshot()))
                 .isEqualTo(persisted.getSnapshotHash());
         assertThat(chain.getLastRecord().getId()).isEqualTo(saved.getId());
@@ -220,6 +214,31 @@ class FiscalChainPostgreSqlTest {
         assertThat(states.count()).isZero();
     }
 
+    @Test
+    void persistsCancellationRelationToOriginalAlta() {
+        var fixture = insertFixture(1);
+        var documentId = fixture.documentIds().getFirst();
+        var alta = inNewTransaction(() -> service.register(
+                command(fixture, documentId, Map.of())));
+        jdbc.update("""
+                update documento
+                set estado = 'ANULADO', anulado_en = ?, anulado_por = ?,
+                    motivo_anulacion = 'ERROR'
+                where id = ?
+                """, java.sql.Timestamp.from(NOW), fixture.userId(), documentId);
+
+        var cancellation = inNewTransaction(() -> service.register(
+                command(
+                        fixture, documentId, FiscalRecordOperation.ANULACION,
+                        FiscalDocumentType.F2)));
+
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from registro_fiscal_relacion
+                where registro_id = ? and relacionado_id = ? and tipo = 'ANULA'
+                """, Integer.class, cancellation.getId(), alta.getId())).isEqualTo(1);
+    }
+
     private Fixture insertFixture(int documentCount) {
         var fixture = new Fixture(
                 UUID.randomUUID(),
@@ -249,6 +268,25 @@ class FiscalChainPostgreSqlTest {
                 values (?, ?, '001', 'Tienda Fiscal', cast(? as jsonb),
                     'fiscal-hash', 'Atlantic/Canary', 'EUR', 'es-ES')
                 """, fixture.storeId(), fixture.companyId(), address());
+        jdbc.update("""
+                insert into licencia (
+                    id, tienda_id, instalacion_id, referencia, valida_desde,
+                    valida_hasta, max_windows, max_pda, tax_id, taxpayer_type,
+                    regimen_impuesto, blob_original, hash, format_version,
+                    importada_en, import_result, activa)
+                values (?, ?, ?, 'LIC-FISCAL', ?, ?, 1, 0, 'B12345674',
+                    'SOCIEDAD', 'IGIC', 'blob', 'hash', 3, ?, 'ACEPTADA', true)
+                """,
+                UUID.randomUUID(), fixture.storeId(), fixture.installationId(),
+                java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
+                java.sql.Timestamp.from(Instant.parse("2030-01-01T00:00:00Z")),
+                java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
+        jdbc.update("""
+                insert into configuracion_verifactu (
+                    id, empresa_id, activacion_voluntaria, activada_en)
+                values (?, ?, true, ?)
+                """, UUID.randomUUID(), fixture.companyId(),
+                java.sql.Timestamp.from(Instant.parse("2026-06-01T00:00:00Z")));
         jdbc.update("""
                 insert into rol (id, tienda_id, nombre, protegido)
                 values (?, ?, 'ADMIN', true)
@@ -291,14 +329,23 @@ class FiscalChainPostgreSqlTest {
 
     private static FiscalRecordCommand command(
             Fixture fixture, UUID documentId, Map<String, Object> snapshot) {
+        return command(
+                fixture, documentId, FiscalRecordOperation.ALTA,
+                FiscalDocumentType.F2);
+    }
+
+    private static FiscalRecordCommand command(
+            Fixture fixture,
+            UUID documentId,
+            FiscalRecordOperation operation,
+            FiscalDocumentType documentType) {
         return new FiscalRecordCommand(
                 fixture.companyId(),
                 fixture.installationId(),
                 fixture.storeId(),
                 documentId,
-                FiscalRecordOperation.ALTA,
-                FiscalDocumentType.F2,
-                snapshot,
+                operation,
+                documentType,
                 "1.0",
                 "SHA-256",
                 "0.0.1");
@@ -353,6 +400,21 @@ class FiscalChainPostgreSqlTest {
         @Primary
         Clock clock() {
             return Clock.fixed(NOW, ZoneOffset.UTC);
+        }
+
+        @Bean
+        VerifactuActivationService activationService() {
+            return new VerifactuActivationService();
+        }
+
+        @Bean
+        FiscalSnapshotFactory snapshotFactory() {
+            return new FiscalSnapshotFactory();
+        }
+
+        @Bean
+        FiscalDocumentPolicy documentPolicy() {
+            return new FiscalDocumentPolicy();
         }
     }
 

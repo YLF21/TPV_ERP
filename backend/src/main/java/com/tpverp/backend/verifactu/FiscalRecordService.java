@@ -3,6 +3,7 @@ package com.tpverp.backend.verifactu;
 import com.tpverp.backend.document.Documento;
 import com.tpverp.backend.document.DocumentoRepository;
 import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.licensing.LicenciaRepository;
 import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.TiendaRepository;
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,88 +26,99 @@ public class FiscalRecordService {
 
     private final FiscalChainRepository chains;
     private final FiscalRecordRepository records;
+    private final FiscalRecordRelationRepository relations;
     private final FiscalSubmissionStateRepository states;
+    private final VerifactuConfigurationRepository configurations;
+    private final LicenciaRepository licenses;
     private final EmpresaRepository companies;
     private final TiendaRepository stores;
     private final InstalacionRepository installations;
     private final DocumentoRepository documents;
+    private final VerifactuActivationService activation;
+    private final FiscalSnapshotFactory snapshots;
+    private final FiscalDocumentPolicy policy;
     private final Clock clock;
-    private final OfficialHashService officialHashes;
-    private final FiscalJsonHasher jsonHasher;
+    private final OfficialHashService officialHashes = new OfficialHashService();
+    private final FiscalJsonHasher jsonHasher = new FiscalJsonHasher();
 
     public FiscalRecordService(
             FiscalChainRepository chains,
             FiscalRecordRepository records,
+            FiscalRecordRelationRepository relations,
             FiscalSubmissionStateRepository states,
+            VerifactuConfigurationRepository configurations,
+            LicenciaRepository licenses,
             EmpresaRepository companies,
             TiendaRepository stores,
             InstalacionRepository installations,
             DocumentoRepository documents,
+            VerifactuActivationService activation,
+            FiscalSnapshotFactory snapshots,
+            FiscalDocumentPolicy policy,
             Clock clock) {
         this.chains = chains;
         this.records = records;
+        this.relations = relations;
         this.states = states;
+        this.configurations = configurations;
+        this.licenses = licenses;
         this.companies = companies;
         this.stores = stores;
         this.installations = installations;
         this.documents = documents;
+        this.activation = activation;
+        this.snapshots = snapshots;
+        this.policy = policy;
         this.clock = clock;
-        officialHashes = new OfficialHashService();
-        jsonHasher = new FiscalJsonHasher();
     }
 
-    // Registra y encadena una operacion fiscal usando identidad persistida y validada.
-    @Transactional
+    // Registra y encadena una operacion fiscal usando solo datos persistidos y validados.
+    @Transactional(noRollbackFor = VerifactuInactiveException.class)
     public FiscalRecord register(FiscalRecordCommand command) {
         if (command == null) {
             throw new IllegalArgumentException("command es obligatorio");
         }
-        var generatedAt = Instant.now(clock);
+        var generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
         var context = fiscalContext(command, generatedAt);
+        policy.validate(context.document(), command.operation(), command.documentType());
 
-        // El UPSERT y el bloqueo evitan dos primeras secuencias simultaneas.
+        // El UPSERT y el bloqueo serializan la unicidad y el avance de la cadena.
         chains.insertIfMissing(
                 UUID.randomUUID(), command.companyId(), command.installationId(), generatedAt);
         var chain = chains.findForUpdate(command.companyId(), command.installationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la cadena fiscal"));
-        if (records.existsByDocumentIdAndOperation(
-                command.documentId(), command.operation())) {
+        if (records.findByDocumentIdAndOperation(
+                command.documentId(), command.operation()).isPresent()) {
             throw new IllegalStateException(
                     "La operacion fiscal ya esta registrada para el documento");
         }
+        var original = originalForCancellation(command, chain);
+        var snapshot = snapshots.create(context.document());
         var previousHash = chain.previousHash();
         var totalTax = amount(command.operation(), context.document().getImpuestoTotal());
         var totalAmount = amount(command.operation(), context.document().getTotal());
         var record = new FiscalRecord(
-                chain.getId(),
-                command.companyId(),
-                command.installationId(),
-                command.storeId(),
-                command.documentId(),
-                chain.nextSequence(),
-                command.operation(),
-                command.documentType(),
-                context.document().getNumero(),
-                context.document().getFecha(),
-                generatedAt,
-                context.timezone(),
-                context.issuerTaxId(),
-                totalTax,
-                totalAmount,
-                previousHash,
+                chain.getId(), command.companyId(), command.installationId(),
+                command.storeId(), command.documentId(), chain.nextSequence(),
+                command.operation(), command.documentType(),
+                context.document().getNumero(), context.document().getFecha(),
+                generatedAt, context.timezone(), context.issuerTaxId(),
+                totalTax, totalAmount, previousHash,
                 officialHash(command, context, totalTax, totalAmount, previousHash),
-                jsonHasher.hash(command.snapshot()),
-                command.snapshot(),
-                command.formatVersion(),
-                command.algorithmVersion(),
-                command.applicationVersion());
+                jsonHasher.hash(snapshot), snapshot, command.formatVersion(),
+                command.algorithmVersion(), command.applicationVersion());
 
-        var savedRecord = records.save(record);
+        var saved = records.save(record);
         states.save(new FiscalSubmissionState(
-                savedRecord.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
-        chain.advance(savedRecord, generatedAt);
-        return savedRecord;
+                saved.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        if (original != null) {
+            relations.save(new FiscalRecordRelation(
+                    chain.getId(), saved.getId(), original.getId(),
+                    FiscalRelationType.ANULA));
+        }
+        chain.advance(saved, generatedAt);
+        return saved;
     }
 
     private FiscalContext fiscalContext(
@@ -124,12 +137,41 @@ public class FiscalRecordService {
         if (!document.getTiendaId().equals(store.getId())) {
             throw new IllegalArgumentException("El documento no pertenece a la tienda");
         }
+        var license = licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
+                        command.storeId(), command.installationId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No existe una licencia activa para la tienda e instalacion"));
+        var configuration = configurations.findByCompanyId(command.companyId())
+                .orElseGet(() -> configurations.save(
+                        new VerifactuConfiguration(command.companyId())));
         var zone = ZoneId.of(store.getTimezone());
+        if (!activation.isActive(
+                configuration, license.getTaxpayerType(), generatedAt, zone)) {
+            throw new VerifactuInactiveException();
+        }
         return new FiscalContext(
-                SpanishTaxId.validate(company.getTaxId()),
-                zone.getId(),
-                generatedAt.atZone(zone).toOffsetDateTime(),
-                document);
+                SpanishTaxId.validate(company.getTaxId()), zone.getId(),
+                generatedAt.atZone(zone).toOffsetDateTime(), document);
+    }
+
+    private FiscalRecord originalForCancellation(
+            FiscalRecordCommand command, FiscalChain chain) {
+        if (command.operation() != FiscalRecordOperation.ANULACION) {
+            return null;
+        }
+        var original = records.findByDocumentIdAndOperation(
+                        command.documentId(), FiscalRecordOperation.ALTA)
+                .orElseThrow(() -> new IllegalStateException(
+                        "La anulacion requiere un alta fiscal previa"));
+        if (original.getDocumentType() != command.documentType()) {
+            throw new IllegalArgumentException(
+                    "La anulacion debe conservar el tipo fiscal del alta original");
+        }
+        if (!original.chainId().equals(chain.getId())) {
+            throw new IllegalStateException(
+                    "El alta original no pertenece a la cadena fiscal activa");
+        }
+        return original;
     }
 
     private String officialHash(
@@ -142,21 +184,13 @@ public class FiscalRecordService {
         var issueDate = DATE.format(document.getFecha());
         if (command.operation() == FiscalRecordOperation.ALTA) {
             return officialHashes.hash(new AltaHashInput(
-                    context.issuerTaxId(),
-                    document.getNumero(),
-                    issueDate,
-                    command.documentType().name(),
-                    totalTax,
-                    totalAmount,
-                    previousHash,
-                    context.generatedAt()));
+                    context.issuerTaxId(), document.getNumero(), issueDate,
+                    command.documentType().name(), totalTax, totalAmount,
+                    previousHash, context.generatedAt()));
         }
         return officialHashes.hash(new CancellationHashInput(
-                context.issuerTaxId(),
-                document.getNumero(),
-                issueDate,
-                previousHash,
-                context.generatedAt()));
+                context.issuerTaxId(), document.getNumero(), issueDate,
+                previousHash, context.generatedAt()));
     }
 
     private static IllegalArgumentException invalid(String entity) {

@@ -1,6 +1,5 @@
 package com.tpverp.backend.verifactu;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -11,7 +10,6 @@ public record FiscalRecordCommand(
         UUID documentId,
         FiscalRecordOperation operation,
         FiscalDocumentType documentType,
-        Map<String, Object> snapshot,
         String formatVersion,
         String algorithmVersion,
         String applicationVersion) {
@@ -24,7 +22,6 @@ public record FiscalRecordCommand(
         documentId = Objects.requireNonNull(documentId, "documentId");
         operation = required(operation, "operation");
         documentType = required(documentType, "documentType");
-        snapshot = ImmutableJson.copy(required(snapshot, "snapshot"));
         formatVersion = requiredText(formatVersion, "formatVersion");
         algorithmVersion = requiredText(algorithmVersion, "algorithmVersion");
         applicationVersion = requiredText(applicationVersion, "applicationVersion");

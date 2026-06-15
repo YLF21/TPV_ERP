@@ -145,6 +145,10 @@ public class FiscalRecord {
         return previousHash;
     }
 
+    public FiscalDocumentType getDocumentType() {
+        return documentType;
+    }
+
     public Map<String, Object> getSnapshot() {
         return ImmutableJson.copy(snapshot);
     }

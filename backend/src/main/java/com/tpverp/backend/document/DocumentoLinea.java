@@ -101,12 +101,44 @@ public class DocumentoLinea {
         return productoId;
     }
 
+    public int getPosicion() {
+        return posicion;
+    }
+
     public int getCantidad() {
         return cantidad;
     }
 
+    public String getCodigo() {
+        return codigo;
+    }
+
+    public String getNombre() {
+        return nombre;
+    }
+
+    public String getTarifa() {
+        return tarifa;
+    }
+
     public BigDecimal getPrecioUnitario() {
         return precioUnitario;
+    }
+
+    public BigDecimal getDescuento() {
+        return descuento;
+    }
+
+    public boolean isImpuestosIncluidos() {
+        return impuestosIncluidos;
+    }
+
+    public String getRegimenImpuesto() {
+        return regimenImpuesto;
+    }
+
+    public BigDecimal getPorcentajeImpuesto() {
+        return porcentajeImpuesto;
     }
 
     public BigDecimal getBase() {

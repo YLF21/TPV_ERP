@@ -148,9 +148,17 @@ public class Documento {
         return baseTotal;
     }
 
+    public BigDecimal getDescuentoGlobal() {
+        return descuentoGlobal;
+    }
+
     // Devuelve la cuota fiscal total calculada del documento.
     public BigDecimal getImpuestoTotal() {
         return impuestoTotal;
+    }
+
+    public String getMoneda() {
+        return moneda;
     }
 
     public UUID getClienteId() {
