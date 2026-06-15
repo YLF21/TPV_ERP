@@ -90,18 +90,19 @@ class FiscalRecordServiceTest {
     }
 
     @Test
-    void creaConfiguracionDesactivadaSiNoExisteYRechazaElRegistro() {
+    void inicializaConfiguracionDesactivadaYLaLeeAntesDeValidar() {
         stubIdentity(document);
-        when(configurations.findByCompanyId(command.companyId())).thenReturn(Optional.empty());
-        when(configurations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var configuration = new VerifactuConfiguration(command.companyId());
+        when(configurations.findByCompanyId(command.companyId()))
+                .thenReturn(Optional.of(configuration));
 
         assertThatThrownBy(() -> service().register(command))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("activo");
 
-        var saved = ArgumentCaptor.forClass(VerifactuConfiguration.class);
-        verify(configurations).save(saved.capture());
-        assertThat(saved.getValue().isVoluntarilyActive()).isFalse();
+        verify(configurations).insertIfMissing(any(UUID.class), eq(command.companyId()));
+        verify(configurations).findByCompanyId(command.companyId());
+        assertThat(configuration.isVoluntarilyActive()).isFalse();
     }
 
     @Test

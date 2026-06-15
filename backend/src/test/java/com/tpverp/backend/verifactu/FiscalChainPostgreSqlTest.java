@@ -51,7 +51,7 @@ class FiscalChainPostgreSqlTest {
     private static final String PASSWORD = required("TPV_ERP_TEST_DB_PASSWORD");
     private static final String SCHEMA =
             "tpv_erp_fiscal_" + UUID.randomUUID().toString().replace("-", "");
-    private static final Instant NOW = Instant.parse("2026-06-14T09:15:30Z");
+    private static final Instant NOW = Instant.parse("2027-01-02T09:15:30Z");
 
     static {
         execute("create schema " + SCHEMA);
@@ -163,6 +163,38 @@ class FiscalChainPostgreSqlTest {
                 .allMatch(state -> state.getStatus() == FiscalSubmissionStatus.PENDIENTE);
         assertThat(jdbc.queryForObject(
                 "select ultima_secuencia from cadena_fiscal", Long.class)).isEqualTo(20L);
+    }
+
+    @Test
+    void createsOneConfigurationForConcurrentLegalRegistrations() throws Exception {
+        var fixture = insertFixture(2);
+        jdbc.update(
+                "delete from configuracion_verifactu where empresa_id = ?",
+                fixture.companyId());
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var futures = fixture.documentIds().stream()
+                    .map(documentId -> executor.submit(() -> {
+                        start.await();
+                        return inNewTransaction(
+                                () -> service.register(command(fixture, documentId, Map.of())));
+                    }))
+                    .toList();
+            start.countDown();
+            for (var future : futures) {
+                future.get();
+            }
+        }
+
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from configuracion_verifactu
+                where empresa_id = ?
+                """, Integer.class, fixture.companyId())).isEqualTo(1);
+        assertThat(records.count()).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+                "select ultima_secuencia from cadena_fiscal", Long.class)).isEqualTo(2L);
     }
 
     @Test

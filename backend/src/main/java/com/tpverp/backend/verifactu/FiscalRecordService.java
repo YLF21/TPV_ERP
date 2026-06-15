@@ -159,9 +159,10 @@ public class FiscalRecordService {
                     "El NIF de la licencia no coincide con la empresa");
         }
         var customer = customer(document, command.companyId());
+        configurations.insertIfMissing(UUID.randomUUID(), command.companyId());
         var configuration = configurations.findByCompanyId(command.companyId())
-                .orElseGet(() -> configurations.save(
-                        new VerifactuConfiguration(command.companyId())));
+                .orElseThrow(() -> new IllegalStateException(
+                        "No se pudo inicializar la configuracion VERI*FACTU"));
         var zone = ZoneId.of(store.getTimezone());
         if (!activation.isActive(
                 configuration, license.getTaxpayerType(), generatedAt, zone)) {
