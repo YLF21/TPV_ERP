@@ -239,6 +239,45 @@ class FiscalChainPostgreSqlTest {
                 """, Integer.class, cancellation.getId(), alta.getId())).isEqualTo(1);
     }
 
+    @Test
+    void freezesCustomerFiscalDataBeforeLaterDatabaseChanges() {
+        var fixture = insertFixture(1);
+        var customerId = UUID.randomUUID();
+        jdbc.update("""
+                insert into cliente (
+                    id, empresa_id, nombre_fiscal, tipo_documento,
+                    numero_documento, direccion, codigo_postal, poblacion,
+                    provincia, pais, tarifa, descuento, saldo_socio)
+                values (?, ?, 'Cliente Original', 'NIF', '12345678Z',
+                    'Calle Original', '35001', 'Las Palmas',
+                    'Las Palmas', 'ES', 'VENTA', 0, 0)
+                """, customerId, fixture.companyId());
+        jdbc.update(
+                "update documento set cliente_id = ? where id = ?",
+                customerId, fixture.documentIds().getFirst());
+
+        var saved = inNewTransaction(() -> service.register(
+                command(fixture, fixture.documentIds().getFirst(), Map.of())));
+        jdbc.update("""
+                update cliente
+                set nombre_fiscal = 'Cliente Alterado',
+                    numero_documento = '87654321X',
+                    direccion = 'Calle Alterada'
+                where id = ?
+                """, customerId);
+
+        var persisted = inNewTransaction(
+                () -> records.findById(saved.getId()).orElseThrow());
+        var customer = (Map<?, ?>) persisted.getSnapshot().get("cliente");
+        var address = (Map<?, ?>) customer.get("direccion");
+
+        assertThat(customer.get("nombreFiscal")).isEqualTo("Cliente Original");
+        assertThat(customer.get("numeroDocumento")).isEqualTo("12345678Z");
+        assertThat(address.get("calle")).isEqualTo("Calle Original");
+        assertThat(new FiscalJsonHasher().hash(persisted.getSnapshot()))
+                .isEqualTo(persisted.getSnapshotHash());
+    }
+
     private Fixture insertFixture(int documentCount) {
         var fixture = new Fixture(
                 UUID.randomUUID(),

@@ -8,6 +8,11 @@ import com.tpverp.backend.document.DocumentoLinea;
 import com.tpverp.backend.document.DocumentoPago;
 import com.tpverp.backend.document.MetodoPago;
 import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.CustomerRate;
+import com.tpverp.backend.party.DocumentType;
+import com.tpverp.backend.party.FiscalAddress;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -21,10 +26,17 @@ class FiscalSnapshotFactoryTest {
     @Test
     void construyeUnaCopiaFiscalCompletaOrdenadaEInmutable() {
         var companyId = UUID.randomUUID();
+        var company = new Empresa("B12345674", "Empresa", address());
+        var customer = new Customer(
+                company, "Cliente Fiscal", DocumentType.NIF, "12345678Z",
+                new FiscalAddress(
+                        "Calle Cliente 1", "35001", "Las Palmas",
+                        "Las Palmas", "ES"),
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         var document = new Documento(
                 UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.TICKET,
                 LocalDate.of(2027, 1, 2), UUID.randomUUID(), new BigDecimal("5.00"));
-        setParties(document, UUID.randomUUID(), null);
+        setParties(document, customer.getId(), null);
         document.addLine(line(document, 2, "B"));
         document.addLine(line(document, 1, "A"));
         var cash = new MetodoPago(companyId, "Efectivo", false);
@@ -36,7 +48,9 @@ class FiscalSnapshotFactoryTest {
                 "001-270102-000001", UUID.randomUUID(),
                 Instant.parse("2027-01-02T10:00:00Z"), true);
 
-        var snapshot = new FiscalSnapshotFactory().create(document);
+        var snapshot = new FiscalSnapshotFactory().create(
+                document, " b12345674 ", FiscalRecordOperation.ALTA,
+                FiscalDocumentType.F2, customer);
 
         assertThat(snapshot)
                 .containsEntry("identificador", document.getId().toString())
@@ -46,12 +60,26 @@ class FiscalSnapshotFactoryTest {
                 .containsEntry("fecha", "2027-01-02")
                 .containsEntry("tiendaId", document.getTiendaId().toString())
                 .containsEntry("clienteId", document.getClienteId().toString())
+                .containsEntry("nifEmisor", "B12345674")
+                .containsEntry("operacionFiscal", "ALTA")
+                .containsEntry("tipoFiscal", "F2")
                 .containsEntry("proveedorId", null)
                 .containsEntry("moneda", "EUR")
                 .containsEntry("descuentoGlobal", new BigDecimal("5.00"))
                 .containsEntry("baseTotal", document.getBaseTotal())
                 .containsEntry("impuestoTotal", document.getImpuestoTotal())
                 .containsEntry("total", document.getTotal());
+        assertThat(map(snapshot.get("cliente")))
+                .containsEntry("id", customer.getId().toString())
+                .containsEntry("tipoDocumento", "NIF")
+                .containsEntry("numeroDocumento", "12345678Z")
+                .containsEntry("nombreFiscal", "Cliente Fiscal");
+        assertThat(map(map(snapshot.get("cliente")).get("direccion")))
+                .containsEntry("calle", "Calle Cliente 1")
+                .containsEntry("codigoPostal", "35001")
+                .containsEntry("ciudad", "Las Palmas")
+                .containsEntry("provincia", "Las Palmas")
+                .containsEntry("pais", "ES");
         var lines = list(snapshot.get("lineas"));
         assertThat(lines).extracting(value -> map(value).get("posicion"))
                 .containsExactly(1, 2);
@@ -80,6 +108,12 @@ class FiscalSnapshotFactoryTest {
                 document, UUID.randomUUID(), position, 1, code, "Producto " + code,
                 "VENTA", new BigDecimal("10.00"), BigDecimal.ZERO, true,
                 "IGIC", new BigDecimal("7.00"));
+    }
+
+    private static Map<String, String> address() {
+        return Map.of(
+                "linea1", "Calle 1", "ciudad", "Las Palmas",
+                "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
     }
 
     private static void setParties(Documento document, UUID customerId, UUID supplierId) {

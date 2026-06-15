@@ -3,6 +3,9 @@ package com.tpverp.backend.verifactu;
 import com.tpverp.backend.document.Documento;
 import com.tpverp.backend.document.DocumentoLinea;
 import com.tpverp.backend.document.DocumentoPago;
+import com.tpverp.backend.organization.SpanishTaxId;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.FiscalAddress;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,7 +15,12 @@ import org.springframework.stereotype.Component;
 public class FiscalSnapshotFactory {
 
     // Congela todos los datos fiscales persistidos con un orden estable para su huella.
-    public Map<String, Object> create(Documento document) {
+    public Map<String, Object> create(
+            Documento document,
+            String issuerTaxId,
+            FiscalRecordOperation operation,
+            FiscalDocumentType fiscalType,
+            Customer customer) {
         var snapshot = new LinkedHashMap<String, Object>();
         snapshot.put("identificador", document.getId().toString());
         snapshot.put("tipo", document.getTipo().name());
@@ -21,6 +29,10 @@ public class FiscalSnapshotFactory {
         snapshot.put("fecha", document.getFecha().toString());
         snapshot.put("tiendaId", document.getTiendaId().toString());
         snapshot.put("clienteId", id(document.getClienteId()));
+        snapshot.put("cliente", customer(customer));
+        snapshot.put("nifEmisor", SpanishTaxId.validate(issuerTaxId));
+        snapshot.put("operacionFiscal", operation.name());
+        snapshot.put("tipoFiscal", fiscalType.name());
         snapshot.put("proveedorId", id(document.getProveedorId()));
         snapshot.put("moneda", document.getMoneda());
         snapshot.put("descuentoGlobal", document.getDescuentoGlobal());
@@ -36,6 +48,32 @@ public class FiscalSnapshotFactory {
                 .map(FiscalSnapshotFactory::payment)
                 .toList());
         return ImmutableJson.copy(snapshot);
+    }
+
+    private static Map<String, Object> customer(Customer customer) {
+        if (customer == null) {
+            return null;
+        }
+        var value = new LinkedHashMap<String, Object>();
+        value.put("id", customer.getId().toString());
+        value.put("tipoDocumento", customer.getDocumentType().name());
+        value.put("numeroDocumento", customer.getDocumentNumber());
+        value.put("nombreFiscal", customer.getFiscalName());
+        value.put("direccion", address(customer.getFiscalAddress()));
+        return value;
+    }
+
+    private static Map<String, Object> address(FiscalAddress address) {
+        if (address == null) {
+            return null;
+        }
+        var value = new LinkedHashMap<String, Object>();
+        value.put("calle", address.getAddress());
+        value.put("codigoPostal", address.getPostalCode());
+        value.put("ciudad", address.getCity());
+        value.put("provincia", address.getProvince());
+        value.put("pais", address.getCountry());
+        return value;
     }
 
     private static Map<String, Object> line(DocumentoLinea line) {

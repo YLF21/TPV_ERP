@@ -23,6 +23,11 @@ import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.Tienda;
 import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.CustomerRate;
+import com.tpverp.backend.party.CustomerRepository;
+import com.tpverp.backend.party.DocumentType;
+import com.tpverp.backend.party.FiscalAddress;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,6 +63,7 @@ class FiscalRecordServiceTest {
     @Mock TiendaRepository stores;
     @Mock InstalacionRepository installations;
     @Mock DocumentoRepository documents;
+    @Mock CustomerRepository customers;
 
     private FiscalRecordCommand command;
     private Documento document;
@@ -110,9 +116,74 @@ class FiscalRecordServiceTest {
                 .containsEntry("identificador", command.documentId().toString())
                 .containsEntry("numero", "001-260614-000001")
                 .containsEntry("estado", "CONFIRMADO")
+                .containsEntry("nifEmisor", "B12345674")
+                .containsEntry("operacionFiscal", "ALTA")
+                .containsEntry("tipoFiscal", "F2")
                 .containsEntry("total", new BigDecimal("12.10"));
         assertThatThrownBy(() -> snapshot.put("numero", "ALTERADO"))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void congelaElClienteAunqueCambieDespuesDelRegistro() {
+        var company = company(command.companyId());
+        var customer = customer(company, "Cliente Original", "12345678Z");
+        when(document.getClienteId()).thenReturn(customer.getId());
+        stubActive(document);
+        when(customers.findByIdAndCompanyId(customer.getId(), command.companyId()))
+                .thenReturn(Optional.of(customer));
+        stubEmptyChain();
+
+        var saved = service().register(command);
+        customer.update(
+                "Cliente Alterado", DocumentType.NIF, "87654321X",
+                new FiscalAddress("Otra calle", "35002", "Telde", "Las Palmas", "ES"),
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+
+        var frozenCustomer = map(saved.getSnapshot().get("cliente"));
+        assertThat(frozenCustomer)
+                .containsEntry("nombreFiscal", "Cliente Original")
+                .containsEntry("numeroDocumento", "12345678Z");
+        assertThat(saved.getSnapshotHash())
+                .isEqualTo(new FiscalJsonHasher().hash(saved.getSnapshot()));
+    }
+
+    @Test
+    void rechazaDocumentoConClienteInexistenteODeOtraEmpresa() {
+        var customerId = UUID.randomUUID();
+        when(document.getClienteId()).thenReturn(customerId);
+        stubActive(document);
+        when(customers.findByIdAndCompanyId(customerId, command.companyId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().register(command))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cliente");
+
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+    }
+
+    @Test
+    void rechazaLicenciaFuturaCaducadaONifDistinto() {
+        stubActive(document);
+        var license = activeLicense();
+        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
+                command.storeId(), command.installationId()))
+                .thenReturn(Optional.of(license));
+
+        when(license.getValidaDesde()).thenReturn(NOW.plusSeconds(1));
+        assertThatThrownBy(() -> service().register(command))
+                .hasMessageContaining("vigente");
+
+        when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));
+        when(license.getValidaHasta()).thenReturn(TRUNCATED_NOW);
+        assertThatThrownBy(() -> service().register(command))
+                .hasMessageContaining("vigente");
+
+        when(license.getValidaHasta()).thenReturn(NOW.plusSeconds(60));
+        when(license.getTaxId()).thenReturn("A58818501");
+        assertThatThrownBy(() -> service().register(command))
+                .hasMessageContaining("NIF");
     }
 
     @Test
@@ -286,8 +357,7 @@ class FiscalRecordServiceTest {
                 .thenReturn(Optional.of(mock(Instalacion.class)));
         when(documents.findById(value.documentId()))
                 .thenReturn(Optional.of(persistedDocument));
-        var license = mock(Licencia.class);
-        when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
+        var license = activeLicense();
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                 value.storeId(), value.installationId()))
                 .thenReturn(Optional.of(license));
@@ -296,7 +366,7 @@ class FiscalRecordServiceTest {
     private FiscalRecordService service() {
         return new FiscalRecordService(
                 chains, records, relations, states, configurations, licenses,
-                companies, stores, installations, documents,
+                companies, stores, installations, documents, customers,
                 new VerifactuActivationService(), new FiscalSnapshotFactory(),
                 new FiscalDocumentPolicy(), Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -354,6 +424,30 @@ class FiscalRecordServiceTest {
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
     }
 
+    private static Empresa company(UUID id) {
+        var company = new Empresa("B12345674", "Empresa", address());
+        setId(company, id);
+        return company;
+    }
+
+    private static Customer customer(Empresa company, String name, String documentNumber) {
+        return new Customer(
+                company, name, DocumentType.NIF, documentNumber,
+                new FiscalAddress(
+                        "Calle Cliente", "35001", "Las Palmas",
+                        "Las Palmas", "ES"),
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+    }
+
+    private static Licencia activeLicense() {
+        var license = mock(Licencia.class);
+        when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
+        when(license.getTaxId()).thenReturn("B12345674");
+        when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));
+        when(license.getValidaHasta()).thenReturn(NOW.plusSeconds(60));
+        return license;
+    }
+
     private static void setId(Object target, UUID id) {
         try {
             var field = target.getClass().getDeclaredField("id");
@@ -372,5 +466,10 @@ class FiscalRecordServiceTest {
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object value) {
+        return (Map<String, Object>) value;
     }
 }

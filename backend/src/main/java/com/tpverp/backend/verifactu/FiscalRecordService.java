@@ -7,6 +7,8 @@ import com.tpverp.backend.licensing.LicenciaRepository;
 import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.CustomerRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -34,6 +36,7 @@ public class FiscalRecordService {
     private final TiendaRepository stores;
     private final InstalacionRepository installations;
     private final DocumentoRepository documents;
+    private final CustomerRepository customers;
     private final VerifactuActivationService activation;
     private final FiscalSnapshotFactory snapshots;
     private final FiscalDocumentPolicy policy;
@@ -52,6 +55,7 @@ public class FiscalRecordService {
             TiendaRepository stores,
             InstalacionRepository installations,
             DocumentoRepository documents,
+            CustomerRepository customers,
             VerifactuActivationService activation,
             FiscalSnapshotFactory snapshots,
             FiscalDocumentPolicy policy,
@@ -66,6 +70,7 @@ public class FiscalRecordService {
         this.stores = stores;
         this.installations = installations;
         this.documents = documents;
+        this.customers = customers;
         this.activation = activation;
         this.snapshots = snapshots;
         this.policy = policy;
@@ -94,7 +99,9 @@ public class FiscalRecordService {
                     "La operacion fiscal ya esta registrada para el documento");
         }
         var original = originalForCancellation(command, chain);
-        var snapshot = snapshots.create(context.document());
+        var snapshot = snapshots.create(
+                context.document(), context.issuerTaxId(), command.operation(),
+                command.documentType(), context.customer());
         var previousHash = chain.previousHash();
         var totalTax = amount(command.operation(), context.document().getImpuestoTotal());
         var totalAmount = amount(command.operation(), context.document().getTotal());
@@ -141,6 +148,17 @@ public class FiscalRecordService {
                         command.storeId(), command.installationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No existe una licencia activa para la tienda e instalacion"));
+        if (generatedAt.isBefore(license.getValidaDesde())
+                || !generatedAt.isBefore(license.getValidaHasta())) {
+            throw new IllegalStateException("La licencia no esta vigente");
+        }
+        var companyTaxId = SpanishTaxId.validate(company.getTaxId());
+        var licenseTaxId = SpanishTaxId.validate(license.getTaxId());
+        if (!licenseTaxId.equals(companyTaxId)) {
+            throw new IllegalStateException(
+                    "El NIF de la licencia no coincide con la empresa");
+        }
+        var customer = customer(document, command.companyId());
         var configuration = configurations.findByCompanyId(command.companyId())
                 .orElseGet(() -> configurations.save(
                         new VerifactuConfiguration(command.companyId())));
@@ -150,8 +168,17 @@ public class FiscalRecordService {
             throw new VerifactuInactiveException();
         }
         return new FiscalContext(
-                SpanishTaxId.validate(company.getTaxId()), zone.getId(),
-                generatedAt.atZone(zone).toOffsetDateTime(), document);
+                companyTaxId, zone.getId(),
+                generatedAt.atZone(zone).toOffsetDateTime(), document, customer);
+    }
+
+    private Customer customer(Documento document, UUID companyId) {
+        if (document.getClienteId() == null) {
+            return null;
+        }
+        return customers.findByIdAndCompanyId(document.getClienteId(), companyId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No existe el cliente del documento para la empresa"));
     }
 
     private FiscalRecord originalForCancellation(
@@ -207,6 +234,7 @@ public class FiscalRecordService {
             String issuerTaxId,
             String timezone,
             OffsetDateTime generatedAt,
-            Documento document) {
+            Documento document,
+            Customer customer) {
     }
 }
