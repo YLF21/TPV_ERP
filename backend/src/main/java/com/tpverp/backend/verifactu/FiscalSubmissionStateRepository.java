@@ -10,4 +10,7 @@ public interface FiscalSubmissionStateRepository
 
     List<FiscalSubmissionState> findAllByStatusInOrderByUpdatedAtDesc(
             Collection<FiscalSubmissionStatus> statuses);
+
+    List<FiscalSubmissionState> findAllByStatusInOrderByUpdatedAtAsc(
+            Collection<FiscalSubmissionStatus> statuses);
 }
