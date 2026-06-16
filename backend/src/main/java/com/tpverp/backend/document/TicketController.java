@@ -52,6 +52,16 @@ public class TicketController {
                 id, authentication, request.reason()));
     }
 
+    @PostMapping("/{id}/invoice")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    public DocumentView convertToInvoice(
+            @PathVariable UUID id,
+            @Valid @RequestBody ConvertToInvoiceRequest request,
+            Authentication authentication) {
+        return DocumentView.from(service.convertTicketToInvoice(
+                id, request.customerId(), authentication));
+    }
+
     @PutMapping("/{id}/admin")
     @PreAuthorize("hasRole('ADMIN')")
     public DocumentView adminEdit(
@@ -68,5 +78,8 @@ public class TicketController {
     }
 
     public record CancelRequest(@NotBlank String reason) {
+    }
+
+    public record ConvertToInvoiceRequest(@NotNull UUID customerId) {
     }
 }

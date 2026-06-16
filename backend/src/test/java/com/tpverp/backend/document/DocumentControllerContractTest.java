@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 class DocumentControllerContractTest {
@@ -16,6 +18,19 @@ class DocumentControllerContractTest {
         assertController(DeliveryNoteController.class, "/api/v1/delivery-notes");
         assertController(TicketController.class, "/api/v1/tickets");
         assertController(InvoiceController.class, "/api/v1/invoices");
+    }
+
+    @Test
+    void exposesTicketToInvoiceConversionEndpoint() throws NoSuchMethodException {
+        var method = TicketController.class.getDeclaredMethod(
+                "convertToInvoice", UUID.class,
+                TicketController.ConvertToInvoiceRequest.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/{id}/invoice");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
     }
 
     private void assertController(Class<?> type, String path) {

@@ -32,6 +32,7 @@ class CorePermissionBootstrapTest {
                 "STOCK_ADJUST",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_WRITE",
+                "GESTION_VENTAS",
                 "DELIVERY_NOTES_CONFIRM",
                 "TICKETS_CANCEL",
                 "INVOICES_CONFIRM",
