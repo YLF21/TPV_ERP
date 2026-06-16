@@ -161,6 +161,11 @@ public class FiscalRecord {
         return generatedAt;
     }
 
+    public String getTimezone() {
+        return timezone;
+    }
+    // Expone el huso horario congelado para reconstruir la fecha fiscal oficial.
+
     public String getIssuerTaxId() {
         return issuerTaxId;
     }
