@@ -13,6 +13,7 @@ public record DocumentView(
         BigDecimal base,
         BigDecimal impuesto,
         BigDecimal total,
+        String numTicket,
         boolean origenStock) {
 
     public static DocumentView from(Documento document) {
@@ -20,6 +21,6 @@ public record DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
                 document.getNumero(), document.getFecha(), document.getBaseTotal(),
                 document.getImpuestoTotal(), document.getTotal(),
-                document.isOrigenStock());
+                document.getNumTicket(), document.isOrigenStock());
     }
 }

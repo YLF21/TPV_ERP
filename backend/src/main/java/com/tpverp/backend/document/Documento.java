@@ -61,6 +61,8 @@ public class Documento {
     private UUID proveedorId;
     @Column(name = "numero_externo", length = 128)
     private String numeroExterno;
+    @Column(name = "num_ticket", length = 32)
+    private String numTicket;
     @Column(name = "motivo_anulacion")
     private String motivoAnulacion;
     @Column(name = "descuento_global", nullable = false, precision = 5, scale = 2)
@@ -177,6 +179,10 @@ public class Documento {
         return motivoAnulacion;
     }
 
+    public String getNumTicket() {
+        return numTicket;
+    }
+
     public UUID getStockUserId() {
         if (anuladoPor != null) {
             return anuladoPor;
@@ -278,6 +284,13 @@ public class Documento {
         proveedorId = supplierId;
         numeroExterno = externalNumber == null || externalNumber.isBlank()
                 ? null : externalNumber.trim();
+    }
+
+    void setNumTicket(String ticketNumber) {
+        if (estado != EstadoDocumento.BORRADOR) {
+            throw new IllegalStateException("num_ticket solo se asigna antes de confirmar");
+        }
+        numTicket = required(ticketNumber, "num_ticket");
     }
 
     void setDueDate(LocalDate dueDate) {

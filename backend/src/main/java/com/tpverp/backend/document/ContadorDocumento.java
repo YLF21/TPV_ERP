@@ -54,10 +54,15 @@ public class ContadorDocumento {
 
     // Incrementa el contador y devuelve el número ya formateado.
     public String siguiente(TipoDocumento tipo, LocalDate fecha) {
+        return siguiente(tipo, fecha, "001");
+    }
+
+    // Incrementa el contador y devuelve el numero fiscal ya formateado.
+    public String siguiente(TipoDocumento tipo, LocalDate fecha, String codigoTienda) {
         if (!this.tipo.equals(tipo.prefix()) || !periodo.equals(DocumentNumbering.period(tipo, fecha))) {
             throw new IllegalArgumentException("tipo o periodo no coincide con el contador");
         }
-        return DocumentNumbering.format(tipo, fecha, ++ultimoNumero);
+        return DocumentNumbering.format(tipo, fecha, ++ultimoNumero, codigoTienda);
     }
 
     public int getUltimoNumero() {

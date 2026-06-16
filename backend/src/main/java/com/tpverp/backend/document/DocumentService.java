@@ -32,6 +32,7 @@ public class DocumentService {
     private final CustomerRepository customers;
     private final SupplierRepository suppliers;
     private final ConfirmedPurchaseRecorder purchaseRecorder;
+    private final DocumentFiscalIntegration fiscalIntegration;
     private final Clock clock;
 
     public DocumentService(
@@ -44,6 +45,7 @@ public class DocumentService {
             CustomerRepository customers,
             SupplierRepository suppliers,
             ConfirmedPurchaseRecorder purchaseRecorder,
+            DocumentFiscalIntegration fiscalIntegration,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -54,6 +56,7 @@ public class DocumentService {
         this.customers = customers;
         this.suppliers = suppliers;
         this.purchaseRecorder = purchaseRecorder;
+        this.fiscalIntegration = fiscalIntegration;
         this.clock = clock;
     }
 
@@ -92,7 +95,9 @@ public class DocumentService {
                             .distinct()
                             .toList());
         }
-        return documents.save(document);
+        var saved = documents.save(document);
+        fiscalIntegration.registerAlta(saved, false);
+        return saved;
     }
 
     // Crea y confirma el ticket en una sola transacción.
@@ -112,7 +117,9 @@ public class DocumentService {
                 Instant.now(clock),
                 false);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
-        return documents.save(ticket);
+        var saved = documents.save(ticket);
+        fiscalIntegration.registerAlta(saved, false);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -129,12 +136,41 @@ public class DocumentService {
         if (ticket.getTipo() != TipoDocumento.TICKET) {
             throw new IllegalArgumentException("el documento no es un ticket");
         }
+        if (relations.existsByOrigen_IdAndTipo(
+                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)) {
+            throw new IllegalStateException(
+                    "el ticket facturado debe corregirse con factura rectificativa");
+        }
         var userId = organization.currentUser(authentication).getId();
         ticket.cancel(userId, Instant.now(clock), reason);
         if (ticket.isOrigenStock()) {
             stockGateway.cancel(ticket);
         }
-        return documents.save(ticket);
+        var saved = documents.save(ticket);
+        fiscalIntegration.registerTicketCancellation(saved);
+        return saved;
+    }
+
+    // Convierte un ticket confirmado en factura F3 sin duplicar stock ni pagos.
+    @Transactional
+    public Documento convertTicketToInvoice(
+            UUID ticketId, UUID customerId, Authentication authentication) {
+        var ticket = find(ticketId);
+        if (ticket.getTipo() != TipoDocumento.TICKET
+                || ticket.getEstado() != EstadoDocumento.CONFIRMADO) {
+            throw new IllegalStateException("solo se puede facturar un ticket confirmado");
+        }
+        if (relations.existsByOrigen_IdAndTipo(ticket.getId(), TipoRelacionDocumento.FACTURA_DE)) {
+            throw new IllegalStateException("el ticket ya esta facturado");
+        }
+        var invoice = invoiceFromTicket(ticket, customerId, authentication);
+        validateConfirmation(invoice);
+        invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
+                Instant.now(clock), false);
+        var saved = documents.save(invoice);
+        relations.save(new DocumentoRelacion(saved, ticket, TipoRelacionDocumento.FACTURA_DE));
+        fiscalIntegration.registerAlta(saved, true);
+        return saved;
     }
 
     @Transactional
@@ -207,6 +243,25 @@ public class DocumentService {
         return document;
     }
 
+    private Documento invoiceFromTicket(
+            Documento ticket, UUID customerId, Authentication authentication) {
+        var invoice = new Documento(
+                ticket.getTiendaId(), ticket.getAlmacenId(), TipoDocumento.FACTURA_VENTA,
+                ticket.getFecha(), organization.currentUser(authentication).getId(),
+                ticket.getDescuentoGlobal());
+        invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
+        invoice.setNumTicket(ticket.getNumero());
+        ticket.getLineas().stream()
+                .map(line -> new DocumentLineCommand(
+                        line.getProductoId(), line.getCantidad(), line.getCodigo(),
+                        line.getNombre(), line.getTarifa(), line.getPrecioUnitario(),
+                        line.getDescuento(), line.isImpuestosIncluidos(),
+                        line.getRegimenImpuesto(), line.getPorcentajeImpuesto()))
+                .forEach(line -> invoice.addLine(line.toEntity(invoice)));
+        invoice.setStockOrigin(false);
+        return invoice;
+    }
+
     private void addPayments(
             Documento document, List<PaymentCommand> commands, String mismatchMessage) {
         if (commands == null || commands.isEmpty()) {
@@ -241,7 +296,8 @@ public class DocumentService {
                         document.getTiendaId(), type.prefix(), period)
                 .orElseGet(() -> new ContadorDocumento(
                         document.getTiendaId(), type, document.getFecha()));
-        var number = counter.siguiente(type, document.getFecha());
+        var number = counter.siguiente(
+                type, document.getFecha(), organization.currentStore().getCodigoTienda());
         counters.save(counter);
         return number;
     }

@@ -10,25 +10,26 @@ class DocumentNumberingTest {
 
     @ParameterizedTest
     @CsvSource({
-        "ALBARAN_VENTA,  AV-2026-000001",
-        "ALBARAN_COMPRA, AC-2026-000001",
-        "FACTURA_VENTA,  FV-2026-000001",
-        "FACTURA_COMPRA, FC-2026-000001",
-        "RECTIFICATIVA_VENTA,  FRV-2026-000001",
-        "RECTIFICATIVA_COMPRA, FRC-2026-000001"
+        "ALBARAN_VENTA,  AV-001-26-000001",
+        "ALBARAN_COMPRA, AC-001-26-000001",
+        "FACTURA_VENTA,  FV-001-26-000001",
+        "FACTURA_COMPRA, FC-001-26-000001",
+        "RECTIFICATIVA_VENTA,  FRV-001-26-000001",
+        "RECTIFICATIVA_COMPRA, FRC-001-26-000001"
     })
     void formatsAnnualNumbers(TipoDocumento type, String expected) {
-        assertThat(DocumentNumbering.format(type, LocalDate.of(2026, 6, 8), 1))
+        assertThat(DocumentNumbering.format(type, LocalDate.of(2026, 6, 8), 1, "001"))
                 .isEqualTo(expected);
     }
 
     @ParameterizedTest
     @CsvSource({
-        "1,     26060800001",
-        "99999, 26060899999"
+        "1,     001-260608-00001",
+        "99999, 001-260608-99999"
     })
     void formatsDailyTicketNumbers(int sequence, String expected) {
-        assertThat(DocumentNumbering.format(TipoDocumento.TICKET, LocalDate.of(2026, 6, 8), sequence))
+        assertThat(DocumentNumbering.format(
+                        TipoDocumento.TICKET, LocalDate.of(2026, 6, 8), sequence, "001"))
                 .isEqualTo(expected);
     }
 }
