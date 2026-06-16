@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 class VerifactuControllerContractTest {
@@ -35,6 +36,29 @@ class VerifactuControllerContractTest {
 
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/{recordId}/attempts");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
+    }
+
+    @Test
+    void exposesVerifactuAdminEndpoints() throws NoSuchMethodException {
+        assertThat(VerifactuAdminController.class
+                .getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/verifactu/admin");
+
+        assertSecuredGet("status");
+        assertSecuredGet("queue");
+
+        var retry = VerifactuAdminController.class.getDeclaredMethod("retryNext");
+        assertThat(retry.getAnnotation(PostMapping.class).value())
+                .containsExactly("/retry-next");
+        assertThat(retry.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
+    }
+
+    private static void assertSecuredGet(String methodName) throws NoSuchMethodException {
+        var method = VerifactuAdminController.class.getDeclaredMethod(methodName);
+        assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("GESTION_VENTAS");
     }
