@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,5 +26,16 @@ class VerifactuControllerContractTest {
         assertThat(Arrays.stream(DefectiveFiscalRecordController.class.getDeclaredMethods())
                 .filter(Method::isSynthetic)
                 .toList()).isEmpty();
+    }
+
+    @Test
+    void exposesFiscalAttemptHistoryEndpoint() throws NoSuchMethodException {
+        var method = DefectiveFiscalRecordController.class.getDeclaredMethod(
+                "attempts", UUID.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/{recordId}/attempts");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
     }
 }
