@@ -52,10 +52,11 @@ class PostgreSqlMigrationTest {
                             'documento', 'documento_linea', 'documento_pago',
                             'documento_relacion', 'configuracion_verifactu',
                             'cadena_fiscal', 'registro_fiscal',
-                            'registro_fiscal_relacion', 'estado_envio_fiscal')
+                            'registro_fiscal_relacion', 'estado_envio_fiscal',
+                            'intento_envio_fiscal')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(41);
+                assertThat(result.getInt(1)).isEqualTo(42);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);
@@ -421,7 +422,8 @@ class PostgreSqlMigrationTest {
                       and indexname in (
                         'ix_registro_fiscal_documento',
                         'ix_registro_fiscal_empresa_fecha',
-                        'ix_estado_envio_fiscal_estado')
+                        'ix_estado_envio_fiscal_estado',
+                        'ix_intento_envio_fiscal_registro_fecha')
                     order by indexname
                     """.formatted(schema))) {
             var names = new ArrayList<String>();
@@ -430,6 +432,7 @@ class PostgreSqlMigrationTest {
             }
             assertThat(names).containsExactly(
                     "ix_estado_envio_fiscal_estado",
+                    "ix_intento_envio_fiscal_registro_fecha",
                     "ix_registro_fiscal_documento",
                     "ix_registro_fiscal_empresa_fecha");
         }
