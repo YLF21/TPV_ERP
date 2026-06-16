@@ -66,4 +66,32 @@ public class FiscalSubmissionState {
     public Instant getUpdatedAt() {
         return updatedAt;
     }
+
+    // Cambia el estado limpiando errores cuando la incidencia queda resuelta.
+    public void mark(FiscalSubmissionStatus newStatus, Instant changedAt) {
+        status = Objects.requireNonNull(newStatus, "status");
+        lastErrorCode = null;
+        lastError = null;
+        updatedAt = Objects.requireNonNull(changedAt, "changedAt");
+    }
+
+    // Registra una incidencia visible para revision administrativa.
+    public void markIncident(
+            FiscalSubmissionStatus newStatus,
+            String errorCode,
+            String error,
+            Instant changedAt) {
+        status = Objects.requireNonNull(newStatus, "status");
+        lastErrorCode = required(errorCode, "codigo de error");
+        lastError = required(error, "error");
+        updatedAt = Objects.requireNonNull(changedAt, "changedAt");
+    }
+
+    private static String required(String value, String field) {
+        var normalized = value == null ? "" : value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(field + " es obligatorio");
+        }
+        return normalized;
+    }
 }
