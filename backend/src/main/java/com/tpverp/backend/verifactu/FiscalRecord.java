@@ -129,8 +129,40 @@ public class FiscalRecord {
         return id;
     }
 
+    public UUID getCompanyId() {
+        return companyId;
+    }
+
+    public UUID getStoreId() {
+        return storeId;
+    }
+
+    public UUID getDocumentId() {
+        return documentId;
+    }
+
+    public FiscalRecordOperation getOperation() {
+        return operation;
+    }
+
     public long getSequence() {
         return sequence;
+    }
+
+    public String getNumber() {
+        return number;
+    }
+
+    public LocalDate getIssueDate() {
+        return issueDate;
+    }
+
+    public Instant getGeneratedAt() {
+        return generatedAt;
+    }
+
+    public BigDecimal getTotalAmount() {
+        return totalAmount;
     }
 
     public String getHash() {

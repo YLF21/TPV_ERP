@@ -54,4 +54,16 @@ public class FiscalSubmissionState {
     public FiscalSubmissionStatus getStatus() {
         return status;
     }
+
+    public String getLastErrorCode() {
+        return lastErrorCode;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
 }
