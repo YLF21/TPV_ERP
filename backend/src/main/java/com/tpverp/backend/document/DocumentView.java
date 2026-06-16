@@ -14,13 +14,18 @@ public record DocumentView(
         BigDecimal impuesto,
         BigDecimal total,
         String numTicket,
+        String qrUrl,
         boolean origenStock) {
 
     public static DocumentView from(Documento document) {
+        return from(document, null);
+    }
+
+    public static DocumentView from(Documento document, String qrUrl) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
                 document.getNumero(), document.getFecha(), document.getBaseTotal(),
                 document.getImpuestoTotal(), document.getTotal(),
-                document.getNumTicket(), document.isOrigenStock());
+                document.getNumTicket(), qrUrl, document.isOrigenStock());
     }
 }

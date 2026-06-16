@@ -20,15 +20,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class TicketController {
 
     private final DocumentService service;
+    private final DocumentFiscalQrService fiscalQr;
 
-    public TicketController(DocumentService service) {
+    public TicketController(DocumentService service, DocumentFiscalQrService fiscalQr) {
         this.service = service;
+        this.fiscalQr = fiscalQr;
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TICKETS_READ')")
     public List<DocumentView> list() {
-        return service.listTickets().stream().map(DocumentView::from).toList();
+        return service.listTickets().stream().map(this::view).toList();
     }
 
     @PostMapping
@@ -36,7 +38,7 @@ public class TicketController {
     public DocumentView create(
             @Valid @RequestBody CreateTicketRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.createTicket(
+        return view(service.createTicket(
                 request.document().toCommand(),
                 request.payments().toCommands(),
                 authentication));
@@ -48,7 +50,7 @@ public class TicketController {
             @PathVariable UUID id,
             @Valid @RequestBody CancelRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.cancelTicket(
+        return view(service.cancelTicket(
                 id, authentication, request.reason()));
     }
 
@@ -58,7 +60,7 @@ public class TicketController {
             @PathVariable UUID id,
             @Valid @RequestBody ConvertToInvoiceRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.convertTicketToInvoice(
+        return view(service.convertTicketToInvoice(
                 id, request.customerId(), authentication));
     }
 
@@ -67,9 +69,13 @@ public class TicketController {
     public DocumentView adminEdit(
             @PathVariable UUID id,
             @Valid @RequestBody DeliveryNoteController.AdminEditRequest request) {
-        return DocumentView.from(service.adminEditConfirmed(
+        return view(service.adminEditConfirmed(
                 id, request.descuentoGlobal(), request.clienteId(), request.proveedorId(),
                 request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList()));
+    }
+
+    private DocumentView view(Documento document) {
+        return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
     }
 
     public record CreateTicketRequest(

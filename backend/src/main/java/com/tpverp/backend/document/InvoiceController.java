@@ -18,15 +18,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvoiceController {
 
     private final DocumentService service;
+    private final DocumentFiscalQrService fiscalQr;
 
-    public InvoiceController(DocumentService service) {
+    public InvoiceController(DocumentService service, DocumentFiscalQrService fiscalQr) {
         this.service = service;
+        this.fiscalQr = fiscalQr;
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_READ')")
     public List<DocumentView> list() {
-        return service.listInvoices().stream().map(DocumentView::from).toList();
+        return service.listInvoices().stream().map(this::view).toList();
     }
 
     @PostMapping
@@ -34,8 +36,7 @@ public class InvoiceController {
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.createInvoice(
-                request.toCommand(), authentication));
+        return view(service.createInvoice(request.toCommand(), authentication));
     }
 
     @PostMapping("/{id}/confirm")
@@ -43,7 +44,7 @@ public class InvoiceController {
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {
-        return DocumentView.from(service.confirm(id, authentication));
+        return view(service.confirm(id, authentication));
     }
 
     @PostMapping("/{id}/pay")
@@ -51,7 +52,7 @@ public class InvoiceController {
     public DocumentView pay(
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request) {
-        return DocumentView.from(service.payInvoice(id, request.toCommands()));
+        return view(service.payInvoice(id, request.toCommands()));
     }
 
     @PostMapping("/{id}/relations")
@@ -59,7 +60,11 @@ public class InvoiceController {
     public DocumentView relate(
             @PathVariable UUID id,
             @Valid @RequestBody RelationRequest request) {
-        return DocumentView.from(service.relate(id, request.originId(), request.type()));
+        return view(service.relate(id, request.originId(), request.type()));
+    }
+
+    private DocumentView view(Documento document) {
+        return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
     }
 
     public record RelationRequest(
