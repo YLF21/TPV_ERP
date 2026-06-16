@@ -50,3 +50,9 @@ tpv:
     pg-restore-command: ${TPV_PG_RESTORE_COMMAND:pg_restore}
   product-images:
     directory: ${TPV_PRODUCT_IMAGE_DIRECTORY:${user.home}/.tpv-erp/product-images}
+  verifactu:
+    endpoint-mode: ${TPV_VERIFACTU_ENDPOINT_MODE:TEST}
+    certificate-path: ${TPV_VERIFACTU_CERTIFICATE_PATH:}
+    certificate-password: ${TPV_VERIFACTU_CERTIFICATE_PASSWORD:}
+    system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
+    system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
