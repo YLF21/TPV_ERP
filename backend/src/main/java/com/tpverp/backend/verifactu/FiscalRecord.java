@@ -161,6 +161,10 @@ public class FiscalRecord {
         return generatedAt;
     }
 
+    public String getIssuerTaxId() {
+        return issuerTaxId;
+    }
+
     public BigDecimal getTotalAmount() {
         return totalAmount;
     }

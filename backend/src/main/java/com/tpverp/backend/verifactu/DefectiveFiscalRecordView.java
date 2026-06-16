@@ -15,16 +15,30 @@ public record DefectiveFiscalRecordView(
         LocalDate issueDate,
         Instant generatedAt,
         BigDecimal totalAmount,
+        String qrUrl,
         String errorCode,
         String error,
         Instant updatedAt) {
 
     public static DefectiveFiscalRecordView from(
             FiscalRecord record, FiscalSubmissionState state) {
+        return from(record, state, null);
+    }
+
+    public static DefectiveFiscalRecordView from(
+            FiscalRecord record, FiscalSubmissionState state, FiscalQrUrlService qrUrls) {
         return new DefectiveFiscalRecordView(
                 record.getId(), record.getDocumentId(), state.getStatus(),
                 record.getOperation(), record.getDocumentType(), record.getNumber(),
                 record.getIssueDate(), record.getGeneratedAt(), record.getTotalAmount(),
-                state.getLastErrorCode(), state.getLastError(), state.getUpdatedAt());
+                qrUrl(record, qrUrls), state.getLastErrorCode(), state.getLastError(),
+                state.getUpdatedAt());
+    }
+
+    private static String qrUrl(FiscalRecord record, FiscalQrUrlService qrUrls) {
+        if (qrUrls == null || record.getTotalAmount() == null) {
+            return null;
+        }
+        return qrUrls.productionUrl(record);
     }
 }

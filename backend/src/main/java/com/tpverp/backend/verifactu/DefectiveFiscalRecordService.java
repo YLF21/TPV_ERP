@@ -16,14 +16,17 @@ public class DefectiveFiscalRecordService {
     private final FiscalSubmissionStateRepository states;
     private final FiscalRecordRepository records;
     private final CurrentOrganization organization;
+    private final FiscalQrUrlService qrUrls;
 
     public DefectiveFiscalRecordService(
             FiscalSubmissionStateRepository states,
             FiscalRecordRepository records,
-            CurrentOrganization organization) {
+            CurrentOrganization organization,
+            FiscalQrUrlService qrUrls) {
         this.states = states;
         this.records = records;
         this.organization = organization;
+        this.qrUrls = qrUrls;
     }
 
     // Lista registros fiscales con incidencia sin bloquear nuevas ventas.
@@ -35,7 +38,7 @@ public class DefectiveFiscalRecordService {
                 .flatMap(state -> records.findById(state.getRecordId()).stream()
                         .filter(record -> record.getCompanyId().equals(companyId))
                         .filter(record -> record.getStoreId().equals(storeId))
-                        .map(record -> DefectiveFiscalRecordView.from(record, state)))
+                        .map(record -> DefectiveFiscalRecordView.from(record, state, qrUrls)))
                 .toList();
     }
 }

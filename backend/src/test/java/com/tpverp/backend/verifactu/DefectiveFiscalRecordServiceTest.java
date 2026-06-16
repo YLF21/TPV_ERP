@@ -43,7 +43,8 @@ class DefectiveFiscalRecordServiceTest {
                 "Atlantic/Canary", "EUR", "es-ES");
         when(organization.currentCompany()).thenReturn(company);
         when(organization.currentStore()).thenReturn(store);
-        service = new DefectiveFiscalRecordService(states, records, organization);
+        service = new DefectiveFiscalRecordService(
+                states, records, organization, new FiscalQrUrlService());
     }
 
     @Test
@@ -65,6 +66,8 @@ class DefectiveFiscalRecordServiceTest {
         assertThat(result.getFirst().status()).isEqualTo(FiscalSubmissionStatus.RECHAZADO);
         assertThat(result.getFirst().errorCode()).isEqualTo("NIF_INVALIDO");
         assertThat(result.getFirst().number()).isEqualTo("FV-001-26-000001");
+        assertThat(result.getFirst().qrUrl()).contains(
+                "ValidarQR?nif=B12345674&numserie=FV-001-26-000001");
     }
 
     private FiscalSubmissionState state(
