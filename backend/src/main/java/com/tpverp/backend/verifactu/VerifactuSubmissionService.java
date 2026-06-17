@@ -13,6 +13,7 @@ public class VerifactuSubmissionService {
     private final VerifactuTransport transport;
     private final FiscalSubmissionAttemptService attempts;
     private final VerifactuResponseParser responses;
+    private final VerifactuOfficialXsdValidator validator;
 
     public VerifactuSubmissionService(
             VerifactuXmlService xml,
@@ -20,18 +21,9 @@ public class VerifactuSubmissionService {
             VerifactuEndpointResolver endpoints,
             VerifactuSubmissionPropertiesFactory properties,
             VerifactuTransport transport,
-            FiscalSubmissionAttemptService attempts) {
-        this(xml, soap, endpoints, properties, transport, attempts, new VerifactuResponseParser());
-    }
-
-    VerifactuSubmissionService(
-            VerifactuXmlService xml,
-            VerifactuSoapEnvelopeService soap,
-            VerifactuEndpointResolver endpoints,
-            VerifactuSubmissionPropertiesFactory properties,
-            VerifactuTransport transport,
             FiscalSubmissionAttemptService attempts,
-            VerifactuResponseParser responses) {
+            VerifactuResponseParser responses,
+            VerifactuOfficialXsdValidator validator) {
         this.xml = xml;
         this.soap = soap;
         this.endpoints = endpoints;
@@ -39,11 +31,24 @@ public class VerifactuSubmissionService {
         this.transport = transport;
         this.attempts = attempts;
         this.responses = responses;
+        this.validator = validator;
     }
 
     public VerifactuSubmissionResult submit(FiscalRecord record) {
         var configuration = properties.current();
-        var envelope = envelope(record, configuration);
+        var fiscalXml = fiscalXml(record, configuration);
+        try {
+            validator.validate(fiscalXml);
+        } catch (IllegalArgumentException exception) {
+            var result = new VerifactuSubmissionResult(
+                    FiscalSubmissionStatus.DEFECTUOSO,
+                    "INVALID_XSD",
+                    exception.getMessage(),
+                    fiscalXml);
+            attempts.recordDefective(record.getId(), result.errorCode(), result.error(), fiscalXml);
+            return result;
+        }
+        var envelope = soap.wrap(fiscalXml);
         attempts.recordSent(record.getId(), envelope);
         try {
             var response = transport.send(endpoints.resolve(configuration.mode()), envelope);
@@ -58,13 +63,13 @@ public class VerifactuSubmissionService {
     }
     // Envia un registro fiscal ya reclamado y aplica la politica de estado sin bloquear ventas.
 
-    private String envelope(FiscalRecord record, VerifactuSubmissionProperties configuration) {
+    private String fiscalXml(FiscalRecord record, VerifactuSubmissionProperties configuration) {
         var system = new VerifactuSystemInfo(
                 "TPV ERP", record.getIssuerTaxId(), configuration.systemName(),
                 configuration.systemId(), "0.0.1", record.getStoreId().toString(),
                 true, false, false);
-        return soap.wrap(xml.batchXml(new VerifactuXmlBatchRequest(
-                "Empresa", record.getIssuerTaxId(), List.of(record), system)));
+        return xml.batchXml(new VerifactuXmlBatchRequest(
+                "Empresa", record.getIssuerTaxId(), List.of(record), system));
     }
 
     private VerifactuSubmissionResult recordResult(

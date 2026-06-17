@@ -2,6 +2,8 @@ package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,6 +30,7 @@ class VerifactuSubmissionServiceTest {
     @Mock private VerifactuSubmissionPropertiesFactory properties;
     @Mock private VerifactuTransport transport;
     @Mock private FiscalSubmissionAttemptService attempts;
+    @Mock private VerifactuOfficialXsdValidator validator;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
@@ -38,10 +41,14 @@ class VerifactuSubmissionServiceTest {
         when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
                 VerifactuEndpointMode.TEST, java.nio.file.Path.of("cert.p12"),
                 "secret".toCharArray(), "TPV ERP", "01"));
-        when(endpoints.resolve(VerifactuEndpointMode.TEST)).thenReturn("https://aeat.test/soap");
+        lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
+                .thenReturn("https://aeat.test/soap");
         when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");
-        when(soap.wrap("<sfLR:RegFactuSistemaFacturacion/>")).thenReturn("<soap/>");
-        service = new VerifactuSubmissionService(xml, soap, endpoints, properties, transport, attempts);
+        lenient().when(soap.wrap("<sfLR:RegFactuSistemaFacturacion/>"))
+                .thenReturn("<soap/>");
+        service = new VerifactuSubmissionService(
+                xml, soap, endpoints, properties, transport, attempts,
+                new VerifactuResponseParser(), validator);
     }
 
     @Test
@@ -81,6 +88,21 @@ class VerifactuSubmissionServiceTest {
         verify(attempts).recordSent(record.getId(), "<soap/>");
         verify(attempts, never()).recordRejected(any(), any(), any(), any());
         verify(attempts, never()).recordDefective(any(), any(), any(), any());
+    }
+
+    @Test
+    void marcaDefectuosoSiElXmlNoCumpleXsdAntesDeEnviar() {
+        doThrow(new IllegalArgumentException("XSD invalido"))
+                .when(validator).validate("<sfLR:RegFactuSistemaFacturacion/>");
+
+        var result = service.submit(record);
+
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.DEFECTUOSO);
+        assertThat(result.errorCode()).isEqualTo("INVALID_XSD");
+        verify(attempts).recordDefective(
+                record.getId(), "INVALID_XSD", "XSD invalido",
+                "<sfLR:RegFactuSistemaFacturacion/>");
+        verify(transport, never()).send(any(), any());
     }
 
     private void assertXmlRequest() {
