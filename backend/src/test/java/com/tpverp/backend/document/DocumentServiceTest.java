@@ -399,6 +399,21 @@ class DocumentServiceTest {
     }
 
     @Test
+    void invoiceRelationRequiresCompatibleOriginType() {
+        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        var originInvoice = draft(TipoDocumento.FACTURA_VENTA);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(documentRepository.findById(originInvoice.getId())).thenReturn(Optional.of(originInvoice));
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), originInvoice.getId(), TipoRelacionDocumento.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("origen");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
     void confirmedPurchaseDeliveryNoteRecordsSupplierProducts() {
         var supplier = supplier(true);
         var note = purchaseDraft(TipoDocumento.ALBARAN_COMPRA, supplier, true);

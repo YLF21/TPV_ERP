@@ -236,8 +236,16 @@ public class DocumentService {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
         }
         Objects.requireNonNull(type, "tipoRelacion");
-        relations.save(new DocumentoRelacion(invoice, find(originId), type));
+        var origin = find(originId);
+        validateRelationOrigin(type, origin);
+        relations.save(new DocumentoRelacion(invoice, origin, type));
         return invoice;
+    }
+
+    private static void validateRelationOrigin(TipoRelacionDocumento type, Documento origin) {
+        if (type == TipoRelacionDocumento.FACTURA_DE && INVOICES.contains(origin.getTipo())) {
+            throw new IllegalStateException("origen incompatible para factura agrupada");
+        }
     }
 
     private Documento createDraft(
