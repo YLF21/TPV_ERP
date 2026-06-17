@@ -1,6 +1,7 @@
 package com.tpverp.backend.backup;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.backup.application.BackupArchiveService;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
@@ -33,6 +34,11 @@ class BackupConfiguration {
     }
 
     @Bean
+    BackupArchiveService backupArchiveService() {
+        return new BackupArchiveService();
+    }
+
+    @Bean
     PostgreSqlBackupCommands postgreSqlBackupCommands(
             @Value("${spring.datasource.url}") String databaseUrl,
             @Value("${spring.datasource.username}") String databaseUser,
@@ -57,10 +63,12 @@ class BackupConfiguration {
             PasswordEncoder passwordEncoder,
             BackupKeyStore keyStore,
             BackupFileCrypto fileCrypto,
+            BackupArchiveService archives,
             PostgreSqlBackupCommands commands,
             AuditService auditService,
             Clock clock,
-            @Value("${tpv.backup.default-directory}") Path defaultDirectory) {
+            @Value("${tpv.backup.default-directory}") Path defaultDirectory,
+            @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory) {
         return new BackupService(
                 configurationRepository,
                 executionRepository,
@@ -70,10 +78,12 @@ class BackupConfiguration {
                 passwordEncoder,
                 keyStore,
                 fileCrypto,
+                archives,
                 commands,
                 auditService,
                 clock,
-                defaultDirectory);
+                defaultDirectory,
+                productImagesDirectory);
     }
 
     @Bean

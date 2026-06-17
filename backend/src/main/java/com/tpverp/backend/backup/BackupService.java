@@ -3,6 +3,7 @@ package com.tpverp.backend.backup;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.audit.ResultadoAuditoria;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
+import com.tpverp.backend.backup.application.BackupArchiveService;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
 import com.tpverp.backend.installation.Instalacion;
@@ -37,10 +38,12 @@ public class BackupService {
     private final PasswordEncoder passwordEncoder;
     private final BackupKeyStore keyStore;
     private final BackupFileCrypto fileCrypto;
+    private final BackupArchiveService archives;
     private final PostgreSqlBackupCommands commands;
     private final AuditService auditService;
     private final Clock clock;
     private final Path defaultDirectory;
+    private final Path productImagesDirectory;
 
     public BackupService(
             ConfiguracionBackupRepository configurationRepository,
@@ -51,10 +54,12 @@ public class BackupService {
             PasswordEncoder passwordEncoder,
             BackupKeyStore keyStore,
             BackupFileCrypto fileCrypto,
+            BackupArchiveService archives,
             PostgreSqlBackupCommands commands,
             AuditService auditService,
             Clock clock,
-            Path defaultDirectory) {
+            Path defaultDirectory,
+            Path productImagesDirectory) {
         this.configurationRepository = configurationRepository;
         this.executionRepository = executionRepository;
         this.installationRepository = installationRepository;
@@ -63,10 +68,12 @@ public class BackupService {
         this.passwordEncoder = passwordEncoder;
         this.keyStore = keyStore;
         this.fileCrypto = fileCrypto;
+        this.archives = archives;
         this.commands = commands;
         this.auditService = auditService;
         this.clock = clock;
         this.defaultDirectory = defaultDirectory;
+        this.productImagesDirectory = productImagesDirectory;
     }
 
     @Transactional
@@ -122,17 +129,20 @@ public class BackupService {
         EjecucionBackup execution = executionRepository.save(
                 new EjecucionBackup(configuration, Instant.now(clock)));
         Path dump = null;
+        Path archive = null;
         byte[] brk = null;
         try {
             Path destination = destination(configuration);
             Path daily = destination.resolve("daily");
             Files.createDirectories(daily);
             dump = Files.createTempFile(destination, ".tpv-dump-", ".backup");
+            archive = Files.createTempFile(destination, ".tpv-archive-", ".zip");
             commands.dump(dump);
+            var archiveInfo = archives.create(dump, productImagesDirectory, archive);
             String date = LocalDate.now(clock).toString();
             Path encrypted = daily.resolve("tpv-erp-" + date + ".tpvb");
             brk = keyStore.loadForScheduledBackup();
-            var info = fileCrypto.encrypt(dump, encrypted, brk);
+            var info = fileCrypto.encrypt(archive, encrypted, brk);
             createMonthlyCopyIfNeeded(encrypted, destination, configuration);
             enforceRetention(daily, configuration.getRetencionDiaria());
             enforceRetention(destination.resolve("monthly"), configuration.getRetencionMensual());
@@ -142,7 +152,9 @@ public class BackupService {
                     Map.of(
                             "path", encrypted.toString(),
                             "plaintextBytes", info.plaintextLength(),
-                            "chunks", info.chunkCount()),
+                            "chunks", info.chunkCount(),
+                            "databaseBytes", archiveInfo.databaseBytes(),
+                            "imageFiles", archiveInfo.imageFiles()),
                     null);
             auditService.record(
                     "BACKUP_COMPLETED", ResultadoAuditoria.EXITO, Map.of("path", encrypted.toString()));
@@ -165,6 +177,13 @@ public class BackupService {
                     // The execution result already contains the relevant backup outcome.
                 }
             }
+            if (archive != null) {
+                try {
+                    Files.deleteIfExists(archive);
+                } catch (Exception ignored) {
+                    // The execution result already contains the relevant backup outcome.
+                }
+            }
         }
         return ExecutionItem.from(execution);
     }
@@ -173,10 +192,13 @@ public class BackupService {
         verifyAdminPassword(adminPassword);
         byte[] brk = keyStore.loadForRestore(recoveryFile, adminPassword.toCharArray());
         Path dump = null;
+        Path archive = null;
         try {
             Files.createDirectories(defaultDirectory.toAbsolutePath());
             dump = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".backup");
-            fileCrypto.decrypt(encryptedBackup, dump, brk);
+            archive = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".zip");
+            fileCrypto.decrypt(encryptedBackup, archive, brk);
+            archives.restore(archive, dump, productImagesDirectory);
             commands.restore(dump);
             auditService.record(
                     "BACKUP_RESTORED",
@@ -193,6 +215,13 @@ public class BackupService {
             if (dump != null) {
                 try {
                     Files.deleteIfExists(dump);
+                } catch (Exception ignored) {
+                    // The original encrypted backup remains untouched.
+                }
+            }
+            if (archive != null) {
+                try {
+                    Files.deleteIfExists(archive);
                 } catch (Exception ignored) {
                     // The original encrypted backup remains untouched.
                 }
