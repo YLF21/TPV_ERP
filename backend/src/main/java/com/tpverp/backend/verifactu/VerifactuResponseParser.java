@@ -44,8 +44,21 @@ public class VerifactuResponseParser {
         return new VerifactuSubmissionResult(
                 status,
                 fallback(text(document, "CodigoErrorRegistro"), "AEAT_ERROR"),
-                fallback(text(document, "DescripcionErrorRegistro"), "Error devuelto por AEAT"),
+                errorDescription(document),
                 body);
+    }
+
+    private static String errorDescription(Document document) {
+        var description = fallback(
+                text(document, "DescripcionErrorRegistro"), "Error devuelto por AEAT");
+        var duplicatedRequest = text(document, "IdPeticionRegistroDuplicado");
+        var duplicatedState = text(document, "EstadoRegistroDuplicado");
+        if (duplicatedRequest == null && duplicatedState == null) {
+            return description;
+        }
+        return "%s; duplicadoIdPeticion=%s; duplicadoEstado=%s"
+                .formatted(description, fallback(duplicatedRequest, "N/D"),
+                        fallback(duplicatedState, "N/D"));
     }
 
     private static Document document(String xml) throws Exception {

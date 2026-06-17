@@ -65,6 +65,9 @@ public class VerifactuXmlService {
         invoiceId(document, child(document, alta, "IDFactura"), record, false);
         text(document, alta, "NombreRazonEmisor", request.issuerName());
         text(document, alta, "TipoFactura", record.getDocumentType().name());
+        if (isRectification(record.getDocumentType())) {
+            text(document, alta, "TipoRectificativa", rectificationType(record));
+        }
         text(document, alta, "DescripcionOperacion", "Venta");
         breakdown(document, alta, record);
         text(document, alta, "CuotaTotal", amount(record.getSnapshot().get("impuestoTotal")));
@@ -176,6 +179,22 @@ public class VerifactuXmlService {
         var regime = String.valueOf(line.getOrDefault("regimenImpuesto", "IVA"))
                 .toUpperCase(Locale.ROOT);
         return "IGIC".equals(regime) ? "03" : "01";
+    }
+
+    private static boolean isRectification(FiscalDocumentType type) {
+        return type == FiscalDocumentType.R1
+                || type == FiscalDocumentType.R2
+                || type == FiscalDocumentType.R3
+                || type == FiscalDocumentType.R4;
+    }
+
+    private static String rectificationType(FiscalRecord record) {
+        var value = String.valueOf(record.getSnapshot().getOrDefault("tipoRectificativa", "S"))
+                .toUpperCase(Locale.ROOT);
+        if (!value.equals("S") && !value.equals("I")) {
+            throw new IllegalArgumentException("tipoRectificativa debe ser S o I");
+        }
+        return value;
     }
 
     private static String yesNo(boolean value) {

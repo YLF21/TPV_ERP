@@ -67,6 +67,24 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void incluyeTipoRectificativaEnFacturasRectificativas() {
+        var rectification = new FiscalRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 3, FiscalRecordOperation.ALTA, FiscalDocumentType.R1,
+                "FRV-001-26-000001", LocalDate.of(2026, 6, 14),
+                Instant.parse("2026-06-14T09:15:30Z"), "Atlantic/Canary",
+                "B12345674", new BigDecimal("2.10"), new BigDecimal("12.10"),
+                "B".repeat(64), "A".repeat(64), "C".repeat(64),
+                snapshot(Map.of(), "S"), "1.0", "SHA-256", "0.0.1");
+
+        var xml = service().batchXml(request(rectification, "Empresa SL"));
+        var document = parse(xml);
+
+        assertThat(text(document, "TipoFactura", 0)).isEqualTo("R1");
+        assertThat(text(document, "TipoRectificativa", 0)).isEqualTo("S");
+    }
+
+    @Test
     void rechazaLotesSinRegistrosONombreEmisor() {
         assertThatThrownBy(() -> service().batchXml(request(List.of(), "Empresa SL")))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -110,11 +128,18 @@ class VerifactuXmlServiceTest {
     }
 
     private static Map<String, Object> snapshot(Map<String, Object> line) {
+        return snapshot(line, null);
+    }
+
+    private static Map<String, Object> snapshot(Map<String, Object> line, String rectificationType) {
         var snapshot = new LinkedHashMap<String, Object>();
         snapshot.put("baseTotal", new BigDecimal("10.00"));
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
         snapshot.put("lineas", line.isEmpty() ? List.of() : List.of(line));
+        if (rectificationType != null) {
+            snapshot.put("tipoRectificativa", rectificationType);
+        }
         return snapshot;
     }
 

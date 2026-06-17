@@ -30,6 +30,22 @@ class VerifactuResponseParserTest {
     }
 
     @Test
+    void conservaDetalleDeRegistroDuplicadoDevueltoPorAeat() {
+        var result = parser().parse(new VerifactuTransportResponse(200, """
+                <RespuestaRegFactuSistemaFacturacion>
+                  <EstadoEnvio>Incorrecto</EstadoEnvio>
+                  <CodigoErrorRegistro>3000</CodigoErrorRegistro>
+                  <DescripcionErrorRegistro>Registro duplicado</DescripcionErrorRegistro>
+                  <IdPeticionRegistroDuplicado>ABC123</IdPeticionRegistroDuplicado>
+                  <EstadoRegistroDuplicado>Correcta</EstadoRegistroDuplicado>
+                </RespuestaRegFactuSistemaFacturacion>
+                """));
+
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.RECHAZADO);
+        assertThat(result.error()).contains("ABC123").contains("Correcta");
+    }
+
+    @Test
     void marcaDefectuosoSiLaRespuestaNoEsXml() {
         var result = parser().parse(new VerifactuTransportResponse(200, "no es xml"));
 

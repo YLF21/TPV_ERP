@@ -103,6 +103,23 @@ class FiscalSnapshotFactoryTest {
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
+    @Test
+    void marcaRectificativaPorSustitucionPorDefecto() {
+        var document = new Documento(
+                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.RECTIFICATIVA_VENTA,
+                LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(line(document, 1, "R"));
+        document.confirm(
+                "FRV-001-27-000001", UUID.randomUUID(),
+                Instant.parse("2027-01-02T10:00:00Z"), false);
+
+        var snapshot = new FiscalSnapshotFactory().create(
+                document, "B12345674", FiscalRecordOperation.ALTA,
+                FiscalDocumentType.R1, null);
+
+        assertThat(snapshot).containsEntry("tipoRectificativa", "S");
+    }
+
     private static DocumentoLinea line(Documento document, int position, String code) {
         return new DocumentoLinea(
                 document, UUID.randomUUID(), position, 1, code, "Producto " + code,
