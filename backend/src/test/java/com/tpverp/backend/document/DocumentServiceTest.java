@@ -203,6 +203,29 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketPaidWithVoucherConsumesAndStoresVoucherCode() {
+        var voucherMethod = new MetodoPago(store.getEmpresa().getId(), "VALE", true);
+        when(paymentMethodRepository.findById(voucherMethod.getId()))
+                .thenReturn(Optional.of(voucherMethod));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(voucherService.consume(any(), any(), any())).thenAnswer(invocation ->
+                new VoucherConsumptionResult(null, invocation.getArgument(1), Optional.empty()));
+
+        var ticket = service.createTicket(
+                command(TipoDocumento.TICKET),
+                List.of(new PaymentCommand(
+                        voucherMethod.getId(), new BigDecimal("10.00"), true,
+                        null, null, "VABC123")),
+                authentication());
+
+        assertThat(ticket.getPagos().getFirst().getVoucherCode()).isEqualTo("VABC123");
+        verify(voucherService).consume("VABC123", new BigDecimal("10.00"), ticket);
+    }
+
+    @Test
     void negativeTicketIssuesVoucherAutomatically() {
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
                 .thenReturn(Optional.empty());

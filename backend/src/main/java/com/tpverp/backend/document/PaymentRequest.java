@@ -18,11 +18,12 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
             @NotNull BigDecimal importe,
             boolean principal,
             BigDecimal entregado,
-            BigDecimal cambio) {
+            BigDecimal cambio,
+            String voucherCode) {
 
         PaymentCommand toCommand() {
             return new PaymentCommand(
-                    metodoPagoId, importe, principal, entregado, cambio);
+                    metodoPagoId, importe, principal, entregado, cambio, voucherCode);
         }
     }
 }

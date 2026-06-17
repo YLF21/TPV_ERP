@@ -41,6 +41,7 @@ public class CommercialBootstrapService {
                 new BigDecimal("21.00"));
         createPaymentMethod(companyId, "EFECTIVO");
         createPaymentMethod(companyId, "TARJETA");
+        createPaymentMethod(companyId, "VALE");
     }
 
     private void createPaymentMethod(UUID companyId, String name) {

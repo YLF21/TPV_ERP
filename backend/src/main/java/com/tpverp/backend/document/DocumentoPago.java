@@ -11,6 +11,7 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,6 +38,8 @@ public class DocumentoPago {
     private BigDecimal entregado;
     @Column(precision = 19, scale = 2)
     private BigDecimal cambio;
+    @Column(name = "codigo_vale", length = 32)
+    private String voucherCode;
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
     @Version
@@ -53,6 +56,7 @@ public class DocumentoPago {
             boolean principal,
             BigDecimal entregado,
             BigDecimal cambio,
+            String voucherCode,
             Instant creadoEn) {
         if (posicion < 1) {
             throw new IllegalArgumentException("posición debe ser positiva");
@@ -65,8 +69,21 @@ public class DocumentoPago {
         this.principal = principal;
         this.entregado = nullableMoney(entregado);
         this.cambio = nullableMoney(cambio);
+        this.voucherCode = optionalCode(voucherCode);
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
         validateCashAmounts();
+    }
+
+    public DocumentoPago(
+            Documento documento,
+            MetodoPago metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            Instant creadoEn) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio, null, creadoEn);
     }
 
     public Documento getDocumento() {
@@ -95,6 +112,10 @@ public class DocumentoPago {
 
     public BigDecimal getCambio() {
         return cambio;
+    }
+
+    public String getVoucherCode() {
+        return voucherCode;
     }
 
     // Reajusta únicamente el pago principal cuando cambia administrativamente un ticket.
@@ -138,5 +159,11 @@ public class DocumentoPago {
 
     private static BigDecimal nullableMoney(BigDecimal value) {
         return value == null ? null : Money.euros(value);
+    }
+
+    private static String optionalCode(String value) {
+        return value == null || value.isBlank()
+                ? null
+                : value.trim().toUpperCase(Locale.ROOT);
     }
 }

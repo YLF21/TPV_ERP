@@ -107,6 +107,7 @@ public class FiscalSnapshotFactory {
         value.put("principal", payment.isPrincipal());
         value.put("entregado", payment.getEntregado());
         value.put("cambio", payment.getCambio());
+        value.put("codigoVale", payment.getVoucherCode());
         return value;
     }
 

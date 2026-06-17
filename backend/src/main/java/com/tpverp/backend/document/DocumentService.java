@@ -275,13 +275,13 @@ public class DocumentService {
         if (commands == null || commands.isEmpty()) {
             throw new IllegalArgumentException("se requiere al menos un pago");
         }
-        var total = commands.stream().map(PaymentCommand::importe)
-                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (Money.euros(total).compareTo(document.getTotal()) != 0) {
-            throw new IllegalArgumentException(mismatchMessage);
-        }
-        for (var index = 0; index < commands.size(); index++) {
-            var command = commands.get(index);
+        requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
+        var resolved = commands.stream()
+                .map(command -> resolvePayment(document, command))
+                .toList();
+        requirePaymentTotal(resolved, document.getTotal(), mismatchMessage);
+        for (var index = 0; index < resolved.size(); index++) {
+            var command = resolved.get(index);
             var method = paymentMethods.findById(command.metodoPagoId())
                     .filter(MetodoPago::isActivo)
                     .filter(value -> value.getEmpresaId().equals(
@@ -290,12 +290,44 @@ public class DocumentService {
                             "método de pago activo no encontrado"));
             document.addPayment(new DocumentoPago(
                     document, method, index + 1, command.importe(), command.principal(),
-                    command.entregado(), command.cambio(), Instant.now(clock)));
+                    command.entregado(), command.cambio(), command.voucherCode(), Instant.now(clock)));
         }
         if (document.getPagos().stream().noneMatch(DocumentoPago::isPrincipal)) {
             throw new IllegalArgumentException("se requiere un pago principal");
         }
     }
+
+    private static void requirePaymentTotal(
+            List<PaymentCommand> commands, BigDecimal expected, String message) {
+        var total = commands.stream().map(PaymentCommand::importe)
+                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (Money.euros(total).compareTo(expected) != 0) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private PaymentCommand resolvePayment(Documento document, PaymentCommand command) {
+        var method = paymentMethods.findById(command.metodoPagoId())
+                .filter(MetodoPago::isActivo)
+                .filter(value -> value.getEmpresaId().equals(
+                        organization.currentCompany().getId()))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "metodo de pago activo no encontrado"));
+        if (!"VALE".equals(method.getNombre())) {
+            if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
+                throw new IllegalArgumentException("codigo de vale solo permitido con metodo VALE");
+            }
+            return command;
+        }
+        if (command.voucherCode() == null || command.voucherCode().isBlank()) {
+            throw new IllegalArgumentException("el pago con VALE necesita codigo");
+        }
+        var result = vouchers.consume(command.voucherCode(), command.importe(), document);
+        return new PaymentCommand(
+                command.metodoPagoId(), result.consumedAmount(), command.principal(),
+                command.entregado(), command.cambio(), command.voucherCode());
+    }
+    // Consume vales antes de registrar pagos para guardar el importe real aplicado.
 
     private String nextNumber(Documento document) {
         var type = document.getTipo();

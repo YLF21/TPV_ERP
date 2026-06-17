@@ -8,5 +8,15 @@ public record PaymentCommand(
         BigDecimal importe,
         boolean principal,
         BigDecimal entregado,
-        BigDecimal cambio) {
+        BigDecimal cambio,
+        String voucherCode) {
+
+    public PaymentCommand(
+            UUID metodoPagoId,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio) {
+        this(metodoPagoId, importe, principal, entregado, cambio, null);
+    }
 }
