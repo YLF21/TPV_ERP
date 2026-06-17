@@ -18,6 +18,7 @@ class DocumentControllerContractTest {
         assertController(DeliveryNoteController.class, "/api/v1/delivery-notes");
         assertController(TicketController.class, "/api/v1/tickets");
         assertController(InvoiceController.class, "/api/v1/invoices");
+        assertController(ParkedSaleController.class, "/api/v1/parked-sales");
     }
 
     @Test
