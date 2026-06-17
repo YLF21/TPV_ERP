@@ -44,6 +44,7 @@ public class VoucherService {
     @Transactional
     public VoucherConsumptionResult consume(
             String code, BigDecimal pendingAmount, Documento purchaseTicket) {
+        requireNumberedPurchaseTicket(purchaseTicket);
         var voucher = findActive(code);
         var requested = Money.euros(pendingAmount);
         var consumed = requested.min(voucher.balance());
@@ -77,6 +78,13 @@ public class VoucherService {
     private boolean alreadyIssued(Documento ticket) {
         return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(ticket.getTiendaId()).stream()
                 .anyMatch(voucher -> voucher.originTickets().contains(ticket.getNumero()));
+    }
+
+    private static void requireNumberedPurchaseTicket(Documento ticket) {
+        if (ticket == null || ticket.getTipo() != TipoDocumento.TICKET
+                || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
+            throw new IllegalArgumentException("el consumo de vale necesita un ticket numerado");
+        }
     }
 
     private static List<String> origins(Voucher voucher, Documento ticket) {

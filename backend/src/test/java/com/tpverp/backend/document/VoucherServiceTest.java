@@ -93,6 +93,30 @@ class VoucherServiceTest {
                 .hasMessageContaining("ya tiene vale");
     }
 
+    @Test
+    void voucherCanOnlyBeConsumedWithNumberedPurchaseTicket() {
+        var voucher = new Voucher(
+                store.getId(), "VABC123", new BigDecimal("100.00"),
+                List.of("001-260617-00001"), NOW);
+        var draftTicket = draftTicket("20.00");
+
+        assertThatThrownBy(() -> service.consume(
+                voucher.code(), new BigDecimal("20.00"), draftTicket))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ticket numerado");
+    }
+
+    private Documento draftTicket(String total) {
+        var document = new Documento(
+                store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,
+                LocalDate.of(2026, 6, 17), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentoLinea(
+                document, UUID.randomUUID(), 1, 1,
+                "P-1", "Producto", "VENTA", new BigDecimal(total),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21")));
+        return document;
+    }
+
     private Documento ticket(String number, String total) {
         var document = new Documento(
                 store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,
