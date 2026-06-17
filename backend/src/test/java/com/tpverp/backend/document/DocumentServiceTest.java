@@ -61,6 +61,8 @@ class DocumentServiceTest {
     private ConfirmedPurchaseRecorder purchaseRecorder;
     @Mock
     private DocumentFiscalIntegration fiscalIntegration;
+    @Mock
+    private VoucherService voucherService;
 
     private DocumentService service;
     private Tienda store;
@@ -94,6 +96,7 @@ class DocumentServiceTest {
                 supplierRepository,
                 purchaseRecorder,
                 fiscalIntegration,
+                voucherService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -197,6 +200,22 @@ class DocumentServiceTest {
         assertThat(ticket.getEstado()).isEqualTo(EstadoDocumento.CONFIRMADO);
         assertThat(ticket.getPagos()).hasSize(2);
         assertThat(ticket.isOrigenStock()).isFalse();
+    }
+
+    @Test
+    void negativeTicketIssuesVoucherAutomatically() {
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                negativeTicketCommand(),
+                List.of(),
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("-10.00");
+        verify(voucherService).issueFromNegativeTicket(ticket);
     }
 
     @Test
@@ -487,6 +506,22 @@ class DocumentServiceTest {
                 UUID.randomUUID(), 1, "P-1", "Producto", "VENTA",
                 new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
                 new BigDecimal("21")));
+    }
+
+    private DocumentCommand negativeTicketCommand() {
+        return new DocumentCommand(
+                UUID.randomUUID(),
+                TipoDocumento.TICKET,
+                LocalDate.of(2026, 6, 8),
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                false,
+                List.of(new DocumentLineCommand(
+                        UUID.randomUUID(), -1, "P-1", "Producto", "VENTA",
+                        new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21"))));
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

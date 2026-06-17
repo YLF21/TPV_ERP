@@ -33,6 +33,7 @@ public class DocumentService {
     private final SupplierRepository suppliers;
     private final ConfirmedPurchaseRecorder purchaseRecorder;
     private final DocumentFiscalIntegration fiscalIntegration;
+    private final VoucherService vouchers;
     private final Clock clock;
 
     public DocumentService(
@@ -46,6 +47,7 @@ public class DocumentService {
             SupplierRepository suppliers,
             ConfirmedPurchaseRecorder purchaseRecorder,
             DocumentFiscalIntegration fiscalIntegration,
+            VoucherService vouchers,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -57,6 +59,7 @@ public class DocumentService {
         this.suppliers = suppliers;
         this.purchaseRecorder = purchaseRecorder;
         this.fiscalIntegration = fiscalIntegration;
+        this.vouchers = vouchers;
         this.clock = clock;
     }
 
@@ -110,7 +113,9 @@ public class DocumentService {
             throw new IllegalArgumentException("tipo de ticket no válido");
         }
         var ticket = createDraft(command, authentication);
-        addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+        if (ticket.getTotal().signum() >= 0) {
+            addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+        }
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
@@ -119,6 +124,9 @@ public class DocumentService {
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         fiscalIntegration.registerAlta(saved, false);
+        if (saved.getTotal().signum() < 0) {
+            vouchers.issueFromNegativeTicket(saved);
+        }
         return saved;
     }
 

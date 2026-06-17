@@ -40,7 +40,7 @@ public class TicketController {
             Authentication authentication) {
         return view(service.createTicket(
                 request.document().toCommand(),
-                request.payments().toCommands(),
+                request.paymentCommands(),
                 authentication));
     }
 
@@ -80,7 +80,11 @@ public class TicketController {
 
     public record CreateTicketRequest(
             @NotNull @Valid DocumentRequest document,
-            @NotNull @Valid PaymentRequest payments) {
+            @Valid PaymentRequest payments) {
+
+        List<PaymentCommand> paymentCommands() {
+            return payments == null ? List.of() : payments.toCommands();
+        }
     }
 
     public record CancelRequest(@NotBlank String reason) {
