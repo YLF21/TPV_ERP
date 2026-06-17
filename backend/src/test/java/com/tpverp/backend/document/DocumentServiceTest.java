@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -211,8 +212,11 @@ class DocumentServiceTest {
                 .thenReturn(Optional.empty());
         when(stockGateway.confirm(any())).thenReturn(false);
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(voucherService.consume(any(), any(), any())).thenAnswer(invocation ->
-                new VoucherConsumptionResult(null, invocation.getArgument(1), Optional.empty()));
+        when(voucherService.consume(any(), any(), any())).thenAnswer(invocation -> {
+            Documento purchaseTicket = invocation.getArgument(2);
+            assertThat(purchaseTicket.getNumero()).isEqualTo("001-260608-00001");
+            return new VoucherConsumptionResult(null, invocation.getArgument(1), Optional.empty());
+        });
 
         var ticket = service.createTicket(
                 command(TipoDocumento.TICKET),
@@ -238,7 +242,10 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(ticket.getTotal()).isEqualByComparingTo("-10.00");
-        verify(voucherService).issueFromNegativeTicket(ticket);
+        var order = inOrder(documentRepository, voucherService, fiscalIntegration);
+        order.verify(documentRepository).save(ticket);
+        order.verify(voucherService).issueFromNegativeTicket(ticket);
+        order.verify(fiscalIntegration).registerAlta(ticket, false);
     }
 
     @Test

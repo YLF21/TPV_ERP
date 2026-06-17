@@ -114,19 +114,23 @@ public class DocumentService {
         }
         var ticket = createDraft(command, authentication);
         if (ticket.getTotal().signum() >= 0) {
-            addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+            requirePaymentsPresent(payments);
+            requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
         }
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
                 Instant.now(clock),
                 false);
+        if (ticket.getTotal().signum() >= 0) {
+            addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+        }
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
-        fiscalIntegration.registerAlta(saved, false);
         if (saved.getTotal().signum() < 0) {
             vouchers.issueFromNegativeTicket(saved);
         }
+        fiscalIntegration.registerAlta(saved, false);
         return saved;
     }
 
@@ -272,9 +276,7 @@ public class DocumentService {
 
     private void addPayments(
             Documento document, List<PaymentCommand> commands, String mismatchMessage) {
-        if (commands == null || commands.isEmpty()) {
-            throw new IllegalArgumentException("se requiere al menos un pago");
-        }
+        requirePaymentsPresent(commands);
         requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
         var resolved = commands.stream()
                 .map(command -> resolvePayment(document, command))
@@ -294,6 +296,12 @@ public class DocumentService {
         }
         if (document.getPagos().stream().noneMatch(DocumentoPago::isPrincipal)) {
             throw new IllegalArgumentException("se requiere un pago principal");
+        }
+    }
+
+    private static void requirePaymentsPresent(List<PaymentCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
+            throw new IllegalArgumentException("se requiere al menos un pago");
         }
     }
 
