@@ -10,5 +10,7 @@ public record VerifactuAdminStatusView(
         Instant certificateNotBefore,
         Instant certificateNotAfter,
         VerifactuEndpointMode endpointMode,
-        boolean workerEnabled) {
+        boolean workerEnabled,
+        boolean signatureRequired,
+        String signatureMode) {
 }

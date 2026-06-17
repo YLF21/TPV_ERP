@@ -23,6 +23,7 @@ class VerifactuAdminServiceTest {
         assertThat(status.certificateConfigured()).isFalse();
         assertThat(status.certificateValid()).isFalse();
         assertThat(status.warning()).isEqualTo("CERTIFICATE_NOT_CONFIGURED");
+        assertThat(status.signatureRequired()).isFalse();
     }
 
     @Test
@@ -48,7 +49,8 @@ class VerifactuAdminServiceTest {
                 Mockito.mock(VerifactuPkcs12KeyStoreLoader.class),
                 Mockito.mock(VerifactuCertificateValidator.class),
                 Mockito.mock(FiscalSubmissionQueueService.class),
-                Mockito.mock(VerifactuSubmissionWorker.class));
+                Mockito.mock(VerifactuSubmissionWorker.class),
+                new VerifactuSignaturePolicy());
     }
 
     private static VerifactuAdminService service(
@@ -63,7 +65,8 @@ class VerifactuAdminServiceTest {
                 Mockito.mock(VerifactuPkcs12KeyStoreLoader.class),
                 certificateValidator(),
                 queue,
-                worker);
+                worker,
+                new VerifactuSignaturePolicy());
     }
 
     private static VerifactuCertificateValidator certificateValidator() {

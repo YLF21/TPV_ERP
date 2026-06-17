@@ -16,16 +16,7 @@ public class VerifactuAdminService {
     private final FiscalSubmissionQueueService queue;
     private final VerifactuSubmissionWorker worker;
     private final Environment environment;
-
-    @Autowired
-    public VerifactuAdminService(
-            VerifactuSubmissionPropertiesFactory properties,
-            VerifactuPkcs12KeyStoreLoader keyStores,
-            VerifactuCertificateValidator certificates,
-            FiscalSubmissionQueueService queue,
-            VerifactuSubmissionWorker worker) {
-        this(properties, keyStores, certificates, queue, worker, null);
-    }
+    private final VerifactuSignaturePolicy signatures;
 
     public VerifactuAdminService(
             VerifactuSubmissionPropertiesFactory properties,
@@ -33,13 +24,26 @@ public class VerifactuAdminService {
             VerifactuCertificateValidator certificates,
             FiscalSubmissionQueueService queue,
             VerifactuSubmissionWorker worker,
-            Environment environment) {
+            VerifactuSignaturePolicy signatures) {
+        this(properties, keyStores, certificates, queue, worker, null, signatures);
+    }
+
+    @Autowired
+    public VerifactuAdminService(
+            VerifactuSubmissionPropertiesFactory properties,
+            VerifactuPkcs12KeyStoreLoader keyStores,
+            VerifactuCertificateValidator certificates,
+            FiscalSubmissionQueueService queue,
+            VerifactuSubmissionWorker worker,
+            Environment environment,
+            VerifactuSignaturePolicy signatures) {
         this.properties = properties;
         this.keyStores = keyStores;
         this.certificates = certificates;
         this.queue = queue;
         this.worker = worker;
         this.environment = environment;
+        this.signatures = signatures;
     }
 
     public VerifactuAdminStatusView status() {
@@ -49,11 +53,13 @@ public class VerifactuAdminService {
             var status = certificates.validate(certificate);
             return new VerifactuAdminStatusView(
                     true, status.valid(), status.warning(), status.subject(),
-                    status.notBefore(), status.notAfter(), current.mode(), workerEnabled());
+                    status.notBefore(), status.notAfter(), current.mode(), workerEnabled(),
+                    signatures.requiredForVerifactu(), signatures.mode());
         } catch (RuntimeException exception) {
             return new VerifactuAdminStatusView(
                     false, false, "CERTIFICATE_NOT_CONFIGURED",
-                    null, null, null, null, workerEnabled());
+                    null, null, null, null, workerEnabled(),
+                    signatures.requiredForVerifactu(), signatures.mode());
         }
     }
     // Resume el estado operativo sin exponer password ni contenido del certificado.
