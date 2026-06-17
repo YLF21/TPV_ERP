@@ -173,6 +173,22 @@ public class Product {
         return offerUntil;
     }
 
+    public UUID getImageId() {
+        return imageId == null ? null : UUID.fromString(imageId);
+    }
+
+    public String getImageType() {
+        return imageType;
+    }
+
+    public Long getImageSize() {
+        return imageSize;
+    }
+
+    public String getImageHash() {
+        return imageHash;
+    }
+
     public void update(
             UUID familyId,
             UUID subfamilyId,
@@ -188,6 +204,24 @@ public class Product {
         this.descripcion = CatalogText.optional(description);
         this.purchasePrice = nonNegative(purchasePrice, "precioCompra");
         this.taxesIncluded = taxesIncluded;
+    }
+
+    public void attachImage(UUID imageId, String imageType, long imageSize, String imageHash) {
+        this.imageId = Objects.requireNonNull(imageId, "imageId").toString();
+        this.imageType = CatalogText.optional(imageType);
+        if (this.imageType == null) {
+            throw new IllegalArgumentException("tipoImagen es obligatorio");
+        }
+        this.imageSize = imageSize;
+        this.imageHash = CatalogText.normalized(imageHash, "hashImagen");
+    }
+    // Actualiza solo metadatos; los bytes se escriben antes en almacenamiento local.
+
+    public void clearImage() {
+        imageId = null;
+        imageType = null;
+        imageSize = null;
+        imageHash = null;
     }
 
     public void replaceIdentifier(IdentifierType type, String value) {
