@@ -1,7 +1,9 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -49,7 +51,7 @@ class VoucherServiceTest {
                 new Empresa("B00000000", "Empresa", address),
                 "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         var user = new Usuario(store, "ADMIN", "hash", new Rol(store, "ADMIN"));
-        when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentStore()).thenReturn(store);
         service = new VoucherService(
                 vouchers, organization, Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -57,6 +59,8 @@ class VoucherServiceTest {
     @Test
     void negativeTicketIssuesVoucherAndPartialUseCreatesReplacementWithLineage() {
         when(vouchers.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of());
         var sourceTicket = ticket("001-260617-00001", "-100.00");
 
         var issued = service.issueFromNegativeTicket(sourceTicket);
@@ -73,6 +77,20 @@ class VoucherServiceTest {
                 .isEqualByComparingTo("80.00");
         assertThat(result.replacement().orElseThrow().originTickets())
                 .containsExactly("001-260617-00001", "001-260617-00002");
+    }
+
+    @Test
+    void sameNegativeTicketCannotIssueVoucherTwice() {
+        var sourceTicket = ticket("001-260617-00001", "-100.00");
+        var existing = new Voucher(
+                store.getId(), "VEXISTING", new BigDecimal("100.00"),
+                List.of(sourceTicket.getNumero()), NOW);
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of(existing));
+
+        assertThatThrownBy(() -> service.issueFromNegativeTicket(sourceTicket))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ya tiene vale");
     }
 
     private Documento ticket(String number, String total) {

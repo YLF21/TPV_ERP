@@ -29,6 +29,12 @@ public class VoucherService {
         if (ticket.getTipo() != TipoDocumento.TICKET || ticket.getTotal().signum() >= 0) {
             throw new IllegalArgumentException("solo un ticket negativo genera vale");
         }
+        if (ticket.getNumero() == null || ticket.getNumero().isBlank()) {
+            throw new IllegalArgumentException("el ticket necesita numero para generar vale");
+        }
+        if (alreadyIssued(ticket)) {
+            throw new IllegalStateException("el ticket ya tiene vale generado");
+        }
         return vouchers.save(new Voucher(
                 ticket.getTiendaId(), nextCode(), ticket.getTotal().abs(),
                 List.of(ticket.getNumero()), Instant.now(clock)));
@@ -66,6 +72,11 @@ public class VoucherService {
         return vouchers.findByTiendaIdAndCode(organization.currentStore().getId(), code)
                 .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
                 .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
+    }
+
+    private boolean alreadyIssued(Documento ticket) {
+        return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(ticket.getTiendaId()).stream()
+                .anyMatch(voucher -> voucher.originTickets().contains(ticket.getNumero()));
     }
 
     private static List<String> origins(Voucher voucher, Documento ticket) {
