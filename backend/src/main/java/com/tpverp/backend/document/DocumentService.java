@@ -153,6 +153,10 @@ public class DocumentService {
             throw new IllegalStateException(
                     "el ticket facturado debe corregirse con factura rectificativa");
         }
+        if (vouchers.hasVoucherImpact(ticket)) {
+            throw new IllegalStateException(
+                    "el ticket con vale debe corregirse con un documento rectificativo");
+        }
         var userId = organization.currentUser(authentication).getId();
         ticket.cancel(userId, Instant.now(clock), reason);
         if (ticket.isOrigenStock()) {

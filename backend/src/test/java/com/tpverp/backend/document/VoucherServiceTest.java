@@ -106,6 +106,31 @@ class VoucherServiceTest {
                 .hasMessageContaining("ticket numerado");
     }
 
+    @Test
+    void detectsVoucherImpactFromGeneratedOrUsedVoucher() {
+        var generated = ticket("001-260617-00001", "-100.00");
+        when(vouchers.findAllByTiendaIdOrderByCreatedAtDesc(store.getId()))
+                .thenReturn(List.of(new Voucher(
+                        store.getId(), "VGENERATED", new BigDecimal("100.00"),
+                        List.of(generated.getNumero()), NOW)));
+
+        assertThat(service.hasVoucherImpact(generated)).isTrue();
+
+        var paidWithVoucher = ticket("001-260617-00002", "20.00");
+        paidWithVoucher.addPayment(new DocumentoPago(
+                paidWithVoucher,
+                new MetodoPago(store.getEmpresa().getId(), "VALE", true),
+                1,
+                new BigDecimal("20.00"),
+                true,
+                null,
+                null,
+                "VGENERATED",
+                NOW));
+
+        assertThat(service.hasVoucherImpact(paidWithVoucher)).isTrue();
+    }
+
     private Documento draftTicket(String total) {
         var document = new Documento(
                 store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,

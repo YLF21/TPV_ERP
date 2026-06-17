@@ -69,6 +69,16 @@ public class VoucherService {
                 organization.currentStore().getId());
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasVoucherImpact(Documento ticket) {
+        if (ticket == null || ticket.getTipo() != TipoDocumento.TICKET) {
+            return false;
+        }
+        return ticket.getPagos().stream().anyMatch(payment -> payment.getVoucherCode() != null)
+                || generatedVoucherExists(ticket);
+    }
+    // Detecta tickets que han usado o generado vales para evitar anulaciones incoherentes.
+
     private Voucher findActive(String code) {
         return vouchers.findByTiendaIdAndCode(organization.currentStore().getId(), code)
                 .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
@@ -76,6 +86,13 @@ public class VoucherService {
     }
 
     private boolean alreadyIssued(Documento ticket) {
+        return generatedVoucherExists(ticket);
+    }
+
+    private boolean generatedVoucherExists(Documento ticket) {
+        if (ticket.getNumero() == null || ticket.getNumero().isBlank()) {
+            return false;
+        }
         return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(ticket.getTiendaId()).stream()
                 .anyMatch(voucher -> voucher.originTickets().contains(ticket.getNumero()));
     }

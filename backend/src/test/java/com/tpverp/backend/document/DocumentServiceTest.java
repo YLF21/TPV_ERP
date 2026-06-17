@@ -284,6 +284,24 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketWithVoucherImpactCannotBeCancelled() {
+        var ticket = draft(TipoDocumento.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(false);
+        when(voucherService.hasVoucherImpact(ticket)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.cancelTicket(
+                ticket.getId(), authentication(), "ERROR"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("vale");
+
+        verify(documentRepository, never()).save(any());
+        verify(stockGateway, never()).cancel(any());
+    }
+
+    @Test
     void convertsConfirmedTicketToInvoiceOnceWithoutStockOrPayments() {
         var ticket = draft(TipoDocumento.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
