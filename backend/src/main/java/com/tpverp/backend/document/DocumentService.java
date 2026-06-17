@@ -232,6 +232,10 @@ public class DocumentService {
     @Transactional
     public Documento relate(UUID invoiceId, UUID originId, TipoRelacionDocumento type) {
         var invoice = find(invoiceId);
+        if (!INVOICES.contains(invoice.getTipo())) {
+            throw new IllegalStateException("solo una factura puede relacionarse con origen");
+        }
+        Objects.requireNonNull(type, "tipoRelacion");
         relations.save(new DocumentoRelacion(invoice, find(originId), type));
         return invoice;
     }

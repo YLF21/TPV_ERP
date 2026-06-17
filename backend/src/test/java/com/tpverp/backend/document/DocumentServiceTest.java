@@ -385,6 +385,20 @@ class DocumentServiceTest {
     }
 
     @Test
+    void onlyInvoicesCanBeRelatedToOriginDocuments() {
+        var note = draft(TipoDocumento.ALBARAN_VENTA);
+        var origin = draft(TipoDocumento.TICKET);
+        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
+
+        assertThatThrownBy(() -> service.relate(
+                note.getId(), origin.getId(), TipoRelacionDocumento.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("factura");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
     void confirmedPurchaseDeliveryNoteRecordsSupplierProducts() {
         var supplier = supplier(true);
         var note = purchaseDraft(TipoDocumento.ALBARAN_COMPRA, supplier, true);
