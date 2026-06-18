@@ -59,22 +59,24 @@ public class ApiExceptionHandler {
     ProblemDetail invalidArgument(
             IllegalArgumentException exception,
             HttpServletRequest request) {
+        var language = language(request);
         return problem(
                 HttpStatus.BAD_REQUEST,
                 SystemErrorCode.VALIDATION_ERROR.name(),
-                exception.getMessage(),
-                SupportedLanguage.ES);
+                messages.legacy(exception.getMessage(), language).orElse(exception.getMessage()),
+                language);
     }
 
     @ExceptionHandler(IllegalStateException.class)
     ProblemDetail stateConflict(
             IllegalStateException exception,
             HttpServletRequest request) {
+        var language = language(request);
         return problem(
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
-                exception.getMessage(),
-                SupportedLanguage.ES);
+                messages.legacy(exception.getMessage(), language).orElse(exception.getMessage()),
+                language);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

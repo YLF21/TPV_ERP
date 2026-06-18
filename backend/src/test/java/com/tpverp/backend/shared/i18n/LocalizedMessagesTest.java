@@ -1,7 +1,9 @@
 package com.tpverp.backend.shared.i18n;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ResourceBundle;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.ResourceBundleMessageSource;
 
@@ -37,6 +39,18 @@ class LocalizedMessagesTest {
         assertEquals(SupportedLanguage.ZH, SupportedLanguage.fromHeader("zh-CN,zh;q=0.9"));
         assertEquals(SupportedLanguage.ES, SupportedLanguage.fromHeader("fr-FR,fr;q=0.9"));
         assertEquals(SupportedLanguage.ES, SupportedLanguage.fromHeader(null));
+    }
+
+    @Test
+    void everySpanishMessageKeyExistsInEnglishAndChinese() {
+        var spanish = ResourceBundle.getBundle("i18n/messages", java.util.Locale.forLanguageTag("es"));
+        var english = ResourceBundle.getBundle("i18n/messages", java.util.Locale.forLanguageTag("en"));
+        var chinese = ResourceBundle.getBundle("i18n/messages", java.util.Locale.forLanguageTag("zh"));
+
+        spanish.keySet().forEach(key -> {
+            assertTrue(english.containsKey(key), "Missing English translation for " + key);
+            assertTrue(chinese.containsKey(key), "Missing Chinese translation for " + key);
+        });
     }
 
     private static ResourceBundleMessageSource messageSource() {

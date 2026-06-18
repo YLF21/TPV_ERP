@@ -65,8 +65,20 @@ class ApiExceptionHandlerTest {
 
         var problem = handler.invalidArgument(new IllegalArgumentException("El valor es obligatorio"), request);
 
-        assertEquals("es", problem.getProperties().get("locale"));
-        assertEquals("El valor es obligatorio", problem.getDetail());
+        assertEquals("en", problem.getProperties().get("locale"));
+        assertEquals("Value is required", problem.getDetail());
+    }
+
+    @Test
+    void translatesLegacyBusinessMessagesWhenKnown() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.stateConflict(
+                new IllegalStateException("No se puede eliminar un producto con historial"), request);
+
+        assertEquals("en", problem.getProperties().get("locale"));
+        assertEquals("A product with history cannot be deleted", problem.getDetail());
     }
 
     @Test
