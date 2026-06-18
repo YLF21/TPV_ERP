@@ -3,10 +3,11 @@ package com.tpverp.backend.shared.i18n;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.support.ResourceBundleMessageSource;
 
 class LocalizedMessagesTest {
 
-    private final LocalizedMessages messages = new LocalizedMessages();
+    private final LocalizedMessages messages = new LocalizedMessages(messageSource());
 
     @Test
     void translatesSystemErrorsUsingSpanishAsFallback() {
@@ -36,5 +37,12 @@ class LocalizedMessagesTest {
         assertEquals(SupportedLanguage.ZH, SupportedLanguage.fromHeader("zh-CN,zh;q=0.9"));
         assertEquals(SupportedLanguage.ES, SupportedLanguage.fromHeader("fr-FR,fr;q=0.9"));
         assertEquals(SupportedLanguage.ES, SupportedLanguage.fromHeader(null));
+    }
+
+    private static ResourceBundleMessageSource messageSource() {
+        var source = new ResourceBundleMessageSource();
+        source.setBasename("i18n/messages");
+        source.setDefaultEncoding("UTF-8");
+        return source;
     }
 }
