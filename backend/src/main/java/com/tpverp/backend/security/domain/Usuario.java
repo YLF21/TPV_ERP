@@ -1,9 +1,12 @@
 package com.tpverp.backend.security.domain;
 
 import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.shared.i18n.SupportedLanguage;
 import com.tpverp.backend.terminal.Terminal;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -45,6 +48,10 @@ public class Usuario {
 
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 2)
+    private SupportedLanguage idioma = SupportedLanguage.ES;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "last_terminal_id")
@@ -91,6 +98,14 @@ public class Usuario {
 
     public boolean isActivo() {
         return activo;
+    }
+
+    public SupportedLanguage getIdioma() {
+        return idioma;
+    }
+
+    public void cambiarIdioma(SupportedLanguage nuevoIdioma) {
+        this.idioma = Objects.requireNonNullElse(nuevoIdioma, SupportedLanguage.ES);
     }
 
     public void renombrar(String nuevoNombre) {
