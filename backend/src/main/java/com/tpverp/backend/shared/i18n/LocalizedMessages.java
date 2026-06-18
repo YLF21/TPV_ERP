@@ -2,15 +2,19 @@ package com.tpverp.backend.shared.i18n;
 
 import java.util.Locale;
 import org.springframework.context.MessageSource;
+import org.springframework.context.NoSuchMessageException;
+import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.stereotype.Component;
 
 @Component
 public class LocalizedMessages {
 
     private final MessageSource source;
+    private final MessageSource fallbackSource;
 
     public LocalizedMessages(MessageSource source) {
         this.source = source;
+        this.fallbackSource = fallbackSource();
     }
 
     public String system(SystemErrorCode code, SupportedLanguage language) {
@@ -26,7 +30,20 @@ public class LocalizedMessages {
     // Compone avisos de campo obligatorio reutilizando nombre de campo y texto comun.
 
     private String message(String key, SupportedLanguage language) {
-        return source.getMessage(key, null, locale(fallback(language)));
+        var locale = locale(fallback(language));
+        try {
+            return source.getMessage(key, null, locale);
+        } catch (NoSuchMessageException exception) {
+            return fallbackSource.getMessage(key, null, locale);
+        }
+    }
+
+    private static MessageSource fallbackSource() {
+        var source = new ResourceBundleMessageSource();
+        source.setBasename("i18n/messages");
+        source.setDefaultEncoding("UTF-8");
+        source.setFallbackToSystemLocale(false);
+        return source;
     }
 
     private static String key(Enum<?> value) {

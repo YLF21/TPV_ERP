@@ -4,6 +4,8 @@ import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
 import com.tpverp.backend.organization.Tienda;
 import com.tpverp.backend.organization.TiendaRepository;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -341,16 +343,16 @@ public class CatalogService {
     }
 
     public record ProductRequest(
-            UUID familyId,
+            @NotNull UUID familyId,
             UUID subfamilyId,
-            UUID taxId,
-            String name,
+            @NotNull UUID taxId,
+            @NotBlank String name,
             String description,
-            BigDecimal purchasePrice,
+            @NotNull BigDecimal purchasePrice,
             boolean taxesIncluded,
-            String code,
+            @NotBlank String code,
             String barcode,
-            BigDecimal salePrice,
+            @NotNull BigDecimal salePrice,
             BigDecimal memberPrice,
             BigDecimal wholesalePrice,
             BigDecimal offerPrice,
@@ -359,10 +361,6 @@ public class CatalogService {
             LocalDate offerUntil) {
 
         public ProductRequest {
-            Objects.requireNonNull(familyId, "familyId");
-            Objects.requireNonNull(taxId, "taxId");
-            Objects.requireNonNull(purchasePrice, "purchasePrice");
-            Objects.requireNonNull(salePrice, "salePrice");
         }
     }
 }

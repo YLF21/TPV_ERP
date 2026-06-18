@@ -1,6 +1,10 @@
 spring:
   application:
     name: TPV ERP Backend
+  messages:
+    basename: i18n/messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
   servlet:
     multipart:
       max-file-size: 5MB

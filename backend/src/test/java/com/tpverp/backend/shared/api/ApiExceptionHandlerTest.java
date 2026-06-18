@@ -13,15 +13,19 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.FieldError;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
 class ApiExceptionHandlerTest {
 
-    private final ApiExceptionHandler handler = new ApiExceptionHandler(new LocalizedMessages(messageSource()));
+    private final ApiExceptionHandler handler = new ApiExceptionHandler(messageSource());
 
     @AfterEach
     void clearSecurityContext() {
@@ -65,6 +69,23 @@ class ApiExceptionHandlerTest {
         assertEquals("El valor es obligatorio", problem.getDetail());
     }
 
+    @Test
+    void translatesRequiredFieldValidationMessagesFromReusableParts() throws NoSuchMethodException {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+        var binding = new BeanPropertyBindingResult(new Object(), "productRequest");
+        binding.addError(new FieldError(
+                "productRequest", "name", "", false, new String[] {"NotBlank"}, null, "required"));
+        var parameter = new MethodParameter(
+                ApiExceptionHandlerTest.class.getDeclaredMethod("dummyEndpoint", Object.class), 0);
+
+        var problem = handler.validationFailed(new MethodArgumentNotValidException(parameter, binding), request);
+
+        assertEquals("VALIDATION_ERROR", problem.getProperties().get("code"));
+        assertEquals("en", problem.getProperties().get("locale"));
+        assertEquals("Product name is required", problem.getDetail());
+    }
+
     private static Usuario userWithLanguage(SupportedLanguage language) {
         var store = store();
         var user = new Usuario(store, "USER", "hash", new Rol(store, "VENTAS"));
@@ -92,5 +113,9 @@ class ApiExceptionHandlerTest {
         source.setBasename("i18n/messages");
         source.setDefaultEncoding("UTF-8");
         return source;
+    }
+
+    @SuppressWarnings("unused")
+    private static void dummyEndpoint(Object request) {
     }
 }
