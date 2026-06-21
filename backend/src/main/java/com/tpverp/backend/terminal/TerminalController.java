@@ -27,7 +27,7 @@ public class TerminalController {
     @PostMapping("/request")
     public TerminalRegistrationService.RegistrationResult request(
             @Valid @RequestBody TerminalRequest request) {
-        return service.request(request.name(), request.type());
+        return service.request(request.tiendaId(), request.name(), request.type());
     }
 
     @GetMapping
@@ -49,6 +49,9 @@ public class TerminalController {
         return ResponseEntity.noContent().build();
     }
 
-    public record TerminalRequest(@NotBlank String name, @NotNull TipoTerminal type) {
+    public record TerminalRequest(
+            @NotNull UUID tiendaId,
+            @NotBlank String name,
+            @NotNull TipoTerminal type) {
     }
 }

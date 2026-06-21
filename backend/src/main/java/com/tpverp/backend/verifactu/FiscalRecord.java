@@ -133,6 +133,10 @@ public class FiscalRecord {
         return companyId;
     }
 
+    public UUID getInstallationId() {
+        return installationId;
+    }
+
     public UUID getStoreId() {
         return storeId;
     }
@@ -174,6 +178,10 @@ public class FiscalRecord {
         return totalAmount;
     }
 
+    public BigDecimal getTotalTax() {
+        return totalTax;
+    }
+
     public String getHash() {
         return hash;
     }
@@ -192,6 +200,18 @@ public class FiscalRecord {
 
     public Map<String, Object> getSnapshot() {
         return ImmutableJson.copy(snapshot);
+    }
+
+    public String getFormatVersion() {
+        return formatVersion;
+    }
+
+    public String getAlgorithmVersion() {
+        return algorithmVersion;
+    }
+
+    public String getApplicationVersion() {
+        return applicationVersion;
     }
 
     UUID chainId() {

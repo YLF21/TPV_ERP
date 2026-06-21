@@ -1,5 +1,6 @@
 package com.tpverp.backend.verifactu;
 
+import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -12,14 +13,20 @@ public class FiscalSubmissionAttemptService {
 
     private final FiscalSubmissionAttemptRepository attempts;
     private final FiscalSubmissionStateService states;
+    private final FiscalRecordRepository records;
+    private final CurrentOrganization organization;
     private final Clock clock;
 
     public FiscalSubmissionAttemptService(
             FiscalSubmissionAttemptRepository attempts,
             FiscalSubmissionStateService states,
+            FiscalRecordRepository records,
+            CurrentOrganization organization,
             Clock clock) {
         this.attempts = attempts;
         this.states = states;
+        this.records = records;
+        this.organization = organization;
         this.clock = clock;
     }
 
@@ -72,6 +79,12 @@ public class FiscalSubmissionAttemptService {
 
     @Transactional(readOnly = true)
     public List<FiscalSubmissionAttempt> history(UUID recordId) {
+        records.findByIdAndCompanyIdAndStoreId(
+                        recordId,
+                        organization.currentCompany().getId(),
+                        organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "registro fiscal no encontrado"));
         return attempts.findAllByRecordIdOrderByAttemptedAtDesc(recordId);
     }
 

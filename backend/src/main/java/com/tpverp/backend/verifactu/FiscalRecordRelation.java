@@ -52,6 +52,18 @@ public class FiscalRecordRelation {
         }
     }
 
+    public UUID getRecordId() {
+        return recordId;
+    }
+
+    public UUID getRelatedId() {
+        return relatedId;
+    }
+
+    public FiscalRelationType getType() {
+        return type;
+    }
+
     public static final class Key implements Serializable {
 
         private UUID chainId;

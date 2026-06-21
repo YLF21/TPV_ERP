@@ -1,7 +1,7 @@
 package com.tpverp.backend.security.application;
 
 import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.domain.PermisoRepository;
 import com.tpverp.backend.security.domain.Rol;
 import com.tpverp.backend.security.domain.RolRepository;
@@ -27,7 +27,7 @@ import java.nio.file.Path;
 
 public class SecurityAdministrationService {
 
-    private final TiendaRepository tiendaRepository;
+    private final CurrentOrganization organization;
     private final UsuarioRepository usuarioRepository;
     private final RolRepository rolRepository;
     private final PermisoRepository permisoRepository;
@@ -40,7 +40,7 @@ public class SecurityAdministrationService {
     private final InstalacionRepository installationRepository;
 
     public SecurityAdministrationService(
-            TiendaRepository tiendaRepository,
+            CurrentOrganization organization,
             UsuarioRepository usuarioRepository,
             RolRepository rolRepository,
             PermisoRepository permisoRepository,
@@ -51,7 +51,7 @@ public class SecurityAdministrationService {
             BackupKeyStore backupKeyStore,
             ConfiguracionBackupRepository backupConfigurationRepository,
             InstalacionRepository installationRepository) {
-        this.tiendaRepository = tiendaRepository;
+        this.organization = organization;
         this.usuarioRepository = usuarioRepository;
         this.rolRepository = rolRepository;
         this.permisoRepository = permisoRepository;
@@ -110,7 +110,8 @@ public class SecurityAdministrationService {
 
     @Transactional(readOnly = true)
     public List<UserItem> users() {
-        return usuarioRepository.findAll().stream().map(UserItem::from).toList();
+        return usuarioRepository.findAllByTiendaIdOrderByNombre(currentStore().getId())
+                .stream().map(UserItem::from).toList();
     }
 
     @Transactional
@@ -173,16 +174,17 @@ public class SecurityAdministrationService {
 
     @Transactional(readOnly = true)
     public List<RoleItem> roles() {
-        return rolRepository.findAll().stream().map(RoleItem::from).toList();
+        return rolRepository.findAllByTiendaIdOrderByNombre(currentStore().getId())
+                .stream().map(RoleItem::from).toList();
     }
 
     private Usuario user(UUID id) {
-        return usuarioRepository.findById(id)
+        return usuarioRepository.findByIdAndTiendaId(id, currentStore().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
     }
 
     private Rol role(UUID id) {
-        return rolRepository.findById(id)
+        return rolRepository.findByIdAndTiendaId(id, currentStore().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado"));
     }
 
@@ -199,8 +201,7 @@ public class SecurityAdministrationService {
     }
 
     private Tienda currentStore() {
-        return tiendaRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
+        return organization.currentStore();
     }
 
     private String normalize(String value) {

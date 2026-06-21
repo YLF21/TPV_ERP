@@ -4,14 +4,12 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -21,8 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class InventoryService {
 
-    private final TiendaRepository storeRepository;
-    private final UsuarioRepository userRepository;
+    private final CurrentOrganization organization;
     private final ProductRepository productRepository;
     private final WarehouseRepository warehouseRepository;
     private final StockLevelRepository stockRepository;
@@ -30,15 +27,13 @@ public class InventoryService {
     private final Clock clock;
 
     public InventoryService(
-            TiendaRepository storeRepository,
-            UsuarioRepository userRepository,
+            CurrentOrganization organization,
             ProductRepository productRepository,
             WarehouseRepository warehouseRepository,
             StockLevelRepository stockRepository,
             StockMovementRepository movementRepository,
             Clock clock) {
-        this.storeRepository = storeRepository;
-        this.userRepository = userRepository;
+        this.organization = organization;
         this.productRepository = productRepository;
         this.warehouseRepository = warehouseRepository;
         this.stockRepository = stockRepository;
@@ -90,7 +85,7 @@ public class InventoryService {
         UUID storeId = currentStore().getId();
         product(productId, storeId);
         warehouse(warehouseId, storeId);
-        Usuario user = currentUser(storeId, authentication);
+        Usuario user = organization.currentUser(authentication);
         StockLevel stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId)
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
         stock.apply(quantity);
@@ -114,7 +109,7 @@ public class InventoryService {
         product(productId, storeId);
         warehouse(sourceWarehouseId, storeId);
         warehouse(targetWarehouseId, storeId);
-        Usuario user = currentUser(storeId, authentication);
+        Usuario user = organization.currentUser(authentication);
         StockLevel source = stockLevel(productId, sourceWarehouseId);
         StockLevel target = stockLevel(productId, targetWarehouseId);
         source.apply(-positive(quantity));
@@ -159,18 +154,8 @@ public class InventoryService {
         return warehouse;
     }
 
-    private Usuario currentUser(UUID storeId, Authentication authentication) {
-        if (authentication == null || authentication.getName() == null) {
-            throw new IllegalStateException("No hay un usuario autenticado");
-        }
-        String name = authentication.getName().trim().toUpperCase(Locale.ROOT);
-        return userRepository.findByTiendaIdAndNombre(storeId, name)
-                .orElseThrow(() -> new IllegalStateException("El usuario autenticado no existe"));
-    }
-
     private Tienda currentStore() {
-        return storeRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
+        return organization.currentStore();
     }
 
     private static int positive(int quantity) {

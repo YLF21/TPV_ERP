@@ -1,6 +1,5 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -11,18 +10,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class FiscalSubmissionStateService {
 
     private final FiscalSubmissionStateRepository states;
-    private final FiscalRecordRepository records;
-    private final CurrentOrganization organization;
     private final Clock clock;
 
     public FiscalSubmissionStateService(
             FiscalSubmissionStateRepository states,
-            FiscalRecordRepository records,
-            CurrentOrganization organization,
             Clock clock) {
         this.states = states;
-        this.records = records;
-        this.organization = organization;
         this.clock = clock;
     }
 
@@ -39,6 +32,11 @@ public class FiscalSubmissionStateService {
     @Transactional
     public FiscalSubmissionState markAccepted(UUID recordId) {
         return mark(recordId, FiscalSubmissionStatus.ACEPTADO);
+    }
+
+    @Transactional
+    public FiscalSubmissionState markSubsanado(UUID recordId) {
+        return mark(recordId, FiscalSubmissionStatus.SUBSANADO);
     }
 
     @Transactional
@@ -77,22 +75,9 @@ public class FiscalSubmissionStateService {
     }
 
     private FiscalSubmissionState state(UUID recordId) {
-        validateCurrentScope(recordId);
         return states.findById(recordId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "estado de envio fiscal no encontrado"));
-    }
-
-    private void validateCurrentScope(UUID recordId) {
-        var companyId = organization.currentCompany().getId();
-        var storeId = organization.currentStore().getId();
-        var record = records.findById(recordId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "registro fiscal no encontrado"));
-        if (!record.getCompanyId().equals(companyId) || !record.getStoreId().equals(storeId)) {
-            throw new IllegalArgumentException(
-                    "registro fiscal no pertenece a la tienda actual");
-        }
     }
 
     private Instant now() {

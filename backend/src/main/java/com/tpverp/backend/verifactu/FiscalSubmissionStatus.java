@@ -7,5 +7,6 @@ public enum FiscalSubmissionStatus {
     ACEPTADO,
     ACEPTADO_CON_ERRORES,
     RECHAZADO,
-    DEFECTUOSO
+    DEFECTUOSO,
+    SUBSANADO
 }

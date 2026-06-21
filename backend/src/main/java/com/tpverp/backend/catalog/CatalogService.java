@@ -2,8 +2,8 @@ package com.tpverp.backend.catalog;
 
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CatalogService {
 
-    private final TiendaRepository storeRepository;
+    private final CurrentOrganization organization;
     private final StoreTaxRepository taxRepository;
     private final WarehouseRepository warehouseRepository;
     private final FamilyRepository familyRepository;
@@ -29,7 +29,7 @@ public class CatalogService {
     private final StockMovementRepository movementRepository;
 
     public CatalogService(
-            TiendaRepository storeRepository,
+            CurrentOrganization organization,
             StoreTaxRepository taxRepository,
             WarehouseRepository warehouseRepository,
             FamilyRepository familyRepository,
@@ -38,7 +38,7 @@ public class CatalogService {
             ProductIdentifierRepository identifierRepository,
             StockLevelRepository stockRepository,
             StockMovementRepository movementRepository) {
-        this.storeRepository = storeRepository;
+        this.organization = organization;
         this.taxRepository = taxRepository;
         this.warehouseRepository = warehouseRepository;
         this.familyRepository = familyRepository;
@@ -338,8 +338,7 @@ public class CatalogService {
     }
 
     private Tienda currentStore() {
-        return storeRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
+        return organization.currentStore();
     }
 
     public record ProductRequest(

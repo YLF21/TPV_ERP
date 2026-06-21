@@ -17,6 +17,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -80,6 +83,66 @@ public class FiscalRecordService {
     // Registra y encadena una operacion fiscal usando solo datos persistidos y validados.
     @Transactional(noRollbackFor = VerifactuInactiveException.class)
     public FiscalRecord register(FiscalRecordCommand command) {
+        return register(command, null, null);
+    }
+
+    @Transactional(noRollbackFor = VerifactuInactiveException.class)
+    public FiscalRecord registerSubstitution(
+            FiscalRecordCommand command, UUID substitutedDocumentId) {
+        if (command == null
+                || command.operation() != FiscalRecordOperation.ALTA
+                || command.documentType() != FiscalDocumentType.F3) {
+            throw new IllegalArgumentException("La sustitución requiere un alta F3");
+        }
+        return register(command, substitutedDocumentId, FiscalRelationType.SUSTITUYE);
+    }
+    // Crea el alta F3 y la enlaza con la factura simplificada sustituida.
+
+    // Crea un alta de subsanacion sin alterar identidad ni contenido economico del original.
+    @Transactional
+    public FiscalRecord registerCorrection(
+            FiscalRecord original, Map<String, Object> correctedSnapshot) {
+        if (original == null || original.getOperation() != FiscalRecordOperation.ALTA) {
+            throw new IllegalArgumentException("Solo puede subsanarse un registro de alta");
+        }
+        validateCorrectionEconomics(original, correctedSnapshot);
+        var generatedAt = Instant.now(clock).truncatedTo(ChronoUnit.SECONDS);
+        var chain = chains.findForUpdate(original.getCompanyId(), original.getInstallationId())
+                .orElseThrow(() -> new IllegalStateException("Cadena fiscal no encontrada"));
+        if (!original.chainId().equals(chain.getId())) {
+            throw new IllegalStateException("El registro no pertenece a la cadena fiscal activa");
+        }
+        var snapshot = new LinkedHashMap<>(correctedSnapshot);
+        addPreviousRecord(snapshot, chain.getLastRecord());
+        var previousHash = chain.previousHash();
+        var generatedOffset = generatedAt.atZone(ZoneId.of(original.getTimezone()))
+                .toOffsetDateTime();
+        var hash = officialHashes.hash(new AltaHashInput(
+                original.getIssuerTaxId(), original.getNumber(),
+                DATE.format(original.getIssueDate()), original.getDocumentType().name(),
+                original.getTotalTax(), original.getTotalAmount(), previousHash,
+                generatedOffset));
+        var correction = records.save(new FiscalRecord(
+                chain.getId(), original.getCompanyId(), original.getInstallationId(),
+                original.getStoreId(), original.getDocumentId(), chain.nextSequence(),
+                FiscalRecordOperation.ALTA, original.getDocumentType(), original.getNumber(),
+                original.getIssueDate(), generatedAt, original.getTimezone(),
+                original.getIssuerTaxId(), original.getTotalTax(), original.getTotalAmount(),
+                previousHash, hash, jsonHasher.hash(snapshot), snapshot,
+                original.getFormatVersion(), original.getAlgorithmVersion(),
+                original.getApplicationVersion()));
+        states.save(new FiscalSubmissionState(
+                correction.getId(), FiscalSubmissionStatus.PENDIENTE, generatedAt));
+        relations.save(new FiscalRecordRelation(
+                chain.getId(), correction.getId(), original.getId(), FiscalRelationType.SUBSANA));
+        chain.advance(correction, generatedAt);
+        return correction;
+    }
+
+    private FiscalRecord register(
+            FiscalRecordCommand command,
+            UUID relatedDocumentId,
+            FiscalRelationType relationType) {
         if (command == null) {
             throw new IllegalArgumentException("command es obligatorio");
         }
@@ -99,9 +162,12 @@ public class FiscalRecordService {
                     "La operacion fiscal ya esta registrada para el documento");
         }
         var original = originalForCancellation(command, chain);
-        var snapshot = snapshots.create(
+        var related = relatedRecord(command, chain, relatedDocumentId, relationType);
+        var snapshot = new LinkedHashMap<>(snapshots.create(
                 context.document(), context.issuerTaxId(), command.operation(),
-                command.documentType(), context.customer());
+                command.documentType(), context.customer()));
+        addPreviousRecord(snapshot, chain.getLastRecord());
+        addRelatedDocument(snapshot, related, relationType);
         var previousHash = chain.previousHash();
         var totalTax = amount(command.operation(), context.document().getImpuestoTotal());
         var totalAmount = amount(command.operation(), context.document().getTotal());
@@ -124,9 +190,65 @@ public class FiscalRecordService {
                     chain.getId(), saved.getId(), original.getId(),
                     FiscalRelationType.ANULA));
         }
+        if (related != null) {
+            relations.save(new FiscalRecordRelation(
+                    chain.getId(), saved.getId(), related.getId(), relationType));
+        }
         chain.advance(saved, generatedAt);
         return saved;
     }
+
+    private FiscalRecord relatedRecord(
+            FiscalRecordCommand command,
+            FiscalChain chain,
+            UUID relatedDocumentId,
+            FiscalRelationType relationType) {
+        if (relatedDocumentId == null) {
+            return null;
+        }
+        var related = records.findByDocumentIdAndOperation(
+                        relatedDocumentId, FiscalRecordOperation.ALTA)
+                .orElseThrow(() -> new IllegalStateException(
+                        "La sustitución requiere el alta fiscal del ticket"));
+        if (relationType != FiscalRelationType.SUSTITUYE
+                || related.getDocumentType() != FiscalDocumentType.F2) {
+            throw new IllegalArgumentException(
+                    "Solo una factura simplificada F2 puede sustituirse por F3");
+        }
+        if (!related.chainId().equals(chain.getId())
+                || !related.getCompanyId().equals(command.companyId())
+                || !related.getStoreId().equals(command.storeId())) {
+            throw new IllegalStateException(
+                    "El ticket sustituido no pertenece a la cadena fiscal activa");
+        }
+        return related;
+    }
+
+    private static void addRelatedDocument(
+            Map<String, Object> snapshot,
+            FiscalRecord related,
+            FiscalRelationType relationType) {
+        if (related == null || relationType != FiscalRelationType.SUSTITUYE) {
+            return;
+        }
+        snapshot.put("facturasSustituidas", List.of(Map.of(
+                "nifEmisor", related.getIssuerTaxId(),
+                "numero", related.getNumber(),
+                "fecha", related.getIssueDate().toString())));
+    }
+
+    private static void addPreviousRecord(
+            Map<String, Object> snapshot, FiscalRecord previous) {
+        if (previous == null) {
+            return;
+        }
+        snapshot.put("registroAnterior", Map.of(
+                "nifEmisor", previous.getIssuerTaxId(),
+                "numero", previous.getNumber(),
+                "fecha", previous.getIssueDate().toString(),
+                "huella", previous.getHash()));
+    }
+    // Congela la identidad completa exigida por RegistroAnterior en el XML.
 
     private FiscalContext fiscalContext(
             FiscalRecordCommand command, Instant generatedAt) {
@@ -229,6 +351,21 @@ public class FiscalRecordService {
     private static BigDecimal amount(
             FiscalRecordOperation operation, BigDecimal value) {
         return operation == FiscalRecordOperation.ALTA ? value : null;
+    }
+
+    private static void validateCorrectionEconomics(
+            FiscalRecord original, Map<String, Object> snapshot) {
+        if (snapshot == null
+                || !"S".equals(snapshot.get("subsanacion"))
+                || !sameAmount(snapshot.get("impuestoTotal"), original.getTotalTax())
+                || !sameAmount(snapshot.get("total"), original.getTotalAmount())) {
+            throw new IllegalArgumentException(
+                    "La subsanacion no puede modificar importes ni impuestos");
+        }
+    }
+
+    private static boolean sameAmount(Object value, BigDecimal expected) {
+        return value instanceof BigDecimal amount && amount.compareTo(expected) == 0;
     }
 
     private record FiscalContext(

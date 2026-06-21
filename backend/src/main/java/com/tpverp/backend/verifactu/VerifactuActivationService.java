@@ -19,6 +19,11 @@ public class VerifactuActivationService {
                 legalActivationAt(type, zoneId));
     }
 
+    public Instant legalActivationInstant(TaxpayerType type, ZoneId zoneId) {
+        return legalActivationAt(type, zoneId);
+    }
+    // Expone el inicio legal efectivo para informar al administrador.
+
     // Combina la activación voluntaria con la obligación legal automática.
     public boolean isActive(
             VerifactuConfiguration configuration,

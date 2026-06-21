@@ -23,6 +23,60 @@ class VerifactuOfficialXsdValidatorTest {
     }
 
     @Test
+    void validaFacturaF3ConFacturaSustituidaContraXsdOficial() {
+        var snapshot = new LinkedHashMap<>(snapshot());
+        snapshot.put("facturasSustituidas", List.of(Map.of(
+                "nifEmisor", "B12345674",
+                "numero", "001-260617-000001",
+                "fecha", "2026-06-17")));
+        snapshot.put("registroAnterior", Map.of(
+                "nifEmisor", "B12345674",
+                "numero", "001-260617-000001",
+                "fecha", "2026-06-17",
+                "huella", "A".repeat(64)));
+        var replacement = new FiscalRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 2, FiscalRecordOperation.ALTA, FiscalDocumentType.F3,
+                "FV-001-26-000001", LocalDate.of(2026, 6, 17),
+                Instant.parse("2026-06-17T09:16:30Z"), "Atlantic/Canary",
+                "B12345674", new BigDecimal("2.10"), new BigDecimal("12.10"),
+                "A".repeat(64), "B".repeat(64), "C".repeat(64), snapshot,
+                "1.0", "SHA-256", "0.0.1");
+
+        var xml = new VerifactuXmlService().batchXml(request(replacement));
+
+        assertThatCode(() -> validator().validate(xml)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void validaSubsanacionConDestinatarioContraXsdOficial() {
+        var corrected = new LinkedHashMap<>(snapshot());
+        corrected.put("subsanacion", "S");
+        corrected.put("rechazoPrevio", "S");
+        corrected.put("descripcionOperacion", "Venta corregida");
+        corrected.put("cliente", Map.of(
+                "numeroDocumento", "B12345674",
+                "nombreFiscal", "Cliente Corregido SL"));
+        corrected.put("registroAnterior", Map.of(
+                "nifEmisor", "B12345674",
+                "numero", "001-260617-000001",
+                "fecha", "2026-06-17",
+                "huella", "A".repeat(64)));
+        var correction = new FiscalRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 2, FiscalRecordOperation.ALTA, FiscalDocumentType.F1,
+                "FV-001-26-000001", LocalDate.of(2026, 6, 17),
+                Instant.parse("2026-06-17T09:16:30Z"), "Atlantic/Canary",
+                "B12345674", new BigDecimal("2.10"), new BigDecimal("12.10"),
+                "A".repeat(64), "B".repeat(64), "C".repeat(64), corrected,
+                "1.0", "SHA-256", "0.0.1");
+
+        var xml = new VerifactuXmlService().batchXml(request(correction));
+
+        assertThatCode(() -> validator().validate(xml)).doesNotThrowAnyException();
+    }
+
+    @Test
     void rechazaXmlQueNoCumpleElXsdOficial() {
         assertThatThrownBy(() -> validator().validate("""
                 <sfLR:RegFactuSistemaFacturacion

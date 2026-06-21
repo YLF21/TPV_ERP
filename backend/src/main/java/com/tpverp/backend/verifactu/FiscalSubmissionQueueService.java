@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,7 +14,10 @@ public class FiscalSubmissionQueueService {
 
     private static final List<FiscalSubmissionStatus> RETRYABLE = List.of(
             FiscalSubmissionStatus.PENDIENTE,
-            FiscalSubmissionStatus.ENVIADO);
+            FiscalSubmissionStatus.ENVIANDO,
+            FiscalSubmissionStatus.ENVIADO,
+            FiscalSubmissionStatus.RECHAZADO);
+    private static final java.time.Duration RETRY_DELAY = java.time.Duration.ofHours(1);
 
     private final FiscalSubmissionStateRepository states;
     private final FiscalRecordRepository records;
@@ -42,14 +46,27 @@ public class FiscalSubmissionQueueService {
     // Reclama el primer registro disponible para evitar envios duplicados.
     @Transactional
     public Optional<ClaimedFiscalSubmission> claimNext() {
-        return retryable().stream().findFirst().map(item -> {
-            var state = states.findById(item.state().getRecordId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "estado de envio fiscal no encontrado"));
-            state.mark(FiscalSubmissionStatus.ENVIANDO, Instant.now(clock));
-            return new ClaimedFiscalSubmission(item.record(), states.save(state));
-        });
+        return retryableAcrossStores().stream()
+                .filter(item -> eligible(item.state()))
+                .map(item -> claim(item.record().getId()))
+                .flatMap(Optional::stream)
+                .findFirst();
     }
+
+    @Transactional
+    public Optional<ClaimedFiscalSubmission> claim(UUID recordId) {
+        var record = records.findById(recordId)
+                .orElseThrow(() -> new IllegalArgumentException("registro fiscal no encontrado"));
+        var state = states.findForUpdate(recordId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "estado de envio fiscal no encontrado"));
+        if (!eligible(state)) {
+            return Optional.empty();
+        }
+        state.mark(FiscalSubmissionStatus.ENVIANDO, Instant.now(clock));
+        return Optional.of(new ClaimedFiscalSubmission(record, states.save(state)));
+    }
+    // Reclama un registro concreto tras el commit sin competir con otro worker.
 
     private List<QueueCandidate> retryable() {
         var companyId = organization.currentCompany().getId();
@@ -60,6 +77,22 @@ public class FiscalSubmissionQueueService {
                         .filter(record -> record.getStoreId().equals(storeId))
                         .map(record -> new QueueCandidate(record, state)))
                 .toList();
+    }
+
+    private List<QueueCandidate> retryableAcrossStores() {
+        return states.findAllByStatusInOrderByUpdatedAtAsc(RETRYABLE).stream()
+                .flatMap(state -> records.findById(state.getRecordId()).stream()
+                        .map(record -> new QueueCandidate(record, state)))
+                .toList();
+    }
+    // El worker recorre todas las tiendas; la vista administrativa permanece acotada.
+
+    private boolean eligible(FiscalSubmissionState state) {
+        if (state.getStatus() == FiscalSubmissionStatus.PENDIENTE) {
+            return true;
+        }
+        return RETRYABLE.contains(state.getStatus())
+                && !state.getUpdatedAt().isAfter(Instant.now(clock).minus(RETRY_DELAY));
     }
 
     private record QueueCandidate(FiscalRecord record, FiscalSubmissionState state) {

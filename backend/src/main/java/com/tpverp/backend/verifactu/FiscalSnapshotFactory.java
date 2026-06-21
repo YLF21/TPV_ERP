@@ -26,6 +26,7 @@ public class FiscalSnapshotFactory {
         snapshot.put("tipo", document.getTipo().name());
         snapshot.put("estado", document.getEstado().name());
         snapshot.put("numero", document.getNumero());
+        snapshot.put("numTicket", document.getNumTicket());
         snapshot.put("fecha", document.getFecha().toString());
         snapshot.put("tiendaId", document.getTiendaId().toString());
         snapshot.put("clienteId", id(document.getClienteId()));

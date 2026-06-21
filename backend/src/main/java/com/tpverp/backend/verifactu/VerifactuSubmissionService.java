@@ -14,6 +14,8 @@ public class VerifactuSubmissionService {
     private final FiscalSubmissionAttemptService attempts;
     private final VerifactuResponseParser responses;
     private final VerifactuOfficialXsdValidator validator;
+    private final VerifactuFirstSubmissionMarker firstSubmissions;
+    private final FiscalCorrectionCompletionService corrections;
 
     public VerifactuSubmissionService(
             VerifactuXmlService xml,
@@ -23,7 +25,9 @@ public class VerifactuSubmissionService {
             VerifactuTransport transport,
             FiscalSubmissionAttemptService attempts,
             VerifactuResponseParser responses,
-            VerifactuOfficialXsdValidator validator) {
+            VerifactuOfficialXsdValidator validator,
+            VerifactuFirstSubmissionMarker firstSubmissions,
+            FiscalCorrectionCompletionService corrections) {
         this.xml = xml;
         this.soap = soap;
         this.endpoints = endpoints;
@@ -32,6 +36,8 @@ public class VerifactuSubmissionService {
         this.attempts = attempts;
         this.responses = responses;
         this.validator = validator;
+        this.firstSubmissions = firstSubmissions;
+        this.corrections = corrections;
     }
 
     public VerifactuSubmissionResult submit(FiscalRecord record) {
@@ -75,9 +81,16 @@ public class VerifactuSubmissionService {
     private VerifactuSubmissionResult recordResult(
             FiscalRecord record, VerifactuSubmissionResult result) {
         switch (result.status()) {
-            case ACEPTADO -> attempts.recordAccepted(record.getId(), result.responsePayload());
-            case ACEPTADO_CON_ERRORES -> attempts.recordAcceptedWithErrors(
-                    record.getId(), result.errorCode(), result.error(), result.responsePayload());
+            case ACEPTADO -> {
+                attempts.recordAccepted(record.getId(), result.responsePayload());
+                corrections.accepted(record);
+                markFirstSubmission(record);
+            }
+            case ACEPTADO_CON_ERRORES -> {
+                attempts.recordAcceptedWithErrors(
+                        record.getId(), result.errorCode(), result.error(), result.responsePayload());
+                markFirstSubmission(record);
+            }
             case RECHAZADO -> attempts.recordRejected(
                     record.getId(), result.errorCode(), result.error(), result.responsePayload());
             case DEFECTUOSO -> attempts.recordDefective(
@@ -85,5 +98,11 @@ public class VerifactuSubmissionService {
             default -> { }
         }
         return result;
+    }
+
+    private void markFirstSubmission(FiscalRecord record) {
+        if (firstSubmissions != null) {
+            firstSubmissions.mark(record);
+        }
     }
 }

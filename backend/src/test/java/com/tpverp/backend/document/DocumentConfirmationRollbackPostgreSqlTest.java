@@ -67,6 +67,8 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @Autowired private UsuarioRepository users;
     @Autowired private TransactionTemplate transactions;
     @MockitoBean private CurrentOrganization organization;
+    @MockitoBean private DocumentFiscalIntegration fiscalIntegration;
+    @MockitoBean private VoucherService voucherService;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -136,9 +138,9 @@ class DocumentConfirmationRollbackPostgreSqlTest {
                 """.formatted(SCHEMA), ids.companyId(), address());
         jdbc.update("""
                 insert into %s.tienda (
-                    id, empresa_id, nombre, direccion, address_normalized_hash,
+                    id, empresa_id, codigo_tienda, nombre, direccion, address_normalized_hash,
                     timezone, moneda, locale)
-                values (?, ?, 'Tienda', cast(? as jsonb), 'hash',
+                values (?, ?, '001', 'Tienda', cast(? as jsonb), 'hash',
                     'Atlantic/Canary', 'EUR', 'es-ES')
                 """.formatted(SCHEMA), ids.storeId(), ids.companyId(), address());
         jdbc.update("""

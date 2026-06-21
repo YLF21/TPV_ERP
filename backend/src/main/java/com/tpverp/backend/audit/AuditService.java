@@ -1,7 +1,6 @@
 package com.tpverp.backend.audit;
 
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -14,30 +13,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuditService {
 
     private final AuditoriaRepository auditoriaRepository;
-    private final TiendaRepository tiendaRepository;
-    private final UsuarioRepository usuarioRepository;
+    private final CurrentOrganization organization;
     private final Clock clock;
 
     public AuditService(
             AuditoriaRepository auditoriaRepository,
-            TiendaRepository tiendaRepository,
-            UsuarioRepository usuarioRepository,
+            CurrentOrganization organization,
             Clock clock) {
         this.auditoriaRepository = auditoriaRepository;
-        this.tiendaRepository = tiendaRepository;
-        this.usuarioRepository = usuarioRepository;
+        this.organization = organization;
         this.clock = clock;
     }
 
     @Transactional
     public void record(String event, ResultadoAuditoria result, Map<String, Object> details) {
-        var store = tiendaRepository.findAll().stream().findFirst().orElse(null);
-        String userName = SecurityContextHolder.getContext().getAuthentication() == null
-                ? null
-                : SecurityContextHolder.getContext().getAuthentication().getName();
-        var user = store == null || userName == null
-                ? null
-                : usuarioRepository.findByTiendaIdAndNombre(store.getId(), userName).orElse(null);
+        var store = organization.currentStore();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var user = authentication == null ? null : organization.currentUser(authentication);
         auditoriaRepository.save(new Auditoria(
                 store, user, null, event, result, details, Instant.now(clock)));
     }
@@ -52,7 +44,8 @@ public class AuditService {
             throw new IllegalArgumentException("El intervalo de auditoria no es valido");
         }
         return auditoriaRepository
-                .findByCreadaEnBetweenOrderByCreadaEnDesc(effectiveFrom, effectiveUntil)
+                .findByTiendaIdAndCreadaEnBetweenOrderByCreadaEnDesc(
+                        organization.currentStore().getId(), effectiveFrom, effectiveUntil)
                 .stream()
                 .map(AuditItem::from)
                 .toList();
@@ -63,7 +56,11 @@ public class AuditService {
         if (!"ELIMINAR AUDITORIA".equals(confirmation)) {
             throw new IllegalArgumentException("La confirmacion de borrado no es valida");
         }
-        auditoriaRepository.deleteById(auditId);
+        var audit = auditoriaRepository.findByIdAndTiendaId(
+                        auditId, organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "auditoría no encontrada"));
+        auditoriaRepository.delete(audit);
         record("AUDIT_DELETED", ResultadoAuditoria.EXITO, Map.of("deletedAuditId", auditId));
     }
 

@@ -17,7 +17,7 @@ public class VerifactuSubmissionScheduler {
         this.environment = environment;
     }
 
-    @Scheduled(fixedDelayString = "${tpv.verifactu.worker-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${tpv.verifactu.worker-delay-ms:3600000}")
     public void tick() {
         if (enabled()) {
             worker.processNext();
@@ -27,6 +27,6 @@ public class VerifactuSubmissionScheduler {
 
     private boolean enabled() {
         return environment.getProperty(
-                "tpv.verifactu.worker-enabled", Boolean.class, false);
+                "tpv.verifactu.worker-enabled", Boolean.class, true);
     }
 }

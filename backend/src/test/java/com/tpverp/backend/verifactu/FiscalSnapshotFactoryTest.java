@@ -120,6 +120,24 @@ class FiscalSnapshotFactoryTest {
         assertThat(snapshot).containsEntry("tipoRectificativa", "S");
     }
 
+    @Test
+    void incluyeNumeroDeTicketEnFacturaSustitutiva() {
+        var invoice = new Documento(
+                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.FACTURA_VENTA,
+                LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        invoice.addLine(line(invoice, 1, "F"));
+        setNumTicket(invoice, "001-270102-000001");
+        invoice.confirm(
+                "FV-001-27-000001", UUID.randomUUID(),
+                Instant.parse("2027-01-02T10:00:00Z"), false);
+
+        var snapshot = new FiscalSnapshotFactory().create(
+                invoice, "B12345674", FiscalRecordOperation.ALTA,
+                FiscalDocumentType.F3, null);
+
+        assertThat(snapshot).containsEntry("numTicket", "001-270102-000001");
+    }
+
     private static DocumentoLinea line(Documento document, int position, String code) {
         return new DocumentoLinea(
                 document, UUID.randomUUID(), position, 1, code, "Producto " + code,
@@ -139,6 +157,16 @@ class FiscalSnapshotFactoryTest {
                     "setParties", UUID.class, UUID.class, String.class);
             method.setAccessible(true);
             method.invoke(document, customerId, supplierId, null);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static void setNumTicket(Documento document, String ticketNumber) {
+        try {
+            var method = Documento.class.getDeclaredMethod("setNumTicket", String.class);
+            method.setAccessible(true);
+            method.invoke(document, ticketNumber);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

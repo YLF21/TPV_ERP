@@ -12,5 +12,9 @@ public record VerifactuAdminStatusView(
         VerifactuEndpointMode endpointMode,
         boolean workerEnabled,
         boolean signatureRequired,
-        String signatureMode) {
+        String signatureMode,
+        boolean verifactuActive,
+        String activationMode,
+        Instant effectiveActivationAt,
+        Instant firstSubmissionAt) {
 }

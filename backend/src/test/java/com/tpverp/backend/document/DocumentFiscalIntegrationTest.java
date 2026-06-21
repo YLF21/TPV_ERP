@@ -16,6 +16,7 @@ import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
 import com.tpverp.backend.verifactu.FiscalRecordService;
+import com.tpverp.backend.verifactu.FiscalRecordRepository;
 import com.tpverp.backend.verifactu.VerifactuInactiveException;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -30,6 +31,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentFiscalIntegrationTest {
@@ -37,9 +39,13 @@ class DocumentFiscalIntegrationTest {
     @Mock
     private FiscalRecordService fiscalRecords;
     @Mock
+    private FiscalRecordRepository recordRepository;
+    @Mock
     private CurrentOrganization organization;
     @Mock
     private InstalacionRepository installations;
+    @Mock
+    private ApplicationEventPublisher events;
 
     private DocumentFiscalIntegration integration;
     private Tienda store;
@@ -61,7 +67,14 @@ class DocumentFiscalIntegrationTest {
         lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(installations.findAll()).thenReturn(List.of(installation));
-        integration = new DocumentFiscalIntegration(fiscalRecords, organization, installations);
+        var fiscalRecord = org.mockito.Mockito.mock(
+                com.tpverp.backend.verifactu.FiscalRecord.class);
+        lenient().when(fiscalRecord.getId()).thenReturn(UUID.randomUUID());
+        lenient().when(fiscalRecords.register(any())).thenReturn(fiscalRecord);
+        lenient().when(fiscalRecords.registerSubstitution(any(), any()))
+                .thenReturn(fiscalRecord);
+        integration = new DocumentFiscalIntegration(
+                fiscalRecords, recordRepository, organization, installations, events);
     }
 
     @Test
@@ -95,6 +108,19 @@ class DocumentFiscalIntegrationTest {
     }
 
     @Test
+    void publishesImmediateSubmissionEventForCreatedFiscalRecord() {
+        var record = org.mockito.Mockito.mock(com.tpverp.backend.verifactu.FiscalRecord.class);
+        var recordId = UUID.randomUUID();
+        when(record.getId()).thenReturn(recordId);
+        when(fiscalRecords.register(any())).thenReturn(record);
+
+        integration.registerAlta(confirmed(TipoDocumento.TICKET, BigDecimal.TEN), false);
+
+        verify(events).publishEvent(
+                new com.tpverp.backend.verifactu.FiscalRecordQueuedEvent(recordId));
+    }
+
+    @Test
     void ignoresNonSalesFiscalDocuments() {
         integration.registerAlta(confirmed(TipoDocumento.FACTURA_COMPRA, BigDecimal.TEN), false);
 
@@ -109,6 +135,18 @@ class DocumentFiscalIntegrationTest {
         verify(fiscalRecords).register(command.capture());
         assertThat(command.getValue().operation()).isEqualTo(FiscalRecordOperation.ANULACION);
         assertThat(command.getValue().documentType()).isEqualTo(FiscalDocumentType.R5);
+    }
+
+    @Test
+    void registersInvoiceFromTicketAsF3Substitution() {
+        var ticket = confirmed(TipoDocumento.TICKET, BigDecimal.TEN);
+        var invoice = confirmed(TipoDocumento.FACTURA_VENTA, BigDecimal.TEN);
+
+        integration.registerInvoiceFromTicket(invoice, ticket);
+
+        var command = ArgumentCaptor.forClass(FiscalRecordCommand.class);
+        verify(fiscalRecords).registerSubstitution(command.capture(), org.mockito.Mockito.eq(ticket.getId()));
+        assertThat(command.getValue().documentType()).isEqualTo(FiscalDocumentType.F3);
     }
 
     private Documento confirmed(TipoDocumento type, BigDecimal amount) {

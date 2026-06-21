@@ -1,6 +1,6 @@
 package com.tpverp.backend.security;
 
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.security.application.SecurityAdministrationService;
 import com.tpverp.backend.security.domain.PermisoRepository;
@@ -34,7 +34,7 @@ class SecurityAdministrationConfiguration {
 
     @Bean
     SecurityAdministrationService securityAdministrationService(
-            TiendaRepository tiendaRepository,
+            CurrentOrganization organization,
             UsuarioRepository usuarioRepository,
             RolRepository rolRepository,
             PermisoRepository permisoRepository,
@@ -46,7 +46,7 @@ class SecurityAdministrationConfiguration {
             ConfiguracionBackupRepository backupConfigurationRepository,
             InstalacionRepository installationRepository) {
         return new SecurityAdministrationService(
-                tiendaRepository,
+                organization,
                 usuarioRepository,
                 rolRepository,
                 permisoRepository,

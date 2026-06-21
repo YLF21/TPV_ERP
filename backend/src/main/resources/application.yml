@@ -60,5 +60,5 @@ tpv:
     certificate-password: ${TPV_VERIFACTU_CERTIFICATE_PASSWORD:}
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
-    worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:false}
-    worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:60000}
+    worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:true}
+    worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}

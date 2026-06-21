@@ -5,10 +5,13 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
+import com.tpverp.backend.verifactu.FiscalRecordRepository;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.VerifactuInactiveException;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
+import org.springframework.context.ApplicationEventPublisher;
+import com.tpverp.backend.verifactu.FiscalRecordQueuedEvent;
 
 @Component
 public class DocumentFiscalIntegration {
@@ -18,16 +21,22 @@ public class DocumentFiscalIntegration {
     private static final String APPLICATION_VERSION = "TPV-ERP-0.0.1";
 
     private final FiscalRecordService fiscalRecords;
+    private final FiscalRecordRepository recordRepository;
     private final CurrentOrganization organization;
     private final InstalacionRepository installations;
+    private final ApplicationEventPublisher events;
 
     public DocumentFiscalIntegration(
             FiscalRecordService fiscalRecords,
+            FiscalRecordRepository recordRepository,
             CurrentOrganization organization,
-            InstalacionRepository installations) {
+            InstalacionRepository installations,
+            ApplicationEventPublisher events) {
         this.fiscalRecords = fiscalRecords;
+        this.recordRepository = recordRepository;
         this.organization = organization;
         this.installations = installations;
+        this.events = events;
     }
 
     // Registra el alta fiscal del documento de venta si VERI*FACTU esta activo.
@@ -42,6 +51,24 @@ public class DocumentFiscalIntegration {
     public void registerTicketCancellation(Documento ticket) {
         register(ticket, FiscalRecordOperation.ANULACION, ticketType(ticket));
     }
+
+    public void registerInvoiceFromTicket(Documento invoice, Documento ticket) {
+        try {
+            var record = fiscalRecords.registerSubstitution(
+                    command(invoice, FiscalRecordOperation.ALTA, FiscalDocumentType.F3),
+                    ticket.getId());
+            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+        } catch (VerifactuInactiveException ignored) {
+            // La conversión comercial sigue disponible antes de activar VERI*FACTU.
+        }
+    }
+    // Registra F3 y enlaza fiscalmente la factura simplificada sustituida.
+
+    public boolean hasFiscalRecord(java.util.UUID documentId) {
+        return recordRepository.findByDocumentIdAndOperation(
+                documentId, FiscalRecordOperation.ALTA).isPresent();
+    }
+    // Indica si el contenido fiscal del documento ya quedo congelado.
 
     private FiscalDocumentType altaType(Documento document, boolean invoiceFromTicket) {
         return switch (document.getTipo()) {
@@ -61,19 +88,19 @@ public class DocumentFiscalIntegration {
     private void register(
             Documento document, FiscalRecordOperation operation, FiscalDocumentType type) {
         try {
-            fiscalRecords.register(new FiscalRecordCommand(
-                    organization.currentCompany().getId(),
-                    currentInstallationId(),
-                    organization.currentStore().getId(),
-                    document.getId(),
-                    operation,
-                    type,
-                    FORMAT_VERSION,
-                    ALGORITHM_VERSION,
-                    APPLICATION_VERSION));
+            var record = fiscalRecords.register(command(document, operation, type));
+            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
         } catch (VerifactuInactiveException ignored) {
             // VERI*FACTU desactivado permite operar hasta activacion legal o voluntaria.
         }
+    }
+
+    private FiscalRecordCommand command(
+            Documento document, FiscalRecordOperation operation, FiscalDocumentType type) {
+        return new FiscalRecordCommand(
+                organization.currentCompany().getId(), currentInstallationId(),
+                organization.currentStore().getId(), document.getId(), operation, type,
+                FORMAT_VERSION, ALGORITHM_VERSION, APPLICATION_VERSION);
     }
 
     private java.util.UUID currentInstallationId() {

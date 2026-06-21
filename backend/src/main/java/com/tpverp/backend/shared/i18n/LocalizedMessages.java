@@ -50,10 +50,11 @@ public class LocalizedMessages {
     }
 
     private Optional<String> requiredLegacy(String detail, SupportedLanguage language) {
-        if (!detail.endsWith(" es obligatorio")) {
+        var suffix = requiredSuffix(detail);
+        if (suffix.isEmpty()) {
             return Optional.empty();
         }
-        var field = detail.substring(0, detail.length() - " es obligatorio".length()).trim();
+        var field = detail.substring(0, detail.length() - suffix.get().length()).trim();
         var selected = fallback(language);
         var key = "legacy.field." + LegacyMessageKey.slug(field);
         try {
@@ -62,6 +63,19 @@ public class LocalizedMessages {
         } catch (NoSuchMessageException exception) {
             return Optional.empty();
         }
+    }
+
+    private static Optional<String> requiredSuffix(String detail) {
+        if (detail.endsWith(" es obligatorio")) {
+            return Optional.of(" es obligatorio");
+        }
+        if (detail.endsWith(" obligatorio")) {
+            return Optional.of(" obligatorio");
+        }
+        if (detail.endsWith(" obligatoria")) {
+            return Optional.of(" obligatoria");
+        }
+        return Optional.empty();
     }
 
     private Optional<String> negativeLegacy(String detail, SupportedLanguage language) {

@@ -9,5 +9,9 @@ public interface TerminalRepository extends JpaRepository<Terminal, UUID> {
 
     Optional<Terminal> findByTiendaIdAndNombreIgnoreCase(UUID tiendaId, String nombre);
 
+    Optional<Terminal> findByIdAndTiendaId(UUID id, UUID tiendaId);
+
+    List<Terminal> findAllByTiendaIdOrderByNombre(UUID tiendaId);
+
     List<Terminal> findByTiendaIdAndActivaTrue(UUID tiendaId);
 }

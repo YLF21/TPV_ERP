@@ -50,6 +50,9 @@ class VerifactuXmlServiceTest {
         assertThat(text(document, "NumSerieFacturaAnulada", 0)).isEqualTo("001-260614-000001");
         assertThat(text(document, "FechaExpedicionFacturaAnulada", 0)).isEqualTo("14-06-2026");
         assertThat(text(document, "RegistroAnterior", 0)).isNotBlank();
+        assertThat(text(document, "IDEmisorFactura", 0)).isEqualTo("A58818501");
+        assertThat(text(document, "NumSerieFactura", 0)).isEqualTo("FACTURA-ANTERIOR");
+        assertThat(text(document, "FechaExpedicionFactura", 0)).isEqualTo("13-06-2026");
         assertThat(text(document, "Huella", 0)).isEqualTo("B".repeat(64));
         assertThat(text(document, "Huella", 1)).isEqualTo("A".repeat(64));
     }
@@ -64,6 +67,53 @@ class VerifactuXmlServiceTest {
 
         assertThat(text(document, "Impuesto", 0)).isEqualTo("03");
         assertThat(text(document, "TipoImpositivo", 0)).isEqualTo("7.00");
+    }
+
+    @Test
+    void generaUnDetallePorCadaCombinacionFiscal() {
+        var first = Map.<String, Object>of(
+                "regimenImpuesto", "IVA",
+                "porcentajeImpuesto", new BigDecimal("21.00"),
+                "base", new BigDecimal("10.00"),
+                "impuesto", new BigDecimal("2.10"));
+        var second = Map.<String, Object>of(
+                "regimenImpuesto", "IVA",
+                "porcentajeImpuesto", new BigDecimal("10.00"),
+                "base", new BigDecimal("20.00"),
+                "impuesto", new BigDecimal("2.00"));
+
+        var document = parse(service().batchXml(request(
+                record(FiscalRecordOperation.ALTA, List.of(first, second)), "Empresa SL")));
+
+        assertThat(document.getElementsByTagNameNS("*", "DetalleDesglose").getLength())
+                .isEqualTo(2);
+        assertThat(text(document, "TipoImpositivo", 0)).isEqualTo("21.00");
+        assertThat(text(document, "BaseImponibleOimporteNoSujeto", 0)).isEqualTo("10.00");
+        assertThat(text(document, "CuotaRepercutida", 0)).isEqualTo("2.10");
+        assertThat(text(document, "TipoImpositivo", 1)).isEqualTo("10.00");
+        assertThat(text(document, "BaseImponibleOimporteNoSujeto", 1)).isEqualTo("20.00");
+        assertThat(text(document, "CuotaRepercutida", 1)).isEqualTo("2.00");
+    }
+
+    @Test
+    void incluyeFacturasSustituidasEnAltaF3() {
+        var snapshot = new LinkedHashMap<>(snapshot(Map.of()));
+        snapshot.put("facturasSustituidas", List.of(Map.of(
+                "nifEmisor", "B12345674",
+                "numero", "001-260614-000001",
+                "fecha", "2026-06-14")));
+        var replacement = fiscalRecord(
+                FiscalDocumentType.F3, "FV-001-26-000001", snapshot);
+
+        var document = parse(service().batchXml(request(replacement, "Empresa SL")));
+
+        assertThat(text(document, "FacturasSustituidas", 0)).isNotBlank();
+        assertThat(text(document, "IDFacturaSustituida", 0)).isNotBlank();
+        assertThat(text(document, "IDEmisorFactura", 1)).isEqualTo("B12345674");
+        assertThat(text(document, "NumSerieFactura", 1))
+                .isEqualTo("001-260614-000001");
+        assertThat(text(document, "FechaExpedicionFactura", 1))
+                .isEqualTo("14-06-2026");
     }
 
     @Test
@@ -82,6 +132,32 @@ class VerifactuXmlServiceTest {
 
         assertThat(text(document, "TipoFactura", 0)).isEqualTo("R1");
         assertThat(text(document, "TipoRectificativa", 0)).isEqualTo("S");
+    }
+
+    @Test
+    void incluyeIndicadoresDestinatarioYDescripcionDeSubsanacionEnOrdenOficial() {
+        var corrected = new LinkedHashMap<>(snapshot(Map.of()));
+        corrected.put("subsanacion", "S");
+        corrected.put("rechazoPrevio", "S");
+        corrected.put("descripcionOperacion", "Venta corregida");
+        corrected.put("cliente", Map.of(
+                "numeroDocumento", "B12345674",
+                "nombreFiscal", "Cliente Corregido SL"));
+
+        var xml = service().batchXml(request(
+                fiscalRecord(FiscalDocumentType.F1, "FV-001-26-000001", corrected),
+                "Empresa SL"));
+
+        assertThat(xml).containsSubsequence(
+                "<sf:NombreRazonEmisor>",
+                "<sf:Subsanacion>S</sf:Subsanacion>",
+                "<sf:RechazoPrevio>S</sf:RechazoPrevio>",
+                "<sf:TipoFactura>F1</sf:TipoFactura>");
+        assertThat(xml)
+                .contains("<sf:DescripcionOperacion>Venta corregida</sf:DescripcionOperacion>")
+                .contains("<sf:Destinatarios>")
+                .contains("<sf:NombreRazon>Cliente Corregido SL</sf:NombreRazon>")
+                .contains("<sf:NIF>B12345674</sf:NIF>");
     }
 
     @Test
@@ -117,26 +193,57 @@ class VerifactuXmlServiceTest {
     }
 
     private static FiscalRecord record(FiscalRecordOperation operation, Map<String, Object> line) {
+        return record(operation, line.isEmpty() ? List.of() : List.of(line));
+    }
+
+    private static FiscalRecord record(
+            FiscalRecordOperation operation, List<Map<String, Object>> lines) {
         return new FiscalRecord(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), 2, operation, FiscalDocumentType.F2,
                 "001-260614-000001", LocalDate.of(2026, 6, 14),
                 Instant.parse("2026-06-14T09:15:30Z"), "Atlantic/Canary",
                 "B12345674", new BigDecimal("2.10"), new BigDecimal("12.10"),
-                "B".repeat(64), "A".repeat(64), "C".repeat(64), snapshot(line),
+                "B".repeat(64), "A".repeat(64), "C".repeat(64), snapshot(lines),
+                "1.0", "SHA-256", "0.0.1");
+    }
+
+    private static FiscalRecord fiscalRecord(
+            FiscalDocumentType type, String number, Map<String, Object> snapshot) {
+        return new FiscalRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), 2, FiscalRecordOperation.ALTA, type,
+                number, LocalDate.of(2026, 6, 14),
+                Instant.parse("2026-06-14T09:15:30Z"), "Atlantic/Canary",
+                "B12345674", new BigDecimal("2.10"), new BigDecimal("12.10"),
+                "B".repeat(64), "A".repeat(64), "C".repeat(64), snapshot,
                 "1.0", "SHA-256", "0.0.1");
     }
 
     private static Map<String, Object> snapshot(Map<String, Object> line) {
-        return snapshot(line, null);
+        return snapshot(line.isEmpty() ? List.of() : List.of(line), null);
     }
 
     private static Map<String, Object> snapshot(Map<String, Object> line, String rectificationType) {
+        return snapshot(line.isEmpty() ? List.of() : List.of(line), rectificationType);
+    }
+
+    private static Map<String, Object> snapshot(List<Map<String, Object>> lines) {
+        return snapshot(lines, null);
+    }
+
+    private static Map<String, Object> snapshot(
+            List<Map<String, Object>> lines, String rectificationType) {
         var snapshot = new LinkedHashMap<String, Object>();
         snapshot.put("baseTotal", new BigDecimal("10.00"));
         snapshot.put("impuestoTotal", new BigDecimal("2.10"));
         snapshot.put("total", new BigDecimal("12.10"));
-        snapshot.put("lineas", line.isEmpty() ? List.of() : List.of(line));
+        snapshot.put("lineas", lines);
+        snapshot.put("registroAnterior", Map.of(
+                "nifEmisor", "A58818501",
+                "numero", "FACTURA-ANTERIOR",
+                "fecha", "2026-06-13",
+                "huella", "B".repeat(64)));
         if (rectificationType != null) {
             snapshot.put("tipoRectificativa", rectificationType);
         }

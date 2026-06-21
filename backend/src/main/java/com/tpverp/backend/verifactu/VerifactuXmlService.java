@@ -6,6 +6,7 @@ import java.math.RoundingMode;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -64,11 +65,15 @@ public class VerifactuXmlService {
         text(document, alta, "IDVersion", "1.0");
         invoiceId(document, child(document, alta, "IDFactura"), record, false);
         text(document, alta, "NombreRazonEmisor", request.issuerName());
+        correctionIndicators(document, alta, record);
         text(document, alta, "TipoFactura", record.getDocumentType().name());
         if (isRectification(record.getDocumentType())) {
             text(document, alta, "TipoRectificativa", rectificationType(record));
         }
-        text(document, alta, "DescripcionOperacion", "Venta");
+        substitutedInvoices(document, alta, record);
+        text(document, alta, "DescripcionOperacion",
+                snapshotText(record, "descripcionOperacion", "Venta"));
+        recipient(document, alta, record);
         breakdown(document, alta, record);
         text(document, alta, "CuotaTotal", amount(record.getSnapshot().get("impuestoTotal")));
         text(document, alta, "ImporteTotal", amount(record.getTotalAmount()));
@@ -105,16 +110,40 @@ public class VerifactuXmlService {
     }
 
     private static void breakdown(Document document, Element parent, FiscalRecord record) {
-        var detail = child(document, child(document, parent, "Desglose"), "DetalleDesglose");
-        var firstLine = firstLine(record);
-        text(document, detail, "Impuesto", taxCode(firstLine));
-        text(document, detail, "CalificacionOperacion", "S1");
-        if (firstLine.containsKey("porcentajeImpuesto")) {
-            text(document, detail, "TipoImpositivo", amount(firstLine.get("porcentajeImpuesto")));
+        var container = child(document, parent, "Desglose");
+        fiscalBreakdowns(record).forEach(value -> {
+            var detail = child(document, container, "DetalleDesglose");
+            text(document, detail, "Impuesto", taxCode(value.regime()));
+            text(document, detail, "CalificacionOperacion", "S1");
+            if (value.rate() != null) {
+                text(document, detail, "TipoImpositivo", amount(value.rate()));
+            }
+            text(document, detail, "BaseImponibleOimporteNoSujeto", amount(value.base()));
+            text(document, detail, "CuotaRepercutida", amount(value.tax()));
+        });
+    }
+
+    private static void correctionIndicators(
+            Document document, Element parent, FiscalRecord record) {
+        var correction = optionalSnapshotText(record, "subsanacion");
+        if (correction == null) {
+            return;
         }
-        text(document, detail, "BaseImponibleOimporteNoSujeto",
-                amount(record.getSnapshot().get("baseTotal")));
-        text(document, detail, "CuotaRepercutida", amount(record.getSnapshot().get("impuestoTotal")));
+        text(document, parent, "Subsanacion", correction);
+        text(document, parent, "RechazoPrevio",
+                snapshotText(record, "rechazoPrevio", "N"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void recipient(Document document, Element parent, FiscalRecord record) {
+        if (!(record.getSnapshot().get("cliente") instanceof Map<?, ?> value)) {
+            return;
+        }
+        var customer = (Map<String, Object>) value;
+        var recipients = child(document, parent, "Destinatarios");
+        var recipient = child(document, recipients, "IDDestinatario");
+        text(document, recipient, "NombreRazon", string(customer, "nombreFiscal"));
+        text(document, recipient, "NIF", string(customer, "numeroDocumento"));
     }
 
     private static void chain(Document document, Element parent, FiscalRecord record) {
@@ -124,10 +153,58 @@ public class VerifactuXmlService {
             return;
         }
         var previous = child(document, chain, "RegistroAnterior");
-        text(document, previous, "IDEmisorFactura", record.getIssuerTaxId());
-        text(document, previous, "NumSerieFactura", record.getNumber());
-        text(document, previous, "FechaExpedicionFactura", DATE.format(record.getIssueDate()));
-        text(document, previous, "Huella", record.getPreviousHash());
+        var identity = previousIdentity(record);
+        text(document, previous, "IDEmisorFactura", string(identity, "nifEmisor"));
+        text(document, previous, "NumSerieFactura", string(identity, "numero"));
+        text(document, previous, "FechaExpedicionFactura",
+                DATE.format(java.time.LocalDate.parse(string(identity, "fecha"))));
+        text(document, previous, "Huella", string(identity, "huella"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void substitutedInvoices(
+            Document document, Element parent, FiscalRecord record) {
+        var values = (List<Map<String, Object>>) record.getSnapshot()
+                .getOrDefault("facturasSustituidas", List.of());
+        if (values.isEmpty()) {
+            return;
+        }
+        var container = child(document, parent, "FacturasSustituidas");
+        values.forEach(value -> {
+            var invoice = child(document, container, "IDFacturaSustituida");
+            text(document, invoice, "IDEmisorFactura", string(value, "nifEmisor"));
+            text(document, invoice, "NumSerieFactura", string(value, "numero"));
+            text(document, invoice, "FechaExpedicionFactura",
+                    DATE.format(java.time.LocalDate.parse(string(value, "fecha"))));
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> previousIdentity(FiscalRecord record) {
+        var value = record.getSnapshot().get("registroAnterior");
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        throw new IllegalArgumentException("registroAnterior es obligatorio para encadenar");
+    }
+
+    private static String string(Map<String, Object> values, String key) {
+        var value = values.get(key);
+        if (value == null || value.toString().isBlank()) {
+            throw new IllegalArgumentException("registroAnterior." + key + " es obligatorio");
+        }
+        return value.toString();
+    }
+
+    private static String snapshotText(
+            FiscalRecord record, String key, String fallback) {
+        var value = optionalSnapshotText(record, key);
+        return value == null ? fallback : value;
+    }
+
+    private static String optionalSnapshotText(FiscalRecord record, String key) {
+        var value = record.getSnapshot().get(key);
+        return value == null || value.toString().isBlank() ? null : value.toString().trim();
     }
 
     private static void system(Document document, Element parent, VerifactuSystemInfo info) {
@@ -170,15 +247,65 @@ public class VerifactuXmlService {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> firstLine(FiscalRecord record) {
+    private static List<Map<String, Object>> lines(FiscalRecord record) {
         var lines = (List<Map<String, Object>>) record.getSnapshot().getOrDefault("lineas", List.of());
-        return lines.isEmpty() ? Map.of() : lines.getFirst();
+        return lines;
     }
 
-    private static String taxCode(Map<String, Object> line) {
-        var regime = String.valueOf(line.getOrDefault("regimenImpuesto", "IVA"))
+    private static List<FiscalBreakdown> fiscalBreakdowns(FiscalRecord record) {
+        var lines = lines(record);
+        if (lines.isEmpty()) {
+            return List.of(new FiscalBreakdown(
+                    "IVA", null,
+                    decimal(record.getSnapshot(), "baseTotal"),
+                    decimal(record.getSnapshot(), "impuestoTotal")));
+        }
+        var grouped = new LinkedHashMap<FiscalKey, FiscalBreakdown>();
+        for (var line : lines) {
+            var regime = String.valueOf(line.getOrDefault("regimenImpuesto", "IVA"));
+            var rate = line.get("porcentajeImpuesto") instanceof BigDecimal value ? value : null;
+            var base = line.get("base") instanceof BigDecimal value
+                    ? value : singleLineTotal(lines, record, "baseTotal");
+            var tax = line.get("impuesto") instanceof BigDecimal value
+                    ? value : singleLineTotal(lines, record, "impuestoTotal");
+            var key = new FiscalKey(regime.toUpperCase(Locale.ROOT), rate);
+            grouped.merge(key, new FiscalBreakdown(key.regime(), rate, base, tax),
+                    FiscalBreakdown::add);
+        }
+        return List.copyOf(grouped.values());
+    }
+    // Agrupa lineas equivalentes para no declarar totales bajo un tipo fiscal incorrecto.
+
+    private static BigDecimal singleLineTotal(
+            List<Map<String, Object>> lines, FiscalRecord record, String key) {
+        if (lines.size() != 1) {
+            throw new IllegalArgumentException(key + " por linea es obligatorio");
+        }
+        return decimal(record.getSnapshot(), key);
+    }
+
+    private static BigDecimal decimal(Map<String, Object> values, String key) {
+        if (values.get(key) instanceof BigDecimal value) {
+            return value;
+        }
+        throw new IllegalArgumentException(key + " es obligatorio");
+    }
+
+    private static String taxCode(String regime) {
+        var normalized = regime
                 .toUpperCase(Locale.ROOT);
-        return "IGIC".equals(regime) ? "03" : "01";
+        return "IGIC".equals(normalized) ? "03" : "01";
+    }
+
+    private record FiscalKey(String regime, BigDecimal rate) {
+    }
+
+    private record FiscalBreakdown(
+            String regime, BigDecimal rate, BigDecimal base, BigDecimal tax) {
+
+        FiscalBreakdown add(FiscalBreakdown other) {
+            return new FiscalBreakdown(regime, rate, base.add(other.base), tax.add(other.tax));
+        }
     }
 
     private static boolean isRectification(FiscalDocumentType type) {

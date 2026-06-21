@@ -1,7 +1,6 @@
 package com.tpverp.backend.audit;
 
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,10 +12,9 @@ class AuditConfiguration {
     @Bean
     AuditService auditService(
             AuditoriaRepository auditoriaRepository,
-            TiendaRepository tiendaRepository,
-            UsuarioRepository usuarioRepository,
+            CurrentOrganization organization,
             Clock clock) {
-        return new AuditService(auditoriaRepository, tiendaRepository, usuarioRepository, clock);
+        return new AuditService(auditoriaRepository, organization, clock);
     }
 
     @Bean

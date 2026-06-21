@@ -56,23 +56,31 @@ class FiscalSubmissionQueueServiceTest {
     void listsPendingRecordsForCurrentStoreInQueueOrder() {
         var pending = state(FiscalSubmissionStatus.PENDIENTE);
         var sent = state(FiscalSubmissionStatus.ENVIADO);
+        var rejected = incident(FiscalSubmissionStatus.RECHAZADO, "NIF_INVALIDO", "NIF incorrecto");
         var otherStore = state(FiscalSubmissionStatus.PENDIENTE);
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
-                FiscalSubmissionStatus.ENVIADO)))
-                .thenReturn(List.of(pending, sent, otherStore));
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO,
+                FiscalSubmissionStatus.RECHAZADO)))
+                .thenReturn(List.of(pending, sent, rejected, otherStore));
         when(records.findById(pending.getRecordId()))
                 .thenReturn(Optional.of(record(pending.getRecordId(), store.getId(), 1)));
         when(records.findById(sent.getRecordId()))
                 .thenReturn(Optional.of(record(sent.getRecordId(), store.getId(), 2)));
+        when(records.findById(rejected.getRecordId()))
+                .thenReturn(Optional.of(record(rejected.getRecordId(), store.getId(), 3)));
         when(records.findById(otherStore.getRecordId()))
-                .thenReturn(Optional.of(record(otherStore.getRecordId(), UUID.randomUUID(), 3)));
+                .thenReturn(Optional.of(record(otherStore.getRecordId(), UUID.randomUUID(), 4)));
 
         var result = queue.pending();
 
-        assertThat(result).hasSize(2);
+        assertThat(result).hasSize(3);
         assertThat(result).extracting(FiscalSubmissionQueueItem::sequence)
-                .containsExactly(1L, 2L);
+                .containsExactly(1L, 2L, 3L);
+        assertThat(result.get(2).errorCode()).isEqualTo("NIF_INVALIDO");
+        assertThat(result.get(2).error()).isEqualTo("NIF incorrecto");
+        assertThat(result.get(2).updatedAt()).isEqualTo(rejected.getUpdatedAt());
     }
 
     @Test
@@ -80,11 +88,13 @@ class FiscalSubmissionQueueServiceTest {
         var pending = state(FiscalSubmissionStatus.PENDIENTE);
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
-                FiscalSubmissionStatus.ENVIADO)))
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO,
+                FiscalSubmissionStatus.RECHAZADO)))
                 .thenReturn(List.of(pending));
         when(records.findById(pending.getRecordId()))
                 .thenReturn(Optional.of(record(pending.getRecordId(), store.getId(), 1)));
-        when(states.findById(pending.getRecordId())).thenReturn(Optional.of(pending));
+        when(states.findForUpdate(pending.getRecordId())).thenReturn(Optional.of(pending));
         when(states.save(pending)).thenReturn(pending);
 
         var claimed = queue.claimNext();
@@ -97,17 +107,85 @@ class FiscalSubmissionQueueServiceTest {
     }
 
     @Test
+    void workerClaimsOldestRecordAcrossStores() {
+        var pending = state(FiscalSubmissionStatus.PENDIENTE);
+        var otherStoreId = UUID.randomUUID();
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
+                FiscalSubmissionStatus.PENDIENTE,
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO,
+                FiscalSubmissionStatus.RECHAZADO)))
+                .thenReturn(List.of(pending));
+        when(records.findById(pending.getRecordId()))
+                .thenReturn(Optional.of(record(pending.getRecordId(), otherStoreId, 1)));
+        when(states.findForUpdate(pending.getRecordId())).thenReturn(Optional.of(pending));
+        when(states.save(pending)).thenReturn(pending);
+
+        assertThat(queue.claimNext()).isPresent();
+        assertThat(pending.getStatus()).isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+    }
+
+    @Test
     void returnsEmptyWhenQueueHasNoCurrentStoreRecords() {
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
-                FiscalSubmissionStatus.ENVIADO)))
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO,
+                FiscalSubmissionStatus.RECHAZADO)))
                 .thenReturn(List.of());
 
         assertThat(queue.claimNext()).isEmpty();
     }
 
+    @Test
+    void waitsOneHourBeforeRetryingCommunicationFailure() {
+        var sent = new FiscalSubmissionState(
+                UUID.randomUUID(), FiscalSubmissionStatus.ENVIADO, NOW.minusSeconds(3599));
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(sent));
+        when(records.findById(sent.getRecordId()))
+                .thenReturn(Optional.of(record(sent.getRecordId(), store.getId(), 1)));
+
+        assertThat(queue.claimNext()).isEmpty();
+    }
+
+    @Test
+    void retriesCommunicationFailureAfterOneHour() {
+        var sent = new FiscalSubmissionState(
+                UUID.randomUUID(), FiscalSubmissionStatus.ENVIADO, NOW.minusSeconds(3600));
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(sent));
+        when(records.findById(sent.getRecordId()))
+                .thenReturn(Optional.of(record(sent.getRecordId(), store.getId(), 1)));
+        when(states.findForUpdate(sent.getRecordId())).thenReturn(Optional.of(sent));
+        when(states.save(sent)).thenReturn(sent);
+
+        assertThat(queue.claimNext()).isPresent();
+    }
+
+    @Test
+    void recoversSendingStateStuckForOneHour() {
+        var sending = new FiscalSubmissionState(
+                UUID.randomUUID(), FiscalSubmissionStatus.ENVIANDO, NOW.minusSeconds(3600));
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(sending));
+        when(records.findById(sending.getRecordId()))
+                .thenReturn(Optional.of(record(sending.getRecordId(), store.getId(), 1)));
+        when(states.findForUpdate(sending.getRecordId())).thenReturn(Optional.of(sending));
+        when(states.save(sending)).thenReturn(sending);
+
+        assertThat(queue.claimNext()).isPresent();
+    }
+
     private FiscalSubmissionState state(FiscalSubmissionStatus status) {
         return new FiscalSubmissionState(UUID.randomUUID(), status, NOW.minusSeconds(60));
+    }
+
+    private FiscalSubmissionState incident(
+            FiscalSubmissionStatus status, String errorCode, String error) {
+        var state = state(status);
+        state.markIncident(status, errorCode, error, NOW.minusSeconds(30));
+        return state;
     }
 
     private FiscalRecord record(UUID recordId, UUID storeId, long sequence) {

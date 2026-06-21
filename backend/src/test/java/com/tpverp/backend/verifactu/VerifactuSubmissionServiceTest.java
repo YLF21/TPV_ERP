@@ -31,6 +31,8 @@ class VerifactuSubmissionServiceTest {
     @Mock private VerifactuTransport transport;
     @Mock private FiscalSubmissionAttemptService attempts;
     @Mock private VerifactuOfficialXsdValidator validator;
+    @Mock private VerifactuFirstSubmissionMarker firstSubmissions;
+    @Mock private FiscalCorrectionCompletionService corrections;
 
     private FiscalRecord record;
     private VerifactuSubmissionService service;
@@ -48,7 +50,7 @@ class VerifactuSubmissionServiceTest {
                 .thenReturn("<soap/>");
         service = new VerifactuSubmissionService(
                 xml, soap, endpoints, properties, transport, attempts,
-                new VerifactuResponseParser(), validator);
+                new VerifactuResponseParser(), validator, firstSubmissions, corrections);
     }
 
     @Test
@@ -61,6 +63,8 @@ class VerifactuSubmissionServiceTest {
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.ACEPTADO);
         verify(attempts).recordSent(record.getId(), "<soap/>");
         verify(attempts).recordAccepted(record.getId(), accepted());
+        verify(firstSubmissions).mark(record);
+        verify(corrections).accepted(record);
         assertXmlRequest();
     }
 
@@ -74,6 +78,19 @@ class VerifactuSubmissionServiceTest {
         assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.RECHAZADO);
         assertThat(result.errorCode()).isEqualTo("1234");
         verify(attempts).recordRejected(record.getId(), "1234", "NIF incorrecto", rejected());
+        verify(firstSubmissions, never()).mark(any());
+        verify(corrections, never()).accepted(any());
+    }
+
+    @Test
+    void marcaPrimeraRemisionSiAeatAceptaConErrores() {
+        when(transport.send("https://aeat.test/soap", "<soap/>"))
+                .thenReturn(new VerifactuTransportResponse(200, acceptedWithErrors()));
+
+        var result = service.submit(record);
+
+        assertThat(result.status()).isEqualTo(FiscalSubmissionStatus.ACEPTADO_CON_ERRORES);
+        verify(firstSubmissions).mark(record);
     }
 
     @Test
@@ -126,6 +143,16 @@ class VerifactuSubmissionServiceTest {
                   <EstadoEnvio>Incorrecto</EstadoEnvio>
                   <CodigoErrorRegistro>1234</CodigoErrorRegistro>
                   <DescripcionErrorRegistro>NIF incorrecto</DescripcionErrorRegistro>
+                </RespuestaRegFactuSistemaFacturacion>
+                """;
+    }
+
+    private static String acceptedWithErrors() {
+        return """
+                <RespuestaRegFactuSistemaFacturacion>
+                  <EstadoEnvio>ParcialmenteCorrecto</EstadoEnvio>
+                  <CodigoErrorRegistro>2000</CodigoErrorRegistro>
+                  <DescripcionErrorRegistro>Aceptado con errores</DescripcionErrorRegistro>
                 </RespuestaRegFactuSistemaFacturacion>
                 """;
     }

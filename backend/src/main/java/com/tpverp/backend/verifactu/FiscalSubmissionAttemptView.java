@@ -10,13 +10,12 @@ public record FiscalSubmissionAttemptView(
         FiscalSubmissionStatus status,
         String errorCode,
         String error,
-        String requestXml,
         String responsePayload) {
 
     public static FiscalSubmissionAttemptView from(FiscalSubmissionAttempt attempt) {
         return new FiscalSubmissionAttemptView(
                 attempt.getId(), attempt.getRecordId(), attempt.getAttemptedAt(),
                 attempt.getStatus(), attempt.getErrorCode(), attempt.getError(),
-                attempt.getRequestXml(), attempt.getResponsePayload());
+                attempt.getResponsePayload());
     }
 }

@@ -5,6 +5,7 @@ import com.tpverp.backend.licensing.Licencia;
 import com.tpverp.backend.licensing.LicenciaRepository;
 import com.tpverp.backend.organization.Tienda;
 import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.security.domain.SesionRepository;
 import java.time.Clock;
@@ -23,6 +24,7 @@ public class TerminalRegistrationService {
 
     private final TerminalRepository terminalRepository;
     private final TiendaRepository tiendaRepository;
+    private final CurrentOrganization organization;
     private final LicenciaRepository licenciaRepository;
     private final InstallationStatusService installationStatusService;
     private final PasswordEncoder passwordEncoder;
@@ -34,6 +36,7 @@ public class TerminalRegistrationService {
     public TerminalRegistrationService(
             TerminalRepository terminalRepository,
             TiendaRepository tiendaRepository,
+            CurrentOrganization organization,
             LicenciaRepository licenciaRepository,
             InstallationStatusService installationStatusService,
             PasswordEncoder passwordEncoder,
@@ -42,6 +45,7 @@ public class TerminalRegistrationService {
             AuditService auditService) {
         this.terminalRepository = terminalRepository;
         this.tiendaRepository = tiendaRepository;
+        this.organization = organization;
         this.licenciaRepository = licenciaRepository;
         this.installationStatusService = installationStatusService;
         this.passwordEncoder = passwordEncoder;
@@ -51,8 +55,9 @@ public class TerminalRegistrationService {
     }
 
     @Transactional
-    public RegistrationResult request(String name, TipoTerminal type) {
-        Tienda store = currentStore();
+    public RegistrationResult request(UUID storeId, String name, TipoTerminal type) {
+        Tienda store = tiendaRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("Tienda no encontrada"));
         if (type == null || type == TipoTerminal.SERVIDOR) {
             throw new IllegalArgumentException("Solo se pueden solicitar terminales Windows o PDA");
         }
@@ -76,8 +81,7 @@ public class TerminalRegistrationService {
         if (installationStatusService.status().mode() == OperationalMode.RESTRICTED) {
             throw new IllegalStateException("No se pueden aprobar terminales sin demo o licencia valida");
         }
-        Terminal terminal = terminalRepository.findById(terminalId)
-                .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
+        Terminal terminal = currentTerminal(terminalId);
         if (!terminal.isAprobada()) {
             validateQuota(terminal);
             terminal.aprobar();
@@ -91,8 +95,7 @@ public class TerminalRegistrationService {
 
     @Transactional
     public void deactivate(UUID terminalId) {
-        Terminal terminal = terminalRepository.findById(terminalId)
-                .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
+        Terminal terminal = currentTerminal(terminalId);
         terminal.desactivar();
         Instant now = Instant.now(clock);
         sesionRepository.findByTerminalIdAndRevocadaEnIsNull(terminalId)
@@ -105,14 +108,17 @@ public class TerminalRegistrationService {
 
     @Transactional(readOnly = true)
     public List<TerminalItem> list() {
-        return terminalRepository.findAll().stream().map(TerminalItem::from).toList();
+        return terminalRepository.findAllByTiendaIdOrderByNombre(currentStore().getId())
+                .stream().map(TerminalItem::from).toList();
     }
 
     private void validateQuota(Terminal candidate) {
         if (installationStatusService.status().mode() != OperationalMode.LICENSED) {
             return;
         }
-        Licencia license = licenciaRepository.findAll().stream()
+        var store = currentStore();
+        Licencia license = licenciaRepository.findByTiendaIdOrderByValidaDesdeDesc(store.getId())
+                .stream()
                 .filter(Licencia::isActiva)
                 .findFirst()
                 .orElseThrow();
@@ -131,8 +137,12 @@ public class TerminalRegistrationService {
     }
 
     private Tienda currentStore() {
-        return tiendaRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
+        return organization.currentStore();
+    }
+
+    private Terminal currentTerminal(UUID terminalId) {
+        return terminalRepository.findByIdAndTiendaId(terminalId, currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
     }
 
     public record RegistrationResult(UUID terminalId, String credential, String status) {

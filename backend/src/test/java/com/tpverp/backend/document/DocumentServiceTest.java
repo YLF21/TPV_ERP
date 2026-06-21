@@ -325,6 +325,7 @@ class DocumentServiceTest {
         assertThat(invoice.getLineas()).hasSize(ticket.getLineas().size());
         verify(stockGateway, never()).confirm(invoice);
         verify(relationRepository).save(any(DocumentoRelacion.class));
+        verify(fiscalIntegration).registerInvoiceFromTicket(invoice, ticket);
     }
 
     @Test
@@ -382,6 +383,21 @@ class DocumentServiceTest {
         assertThat(edited.isOrigenStock()).isTrue();
         verify(stockGateway, never()).confirm(any());
         verify(stockGateway, never()).cancel(any());
+    }
+
+    @Test
+    void adminCannotEditConfirmedDocumentWithFiscalRecord() {
+        var ticket = draft(TipoDocumento.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(fiscalIntegration.hasFiscalRecord(ticket.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.adminEditConfirmed(
+                ticket.getId(), BigDecimal.ZERO, null, null, lines()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("fiscal");
+
+        verify(documentRepository, never()).save(any());
     }
 
     @Test

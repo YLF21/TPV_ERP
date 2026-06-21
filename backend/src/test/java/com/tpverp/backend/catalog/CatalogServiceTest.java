@@ -5,11 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Tienda;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -23,7 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class CatalogServiceTest {
 
-    @Mock private TiendaRepository storeRepository;
+    @Mock private CurrentOrganization organization;
     @Mock private StoreTaxRepository taxRepository;
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private FamilyRepository familyRepository;
@@ -39,12 +40,31 @@ class CatalogServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(store.getId()).thenReturn(storeId);
-        when(storeRepository.findAll()).thenReturn(List.of(store));
+        lenient().when(store.getId()).thenReturn(storeId);
+        lenient().when(organization.currentStore()).thenReturn(store);
         service = new CatalogService(
-                storeRepository, taxRepository, warehouseRepository, familyRepository,
+                organization, taxRepository, warehouseRepository, familyRepository,
                 subfamilyRepository, productRepository, identifierRepository,
                 stockRepository, movementRepository);
+    }
+
+    @Test
+    void listsCatalogOnlyForAuthenticatedStoreWhenTwoStoresExist() {
+        var authenticatedStore = org.mockito.Mockito.mock(Tienda.class);
+        var firstStoreId = UUID.randomUUID();
+        var authenticatedStoreId = UUID.randomUUID();
+        when(authenticatedStore.getId()).thenReturn(authenticatedStoreId);
+        when(organization.currentStore()).thenReturn(authenticatedStore);
+        var firstStoreTax = new StoreTax(firstStoreId, new BigDecimal("21"), false);
+        var authenticatedTax = new StoreTax(
+                authenticatedStoreId, new BigDecimal("7"), false);
+        when(taxRepository.findByStoreIdOrderByPorcentaje(any()))
+                .thenAnswer(invocation -> firstStoreId.equals(invocation.getArgument(0))
+                        ? List.of(firstStoreTax)
+                        : List.of(authenticatedTax));
+
+        assertThat(service.taxes()).containsExactly(authenticatedTax);
+        verify(taxRepository).findByStoreIdOrderByPorcentaje(authenticatedStoreId);
     }
 
     @Test

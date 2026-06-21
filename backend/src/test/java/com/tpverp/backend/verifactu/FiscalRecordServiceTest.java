@@ -126,6 +126,35 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void congelaLaIdentidadDelRegistroAnteriorEnElSnapshot() {
+        stubActive(document);
+        var previous = new FiscalRecord(
+                chain.getId(), command.companyId(), command.installationId(),
+                command.storeId(), UUID.randomUUID(), 1, FiscalRecordOperation.ALTA,
+                FiscalDocumentType.F1, "FACTURA-ANTERIOR",
+                LocalDate.of(2026, 6, 13), TRUNCATED_NOW.minusSeconds(60),
+                "Atlantic/Canary", "A58818501", new BigDecimal("1.47"),
+                new BigDecimal("22.47"), null, "A".repeat(64), "B".repeat(64),
+                Map.of("numero", "FACTURA-ANTERIOR"),
+                "1.0", "SHA-256", "0.0.1");
+        chain.advance(previous, TRUNCATED_NOW.minusSeconds(60));
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.findByDocumentIdAndOperation(
+                command.documentId(), command.operation()))
+                .thenReturn(Optional.empty());
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var saved = service().register(command);
+
+        assertThat(map(saved.getSnapshot().get("registroAnterior")))
+                .containsEntry("nifEmisor", "A58818501")
+                .containsEntry("numero", "FACTURA-ANTERIOR")
+                .containsEntry("fecha", "2026-06-13")
+                .containsEntry("huella", "A".repeat(64));
+    }
+
+    @Test
     void congelaElClienteAunqueCambieDespuesDelRegistro() {
         var company = company(command.companyId());
         var customer = customer(company, "Cliente Original", "12345678Z");
@@ -260,6 +289,74 @@ class FiscalRecordServiceTest {
                 .isEqualTo(original.getId());
         assertThat(field(relation.getValue(), "type"))
                 .isEqualTo(FiscalRelationType.ANULA);
+    }
+
+    @Test
+    void registraFacturaF3ComoSustitucionDelTicketOriginal() {
+        command = command(FiscalRecordOperation.ALTA, FiscalDocumentType.F3);
+        var invoice = document(
+                command.documentId(), command.storeId(), TipoDocumento.FACTURA_VENTA,
+                EstadoDocumento.PENDIENTE, new BigDecimal("12.10"));
+        var ticketId = UUID.randomUUID();
+        var original = new FiscalRecord(
+                chain.getId(), command.companyId(), command.installationId(), command.storeId(),
+                ticketId, 1, FiscalRecordOperation.ALTA, FiscalDocumentType.F2,
+                "001-260614-000001", LocalDate.of(2026, 6, 14), TRUNCATED_NOW.minusSeconds(60),
+                "Atlantic/Canary", "B12345674", new BigDecimal("2.10"),
+                new BigDecimal("12.10"), null, "A".repeat(64), "B".repeat(64),
+                Map.of("numero", "001-260614-000001"),
+                "1.0", "SHA-256", "0.0.1");
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        stubActive(invoice);
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.findByDocumentIdAndOperation(command.documentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.empty());
+        when(records.findByDocumentIdAndOperation(ticketId, FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var replacement = service().registerSubstitution(command, ticketId);
+
+        var relation = ArgumentCaptor.forClass(FiscalRecordRelation.class);
+        verify(relations).save(relation.capture());
+        assertThat(field(relation.getValue(), "recordId")).isEqualTo(replacement.getId());
+        assertThat(field(relation.getValue(), "relatedId")).isEqualTo(original.getId());
+        assertThat(field(relation.getValue(), "type")).isEqualTo(FiscalRelationType.SUSTITUYE);
+        assertThat(list(replacement.getSnapshot().get("facturasSustituidas")))
+                .singleElement()
+                .satisfies(value -> assertThat(map(value))
+                        .containsEntry("numero", "001-260614-000001")
+                        .containsEntry("fecha", "2026-06-14"));
+    }
+
+    @Test
+    void registraSubsanacionConMismaIdentidadEImportesYRelacionAlOriginal() {
+        var original = fiscalRecord(
+                chain, command, FiscalRecordOperation.ALTA, FiscalDocumentType.F2, 1, null);
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var correctedSnapshot = Map.<String, Object>of(
+                "baseTotal", new BigDecimal("10.00"),
+                "impuestoTotal", new BigDecimal("2.10"),
+                "total", new BigDecimal("12.10"),
+                "subsanacion", "S",
+                "rechazoPrevio", "S");
+
+        var correction = service().registerCorrection(original, correctedSnapshot);
+
+        assertThat(correction.getNumber()).isEqualTo(original.getNumber());
+        assertThat(correction.getIssueDate()).isEqualTo(original.getIssueDate());
+        assertThat(correction.getTotalAmount()).isEqualByComparingTo(original.getTotalAmount());
+        assertThat(correction.getTotalTax()).isEqualByComparingTo(original.getTotalTax());
+        assertThat(correction.getSequence()).isEqualTo(2);
+        var relation = ArgumentCaptor.forClass(FiscalRecordRelation.class);
+        verify(relations).save(relation.capture());
+        assertThat(relation.getValue().getRecordId()).isEqualTo(correction.getId());
+        assertThat(relation.getValue().getRelatedId()).isEqualTo(original.getId());
+        assertThat(relation.getValue().getType()).isEqualTo(FiscalRelationType.SUBSANA);
     }
 
     @Test
@@ -472,5 +569,10 @@ class FiscalRecordServiceTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> map(Object value) {
         return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> list(Object value) {
+        return (List<Object>) value;
     }
 }

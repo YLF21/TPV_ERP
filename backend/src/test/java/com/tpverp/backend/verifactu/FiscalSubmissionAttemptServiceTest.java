@@ -1,10 +1,16 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Tienda;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -26,16 +32,29 @@ class FiscalSubmissionAttemptServiceTest {
     private FiscalSubmissionAttemptRepository attempts;
     @Mock
     private FiscalSubmissionStateService states;
+    @Mock
+    private FiscalRecordRepository records;
+    @Mock
+    private CurrentOrganization organization;
+    @Mock
+    private Empresa company;
+    @Mock
+    private Tienda store;
 
     private FiscalSubmissionAttemptService service;
     private UUID recordId;
+    private UUID companyId;
+    private UUID storeId;
 
     @BeforeEach
     void setUp() {
         recordId = UUID.randomUUID();
-        when(attempts.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        companyId = UUID.randomUUID();
+        storeId = UUID.randomUUID();
+        lenient().when(attempts.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         service = new FiscalSubmissionAttemptService(
-                attempts, states, Clock.fixed(NOW, ZoneOffset.UTC));
+                attempts, states, records, organization, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -62,11 +81,33 @@ class FiscalSubmissionAttemptServiceTest {
 
     @Test
     void returnsHistoryNewestFirst() {
+        currentTenant();
         var attempt = service.recordSent(recordId, "<xml/>");
+        when(records.findByIdAndCompanyIdAndStoreId(recordId, companyId, storeId))
+                .thenReturn(java.util.Optional.of(org.mockito.Mockito.mock(FiscalRecord.class)));
         when(attempts.findAllByRecordIdOrderByAttemptedAtDesc(recordId))
                 .thenReturn(List.of(attempt));
 
         assertThat(service.history(recordId)).containsExactly(attempt);
+    }
+
+    @Test
+    void rejectsHistoryForRecordOutsideCurrentCompanyOrStore() {
+        currentTenant();
+        when(records.findByIdAndCompanyIdAndStoreId(recordId, companyId, storeId))
+                .thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.history(recordId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("registro fiscal no encontrado");
+        verify(attempts, never()).findAllByRecordIdOrderByAttemptedAtDesc(any());
+    }
+
+    private void currentTenant() {
+        when(organization.currentCompany()).thenReturn(company);
+        when(organization.currentStore()).thenReturn(store);
+        when(company.getId()).thenReturn(companyId);
+        when(store.getId()).thenReturn(storeId);
     }
 
     @Test

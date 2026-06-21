@@ -185,7 +185,7 @@ public class DocumentService {
                 Instant.now(clock), false);
         var saved = documents.save(invoice);
         relations.save(new DocumentoRelacion(saved, ticket, TipoRelacionDocumento.FACTURA_DE));
-        fiscalIntegration.registerAlta(saved, true);
+        fiscalIntegration.registerInvoiceFromTicket(saved, ticket);
         return saved;
     }
 
@@ -223,6 +223,10 @@ public class DocumentService {
             UUID supplierId,
             List<DocumentLineCommand> lines) {
         var document = find(id);
+        if (fiscalIntegration.hasFiscalRecord(document.getId())) {
+            throw new IllegalStateException(
+                    "el documento con registro fiscal es inmutable");
+        }
         document.adminReplace(
                 globalDiscount, customerId, supplierId, List.copyOf(lines));
         return documents.save(document);

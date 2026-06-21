@@ -12,10 +12,9 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
+import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -33,8 +32,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 @ExtendWith(MockitoExtension.class)
 class InventoryServiceTest {
 
-    @Mock private TiendaRepository storeRepository;
-    @Mock private UsuarioRepository userRepository;
+    @Mock private CurrentOrganization organization;
     @Mock private ProductRepository productRepository;
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private StockLevelRepository stockRepository;
@@ -51,13 +49,31 @@ class InventoryServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(store.getId()).thenReturn(storeId);
-        lenient().when(storeRepository.findAll()).thenReturn(List.of(store));
+        lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(user.getId()).thenReturn(userId);
-        lenient().when(userRepository.findByTiendaIdAndNombre(storeId, "ADMIN")).thenReturn(Optional.of(user));
+        lenient().when(organization.currentUser(authentication)).thenReturn(user);
         service = new InventoryService(
-                storeRepository, userRepository, productRepository, warehouseRepository,
+                organization, productRepository, warehouseRepository,
                 stockRepository, movementRepository,
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @Test
+    void listsStockOnlyForAuthenticatedStoreWhenTwoStoresExist() {
+        var authenticatedStore = org.mockito.Mockito.mock(Tienda.class);
+        var firstStoreId = UUID.randomUUID();
+        var authenticatedStoreId = UUID.randomUUID();
+        when(authenticatedStore.getId()).thenReturn(authenticatedStoreId);
+        when(organization.currentStore()).thenReturn(authenticatedStore);
+        var firstStoreWarehouse = new Warehouse(firstStoreId, "PRIMERA");
+        var authenticatedWarehouse = new Warehouse(authenticatedStoreId, "AUTENTICADO");
+        when(warehouseRepository.findByStoreIdOrderByNombre(any()))
+                .thenAnswer(invocation -> firstStoreId.equals(invocation.getArgument(0))
+                        ? List.of(firstStoreWarehouse)
+                        : List.of(authenticatedWarehouse));
+
+        assertThat(service.stock(null, null)).isEmpty();
+        verify(warehouseRepository).findByStoreIdOrderByNombre(authenticatedStoreId);
     }
 
     @Test
