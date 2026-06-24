@@ -110,6 +110,7 @@ where numbered.id = c.id;
 
 alter table cliente
     alter column code_client set not null,
+    alter column client_code_store_id set not null,
     add constraint ck_cliente_code_client
         check (code_client ~ '^C-[0-9]{3}-[0-9]{6}$'),
     add constraint ck_cliente_code_member

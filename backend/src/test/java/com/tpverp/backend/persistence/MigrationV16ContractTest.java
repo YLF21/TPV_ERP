@@ -27,6 +27,7 @@ class MigrationV16ContractTest {
                 .contains("code_supplier")
                 .contains("code_commercial")
                 .contains("party_code_counter")
+                .contains("alter column client_code_store_id set not null")
                 .contains("rename constraint cliente_saldo_socio_check")
                 .contains("replace(constraint_row.conname, 'socio', 'member')")
                 .contains("'member'")

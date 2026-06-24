@@ -109,9 +109,13 @@ public class CustomerService {
                 command.discount());
         customer.setNumMember(command.numMember());
         if (command.member() && !customer.isMember()) {
-            var store = context.currentStore();
-            customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
-            customer.assignMemberStore(store.getId());
+            if (customer.getCodeMember() == null) {
+                var store = context.currentStore();
+                customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
+                customer.assignMemberStore(store.getId());
+            } else {
+                customer.activateMember(customer.getCodeMember(), customer.getMemberSince());
+            }
         } else if (!command.member() && customer.isMember()) {
             customer.deactivateMember();
         }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.Empresa;
@@ -116,6 +117,27 @@ class CustomerServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("A1", "C-001-000001"),
                         org.assertj.core.groups.Tuple.tuple("Z9", "C-001-000002"));
+    }
+
+    @Test
+    void reactivarMemberConservaCodigoSinConsumirOtroNumero() {
+        var customer = new Customer(
+                company, "Member", DocumentType.NIF, "M1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.assignClientCode(store.getId(), "C-001-000001");
+        customer.activateMember("M-001-000001", java.time.LocalDate.of(2026, 5, 1));
+        customer.assignMemberStore(store.getId());
+        customer.deactivateMember();
+        when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(customer));
+
+        var updated = service().update(customer.getId(), new CustomerService.CustomerCommand(
+                "Member", DocumentType.NIF, "M1", null,
+                null, null, null, BigDecimal.ZERO, true, null));
+
+        assertThat(updated.codeMember()).isEqualTo("M-001-000001");
+        assertThat(updated.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 5, 1));
+        verify(codes, never()).nextMember(any());
     }
 
     @Test

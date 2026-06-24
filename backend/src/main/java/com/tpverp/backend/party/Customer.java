@@ -31,7 +31,7 @@ public class Customer {
     @Column(name = "code_client", nullable = false, length = 12, updatable = false)
     private String codeClient;
 
-    @Column(name = "client_code_store_id", updatable = false)
+    @Column(name = "client_code_store_id", nullable = false, updatable = false)
     private UUID clientCodeStoreId;
 
     @Column(name = "nombre_fiscal", nullable = false)
