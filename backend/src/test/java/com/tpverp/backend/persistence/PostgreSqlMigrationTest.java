@@ -55,7 +55,7 @@ class PostgreSqlMigrationTest {
                             'configuracion_verifactu',
                             'cadena_fiscal', 'registro_fiscal',
                             'registro_fiscal_relacion', 'estado_envio_fiscal',
-                            'intento_envio_fiscal')
+                            'intento_envio_fiscal', 'certificado_verifactu')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
                 assertThat(result.getInt(1)).isEqualTo(45);
@@ -104,6 +104,7 @@ class PostgreSqlMigrationTest {
             verifyProductSupplierConstraints(url, user, password, schema);
             verifyFiscalIdentityColumns(url, user, password, schema);
             verifyFiscalIndexes(url, user, password, schema);
+            verifyManagedCertificateIndexes(url, user, password, schema);
             verifyDeferredFiscalTriggers(url, user, password, schema);
             verifyImmutableFiscalRecords(url, user, password, schema);
         } finally {
@@ -111,6 +112,29 @@ class PostgreSqlMigrationTest {
                     Statement statement = connection.createStatement()) {
                 statement.execute("drop schema if exists " + schema + " cascade");
             }
+        }
+    }
+
+    private static void verifyManagedCertificateIndexes(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet indexes = statement.executeQuery("""
+                    select indexname
+                    from pg_indexes
+                    where schemaname = '%s'
+                      and indexname in (
+                        'uq_certificado_verifactu_activo',
+                        'uq_certificado_verifactu_anterior')
+                    order by indexname
+                    """.formatted(schema))) {
+            var names = new ArrayList<String>();
+            while (indexes.next()) {
+                names.add(indexes.getString("indexname"));
+            }
+            assertThat(names).containsExactly(
+                    "uq_certificado_verifactu_activo",
+                    "uq_certificado_verifactu_anterior");
         }
     }
 

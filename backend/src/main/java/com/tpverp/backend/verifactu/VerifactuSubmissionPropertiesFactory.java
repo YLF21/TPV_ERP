@@ -1,6 +1,5 @@
 package com.tpverp.backend.verifactu;
 
-import java.nio.file.Path;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -16,8 +15,6 @@ public class VerifactuSubmissionPropertiesFactory {
     public VerifactuSubmissionProperties current() {
         return new VerifactuSubmissionProperties(
                 mode(),
-                Path.of(required("tpv.verifactu.certificate-path")),
-                required("tpv.verifactu.certificate-password").toCharArray(),
                 required("tpv.verifactu.system-name"),
                 required("tpv.verifactu.system-id"));
     }

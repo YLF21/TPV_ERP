@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -23,4 +24,18 @@ public class VerifactuPkcs12KeyStoreLoader {
         }
     }
     // Carga el almacen PKCS#12 sin exponer la password ni convertirla a String.
+
+    public KeyStore loadContent(byte[] content, char[] password) {
+        if (content == null || content.length == 0) {
+            throw new IllegalArgumentException("certificado PKCS#12 obligatorio");
+        }
+        try (var input = new ByteArrayInputStream(content)) {
+            var keyStore = KeyStore.getInstance("PKCS12");
+            keyStore.load(input, password == null ? new char[0] : password.clone());
+            return keyStore;
+        } catch (IOException | GeneralSecurityException exception) {
+            throw new IllegalArgumentException(
+                    "No se pudo cargar el certificado PKCS#12", exception);
+        }
+    }
 }
