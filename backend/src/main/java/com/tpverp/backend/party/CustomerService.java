@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Comparator;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,40 @@ public class CustomerService {
             customer.assignMemberStore(store.getId());
         }
         return CustomerView.from(customers.save(customer));
+    }
+
+    @Transactional
+    public List<CustomerView> createBatch(List<CustomerCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
+            return List.of();
+        }
+        var company = context.currentCompany();
+        var store = context.currentStore();
+        List<CustomerCommand> ordered = commands.stream()
+                .sorted(Comparator.comparing(
+                        command -> PartyValues.document(command.documentNumber())))
+                .toList();
+        ordered.forEach(command -> {
+            ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
+            ensureUniqueMemberNumber(company.getId(), command.numMember(), null);
+        });
+        List<String> reservedCodes = codes.nextClients(store, ordered.size());
+        var pending = new java.util.ArrayList<Customer>(ordered.size());
+        for (int index = 0; index < ordered.size(); index++) {
+            CustomerCommand command = ordered.get(index);
+            var customer = new Customer(
+                    company, command.fiscalName(), command.documentType(),
+                    command.documentNumber(), command.address(), command.phone(),
+                    command.email(), command.notes(), CustomerRate.VENTA, command.discount());
+            customer.assignClientCode(store.getId(), reservedCodes.get(index));
+            customer.setNumMember(command.numMember());
+            if (command.member()) {
+                customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
+                customer.assignMemberStore(store.getId());
+            }
+            pending.add(customer);
+        }
+        return customers.saveAll(pending).stream().map(CustomerView::from).toList();
     }
 
     @Transactional

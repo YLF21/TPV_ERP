@@ -3,6 +3,7 @@ package com.tpverp.backend.party;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -90,6 +91,31 @@ class CustomerServiceTest {
         assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
         assertThat(created.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 6, 8));
         assertThat(created.rate()).isEqualTo(CustomerRate.MEMBER);
+    }
+
+    @Test
+    void importacionMasivaAsignaBloqueOrdenadoPorNif() {
+        when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
+                eq(PartyTestData.id(company)), eq(DocumentType.NIF), any()))
+                .thenReturn(Optional.empty());
+        when(codes.nextClients(store, 2))
+                .thenReturn(List.of("C-001-000001", "C-001-000002"));
+        when(customers.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var zeta = new CustomerService.CustomerCommand(
+                "Zeta", DocumentType.NIF, "Z9", null,
+                null, null, null, BigDecimal.ZERO, false, null);
+        var alfa = new CustomerService.CustomerCommand(
+                "Alfa", DocumentType.NIF, "A1", null,
+                null, null, null, BigDecimal.ZERO, false, null);
+
+        var imported = service().createBatch(List.of(zeta, alfa));
+
+        assertThat(imported)
+                .extracting(CustomerService.CustomerView::documentNumber,
+                        CustomerService.CustomerView::codeClient)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("A1", "C-001-000001"),
+                        org.assertj.core.groups.Tuple.tuple("Z9", "C-001-000002"));
     }
 
     @Test
