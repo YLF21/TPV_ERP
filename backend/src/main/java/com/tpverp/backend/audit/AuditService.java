@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.tpverp.backend.organization.Tienda;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +33,17 @@ public class AuditService {
         var user = authentication == null ? null : organization.currentUser(authentication);
         auditoriaRepository.save(new Auditoria(
                 store, user, null, event, result, details, Instant.now(clock)));
+    }
+
+    // Registra tareas internas sin atribuirlas a una sesion o usuario interactivo.
+    @Transactional
+    public void recordSystem(
+            Tienda store,
+            String event,
+            ResultadoAuditoria result,
+            Map<String, Object> details) {
+        auditoriaRepository.save(new Auditoria(
+                store, null, null, event, result, details, Instant.now(clock)));
     }
 
     @Transactional(readOnly = true)

@@ -3,8 +3,6 @@ package com.tpverp.backend.verifactu;
 import com.tpverp.backend.licensing.Licencia;
 import com.tpverp.backend.licensing.LicenciaRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import java.security.KeyStore;
-import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -32,6 +30,7 @@ public class VerifactuAdminService {
     private final VerifactuActivationService activation;
     private final Clock systemClock;
     private final FiscalSubmissionAttemptService attempts;
+    private final ManagedVerifactuCertificateRepository managedCertificates;
 
     public VerifactuAdminService(
             VerifactuSubmissionPropertiesFactory properties,
@@ -41,7 +40,7 @@ public class VerifactuAdminService {
             VerifactuSubmissionWorker worker,
             VerifactuSignaturePolicy signatures) {
         this(properties, keyStores, certificates, queue, worker, null, signatures, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -59,7 +58,8 @@ public class VerifactuAdminService {
             CurrentOrganization organization,
             VerifactuActivationService activation,
             Clock systemClock,
-            FiscalSubmissionAttemptService attempts) {
+            FiscalSubmissionAttemptService attempts,
+            ManagedVerifactuCertificateRepository managedCertificates) {
         this.properties = properties;
         this.keyStores = keyStores;
         this.certificates = certificates;
@@ -74,17 +74,25 @@ public class VerifactuAdminService {
         this.activation = activation;
         this.systemClock = systemClock;
         this.attempts = attempts;
+        this.managedCertificates = managedCertificates;
     }
 
     public VerifactuAdminStatusView status() {
         var activationStatus = activationStatus();
         try {
             var current = properties.current();
-            var certificate = certificate(current);
-            var status = certificates.validate(certificate);
+            var certificate = activeCertificate();
+            var now = Instant.now(requiredClock());
+            var valid = !now.isBefore(certificate.getValidFrom())
+                    && !now.isAfter(certificate.getValidUntil());
+            var warning = now.isAfter(certificate.getValidUntil())
+                    ? "CERTIFICATE_EXPIRED"
+                    : now.isBefore(certificate.getValidFrom())
+                            ? "CERTIFICATE_NOT_YET_VALID" : null;
             return new VerifactuAdminStatusView(
-                    true, status.valid(), status.warning(), status.subject(),
-                    status.notBefore(), status.notAfter(), current.mode(), workerEnabled(),
+                    true, valid, warning, certificate.getSubject(),
+                    certificate.getValidFrom(), certificate.getValidUntil(),
+                    current.mode(), workerEnabled(),
                     signatures.requiredForVerifactu(), signatures.mode(),
                     activationStatus.active(), activationStatus.mode(),
                     activationStatus.effectiveActivationAt(), activationStatus.firstSubmissionAt());
@@ -144,20 +152,14 @@ public class VerifactuAdminService {
     }
     // Desactiva solo si todavia no hay obligacion legal ni primera remision.
 
-    private X509Certificate certificate(VerifactuSubmissionProperties current) {
-        try {
-            var keyStore = keyStores.load(current.certificatePath(), current.certificatePassword());
-            var aliases = keyStore.aliases();
-            while (aliases.hasMoreElements()) {
-                var certificate = keyStore.getCertificate(aliases.nextElement());
-                if (certificate instanceof X509Certificate x509) {
-                    return x509;
-                }
-            }
-            throw new IllegalArgumentException("certificado X509 no encontrado");
-        } catch (Exception exception) {
-            throw new IllegalArgumentException("certificado no disponible", exception);
+    private ManagedVerifactuCertificate activeCertificate() {
+        if (managedCertificates == null) {
+            throw new IllegalStateException("Repositorio de certificados no disponible");
         }
+        return managedCertificates.findByCompanyIdAndStatus(
+                        requiredOrganization().currentCompany().getId(),
+                        ManagedCertificateStatus.ACTIVO)
+                .orElseThrow(() -> new IllegalStateException("Certificado no configurado"));
     }
 
     private boolean workerEnabled() {

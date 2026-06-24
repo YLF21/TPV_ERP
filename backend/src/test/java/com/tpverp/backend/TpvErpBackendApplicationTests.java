@@ -1,6 +1,13 @@
 package com.tpverp.backend;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.tpverp.backend.verifactu.ConfiguredVerifactuTransport;
+import com.tpverp.backend.verifactu.ManagedCertificateKeyStoreFactory;
+import com.tpverp.backend.verifactu.VerifactuCertificateSecretStore;
+import com.tpverp.backend.verifactu.VerifactuTransport;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -20,6 +27,15 @@ class TpvErpBackendApplicationTests {
 			"tpv_erp_context_" + UUID.randomUUID().toString().replace("-", "");
 	private static final Path KEY_DIRECTORY = Path.of(
 			"target", "test-installation-keys", UUID.randomUUID().toString());
+	private static final Path CERTIFICATE_DIRECTORY = Path.of(
+			"target", "test-verifactu-certificates", UUID.randomUUID().toString());
+
+	@Autowired
+	private VerifactuTransport transport;
+	@Autowired
+	private ManagedCertificateKeyStoreFactory keyStores;
+	@Autowired
+	private VerifactuCertificateSecretStore secrets;
 
 	@DynamicPropertySource
 	static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -32,6 +48,7 @@ class TpvErpBackendApplicationTests {
 		registry.add("spring.flyway.default-schema", () -> SCHEMA);
 		registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
 		registry.add("tpv.installation.key-directory", KEY_DIRECTORY::toString);
+		registry.add("tpv.verifactu.secret-directory", CERTIFICATE_DIRECTORY::toString);
 	}
 
 	@AfterAll
@@ -44,20 +61,28 @@ class TpvErpBackendApplicationTests {
 			statement.execute("drop schema if exists " + SCHEMA + " cascade");
 		}
 		if (Files.exists(KEY_DIRECTORY)) {
-			try (var paths = Files.walk(KEY_DIRECTORY)) {
-				paths.sorted(Comparator.reverseOrder()).forEach(path -> {
-					try {
-						Files.deleteIfExists(path);
-					} catch (Exception exception) {
-						throw new IllegalStateException(exception);
-					}
-				});
-			}
+			deleteDirectory(KEY_DIRECTORY);
 		}
+		deleteDirectory(CERTIFICATE_DIRECTORY);
 	}
 
 	@Test
 	void contextLoads() {
+		assertThat(transport).isInstanceOf(ConfiguredVerifactuTransport.class);
+		assertThat(keyStores).isNotNull();
+		assertThat(secrets).isNotNull();
+	}
+	// Comprueba que el contexto usa transporte y custodia de certificados gestionados.
+
+	private static void deleteDirectory(Path directory) throws Exception {
+		if (!Files.exists(directory)) {
+			return;
+		}
+		try (var paths = Files.walk(directory)) {
+			for (var path : paths.sorted(Comparator.reverseOrder()).toList()) {
+				Files.deleteIfExists(path);
+			}
+		}
 	}
 
 	private static String databaseUrl() {

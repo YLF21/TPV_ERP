@@ -7,8 +7,8 @@ spring:
     fallback-to-system-locale: false
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 5MB
+      max-file-size: 10MB
+      max-request-size: 10MB
   profiles:
     default: dev
   jpa:
@@ -56,9 +56,10 @@ tpv:
     directory: ${TPV_PRODUCT_IMAGE_DIRECTORY:${user.home}/.tpv-erp/product-images}
   verifactu:
     endpoint-mode: ${TPV_VERIFACTU_ENDPOINT_MODE:TEST}
-    certificate-path: ${TPV_VERIFACTU_CERTIFICATE_PATH:}
-    certificate-password: ${TPV_VERIFACTU_CERTIFICATE_PASSWORD:}
+    secret-directory: ${TPV_VERIFACTU_SECRET_DIRECTORY:${user.home}/.tpv-erp/verifactu-secrets}
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:true}
     worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
+    certificate-warning-cron: ${TPV_VERIFACTU_CERTIFICATE_WARNING_CRON:0 0 9 * * *}
+    certificate-purge-cron: ${TPV_VERIFACTU_CERTIFICATE_PURGE_CRON:0 0 3 1 * *}

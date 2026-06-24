@@ -11,6 +11,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.multipart.MultipartFile;
 
 class VerifactuControllerContractTest {
 
@@ -73,6 +74,18 @@ class VerifactuControllerContractTest {
                 .contains("GESTION_VENTAS");
     }
 
+    @Test
+    void exposesAdminOnlyManagedCertificateEndpoints() throws NoSuchMethodException {
+        assertThat(VerifactuCertificateController.class.getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/verifactu/admin/certificates");
+        assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod("list"));
+        assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod(
+                "importCertificate", MultipartFile.class, char[].class, Authentication.class));
+        assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod(
+                "delete", VerifactuCertificateController.DeleteCertificateRequest.class,
+                Authentication.class));
+    }
+
     private static void assertSecuredGet(String methodName) throws NoSuchMethodException {
         var method = VerifactuAdminController.class.getDeclaredMethod(methodName);
         assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
@@ -94,5 +107,10 @@ class VerifactuControllerContractTest {
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("GESTION_VENTAS");
+    }
+
+    private static void assertAdminOnly(Method method) {
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasRole('ADMIN')");
     }
 }

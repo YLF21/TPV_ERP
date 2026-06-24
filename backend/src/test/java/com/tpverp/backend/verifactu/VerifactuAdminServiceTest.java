@@ -11,8 +11,6 @@ import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.organization.Tienda;
-import java.nio.file.Path;
-import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -143,6 +141,36 @@ class VerifactuAdminServiceTest {
         assertThat(status.effectiveActivationAt()).isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
     }
 
+    @Test
+    void statusUsaElCertificadoActivoGestionado() {
+        var dependencies = activationDependencies(TaxpayerType.SOCIEDAD);
+        var repository = Mockito.mock(ManagedVerifactuCertificateRepository.class);
+        var certificate = ManagedVerifactuCertificate.active(
+                dependencies.organization().currentCompany().getId(),
+                "CN=Empresa", "CN=CA", "123", "B00000000",
+                CLOCK.instant().minusSeconds(60), CLOCK.instant().plusSeconds(3600),
+                "A".repeat(64), new byte[]{1}, "secret.bin", CLOCK.instant(),
+                UUID.randomUUID());
+        when(repository.findByCompanyIdAndStatus(
+                dependencies.organization().currentCompany().getId(),
+                ManagedCertificateStatus.ACTIVO)).thenReturn(Optional.of(certificate));
+
+        var service = new VerifactuAdminService(
+                configuredProperties(), Mockito.mock(VerifactuPkcs12KeyStoreLoader.class),
+                certificateValidator(), Mockito.mock(FiscalSubmissionQueueService.class),
+                Mockito.mock(VerifactuSubmissionWorker.class), null,
+                new VerifactuSignaturePolicy(), null, dependencies.configurations(),
+                dependencies.licenses(), dependencies.organization(),
+                new VerifactuActivationService(), CLOCK, null, repository);
+
+        var status = service.status();
+
+        assertThat(status.certificateConfigured()).isTrue();
+        assertThat(status.certificateValid()).isTrue();
+        assertThat(status.certificateSubject()).isEqualTo("CN=Empresa");
+        assertThat(status.endpointMode()).isEqualTo(VerifactuEndpointMode.TEST);
+    }
+
     private static VerifactuAdminService service(VerifactuSubmissionPropertiesFactory properties) {
         return new VerifactuAdminService(
                 properties,
@@ -202,6 +230,7 @@ class VerifactuAdminServiceTest {
                 dependencies.organization(),
                 new VerifactuActivationService(),
                 clock,
+                null,
                 null);
     }
 
@@ -219,8 +248,7 @@ class VerifactuAdminServiceTest {
             FiscalSubmissionAttemptService attempts) {
         var properties = Mockito.mock(VerifactuSubmissionPropertiesFactory.class);
         when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
-                VerifactuEndpointMode.TEST, Path.of("cert.p12"),
-                "secret".toCharArray(), "TPV ERP", "01"));
+                VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         return new VerifactuAdminService(
                 properties,
                 Mockito.mock(VerifactuPkcs12KeyStoreLoader.class),
@@ -235,12 +263,13 @@ class VerifactuAdminServiceTest {
                 null,
                 null,
                 null,
-                attempts);
+                attempts,
+                null);
     }
 
     private static VerifactuCertificateValidator certificateValidator() {
         var validator = Mockito.mock(VerifactuCertificateValidator.class);
-        when(validator.validate(Mockito.any(X509Certificate.class)))
+        when(validator.validate(Mockito.any()))
                 .thenReturn(new VerifactuCertificateStatus(
                         true, null, "CN=Empresa", Instant.now(), Instant.now()));
         return validator;
@@ -249,8 +278,7 @@ class VerifactuAdminServiceTest {
     private static VerifactuSubmissionPropertiesFactory configuredProperties() {
         var properties = Mockito.mock(VerifactuSubmissionPropertiesFactory.class);
         when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
-                VerifactuEndpointMode.TEST, Path.of("cert.p12"),
-                "secret".toCharArray(), "TPV ERP", "01"));
+                VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         return properties;
     }
 

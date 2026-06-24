@@ -41,8 +41,7 @@ class VerifactuSubmissionServiceTest {
     void setUp() {
         record = record();
         when(properties.current()).thenReturn(new VerifactuSubmissionProperties(
-                VerifactuEndpointMode.TEST, java.nio.file.Path.of("cert.p12"),
-                "secret".toCharArray(), "TPV ERP", "01"));
+                VerifactuEndpointMode.TEST, "TPV ERP", "01"));
         lenient().when(endpoints.resolve(VerifactuEndpointMode.TEST))
                 .thenReturn("https://aeat.test/soap");
         when(xml.batchXml(any())).thenReturn("<sfLR:RegFactuSistemaFacturacion/>");

@@ -1,14 +1,16 @@
 package com.tpverp.backend.verifactu;
 
+import java.util.Arrays;
+
 public class ConfiguredVerifactuTransport implements VerifactuTransport {
 
     private final VerifactuSubmissionPropertiesFactory propertiesFactory;
-    private final VerifactuPkcs12KeyStoreLoader keyStores;
+    private final ManagedCertificateKeyStoreFactory keyStores;
     private final VerifactuMutualTlsHttpClientFactory clients;
 
     public ConfiguredVerifactuTransport(
             VerifactuSubmissionPropertiesFactory propertiesFactory,
-            VerifactuPkcs12KeyStoreLoader keyStores,
+            ManagedCertificateKeyStoreFactory keyStores,
             VerifactuMutualTlsHttpClientFactory clients) {
         this.propertiesFactory = propertiesFactory;
         this.keyStores = keyStores;
@@ -17,11 +19,16 @@ public class ConfiguredVerifactuTransport implements VerifactuTransport {
 
     @Override
     public VerifactuTransportResponse send(String endpoint, String soapEnvelope) {
-        var properties = propertiesFactory.current();
-        var keyStore = keyStores.load(
-                properties.certificatePath(), properties.certificatePassword());
-        var client = clients.create(keyStore, properties.certificatePassword());
-        return new HttpVerifactuTransport(client).send(endpoint, soapEnvelope);
+        propertiesFactory.current();
+        try (var managed = keyStores.activeForCurrentCompany()) {
+            var password = managed.password();
+            try {
+                var client = clients.create(managed.keyStore(), password);
+                return new HttpVerifactuTransport(client).send(endpoint, soapEnvelope);
+            } finally {
+                Arrays.fill(password, '\0');
+            }
+        }
     }
     // Retrasa la carga del certificado hasta que exista un envio real.
 }
