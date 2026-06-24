@@ -1,5 +1,25 @@
 alter table cliente rename column saldo_socio to member_balance;
 alter table movimiento_saldo_socio rename to member_balance_movement;
+alter table cliente rename constraint cliente_saldo_socio_check
+    to cliente_member_balance_check;
+
+do $$
+declare
+    constraint_row record;
+begin
+    for constraint_row in
+        select conname
+        from pg_constraint
+        where conrelid = 'member_balance_movement'::regclass
+          and conname ilike '%socio%'
+    loop
+        execute format(
+            'alter table member_balance_movement rename constraint %I to %I',
+            constraint_row.conname,
+            replace(constraint_row.conname, 'socio', 'member'));
+    end loop;
+end;
+$$;
 
 alter table cliente
     add column code_client varchar(12),

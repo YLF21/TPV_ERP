@@ -46,8 +46,9 @@ class PostgreSqlMigrationTest {
                             'impuesto_tienda', 'almacen', 'familia', 'subfamilia',
                             'producto', 'producto_identificador', 'producto_precio',
                             'existencia', 'movimiento_stock', 'salida_almacen',
-                            'salida_almacen_linea', 'cliente', 'movimiento_saldo_socio',
+                            'salida_almacen_linea', 'cliente', 'member_balance_movement',
                             'proveedor', 'comercial', 'proveedor_comercial',
+                            'party_code_counter',
                             'producto_proveedor', 'metodo_pago', 'contador_documento',
                             'documento', 'documento_linea', 'documento_pago',
                             'documento_relacion', 'venta_aparcada', 'vale',
@@ -57,7 +58,7 @@ class PostgreSqlMigrationTest {
                             'intento_envio_fiscal')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(44);
+                assertThat(result.getInt(1)).isEqualTo(45);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);
@@ -166,8 +167,9 @@ class PostgreSqlMigrationTest {
                     schema, firstProductId, secondProductId, storeId, familyId, taxId));
             statement.executeUpdate("""
                     insert into %1$s.proveedor (
-                        id, empresa_id, razon_social, tipo_documento, numero_documento)
-                    values ('%2$s', '%3$s', 'Proveedor', 'CIF', 'B00000002')
+                        id, empresa_id, razon_social, tipo_documento, numero_documento,
+                        code_supplier)
+                    values ('%2$s', '%3$s', 'Proveedor', 'CIF', 'B00000002', 'S-000001')
                     """.formatted(schema, supplierId, companyId));
 
             statement.executeUpdate("""

@@ -27,6 +27,8 @@ class MigrationV16ContractTest {
                 .contains("code_supplier")
                 .contains("code_commercial")
                 .contains("party_code_counter")
+                .contains("rename constraint cliente_saldo_socio_check")
+                .contains("replace(constraint_row.conname, 'socio', 'member')")
                 .contains("'member'")
                 .contains("^c-[0-9]{3}-[0-9]{6}$")
                 .contains("^m-[0-9]{3}-[0-9]{6}$")

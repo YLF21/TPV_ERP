@@ -253,16 +253,19 @@ class ProductSupplierRepositoryPostgreSqlTest {
             UUID supplierId, UUID companyId, String documentNumber, String legalName) {
         jdbc.update("""
                 insert into %s.proveedor (
-                    id, empresa_id, razon_social, tipo_documento, numero_documento)
-                values (?, ?, ?, 'CIF', ?)
-                """.formatted(SCHEMA), supplierId, companyId, legalName, documentNumber);
+                    id, empresa_id, razon_social, tipo_documento, numero_documento,
+                    code_supplier)
+                values (?, ?, ?, 'CIF', ?, ?)
+                """.formatted(SCHEMA), supplierId, companyId, legalName, documentNumber,
+                documentNumber.startsWith("A") ? "S-000001" : "S-000002");
     }
 
     private void insertRepresentative(UUID id, UUID companyId, String name) {
         jdbc.update("""
-                insert into %s.comercial (id, empresa_id, nombre)
-                values (?, ?, ?)
-                """.formatted(SCHEMA), id, companyId, name);
+                insert into %s.comercial (id, empresa_id, nombre, code_commercial)
+                values (?, ?, ?, ?)
+                """.formatted(SCHEMA), id, companyId, name,
+                name.endsWith("1") ? "CO-000001" : "CO-000002");
     }
 
     private void insertProductSupplier(UUID productId, UUID supplierId) {
