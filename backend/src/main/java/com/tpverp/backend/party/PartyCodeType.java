@@ -1,6 +1,6 @@
 package com.tpverp.backend.party;
 
-public enum CustomerRate {
-    VENTA,
+enum PartyCodeType {
+    CLIENT,
     MEMBER
 }

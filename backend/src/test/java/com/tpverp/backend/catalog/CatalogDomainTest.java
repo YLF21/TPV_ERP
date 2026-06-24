@@ -30,13 +30,13 @@ class CatalogDomainTest {
         var product = product();
 
         product.setPrice(PriceTier.VENTA, BigDecimal.ZERO);
-        product.setPrice(PriceTier.SOCIO, null);
+        product.setPrice(PriceTier.MEMBER, null);
         product.setPrice(PriceTier.OFERTA, new BigDecimal("1.25"));
         product.configureOffer(true, LocalDate.of(2026, 6, 1), null);
 
         assertThat(product.price(PriceTier.VENTA)).isEqualByComparingTo("0");
         assertThat(product.isOfferActive()).isTrue();
-        assertThatThrownBy(() -> product.setPrice(PriceTier.SOCIO, BigDecimal.ZERO))
+        assertThatThrownBy(() -> product.setPrice(PriceTier.MEMBER, BigDecimal.ZERO))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> product.configureOffer(true, null, null))
                 .isInstanceOf(IllegalArgumentException.class);

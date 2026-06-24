@@ -69,8 +69,8 @@ class CustomerServiceTest {
     @Test
     void recordsManualMemberBalanceMovementWithAuthenticatedUser() {
         var customer = new Customer(
-                company, "Socio", DocumentType.NIF, "1", null,
-                null, null, null, CustomerRate.SOCIO, BigDecimal.ZERO);
+                company, "Member", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.MEMBER, BigDecimal.ZERO);
         when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
                 .thenReturn(Optional.of(customer));
         when(users.findByTiendaIdAndNombre(store.getId(), "CAJA")).thenReturn(Optional.of(user));
