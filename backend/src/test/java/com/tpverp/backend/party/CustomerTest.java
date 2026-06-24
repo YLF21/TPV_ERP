@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tpverp.backend.organization.Empresa;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -25,12 +26,12 @@ class CustomerTest {
     @Test
     void preservesButBlocksBalanceWhenMemberBecomesRegularCustomer() {
         var customer = new Customer(
-                company(), "Socio", DocumentType.NIE, "x1",
-                null, null, null, null, CustomerRate.SOCIO, BigDecimal.ZERO);
+                company(), "Member", DocumentType.NIE, "x1",
+                null, null, null, null, CustomerRate.MEMBER, BigDecimal.ZERO);
         customer.applyBalance(new BigDecimal("10.00"));
 
         customer.update(
-                "Socio", DocumentType.NIE, "x1", null, null, null, null,
+                "Member", DocumentType.NIE, "x1", null, null, null, null,
                 CustomerRate.VENTA, BigDecimal.ZERO);
 
         assertThat(customer.getMemberBalance()).isEqualByComparingTo("10.00");
@@ -41,12 +42,28 @@ class CustomerTest {
     @Test
     void rejectsBalanceBelowZero() {
         var customer = new Customer(
-                company(), "Socio", DocumentType.NIF, "1",
-                null, null, null, null, CustomerRate.SOCIO, BigDecimal.ZERO);
+                company(), "Member", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.MEMBER, BigDecimal.ZERO);
 
         assertThatThrownBy(() -> customer.applyBalance(new BigDecimal("-0.01")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("negativo");
+    }
+
+    @Test
+    void conservaCodigoYFechaAlReactivarMember() {
+        var customer = new Customer(
+                company(), "Member", DocumentType.NIF, "2",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.activateMember("M-001-000001", LocalDate.of(2026, 6, 24));
+
+        customer.deactivateMember();
+        customer.activateMember("M-001-000002", LocalDate.of(2026, 7, 1));
+
+        assertThat(customer.isMember()).isTrue();
+        assertThat(customer.getCodeMember()).isEqualTo("M-001-000001");
+        assertThat(customer.getMemberSince()).isEqualTo(LocalDate.of(2026, 6, 24));
+        assertThat(customer.getRate()).isEqualTo(CustomerRate.MEMBER);
     }
 
     private Empresa company() {

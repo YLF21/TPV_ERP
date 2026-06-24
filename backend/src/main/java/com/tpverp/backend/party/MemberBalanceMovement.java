@@ -15,7 +15,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Entity
-@Table(name = "movimiento_saldo_socio")
+@Table(name = "member_balance_movement")
 public class MemberBalanceMovement {
 
     @Id

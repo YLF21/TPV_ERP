@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -26,6 +27,12 @@ public class Customer {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa company;
+
+    @Column(name = "code_client", nullable = false, length = 12, updatable = false)
+    private String codeClient;
+
+    @Column(name = "client_code_store_id", nullable = false, updatable = false)
+    private UUID clientCodeStoreId;
 
     @Column(name = "nombre_fiscal", nullable = false)
     private String fiscalName;
@@ -56,8 +63,23 @@ public class Customer {
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal descuento;
 
-    @Column(name = "saldo_socio", nullable = false, precision = 19, scale = 2)
+    @Column(name = "member_balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal memberBalance;
+
+    @Column(name = "is_member", nullable = false)
+    private boolean member;
+
+    @Column(name = "code_member", length = 12, updatable = false)
+    private String codeMember;
+
+    @Column(name = "member_code_store_id", updatable = false)
+    private UUID memberCodeStoreId;
+
+    @Column(name = "num_member")
+    private String numMember;
+
+    @Column(name = "member_since", updatable = false)
+    private LocalDate memberSince;
 
     @Column(nullable = false)
     private boolean activo = true;
@@ -105,12 +127,45 @@ public class Customer {
         this.email = PartyValues.optional(email);
         this.observaciones = PartyValues.optional(notes);
         this.tarifa = newRate;
+        this.member = newRate == CustomerRate.MEMBER;
         this.descuento = PartyValues.discount(discount);
     }
 
+    public void assignClientCode(UUID storeId, String code) {
+        if (codeClient != null) {
+            throw new IllegalStateException("El codigo de cliente es inmutable");
+        }
+        clientCodeStoreId = Objects.requireNonNull(storeId, "tienda");
+        codeClient = PartyValues.required(code, "codeClient");
+    }
+
+    public void activateMember(String code, LocalDate date) {
+        if (codeMember == null) {
+            codeMember = PartyValues.required(code, "codeMember");
+            memberSince = Objects.requireNonNull(date, "memberSince");
+        }
+        member = true;
+        tarifa = CustomerRate.MEMBER;
+    }
+
+    public void assignMemberStore(UUID storeId) {
+        if (memberCodeStoreId == null) {
+            memberCodeStoreId = Objects.requireNonNull(storeId, "tienda");
+        }
+    }
+
+    public void deactivateMember() {
+        member = false;
+        tarifa = CustomerRate.VENTA;
+    }
+
+    public void setNumMember(String value) {
+        numMember = PartyValues.optional(value);
+    }
+
     public void applyBalance(BigDecimal amount) {
-        if (tarifa != CustomerRate.SOCIO) {
-            throw new IllegalStateException("Solo los clientes SOCIO tienen saldo");
+        if (!member) {
+            throw new IllegalStateException("Solo los clientes MEMBER tienen saldo");
         }
         BigDecimal updated = memberBalance.add(PartyValues.money(amount));
         if (updated.signum() < 0) {
@@ -142,6 +197,26 @@ public class Customer {
 
     public BigDecimal getMemberBalance() {
         return memberBalance;
+    }
+
+    public String getCodeClient() {
+        return codeClient;
+    }
+
+    public boolean isMember() {
+        return member;
+    }
+
+    public String getCodeMember() {
+        return codeMember;
+    }
+
+    public String getNumMember() {
+        return numMember;
+    }
+
+    public LocalDate getMemberSince() {
+        return memberSince;
     }
 
     public DocumentType getDocumentType() {

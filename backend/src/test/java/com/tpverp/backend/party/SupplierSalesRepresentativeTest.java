@@ -26,6 +26,21 @@ class SupplierSalesRepresentativeTest {
                 .containsExactly("Segundo");
     }
 
+    @Test
+    void businessCodesAreAssignedOnlyOnce() {
+        var company = company();
+        var supplier = new Supplier(
+                company, "Proveedor", null, DocumentType.CIF, "B1",
+                null, null, null, null);
+        var commercial = new SalesRepresentative(company, "Comercial", null, null, null);
+
+        supplier.assignCode("S-000001");
+        commercial.assignCode("CO-000001");
+
+        assertThat(supplier.getCodeSupplier()).isEqualTo("S-000001");
+        assertThat(commercial.getCodeCommercial()).isEqualTo("CO-000001");
+    }
+
     private Empresa company() {
         return new Empresa("B00000000", "Empresa", Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",

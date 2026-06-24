@@ -279,11 +279,12 @@ class FiscalChainPostgreSqlTest {
                 insert into cliente (
                     id, empresa_id, nombre_fiscal, tipo_documento,
                     numero_documento, direccion, codigo_postal, poblacion,
-                    provincia, pais, tarifa, descuento, saldo_socio)
+                    provincia, pais, tarifa, descuento, member_balance,
+                    code_client, client_code_store_id)
                 values (?, ?, 'Cliente Original', 'NIF', '12345678Z',
                     'Calle Original', '35001', 'Las Palmas',
-                    'Las Palmas', 'ES', 'VENTA', 0, 0)
-                """, customerId, fixture.companyId());
+                    'Las Palmas', 'ES', 'VENTA', 0, 0, 'C-001-000001', ?)
+                """, customerId, fixture.companyId(), fixture.storeId());
         jdbc.update(
                 "update documento set cliente_id = ? where id = ?",
                 customerId, fixture.documentIds().getFirst());

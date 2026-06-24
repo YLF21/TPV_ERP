@@ -2,7 +2,7 @@ package com.tpverp.backend.catalog;
 
 public enum PriceTier {
     VENTA,
-    SOCIO,
+    MEMBER,
     MAYORISTA,
     OFERTA
 }

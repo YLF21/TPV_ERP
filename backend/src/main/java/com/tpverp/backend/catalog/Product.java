@@ -130,7 +130,7 @@ public class Product {
     }
 
     public BigDecimal getMemberPrice() {
-        return price(PriceTier.SOCIO);
+        return price(PriceTier.MEMBER);
     }
 
     public BigDecimal getWholesalePrice() {

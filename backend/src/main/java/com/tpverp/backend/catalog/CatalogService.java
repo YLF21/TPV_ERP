@@ -261,7 +261,7 @@ public class CatalogService {
             product.removeIdentifier(IdentifierType.CODIGO_BARRAS);
         }
         product.setPrice(PriceTier.VENTA, request.salePrice());
-        product.setPrice(PriceTier.SOCIO, request.memberPrice());
+        product.setPrice(PriceTier.MEMBER, request.memberPrice());
         product.setPrice(PriceTier.MAYORISTA, request.wholesalePrice());
         product.setPrice(PriceTier.OFERTA, request.offerPrice());
         product.configureOffer(request.offerActive(), request.offerFrom(), request.offerUntil());
