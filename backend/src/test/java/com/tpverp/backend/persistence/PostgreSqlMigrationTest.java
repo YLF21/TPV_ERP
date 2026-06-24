@@ -58,7 +58,7 @@ class PostgreSqlMigrationTest {
                             'intento_envio_fiscal', 'certificado_verifactu')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(45);
+                assertThat(result.getInt(1)).isEqualTo(46);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);
