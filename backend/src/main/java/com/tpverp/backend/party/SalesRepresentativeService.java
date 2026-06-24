@@ -11,14 +11,17 @@ public class SalesRepresentativeService {
     private final SalesRepresentativeRepository representatives;
     private final SupplierRepresentativeRepository links;
     private final PartyContext context;
+    private final PartyCodeAllocator codes;
 
     public SalesRepresentativeService(
             SalesRepresentativeRepository representatives,
             SupplierRepresentativeRepository links,
-            PartyContext context) {
+            PartyContext context,
+            PartyCodeAllocator codes) {
         this.representatives = representatives;
         this.links = links;
         this.context = context;
+        this.codes = codes;
     }
 
     @Transactional(readOnly = true)
@@ -34,9 +37,11 @@ public class SalesRepresentativeService {
 
     @Transactional
     public SalesRepresentativeView create(SalesRepresentativeCommand command) {
-        return SalesRepresentativeView.from(representatives.save(new SalesRepresentative(
-                context.currentCompany(), command.name(), command.phone(),
-                command.email(), command.otherContact())));
+        var company = context.currentCompany();
+        var representative = new SalesRepresentative(
+                company, command.name(), command.phone(), command.email(), command.otherContact());
+        representative.assignCode(codes.nextCommercial(company));
+        return SalesRepresentativeView.from(representatives.save(representative));
     }
 
     @Transactional
@@ -66,11 +71,13 @@ public class SalesRepresentativeService {
     }
 
     public record SalesRepresentativeView(
-            UUID id, String name, String phone, String email, String otherContact) {
+            UUID id, String codeCommercial, String name, String phone,
+            String email, String otherContact) {
 
         static SalesRepresentativeView from(SalesRepresentative representative) {
             return new SalesRepresentativeView(
-                    representative.getId(), representative.getName(),
+                    representative.getId(), representative.getCodeCommercial(),
+                    representative.getName(),
                     representative.getPhone(), representative.getEmail(),
                     representative.getOtherContact());
         }

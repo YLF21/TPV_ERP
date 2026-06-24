@@ -29,6 +29,9 @@ public class Supplier {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa company;
 
+    @Column(name = "code_supplier", nullable = false, length = 8, updatable = false)
+    private String codeSupplier;
+
     @Column(name = "razon_social", nullable = false)
     private String legalName;
 
@@ -132,6 +135,17 @@ public class Supplier {
 
     public void deactivate() {
         activo = false;
+    }
+
+    public void assignCode(String code) {
+        if (codeSupplier != null) {
+            throw new IllegalStateException("El codigo de proveedor es inmutable");
+        }
+        codeSupplier = PartyValues.required(code, "codeSupplier");
+    }
+
+    public String getCodeSupplier() {
+        return codeSupplier;
     }
 
     public UUID getId() {

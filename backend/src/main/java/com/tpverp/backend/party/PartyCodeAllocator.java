@@ -1,6 +1,7 @@
 package com.tpverp.backend.party;
 
 import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Empresa;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,6 +32,14 @@ public class PartyCodeAllocator {
     public String nextMember(Tienda store) {
         return "M-" + store.getCodigoTienda() + "-"
                 + six(next(store.getId(), PartyCodeType.MEMBER));
+    }
+
+    public String nextSupplier(Empresa company) {
+        return "S-" + six(next(company.getId(), PartyCodeType.SUPPLIER));
+    }
+
+    public String nextCommercial(Empresa company) {
+        return "CO-" + six(next(company.getId(), PartyCodeType.COMMERCIAL));
     }
 
     private long next(UUID scopeId, PartyCodeType type) {

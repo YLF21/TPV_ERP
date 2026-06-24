@@ -129,7 +129,7 @@ create table party_code_counter (
     code_type varchar(16) not null,
     last_number bigint not null default 0,
     primary key (scope_id, code_type),
-    check (code_type in ('CLIENT', 'MEMBER')),
+    check (code_type in ('CLIENT', 'MEMBER', 'SUPPLIER', 'COMMERCIAL')),
     check (last_number >= 0)
 );
 
@@ -143,3 +143,13 @@ select member_code_store_id, 'MEMBER', count(*)
 from cliente
 where code_member is not null
 group by member_code_store_id;
+
+insert into party_code_counter (scope_id, code_type, last_number)
+select empresa_id, 'SUPPLIER', count(*)
+from proveedor
+group by empresa_id;
+
+insert into party_code_counter (scope_id, code_type, last_number)
+select empresa_id, 'COMMERCIAL', count(*)
+from comercial
+group by empresa_id;

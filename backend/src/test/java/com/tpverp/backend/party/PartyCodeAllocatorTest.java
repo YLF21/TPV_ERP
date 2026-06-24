@@ -23,4 +23,16 @@ class PartyCodeAllocatorTest {
         assertThat(allocator.nextClient(store)).isEqualTo("C-001-000001");
         assertThat(allocator.nextMember(store)).isEqualTo("M-001-000002");
     }
+
+    @Test
+    void formateaCodigosEmpresarialesDeProveedorYComercial() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var company = PartyTestData.company();
+        when(jdbc.queryForObject(any(String.class), eq(Long.class), any(), any()))
+                .thenReturn(1L, 2L);
+        PartyCodeAllocator allocator = new PartyCodeAllocator(jdbc);
+
+        assertThat(allocator.nextSupplier(company)).isEqualTo("S-000001");
+        assertThat(allocator.nextCommercial(company)).isEqualTo("CO-000002");
+    }
 }

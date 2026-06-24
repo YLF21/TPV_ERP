@@ -29,6 +29,7 @@ class SupplierServiceTest {
     @Mock SupplierRepresentativeRepository links;
     @Mock TiendaRepository stores;
     @Mock UsuarioRepository users;
+    @Mock PartyCodeAllocator codes;
 
     private Empresa company;
     private Supplier supplier;
@@ -82,9 +83,24 @@ class SupplierServiceTest {
                 .findByCompanyIdOrderByDocumentNumberAsc(PartyTestData.id(company));
     }
 
+    @Test
+    void createsSupplierWithAutomaticCompanyCode() {
+        when(suppliers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
+                PartyTestData.id(company), DocumentType.CIF, "B2"))
+                .thenReturn(Optional.empty());
+        when(codes.nextSupplier(company)).thenReturn("S-000001");
+        when(suppliers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var created = service().create(new SupplierService.SupplierCommand(
+                "Proveedor dos", null, DocumentType.CIF, "B2",
+                null, null, null, null));
+
+        assertThat(created.codeSupplier()).isEqualTo("S-000001");
+    }
+
     private SupplierService service() {
         var organization = new CurrentOrganization(stores, users);
         return new SupplierService(suppliers, representatives, links,
-                new PartyContext(organization));
+                new PartyContext(organization), codes);
     }
 }

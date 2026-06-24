@@ -12,16 +12,19 @@ public class SupplierService {
     private final SalesRepresentativeRepository representatives;
     private final SupplierRepresentativeRepository links;
     private final PartyContext context;
+    private final PartyCodeAllocator codes;
 
     public SupplierService(
             SupplierRepository suppliers,
             SalesRepresentativeRepository representatives,
             SupplierRepresentativeRepository links,
-            PartyContext context) {
+            PartyContext context,
+            PartyCodeAllocator codes) {
         this.suppliers = suppliers;
         this.representatives = representatives;
         this.links = links;
         this.context = context;
+        this.codes = codes;
     }
 
     @Transactional(readOnly = true)
@@ -40,10 +43,12 @@ public class SupplierService {
     public SupplierView create(SupplierCommand command) {
         var company = context.currentCompany();
         ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
-        return SupplierView.from(suppliers.save(new Supplier(
+        var supplier = new Supplier(
                 company, command.legalName(), command.tradeName(), command.documentType(),
                 command.documentNumber(), command.address(), command.phone(),
-                command.email(), command.notes())));
+                command.email(), command.notes());
+        supplier.assignCode(codes.nextSupplier(company));
+        return SupplierView.from(suppliers.save(supplier));
     }
 
     @Transactional
@@ -121,6 +126,7 @@ public class SupplierService {
 
     public record SupplierView(
             UUID id,
+            String codeSupplier,
             String legalName,
             String tradeName,
             DocumentType documentType,
@@ -134,7 +140,8 @@ public class SupplierService {
 
         static SupplierView from(Supplier supplier) {
             return new SupplierView(
-                    supplier.getId(), supplier.getLegalName(), supplier.getTradeName(),
+                    supplier.getId(), supplier.getCodeSupplier(), supplier.getLegalName(),
+                    supplier.getTradeName(),
                     supplier.getDocumentType(), supplier.getDocumentNumber(),
                     supplier.getFiscalAddress(), supplier.getPhone(), supplier.getEmail(),
                     supplier.getNotes(), supplier.isActive(),
