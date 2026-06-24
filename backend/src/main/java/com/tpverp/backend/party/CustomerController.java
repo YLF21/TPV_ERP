@@ -98,13 +98,14 @@ public class CustomerController {
             String phone,
             String email,
             String notes,
-            @NotNull CustomerRate rate,
-            @NotNull @DecimalMin("0.00") @DecimalMax("100.00") BigDecimal discount) {
+            @NotNull @DecimalMin("0.00") @DecimalMax("100.00") BigDecimal discount,
+            boolean isMember,
+            String numMember) {
 
         CustomerService.CustomerCommand command() {
             return new CustomerService.CustomerCommand(
                     fiscalName, documentType, documentNumber, address,
-                    phone, email, notes, rate, discount);
+                    phone, email, notes, discount, isMember, numMember);
         }
     }
 

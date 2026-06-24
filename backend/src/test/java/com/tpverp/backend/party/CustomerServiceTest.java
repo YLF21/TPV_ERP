@@ -36,6 +36,7 @@ class CustomerServiceTest {
     @Mock MemberBalanceMovementRepository movements;
     @Mock TiendaRepository stores;
     @Mock UsuarioRepository users;
+    @Mock PartyCodeAllocator codes;
 
     private Empresa company;
     private Tienda store;
@@ -57,13 +58,38 @@ class CustomerServiceTest {
                 PartyTestData.id(company), DocumentType.NIF, "12AB"))
                 .thenReturn(Optional.empty());
         when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(codes.nextClient(store)).thenReturn("C-001-000001");
 
         var created = service().create(new CustomerService.CustomerCommand(
                 "Cliente", DocumentType.NIF, " 12ab ", null,
-                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO));
+                null, null, null, BigDecimal.ZERO, false, null));
 
         assertThat(created.documentNumber()).isEqualTo("12AB");
+        assertThat(created.codeClient()).isEqualTo("C-001-000001");
+        assertThat(created.isMember()).isFalse();
         verify(customers).save(any(Customer.class));
+    }
+
+    @Test
+    void activaMemberYAsignaCodigoFechaYNumeroLibre() {
+        when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
+                PartyTestData.id(company), DocumentType.NIF, "99Z"))
+                .thenReturn(Optional.empty());
+        when(customers.findByCompanyIdAndNumMember(PartyTestData.id(company), "EXT/2026 #1"))
+                .thenReturn(Optional.empty());
+        when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(codes.nextClient(store)).thenReturn("C-001-000001");
+        when(codes.nextMember(store)).thenReturn("M-001-000001");
+
+        var created = service().create(new CustomerService.CustomerCommand(
+                "Member", DocumentType.NIF, "99z", null,
+                null, null, null, BigDecimal.ZERO, true, " EXT/2026 #1 "));
+
+        assertThat(created.isMember()).isTrue();
+        assertThat(created.codeMember()).isEqualTo("M-001-000001");
+        assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
+        assertThat(created.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 6, 8));
+        assertThat(created.rate()).isEqualTo(CustomerRate.MEMBER);
     }
 
     @Test
@@ -101,7 +127,7 @@ class CustomerServiceTest {
     private CustomerService service() {
         var organization = new CurrentOrganization(stores, users);
         return new CustomerService(
-                customers, movements, new PartyContext(organization),
+                customers, movements, new PartyContext(organization), codes,
                 Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
     }
 }
