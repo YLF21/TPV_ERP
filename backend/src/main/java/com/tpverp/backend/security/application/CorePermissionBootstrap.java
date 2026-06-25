@@ -80,7 +80,7 @@ public class CorePermissionBootstrap {
                 permission(SUPPLIERS_WRITE, "party.permissions.suppliers.write", "PARTY"),
                 permission(SUPPLIERS_DELETE, "party.permissions.suppliers.delete", "PARTY"),
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),
-                permission(GESTION_CUENTAS, "cash.permissions.accounts.manage", "CASH"),
+                permission(GESTION_CUENTAS, "cash.permissions.accounting", "CASH"),
                 permission(CASH_READ, "cash.permissions.read", "CASH"),
                 permission(CASH_OPERATE, "cash.permissions.operate", "CASH"),
                 permission(CASH_CONFIGURE, "cash.permissions.configure", "CASH"),

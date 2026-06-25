@@ -8,10 +8,24 @@ create table configuracion_caja_tienda (
     constraint caja_config_tolerancia_no_negativa check (tolerancia_descuadre >= 0)
 );
 
+do $$
+begin
+    if not exists (
+        select 1
+        from pg_constraint
+        where conrelid = 'terminal'::regclass
+          and conname = 'terminal_id_tienda_uq'
+    ) then
+        alter table terminal
+            add constraint terminal_id_tienda_uq unique (id, tienda_id);
+    end if;
+end;
+$$;
+
 create table sesion_caja (
     id uuid primary key,
     tienda_id uuid not null references tienda(id),
-    terminal_id uuid not null references terminal(id),
+    terminal_id uuid not null,
     usuario_apertura_id uuid not null references usuario(id),
     abierta_en timestamptz not null,
     fondo_inicial numeric(19,2) not null,
@@ -23,6 +37,8 @@ create table sesion_caja (
     estado varchar(16) not null,
     cierre_tardio boolean not null default false,
     version bigint not null default 0,
+    constraint sesion_caja_terminal_tienda_fk
+        foreign key (terminal_id, tienda_id) references terminal(id, tienda_id),
     constraint sesion_caja_estado_ck check (estado in ('ABIERTA', 'CERRADA')),
     constraint sesion_caja_fondo_inicial_ck check (fondo_inicial >= 0)
 );
@@ -33,7 +49,7 @@ create unique index sesion_caja_terminal_abierta_uq
 create table movimiento_caja (
     id uuid primary key,
     tienda_id uuid not null references tienda(id),
-    terminal_id uuid not null references terminal(id),
+    terminal_id uuid not null,
     sesion_caja_id uuid references sesion_caja(id),
     tipo varchar(32) not null,
     importe numeric(19,2) not null,
@@ -45,6 +61,8 @@ create table movimiento_caja (
     documento_pago_id uuid references documento_pago(id),
     impreso_en timestamptz,
     version bigint not null default 0,
+    constraint movimiento_caja_terminal_tienda_fk
+        foreign key (terminal_id, tienda_id) references terminal(id, tienda_id),
     constraint movimiento_caja_tipo_ck check (tipo in (
         'COBRO_EFECTIVO',
         'DEVOLUCION_EFECTIVO',
@@ -85,8 +103,10 @@ on conflict do nothing;
 
 insert into permiso (id, codigo, translation_key, grupo)
 values
-    (gen_random_uuid(), 'GESTION_CUENTAS', 'cash.permissions.accounts.manage', 'CASH'),
+    (gen_random_uuid(), 'GESTION_CUENTAS', 'cash.permissions.accounting', 'CASH'),
     (gen_random_uuid(), 'CASH_READ', 'cash.permissions.read', 'CASH'),
     (gen_random_uuid(), 'CASH_OPERATE', 'cash.permissions.operate', 'CASH'),
     (gen_random_uuid(), 'CASH_CONFIGURE', 'cash.permissions.configure', 'CASH')
-on conflict (codigo) do nothing;
+on conflict (codigo) do update
+set translation_key = excluded.translation_key,
+    grupo = excluded.grupo;
