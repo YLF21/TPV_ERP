@@ -2,14 +2,37 @@ package com.tpverp.backend.cash;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.security.application.CorePermissionBootstrap;
+import com.tpverp.backend.security.domain.Permiso;
+import com.tpverp.backend.security.domain.Rol;
+import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.terminal.Terminal;
+import com.tpverp.backend.terminal.TerminalRepository;
+import com.tpverp.backend.terminal.TipoTerminal;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 class CashSessionServiceTest {
+
+    private static final Instant NOW = Instant.parse("2026-06-25T09:30:00Z");
 
     @Test
     void secondMismatchClosesSessionAndStoresDiscrepancy() {
@@ -132,6 +155,99 @@ class CashSessionServiceTest {
         assertThat(movement.getSessionId()).isEqualTo(session.getId());
     }
 
+    @Test
+    void firstOpeningRequiresPreviousBetweenSessionEntry() {
+        var fixture = serviceFixture();
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.empty());
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("entrada entre sesiones");
+    }
+
+    @Test
+    void opensWithPreviousRetainedFundPlusBetweenSessionMovements() {
+        var fixture = serviceFixture();
+        var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "100.00");
+        var betweenSessionEntry = CashMovement.betweenSessions(
+                fixture.store.getId(), fixture.terminal.getId(), new BigDecimal("25.00"),
+                NOW.minusSeconds(60), fixture.user.getId(), null, "refuerzo");
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of(betweenSessionEntry));
+
+        var opened = fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user));
+
+        assertThat(opened.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(opened.openingFund()).isEqualByComparingTo("125.00");
+    }
+
+    @Test
+    void sessionWithdrawalCannotExceedExpectedCash() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("40.01"), "retirada", List.of()),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("efectivo disponible");
+    }
+
+    @Test
+    void entryDuringSessionRequiresAdminOrAccountingAuthorizer() {
+        var fixture = serviceFixture();
+        var sellerAuthorizer = user(fixture.store, "SELLER", new Rol(fixture.store, "SELLER"));
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.users.findByTiendaIdAndNombre(fixture.store.getId(), "SELLER"))
+                .thenReturn(Optional.of(sellerAuthorizer));
+        when(fixture.passwordEncoder.matches("secret", sellerAuthorizer.getPasswordHash())).thenReturn(true);
+
+        assertThatThrownBy(() -> fixture.service.entry(
+                fixture.terminal.getId(),
+                new CashEntryRequest(new BigDecimal("10.00"), "entrada manual", "SELLER", "secret", List.of()),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("autorizador");
+    }
+
+    @Test
+    void sellerStatusDoesNotExposeExpectedTotals() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of(
+                CashMovement.sessionMovement(
+                        fixture.store.getId(), fixture.terminal.getId(), session, CashMovementType.COBRO_EFECTIVO,
+                        new BigDecimal("15.00"), NOW, fixture.user.getId(), null, null, null, null)));
+
+        var status = fixture.service.status(fixture.terminal.getId(), salesAuthentication(fixture.user));
+
+        assertThat(status.openingFund()).isEqualByComparingTo("40.00");
+        assertThat(status.expectedCash()).isNull();
+        assertThat(status.availableCash()).isNull();
+    }
+
     private CashSession openSession() {
         return CashSession.open(
                 UUID.randomUUID(),
@@ -139,5 +255,79 @@ class CashSessionServiceTest {
                 UUID.randomUUID(),
                 Instant.parse("2026-06-25T09:00:00Z"),
                 new BigDecimal("50.004"));
+    }
+
+    private static ServiceFixture serviceFixture() {
+        var store = store("001");
+        var user = user(store, "SELLER", salesRole(store));
+        var terminal = new Terminal(store, "TPV 1", TipoTerminal.TERMINAL_VENTA, "hash");
+        var sessions = mock(CashSessionRepository.class);
+        var movements = mock(CashMovementRepository.class);
+        var configs = mock(CashStoreConfigRepository.class);
+        var terminals = mock(TerminalRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var users = mock(UsuarioRepository.class);
+        var passwordEncoder = mock(PasswordEncoder.class);
+        when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId())).thenReturn(Optional.of(terminal));
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentUser(any())).thenReturn(user);
+        when(configs.findById(store.getId())).thenReturn(Optional.of(new CashStoreConfig(store.getId())));
+        when(sessions.save(any(CashSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(movements.save(any(CashMovement.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var permissions = new CashPermissionService(users, passwordEncoder, organization);
+        var calculator = new CashAmountCalculator(sessions, movements);
+        var service = new CashSessionService(
+                sessions, movements, configs, terminals, organization, permissions, calculator,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        return new ServiceFixture(
+                service, sessions, movements, configs, terminals, organization, users, passwordEncoder,
+                store, user, terminal);
+    }
+
+    private static CashSession closedSession(UUID storeId, UUID terminalId, UUID userId, String retainedFund) {
+        var session = CashSession.open(storeId, terminalId, userId, NOW.minusSeconds(3600), new BigDecimal("10.00"));
+        session.close(
+                userId, NOW.minusSeconds(1800), new BigDecimal("120.00"),
+                new BigDecimal(retainedFund), BigDecimal.ZERO);
+        return session;
+    }
+
+    private static UsernamePasswordAuthenticationToken salesAuthentication(Usuario user) {
+        return new UsernamePasswordAuthenticationToken(
+                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
+    }
+
+    private static Rol salesRole(Tienda store) {
+        var role = new Rol(store, "SELLER");
+        role.conceder(new Permiso(CorePermissionBootstrap.GESTION_VENTAS, "sales", "DOCUMENTS"));
+        return role;
+    }
+
+    private static Usuario user(Tienda store, String name, Rol role) {
+        return new Usuario(store, name, "hash-" + name, role);
+    }
+
+    private static Tienda store(String code) {
+        var address = Map.of(
+                "linea1", "Calle 1", "ciudad", "Las Palmas",
+                "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
+        return new Tienda(
+                new Empresa("B00000000", "Empresa", address),
+                code, "Tienda", address, UUID.randomUUID().toString(),
+                "Atlantic/Canary", "EUR", "es-ES");
+    }
+
+    private record ServiceFixture(
+            CashSessionService service,
+            CashSessionRepository sessions,
+            CashMovementRepository movements,
+            CashStoreConfigRepository configs,
+            TerminalRepository terminals,
+            CurrentOrganization organization,
+            UsuarioRepository users,
+            PasswordEncoder passwordEncoder,
+            Tienda store,
+            Usuario user,
+            Terminal terminal) {
     }
 }

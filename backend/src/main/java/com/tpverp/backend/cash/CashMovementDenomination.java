@@ -46,6 +46,14 @@ public class CashMovementDenomination {
         return Money.euros(denomination.multiply(BigDecimal.valueOf(quantity)));
     }
 
+    public BigDecimal getDenomination() {
+        return denomination;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
     private static BigDecimal positive(BigDecimal value) {
         var amount = Money.euros(value);
         if (amount.signum() <= 0) {

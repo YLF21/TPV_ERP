@@ -47,4 +47,16 @@ public class CashStoreConfig {
     public BigDecimal getDiscrepancyTolerance() {
         return discrepancyTolerance;
     }
+
+    public boolean isRequireEntryBreakdown() {
+        return requireEntryBreakdown;
+    }
+
+    public boolean isRequireWithdrawalBreakdown() {
+        return requireWithdrawalBreakdown;
+    }
+
+    public boolean isRequireClosingBreakdown() {
+        return requireClosingBreakdown;
+    }
 }

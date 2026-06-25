@@ -151,6 +151,22 @@ public class CashSession {
         return closedAt;
     }
 
+    public Instant getOpenedAt() {
+        return openedAt;
+    }
+
+    public BigDecimal getOpeningFund() {
+        return openingFund;
+    }
+
+    public BigDecimal getExpectedCash() {
+        return expectedCash;
+    }
+
+    public BigDecimal getRetainedFund() {
+        return retainedFund;
+    }
+
     public BigDecimal getDiscrepancy() {
         return discrepancy;
     }

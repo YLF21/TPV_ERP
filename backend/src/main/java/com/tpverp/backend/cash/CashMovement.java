@@ -183,6 +183,26 @@ public class CashMovement {
         return amount;
     }
 
+    public Instant getCreatedAt() {
+        return creadoEn;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public UUID getAuthorizerUserId() {
+        return authorizerUserId;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public List<CashMovementDenomination> getDenominations() {
+        return List.copyOf(denominations);
+    }
+
     private static BigDecimal positive(BigDecimal value) {
         var amount = Money.euros(value);
         if (amount.signum() <= 0) {
