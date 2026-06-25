@@ -39,6 +39,8 @@ create table sesion_caja (
     version bigint not null default 0,
     constraint sesion_caja_terminal_tienda_fk
         foreign key (terminal_id, tienda_id) references terminal(id, tienda_id),
+    constraint sesion_caja_id_terminal_tienda_uq
+        unique (id, terminal_id, tienda_id),
     constraint sesion_caja_estado_ck check (estado in ('ABIERTA', 'CERRADA')),
     constraint sesion_caja_fondo_inicial_ck check (fondo_inicial >= 0)
 );
@@ -63,6 +65,9 @@ create table movimiento_caja (
     version bigint not null default 0,
     constraint movimiento_caja_terminal_tienda_fk
         foreign key (terminal_id, tienda_id) references terminal(id, tienda_id),
+    constraint movimiento_caja_sesion_terminal_tienda_fk
+        foreign key (sesion_caja_id, terminal_id, tienda_id)
+        references sesion_caja(id, terminal_id, tienda_id),
     constraint movimiento_caja_tipo_ck check (tipo in (
         'COBRO_EFECTIVO',
         'DEVOLUCION_EFECTIVO',

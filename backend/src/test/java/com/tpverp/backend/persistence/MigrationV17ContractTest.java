@@ -107,6 +107,23 @@ class MigrationV17ContractTest {
                 .hasMessageContaining("movimiento_caja_terminal_tienda_fk");
     }
 
+    @Test
+    void rechazaMovimientoConSesionDeOtraTerminalYTienda() {
+        UUID storeId = jdbcTemplate.queryForObject("select id from tienda limit 1", UUID.class);
+        UUID terminalId = jdbcTemplate.queryForObject("select id from terminal limit 1", UUID.class);
+        UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
+        UUID sessionId = UUID.randomUUID();
+        insertOpenSession(sessionId, storeId, terminalId, userId);
+
+        UUID otherStoreId = insertOtherStore();
+        UUID otherTerminalId = insertTerminal(otherStoreId);
+
+        assertThatThrownBy(() -> insertCashMovement(
+                UUID.randomUUID(), otherStoreId, otherTerminalId, sessionId, userId))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("movimiento_caja_sesion_terminal_tienda_fk");
+    }
+
     private void assertTableExists(String tableName) {
         Integer count = jdbcTemplate.queryForObject("""
                 select count(*)
@@ -136,6 +153,16 @@ class MigrationV17ContractTest {
                 """, id, storeId, terminalId, userId);
     }
 
+    private void insertCashMovement(
+            UUID id, UUID storeId, UUID terminalId, UUID sessionId, UUID userId) {
+        jdbcTemplate.update("""
+                insert into movimiento_caja (
+                    id, tienda_id, terminal_id, sesion_caja_id, tipo,
+                    importe, creado_en, usuario_id)
+                values (?, ?, ?, ?, 'ENTRADA', 5.00, now(), ?)
+                """, id, storeId, terminalId, sessionId, userId);
+    }
+
     private UUID insertOtherStore() {
         UUID storeId = UUID.randomUUID();
         UUID companyId = jdbcTemplate.queryForObject("select id from empresa limit 1", UUID.class);
@@ -153,6 +180,16 @@ class MigrationV17ContractTest {
                     }', ?, 'Atlantic/Canary', 'EUR', 'es-ES', '002')
                 """, storeId, companyId, "cash-test-" + storeId);
         return storeId;
+    }
+
+    private UUID insertTerminal(UUID storeId) {
+        UUID terminalId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into terminal (
+                    id, tienda_id, nombre, tipo, credential_hash)
+                values (?, ?, 'CAJA SECUNDARIA', 'TERMINAL_VENTA', 'hash')
+                """, terminalId, storeId);
+        return terminalId;
     }
 
     private static void deleteDirectory(Path directory) throws Exception {
