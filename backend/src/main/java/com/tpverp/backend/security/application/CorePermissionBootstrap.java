@@ -32,6 +32,10 @@ public class CorePermissionBootstrap {
     public static final String SUPPLIERS_WRITE = "SUPPLIERS_WRITE";
     public static final String SUPPLIERS_DELETE = "SUPPLIERS_DELETE";
     public static final String GESTION_VENTAS = "GESTION_VENTAS";
+    public static final String GESTION_CUENTAS = "GESTION_CUENTAS";
+    public static final String CASH_READ = "CASH_READ";
+    public static final String CASH_OPERATE = "CASH_OPERATE";
+    public static final String CASH_CONFIGURE = "CASH_CONFIGURE";
     public static final String DELIVERY_NOTES_READ = "DELIVERY_NOTES_READ";
     public static final String DELIVERY_NOTES_WRITE = "DELIVERY_NOTES_WRITE";
     public static final String DELIVERY_NOTES_CONFIRM = "DELIVERY_NOTES_CONFIRM";
@@ -76,6 +80,10 @@ public class CorePermissionBootstrap {
                 permission(SUPPLIERS_WRITE, "party.permissions.suppliers.write", "PARTY"),
                 permission(SUPPLIERS_DELETE, "party.permissions.suppliers.delete", "PARTY"),
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),
+                permission(GESTION_CUENTAS, "cash.permissions.accounts.manage", "CASH"),
+                permission(CASH_READ, "cash.permissions.read", "CASH"),
+                permission(CASH_OPERATE, "cash.permissions.operate", "CASH"),
+                permission(CASH_CONFIGURE, "cash.permissions.configure", "CASH"),
                 permission(DELIVERY_NOTES_READ, "document.permissions.deliveryNotes.read", "DOCUMENTS"),
                 permission(DELIVERY_NOTES_WRITE, "document.permissions.deliveryNotes.write", "DOCUMENTS"),
                 permission(DELIVERY_NOTES_CONFIRM, "document.permissions.deliveryNotes.confirm", "DOCUMENTS"),
