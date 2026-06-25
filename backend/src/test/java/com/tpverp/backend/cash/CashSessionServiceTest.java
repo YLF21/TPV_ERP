@@ -1,6 +1,7 @@
 package com.tpverp.backend.cash;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -76,6 +77,59 @@ class CashSessionServiceTest {
                 new BigDecimal("0.05"),
                 new BigDecimal("0.02"),
                 new BigDecimal("0.01")));
+    }
+
+    @Test
+    void registerAttemptRejectsNegativeDeclaredFund() {
+        var session = openSession();
+
+        assertThatThrownBy(() -> session.registerAttempt(
+                UUID.randomUUID(), Instant.parse("2026-06-25T13:00:00Z"),
+                new BigDecimal("-0.01"), new BigDecimal("100.00"), new BigDecimal("1.00")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("declaredFund");
+        assertThat(session.getStatus()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(session.getAttempts()).isEmpty();
+    }
+
+    @Test
+    void closeRejectsNegativeRetainedFund() {
+        var session = openSession();
+
+        assertThatThrownBy(() -> session.close(
+                UUID.randomUUID(), Instant.parse("2026-06-25T13:30:00Z"),
+                new BigDecimal("100.00"), new BigDecimal("-0.01"), BigDecimal.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("retainedFund");
+        assertThat(session.getStatus()).isEqualTo(CashSessionStatus.ABIERTA);
+    }
+
+    @Test
+    void movementDenominationRejectsZeroOrNegativeDenomination() {
+        var movement = CashMovement.betweenSessions(
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("10.00"),
+                Instant.parse("2026-06-25T14:00:00Z"), UUID.randomUUID(), null, null);
+
+        assertThatThrownBy(() -> movement.addDenomination(BigDecimal.ZERO, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("denominacion");
+        assertThatThrownBy(() -> movement.addDenomination(new BigDecimal("-0.01"), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("denominacion");
+    }
+
+    @Test
+    void sessionMovementDerivesStoreAndTerminalFromSession() {
+        var session = openSession();
+
+        var movement = CashMovement.sessionMovement(
+                UUID.randomUUID(), UUID.randomUUID(), session, CashMovementType.ENTRADA,
+                new BigDecimal("10.00"), Instant.parse("2026-06-25T14:30:00Z"),
+                UUID.randomUUID(), null, null, null, null);
+
+        assertThat(movement.getStoreId()).isEqualTo(session.getStoreId());
+        assertThat(movement.getTerminalId()).isEqualTo(session.getTerminalId());
+        assertThat(movement.getSessionId()).isEqualTo(session.getId());
     }
 
     private CashSession openSession() {

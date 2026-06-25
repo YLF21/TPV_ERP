@@ -111,7 +111,7 @@ public class CashMovement {
             UUID paymentId) {
         Objects.requireNonNull(session, "session");
         return sessionMovement(
-                storeId, terminalId, session.getId(), type, amount, createdAt,
+                session.getStoreId(), session.getTerminalId(), session.getId(), type, amount, createdAt,
                 userId, authorizerUserId, comment, documentId, paymentId);
     }
 
@@ -161,6 +161,14 @@ public class CashMovement {
 
     public UUID getId() {
         return id;
+    }
+
+    public UUID getStoreId() {
+        return tiendaId;
+    }
+
+    public UUID getTerminalId() {
+        return terminalId;
     }
 
     public UUID getSessionId() {

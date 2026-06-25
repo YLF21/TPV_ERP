@@ -99,7 +99,7 @@ public class CashSession {
         if (attempts.size() >= 2) {
             throw new IllegalStateException("solo se permiten dos intentos de arqueo");
         }
-        var declared = Money.euros(declaredFund);
+        var declared = nonNegative(declaredFund, "declaredFund");
         var expected = Money.euros(expectedCash);
         var diff = Money.euros(declared.subtract(expected));
         var normalizedTolerance = nonNegative(tolerance, "tolerance");
@@ -126,7 +126,7 @@ public class CashSession {
         this.closingUserId = Objects.requireNonNull(userId, "userId");
         this.closedAt = Objects.requireNonNull(at, "at");
         this.expectedCash = Money.euros(expectedCash);
-        this.retainedFund = Money.euros(retainedFund);
+        this.retainedFund = nonNegative(retainedFund, "retainedFund");
         this.discrepancy = Money.euros(discrepancy);
         this.status = CashSessionStatus.CERRADA;
     }

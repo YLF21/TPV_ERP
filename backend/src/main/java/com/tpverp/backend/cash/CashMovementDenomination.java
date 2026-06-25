@@ -38,11 +38,19 @@ public class CashMovementDenomination {
         }
         this.id = UUID.randomUUID();
         this.movement = Objects.requireNonNull(movement, "movement");
-        this.denomination = Money.euros(denomination);
+        this.denomination = positive(denomination);
         this.quantity = quantity;
     }
 
     BigDecimal subtotal() {
         return Money.euros(denomination.multiply(BigDecimal.valueOf(quantity)));
+    }
+
+    private static BigDecimal positive(BigDecimal value) {
+        var amount = Money.euros(value);
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("denominacion debe ser positiva");
+        }
+        return amount;
     }
 }
