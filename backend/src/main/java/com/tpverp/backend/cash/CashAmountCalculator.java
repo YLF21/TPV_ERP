@@ -25,7 +25,7 @@ public class CashAmountCalculator {
             total = switch (movement.getType()) {
                 case COBRO_EFECTIVO, ENTRADA -> total.add(movement.getAmount());
                 case DEVOLUCION_EFECTIVO, RETIRADA, RETIRADA_CIERRE -> total.subtract(movement.getAmount());
-                case ENTRE_SESIONES -> total;
+                case ENTRADA_ENTRE_SESIONES, RETIRADA_ENTRE_SESIONES -> total;
             };
         }
         return Money.euros(total);
@@ -40,8 +40,11 @@ public class CashAmountCalculator {
                 .orElse(Money.euros("0"));
         var betweenSessions = movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(terminalId)
                 .stream()
-                .filter(movement -> movement.getType() == CashMovementType.ENTRE_SESIONES)
-                .map(CashMovement::getAmount)
+                .map(movement -> switch (movement.getType()) {
+                    case ENTRADA_ENTRE_SESIONES -> movement.getAmount();
+                    case RETIRADA_ENTRE_SESIONES -> movement.getAmount().negate();
+                    case COBRO_EFECTIVO, DEVOLUCION_EFECTIVO, ENTRADA, RETIRADA, RETIRADA_CIERRE -> Money.euros("0");
+                })
                 .reduce(Money.euros("0"), BigDecimal::add);
         return Money.euros(retainedFund.add(betweenSessions));
     }

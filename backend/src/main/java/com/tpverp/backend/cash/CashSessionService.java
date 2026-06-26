@@ -124,10 +124,20 @@ public class CashSessionService {
             throw new IllegalStateException("No se permiten movimientos entre sesiones con caja abierta");
         }
         var amount = positiveAmount(request.amount());
-        validateDenominations(amount, request.denominations(), config(terminal.getTienda().getId()).isRequireEntryBreakdown());
-        var movement = CashMovement.betweenSessions(
-                terminal.getTienda().getId(), terminal.getId(), amount, Instant.now(clock),
-                organization.currentUser(authentication).getId(), null, request.comment());
+        var cashConfig = config(terminal.getTienda().getId());
+        var breakdownRequired = request.withdrawal()
+                ? cashConfig.isRequireWithdrawalBreakdown()
+                : cashConfig.isRequireEntryBreakdown();
+        validateDenominations(amount, request.denominations(), breakdownRequired);
+        var createdAt = Instant.now(clock);
+        var user = organization.currentUser(authentication);
+        var movement = request.withdrawal()
+                ? CashMovement.betweenSessionWithdrawal(
+                        terminal.getTienda().getId(), terminal.getId(), amount, createdAt,
+                        user.getId(), null, request.comment())
+                : CashMovement.betweenSessionEntry(
+                        terminal.getTienda().getId(), terminal.getId(), amount, createdAt,
+                        user.getId(), null, request.comment());
         addDenominations(movement, request.denominations());
         return CashMovementView.from(movements.save(movement));
     }

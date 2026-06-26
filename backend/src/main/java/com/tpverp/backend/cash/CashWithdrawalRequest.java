@@ -6,5 +6,13 @@ import java.util.List;
 public record CashWithdrawalRequest(
         BigDecimal amount,
         String comment,
-        List<CashDenominationCommand> denominations) {
+        List<CashDenominationCommand> denominations,
+        boolean withdrawal) {
+
+    public CashWithdrawalRequest(
+            BigDecimal amount,
+            String comment,
+            List<CashDenominationCommand> denominations) {
+        this(amount, comment, denominations, false);
+    }
 }

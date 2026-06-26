@@ -124,6 +124,23 @@ class MigrationV17ContractTest {
                 .hasMessageContaining("movimiento_caja_sesion_terminal_tienda_fk");
     }
 
+    @Test
+    void permiteMovimientosEntreSesionesDireccionalesYRechazaTipoAnterior() {
+        UUID storeId = jdbcTemplate.queryForObject("select id from tienda limit 1", UUID.class);
+        UUID terminalId = jdbcTemplate.queryForObject("select id from terminal limit 1", UUID.class);
+        UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
+
+        insertBetweenSessionCashMovement(
+                UUID.randomUUID(), storeId, terminalId, userId, "ENTRADA_ENTRE_SESIONES");
+        insertBetweenSessionCashMovement(
+                UUID.randomUUID(), storeId, terminalId, userId, "RETIRADA_ENTRE_SESIONES");
+
+        assertThatThrownBy(() -> insertBetweenSessionCashMovement(
+                UUID.randomUUID(), storeId, terminalId, userId, "ENTRE_SESIONES"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("movimiento_caja_tipo_ck");
+    }
+
     private void assertTableExists(String tableName) {
         Integer count = jdbcTemplate.queryForObject("""
                 select count(*)
@@ -161,6 +178,15 @@ class MigrationV17ContractTest {
                     importe, creado_en, usuario_id)
                 values (?, ?, ?, ?, 'ENTRADA', 5.00, now(), ?)
                 """, id, storeId, terminalId, sessionId, userId);
+    }
+
+    private void insertBetweenSessionCashMovement(
+            UUID id, UUID storeId, UUID terminalId, UUID userId, String type) {
+        jdbcTemplate.update("""
+                insert into movimiento_caja (
+                    id, tienda_id, terminal_id, tipo, importe, creado_en, usuario_id)
+                values (?, ?, ?, ?, 5.00, now(), ?)
+                """, id, storeId, terminalId, type, userId);
     }
 
     private UUID insertOtherStore() {

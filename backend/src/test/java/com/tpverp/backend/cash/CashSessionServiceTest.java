@@ -193,6 +193,42 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void opensWithPreviousRetainedFundMinusBetweenSessionWithdrawal() {
+        var fixture = serviceFixture();
+        var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "100.00");
+        var betweenSessionWithdrawal = CashMovement.betweenSessionWithdrawal(
+                fixture.store.getId(), fixture.terminal.getId(), new BigDecimal("25.00"),
+                NOW.minusSeconds(60), fixture.user.getId(), null, "retirada entre sesiones");
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of(betweenSessionWithdrawal));
+
+        var opened = fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user));
+
+        assertThat(opened.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(opened.openingFund()).isEqualByComparingTo("75.00");
+    }
+
+    @Test
+    void betweenSessionsCanRecordWithdrawal() {
+        var fixture = serviceFixture();
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+
+        var movement = fixture.service.betweenSessions(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("25.00"), "retirada entre sesiones", List.of(), true),
+                accountingAuthentication(fixture.user));
+
+        assertThat(movement.type()).isEqualTo(CashMovementType.RETIRADA_ENTRE_SESIONES);
+        assertThat(movement.amount()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
     void sessionWithdrawalCannotExceedExpectedCash() {
         var fixture = serviceFixture();
         var session = CashSession.open(
@@ -295,6 +331,11 @@ class CashSessionServiceTest {
     private static UsernamePasswordAuthenticationToken salesAuthentication(Usuario user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
+    }
+
+    private static UsernamePasswordAuthenticationToken accountingAuthentication(Usuario user) {
+        return new UsernamePasswordAuthenticationToken(
+                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
     private static Rol salesRole(Tienda store) {

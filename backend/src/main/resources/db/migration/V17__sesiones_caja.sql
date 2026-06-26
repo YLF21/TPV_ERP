@@ -74,7 +74,8 @@ create table movimiento_caja (
         'ENTRADA',
         'RETIRADA',
         'RETIRADA_CIERRE',
-        'ENTRE_SESIONES')),
+        'ENTRADA_ENTRE_SESIONES',
+        'RETIRADA_ENTRE_SESIONES')),
     constraint movimiento_caja_importe_positivo_ck check (importe > 0)
 );
 

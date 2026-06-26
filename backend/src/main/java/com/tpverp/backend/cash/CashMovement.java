@@ -133,7 +133,7 @@ public class CashMovement {
                 amount, createdAt, userId, authorizerUserId, comment, documentId, paymentId);
     }
 
-    // Crea un movimiento pendiente de asociar a una sesion, usado para traspasos entre sesiones.
+    // Crea una entrada pendiente de asociar a una sesion, usada para traspasos entre sesiones.
     public static CashMovement betweenSessions(
             UUID storeId,
             UUID terminalId,
@@ -142,8 +142,46 @@ public class CashMovement {
             UUID userId,
             UUID authorizerUserId,
             String comment) {
+        return betweenSessionEntry(storeId, terminalId, amount, createdAt, userId, authorizerUserId, comment);
+    }
+
+    public static CashMovement betweenSessionEntry(
+            UUID storeId,
+            UUID terminalId,
+            BigDecimal amount,
+            Instant createdAt,
+            UUID userId,
+            UUID authorizerUserId,
+            String comment) {
+        return betweenSessionMovement(
+                storeId, terminalId, CashMovementType.ENTRADA_ENTRE_SESIONES,
+                amount, createdAt, userId, authorizerUserId, comment);
+    }
+
+    public static CashMovement betweenSessionWithdrawal(
+            UUID storeId,
+            UUID terminalId,
+            BigDecimal amount,
+            Instant createdAt,
+            UUID userId,
+            UUID authorizerUserId,
+            String comment) {
+        return betweenSessionMovement(
+                storeId, terminalId, CashMovementType.RETIRADA_ENTRE_SESIONES,
+                amount, createdAt, userId, authorizerUserId, comment);
+    }
+
+    private static CashMovement betweenSessionMovement(
+            UUID storeId,
+            UUID terminalId,
+            CashMovementType type,
+            BigDecimal amount,
+            Instant createdAt,
+            UUID userId,
+            UUID authorizerUserId,
+            String comment) {
         return new CashMovement(
-                storeId, terminalId, null, CashMovementType.ENTRE_SESIONES,
+                storeId, terminalId, null, type,
                 amount, createdAt, userId, authorizerUserId, comment, null, null);
     }
 
