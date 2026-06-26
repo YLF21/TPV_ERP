@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -26,9 +28,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class CashSessionServiceTest {
 
@@ -172,6 +176,25 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void firstOpeningRequiresBetweenSessionEntryNotWithdrawal() {
+        var fixture = serviceFixture();
+        var betweenSessionWithdrawal = CashMovement.betweenSessionWithdrawal(
+                fixture.store.getId(), fixture.terminal.getId(), new BigDecimal("25.00"),
+                NOW.minusSeconds(60), fixture.user.getId(), null, "retirada entre sesiones");
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.empty());
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of(betweenSessionWithdrawal));
+
+        assertThatThrownBy(() -> fixture.service.open(fixture.terminal.getId(), salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("entrada entre sesiones");
+    }
+
+    @Test
     void opensWithPreviousRetainedFundPlusBetweenSessionMovements() {
         var fixture = serviceFixture();
         var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "100.00");
@@ -216,8 +239,14 @@ class CashSessionServiceTest {
     @Test
     void betweenSessionsCanRecordWithdrawal() {
         var fixture = serviceFixture();
+        var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "50.00");
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
                 .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of());
 
         var movement = fixture.service.betweenSessions(
                 fixture.terminal.getId(),
@@ -226,6 +255,72 @@ class CashSessionServiceTest {
 
         assertThat(movement.type()).isEqualTo(CashMovementType.RETIRADA_ENTRE_SESIONES);
         assertThat(movement.amount()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void betweenSessionWithdrawalCannotExceedPendingOpeningFund() {
+        var fixture = serviceFixture();
+        var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "50.00");
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(fixture.terminal.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.service.betweenSessions(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("50.01"), "retirada entre sesiones", List.of(), true),
+                accountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("fondo pendiente");
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+    }
+
+    @Test
+    void betweenSessionRequiresAccountingPermission() {
+        var fixture = serviceFixture();
+
+        assertThatThrownBy(() -> fixture.service.betweenSessions(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("10.00"), "entrada entre sesiones", List.of(), false),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("gestion de cuentas");
+    }
+
+    @Test
+    void betweenSessionRejectsOpenSession() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> fixture.service.betweenSessions(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("10.00"), "entrada entre sesiones", List.of(), false),
+                accountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("caja abierta");
+    }
+
+    @Test
+    void requiredDenominationBreakdownRejectsTotalOnly() {
+        var fixture = serviceFixture();
+        var config = new CashStoreConfig(fixture.store.getId());
+        ReflectionTestUtils.setField(config, "requireWithdrawalBreakdown", true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fixture.service.betweenSessions(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("10.00"), "retirada entre sesiones", List.of(), true),
+                accountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("desglose de denominaciones");
     }
 
     @Test
@@ -243,6 +338,24 @@ class CashSessionServiceTest {
                 salesAuthentication(fixture.user)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("efectivo disponible");
+    }
+
+    @Test
+    void normalWithdrawalIgnoresBetweenSessionDirectionFlagAndStillWithdraws() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var movement = fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(new BigDecimal("10.00"), "retirada", List.of(), true),
+                salesAuthentication(fixture.user));
+
+        assertThat(movement.type()).isEqualTo(CashMovementType.RETIRADA);
+        assertThat(movement.amount()).isEqualByComparingTo("10.00");
     }
 
     @Test
@@ -282,6 +395,25 @@ class CashSessionServiceTest {
         assertThat(status.openingFund()).isEqualByComparingTo("40.00");
         assertThat(status.expectedCash()).isNull();
         assertThat(status.availableCash()).isNull();
+    }
+
+    @Test
+    void accountingStatusCanSeeExpectedTotals() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of(
+                CashMovement.sessionMovement(
+                        fixture.store.getId(), fixture.terminal.getId(), session, CashMovementType.COBRO_EFECTIVO,
+                        new BigDecimal("15.00"), NOW, fixture.user.getId(), null, null, null, null)));
+
+        var status = fixture.service.status(fixture.terminal.getId(), accountingAuthentication(fixture.user));
+
+        assertThat(status.openingFund()).isEqualByComparingTo("40.00");
+        assertThat(status.expectedCash()).isEqualByComparingTo("55.00");
+        assertThat(status.availableCash()).isEqualByComparingTo("55.00");
     }
 
     private CashSession openSession() {

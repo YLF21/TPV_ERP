@@ -36,6 +36,17 @@ public class CashPermissionService {
         }
     }
 
+    // Permite consultar el estado de caja a perfiles operativos, contables o de solo lectura.
+    public void requireCashStatusPermission(Authentication authentication) {
+        if (!isAdmin(authentication)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_VENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.CASH_OPERATE)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.CASH_READ)) {
+            throw new AccessDeniedException("Se requiere permiso de consulta de caja");
+        }
+    }
+
     // Exige permiso contable o administracion total.
     public void requireAccountingPermission(Authentication authentication) {
         if (!isAdmin(authentication)

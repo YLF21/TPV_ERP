@@ -48,7 +48,7 @@ public class CashSessionService {
     // Devuelve el estado de caja filtrando importes teoricos segun permisos.
     @Transactional(readOnly = true)
     public CashSessionView status(UUID terminalId, Authentication authentication) {
-        permissions.requireSalesPermission(authentication);
+        permissions.requireCashStatusPermission(authentication);
         validateTerminal(terminalId);
         var session = openSession(terminalId);
         return view(session, permissions.canSeeExpectedTotals(authentication));
@@ -65,7 +65,9 @@ public class CashSessionService {
         var hasPreviousClosed = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
                 terminal.getId(), CashSessionStatus.CERRADA).isPresent();
         var betweenSessions = movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(terminal.getId());
-        if (!hasPreviousClosed && betweenSessions.isEmpty()) {
+        var hasBetweenSessionEntry = betweenSessions.stream()
+                .anyMatch(movement -> movement.getType() == CashMovementType.ENTRADA_ENTRE_SESIONES);
+        if (!hasPreviousClosed && !hasBetweenSessionEntry) {
             throw new IllegalStateException("La primera apertura requiere una entrada entre sesiones");
         }
         var user = organization.currentUser(authentication);
@@ -129,6 +131,9 @@ public class CashSessionService {
                 ? cashConfig.isRequireWithdrawalBreakdown()
                 : cashConfig.isRequireEntryBreakdown();
         validateDenominations(amount, request.denominations(), breakdownRequired);
+        if (request.withdrawal() && amount.compareTo(calculator.nextOpeningFund(terminal.getId())) > 0) {
+            throw new IllegalArgumentException("La retirada supera el fondo pendiente de apertura");
+        }
         var createdAt = Instant.now(clock);
         var user = organization.currentUser(authentication);
         var movement = request.withdrawal()
