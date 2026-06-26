@@ -237,6 +237,14 @@ public class CashMovement {
         return comment;
     }
 
+    public UUID getDocumentId() {
+        return documentId;
+    }
+
+    public UUID getDocumentoPagoId() {
+        return documentoPagoId;
+    }
+
     public List<CashMovementDenomination> getDenominations() {
         return List.copyOf(denominations);
     }

@@ -90,6 +90,10 @@ public class DocumentoPago {
         return documento;
     }
 
+    public UUID getId() {
+        return id;
+    }
+
     public boolean isPrincipal() {
         return principal;
     }

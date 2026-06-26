@@ -7,9 +7,11 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.SupplierRepository;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,8 @@ public class DocumentService {
     private final ConfirmedPurchaseRecorder purchaseRecorder;
     private final DocumentFiscalIntegration fiscalIntegration;
     private final VoucherService vouchers;
+    private final CurrentTerminal currentTerminal;
+    private final CashPaymentRecorder cashPayments;
     private final Clock clock;
 
     public DocumentService(
@@ -48,6 +52,8 @@ public class DocumentService {
             ConfirmedPurchaseRecorder purchaseRecorder,
             DocumentFiscalIntegration fiscalIntegration,
             VoucherService vouchers,
+            CurrentTerminal currentTerminal,
+            CashPaymentRecorder cashPayments,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -60,6 +66,8 @@ public class DocumentService {
         this.purchaseRecorder = purchaseRecorder;
         this.fiscalIntegration = fiscalIntegration;
         this.vouchers = vouchers;
+        this.currentTerminal = currentTerminal;
+        this.cashPayments = cashPayments;
         this.clock = clock;
     }
 
@@ -117,6 +125,8 @@ public class DocumentService {
             requirePaymentsPresent(payments);
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
         }
+        var terminalId = currentTerminal.terminalId(authentication);
+        cashPayments.requireOpenSession(terminalId);
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
@@ -127,6 +137,7 @@ public class DocumentService {
         }
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
+        cashPayments.recordDocumentPayments(terminalId, saved);
         if (saved.getTotal().signum() < 0) {
             vouchers.issueFromNegativeTicket(saved);
         }
@@ -204,14 +215,18 @@ public class DocumentService {
 
     // Registra pagos únicamente cuando cubren exactamente el total pendiente.
     @Transactional
-    public Documento payInvoice(UUID id, List<PaymentCommand> payments) {
+    public Documento payInvoice(UUID id, List<PaymentCommand> payments, Authentication authentication) {
         var invoice = find(id);
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalArgumentException("el documento no es una factura");
         }
+        var terminalId = currentTerminal.terminalId(authentication);
+        cashPayments.requireOpenSession(terminalId);
         addPayments(invoice, payments, "la factura debe pagarse por completo");
         invoice.markPaid();
-        return documents.save(invoice);
+        var saved = documents.save(invoice);
+        cashPayments.recordDocumentPayments(terminalId, saved);
+        return saved;
     }
 
     // Edita excepcionalmente ticket o albarán confirmado sin invocar stock ni auditoría.

@@ -51,8 +51,9 @@ public class InvoiceController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_PAY')")
     public DocumentView pay(
             @PathVariable UUID id,
-            @Valid @RequestBody PaymentRequest request) {
-        return view(service.payInvoice(id, request.toCommands()));
+            @Valid @RequestBody PaymentRequest request,
+            Authentication authentication) {
+        return view(service.payInvoice(id, request.toCommands(), authentication));
     }
 
     @PostMapping("/{id}/relations")

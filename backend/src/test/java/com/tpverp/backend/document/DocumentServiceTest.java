@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 
+import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.organization.Empresa;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Tienda;
@@ -21,6 +22,7 @@ import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.security.domain.Rol;
 import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -64,10 +66,15 @@ class DocumentServiceTest {
     private DocumentFiscalIntegration fiscalIntegration;
     @Mock
     private VoucherService voucherService;
+    @Mock
+    private CurrentTerminal currentTerminal;
+    @Mock
+    private CashPaymentRecorder cashPaymentRecorder;
 
     private DocumentService service;
     private Tienda store;
     private Usuario user;
+    private UUID terminalId;
 
     @BeforeEach
     void setUp() {
@@ -82,10 +89,12 @@ class DocumentServiceTest {
                 "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         var role = new Rol(store, "ADMIN");
         user = new Usuario(store, "ADMIN", "hash", role);
+        terminalId = UUID.randomUUID();
         lenient().when(currentOrganization.currentStore()).thenReturn(store);
         lenient().when(currentOrganization.currentCompany())
                 .thenReturn(store.getEmpresa());
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
+        lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
         service = new DocumentService(
                 documentRepository,
                 counterRepository,
@@ -98,6 +107,8 @@ class DocumentServiceTest {
                 purchaseRecorder,
                 fiscalIntegration,
                 voucherService,
+                currentTerminal,
+                cashPaymentRecorder,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -177,6 +188,25 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketCreationRequiresOpenCashSession() {
+        when(currentOrganization.currentStore()).thenReturn(store);
+        when(currentOrganization.currentUser(any())).thenReturn(user);
+        org.mockito.Mockito.doThrow(new IllegalStateException("No hay una sesion de caja abierta"))
+                .when(cashPaymentRecorder).requireOpenSession(terminalId);
+
+        assertThatThrownBy(() -> service.createTicket(
+                command(TipoDocumento.TICKET),
+                List.of(new PaymentCommand(
+                        UUID.randomUUID(), new BigDecimal("10.00"), true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sesion de caja abierta");
+
+        verify(counterRepository, never()).findByTiendaIdAndTipoAndPeriodo(any(), any(), any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
     void createsDirectTicketWithDailyNumberAndMixedPayments() {
         var cash = new MetodoPago(store.getEmpresa().getId(), "EFECTIVO", true);
         var card = new MetodoPago(store.getEmpresa().getId(), "TARJETA", true);
@@ -201,6 +231,7 @@ class DocumentServiceTest {
         assertThat(ticket.getEstado()).isEqualTo(EstadoDocumento.CONFIRMADO);
         assertThat(ticket.getPagos()).hasSize(2);
         assertThat(ticket.isOrigenStock()).isFalse();
+        verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
     }
 
     @Test
@@ -356,16 +387,41 @@ class DocumentServiceTest {
         assertThatThrownBy(() -> service.payInvoice(
                 invoice.getId(),
                 List.of(new PaymentCommand(
-                        method.getId(), new BigDecimal("9.99"), true, null, null))))
+                        method.getId(), new BigDecimal("9.99"), true, null, null)),
+                authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("completo");
 
         var paid = service.payInvoice(
                 invoice.getId(),
                 List.of(new PaymentCommand(
-                        method.getId(), new BigDecimal("10.00"), true, null, null)));
+                        method.getId(), new BigDecimal("10.00"), true, null, null)),
+                authentication());
 
         assertThat(paid.getEstado()).isEqualTo(EstadoDocumento.PAGADO);
+    }
+
+    @Test
+    void invoicePaymentRequiresOpenCashSessionAndRecordsCashOnly() {
+        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var cash = new MetodoPago(store.getEmpresa().getId(), "EFECTIVO", true);
+        var card = new MetodoPago(store.getEmpresa().getId(), "TARJETA", true);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        when(documentRepository.save(invoice)).thenReturn(invoice);
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(
+                        new PaymentCommand(cash.getId(), new BigDecimal("4.00"), true, null, null),
+                        new PaymentCommand(card.getId(), new BigDecimal("6.00"), false, null, null)),
+                authentication());
+
+        assertThat(paid.getEstado()).isEqualTo(EstadoDocumento.PAGADO);
+        verify(cashPaymentRecorder).requireOpenSession(terminalId);
+        verify(cashPaymentRecorder).recordDocumentPayments(terminalId, invoice);
     }
 
     @Test
