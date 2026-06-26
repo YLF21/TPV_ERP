@@ -11,5 +11,10 @@ public record CashSessionView(
         Instant openedAt,
         BigDecimal openingFund,
         BigDecimal expectedCash,
-        BigDecimal availableCash) {
+        BigDecimal availableCash,
+        BigDecimal retainedFund,
+        BigDecimal discrepancy,
+        Instant closedAt,
+        Integer reconciliationAttempt,
+        boolean closedByAttempt) {
 }

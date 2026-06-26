@@ -171,8 +171,20 @@ public class CashSession {
         return discrepancy;
     }
 
+    public UUID getClosingUserId() {
+        return closingUserId;
+    }
+
+    public boolean isLateClosing() {
+        return lateClosing;
+    }
+
     public List<CashReconciliationAttempt> getAttempts() {
         return List.copyOf(attempts);
+    }
+
+    void markLateClosing() {
+        lateClosing = true;
     }
 
     private void requireOpen() {

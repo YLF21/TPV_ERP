@@ -416,6 +416,139 @@ class CashSessionServiceTest {
         assertThat(status.availableCash()).isEqualByComparingTo("55.00");
     }
 
+    @Test
+    void firstMismatchReturnsOpenSessionWithDiscrepancyOnly() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var view = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("90.00"), List.of(), BigDecimal.ZERO, "sobrante", List.of()),
+                salesAuthentication(fixture.user));
+
+        assertThat(view.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(view.expectedCash()).isNull();
+        assertThat(view.availableCash()).isNull();
+        assertThat(view.retainedFund()).isEqualByComparingTo("90.00");
+        assertThat(view.discrepancy()).isEqualByComparingTo("-10.00");
+        assertThat(view.reconciliationAttempt()).isEqualTo(1);
+        assertThat(view.closedByAttempt()).isFalse();
+        assertThat(session.getAttempts()).hasSize(1);
+    }
+
+    @Test
+    void secondMismatchClosesAndStoresDiscrepancyWithoutExplanation() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        session.registerAttempt(fixture.user.getId(), NOW.plusSeconds(60), new BigDecimal("90.00"),
+                new BigDecimal("100.00"), BigDecimal.ZERO);
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var view = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("95.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user));
+
+        assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(view.expectedCash()).isNull();
+        assertThat(view.retainedFund()).isEqualByComparingTo("95.00");
+        assertThat(view.discrepancy()).isEqualByComparingTo("-5.00");
+        assertThat(view.reconciliationAttempt()).isEqualTo(2);
+        assertThat(view.closedByAttempt()).isTrue();
+        assertThat(session.getDiscrepancy()).isEqualByComparingTo("-5.00");
+        assertThat(session.getAttempts()).extracting(CashReconciliationAttempt::getAttemptNumber)
+                .containsExactly(1, 2);
+    }
+
+    @Test
+    void sellerCloseViewDoesNotExposeExpectedCash() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var view = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("100.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user));
+
+        assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(view.expectedCash()).isNull();
+        assertThat(view.availableCash()).isNull();
+        assertThat(view.retainedFund()).isEqualByComparingTo("100.00");
+        assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void accountingCloseViewIncludesExpectedCash() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var view = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("100.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAndAccountingAuthentication(fixture.user));
+
+        assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(view.expectedCash()).isEqualByComparingTo("100.00");
+        assertThat(view.retainedFund()).isEqualByComparingTo("100.00");
+        assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void finalWithdrawalAffectsExpectedCashBeforeCounting() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        var view = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("80.00"), List.of(), new BigDecimal("20.00"), "retirada cierre",
+                        List.of(new CashDenominationCommand(new BigDecimal("20.00"), 1))),
+                salesAndAccountingAuthentication(fixture.user));
+
+        assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(view.expectedCash()).isEqualByComparingTo("80.00");
+        assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
+        verify(fixture.movements).save(any(CashMovement.class));
+    }
+
+    @Test
+    void closeRequiresBreakdownWhenConfigured() {
+        var fixture = serviceFixture();
+        var config = new CashStoreConfig(fixture.store.getId());
+        ReflectionTestUtils.setField(config, "requireClosingBreakdown", true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("100.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("desglose de denominaciones");
+    }
+
     private CashSession openSession() {
         return CashSession.open(
                 UUID.randomUUID(),
@@ -468,6 +601,13 @@ class CashSessionServiceTest {
     private static UsernamePasswordAuthenticationToken accountingAuthentication(Usuario user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
+    }
+
+    private static UsernamePasswordAuthenticationToken salesAndAccountingAuthentication(Usuario user) {
+        return new UsernamePasswordAuthenticationToken(
+                user, "token", List.of(
+                        new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS),
+                        new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
     private static Rol salesRole(Tienda store) {

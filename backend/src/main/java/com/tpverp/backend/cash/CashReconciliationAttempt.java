@@ -71,6 +71,14 @@ public class CashReconciliationAttempt {
         return attemptNumber;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public BigDecimal getDeclaredFund() {
+        return declaredFund;
+    }
+
     public BigDecimal getDiscrepancy() {
         return discrepancy;
     }

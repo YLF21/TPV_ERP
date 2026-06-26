@@ -8,6 +8,7 @@ import com.tpverp.backend.terminal.TerminalRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -116,6 +117,43 @@ public class CashSessionService {
         return CashMovementView.from(movements.save(movement));
     }
 
+    // Cierra una sesion mediante arqueo ciego, conservando abiertos los primeros descuadres fuera de tolerancia.
+    @Transactional
+    public CashSessionView close(UUID terminalId, CashCloseRequest request, Authentication authentication) {
+        permissions.requireSalesPermission(authentication);
+        validateTerminal(terminalId);
+        var session = openSession(terminalId);
+        var cashConfig = config(session);
+        var user = organization.currentUser(authentication);
+        var finalWithdrawal = nonNegativeAmount(request.finalWithdrawalAmount());
+        validateDenominations(
+                finalWithdrawal,
+                request.finalWithdrawalDenominations(),
+                finalWithdrawal.signum() > 0 && cashConfig.isRequireWithdrawalBreakdown());
+        var availableCash = calculator.availableCash(session);
+        if (finalWithdrawal.compareTo(availableCash) > 0) {
+            throw new IllegalArgumentException("La retirada de cierre supera el efectivo disponible");
+        }
+        if (finalWithdrawal.signum() > 0) {
+            var movement = CashMovement.sessionMovement(
+                    session.getStoreId(), session.getTerminalId(), session, CashMovementType.RETIRADA_CIERRE,
+                    finalWithdrawal, Instant.now(clock), user.getId(), null,
+                    request.finalWithdrawalComment(), null, null);
+            addDenominations(movement, request.finalWithdrawalDenominations());
+            movements.save(movement);
+        }
+        var expectedCash = availableCash.subtract(finalWithdrawal);
+        var retainedFund = nonNegativeAmount(request.retainedFund());
+        validateDenominations(retainedFund, request.retainedFundDenominations(), cashConfig.isRequireClosingBreakdown());
+        var attempt = session.registerAttempt(
+                user.getId(), Instant.now(clock), retainedFund, expectedCash, cashConfig.getDiscrepancyTolerance());
+        if (attempt.closedSession() && isLateClose(session, attempt.getCreatedAt())) {
+            session.markLateClosing();
+        }
+        sessions.save(session);
+        return view(session, permissions.canSeeExpectedTotals(authentication), attempt);
+    }
+
     // Registra efectivo preparado entre sesiones cuando no hay caja abierta.
     @Transactional
     public CashMovementView betweenSessions(
@@ -163,6 +201,13 @@ public class CashSessionService {
     }
 
     private CashSessionView view(CashSession session, boolean includeExpectedTotals) {
+        return view(session, includeExpectedTotals, null);
+    }
+
+    private CashSessionView view(
+            CashSession session,
+            boolean includeExpectedTotals,
+            CashReconciliationAttempt attempt) {
         BigDecimal expectedCash = null;
         BigDecimal availableCash = null;
         if (includeExpectedTotals && session.getStatus() == CashSessionStatus.ABIERTA) {
@@ -173,7 +218,12 @@ public class CashSessionService {
         }
         return new CashSessionView(
                 session.getId(), session.getTerminalId(), session.getStatus(), session.getOpenedAt(),
-                session.getOpeningFund(), expectedCash, availableCash);
+                session.getOpeningFund(), expectedCash, availableCash,
+                attempt == null ? session.getRetainedFund() : attempt.getDeclaredFund(),
+                attempt == null ? session.getDiscrepancy() : attempt.getDiscrepancy(),
+                session.getClosedAt(),
+                attempt == null ? null : attempt.getAttemptNumber(),
+                attempt != null && attempt.closedSession());
     }
 
     private CashStoreConfig config(CashSession session) {
@@ -190,6 +240,20 @@ public class CashSessionService {
             throw new IllegalArgumentException("importe debe ser positivo");
         }
         return amount;
+    }
+
+    private BigDecimal nonNegativeAmount(BigDecimal value) {
+        var amount = Money.euros(value == null ? BigDecimal.ZERO : value);
+        if (amount.signum() < 0) {
+            throw new IllegalArgumentException("importe no puede ser negativo");
+        }
+        return amount;
+    }
+
+    private boolean isLateClose(CashSession session, Instant closedAt) {
+        var zone = clock.getZone();
+        return !LocalDate.ofInstant(session.getOpenedAt(), zone)
+                .equals(LocalDate.ofInstant(closedAt, zone));
     }
 
     private void validateDenominations(
