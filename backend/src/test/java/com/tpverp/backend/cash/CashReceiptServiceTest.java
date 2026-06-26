@@ -1,6 +1,7 @@
 package com.tpverp.backend.cash;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +56,22 @@ class CashReceiptServiceTest {
     }
 
     @Test
+    void withdrawalReceiptRejectsNonWithdrawalMovement() {
+        var fixture = fixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        var movement = CashMovement.sessionMovement(
+                fixture.store.getId(), fixture.terminal.getId(), session, CashMovementType.ENTRADA,
+                new BigDecimal("20.00"), NOW.plusSeconds(60), fixture.user.getId(), null, "entrada",
+                null, null);
+        when(fixture.movements.findById(movement.getId())).thenReturn(Optional.of(movement));
+
+        assertThatThrownBy(() -> fixture.service.withdrawalReceipt(movement.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("retirada");
+    }
+
+    @Test
     void sellerCloseReceiptDoesNotExposeExpectedCash() {
         var fixture = fixture();
         var session = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId());
@@ -80,6 +97,18 @@ class CashReceiptServiceTest {
         assertThat(receipt.retainedFund()).isEqualByComparingTo("95.00");
         assertThat(receipt.discrepancy()).isEqualByComparingTo("-5.00");
         assertThat(receipt.expectedCash()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void closeReceiptRejectsOpenSession() {
+        var fixture = fixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
+        when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> fixture.service.closeReceipt(session.getId(), salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("abierta");
     }
 
     private static Fixture fixture() {

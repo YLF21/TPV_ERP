@@ -141,6 +141,20 @@ class MigrationV17ContractTest {
                 .hasMessageContaining("movimiento_caja_tipo_ck");
     }
 
+    @Test
+    void rechazaNumeroDeIntentoDuplicadoEnLaMismaSesion() {
+        UUID storeId = jdbcTemplate.queryForObject("select id from tienda limit 1", UUID.class);
+        UUID terminalId = jdbcTemplate.queryForObject("select id from terminal limit 1", UUID.class);
+        UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
+        UUID sessionId = UUID.randomUUID();
+        insertOpenSession(sessionId, storeId, terminalId, userId);
+        insertReconciliationAttempt(UUID.randomUUID(), sessionId, userId, 1);
+
+        assertThatThrownBy(() -> insertReconciliationAttempt(UUID.randomUUID(), sessionId, userId, 1))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("intento_arqueo_sesion_numero_uq");
+    }
+
     private void assertTableExists(String tableName) {
         Integer count = jdbcTemplate.queryForObject("""
                 select count(*)
@@ -187,6 +201,15 @@ class MigrationV17ContractTest {
                     id, tienda_id, terminal_id, tipo, importe, creado_en, usuario_id)
                 values (?, ?, ?, ?, 5.00, now(), ?)
                 """, id, storeId, terminalId, type, userId);
+    }
+
+    private void insertReconciliationAttempt(UUID id, UUID sessionId, UUID userId, int attemptNumber) {
+        jdbcTemplate.update("""
+                insert into intento_arqueo_caja (
+                    id, sesion_caja_id, numero_intento, usuario_id, creado_en,
+                    fondo_declarado, efectivo_teorico, descuadre, cerro_sesion)
+                values (?, ?, ?, ?, now(), 10.00, 10.00, 0.00, false)
+                """, id, sessionId, attemptNumber, userId);
     }
 
     private UUID insertOtherStore() {

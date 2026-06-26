@@ -549,6 +549,24 @@ class CashSessionServiceTest {
                 .hasMessageContaining("desglose de denominaciones");
     }
 
+    @Test
+    void closingOnNextDateMarksSessionAsLateClosing() {
+        var fixture = serviceFixture(Instant.parse("2026-06-26T00:30:00Z"));
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(),
+                Instant.parse("2026-06-25T23:30:00Z"), new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("100.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user));
+
+        assertThat(session.isLateClosing()).isTrue();
+    }
+
     private CashSession openSession() {
         return CashSession.open(
                 UUID.randomUUID(),
@@ -559,6 +577,10 @@ class CashSessionServiceTest {
     }
 
     private static ServiceFixture serviceFixture() {
+        return serviceFixture(NOW);
+    }
+
+    private static ServiceFixture serviceFixture(Instant now) {
         var store = store("001");
         var user = user(store, "SELLER", salesRole(store));
         var terminal = new Terminal(store, "TPV 1", TipoTerminal.TERMINAL_VENTA, "hash");
@@ -579,7 +601,7 @@ class CashSessionServiceTest {
         var calculator = new CashAmountCalculator(sessions, movements);
         var service = new CashSessionService(
                 sessions, movements, configs, terminals, organization, permissions, calculator,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(now, ZoneOffset.UTC));
         return new ServiceFixture(
                 service, sessions, movements, configs, terminals, organization, users, passwordEncoder,
                 store, user, terminal);

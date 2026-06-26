@@ -100,7 +100,8 @@ create table intento_arqueo_caja (
     efectivo_teorico numeric(19,2) not null,
     descuadre numeric(19,2) not null,
     cerro_sesion boolean not null,
-    constraint intento_arqueo_numero_ck check (numero_intento in (1, 2))
+    constraint intento_arqueo_numero_ck check (numero_intento in (1, 2)),
+    constraint intento_arqueo_sesion_numero_uq unique (sesion_caja_id, numero_intento)
 );
 
 insert into configuracion_caja_tienda (tienda_id)

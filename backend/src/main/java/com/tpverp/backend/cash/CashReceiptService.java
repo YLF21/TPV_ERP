@@ -3,7 +3,9 @@ package com.tpverp.backend.cash;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.domain.UsuarioRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class CashReceiptService {
 
     private static final String EMPTY_SIGNATURE_LABEL = "";
+    private static final Set<CashMovementType> WITHDRAWAL_RECEIPT_TYPES = EnumSet.of(
+            CashMovementType.RETIRADA,
+            CashMovementType.RETIRADA_CIERRE,
+            CashMovementType.RETIRADA_ENTRE_SESIONES);
 
     private final CashSessionRepository sessions;
     private final CashMovementRepository movements;
@@ -42,6 +48,9 @@ public class CashReceiptService {
         var store = organization.currentStore();
         var movement = movements.findById(movementId)
                 .orElseThrow(() -> new IllegalArgumentException("Movimiento de caja no encontrado"));
+        if (!WITHDRAWAL_RECEIPT_TYPES.contains(movement.getType())) {
+            throw new IllegalArgumentException("El movimiento no es una retirada de caja");
+        }
         var session = movement.getSessionId() == null
                 ? null
                 : sessions.findById(movement.getSessionId())
@@ -75,6 +84,9 @@ public class CashReceiptService {
         var session = sessions.findById(sessionId)
                 .filter(found -> found.getStoreId().equals(store.getId()))
                 .orElseThrow(() -> new IllegalArgumentException("Sesion de caja no encontrada"));
+        if (session.getStatus() != CashSessionStatus.CERRADA) {
+            throw new IllegalStateException("La sesion de caja sigue abierta");
+        }
         var terminal = terminals.findByIdAndTiendaId(session.getTerminalId(), store.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
         var userId = session.getClosingUserId() == null
