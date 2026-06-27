@@ -33,7 +33,7 @@ class InvoiceControllerTest {
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "token");
         var paid = document();
         var expectedPayments = List.of(new PaymentCommand(
-                methodId, new BigDecimal("10.00"), true, null, null));
+                methodId, new BigDecimal("10.00"), true, null, null, null, "AUTH-123"));
         when(service.payInvoice(eq(invoiceId), eq(expectedPayments), same(authentication)))
                 .thenReturn(paid);
         when(fiscalQr.qrUrl(paid.getId())).thenReturn("qr-url");
@@ -41,7 +41,7 @@ class InvoiceControllerTest {
         var view = controller.pay(
                 invoiceId,
                 new PaymentRequest(List.of(new PaymentRequest.Item(
-                        methodId, new BigDecimal("10.00"), true, null, null, null))),
+                        methodId, new BigDecimal("10.00"), true, null, null, null, "AUTH-123"))),
                 authentication);
 
         verify(service).payInvoice(

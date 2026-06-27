@@ -449,6 +449,24 @@ class DocumentServiceTest {
     }
 
     @Test
+    void nonDrawerPaymentRejectsDeliveredAmountAndChange() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true,
+                        new BigDecimal("10.00"), BigDecimal.ZERO)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment.cash_amounts_only_for_cash_drawer");
+    }
+
+    @Test
     void adminEditOfConfirmedDeliveryNoteDoesNotTouchStockOrIdentity() {
         var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
         note.confirm("AC-001-26-000001", UUID.randomUUID(), NOW, true);

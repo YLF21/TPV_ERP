@@ -356,6 +356,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "metodo de pago activo no encontrado"));
         requireReferenceIfNeeded(method, command);
+        requireCashAmountsOnlyForDrawerMethods(method, command);
         if (!"VALE".equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
                 throw new IllegalArgumentException("codigo de vale solo permitido con metodo VALE");
@@ -376,6 +377,13 @@ public class DocumentService {
         if (method.isRequiereReferencia()
                 && (command.reference() == null || command.reference().isBlank())) {
             throw new IllegalArgumentException("message.payment.reference_required");
+        }
+    }
+
+    private static void requireCashAmountsOnlyForDrawerMethods(PaymentMethod method, PaymentCommand command) {
+        if (!method.isAbreCajaRegistradora()
+                && (command.entregado() != null || command.cambio() != null)) {
+            throw new IllegalArgumentException("message.payment.cash_amounts_only_for_cash_drawer");
         }
     }
 
