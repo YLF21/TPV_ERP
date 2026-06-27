@@ -158,7 +158,7 @@ public class CashSessionService {
     @Transactional
     public CashMovementView betweenSessions(
             UUID terminalId, CashWithdrawalRequest request, Authentication authentication) {
-        permissions.requireAccountingPermission(authentication);
+        permissions.requireConfigPermission(authentication);
         var terminal = validateTerminal(terminalId);
         if (sessions.findByTerminalIdAndStatus(terminal.getId(), CashSessionStatus.ABIERTA).isPresent()) {
             throw new IllegalStateException("No se permiten movimientos entre sesiones con caja abierta");

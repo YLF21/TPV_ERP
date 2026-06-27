@@ -15,4 +15,10 @@ public interface CashSessionRepository extends JpaRepository<CashSession, UUID> 
 
     List<CashSession> findAllByTiendaIdAndOpenedAtBetweenOrderByOpenedAtDesc(
             UUID storeId, Instant from, Instant to);
+
+    List<CashSession> findAllByTiendaIdAndClosedAtBetweenOrderByClosedAtDesc(
+            UUID storeId, Instant from, Instant to);
+
+    List<CashSession> findAllByTiendaIdAndTerminalIdAndClosedAtBetweenOrderByClosedAtDesc(
+            UUID storeId, UUID terminalId, Instant from, Instant to);
 }

@@ -59,4 +59,19 @@ public class CashStoreConfig {
     public boolean isRequireClosingBreakdown() {
         return requireClosingBreakdown;
     }
+
+    public void update(
+            BigDecimal discrepancyTolerance,
+            boolean requireEntryBreakdown,
+            boolean requireWithdrawalBreakdown,
+            boolean requireClosingBreakdown) {
+        var tolerance = Money.euros(discrepancyTolerance);
+        if (tolerance.signum() < 0) {
+            throw new IllegalArgumentException("tolerancia_descuadre no puede ser negativa");
+        }
+        this.discrepancyTolerance = tolerance;
+        this.requireEntryBreakdown = requireEntryBreakdown;
+        this.requireWithdrawalBreakdown = requireWithdrawalBreakdown;
+        this.requireClosingBreakdown = requireClosingBreakdown;
+    }
 }

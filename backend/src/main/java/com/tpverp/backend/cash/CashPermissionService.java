@@ -55,6 +55,22 @@ public class CashPermissionService {
         }
     }
 
+    public void requireReportPermission(Authentication authentication) {
+        if (!isAdmin(authentication)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.CASH_READ)) {
+            throw new AccessDeniedException("Se requiere permiso de informes de caja");
+        }
+    }
+
+    public void requireConfigPermission(Authentication authentication) {
+        if (!isAdmin(authentication)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.CASH_CONFIGURE)) {
+            throw new AccessDeniedException("Se requiere permiso de configuracion de caja");
+        }
+    }
+
     // Indica si el usuario puede ver importes teoricos y disponibles.
     public boolean canSeeExpectedTotals(Authentication authentication) {
         return isAdmin(authentication)

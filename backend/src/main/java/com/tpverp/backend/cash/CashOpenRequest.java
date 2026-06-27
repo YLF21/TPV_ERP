@@ -1,4 +1,6 @@
 package com.tpverp.backend.cash;
 
-public record CashOpenRequest() {
+import java.util.UUID;
+
+public record CashOpenRequest(UUID terminalId) {
 }

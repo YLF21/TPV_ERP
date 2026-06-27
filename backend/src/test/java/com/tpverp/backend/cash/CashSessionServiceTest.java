@@ -279,7 +279,7 @@ class CashSessionServiceTest {
     }
 
     @Test
-    void betweenSessionRequiresAccountingPermission() {
+    void betweenSessionRequiresConfigOrAccountingPermission() {
         var fixture = serviceFixture();
 
         assertThatThrownBy(() -> fixture.service.betweenSessions(
@@ -287,7 +287,7 @@ class CashSessionServiceTest {
                 new CashWithdrawalRequest(new BigDecimal("10.00"), "entrada entre sesiones", List.of(), false),
                 salesAuthentication(fixture.user)))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("gestion de cuentas");
+                .hasMessageContaining("configuracion de caja");
     }
 
     @Test
