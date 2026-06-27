@@ -109,12 +109,12 @@ public class CustomerService {
                 command.discount());
         customer.setNumMember(command.numMember());
         if (command.member() && !customer.isMember()) {
-            if (customer.getCodeMember() == null) {
+            if (customer.getMemberId() == null) {
                 var store = context.currentStore();
                 customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
                 customer.assignMemberStore(store.getId());
             } else {
-                customer.activateMember(customer.getCodeMember(), customer.getMemberSince());
+                customer.activateMember(customer.getMemberId(), customer.getMemberSince());
             }
         } else if (!command.member() && customer.isMember()) {
             customer.deactivateMember();
@@ -209,7 +209,7 @@ public class CustomerService {
 
     public record CustomerView(
             UUID id,
-            String codeClient,
+            String clientId,
             String fiscalName,
             DocumentType documentType,
             String documentNumber,
@@ -220,7 +220,7 @@ public class CustomerService {
             CustomerRate rate,
             BigDecimal discount,
             boolean isMember,
-            String codeMember,
+            String memberId,
             String numMember,
             LocalDate memberSince,
             BigDecimal balance,
@@ -229,12 +229,12 @@ public class CustomerService {
 
         static CustomerView from(Customer customer) {
             return new CustomerView(
-                    customer.getId(), customer.getCodeClient(), customer.getFiscalName(),
+                    customer.getId(), customer.getClientId(), customer.getFiscalName(),
                     customer.getDocumentType(),
                     customer.getDocumentNumber(), customer.getFiscalAddress(),
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),
                     customer.getRate(), customer.getDiscount(), customer.isMember(),
-                    customer.getCodeMember(), customer.getNumMember(),
+                    customer.getMemberId(), customer.getNumMember(),
                     customer.getMemberSince(), customer.getMemberBalance(),
                     customer.isActive(), customer.hasCompleteFiscalData());
         }

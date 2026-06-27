@@ -192,7 +192,7 @@ class PostgreSqlMigrationTest {
             statement.executeUpdate("""
                     insert into %1$s.proveedor (
                         id, empresa_id, razon_social, tipo_documento, numero_documento,
-                        code_supplier)
+                        supplier_id)
                     values ('%2$s', '%3$s', 'Proveedor', 'CIF', 'B00000002', 'S-000001')
                     """.formatted(schema, supplierId, companyId));
 

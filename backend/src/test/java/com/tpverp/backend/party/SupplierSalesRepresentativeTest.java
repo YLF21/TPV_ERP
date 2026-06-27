@@ -37,8 +37,8 @@ class SupplierSalesRepresentativeTest {
         supplier.assignCode("S-000001");
         commercial.assignCode("CO-000001");
 
-        assertThat(supplier.getCodeSupplier()).isEqualTo("S-000001");
-        assertThat(commercial.getCodeCommercial()).isEqualTo("CO-000001");
+        assertThat(supplier.getSupplierId()).isEqualTo("S-000001");
+        assertThat(commercial.getCommercialId()).isEqualTo("CO-000001");
     }
 
     private Company company() {

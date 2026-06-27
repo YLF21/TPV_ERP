@@ -177,7 +177,7 @@ class DocumentConfirmationRollbackPostgreSqlTest {
         jdbc.update("""
                 insert into %s.proveedor (
                     id, empresa_id, razon_social, tipo_documento, numero_documento,
-                    code_supplier)
+                    supplier_id)
                 values (?, ?, 'Proveedor', 'CIF', 'B00000001', 'S-000001')
                 """.formatted(SCHEMA), ids.supplierId(), ids.companyId());
         jdbc.update("""

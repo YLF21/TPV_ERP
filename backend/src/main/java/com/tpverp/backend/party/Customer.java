@@ -28,8 +28,8 @@ public class Customer {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Company company;
 
-    @Column(name = "code_client", nullable = false, length = 12, updatable = false)
-    private String codeClient;
+    @Column(name = "client_id", nullable = false, length = 12, updatable = false)
+    private String clientId;
 
     @Column(name = "client_code_store_id", nullable = false, updatable = false)
     private UUID clientCodeStoreId;
@@ -69,8 +69,8 @@ public class Customer {
     @Column(name = "is_member", nullable = false)
     private boolean member;
 
-    @Column(name = "code_member", length = 12, updatable = false)
-    private String codeMember;
+    @Column(name = "member_id", length = 12, updatable = false)
+    private String memberId;
 
     @Column(name = "member_code_store_id", updatable = false)
     private UUID memberCodeStoreId;
@@ -132,16 +132,16 @@ public class Customer {
     }
 
     public void assignClientCode(UUID storeId, String code) {
-        if (codeClient != null) {
+        if (clientId != null) {
             throw new IllegalStateException("El codigo de cliente es inmutable");
         }
         clientCodeStoreId = Objects.requireNonNull(storeId, "tienda");
-        codeClient = PartyValues.required(code, "codeClient");
+        clientId = PartyValues.required(code, "clientId");
     }
 
     public void activateMember(String code, LocalDate date) {
-        if (codeMember == null) {
-            codeMember = PartyValues.required(code, "codeMember");
+        if (memberId == null) {
+            memberId = PartyValues.required(code, "memberId");
             memberSince = Objects.requireNonNull(date, "memberSince");
         }
         member = true;
@@ -199,16 +199,16 @@ public class Customer {
         return memberBalance;
     }
 
-    public String getCodeClient() {
-        return codeClient;
+    public String getClientId() {
+        return clientId;
     }
 
     public boolean isMember() {
         return member;
     }
 
-    public String getCodeMember() {
-        return codeMember;
+    public String getMemberId() {
+        return memberId;
     }
 
     public String getNumMember() {

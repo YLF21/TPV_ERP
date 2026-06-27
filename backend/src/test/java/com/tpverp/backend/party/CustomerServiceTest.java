@@ -67,7 +67,7 @@ class CustomerServiceTest {
                 null, null, null, BigDecimal.ZERO, false, null));
 
         assertThat(created.documentNumber()).isEqualTo("12AB");
-        assertThat(created.codeClient()).isEqualTo("C-001-000001");
+        assertThat(created.clientId()).isEqualTo("C-001-000001");
         assertThat(created.isMember()).isFalse();
         verify(customers).save(any(Customer.class));
     }
@@ -88,7 +88,7 @@ class CustomerServiceTest {
                 null, null, null, BigDecimal.ZERO, true, " EXT/2026 #1 "));
 
         assertThat(created.isMember()).isTrue();
-        assertThat(created.codeMember()).isEqualTo("M-001-000001");
+        assertThat(created.memberId()).isEqualTo("M-001-000001");
         assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
         assertThat(created.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 6, 8));
         assertThat(created.rate()).isEqualTo(CustomerRate.MEMBER);
@@ -113,7 +113,7 @@ class CustomerServiceTest {
 
         assertThat(imported)
                 .extracting(CustomerService.CustomerView::documentNumber,
-                        CustomerService.CustomerView::codeClient)
+                        CustomerService.CustomerView::clientId)
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("A1", "C-001-000001"),
                         org.assertj.core.groups.Tuple.tuple("Z9", "C-001-000002"));
@@ -135,7 +135,7 @@ class CustomerServiceTest {
                 "Member", DocumentType.NIF, "M1", null,
                 null, null, null, BigDecimal.ZERO, true, null));
 
-        assertThat(updated.codeMember()).isEqualTo("M-001-000001");
+        assertThat(updated.memberId()).isEqualTo("M-001-000001");
         assertThat(updated.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 5, 1));
         verify(codes, never()).nextMember(any());
     }

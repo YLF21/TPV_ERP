@@ -61,7 +61,7 @@ class CustomerTest {
         customer.activateMember("M-001-000002", LocalDate.of(2026, 7, 1));
 
         assertThat(customer.isMember()).isTrue();
-        assertThat(customer.getCodeMember()).isEqualTo("M-001-000001");
+        assertThat(customer.getMemberId()).isEqualTo("M-001-000001");
         assertThat(customer.getMemberSince()).isEqualTo(LocalDate.of(2026, 6, 24));
         assertThat(customer.getRate()).isEqualTo(CustomerRate.MEMBER);
     }
