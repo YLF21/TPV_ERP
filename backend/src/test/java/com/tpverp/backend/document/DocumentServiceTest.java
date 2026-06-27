@@ -273,6 +273,9 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(ticket.getTotal()).isEqualByComparingTo("-10.00");
+        assertThat(ticket.getPagos())
+                .as("DocumentoPago rejects negative amounts, so negative tickets issue a voucher instead of recording a DEVOLUCION_EFECTIVO payment row.")
+                .isEmpty();
         var order = inOrder(documentRepository, voucherService, fiscalIntegration);
         order.verify(documentRepository).save(ticket);
         order.verify(voucherService).issueFromNegativeTicket(ticket);

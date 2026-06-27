@@ -105,6 +105,17 @@ class CashPaymentRecorderTest {
         verify(fixture.movements, never()).save(any(CashMovement.class));
     }
 
+    @Test
+    void negativeDocumentPaymentRowsAreRejectedBeforeRecorderCanCreateRefundMovement() {
+        var fixture = fixture();
+        var document = document(fixture);
+
+        assertThatThrownBy(() -> payment(
+                document, cashMethod(fixture), 1, "-10.00", true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("importe no puede ser negativo");
+    }
+
     private static CashMovement captureMovement(Fixture fixture) {
         var captor = ArgumentCaptor.forClass(CashMovement.class);
         verify(fixture.movements).save(captor.capture());
