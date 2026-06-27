@@ -126,7 +126,6 @@ public class DocumentService {
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
         }
         var terminalId = currentTerminal.terminalId(authentication);
-        cashPayments.requireOpenSession(terminalId);
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
@@ -221,7 +220,6 @@ public class DocumentService {
             throw new IllegalArgumentException("el documento no es una factura");
         }
         var terminalId = currentTerminal.terminalId(authentication);
-        cashPayments.requireOpenSession(terminalId);
         addPayments(invoice, payments, "la factura debe pagarse por completo");
         invoice.markPaid();
         var saved = documents.save(invoice);
@@ -327,7 +325,8 @@ public class DocumentService {
                             "message.payment_method.active_not_found"));
             document.addPayment(new DocumentPayment(
                     document, method, index + 1, command.importe(), command.principal(),
-                    command.entregado(), command.cambio(), command.voucherCode(), Instant.now(clock)));
+                    command.entregado(), command.cambio(), command.voucherCode(),
+                    command.reference(), Instant.now(clock)));
         }
         if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
             throw new IllegalArgumentException("se requiere un pago principal");
@@ -356,6 +355,7 @@ public class DocumentService {
                         organization.currentCompany().getId()))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "metodo de pago activo no encontrado"));
+        requireReferenceIfNeeded(method, command);
         if (!"VALE".equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
                 throw new IllegalArgumentException("codigo de vale solo permitido con metodo VALE");
@@ -368,9 +368,16 @@ public class DocumentService {
         var result = vouchers.consume(command.voucherCode(), command.importe(), document);
         return new PaymentCommand(
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
-                command.entregado(), command.cambio(), command.voucherCode());
+                command.entregado(), command.cambio(), command.voucherCode(), command.reference());
     }
     // Consume vales antes de registrar pagos para guardar el importe real aplicado.
+
+    private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
+        if (method.isRequiereReferencia()
+                && (command.reference() == null || command.reference().isBlank())) {
+            throw new IllegalArgumentException("message.payment.reference_required");
+        }
+    }
 
     private String nextNumber(CommercialDocument document) {
         var type = document.getTipo();

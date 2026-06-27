@@ -35,7 +35,8 @@ public class PaymentMethodController {
     @PreAuthorize("hasRole('ADMIN')")
     public PaymentMethodView create(@Valid @RequestBody CreatePaymentMethodRequest request) {
         return PaymentMethodView.from(service.create(
-                request.companyId(), request.name(), request.protectedMethod()));
+                request.companyId(), request.name(), request.protectedMethod(),
+                request.requiresReference(), request.opensCashDrawer()));
     }
 
     @PatchMapping("/{id}/active")
@@ -46,13 +47,29 @@ public class PaymentMethodController {
         return PaymentMethodView.from(service.setActive(id, request.active()));
     }
 
+    @PatchMapping("/{id}/configuration")
+    @PreAuthorize("hasRole('ADMIN')")
+    public PaymentMethodView configure(
+            @PathVariable UUID id,
+            @Valid @RequestBody ConfigureRequest request) {
+        return PaymentMethodView.from(service.configure(
+                id, request.requiresReference(), request.opensCashDrawer()));
+    }
+
     public record CreatePaymentMethodRequest(
             @NotNull UUID companyId,
             @NotBlank String name,
-            boolean protectedMethod) {
+            boolean protectedMethod,
+            boolean requiresReference,
+            boolean opensCashDrawer) {
     }
 
     public record ActiveRequest(boolean active) {
+    }
+
+    public record ConfigureRequest(
+            boolean requiresReference,
+            boolean opensCashDrawer) {
     }
 
     public record PaymentMethodView(
@@ -60,12 +77,15 @@ public class PaymentMethodController {
             UUID companyId,
             String name,
             boolean protectedMethod,
-            boolean active) {
+            boolean active,
+            boolean requiresReference,
+            boolean opensCashDrawer) {
 
         static PaymentMethodView from(PaymentMethod method) {
             return new PaymentMethodView(
                     method.getId(), method.getEmpresaId(), method.getNombre(),
-                    method.isProtegido(), method.isActivo());
+                    method.isProtegido(), method.isActivo(),
+                    method.isRequiereReferencia(), method.isAbreCajaRegistradora());
         }
     }
 }

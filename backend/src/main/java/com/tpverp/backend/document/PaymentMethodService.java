@@ -21,9 +21,15 @@ public class PaymentMethodService {
 
     // Creates a normalized method for a company.
     @Transactional
-    public PaymentMethod create(UUID companyId, String name, boolean protectedMethod) {
+    public PaymentMethod create(
+            UUID companyId,
+            String name,
+            boolean protectedMethod,
+            boolean requiresReference,
+            boolean opensCashDrawer) {
         requireCurrentCompany(companyId);
-        return repository.save(new PaymentMethod(companyId, name, protectedMethod));
+        return repository.save(new PaymentMethod(
+                companyId, name, protectedMethod, requiresReference, opensCashDrawer));
     }
 
     @Transactional(readOnly = true)
@@ -39,6 +45,16 @@ public class PaymentMethodService {
                         id, organization.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
         method.setActivo(active);
+        return method;
+    }
+
+    // Updates ADMIN-configurable payment behavior without changing history.
+    @Transactional
+    public PaymentMethod configure(UUID id, boolean requiresReference, boolean opensCashDrawer) {
+        var method = repository.findByIdAndEmpresaId(
+                        id, organization.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
+        method.configure(requiresReference, opensCashDrawer);
         return method;
     }
 

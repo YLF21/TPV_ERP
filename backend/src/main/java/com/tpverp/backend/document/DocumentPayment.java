@@ -40,6 +40,8 @@ public class DocumentPayment {
     private BigDecimal cambio;
     @Column(name = "codigo_vale", length = 32)
     private String voucherCode;
+    @Column(length = 128)
+    private String referencia;
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
     @Version
@@ -57,6 +59,7 @@ public class DocumentPayment {
             BigDecimal entregado,
             BigDecimal cambio,
             String voucherCode,
+            String referencia,
             Instant creadoEn) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
@@ -70,6 +73,7 @@ public class DocumentPayment {
         this.entregado = nullableMoney(entregado);
         this.cambio = nullableMoney(cambio);
         this.voucherCode = optionalCode(voucherCode);
+        this.referencia = optionalReference(referencia);
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
         validateCashAmounts();
     }
@@ -82,8 +86,21 @@ public class DocumentPayment {
             boolean principal,
             BigDecimal entregado,
             BigDecimal cambio,
+            String voucherCode,
             Instant creadoEn) {
-        this(documento, metodoPago, posicion, importe, principal, entregado, cambio, null, creadoEn);
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio, voucherCode, null, creadoEn);
+    }
+
+    public DocumentPayment(
+            CommercialDocument documento,
+            PaymentMethod metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            Instant creadoEn) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio, null, null, creadoEn);
     }
 
     public CommercialDocument getDocumento() {
@@ -120,6 +137,10 @@ public class DocumentPayment {
 
     public String getVoucherCode() {
         return voucherCode;
+    }
+
+    public String getReferencia() {
+        return referencia;
     }
 
     // Adjusts only the principal payment when a ticket is administratively changed.
@@ -169,5 +190,9 @@ public class DocumentPayment {
         return value == null || value.isBlank()
                 ? null
                 : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String optionalReference(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

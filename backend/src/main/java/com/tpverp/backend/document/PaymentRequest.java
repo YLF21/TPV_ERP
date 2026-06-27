@@ -19,11 +19,22 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
             boolean principal,
             BigDecimal entregado,
             BigDecimal cambio,
-            String voucherCode) {
+            String voucherCode,
+            String reference) {
+
+        public Item(
+                UUID metodoPagoId,
+                BigDecimal importe,
+                boolean principal,
+                BigDecimal entregado,
+                BigDecimal cambio,
+                String voucherCode) {
+            this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, null);
+        }
 
         PaymentCommand toCommand() {
             return new PaymentCommand(
-                    metodoPagoId, importe, principal, entregado, cambio, voucherCode);
+                    metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference);
         }
     }
 }
