@@ -76,7 +76,7 @@ public class Warehouse {
     public void deactivate(long totalStock) {
         requireEditable();
         if (totalStock != 0) {
-            throw new IllegalStateException("Solo se puede deactivate un almacen con stock cero");
+            throw new IllegalStateException("message.warehouse.only_zero_stock_can_deactivate");
         }
         activo = false;
     }

@@ -96,7 +96,7 @@ public class CashMovement {
         this.documentoPagoId = paymentId;
     }
 
-    // Crea un movimiento asociado a una sesion de caja abierta.
+    // Creates a movement linked to an open cash session.
     public static CashMovement sessionMovement(
             UUID storeId,
             UUID terminalId,
@@ -115,7 +115,7 @@ public class CashMovement {
                 userId, authorizerUserId, comment, documentId, paymentId);
     }
 
-    // Crea un movimiento asociado a una sesion de caja abierta cuando solo se conoce su id.
+    // Creates a movement linked to an open cash session when only its id is known.
     public static CashMovement sessionMovement(
             UUID storeId,
             UUID terminalId,
@@ -137,7 +137,7 @@ public class CashMovement {
                 amount, createdAt, userId, authorizerUserId, comment, documentId, paymentId);
     }
 
-    // Crea una entrada pendiente de asociar a una sesion, usada para traspasos entre sesiones.
+    // Creates an entry pending session assignment, used for between-session transfers.
     public static CashMovement betweenSessions(
             UUID storeId,
             UUID terminalId,

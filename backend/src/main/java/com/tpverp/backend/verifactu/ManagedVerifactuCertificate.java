@@ -97,7 +97,7 @@ public class ManagedVerifactuCertificate {
         this.importedBy = Objects.requireNonNull(importedBy, "importedBy");
     }
 
-    // Crea el registro publico que referencia una clave ya protegida localmente.
+    // Creates the public record that references an already protected local key.
     public static ManagedVerifactuCertificate active(
             UUID companyId,
             String subject,

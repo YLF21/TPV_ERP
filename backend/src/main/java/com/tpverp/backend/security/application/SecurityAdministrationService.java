@@ -180,12 +180,12 @@ public class SecurityAdministrationService {
 
     private UserAccount user(UUID id) {
         return usuarioRepository.findByIdAndTiendaId(id, currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException("UserAccount no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("message.security.user_not_found"));
     }
 
     private Role role(UUID id) {
         return rolRepository.findByIdAndTiendaId(id, currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Role no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("message.security.role_not_found"));
     }
 
     private void requireAssignable(Role role) {
@@ -197,7 +197,7 @@ public class SecurityAdministrationService {
 
     private com.tpverp.backend.security.domain.Permission permission(String code) {
         return permisoRepository.findByCodigo(normalize(code))
-                .orElseThrow(() -> new IllegalArgumentException("Permission no encontrado: " + code));
+                .orElseThrow(() -> new IllegalArgumentException("message.security.permission_not_found"));
     }
 
     private Store currentStore() {
@@ -206,7 +206,7 @@ public class SecurityAdministrationService {
 
     private String normalize(String value) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("El valor es obligatorio");
+            throw new IllegalArgumentException("message.common.value_required");
         }
         return value.trim().toUpperCase(Locale.ROOT);
     }

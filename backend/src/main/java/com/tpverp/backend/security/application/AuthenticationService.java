@@ -105,7 +105,7 @@ public class AuthenticationService {
 			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
 					.digest(token.getBytes(StandardCharsets.UTF_8)));
 		} catch (Exception exception) {
-			throw new IllegalStateException("No se pudo procesar la sesión", exception);
+			throw new IllegalStateException("message.security.session_processing_failed", exception);
 		}
 	}
 

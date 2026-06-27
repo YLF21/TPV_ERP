@@ -25,7 +25,7 @@ public final class Money {
         return value.setScale(SCALE, ROUNDING);
     }
 
-    // Calcula un porcentaje y redondea el resultado como importe monetario.
+    // Calculates a percentage and rounds the result as a money amount.
     public static BigDecimal percentage(BigDecimal amount, BigDecimal percentage) {
         return euros(euros(amount).multiply(validPercentage(percentage)).divide(HUNDRED));
     }

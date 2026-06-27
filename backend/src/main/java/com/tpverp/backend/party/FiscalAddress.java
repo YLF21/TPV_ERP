@@ -39,7 +39,7 @@ public class FiscalAddress {
     }
 
     public boolean isComplete() {
-        // Una factura necesita todos los componentes fiscales, no solo la calle.
+        // An invoice needs all fiscal address components, not just the street.
         return address != null && postalCode != null && city != null
                 && province != null && country != null;
     }

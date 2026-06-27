@@ -52,7 +52,7 @@ public class WarehouseOutputService {
                 organization.currentStore().getId());
     }
 
-    // Crea una salida editable y valida que todos sus productos pertenezcan a la tienda.
+    // Creates an editable output and validates that every product belongs to the store.
     @Transactional
     public WarehouseOutput create(
             WarehouseOutputCommand command, Authentication authentication) {
@@ -65,7 +65,7 @@ public class WarehouseOutputService {
         return outputs.save(output);
     }
 
-    // Reemplaza por completo un borrador sin alterar su identidad.
+    // Fully replaces a draft without changing its identity.
     @Transactional
     public WarehouseOutput update(UUID id, WarehouseOutputCommand command) {
         var output = find(id);
@@ -73,13 +73,13 @@ public class WarehouseOutputService {
         if (!output.getWarehouseId().equals(command.warehouseId())
                 || !output.getDate().equals(command.date())) {
             throw new IllegalArgumentException(
-                    "El almacén y la fecha no pueden cambiarse en esta operación");
+                    "message.warehouse_output.warehouse_and_date_immutable");
         }
         output.replace(command.destination(), command.concept(), command.lines());
         return outputs.save(output);
     }
 
-    // Elimina únicamente salidas que todavía son borradores.
+    // Deletes only outputs that are still drafts.
     @Transactional
     public void delete(UUID id) {
         var output = find(id);
@@ -89,7 +89,7 @@ public class WarehouseOutputService {
         outputs.delete(output);
     }
 
-    // Numera la salida y registra de forma atómica sus movimientos negativos.
+    // Numbers the output and atomically records its negative movements.
     @Transactional
     public WarehouseOutput confirm(UUID id, Authentication authentication) {
         var output = find(id);
@@ -131,7 +131,7 @@ public class WarehouseOutputService {
 
     private void validate(WarehouseOutputCommand command, UUID storeId) {
         if (command == null || command.lines() == null || command.lines().isEmpty()) {
-            throw new IllegalArgumentException("La salida necesita líneas");
+            throw new IllegalArgumentException("message.warehouse_output.lines_required");
         }
         warehouse(command.warehouseId(), storeId);
         command.lines().forEach(line -> product(line.productId(), storeId));
@@ -148,9 +148,9 @@ public class WarehouseOutputService {
 
     private Warehouse warehouse(UUID id, UUID storeId) {
         var warehouse = warehouses.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Almacén no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("message.warehouse.not_found"));
         if (!warehouse.getStoreId().equals(storeId) || !warehouse.isActive()) {
-            throw new IllegalArgumentException("Almacén no disponible para la tienda");
+            throw new IllegalArgumentException("message.warehouse.not_available_for_store");
         }
         return warehouse;
     }

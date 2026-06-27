@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public record PaymentRequest(@NotEmpty List<Item> pagos) {
 
-    // Traduce todos los pagos preservando orden y marca principal.
+    // Maps every payment while preserving order and principal flag.
     public List<PaymentCommand> toCommands() {
         return pagos.stream().map(Item::toCommand).toList();
     }

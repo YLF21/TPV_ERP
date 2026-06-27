@@ -46,7 +46,7 @@ public class CashSessionService {
         this.clock = clock;
     }
 
-    // Devuelve el estado de caja filtrando importes teoricos segun permisos.
+    // Returns cash status while filtering theoretical amounts by permission.
     @Transactional(readOnly = true)
     public CashSessionView status(UUID terminalId, Authentication authentication) {
         permissions.requireCashStatusPermission(authentication);
@@ -78,7 +78,7 @@ public class CashSessionService {
         return view(sessions.save(session), permissions.canSeeExpectedTotals(authentication));
     }
 
-    // Registra una entrada manual en una sesion abierta validando autorizador contable.
+    // Records a manual entry in an open session after validating accounting authorization.
     @Transactional
     public CashMovementView entry(UUID terminalId, CashEntryRequest request, Authentication authentication) {
         permissions.requireSalesPermission(authentication);
@@ -98,7 +98,7 @@ public class CashSessionService {
         return CashMovementView.from(movements.save(movement));
     }
 
-    // Registra una retirada de efectivo en una sesion abierta.
+    // Records a cash withdrawal in an open session.
     @Transactional
     public CashMovementView withdrawal(UUID terminalId, CashWithdrawalRequest request, Authentication authentication) {
         permissions.requireSalesPermission(authentication);
@@ -154,7 +154,7 @@ public class CashSessionService {
         return view(session, permissions.canSeeExpectedTotals(authentication), attempt);
     }
 
-    // Registra efectivo preparado entre sesiones cuando no hay caja abierta.
+    // Records prepared cash between sessions when no cash session is open.
     @Transactional
     public CashMovementView betweenSessions(
             UUID terminalId, CashWithdrawalRequest request, Authentication authentication) {

@@ -43,7 +43,7 @@ class PaymentMethodServiceTest {
 
         assertThatThrownBy(() -> service().setActive(method.getId(), false))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("protegido");
+                .hasMessageContaining("message.payment_method.protected_cannot_deactivate");
     }
 
     @Test
@@ -65,6 +65,6 @@ class PaymentMethodServiceTest {
 
         assertThatThrownBy(() -> service().setActive(foreignMethodId, true))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("método de pago no encontrado");
+                .hasMessageContaining("message.payment_method.not_found");
     }
 }

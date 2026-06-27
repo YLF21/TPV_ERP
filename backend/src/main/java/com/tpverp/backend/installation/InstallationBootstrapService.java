@@ -114,7 +114,7 @@ public class InstallationBootstrapService {
 			return HexFormat.of().formatHex(
 					MessageDigest.getInstance("SHA-256").digest(normalized.getBytes(StandardCharsets.UTF_8)));
 		} catch (Exception exception) {
-			throw new IllegalStateException("No se pudo normalizar la dirección demo", exception);
+			throw new IllegalStateException("message.installation.demo_address_normalization_failed", exception);
 		}
 	}
 }

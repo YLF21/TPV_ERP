@@ -57,9 +57,9 @@ public class TerminalRegistrationService {
     @Transactional
     public RegistrationResult request(UUID storeId, String name, TerminalType type) {
         Store store = tiendaRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("Store no encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("message.organization.store_not_found"));
         if (type == null || type == TerminalType.SERVIDOR) {
-            throw new IllegalArgumentException("Solo se pueden request terminales Windows o PDA");
+            throw new IllegalArgumentException("message.terminal.only_windows_or_pda_can_request");
         }
         if (terminalRepository.findByTiendaIdAndNombreIgnoreCase(store.getId(), name).isPresent()) {
             throw new IllegalArgumentException("Ya existe una terminal con ese nombre");
@@ -79,7 +79,7 @@ public class TerminalRegistrationService {
     @Transactional
     public TerminalItem approve(UUID terminalId) {
         if (installationStatusService.status().mode() == OperationalMode.RESTRICTED) {
-            throw new IllegalStateException("No se pueden approve terminales sin demo o licencia valida");
+            throw new IllegalStateException("message.terminal.approval_requires_demo_or_license");
         }
         Terminal terminal = currentTerminal(terminalId);
         if (!terminal.isAprobada()) {
@@ -142,7 +142,7 @@ public class TerminalRegistrationService {
 
     private Terminal currentTerminal(UUID terminalId) {
         return terminalRepository.findByIdAndTiendaId(terminalId, currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("message.terminal.not_found"));
     }
 
     public record RegistrationResult(UUID terminalId, String credential, String status) {

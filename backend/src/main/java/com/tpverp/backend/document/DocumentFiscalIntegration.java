@@ -39,7 +39,7 @@ public class DocumentFiscalIntegration {
         this.events = events;
     }
 
-    // Registra el alta fiscal del documento de venta si VERI*FACTU esta activo.
+    // Registers the sales document fiscal creation when VERI*FACTU is active.
     public void registerAlta(CommercialDocument document, boolean invoiceFromTicket) {
         var type = altaType(document, invoiceFromTicket);
         if (type != null) {
@@ -47,7 +47,7 @@ public class DocumentFiscalIntegration {
         }
     }
 
-    // Registra la anulacion fiscal conservando el tipo original del ticket.
+    // Registers fiscal cancellation while preserving the original ticket type.
     public void registerTicketCancellation(CommercialDocument ticket) {
         register(ticket, FiscalRecordOperation.ANULACION, ticketType(ticket));
     }
@@ -59,16 +59,16 @@ public class DocumentFiscalIntegration {
                     ticket.getId());
             events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
         } catch (VerifactuInactiveException ignored) {
-            // La conversión comercial sigue disponible antes de activate VERI*FACTU.
+            // Commercial conversion remains available before VERI*FACTU activation.
         }
     }
-    // Registra F3 y enlaza fiscalmente la factura simplificada sustituida.
+    // Registers F3 and fiscally links the replaced simplified invoice.
 
     public boolean hasFiscalRecord(java.util.UUID documentId) {
         return recordRepository.findByDocumentIdAndOperation(
                 documentId, FiscalRecordOperation.ALTA).isPresent();
     }
-    // Indica si el contenido fiscal del documento ya quedo congelado.
+    // Indicates whether the document fiscal content is already frozen.
 
     private FiscalDocumentType altaType(CommercialDocument document, boolean invoiceFromTicket) {
         return switch (document.getTipo()) {

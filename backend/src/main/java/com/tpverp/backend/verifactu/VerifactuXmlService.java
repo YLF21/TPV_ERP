@@ -40,7 +40,7 @@ public class VerifactuXmlService {
             throw new IllegalStateException("No se pudo generar el XML VERI*FACTU", exception);
         }
     }
-    // Genera el XML oficial base que usara el futuro cliente SOAP de AEAT.
+    // Generates the base official XML used by the future AEAT SOAP client.
 
     private static Element header(Document document, VerifactuXmlBatchRequest request) {
         var header = element(document, LR_NS, "sfLR:Cabecera");

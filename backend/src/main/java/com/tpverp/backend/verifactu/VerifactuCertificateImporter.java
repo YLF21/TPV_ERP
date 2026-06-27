@@ -31,7 +31,7 @@ public class VerifactuCertificateImporter {
         this.validator = validator;
     }
 
-    // Convierte un PKCS#12 validado en material publico y PKCS#8 listo para DPAPI.
+    // Converts a validated PKCS#12 into public material and DPAPI-ready PKCS#8.
     public ImportedCertificateMaterial importPkcs12(
             byte[] pkcs12, char[] password, String expectedTaxId) {
         if (pkcs12 == null || pkcs12.length == 0) {

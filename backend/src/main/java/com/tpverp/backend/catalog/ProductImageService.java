@@ -36,7 +36,7 @@ public class ProductImageService {
         deletePrevious(product, previousImageId);
         return product;
     }
-    // Procesa la imagen, la publica en disco y deja en producto solo metadatos persistibles.
+    // Processes the image, publishes it on disk, and stores only persistable metadata on the product.
 
     @Transactional(readOnly = true)
     public ProductImage read(UUID productId, boolean thumbnail) {

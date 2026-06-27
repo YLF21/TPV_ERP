@@ -52,18 +52,18 @@ public class VerifactuConfiguration {
         this.activatedAt = value;
     }
 
-    // Registra una remisión voluntaria o el instante exacto de activación legal.
+    // Records a voluntary submission or the exact legal activation instant.
     public void markFirstSubmission(Instant submittedAt, Instant legalActivationAt) {
         if (!voluntarilyActive && legalActivationAt == null) {
             throw new IllegalStateException("VERI*FACTU debe estar activo");
         }
         if (firstSubmissionAt != null) {
-            throw new IllegalStateException("La primera remisión ya está registrada");
+            throw new IllegalStateException("message.verifactu.first_submission_already_registered");
         }
         var value = Objects.requireNonNull(submittedAt, "submittedAt");
         var effectiveActivation = activatedAt == null ? legalActivationAt : activatedAt;
         if (value.isBefore(effectiveActivation)) {
-            throw new IllegalArgumentException("La remisión no puede preceder a la activación");
+            throw new IllegalArgumentException("message.verifactu.submission_before_activation");
         }
         if (activatedAt == null) {
             activatedAt = legalActivationAt;
@@ -71,10 +71,10 @@ public class VerifactuConfiguration {
         firstSubmissionAt = value;
     }
 
-    // Desactiva el modo voluntario únicamente antes de cualquier remisión.
+    // Disables voluntary mode only before any submission.
     public void deactivateVoluntarily() {
         if (firstSubmissionAt != null) {
-            throw new IllegalStateException("VERI*FACTU ya realizó su primera remisión");
+            throw new IllegalStateException("message.verifactu.first_submission_already_done");
         }
         voluntarilyActive = false;
         activatedAt = null;

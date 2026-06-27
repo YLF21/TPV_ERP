@@ -26,5 +26,5 @@ public class VerifactuImmediateSubmissionListener {
             worker.process(event.recordId());
         }
     }
-    // Intenta la remisión fuera de la transacción y del hilo que confirmó la venta.
+    // Attempts submission outside the transaction and the thread that confirmed the sale.
 }

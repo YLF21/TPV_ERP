@@ -88,7 +88,7 @@ public class CashSession {
         return session;
     }
 
-    // Registra un intento de arqueo y cierra la sesion segun tolerancia y numero de intento.
+    // Records a cash-count attempt and closes the session according to tolerance and attempt number.
     public CashReconciliationAttempt registerAttempt(
             UUID userId,
             Instant at,

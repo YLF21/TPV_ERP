@@ -23,7 +23,7 @@ public class VerifactuPkcs12KeyStoreLoader {
             throw new IllegalArgumentException("No se pudo cargar el certificado PKCS#12", exception);
         }
     }
-    // Carga el almacen PKCS#12 sin exponer la password ni convertirla a String.
+    // Loads the PKCS#12 store without exposing the password or converting it to String.
 
     public KeyStore loadContent(byte[] content, char[] password) {
         if (content == null || content.length == 0) {

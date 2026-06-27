@@ -96,7 +96,7 @@ public class VerifactuCertificateSecretStore {
             try {
                 Files.deleteIfExists(path);
             } catch (IOException ignored) {
-                // El temporal se intentara limpiar en el siguiente mantenimiento del directorio.
+                // The temporary file will be cleaned up during the next directory maintenance.
             }
         }
     }

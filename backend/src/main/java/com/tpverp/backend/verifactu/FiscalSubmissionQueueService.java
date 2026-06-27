@@ -35,7 +35,7 @@ public class FiscalSubmissionQueueService {
         this.clock = clock;
     }
 
-    // Devuelve registros reintentables de la tienda actual en orden de cola.
+    // Returns retryable records for the current store in queue order.
     @Transactional(readOnly = true)
     public List<FiscalSubmissionQueueItem> pending() {
         return retryable().stream()
@@ -85,7 +85,7 @@ public class FiscalSubmissionQueueService {
                         .map(record -> new QueueCandidate(record, state)))
                 .toList();
     }
-    // El worker recorre todas las tiendas; la vista administrativa permanece acotada.
+    // The worker scans every store; the administrative view stays scoped.
 
     private boolean eligible(FiscalSubmissionState state) {
         if (state.getStatus() == FiscalSubmissionStatus.PENDIENTE) {

@@ -96,5 +96,5 @@ public final class RequiredField {
     public static Optional<FieldKey> from(String objectName, String field) {
         return Optional.ofNullable(FIELDS.get(objectName + "." + field));
     }
-    // Traduce rutas de validacion Bean Validation a claves de campo mantenibles.
+    // Maps Bean Validation paths to maintainable field keys.
 }

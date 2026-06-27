@@ -20,7 +20,7 @@ public class VerifactuClockMonitor {
         var current = lastStatus.get();
         return current == null ? refresh() : current;
     }
-    // Devuelve la ultima comprobacion o la calcula bajo demanda si aun no existe.
+    // Returns the last check or calculates it on demand when none exists.
 
     @EventListener(ApplicationReadyEvent.class)
     public void checkOnStartup() {

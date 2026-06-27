@@ -36,7 +36,7 @@ public class CashPaymentRecorder {
         openSession(terminalId);
     }
 
-    // Registra solo pagos en efectivo positivos asociados al documento persistido.
+    // Records only positive cash payments linked to the persisted document.
     public void recordDocumentPayments(UUID terminalId, CommercialDocument document) {
         var session = openSession(terminalId);
         var authentication = SecurityContextHolder.getContext().getAuthentication();

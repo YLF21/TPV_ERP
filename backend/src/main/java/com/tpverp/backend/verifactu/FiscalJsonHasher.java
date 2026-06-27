@@ -20,7 +20,7 @@ public final class FiscalJsonHasher {
 
     private final JsonMapper mapper;
 
-    // Crea un serializador canonico privado e independiente de la aplicacion.
+    // Creates a private canonical serializer independent from the application mapper.
     public FiscalJsonHasher() {
         mapper = JsonMapper.builder()
                 .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
@@ -29,7 +29,7 @@ public final class FiscalJsonHasher {
                 .build();
     }
 
-    // Calcula una huella estable del snapshot fiscal con claves JSON ordenadas.
+    // Calculates a stable hash of the fiscal snapshot with sorted JSON keys.
     public String hash(Map<String, Object> snapshot) {
         if (snapshot == null) {
             throw new IllegalArgumentException("snapshot es obligatorio");

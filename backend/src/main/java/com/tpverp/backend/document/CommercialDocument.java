@@ -131,17 +131,17 @@ public class CommercialDocument {
         return estado;
     }
 
-    // Devuelve el numero fiscal asignado al confirmar el documento.
+    // Returns the fiscal number assigned when the document is confirmed.
     public String getNumero() {
         return numero;
     }
 
-    // Devuelve la fecha de expedicion conservada por el documento.
+    // Returns the issue date stored by the document.
     public LocalDate getFecha() {
         return fecha;
     }
 
-    // Devuelve el importe total calculado del documento.
+    // Returns the calculated document total.
     public BigDecimal getTotal() {
         return total;
     }
@@ -154,7 +154,7 @@ public class CommercialDocument {
         return descuentoGlobal;
     }
 
-    // Devuelve la cuota fiscal total calculada del documento.
+    // Returns the calculated total tax amount.
     public BigDecimal getImpuestoTotal() {
         return impuestoTotal;
     }
@@ -198,16 +198,16 @@ public class CommercialDocument {
         return List.copyOf(pagos);
     }
 
-    // Añade una línea perteneciente al mismo documento.
+    // Adds a line that belongs to this document.
     public void addLine(DocumentLine line) {
         if (line == null || line.getDocumento() != this) {
-            throw new IllegalArgumentException("la línea no pertenece al documento");
+            throw new IllegalArgumentException("message.document.line_not_owned");
         }
         lineas.add(line);
         recalculate();
     }
 
-    // Añade un pago y protege la unicidad del pago principal antes de persistir.
+    // Adds a payment and protects principal-payment uniqueness before persistence.
     public void addPayment(DocumentPayment payment) {
         if (payment == null || payment.getDocumento() != this) {
             throw new IllegalArgumentException("el pago no pertenece al documento");
@@ -221,7 +221,7 @@ public class CommercialDocument {
     // Confirma una vez el documento conservando fecha e identidad fiscal.
     public void confirm(String number, UUID userId, Instant confirmedAt, boolean stockApplied) {
         if (estado != DocumentStatus.BORRADOR || lineas.isEmpty()) {
-            throw new IllegalStateException("solo se puede confirmar un borrador con líneas");
+            throw new IllegalStateException("message.document.only_draft_with_lines_can_be_confirmed");
         }
         numero = required(number, "numero");
         confirmadoPor = Objects.requireNonNull(userId, "usuario");
@@ -230,7 +230,7 @@ public class CommercialDocument {
         estado = isInvoice() ? DocumentStatus.PENDIENTE : DocumentStatus.CONFIRMADO;
     }
 
-    // Anula un ticket confirmado sin eliminar su numeración ni contenido.
+    // Cancels a confirmed ticket without removing its number or content.
     public void cancel(UUID userId, Instant cancelledAt, String reason) {
         if (tipo != CommercialDocumentType.TICKET || estado != DocumentStatus.CONFIRMADO) {
             throw new IllegalStateException("solo se puede anular un ticket confirmado");
@@ -241,7 +241,7 @@ public class CommercialDocument {
         estado = DocumentStatus.ANULADO;
     }
 
-    // Registra el pago completo de una factura pendiente.
+    // Records full payment for a pending invoice.
     public void markPaid() {
         if (!isInvoice() || estado != DocumentStatus.PENDIENTE) {
             throw new IllegalStateException("solo se puede pagar una factura pendiente");
@@ -249,7 +249,7 @@ public class CommercialDocument {
         estado = DocumentStatus.PAGADO;
     }
 
-    // Reemplaza contenido editable sin alterar número, fecha ni marca histórica de stock.
+    // Replaces editable content without changing number, date, or historical stock flag.
     public void adminReplace(
             BigDecimal globalDiscount,
             UUID customerId,
@@ -259,7 +259,7 @@ public class CommercialDocument {
                 || (tipo != CommercialDocumentType.TICKET
                 && tipo != CommercialDocumentType.ALBARAN_VENTA
                 && tipo != CommercialDocumentType.ALBARAN_COMPRA)) {
-            throw new IllegalStateException("el documento confirmado no admite edición administrativa");
+            throw new IllegalStateException("message.document.confirmed_admin_edit_not_allowed");
         }
         descuentoGlobal = Money.validPercentage(globalDiscount);
         clienteId = customerId;

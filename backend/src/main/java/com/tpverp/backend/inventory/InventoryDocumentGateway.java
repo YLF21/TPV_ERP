@@ -55,7 +55,7 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
         return true;
     }
 
-    // Compensa cada movimiento original una sola vez y conserva su vínculo histórico.
+    // Compensates each original movement once and preserves its historical link.
     @Override
     @Transactional
     public boolean cancel(CommercialDocument document) {

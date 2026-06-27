@@ -59,11 +59,11 @@ public class FiscalChain {
         return lastHash;
     }
 
-    // Avanza la cabeza únicamente con el siguiente registro de esta cadena.
+    // Advances the chain head only with the next record in this chain.
     public void advance(FiscalRecord record, Instant updatedAt) {
         var next = Objects.requireNonNull(record, "record");
         if (!id.equals(next.chainId()) || next.getSequence() != nextSequence()) {
-            throw new IllegalArgumentException("El registro no continúa esta cadena fiscal");
+            throw new IllegalArgumentException("message.fiscal_chain.record_does_not_continue_chain");
         }
         lastRecord = next;
         lastSequence = next.getSequence();

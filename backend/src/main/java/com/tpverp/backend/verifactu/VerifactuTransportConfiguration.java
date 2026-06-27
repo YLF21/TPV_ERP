@@ -16,7 +16,7 @@ public class VerifactuTransportConfiguration {
             VerifactuMutualTlsHttpClientFactory clients) {
         return new ConfiguredVerifactuTransport(propertiesFactory, keyStores, clients);
     }
-    // Registra el transporte real usando el certificado configurado para mTLS.
+    // Registers the real transport using the configured certificate for mTLS.
 
     @Bean
     VerifactuCertificateSecretStore verifactuCertificateSecretStore(

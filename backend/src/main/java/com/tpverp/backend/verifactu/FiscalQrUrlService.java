@@ -14,7 +14,7 @@ public class FiscalQrUrlService {
             "https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR";
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd-MM-uuuu");
 
-    // Genera la URL oficial que debe codificarse dentro del QR tributario.
+    // Generates the official URL encoded inside the tax QR.
     public String productionUrl(FiscalRecord record) {
         Objects.requireNonNull(record, "record");
         if (record.getTotalAmount() == null) {

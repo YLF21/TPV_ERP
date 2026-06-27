@@ -16,5 +16,5 @@ public record FiscalCorrectionView(
                 correction.getId(), originalRecordId, correction.getNumber(),
                 correction.getGeneratedAt(), FiscalSubmissionStatus.PENDIENTE);
     }
-    // Devuelve el estado inicial persistido antes del envio asincrono.
+    // Returns the initial persisted state before asynchronous submission.
 }

@@ -13,7 +13,7 @@ public class VerifactuActivationService {
     private static final LocalDate COMPANY_DEADLINE = LocalDate.of(2027, 1, 1);
     private static final LocalDate SELF_EMPLOYED_DEADLINE = LocalDate.of(2027, 7, 1);
 
-    // Indica si la fecha legal obliga a usar VERI*FACTU según el titular.
+    // Indicates whether the legal date requires VERI*FACTU for the taxpayer type.
     public boolean isLegallyRequired(TaxpayerType type, Instant now, ZoneId zoneId) {
         return !Objects.requireNonNull(now, "now").isBefore(
                 legalActivationAt(type, zoneId));
@@ -24,7 +24,7 @@ public class VerifactuActivationService {
     }
     // Expone el inicio legal efectivo para informar al administrador.
 
-    // Combina la activación voluntaria con la obligación legal automática.
+    // Combines voluntary activation with the automatic legal obligation.
     public boolean isActive(
             VerifactuConfiguration configuration,
             TaxpayerType type,
@@ -34,7 +34,7 @@ public class VerifactuActivationService {
                 || isLegallyRequired(type, now, zoneId);
     }
 
-    // Registra la primera remisión aplicando la activación voluntaria o legal vigente.
+    // Records the first submission applying voluntary or legal activation.
     public void markFirstSubmission(
             VerifactuConfiguration configuration,
             TaxpayerType type,
@@ -46,14 +46,14 @@ public class VerifactuActivationService {
                 submittedAt.isBefore(legalActivationAt) ? null : legalActivationAt);
     }
 
-    // Impide volver atrás tras la fecha legal o después de la primera remisión.
+    // Prevents rollback after the legal date or after the first submission.
     public void deactivateVoluntarily(
             VerifactuConfiguration configuration,
             TaxpayerType type,
             Instant now,
             ZoneId zoneId) {
         if (isLegallyRequired(type, now, zoneId)) {
-            throw new IllegalStateException("La activación legal de VERI*FACTU es irreversible");
+            throw new IllegalStateException("message.verifactu.legal_activation_irreversible");
         }
         Objects.requireNonNull(configuration, "configuration").deactivateVoluntarily();
     }

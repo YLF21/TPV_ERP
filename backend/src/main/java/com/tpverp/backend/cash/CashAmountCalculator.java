@@ -18,7 +18,7 @@ public class CashAmountCalculator {
         this.movements = movements;
     }
 
-    // Calcula el efectivo teorico de una sesion usando solo movimientos de efectivo.
+    // Calculates theoretical cash using only cash movements for the session.
     public BigDecimal expectedCash(CashSession session, List<CashMovement> movements) {
         var total = Money.euros(session.getOpeningFund());
         for (var movement : movements) {
@@ -31,7 +31,7 @@ public class CashAmountCalculator {
         return Money.euros(total);
     }
 
-    // Calcula el fondo inicial para la siguiente apertura con la ultima caja cerrada y movimientos pendientes.
+    // Calculates the next opening fund from the last closed session and pending movements.
     @Transactional(readOnly = true)
     public BigDecimal nextOpeningFund(UUID terminalId) {
         var retainedFund = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
@@ -49,7 +49,7 @@ public class CashAmountCalculator {
         return Money.euros(retainedFund.add(betweenSessions));
     }
 
-    // Devuelve el efectivo actualmente disponible en una sesion abierta.
+    // Returns the cash currently available in an open session.
     @Transactional(readOnly = true)
     public BigDecimal availableCash(CashSession session) {
         return expectedCash(session, movements.findAllBySesionCajaId(session.getId()));

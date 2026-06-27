@@ -21,7 +21,7 @@ public class VerifactuSubmissionWorker {
                         submissions.submit(claimed.record())))
                 .orElseGet(VerifactuWorkerResult::empty);
     }
-    // Procesa un unico registro para evitar lotes largos y facilitar reintentos controlados.
+    // Processes a single record to avoid long batches and keep retries controlled.
 
     public VerifactuWorkerResult process(java.util.UUID recordId) {
         return queue.claim(recordId)
@@ -29,5 +29,5 @@ public class VerifactuSubmissionWorker {
                         submissions.submit(claimed.record())))
                 .orElseGet(VerifactuWorkerResult::empty);
     }
-    // Procesa inmediatamente el registro recién confirmado si sigue reclamable.
+    // Immediately processes the newly confirmed record if it is still claimable.
 }

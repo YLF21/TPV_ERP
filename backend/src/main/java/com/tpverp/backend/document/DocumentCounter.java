@@ -52,7 +52,7 @@ public class DocumentCounter {
         return counter;
     }
 
-    // Incrementa el contador y devuelve el número ya formateado.
+    // Increments the counter and returns the formatted number.
     public String siguiente(CommercialDocumentType tipo, LocalDate fecha) {
         return siguiente(tipo, fecha, "001");
     }
@@ -69,7 +69,7 @@ public class DocumentCounter {
         return ultimoNumero;
     }
 
-    // Incrementa la secuencia anual compartida por las salidas de almacén.
+    // Increments the annual sequence shared by warehouse outputs.
     public String siguienteSalidaAlmacen(LocalDate fecha) {
         var year = Integer.toString(Objects.requireNonNull(fecha, "fecha").getYear());
         if (!tipo.equals("SAL") || !periodo.equals(year)) {

@@ -43,7 +43,7 @@ public class FiscalCorrectionService {
         this.clock = clock;
     }
 
-    // Crea una subsanacion aislada por tenant y programa su envio tras confirmar la transaccion.
+    // Creates an isolated correction per tenant and schedules submission after transaction commit.
     @Transactional
     public FiscalCorrectionView correct(
             UUID recordId,

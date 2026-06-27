@@ -2,9 +2,9 @@ package com.tpverp.backend.document;
 
 public interface StockDocumentGateway {
 
-    // Devuelve true solo cuando la integración ha creado movimientos de stock.
+    // Returns true only when integration has created stock movements.
     boolean confirm(CommercialDocument document);
 
-    // Devuelve true solo cuando la integración ha creado movimientos inversos.
+    // Returns true only when integration has created reverse stock movements.
     boolean cancel(CommercialDocument document);
 }

@@ -66,7 +66,7 @@ class TerminalRegistrationServiceTest {
         assertThatThrownBy(() -> service(terminals, mock(StoreRepository.class))
                 .deactivate(foreign.getId()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Terminal no encontrada");
+                .hasMessageContaining("message.terminal.not_found");
         assertThat(foreign.isActiva()).isTrue();
     }
 

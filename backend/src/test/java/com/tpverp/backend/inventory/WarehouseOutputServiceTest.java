@@ -126,7 +126,7 @@ class WarehouseOutputServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> service.confirm(output.getId(), authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("disponible");
+                .hasMessageContaining("message.warehouse.not_available_for_store");
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

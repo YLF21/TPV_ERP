@@ -75,7 +75,7 @@ public class DocumentLine {
             throw new IllegalArgumentException("cantidad no puede ser cero");
         }
         if (posicion < 1) {
-            throw new IllegalArgumentException("posición debe ser positiva");
+            throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
@@ -179,7 +179,7 @@ public class DocumentLine {
     private static String taxRegime(String value) {
         var regime = required(value, "regimenImpuesto").toUpperCase(java.util.Locale.ROOT);
         if (!regime.equals("IVA") && !regime.equals("IGIC")) {
-            throw new IllegalArgumentException("régimen fiscal no válido");
+            throw new IllegalArgumentException("message.document.invalid_tax_regime");
         }
         return regime;
     }

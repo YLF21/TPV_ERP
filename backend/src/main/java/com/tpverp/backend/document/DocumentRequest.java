@@ -19,7 +19,7 @@ public record DocumentRequest(
         boolean directo,
         @NotEmpty List<@Valid LineRequest> lineas) {
 
-    // Traduce la forma HTTP al comando estable de aplicación.
+    // Maps the HTTP shape to the stable application command.
     public DocumentCommand toCommand() {
         return new DocumentCommand(
                 almacenId, tipo, fecha, clienteId, proveedorId,

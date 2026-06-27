@@ -35,7 +35,7 @@ public class AuditService {
                 store, user, null, event, result, details, Instant.now(clock)));
     }
 
-    // Registra tareas internas sin atribuirlas a una sesion o usuario interactivo.
+    // Records internal tasks without linking them to an interactive session or user.
     @Transactional
     public void recordSystem(
             Store store,
@@ -71,7 +71,7 @@ public class AuditService {
         var audit = auditoriaRepository.findByIdAndTiendaId(
                         auditId, organization.currentStore().getId())
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "auditoría no encontrada"));
+                        "message.audit.not_found"));
         auditoriaRepository.delete(audit);
         record("AUDIT_DELETED", AuditResult.EXITO, Map.of("deletedAuditId", auditId));
     }

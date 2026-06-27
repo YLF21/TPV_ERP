@@ -113,14 +113,14 @@ public class WarehouseOutput {
         lines.add(new WarehouseOutputLine(id, productId, quantity));
     }
 
-    // Sustituye los datos y líneas mientras la salida continúa en borrador.
+    // Replaces data and lines while the output remains in draft.
     public void replace(
             String destination,
             String concept,
             List<WarehouseOutputLineCommand> newLines) {
         requireDraft();
         if (newLines == null || newLines.isEmpty()) {
-            throw new IllegalArgumentException("La salida necesita al menos una línea");
+            throw new IllegalArgumentException("message.warehouse_output.at_least_one_line_required");
         }
         destino = optional(destination);
         concepto = optional(concept);

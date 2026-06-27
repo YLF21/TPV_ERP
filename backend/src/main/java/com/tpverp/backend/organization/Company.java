@@ -62,7 +62,7 @@ public class Company {
         }
         taxId = normalized;
     }
-    // Solo permite sustituir el identificador ficticio de la empresa demo.
+    // Allows replacing only the demo company placeholder identifier.
 
     private static String required(String value, String field) {
         if (value == null || value.isBlank()) {

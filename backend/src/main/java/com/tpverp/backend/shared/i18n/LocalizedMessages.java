@@ -21,25 +21,28 @@ public class LocalizedMessages {
     public String system(SystemErrorCode code, SupportedLanguage language) {
         return message("error." + code.name(), language);
     }
-    // Traduce errores de sistema completos desde los ficheros de idioma.
+    // Translates full system errors from language bundles.
 
     public String required(FieldKey field, SupportedLanguage language) {
         var selected = fallback(language);
         var separator = selected == SupportedLanguage.ZH ? "" : " ";
         return message("field." + key(field), selected) + separator + message("common.is_required", selected);
     }
-    // Compone avisos de campo obligatorio reutilizando nombre de campo y texto comun.
+    // Builds required-field warnings by reusing the field name and common suffix.
 
     public Optional<String> legacy(String detail, SupportedLanguage language) {
         if (detail == null || detail.isBlank()) {
             return Optional.empty();
+        }
+        if (detail.startsWith("message.")) {
+            return Optional.of(message(detail, language));
         }
         return exactLegacy(detail, language)
                 .or(() -> requiredLegacy(detail, language))
                 .or(() -> negativeLegacy(detail, language))
                 .or(() -> notFoundLegacy(detail, language));
     }
-    // Traduce mensajes antiguos mientras se migran gradualmente a codigos explicitos.
+    // Translates legacy messages while they are gradually moved to explicit codes.
 
     private Optional<String> exactLegacy(String detail, SupportedLanguage language) {
         try {

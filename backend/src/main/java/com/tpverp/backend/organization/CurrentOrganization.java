@@ -25,7 +25,7 @@ public class CurrentOrganization {
         }
         return stores.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException(
-                        "La tienda no está inicializada"));
+                        "message.organization.store_not_initialized"));
     }
 
     public Company currentCompany() {
@@ -38,7 +38,7 @@ public class CurrentOrganization {
         }
         if (authentication.getPrincipal() instanceof UserAccount user) {
             if (!user.isActivo()) {
-                throw new IllegalStateException("El usuario autenticado está desactivado");
+                throw new IllegalStateException("message.organization.authenticated_user_disabled");
             }
             return user;
         }
@@ -47,6 +47,6 @@ public class CurrentOrganization {
         return users.findByTiendaIdAndNombre(store.getId(), name)
                 .filter(UserAccount::isActivo)
                 .orElseThrow(() -> new IllegalStateException(
-                        "UserAccount autenticado no encontrado"));
+                        "message.organization.authenticated_user_not_found"));
     }
 }

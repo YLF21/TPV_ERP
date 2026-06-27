@@ -173,7 +173,7 @@ public class ProductImageProcessor {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
         } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 no está disponible", exception);
+            throw new IllegalStateException("message.crypto.sha256_not_available", exception);
         }
     }
 

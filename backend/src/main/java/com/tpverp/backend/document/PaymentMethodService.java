@@ -19,7 +19,7 @@ public class PaymentMethodService {
         this.organization = organization;
     }
 
-    // Crea un método normalizado para una empresa.
+    // Creates a normalized method for a company.
     @Transactional
     public PaymentMethod create(UUID companyId, String name, boolean protectedMethod) {
         requireCurrentCompany(companyId);
@@ -32,12 +32,12 @@ public class PaymentMethodService {
         return repository.findAllByEmpresaIdOrderByNombre(companyId);
     }
 
-    // Activa o desactiva respetando la protección de los métodos del sistema.
+    // Activates or deactivates while respecting protected system methods.
     @Transactional
     public PaymentMethod setActive(UUID id, boolean active) {
         var method = repository.findByIdAndEmpresaId(
                         id, organization.currentCompany().getId())
-                .orElseThrow(() -> new IllegalArgumentException("método de pago no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
         method.setActivo(active);
         return method;
     }

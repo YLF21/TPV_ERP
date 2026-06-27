@@ -12,7 +12,7 @@ public final class OfficialHashService {
     private static final DateTimeFormatter GENERATED_AT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
-    // Calcula la huella oficial de un registro de alta en el orden definido por AEAT.
+    // Calculates the official hash for a creation record in the order defined by AEAT.
     public String hash(AltaHashInput input) {
         return sha256(
                 "IDEmisorFactura=" + text(input.issuerTaxId())
@@ -25,7 +25,7 @@ public final class OfficialHashService {
                 + "&FechaHoraHusoGenRegistro=" + GENERATED_AT.format(input.generatedAt()));
     }
 
-    // Calcula la huella oficial de un registro de anulacion en el orden definido por AEAT.
+    // Calculates the official hash for a cancellation record in the order defined by AEAT.
     public String hash(CancellationHashInput input) {
         return sha256(
                 "IDEmisorFacturaAnulada=" + text(input.issuerTaxId())

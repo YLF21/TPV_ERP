@@ -70,7 +70,7 @@ class SecurityAdministrationServiceTest {
         assertThatThrownBy(() -> service(users, org.mockito.Mockito.mock(RoleRepository.class))
                 .setUserActive(foreignUser.getId(), false))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("UserAccount no encontrado");
+                .hasMessageContaining("message.security.user_not_found");
         assertThat(foreignUser.isActivo()).isTrue();
     }
 

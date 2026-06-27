@@ -51,7 +51,7 @@ public class ParkedSaleService {
         sales.delete(sale);
         return new ParkedSaleOpened(sale.documentCommand(), sale.getComment());
     }
-    // Al abrirla en un terminal deja de existir como venta aparcada.
+    // Opening it on a terminal removes it from parked sales.
 
     private ParkedSale find(UUID id) {
         return sales.findByIdAndTiendaId(id, organization.currentStore().getId())

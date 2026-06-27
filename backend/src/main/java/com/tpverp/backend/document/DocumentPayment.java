@@ -59,7 +59,7 @@ public class DocumentPayment {
             String voucherCode,
             Instant creadoEn) {
         if (posicion < 1) {
-            throw new IllegalArgumentException("posición debe ser positiva");
+            throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
@@ -122,7 +122,7 @@ public class DocumentPayment {
         return voucherCode;
     }
 
-    // Reajusta únicamente el pago principal cuando cambia administrativamente un ticket.
+    // Adjusts only the principal payment when a ticket is administratively changed.
     public void adjustAmount(BigDecimal amount) {
         if (!principal) {
             throw new IllegalStateException("solo se puede reajustar el pago principal");

@@ -24,7 +24,7 @@ public final class CashDenomination {
     private CashDenomination() {
     }
 
-    // Devuelve las denominaciones EUR en el orden operativo de arqueo.
+    // Returns EUR denominations in the operational cash-count order.
     public static List<BigDecimal> valuesInEuroOrder() {
         return EURO_ORDER;
     }

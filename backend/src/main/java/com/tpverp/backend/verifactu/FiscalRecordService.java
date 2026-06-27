@@ -80,7 +80,7 @@ public class FiscalRecordService {
         this.clock = clock;
     }
 
-    // Registra y encadena una operacion fiscal usando solo datos persistidos y validados.
+    // Records and chains a fiscal operation using only persisted and validated data.
     @Transactional(noRollbackFor = VerifactuInactiveException.class)
     public FiscalRecord register(FiscalRecordCommand command) {
         return register(command, null, null);
@@ -92,13 +92,13 @@ public class FiscalRecordService {
         if (command == null
                 || command.operation() != FiscalRecordOperation.ALTA
                 || command.documentType() != FiscalDocumentType.F3) {
-            throw new IllegalArgumentException("La sustitución requiere un alta F3");
+            throw new IllegalArgumentException("message.fiscal_record.substitution_requires_f3");
         }
         return register(command, substitutedDocumentId, FiscalRelationType.SUSTITUYE);
     }
-    // Crea el alta F3 y la enlaza con la factura simplificada sustituida.
+    // Creates the F3 registration and links it to the replaced simplified invoice.
 
-    // Crea un alta de subsanacion sin alterar identidad ni contenido economico del original.
+    // Creates a correction registration without changing the original identity or economic content.
     @Transactional
     public FiscalRecord registerCorrection(
             FiscalRecord original, Map<String, Object> correctedSnapshot) {
@@ -150,7 +150,7 @@ public class FiscalRecordService {
         var context = fiscalContext(command, generatedAt);
         policy.validate(context.document(), command.operation(), command.documentType());
 
-        // El UPSERT y el bloqueo serializan la unicidad y el avance de la cadena.
+        // The UPSERT and lock serialize uniqueness and chain advancement.
         chains.insertIfMissing(
                 UUID.randomUUID(), command.companyId(), command.installationId(), generatedAt);
         var chain = chains.findForUpdate(command.companyId(), command.installationId())
@@ -209,7 +209,7 @@ public class FiscalRecordService {
         var related = records.findByDocumentIdAndOperation(
                         relatedDocumentId, FiscalRecordOperation.ALTA)
                 .orElseThrow(() -> new IllegalStateException(
-                        "La sustitución requiere el alta fiscal del ticket"));
+                        "message.fiscal_record.substitution_requires_ticket_registration"));
         if (relationType != FiscalRelationType.SUSTITUYE
                 || related.getDocumentType() != FiscalDocumentType.F2) {
             throw new IllegalArgumentException(

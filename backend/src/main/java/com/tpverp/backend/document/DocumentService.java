@@ -90,7 +90,7 @@ public class DocumentService {
         var document = find(id);
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
-        // La confirmacion reinicia origenStock; esta marca debe leerse antes.
+        // Confirmation resets stockOrigin; this flag must be read first.
         boolean recordsPurchase = document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
                 || (document.getTipo() == CommercialDocumentType.FACTURA_COMPRA
                 && document.isOrigenStock());
@@ -111,14 +111,14 @@ public class DocumentService {
         return saved;
     }
 
-    // Crea y confirma el ticket en una sola transacción.
+    // Creates and confirms the ticket in one transaction.
     @Transactional
     public CommercialDocument createTicket(
             DocumentCommand command,
             List<PaymentCommand> payments,
             Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
-            throw new IllegalArgumentException("tipo de ticket no válido");
+            throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
         var ticket = createDraft(command, authentication);
         if (ticket.getTotal().signum() >= 0) {
@@ -151,7 +151,7 @@ public class DocumentService {
                 organization.currentStore().getId(), List.of(CommercialDocumentType.TICKET));
     }
 
-    // Anula el ticket y solicita inversión de stock solo si se aplicó originalmente.
+    // Cancels the ticket and requests stock reversal only if it was originally applied.
     @Transactional
     public CommercialDocument cancelTicket(
             UUID id, Authentication authentication, String reason) {
@@ -178,7 +178,7 @@ public class DocumentService {
         return saved;
     }
 
-    // Convierte un ticket confirmado en factura F3 sin duplicar stock ni pagos.
+    // Converts a confirmed ticket into an F3 invoice without duplicating stock or payments.
     @Transactional
     public CommercialDocument convertTicketToInvoice(
             UUID ticketId, UUID customerId, Authentication authentication) {
@@ -213,7 +213,7 @@ public class DocumentService {
                 organization.currentStore().getId(), INVOICES);
     }
 
-    // Registra pagos únicamente cuando cubren exactamente el total pendiente.
+    // Records payments only when they exactly cover the pending total.
     @Transactional
     public CommercialDocument payInvoice(UUID id, List<PaymentCommand> payments, Authentication authentication) {
         var invoice = find(id);
@@ -229,7 +229,7 @@ public class DocumentService {
         return saved;
     }
 
-    // Edita excepcionalmente ticket o albarán confirmado sin invocar stock ni auditoría.
+    // Exceptionally edits a confirmed ticket or delivery note without stock or audit side effects.
     @Transactional
     public CommercialDocument adminEditConfirmed(
             UUID id,
@@ -247,7 +247,7 @@ public class DocumentService {
         return documents.save(document);
     }
 
-    // Relaciona explícitamente una factura con su documento de origen.
+    // Explicitly links an invoice to its origin document.
     @Transactional
     public CommercialDocument relate(UUID invoiceId, UUID originId, DocumentRelationType type) {
         var invoice = find(invoiceId);
@@ -271,7 +271,7 @@ public class DocumentService {
             DocumentCommand command, Authentication authentication) {
         Objects.requireNonNull(command, "command");
         if (command.lineas() == null || command.lineas().isEmpty()) {
-            throw new IllegalArgumentException("el documento debe tener líneas");
+            throw new IllegalArgumentException("message.document.lines_required");
         }
         var store = organization.currentStore();
         var user = organization.currentUser(authentication);
@@ -324,7 +324,7 @@ public class DocumentService {
                     .filter(value -> value.getEmpresaId().equals(
                             organization.currentCompany().getId()))
                     .orElseThrow(() -> new IllegalArgumentException(
-                            "método de pago activo no encontrado"));
+                            "message.payment_method.active_not_found"));
             document.addPayment(new DocumentPayment(
                     document, method, index + 1, command.importe(), command.principal(),
                     command.entregado(), command.cambio(), command.voucherCode(), Instant.now(clock)));
@@ -435,7 +435,7 @@ public class DocumentService {
             DocumentCommand command, EnumSet<CommercialDocumentType> allowedTypes) {
         Objects.requireNonNull(command, "command");
         if (!allowedTypes.contains(command.tipo())) {
-            throw new IllegalArgumentException("tipo documental no válido");
+            throw new IllegalArgumentException("message.document.invalid_document_type");
         }
     }
 }

@@ -42,7 +42,7 @@ public class CashReceiptService {
         this.permissions = permissions;
     }
 
-    // Devuelve los datos imprimibles de una retirada sin efectos de impresion.
+    // Returns printable withdrawal data without print side effects.
     @Transactional(readOnly = true)
     public CashReceiptView withdrawalReceipt(UUID movementId, Authentication authentication) {
         permissions.requireCashStatusPermission(authentication);
@@ -77,7 +77,7 @@ public class CashReceiptService {
                 EMPTY_SIGNATURE_LABEL);
     }
 
-    // Devuelve los datos imprimibles de cierre filtrando importes teoricos por permiso.
+    // Returns printable close data while filtering theoretical amounts by permission.
     @Transactional(readOnly = true)
     public CashReceiptView closeReceipt(UUID sessionId, Authentication authentication) {
         permissions.requireCashStatusPermission(authentication);

@@ -69,7 +69,7 @@ public class Terminal {
             TerminalType tipo,
             String credentialHash) {
         if (tipo == TerminalType.SERVIDOR) {
-            throw new IllegalArgumentException("No se puede request otra terminal servidor");
+            throw new IllegalArgumentException("message.terminal.server_request_not_allowed");
         }
         Terminal terminal = new Terminal(tienda, nombre, tipo, credentialHash);
         terminal.aprobada = false;
@@ -112,7 +112,7 @@ public class Terminal {
 
     public void deactivate() {
         if (tipo == TerminalType.SERVIDOR) {
-            throw new IllegalStateException("La terminal servidor no se puede deactivate");
+            throw new IllegalStateException("message.terminal.server_cannot_deactivate");
         }
         activa = false;
     }

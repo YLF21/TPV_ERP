@@ -71,7 +71,7 @@ public class CashPermissionService {
         }
     }
 
-    // Indica si el usuario puede ver importes teoricos y disponibles.
+    // Indicates whether the user can see theoretical and available amounts.
     public boolean canSeeExpectedTotals(Authentication authentication) {
         return isAdmin(authentication)
                 || hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS);

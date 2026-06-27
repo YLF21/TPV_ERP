@@ -117,7 +117,7 @@ public class Supplier {
                     return link;
                 });
         if (primary) {
-            // El indice parcial de V3 permite un unico principal por proveedor.
+            // The V3 partial index allows only one principal representative per supplier.
             representatives.forEach(link -> link.setPrimary(false));
         }
         existing.setPrimary(primary);

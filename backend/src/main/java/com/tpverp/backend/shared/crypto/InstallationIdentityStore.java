@@ -34,11 +34,11 @@ public final class InstallationIdentityStore {
 				return read(publicPath, privatePath);
 			}
 			if (Files.exists(publicPath) || Files.exists(privatePath)) {
-				throw new IllegalStateException("La identidad de instalación está incompleta");
+				throw new IllegalStateException("message.installation.identity_incomplete");
 			}
 			return create(publicPath, privatePath);
 		} catch (IOException | GeneralSecurityException exception) {
-			throw new IllegalStateException("No se pudo cargar la identidad de instalación", exception);
+			throw new IllegalStateException("message.installation.identity_load_failed", exception);
 		}
 	}
 

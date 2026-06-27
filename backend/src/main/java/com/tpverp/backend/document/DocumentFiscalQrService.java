@@ -20,7 +20,7 @@ public class DocumentFiscalQrService {
         this.qrUrls = qrUrls;
     }
 
-    // Devuelve la URL QR del alta fiscal si el documento ya tiene registro VERI*FACTU.
+    // Returns the fiscal creation QR URL when the document already has a VERI*FACTU record.
     @Transactional(readOnly = true)
     public String qrUrl(UUID documentId) {
         return records.findByDocumentIdAndOperation(documentId, FiscalRecordOperation.ALTA)

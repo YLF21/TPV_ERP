@@ -67,7 +67,7 @@ public class FiscalSubmissionState {
         return updatedAt;
     }
 
-    // Cambia el estado limpiando errores cuando la incidencia queda resuelta.
+    // Changes the state and clears errors when the incident is resolved.
     public void mark(FiscalSubmissionStatus newStatus, Instant changedAt) {
         status = Objects.requireNonNull(newStatus, "status");
         lastErrorCode = null;
@@ -75,7 +75,7 @@ public class FiscalSubmissionState {
         updatedAt = Objects.requireNonNull(changedAt, "changedAt");
     }
 
-    // Registra una incidencia visible para revision administrativa.
+    // Records an incident visible for administrative review.
     public void markIncident(
             FiscalSubmissionStatus newStatus,
             String errorCode,

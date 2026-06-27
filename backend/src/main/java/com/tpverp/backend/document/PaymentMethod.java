@@ -53,10 +53,10 @@ public class PaymentMethod {
         return activo;
     }
 
-    // Cambia la disponibilidad sin eliminar el método ni su historial.
+    // Changes availability without deleting the method or its history.
     public void setActivo(boolean activo) {
         if (protegido && !activo) {
-            throw new IllegalStateException("un método de pago protegido no se puede deactivate");
+            throw new IllegalStateException("message.payment_method.protected_cannot_deactivate");
         }
         this.activo = activo;
     }

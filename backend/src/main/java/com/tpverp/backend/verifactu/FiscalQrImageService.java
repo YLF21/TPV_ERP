@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class FiscalQrImageService {
 
-    // Genera PNG del QR tributario con correccion M segun la especificacion AEAT.
+    // Generates the tax QR PNG with M correction according to the AEAT specification.
     public FiscalQrImage png(String content, int size) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("contenido QR obligatorio");

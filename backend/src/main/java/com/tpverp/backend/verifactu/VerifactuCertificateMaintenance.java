@@ -37,7 +37,7 @@ public class VerifactuCertificateMaintenance {
         this.clock = clock;
     }
 
-    // Genera como maximo un aviso diario por certificado proximo a caducar.
+    // Generates at most one daily warning per certificate close to expiry.
     @Scheduled(cron = "${tpv.verifactu.certificate-warning-cron:0 0 9 * * *}")
     @Transactional
     public void checkExpiry() {

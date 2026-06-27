@@ -59,6 +59,6 @@ class AuditServiceTest {
 
         assertThatThrownBy(() -> service.delete(auditId, "ELIMINAR AUDITORIA"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("auditoría no encontrada");
+                .hasMessageContaining("message.audit.not_found");
     }
 }

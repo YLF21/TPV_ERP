@@ -15,7 +15,7 @@ public record DocumentLineCommand(
         String regimenImpuesto,
         BigDecimal porcentajeImpuesto) {
 
-    // Convierte la entrada validada en una línea con snapshot fiscal.
+    // Converts validated input into a line with a fiscal snapshot.
     public DocumentLine toEntity(CommercialDocument document, int position) {
         return new DocumentLine(
                 document, productoId, position, cantidad, codigo, nombre, tarifa,
