@@ -84,14 +84,14 @@ class CashReceiptServiceTest {
     }
 
     @Test
-    void sellerCloseReceiptDoesNotExposeExpectedCash() {
+    void sellerCloseReceiptDoesNotExposeRetainedFundWithDiscrepancy() {
         var fixture = fixture();
         var session = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId());
         when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
 
         var receipt = fixture.service.closeReceipt(session.getId(), salesAuthentication(fixture.user));
 
-        assertThat(receipt.retainedFund()).isEqualByComparingTo("95.00");
+        assertThat(receipt.retainedFund()).isNull();
         assertThat(receipt.discrepancy()).isEqualByComparingTo("-5.00");
         assertThat(receipt.expectedCash()).isNull();
         assertThat(receipt.giverSignatureLabel()).isEmpty();

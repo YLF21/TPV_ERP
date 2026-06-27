@@ -160,6 +160,24 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void sessionMovementRejectsBetweenSessionTypes() {
+        var session = openSession();
+
+        assertThatThrownBy(() -> CashMovement.sessionMovement(
+                UUID.randomUUID(), UUID.randomUUID(), session, CashMovementType.ENTRADA_ENTRE_SESIONES,
+                new BigDecimal("10.00"), Instant.parse("2026-06-25T14:45:00Z"),
+                UUID.randomUUID(), null, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("entre sesiones");
+        assertThatThrownBy(() -> CashMovement.sessionMovement(
+                UUID.randomUUID(), UUID.randomUUID(), session.getId(), CashMovementType.RETIRADA_ENTRE_SESIONES,
+                new BigDecimal("10.00"), Instant.parse("2026-06-25T14:46:00Z"),
+                UUID.randomUUID(), null, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("entre sesiones");
+    }
+
+    @Test
     void firstOpeningRequiresPreviousBetweenSessionEntry() {
         var fixture = serviceFixture();
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
@@ -433,7 +451,7 @@ class CashSessionServiceTest {
         assertThat(view.status()).isEqualTo(CashSessionStatus.ABIERTA);
         assertThat(view.expectedCash()).isNull();
         assertThat(view.availableCash()).isNull();
-        assertThat(view.retainedFund()).isEqualByComparingTo("90.00");
+        assertThat(view.retainedFund()).isNull();
         assertThat(view.discrepancy()).isEqualByComparingTo("-10.00");
         assertThat(view.reconciliationAttempt()).isEqualTo(1);
         assertThat(view.closedByAttempt()).isFalse();
@@ -458,7 +476,7 @@ class CashSessionServiceTest {
 
         assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
         assertThat(view.expectedCash()).isNull();
-        assertThat(view.retainedFund()).isEqualByComparingTo("95.00");
+        assertThat(view.retainedFund()).isNull();
         assertThat(view.discrepancy()).isEqualByComparingTo("-5.00");
         assertThat(view.reconciliationAttempt()).isEqualTo(2);
         assertThat(view.closedByAttempt()).isTrue();
@@ -484,7 +502,7 @@ class CashSessionServiceTest {
         assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
         assertThat(view.expectedCash()).isNull();
         assertThat(view.availableCash()).isNull();
-        assertThat(view.retainedFund()).isEqualByComparingTo("100.00");
+        assertThat(view.retainedFund()).isNull();
         assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
     }
 

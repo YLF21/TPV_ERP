@@ -76,6 +76,18 @@ create table movimiento_caja (
         'RETIRADA_CIERRE',
         'ENTRADA_ENTRE_SESIONES',
         'RETIRADA_ENTRE_SESIONES')),
+    constraint movimiento_caja_tipo_sesion_ck check (
+        (tipo in (
+            'COBRO_EFECTIVO',
+            'DEVOLUCION_EFECTIVO',
+            'ENTRADA',
+            'RETIRADA',
+            'RETIRADA_CIERRE') and sesion_caja_id is not null)
+        or
+        (tipo in (
+            'ENTRADA_ENTRE_SESIONES',
+            'RETIRADA_ENTRE_SESIONES') and sesion_caja_id is null)
+    ),
     constraint movimiento_caja_importe_positivo_ck check (importe > 0)
 );
 

@@ -101,8 +101,8 @@ class MigrationV17ContractTest {
         UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
         UUID otherStoreId = insertOtherStore();
 
-        assertThatThrownBy(() -> insertCashMovement(
-                UUID.randomUUID(), otherStoreId, terminalId, userId))
+        assertThatThrownBy(() -> insertBetweenSessionCashMovement(
+                UUID.randomUUID(), otherStoreId, terminalId, userId, "ENTRADA_ENTRE_SESIONES"))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("movimiento_caja_terminal_tienda_fk");
     }
@@ -139,6 +139,32 @@ class MigrationV17ContractTest {
                 UUID.randomUUID(), storeId, terminalId, userId, "ENTRE_SESIONES"))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("movimiento_caja_tipo_ck");
+    }
+
+    @Test
+    void rechazaTipoDeSesionSinSesion() {
+        UUID storeId = jdbcTemplate.queryForObject("select id from tienda limit 1", UUID.class);
+        UUID terminalId = jdbcTemplate.queryForObject("select id from terminal limit 1", UUID.class);
+        UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
+
+        assertThatThrownBy(() -> insertBetweenSessionCashMovement(
+                UUID.randomUUID(), storeId, terminalId, userId, "ENTRADA"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("movimiento_caja_tipo_sesion_ck");
+    }
+
+    @Test
+    void rechazaTipoEntreSesionesConSesion() {
+        UUID storeId = jdbcTemplate.queryForObject("select id from tienda limit 1", UUID.class);
+        UUID terminalId = jdbcTemplate.queryForObject("select id from terminal limit 1", UUID.class);
+        UUID userId = jdbcTemplate.queryForObject("select id from usuario limit 1", UUID.class);
+        UUID sessionId = UUID.randomUUID();
+        insertOpenSession(sessionId, storeId, terminalId, userId);
+
+        assertThatThrownBy(() -> insertCashMovement(
+                UUID.randomUUID(), storeId, terminalId, sessionId, userId, "ENTRADA_ENTRE_SESIONES"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("movimiento_caja_tipo_sesion_ck");
     }
 
     @Test
@@ -186,12 +212,17 @@ class MigrationV17ContractTest {
 
     private void insertCashMovement(
             UUID id, UUID storeId, UUID terminalId, UUID sessionId, UUID userId) {
+        insertCashMovement(id, storeId, terminalId, sessionId, userId, "ENTRADA");
+    }
+
+    private void insertCashMovement(
+            UUID id, UUID storeId, UUID terminalId, UUID sessionId, UUID userId, String type) {
         jdbcTemplate.update("""
                 insert into movimiento_caja (
                     id, tienda_id, terminal_id, sesion_caja_id, tipo,
                     importe, creado_en, usuario_id)
-                values (?, ?, ?, ?, 'ENTRADA', 5.00, now(), ?)
-                """, id, storeId, terminalId, sessionId, userId);
+                values (?, ?, ?, ?, ?, 5.00, now(), ?)
+                """, id, storeId, terminalId, sessionId, type, userId);
     }
 
     private void insertBetweenSessionCashMovement(

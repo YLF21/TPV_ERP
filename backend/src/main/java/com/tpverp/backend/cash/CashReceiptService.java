@@ -96,6 +96,7 @@ public class CashReceiptService {
         var userName = users.findByIdAndTiendaId(userId, store.getId())
                 .map(user -> user.getNombre())
                 .orElse(userId.toString());
+        var includeExpectedTotals = permissions.canSeeExpectedTotals(authentication);
         return new CashReceiptView(
                 null,
                 session.getId(),
@@ -105,9 +106,9 @@ public class CashReceiptService {
                 userName,
                 null,
                 List.of(),
-                session.getRetainedFund(),
+                includeExpectedTotals ? session.getRetainedFund() : null,
                 session.getDiscrepancy(),
-                permissions.canSeeExpectedTotals(authentication) ? session.getExpectedCash() : null,
+                includeExpectedTotals ? session.getExpectedCash() : null,
                 EMPTY_SIGNATURE_LABEL,
                 EMPTY_SIGNATURE_LABEL);
     }

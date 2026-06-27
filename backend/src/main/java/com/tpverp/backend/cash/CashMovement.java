@@ -128,6 +128,10 @@ public class CashMovement {
             String comment,
             UUID documentId,
             UUID paymentId) {
+        if (type == CashMovementType.ENTRADA_ENTRE_SESIONES
+                || type == CashMovementType.RETIRADA_ENTRE_SESIONES) {
+            throw new IllegalArgumentException("Los movimientos entre sesiones no pueden asociarse a una sesion");
+        }
         return new CashMovement(
                 storeId, terminalId, Objects.requireNonNull(sessionId, "sessionId"), type,
                 amount, createdAt, userId, authorizerUserId, comment, documentId, paymentId);

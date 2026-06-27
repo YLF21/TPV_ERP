@@ -216,10 +216,13 @@ public class CashSessionService {
         } else if (includeExpectedTotals) {
             expectedCash = session.getExpectedCash();
         }
+        var retainedFund = includeExpectedTotals
+                ? attempt == null ? session.getRetainedFund() : attempt.getDeclaredFund()
+                : null;
         return new CashSessionView(
                 session.getId(), session.getTerminalId(), session.getStatus(), session.getOpenedAt(),
                 session.getOpeningFund(), expectedCash, availableCash,
-                attempt == null ? session.getRetainedFund() : attempt.getDeclaredFund(),
+                retainedFund,
                 attempt == null ? session.getDiscrepancy() : attempt.getDiscrepancy(),
                 session.getClosedAt(),
                 attempt == null ? null : attempt.getAttemptNumber(),
