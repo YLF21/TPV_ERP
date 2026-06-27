@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.ProductSupplierRepository;
 import com.tpverp.backend.inventory.InventoryDocumentGateway;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.EmpresaRepository;
 import com.tpverp.backend.organization.TiendaRepository;
 import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -69,6 +71,8 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @MockitoBean private CurrentOrganization organization;
     @MockitoBean private DocumentFiscalIntegration fiscalIntegration;
     @MockitoBean private VoucherService voucherService;
+    @MockitoBean private CurrentTerminal currentTerminal;
+    @MockitoBean private CashPaymentRecorder cashPayments;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
