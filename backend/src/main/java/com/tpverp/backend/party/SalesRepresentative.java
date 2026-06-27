@@ -23,8 +23,8 @@ public class SalesRepresentative {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Company company;
 
-    @Column(name = "code_commercial", nullable = false, length = 9, updatable = false)
-    private String codeCommercial;
+    @Column(name = "commercial_id", nullable = false, length = 9, updatable = false)
+    private String commercialId;
 
     @Column(nullable = false)
     private String nombre;
@@ -67,14 +67,14 @@ public class SalesRepresentative {
     }
 
     public void assignCode(String code) {
-        if (codeCommercial != null) {
+        if (commercialId != null) {
             throw new IllegalStateException("El codigo de comercial es inmutable");
         }
-        codeCommercial = PartyValues.required(code, "codeCommercial");
+        commercialId = PartyValues.required(code, "commercialId");
     }
 
-    public String getCodeCommercial() {
-        return codeCommercial;
+    public String getCommercialId() {
+        return commercialId;
     }
 
     public String getName() {

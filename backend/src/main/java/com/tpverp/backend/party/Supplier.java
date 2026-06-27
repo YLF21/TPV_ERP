@@ -29,8 +29,8 @@ public class Supplier {
     @JoinColumn(name = "empresa_id", nullable = false)
     private Company company;
 
-    @Column(name = "code_supplier", nullable = false, length = 8, updatable = false)
-    private String codeSupplier;
+    @Column(name = "supplier_id", nullable = false, length = 8, updatable = false)
+    private String supplierId;
 
     @Column(name = "razon_social", nullable = false)
     private String legalName;
@@ -138,14 +138,14 @@ public class Supplier {
     }
 
     public void assignCode(String code) {
-        if (codeSupplier != null) {
+        if (supplierId != null) {
             throw new IllegalStateException("El codigo de proveedor es inmutable");
         }
-        codeSupplier = PartyValues.required(code, "codeSupplier");
+        supplierId = PartyValues.required(code, "supplierId");
     }
 
-    public String getCodeSupplier() {
-        return codeSupplier;
+    public String getSupplierId() {
+        return supplierId;
     }
 
     public UUID getId() {

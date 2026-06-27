@@ -95,7 +95,7 @@ class SupplierServiceTest {
                 "Proveedor dos", null, DocumentType.CIF, "B2",
                 null, null, null, null));
 
-        assertThat(created.codeSupplier()).isEqualTo("S-000001");
+        assertThat(created.supplierId()).isEqualTo("S-000001");
     }
 
     private SupplierService service() {

@@ -19,12 +19,12 @@
 
 - [ ] **Step 1: Write failing migration assertions**
 
-Add assertions that migrated schemas contain `code_client`, `is_member`, `code_member`, `num_member`, `member_since`, `member_balance`, `code_supplier`, `code_commercial`, and `party_code_counter`; assert that no active column/table/check value uses `socio`, and seed two companies/stores/parties to verify deterministic backfill.
+Add assertions that migrated schemas contain `client_id`, `is_member`, `member_id`, `num_member`, `member_since`, `member_balance`, `supplier_id`, `commercial_id`, and `party_code_counter`; assert that no active column/table/check value uses `socio`, and seed two companies/stores/parties to verify deterministic backfill.
 
 ```java
-assertThat(columns("cliente")).contains("code_client", "is_member", "code_member",
+assertThat(columns("cliente")).contains("client_id", "is_member", "member_id",
         "num_member", "member_since", "member_balance");
-assertThat(single("select code_client from cliente where numero_documento='A1'"))
+assertThat(single("select client_id from cliente where numero_documento='A1'"))
         .isEqualTo("C-001-000001");
 ```
 
@@ -38,11 +38,11 @@ Expected: FAIL because V16 and the new columns do not exist.
 The migration must rename `saldo_socio` to `member_balance`, rename `movimiento_saldo_socio` to `member_balance_movement`, convert `SOCIO` values/checks to `MEMBER`, add/backfill codes with `row_number()` ordered by normalized document/name plus UUID, and install these key constraints:
 
 ```sql
-unique (empresa_id, code_client);
-unique (empresa_id, code_member);
+unique (empresa_id, client_id);
+unique (empresa_id, member_id);
 unique (empresa_id, num_member);
-check (code_client ~ '^C-[0-9]{3}-[0-9]{6}$');
-check (code_member is null or code_member ~ '^M-[0-9]{3}-[0-9]{6}$');
+check (client_id ~ '^C-[0-9]{3}-[0-9]{6}$');
+check (member_id is null or member_id ~ '^M-[0-9]{3}-[0-9]{6}$');
 check ((is_member and tarifa = 'MEMBER') or (not is_member and tarifa = 'VENTA'));
 ```
 
@@ -79,7 +79,7 @@ assertThat(allocator.nextClient(store)).isEqualTo("C-001-000001");
 customer.activateMember(store, LocalDate.of(2026, 6, 24), "M-001-000001");
 customer.deactivateMember();
 customer.activateMember(store, LocalDate.of(2026, 7, 1), "M-001-000002");
-assertThat(customer.getCodeMember()).isEqualTo("M-001-000001");
+assertThat(customer.getMemberId()).isEqualTo("M-001-000001");
 ```
 
 - [ ] **Step 2: Run tests and verify RED**
@@ -125,9 +125,9 @@ git commit -m "feat: allocate customer and member codes"
 Assert that create assigns a client code, `isMember=true` assigns member code/date and MEMBER rate, duplicate `numMember` is rejected, deactivation preserves history, and request JSON cannot set automatic fields.
 
 ```java
-assertThat(created.codeClient()).isEqualTo("C-001-000001");
+assertThat(created.clientId()).isEqualTo("C-001-000001");
 assertThat(created.isMember()).isTrue();
-assertThat(created.codeMember()).isEqualTo("M-001-000001");
+assertThat(created.memberId()).isEqualTo("M-001-000001");
 ```
 
 - [ ] **Step 2: Run tests and verify RED**
@@ -164,8 +164,8 @@ git commit -m "feat: expose member lifecycle in customer api"
 - [ ] **Step 1: Write failing code exposure tests**
 
 ```java
-assertThat(service.create(command).codeSupplier()).isEqualTo("S-000001");
-assertThat(representativeService.create(command).codeCommercial()).isEqualTo("CO-000001");
+assertThat(service.create(command).supplierId()).isEqualTo("S-000001");
+assertThat(representativeService.create(command).commercialId()).isEqualTo("CO-000001");
 ```
 
 - [ ] **Step 2: Run tests and verify RED**

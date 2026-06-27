@@ -71,12 +71,12 @@ public class SalesRepresentativeService {
     }
 
     public record SalesRepresentativeView(
-            UUID id, String codeCommercial, String name, String phone,
+            UUID id, String commercialId, String name, String phone,
             String email, String otherContact) {
 
         static SalesRepresentativeView from(SalesRepresentative representative) {
             return new SalesRepresentativeView(
-                    representative.getId(), representative.getCodeCommercial(),
+                    representative.getId(), representative.getCommercialId(),
                     representative.getName(),
                     representative.getPhone(), representative.getEmail(),
                     representative.getOtherContact());

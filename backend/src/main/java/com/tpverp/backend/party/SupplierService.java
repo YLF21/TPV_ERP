@@ -126,7 +126,7 @@ public class SupplierService {
 
     public record SupplierView(
             UUID id,
-            String codeSupplier,
+            String supplierId,
             String legalName,
             String tradeName,
             DocumentType documentType,
@@ -140,7 +140,7 @@ public class SupplierService {
 
         static SupplierView from(Supplier supplier) {
             return new SupplierView(
-                    supplier.getId(), supplier.getCodeSupplier(), supplier.getLegalName(),
+                    supplier.getId(), supplier.getSupplierId(), supplier.getLegalName(),
                     supplier.getTradeName(),
                     supplier.getDocumentType(), supplier.getDocumentNumber(),
                     supplier.getFiscalAddress(), supplier.getPhone(), supplier.getEmail(),
