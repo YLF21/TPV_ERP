@@ -3,6 +3,7 @@ package com.tpverp.backend.cash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -42,7 +43,7 @@ class CashReceiptServiceTest {
         when(fixture.movements.findById(movement.getId())).thenReturn(Optional.of(movement));
         when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
 
-        var receipt = fixture.service.withdrawalReceipt(movement.getId());
+        var receipt = fixture.service.withdrawalReceipt(movement.getId(), salesAuthentication(fixture.user));
 
         assertThat(receipt.amount()).isEqualByComparingTo("20.00");
         assertThat(receipt.denominations()).containsExactly(
@@ -66,9 +67,20 @@ class CashReceiptServiceTest {
                 null, null);
         when(fixture.movements.findById(movement.getId())).thenReturn(Optional.of(movement));
 
-        assertThatThrownBy(() -> fixture.service.withdrawalReceipt(movement.getId()))
+        assertThatThrownBy(() -> fixture.service.withdrawalReceipt(movement.getId(), salesAuthentication(fixture.user)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("retirada");
+    }
+
+    @Test
+    void withdrawalReceiptRequiresCashStatusPermissionBeforeLoadingMovement() {
+        var fixture = fixture();
+
+        assertThatThrownBy(() -> fixture.service.withdrawalReceipt(
+                UUID.randomUUID(), new UsernamePasswordAuthenticationToken("guest", "token")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                .hasMessageContaining("consulta de caja");
+        verifyNoInteractions(fixture.movements);
     }
 
     @Test

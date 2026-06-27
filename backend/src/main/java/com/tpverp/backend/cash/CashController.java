@@ -90,8 +90,10 @@ public class CashController {
     @GetMapping("/receipts/withdrawals/{movementId}")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
             + GESTION_VENTAS + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
-    public CashReceiptView withdrawalReceipt(@PathVariable UUID movementId) {
-        return receipts.withdrawalReceipt(movementId);
+    public CashReceiptView withdrawalReceipt(
+            @PathVariable UUID movementId,
+            Authentication authentication) {
+        return receipts.withdrawalReceipt(movementId, authentication);
     }
 
     @GetMapping("/receipts/sessions/{sessionId}")

@@ -7,6 +7,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -31,6 +32,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.core.Authentication;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -154,6 +156,44 @@ class CashControllerContractTest {
                 .andExpect(jsonPath("$.requireEntryBreakdown").value(true))
                 .andExpect(jsonPath("$.requireWithdrawalBreakdown").value(false))
                 .andExpect(jsonPath("$.requireClosingBreakdown").value(true));
+    }
+
+    @Test
+    void omittedCashConfigBooleanBindsAsNullForValidation() throws Exception {
+        when(reports.updateConfig(any(), any())).thenReturn(new CashStoreConfigView(
+                STORE_ID, new BigDecimal("1.50"), true, false, true));
+
+        mvc.perform(put("/api/v1/cash/config")
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "discrepancyTolerance": 1.50,
+                                  "requireEntryBreakdown": true,
+                                  "requireClosingBreakdown": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(CashStoreConfigRequest.class);
+        verify(reports).updateConfig(captor.capture(), any());
+        assertThat(captor.getValue().requireWithdrawalBreakdown()).isNull();
+    }
+
+    @Test
+    void withdrawalReceiptDelegatesAuthenticationAndMovementId() throws Exception {
+        when(receipts.withdrawalReceipt(any(), any())).thenReturn(new CashReceiptView(
+                MOVEMENT_ID, SESSION_ID, TERMINAL_ID, "TPV 1",
+                Instant.parse("2026-06-25T09:30:00Z"), "SELLER",
+                new BigDecimal("20.00"), List.of(), null, null, null, "", ""));
+
+        mvc.perform(get("/api/v1/cash/receipts/withdrawals/{movementId}", MOVEMENT_ID)
+                        .with(user("seller").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movementId").value(MOVEMENT_ID.toString()));
+
+        verify(receipts).withdrawalReceipt(eq(MOVEMENT_ID), any(Authentication.class));
     }
 
     @Test

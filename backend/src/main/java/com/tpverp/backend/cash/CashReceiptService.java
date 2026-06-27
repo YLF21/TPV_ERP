@@ -44,7 +44,8 @@ public class CashReceiptService {
 
     // Devuelve los datos imprimibles de una retirada sin efectos de impresion.
     @Transactional(readOnly = true)
-    public CashReceiptView withdrawalReceipt(UUID movementId) {
+    public CashReceiptView withdrawalReceipt(UUID movementId, Authentication authentication) {
+        permissions.requireCashStatusPermission(authentication);
         var store = organization.currentStore();
         var movement = movements.findById(movementId)
                 .orElseThrow(() -> new IllegalArgumentException("Movimiento de caja no encontrado"));

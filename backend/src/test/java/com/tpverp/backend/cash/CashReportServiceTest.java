@@ -63,6 +63,32 @@ class CashReportServiceTest {
                 .hasMessageContaining("tolerancia_descuadre");
     }
 
+    @Test
+    void updateConfigRejectsMissingWithdrawalBreakdownFlag() {
+        var fixture = fixture();
+        when(fixture.configs().findById(fixture.store().getId()))
+                .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
+
+        assertThatThrownBy(() -> fixture.service().updateConfig(
+                new CashStoreConfigRequest(new BigDecimal("1.00"), true, null, true),
+                new TestingAuthenticationToken("admin", "token")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requireWithdrawalBreakdown");
+    }
+
+    @Test
+    void updateConfigRejectsMissingDiscrepancyTolerance() {
+        var fixture = fixture();
+        when(fixture.configs().findById(fixture.store().getId()))
+                .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
+
+        assertThatThrownBy(() -> fixture.service().updateConfig(
+                new CashStoreConfigRequest(null, true, false, true),
+                new TestingAuthenticationToken("admin", "token")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("discrepancyTolerance");
+    }
+
     private static CashMovement movement(
             Fixture fixture,
             CashMovementType type,

@@ -77,6 +77,7 @@ public class CashReportService {
     @Transactional
     public CashStoreConfigView updateConfig(CashStoreConfigRequest request, Authentication authentication) {
         permissions.requireConfigPermission(authentication);
+        request.validateComplete();
         var config = configForCurrentStore();
         config.update(
                 request.discrepancyTolerance(),
