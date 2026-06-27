@@ -188,22 +188,27 @@ class DocumentServiceTest {
     }
 
     @Test
-    void ticketCreationRequiresOpenCashSession() {
+    void ticketCreationLetsCashRecorderRequireOpenSessionWhenNeeded() {
         when(currentOrganization.currentStore()).thenReturn(store);
         when(currentOrganization.currentUser(any())).thenReturn(user);
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         org.mockito.Mockito.doThrow(new IllegalStateException("No hay una sesion de caja abierta"))
-                .when(cashPaymentRecorder).requireOpenSession(terminalId);
+                .when(cashPaymentRecorder).recordDocumentPayments(any(), any());
 
         assertThatThrownBy(() -> service.createTicket(
                 command(CommercialDocumentType.TICKET),
                 List.of(new PaymentCommand(
-                        UUID.randomUUID(), new BigDecimal("10.00"), true, null, null)),
+                        cash.getId(), new BigDecimal("10.00"), true, null, null)),
                 authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("sesion de caja abierta");
 
-        verify(counterRepository, never()).findByTiendaIdAndTipoAndPeriodo(any(), any(), any());
-        verify(documentRepository, never()).save(any());
+        verify(cashPaymentRecorder).recordDocumentPayments(any(), any());
     }
 
     @Test
@@ -423,8 +428,24 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
-        verify(cashPaymentRecorder).requireOpenSession(terminalId);
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, invoice);
+    }
+
+    @Test
+    void configuredReferenceIsRequiredForPaymentMethod() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var card = new PaymentMethod(
+                store.getEmpresa().getId(), "TARJETA", true, true, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(card.getId(), new BigDecimal("10.00"), true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment.reference_required");
     }
 
     @Test

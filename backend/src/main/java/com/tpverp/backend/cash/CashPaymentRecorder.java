@@ -13,8 +13,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class CashPaymentRecorder {
 
-    private static final String CASH_METHOD = "EFECTIVO";
-
     private final CashSessionRepository sessions;
     private final CashMovementRepository movements;
     private final CurrentOrganization organization;
@@ -36,14 +34,17 @@ public class CashPaymentRecorder {
         openSession(terminalId);
     }
 
-    // Records only positive cash payments linked to the persisted document.
+    // Records only positive payments whose method opens the cash drawer.
     public void recordDocumentPayments(UUID terminalId, CommercialDocument document) {
+        if (document.getPagos().stream().noneMatch(this::isRecordableCashDrawerPayment)) {
+            return;
+        }
         var session = openSession(terminalId);
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var user = organization.currentUser(authentication);
         for (var payment : document.getPagos()) {
             // documento_pago_id hace idempotente el registro al reintentar la misma operacion.
-            if (isRecordableCashPayment(payment)
+            if (isRecordableCashDrawerPayment(payment)
                     && !movements.existsByDocumentoPagoId(payment.getId())) {
                 movements.save(CashMovement.sessionMovement(
                         session.getStoreId(),
@@ -66,8 +67,8 @@ public class CashPaymentRecorder {
                 .orElseThrow(() -> new IllegalStateException("No hay una sesion de caja abierta"));
     }
 
-    private boolean isRecordableCashPayment(DocumentPayment payment) {
-        return CASH_METHOD.equals(payment.getMetodoPago().getNombre())
+    private boolean isRecordableCashDrawerPayment(DocumentPayment payment) {
+        return payment.getMetodoPago().isAbreCajaRegistradora()
                 && Money.euros(payment.getImporte()).signum() > 0;
     }
 }

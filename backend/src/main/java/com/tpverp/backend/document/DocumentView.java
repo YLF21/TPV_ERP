@@ -44,7 +44,8 @@ public record DocumentView(
             boolean principal,
             BigDecimal delivered,
             BigDecimal change,
-            String voucherCode) {
+            String voucherCode,
+            String reference) {
 
         static PaymentView from(DocumentPayment payment) {
             return new PaymentView(
@@ -55,7 +56,8 @@ public record DocumentView(
                     payment.isPrincipal(),
                     payment.getEntregado(),
                     payment.getCambio(),
-                    payment.getVoucherCode());
+                    payment.getVoucherCode(),
+                    payment.getReferencia());
         }
     }
 }

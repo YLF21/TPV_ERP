@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,14 +37,26 @@ class PaymentMethodServiceTest {
     }
 
     @Test
-    void protectedMethodCannotBeDisabled() {
+    void protectedMethodCanBeDisabledByAdminConfiguration() {
         var companyId = currentCompany();
         var method = new PaymentMethod(companyId, "EFECTIVO", true);
         when(repository.findByIdAndEmpresaId(method.getId(), companyId)).thenReturn(Optional.of(method));
 
-        assertThatThrownBy(() -> service().setActive(method.getId(), false))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("message.payment_method.protected_cannot_deactivate");
+        service().setActive(method.getId(), false);
+
+        assertThat(method.isActivo()).isFalse();
+    }
+
+    @Test
+    void configuresReferenceAndDrawerFlags() {
+        var companyId = currentCompany();
+        var method = new PaymentMethod(companyId, "TARJETA", true);
+        when(repository.findByIdAndEmpresaId(method.getId(), companyId)).thenReturn(Optional.of(method));
+
+        service().configure(method.getId(), true, true);
+
+        assertThat(method.isRequiereReferencia()).isTrue();
+        assertThat(method.isAbreCajaRegistradora()).isTrue();
     }
 
     @Test

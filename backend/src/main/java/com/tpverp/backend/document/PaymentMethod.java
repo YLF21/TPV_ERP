@@ -28,6 +28,12 @@ public class PaymentMethod {
     @Column(nullable = false)
     private boolean activo = true;
 
+    @Column(name = "requiere_referencia", nullable = false)
+    private boolean requiereReferencia;
+
+    @Column(name = "abre_caja_registradora", nullable = false)
+    private boolean abreCajaRegistradora;
+
     @Version
     private long version;
 
@@ -39,6 +45,17 @@ public class PaymentMethod {
         this.empresaId = Objects.requireNonNull(empresaId, "empresaId");
         this.nombre = required(nombre).toUpperCase(Locale.ROOT);
         this.protegido = protegido;
+        this.abreCajaRegistradora = "EFECTIVO".equals(this.nombre);
+    }
+
+    public PaymentMethod(
+            UUID empresaId,
+            String nombre,
+            boolean protegido,
+            boolean requiereReferencia,
+            boolean abreCajaRegistradora) {
+        this(empresaId, nombre, protegido);
+        configure(requiereReferencia, abreCajaRegistradora);
     }
 
     public UUID getId() {
@@ -55,10 +72,13 @@ public class PaymentMethod {
 
     // Changes availability without deleting the method or its history.
     public void setActivo(boolean activo) {
-        if (protegido && !activo) {
-            throw new IllegalStateException("message.payment_method.protected_cannot_deactivate");
-        }
         this.activo = activo;
+    }
+
+    // Updates operational flags controlled by ADMIN.
+    public void configure(boolean requiereReferencia, boolean abreCajaRegistradora) {
+        this.requiereReferencia = requiereReferencia;
+        this.abreCajaRegistradora = abreCajaRegistradora;
     }
 
     public UUID getEmpresaId() {
@@ -67,6 +87,14 @@ public class PaymentMethod {
 
     public boolean isProtegido() {
         return protegido;
+    }
+
+    public boolean isRequiereReferencia() {
+        return requiereReferencia;
+    }
+
+    public boolean isAbreCajaRegistradora() {
+        return abreCajaRegistradora;
     }
 
     private static String required(String value) {
