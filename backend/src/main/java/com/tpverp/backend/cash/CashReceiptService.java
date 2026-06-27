@@ -1,7 +1,7 @@
 package com.tpverp.backend.cash;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.util.EnumSet;
 import java.util.List;
@@ -23,7 +23,7 @@ public class CashReceiptService {
     private final CashSessionRepository sessions;
     private final CashMovementRepository movements;
     private final TerminalRepository terminals;
-    private final UsuarioRepository users;
+    private final UserAccountRepository users;
     private final CurrentOrganization organization;
     private final CashPermissionService permissions;
 
@@ -31,7 +31,7 @@ public class CashReceiptService {
             CashSessionRepository sessions,
             CashMovementRepository movements,
             TerminalRepository terminals,
-            UsuarioRepository users,
+            UserAccountRepository users,
             CurrentOrganization organization,
             CashPermissionService permissions) {
         this.sessions = sessions;
@@ -55,7 +55,7 @@ public class CashReceiptService {
         var session = movement.getSessionId() == null
                 ? null
                 : sessions.findById(movement.getSessionId())
-                        .orElseThrow(() -> new IllegalArgumentException("Sesion de caja no encontrada"));
+                        .orElseThrow(() -> new IllegalArgumentException("UserSession de caja no encontrada"));
         var terminal = terminals.findByIdAndTiendaId(movement.getTerminalId(), store.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
         var userName = users.findByIdAndTiendaId(movement.getUserId(), store.getId())
@@ -84,7 +84,7 @@ public class CashReceiptService {
         var store = organization.currentStore();
         var session = sessions.findById(sessionId)
                 .filter(found -> found.getStoreId().equals(store.getId()))
-                .orElseThrow(() -> new IllegalArgumentException("Sesion de caja no encontrada"));
+                .orElseThrow(() -> new IllegalArgumentException("UserSession de caja no encontrada"));
         if (session.getStatus() != CashSessionStatus.CERRADA) {
             throw new IllegalStateException("La sesion de caja sigue abierta");
         }

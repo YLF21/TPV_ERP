@@ -1,6 +1,6 @@
 package com.tpverp.backend.party;
 
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.UserAccount;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -27,7 +27,7 @@ public class MemberBalanceMovement {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "usuario_id", nullable = false)
-    private Usuario user;
+    private UserAccount user;
 
     @Column(name = "documento_id")
     private UUID documentId;
@@ -53,7 +53,7 @@ public class MemberBalanceMovement {
 
     public MemberBalanceMovement(
             Customer customer,
-            Usuario user,
+            UserAccount user,
             UUID documentId,
             BigDecimal amount,
             String reason,

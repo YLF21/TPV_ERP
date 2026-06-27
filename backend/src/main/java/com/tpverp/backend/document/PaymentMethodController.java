@@ -62,7 +62,7 @@ public class PaymentMethodController {
             boolean protectedMethod,
             boolean active) {
 
-        static PaymentMethodView from(MetodoPago method) {
+        static PaymentMethodView from(PaymentMethod method) {
             return new PaymentMethodView(
                     method.getId(), method.getEmpresaId(), method.getNombre(),
                     method.isProtegido(), method.isActivo());

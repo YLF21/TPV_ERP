@@ -3,7 +3,7 @@ package com.tpverp.backend.catalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import java.lang.reflect.Method;
@@ -26,7 +26,7 @@ class ProductSupplierTest {
             BigDecimal.ZERO,
             true);
     private final Supplier supplier = new Supplier(
-            new Empresa("B00000001", "Empresa", address()),
+            new Company("B00000001", "Company", address()),
             "Proveedor",
             null,
             DocumentType.CIF,

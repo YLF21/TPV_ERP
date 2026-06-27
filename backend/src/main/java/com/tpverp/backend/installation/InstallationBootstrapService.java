@@ -1,17 +1,17 @@
 package com.tpverp.backend.installation;
 
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.EmpresaRepository;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -33,22 +33,22 @@ public class InstallationBootstrapService {
 			"provincia", "Las Palmas",
 			"pais", "ES");
 
-	private final InstalacionRepository instalacionRepository;
-	private final EmpresaRepository empresaRepository;
-	private final TiendaRepository tiendaRepository;
-	private final RolRepository rolRepository;
-	private final UsuarioRepository usuarioRepository;
+	private final InstallationRepository instalacionRepository;
+	private final CompanyRepository empresaRepository;
+	private final StoreRepository tiendaRepository;
+	private final RoleRepository rolRepository;
+	private final UserAccountRepository usuarioRepository;
 	private final TerminalRepository terminalRepository;
 	private final InstallationIdentityStore identityStore;
 	private final PasswordEncoder passwordEncoder;
 	private final Clock clock;
 
 	public InstallationBootstrapService(
-			InstalacionRepository instalacionRepository,
-			EmpresaRepository empresaRepository,
-			TiendaRepository tiendaRepository,
-			RolRepository rolRepository,
-			UsuarioRepository usuarioRepository,
+			InstallationRepository instalacionRepository,
+			CompanyRepository empresaRepository,
+			StoreRepository tiendaRepository,
+			RoleRepository rolRepository,
+			UserAccountRepository usuarioRepository,
 			TerminalRepository terminalRepository,
 			InstallationIdentityStore identityStore,
 			PasswordEncoder passwordEncoder,
@@ -72,15 +72,15 @@ public class InstallationBootstrapService {
 
 		var identity = identityStore.loadOrCreate();
 		var now = Instant.now(clock);
-		var installation = new Instalacion(
+		var installation = new Installation(
 				reference(identity.keyId()),
 				Base64.getEncoder().encodeToString(identity.publicKey().getEncoded()),
 				now);
 		instalacionRepository.save(installation);
 
 		var company = empresaRepository.save(
-				new Empresa("DEMO-00000000", "EMPRESA DE DEMOSTRACION", DEMO_ADDRESS));
-		var store = tiendaRepository.save(new Tienda(
+				new Company("DEMO-00000000", "EMPRESA DE DEMOSTRACION", DEMO_ADDRESS));
+		var store = tiendaRepository.save(new Store(
 				company,
 				"TIENDA DEMO",
 				DEMO_ADDRESS,
@@ -89,14 +89,14 @@ public class InstallationBootstrapService {
 				"EUR",
 				"es-ES"));
 
-		var adminRole = rolRepository.save(new Rol(store, "ADMIN"));
+		var adminRole = rolRepository.save(new Role(store, "ADMIN"));
 		var server = new Terminal(
 				store,
 				"SERVIDOR",
-				TipoTerminal.SERVIDOR,
+				TerminalType.SERVIDOR,
 				passwordEncoder.encode(UUID.randomUUID().toString()));
 		terminalRepository.save(server);
-		usuarioRepository.save(new Usuario(store, "ADMIN", passwordEncoder.encode("0000"), adminRole));
+		usuarioRepository.save(new UserAccount(store, "ADMIN", passwordEncoder.encode("0000"), adminRole));
 	}
 
 	private String reference(String keyId) {

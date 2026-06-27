@@ -9,9 +9,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -57,8 +57,8 @@ class FiscalCorrectionServiceTest {
                 "total", new BigDecimal("12.10")));
         state = new FiscalSubmissionState(
                 original.getId(), FiscalSubmissionStatus.RECHAZADO, NOW.minusSeconds(60));
-        var company = mock(Empresa.class);
-        var store = mock(Tienda.class);
+        var company = mock(Company.class);
+        var store = mock(Store.class);
         when(company.getId()).thenReturn(companyId);
         when(store.getId()).thenReturn(storeId);
         when(organization.currentCompany()).thenReturn(company);
@@ -70,7 +70,7 @@ class FiscalCorrectionServiceTest {
 
     @Test
     void createsPendingCorrectionAndQueuesItForImmediateSubmission() {
-        var user = mock(Usuario.class);
+        var user = mock(UserAccount.class);
         when(user.getId()).thenReturn(userId);
         when(organization.currentUser(authentication)).thenReturn(user);
         var correction = record(companyId, storeId, 2, original.getSnapshot());

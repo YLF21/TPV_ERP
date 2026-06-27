@@ -8,8 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -130,13 +130,13 @@ class CashReportServiceTest {
                 store, UUID.randomUUID(), UUID.randomUUID());
     }
 
-    private static Tienda store() {
+    private static Store store() {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "001", "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                "001", "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 
@@ -146,7 +146,7 @@ class CashReportServiceTest {
             CashSessionRepository sessions,
             CashStoreConfigRepository configs,
             CashPermissionService permissions,
-            Tienda store,
+            Store store,
             UUID terminalId,
             UUID userId) {
     }

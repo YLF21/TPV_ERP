@@ -9,16 +9,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
-import com.tpverp.backend.security.domain.Permiso;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.Permission;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -379,7 +379,7 @@ class CashSessionServiceTest {
     @Test
     void entryDuringSessionRequiresAdminOrAccountingAuthorizer() {
         var fixture = serviceFixture();
-        var sellerAuthorizer = user(fixture.store, "SELLER", new Rol(fixture.store, "SELLER"));
+        var sellerAuthorizer = user(fixture.store, "SELLER", new Role(fixture.store, "SELLER"));
         var session = CashSession.open(
                 fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
@@ -601,13 +601,13 @@ class CashSessionServiceTest {
     private static ServiceFixture serviceFixture(Instant now) {
         var store = store("001");
         var user = user(store, "SELLER", salesRole(store));
-        var terminal = new Terminal(store, "TPV 1", TipoTerminal.TERMINAL_VENTA, "hash");
+        var terminal = new Terminal(store, "TPV 1", TerminalType.TERMINAL_VENTA, "hash");
         var sessions = mock(CashSessionRepository.class);
         var movements = mock(CashMovementRepository.class);
         var configs = mock(CashStoreConfigRepository.class);
         var terminals = mock(TerminalRepository.class);
         var organization = mock(CurrentOrganization.class);
-        var users = mock(UsuarioRepository.class);
+        var users = mock(UserAccountRepository.class);
         var passwordEncoder = mock(PasswordEncoder.class);
         when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId())).thenReturn(Optional.of(terminal));
         when(organization.currentStore()).thenReturn(store);
@@ -633,40 +633,40 @@ class CashSessionServiceTest {
         return session;
     }
 
-    private static UsernamePasswordAuthenticationToken salesAuthentication(Usuario user) {
+    private static UsernamePasswordAuthenticationToken salesAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
     }
 
-    private static UsernamePasswordAuthenticationToken accountingAuthentication(Usuario user) {
+    private static UsernamePasswordAuthenticationToken accountingAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
-    private static UsernamePasswordAuthenticationToken salesAndAccountingAuthentication(Usuario user) {
+    private static UsernamePasswordAuthenticationToken salesAndAccountingAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(
                         new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS),
                         new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
-    private static Rol salesRole(Tienda store) {
-        var role = new Rol(store, "SELLER");
-        role.conceder(new Permiso(CorePermissionBootstrap.GESTION_VENTAS, "sales", "DOCUMENTS"));
+    private static Role salesRole(Store store) {
+        var role = new Role(store, "SELLER");
+        role.conceder(new Permission(CorePermissionBootstrap.GESTION_VENTAS, "sales", "DOCUMENTS"));
         return role;
     }
 
-    private static Usuario user(Tienda store, String name, Rol role) {
-        return new Usuario(store, name, "hash-" + name, role);
+    private static UserAccount user(Store store, String name, Role role) {
+        return new UserAccount(store, name, "hash-" + name, role);
     }
 
-    private static Tienda store(String code) {
+    private static Store store(String code) {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                code, "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                code, "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 
@@ -677,10 +677,10 @@ class CashSessionServiceTest {
             CashStoreConfigRepository configs,
             TerminalRepository terminals,
             CurrentOrganization organization,
-            UsuarioRepository users,
+            UserAccountRepository users,
             PasswordEncoder passwordEncoder,
-            Tienda store,
-            Usuario user,
+            Store store,
+            UserAccount user,
             Terminal terminal) {
     }
 }

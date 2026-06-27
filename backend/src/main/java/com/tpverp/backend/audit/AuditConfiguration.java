@@ -11,7 +11,7 @@ class AuditConfiguration {
 
     @Bean
     AuditService auditService(
-            AuditoriaRepository auditoriaRepository,
+            AuditEntryRepository auditoriaRepository,
             CurrentOrganization organization,
             Clock clock) {
         return new AuditService(auditoriaRepository, organization, clock);

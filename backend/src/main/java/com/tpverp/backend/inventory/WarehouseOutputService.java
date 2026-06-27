@@ -4,8 +4,8 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
-import com.tpverp.backend.document.ContadorDocumento;
-import com.tpverp.backend.document.ContadorDocumentoRepository;
+import com.tpverp.backend.document.DocumentCounter;
+import com.tpverp.backend.document.DocumentCounterRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class WarehouseOutputService {
 
     private final WarehouseOutputRepository outputs;
-    private final ContadorDocumentoRepository counters;
+    private final DocumentCounterRepository counters;
     private final StockLevelRepository stockLevels;
     private final StockMovementRepository movements;
     private final CurrentOrganization organization;
@@ -29,7 +29,7 @@ public class WarehouseOutputService {
 
     public WarehouseOutputService(
             WarehouseOutputRepository outputs,
-            ContadorDocumentoRepository counters,
+            DocumentCounterRepository counters,
             StockLevelRepository stockLevels,
             StockMovementRepository movements,
             CurrentOrganization organization,
@@ -100,7 +100,7 @@ public class WarehouseOutputService {
         }
         var counter = counters.findByTiendaIdAndTipoAndPeriodo(
                         output.getStoreId(), "SAL", Integer.toString(output.getDate().getYear()))
-                .orElseGet(() -> ContadorDocumento.salidaAlmacen(
+                .orElseGet(() -> DocumentCounter.salidaAlmacen(
                         output.getStoreId(), output.getDate()));
         output.confirm(
                 counter.siguienteSalidaAlmacen(output.getDate()),

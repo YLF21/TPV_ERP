@@ -10,8 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
@@ -36,15 +36,15 @@ class ProductSupplierServiceTest {
     @Mock private CurrentOrganization organization;
 
     private ProductSupplierService service;
-    private Empresa company;
-    private Tienda store;
+    private Company company;
+    private Store store;
     private Product product;
     private Supplier supplier;
 
     @BeforeEach
     void setUp() {
-        company = new Empresa("B00000000", "Empresa", address());
-        store = new Tienda(company, "Tienda", address(), "hash",
+        company = new Company("B00000000", "Company", address());
+        store = new Store(company, "Store", address(), "hash",
                 "Atlantic/Canary", "EUR", "es-ES");
         product = product(store.getId());
         supplier = supplier("B00000002", "Proveedor");

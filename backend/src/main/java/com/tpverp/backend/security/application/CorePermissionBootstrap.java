@@ -1,7 +1,7 @@
 package com.tpverp.backend.security.application;
 
-import com.tpverp.backend.security.domain.Permiso;
-import com.tpverp.backend.security.domain.PermisoRepository;
+import com.tpverp.backend.security.domain.Permission;
+import com.tpverp.backend.security.domain.PermissionRepository;
 import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,9 +46,9 @@ public class CorePermissionBootstrap {
     public static final String INVOICES_WRITE = "INVOICES_WRITE";
     public static final String INVOICES_CONFIRM = "INVOICES_CONFIRM";
     public static final String INVOICES_PAY = "INVOICES_PAY";
-    private final PermisoRepository permisoRepository;
+    private final PermissionRepository permisoRepository;
 
-    public CorePermissionBootstrap(PermisoRepository permisoRepository) {
+    public CorePermissionBootstrap(PermissionRepository permisoRepository) {
         this.permisoRepository = permisoRepository;
     }
 
@@ -98,7 +98,7 @@ public class CorePermissionBootstrap {
                         .orElseGet(() -> permisoRepository.save(permission)));
     }
 
-    private Permiso permission(String code, String translationKey, String group) {
-        return new Permiso(code, translationKey, group);
+    private Permission permission(String code, String translationKey, String group) {
+        return new Permission(code, translationKey, group);
     }
 }

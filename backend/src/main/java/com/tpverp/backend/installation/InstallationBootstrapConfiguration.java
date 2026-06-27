@@ -1,11 +1,11 @@
 package com.tpverp.backend.installation;
 
-import com.tpverp.backend.organization.EmpresaRepository;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
@@ -42,11 +42,11 @@ class InstallationBootstrapConfiguration {
 
 	@Bean
 	InstallationBootstrapService installationBootstrapService(
-			InstalacionRepository instalacionRepository,
-			EmpresaRepository empresaRepository,
-			TiendaRepository tiendaRepository,
-			RolRepository rolRepository,
-			UsuarioRepository usuarioRepository,
+			InstallationRepository instalacionRepository,
+			CompanyRepository empresaRepository,
+			StoreRepository tiendaRepository,
+			RoleRepository rolRepository,
+			UserAccountRepository usuarioRepository,
 			TerminalRepository terminalRepository,
 			InstallationIdentityStore identityStore,
 			PasswordEncoder passwordEncoder,
@@ -83,8 +83,8 @@ class InstallationBootstrapConfiguration {
 	@Bean
 	AuthenticationService authenticationService(
 			TerminalRepository terminalRepository,
-			UsuarioRepository usuarioRepository,
-			SesionRepository sesionRepository,
+			UserAccountRepository usuarioRepository,
+			UserSessionRepository sesionRepository,
 			PasswordEncoder passwordEncoder,
 			Clock clock) {
 		return new AuthenticationService(
@@ -93,8 +93,8 @@ class InstallationBootstrapConfiguration {
 
 	@Bean
 	InstallationStatusService installationStatusService(
-			InstalacionRepository instalacionRepository,
-			LicenciaRepository licenciaRepository,
+			InstallationRepository instalacionRepository,
+			LicenseRepository licenciaRepository,
 			Clock clock) {
 		return new InstallationStatusService(instalacionRepository, licenciaRepository, clock);
 	}

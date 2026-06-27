@@ -1,7 +1,7 @@
 package com.tpverp.backend.terminal;
 
 import com.tpverp.backend.security.application.AuthenticationService;
-import com.tpverp.backend.security.domain.SesionRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -9,11 +9,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class CurrentTerminal {
 
-    private final SesionRepository sessions;
+    private final UserSessionRepository sessions;
     private final AuthenticationService authenticationService;
 
     public CurrentTerminal(
-            SesionRepository sessions,
+            UserSessionRepository sessions,
             AuthenticationService authenticationService) {
         this.sessions = sessions;
         this.authenticationService = authenticationService;

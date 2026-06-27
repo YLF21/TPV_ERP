@@ -2,8 +2,8 @@ package com.tpverp.backend.cash;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.util.Locale;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -14,12 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CashPermissionService {
 
-    private final UsuarioRepository users;
+    private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
     private final CurrentOrganization organization;
 
     public CashPermissionService(
-            UsuarioRepository users,
+            UserAccountRepository users,
             PasswordEncoder passwordEncoder,
             CurrentOrganization organization) {
         this.users = users;
@@ -79,14 +79,14 @@ public class CashPermissionService {
 
     // Valida credenciales de un autorizador activo con perfil ADMIN o contable.
     @Transactional(readOnly = true)
-    public Usuario requireAuthorizer(String username, String password) {
+    public UserAccount requireAuthorizer(String username, String password) {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             throw new IllegalArgumentException("Credenciales de autorizador obligatorias");
         }
         var store = organization.currentStore();
         var normalizedName = username.trim().toUpperCase(Locale.ROOT);
         var user = users.findByTiendaIdAndNombre(store.getId(), normalizedName)
-                .filter(Usuario::isActivo)
+                .filter(UserAccount::isActivo)
                 .orElseThrow(() -> new IllegalArgumentException("Autorizador no valido"));
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Autorizador no valido");
@@ -101,19 +101,19 @@ public class CashPermissionService {
         if (authentication == null) {
             return false;
         }
-        if (authentication.getPrincipal() instanceof Usuario user && isAdmin(user)) {
+        if (authentication.getPrincipal() instanceof UserAccount user && isAdmin(user)) {
             return true;
         }
         return "ADMIN".equalsIgnoreCase(authentication.getName())
                 || hasAuthority(authentication, "ROLE_ADMIN");
     }
 
-    private boolean isAdmin(Usuario user) {
+    private boolean isAdmin(UserAccount user) {
         return "ADMIN".equalsIgnoreCase(user.getNombre())
                 || "ROLE_ADMIN".equals(user.getRol().authority());
     }
 
-    private boolean roleHasPermission(Usuario user, String permission) {
+    private boolean roleHasPermission(UserAccount user, String permission) {
         return user.getRol().getPermisos().stream()
                 .anyMatch(rolePermission -> permission.equals(rolePermission.getPermiso().getCodigo()));
     }

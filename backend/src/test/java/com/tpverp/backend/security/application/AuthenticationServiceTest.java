@@ -6,16 +6,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Sesion;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserSession;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -33,16 +33,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 class AuthenticationServiceTest {
 
 	@Mock TerminalRepository terminalRepository;
-	@Mock UsuarioRepository usuarioRepository;
-	@Mock SesionRepository sesionRepository;
+	@Mock UserAccountRepository usuarioRepository;
+	@Mock UserSessionRepository sesionRepository;
 	@Mock PasswordEncoder passwordEncoder;
 
 	@Test
 	void createsOpaqueSessionForValidCredentials() {
 		var store = store();
-		var terminal = new Terminal(store, "SERVIDOR", TipoTerminal.SERVIDOR, "credential");
-		var role = new Rol(store, "ADMIN");
-		var user = new Usuario(store, "ADMIN", "password-hash", role);
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		var role = new Role(store, "ADMIN");
+		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
@@ -52,7 +52,7 @@ class AuthenticationServiceTest {
 
 		assertThat(result.accessToken()).isNotBlank();
 		assertThat(result.userName()).isEqualTo("ADMIN");
-		var session = ArgumentCaptor.forClass(Sesion.class);
+		var session = ArgumentCaptor.forClass(UserSession.class);
 		verify(sesionRepository).save(session.capture());
 		assertThat(session.getValue().getTokenHash()).doesNotContain(result.accessToken());
 	}
@@ -60,9 +60,9 @@ class AuthenticationServiceTest {
 	@Test
 	void rejectsInvalidPassword() {
 		var store = store();
-		var terminal = new Terminal(store, "SERVIDOR", TipoTerminal.SERVIDOR, "credential");
-		var role = new Rol(store, "ADMIN");
-		var user = new Usuario(store, "ADMIN", "password-hash", role);
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		var role = new Role(store, "ADMIN");
+		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")).thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("bad", "password-hash")).thenReturn(false);
@@ -80,12 +80,12 @@ class AuthenticationServiceTest {
 				Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
 	}
 
-	private Tienda store() {
+	private Store store() {
 		var address = Map.of(
 				"linea1", "Calle 1", "ciudad", "Las Palmas", "codigoPostal", "35001",
 				"provincia", "Las Palmas", "pais", "ES");
-		var company = new Empresa("DEMO", "DEMO", address);
-		return new Tienda(company, "DEMO", address, UUID.randomUUID().toString(),
+		var company = new Company("DEMO", "DEMO", address);
+		return new Store(company, "DEMO", address, UUID.randomUUID().toString(),
 				"Atlantic/Canary", "EUR", "es-ES");
 	}
 }

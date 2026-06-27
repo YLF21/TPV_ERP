@@ -5,11 +5,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
@@ -27,11 +27,11 @@ class SupplierServiceTest {
     @Mock SupplierRepository suppliers;
     @Mock SalesRepresentativeRepository representatives;
     @Mock SupplierRepresentativeRepository links;
-    @Mock TiendaRepository stores;
-    @Mock UsuarioRepository users;
+    @Mock StoreRepository stores;
+    @Mock UserAccountRepository users;
     @Mock PartyCodeAllocator codes;
 
-    private Empresa company;
+    private Company company;
     private Supplier supplier;
     private SalesRepresentative representative;
 
@@ -43,7 +43,7 @@ class SupplierServiceTest {
     @BeforeEach
     void setUp() {
         company = PartyTestData.company();
-        Tienda store = PartyTestData.store(company);
+        Store store = PartyTestData.store(company);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("ADMIN", "token"));
         when(stores.findAll()).thenReturn(List.of(store));

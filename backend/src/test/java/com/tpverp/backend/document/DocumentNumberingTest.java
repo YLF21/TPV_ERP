@@ -17,7 +17,7 @@ class DocumentNumberingTest {
         "RECTIFICATIVA_VENTA,  FRV-001-26-000001",
         "RECTIFICATIVA_COMPRA, FRC-001-26-000001"
     })
-    void formatsAnnualNumbers(TipoDocumento type, String expected) {
+    void formatsAnnualNumbers(CommercialDocumentType type, String expected) {
         assertThat(DocumentNumbering.format(type, LocalDate.of(2026, 6, 8), 1, "001"))
                 .isEqualTo(expected);
     }
@@ -29,7 +29,7 @@ class DocumentNumberingTest {
     })
     void formatsDailyTicketNumbers(int sequence, String expected) {
         assertThat(DocumentNumbering.format(
-                        TipoDocumento.TICKET, LocalDate.of(2026, 6, 8), sequence, "001"))
+                        CommercialDocumentType.TICKET, LocalDate.of(2026, 6, 8), sequence, "001"))
                 .isEqualTo(expected);
     }
 }

@@ -1,12 +1,12 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.DocumentoRepository;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.organization.EmpresaRepository;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentRepository;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.SpanishTaxId;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRepository;
 import java.math.BigDecimal;
@@ -34,11 +34,11 @@ public class FiscalRecordService {
     private final FiscalRecordRelationRepository relations;
     private final FiscalSubmissionStateRepository states;
     private final VerifactuConfigurationRepository configurations;
-    private final LicenciaRepository licenses;
-    private final EmpresaRepository companies;
-    private final TiendaRepository stores;
-    private final InstalacionRepository installations;
-    private final DocumentoRepository documents;
+    private final LicenseRepository licenses;
+    private final CompanyRepository companies;
+    private final StoreRepository stores;
+    private final InstallationRepository installations;
+    private final CommercialDocumentRepository documents;
     private final CustomerRepository customers;
     private final VerifactuActivationService activation;
     private final FiscalSnapshotFactory snapshots;
@@ -53,11 +53,11 @@ public class FiscalRecordService {
             FiscalRecordRelationRepository relations,
             FiscalSubmissionStateRepository states,
             VerifactuConfigurationRepository configurations,
-            LicenciaRepository licenses,
-            EmpresaRepository companies,
-            TiendaRepository stores,
-            InstalacionRepository installations,
-            DocumentoRepository documents,
+            LicenseRepository licenses,
+            CompanyRepository companies,
+            StoreRepository stores,
+            InstallationRepository installations,
+            CommercialDocumentRepository documents,
             CustomerRepository customers,
             VerifactuActivationService activation,
             FiscalSnapshotFactory snapshots,
@@ -295,7 +295,7 @@ public class FiscalRecordService {
                 generatedAt.atZone(zone).toOffsetDateTime(), document, customer);
     }
 
-    private Customer customer(Documento document, UUID companyId) {
+    private Customer customer(CommercialDocument document, UUID companyId) {
         if (document.getClienteId() == null) {
             return null;
         }
@@ -372,7 +372,7 @@ public class FiscalRecordService {
             String issuerTaxId,
             String timezone,
             OffsetDateTime generatedAt,
-            Documento document,
+            CommercialDocument document,
             Customer customer) {
     }
 }

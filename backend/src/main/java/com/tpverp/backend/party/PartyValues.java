@@ -3,6 +3,7 @@ package com.tpverp.backend.party;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
+import com.tpverp.backend.shared.domain.TextValues;
 
 final class PartyValues {
 
@@ -10,15 +11,11 @@ final class PartyValues {
     }
 
     static String required(String value, String field) {
-        String normalized = optional(value);
-        if (normalized == null) {
-            throw new IllegalArgumentException(field + " es obligatorio");
-        }
-        return normalized;
+        return TextValues.required(value, field);
     }
 
     static String optional(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return TextValues.optional(value);
     }
 
     static String document(String value) {

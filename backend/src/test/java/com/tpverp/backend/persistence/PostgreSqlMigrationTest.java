@@ -152,7 +152,7 @@ class PostgreSqlMigrationTest {
                 Statement statement = connection.createStatement()) {
             statement.executeUpdate("""
                     insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
-                    values ('%2$s', 'B00000001', 'Empresa', '{
+                    values ('%2$s', 'B00000001', 'Company', '{
                         "linea1":"Calle Uno",
                         "ciudad":"Las Palmas",
                         "codigoPostal":"35001",
@@ -165,7 +165,7 @@ class PostgreSqlMigrationTest {
                         id, empresa_id, nombre, direccion, address_normalized_hash,
                         timezone, moneda, locale, codigo_tienda)
                     values (
-                        '%2$s', '%3$s', 'Tienda', '{
+                        '%2$s', '%3$s', 'Store', '{
                             "linea1":"Calle Uno",
                             "ciudad":"Las Palmas",
                             "codigoPostal":"35001",
@@ -288,7 +288,7 @@ class PostgreSqlMigrationTest {
                     """.formatted(schema, installationId));
             statement.executeUpdate("""
                     insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
-                    values ('%2$s', 'B00000003', 'Empresa Fiscal', '{
+                    values ('%2$s', 'B00000003', 'Company Fiscal', '{
                         "linea1":"Calle Fiscal",
                         "ciudad":"Las Palmas",
                         "codigoPostal":"35001",
@@ -301,7 +301,7 @@ class PostgreSqlMigrationTest {
                         id, empresa_id, nombre, direccion, address_normalized_hash,
                         timezone, moneda, locale, codigo_tienda)
                     values (
-                        '%2$s', '%3$s', 'Tienda Fiscal', '{
+                        '%2$s', '%3$s', 'Store Fiscal', '{
                             "linea1":"Calle Fiscal",
                             "ciudad":"Las Palmas",
                             "codigoPostal":"35001",
@@ -491,7 +491,7 @@ class PostgreSqlMigrationTest {
             String taxId, String storeCode, String addressHash) throws SQLException {
         statement.executeUpdate("""
                 insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
-                values ('%2$s', '%4$s', 'Otra Empresa Fiscal', '{
+                values ('%2$s', '%4$s', 'Otra Company Fiscal', '{
                     "linea1":"Otra Calle Fiscal",
                     "ciudad":"Las Palmas",
                     "codigoPostal":"35001",
@@ -504,7 +504,7 @@ class PostgreSqlMigrationTest {
                     id, empresa_id, nombre, direccion, address_normalized_hash,
                     timezone, moneda, locale, codigo_tienda)
                 values (
-                    '%2$s', '%3$s', 'Otra Tienda Fiscal', '{
+                    '%2$s', '%3$s', 'Otra Store Fiscal', '{
                         "linea1":"Otra Calle Fiscal",
                         "ciudad":"Las Palmas",
                         "codigoPostal":"35001",

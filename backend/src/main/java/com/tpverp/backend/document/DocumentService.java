@@ -19,16 +19,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DocumentService {
 
-    private static final EnumSet<TipoDocumento> DELIVERY_NOTES = EnumSet.of(
-            TipoDocumento.ALBARAN_VENTA, TipoDocumento.ALBARAN_COMPRA);
-    private static final EnumSet<TipoDocumento> INVOICES = EnumSet.of(
-            TipoDocumento.FACTURA_VENTA, TipoDocumento.FACTURA_COMPRA,
-            TipoDocumento.RECTIFICATIVA_VENTA, TipoDocumento.RECTIFICATIVA_COMPRA);
+    private static final EnumSet<CommercialDocumentType> DELIVERY_NOTES = EnumSet.of(
+            CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.ALBARAN_COMPRA);
+    private static final EnumSet<CommercialDocumentType> INVOICES = EnumSet.of(
+            CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.FACTURA_COMPRA,
+            CommercialDocumentType.RECTIFICATIVA_VENTA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
 
-    private final DocumentoRepository documents;
-    private final ContadorDocumentoRepository counters;
-    private final MetodoPagoRepository paymentMethods;
-    private final DocumentoRelacionRepository relations;
+    private final CommercialDocumentRepository documents;
+    private final DocumentCounterRepository counters;
+    private final PaymentMethodRepository paymentMethods;
+    private final DocumentRelationRepository relations;
     private final StockDocumentGateway stockGateway;
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
@@ -41,10 +41,10 @@ public class DocumentService {
     private final Clock clock;
 
     public DocumentService(
-            DocumentoRepository documents,
-            ContadorDocumentoRepository counters,
-            MetodoPagoRepository paymentMethods,
-            DocumentoRelacionRepository relations,
+            CommercialDocumentRepository documents,
+            DocumentCounterRepository counters,
+            PaymentMethodRepository paymentMethods,
+            DocumentRelationRepository relations,
             StockDocumentGateway stockGateway,
             CurrentOrganization organization,
             CustomerRepository customers,
@@ -72,27 +72,27 @@ public class DocumentService {
     }
 
     @Transactional
-    public Documento createDeliveryNote(
+    public CommercialDocument createDeliveryNote(
             DocumentCommand command, Authentication authentication) {
         requireType(command, DELIVERY_NOTES);
         return documents.save(createDraft(command, authentication));
     }
 
     @Transactional(readOnly = true)
-    public List<Documento> listDeliveryNotes() {
+    public List<CommercialDocument> listDeliveryNotes() {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
                 organization.currentStore().getId(), DELIVERY_NOTES);
     }
 
     // Confirma, numera y registra stock/compra en una unica transaccion.
     @Transactional
-    public Documento confirm(UUID id, Authentication authentication) {
+    public CommercialDocument confirm(UUID id, Authentication authentication) {
         var document = find(id);
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
         // La confirmacion reinicia origenStock; esta marca debe leerse antes.
-        boolean recordsPurchase = document.getTipo() == TipoDocumento.ALBARAN_COMPRA
-                || (document.getTipo() == TipoDocumento.FACTURA_COMPRA
+        boolean recordsPurchase = document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
+                || (document.getTipo() == CommercialDocumentType.FACTURA_COMPRA
                 && document.isOrigenStock());
         var requiresStock = requiresStock(document) || document.isOrigenStock();
         document.confirm(nextNumber(document), userId, Instant.now(clock), false);
@@ -102,7 +102,7 @@ public class DocumentService {
                     document.getProveedorId(),
                     document.getFecha(),
                     document.getLineas().stream()
-                            .map(DocumentoLinea::getProductoId)
+                            .map(DocumentLine::getProductoId)
                             .distinct()
                             .toList());
         }
@@ -113,11 +113,11 @@ public class DocumentService {
 
     // Crea y confirma el ticket en una sola transacción.
     @Transactional
-    public Documento createTicket(
+    public CommercialDocument createTicket(
             DocumentCommand command,
             List<PaymentCommand> payments,
             Authentication authentication) {
-        if (command.tipo() != TipoDocumento.TICKET) {
+        if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("tipo de ticket no válido");
         }
         var ticket = createDraft(command, authentication);
@@ -146,21 +146,21 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public List<Documento> listTickets() {
+    public List<CommercialDocument> listTickets() {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
-                organization.currentStore().getId(), List.of(TipoDocumento.TICKET));
+                organization.currentStore().getId(), List.of(CommercialDocumentType.TICKET));
     }
 
     // Anula el ticket y solicita inversión de stock solo si se aplicó originalmente.
     @Transactional
-    public Documento cancelTicket(
+    public CommercialDocument cancelTicket(
             UUID id, Authentication authentication, String reason) {
         var ticket = find(id);
-        if (ticket.getTipo() != TipoDocumento.TICKET) {
+        if (ticket.getTipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("el documento no es un ticket");
         }
         if (relations.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)) {
+                ticket.getId(), DocumentRelationType.FACTURA_DE)) {
             throw new IllegalStateException(
                     "el ticket facturado debe corregirse con factura rectificativa");
         }
@@ -180,14 +180,14 @@ public class DocumentService {
 
     // Convierte un ticket confirmado en factura F3 sin duplicar stock ni pagos.
     @Transactional
-    public Documento convertTicketToInvoice(
+    public CommercialDocument convertTicketToInvoice(
             UUID ticketId, UUID customerId, Authentication authentication) {
         var ticket = find(ticketId);
-        if (ticket.getTipo() != TipoDocumento.TICKET
-                || ticket.getEstado() != EstadoDocumento.CONFIRMADO) {
+        if (ticket.getTipo() != CommercialDocumentType.TICKET
+                || ticket.getEstado() != DocumentStatus.CONFIRMADO) {
             throw new IllegalStateException("solo se puede facturar un ticket confirmado");
         }
-        if (relations.existsByOrigen_IdAndTipo(ticket.getId(), TipoRelacionDocumento.FACTURA_DE)) {
+        if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.FACTURA_DE)) {
             throw new IllegalStateException("el ticket ya esta facturado");
         }
         var invoice = invoiceFromTicket(ticket, customerId, authentication);
@@ -195,27 +195,27 @@ public class DocumentService {
         invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
         var saved = documents.save(invoice);
-        relations.save(new DocumentoRelacion(saved, ticket, TipoRelacionDocumento.FACTURA_DE));
+        relations.save(new DocumentRelation(saved, ticket, DocumentRelationType.FACTURA_DE));
         fiscalIntegration.registerInvoiceFromTicket(saved, ticket);
         return saved;
     }
 
     @Transactional
-    public Documento createInvoice(
+    public CommercialDocument createInvoice(
             DocumentCommand command, Authentication authentication) {
         requireType(command, INVOICES);
         return documents.save(createDraft(command, authentication));
     }
 
     @Transactional(readOnly = true)
-    public List<Documento> listInvoices() {
+    public List<CommercialDocument> listInvoices() {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
                 organization.currentStore().getId(), INVOICES);
     }
 
     // Registra pagos únicamente cuando cubren exactamente el total pendiente.
     @Transactional
-    public Documento payInvoice(UUID id, List<PaymentCommand> payments, Authentication authentication) {
+    public CommercialDocument payInvoice(UUID id, List<PaymentCommand> payments, Authentication authentication) {
         var invoice = find(id);
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalArgumentException("el documento no es una factura");
@@ -231,7 +231,7 @@ public class DocumentService {
 
     // Edita excepcionalmente ticket o albarán confirmado sin invocar stock ni auditoría.
     @Transactional
-    public Documento adminEditConfirmed(
+    public CommercialDocument adminEditConfirmed(
             UUID id,
             BigDecimal globalDiscount,
             UUID customerId,
@@ -249,7 +249,7 @@ public class DocumentService {
 
     // Relaciona explícitamente una factura con su documento de origen.
     @Transactional
-    public Documento relate(UUID invoiceId, UUID originId, TipoRelacionDocumento type) {
+    public CommercialDocument relate(UUID invoiceId, UUID originId, DocumentRelationType type) {
         var invoice = find(invoiceId);
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
@@ -257,17 +257,17 @@ public class DocumentService {
         Objects.requireNonNull(type, "tipoRelacion");
         var origin = find(originId);
         validateRelationOrigin(type, origin);
-        relations.save(new DocumentoRelacion(invoice, origin, type));
+        relations.save(new DocumentRelation(invoice, origin, type));
         return invoice;
     }
 
-    private static void validateRelationOrigin(TipoRelacionDocumento type, Documento origin) {
-        if (type == TipoRelacionDocumento.FACTURA_DE && INVOICES.contains(origin.getTipo())) {
+    private static void validateRelationOrigin(DocumentRelationType type, CommercialDocument origin) {
+        if (type == DocumentRelationType.FACTURA_DE && INVOICES.contains(origin.getTipo())) {
             throw new IllegalStateException("origen incompatible para factura agrupada");
         }
     }
 
-    private Documento createDraft(
+    private CommercialDocument createDraft(
             DocumentCommand command, Authentication authentication) {
         Objects.requireNonNull(command, "command");
         if (command.lineas() == null || command.lineas().isEmpty()) {
@@ -275,14 +275,14 @@ public class DocumentService {
         }
         var store = organization.currentStore();
         var user = organization.currentUser(authentication);
-        var document = new Documento(
+        var document = new CommercialDocument(
                 store.getId(), command.almacenId(), command.tipo(), command.fecha(),
                 user.getId(), command.descuentoGlobal());
         document.setParties(
                 command.clienteId(), command.proveedorId(), command.numeroExterno());
         document.setStockOrigin(
                 command.directo()
-                        || command.tipo() == TipoDocumento.TICKET
+                        || command.tipo() == CommercialDocumentType.TICKET
                         || DELIVERY_NOTES.contains(command.tipo()));
         for (var line : command.lineas()) {
             document.addLine(line.toEntity(document));
@@ -290,10 +290,10 @@ public class DocumentService {
         return document;
     }
 
-    private Documento invoiceFromTicket(
-            Documento ticket, UUID customerId, Authentication authentication) {
-        var invoice = new Documento(
-                ticket.getTiendaId(), ticket.getAlmacenId(), TipoDocumento.FACTURA_VENTA,
+    private CommercialDocument invoiceFromTicket(
+            CommercialDocument ticket, UUID customerId, Authentication authentication) {
+        var invoice = new CommercialDocument(
+                ticket.getTiendaId(), ticket.getAlmacenId(), CommercialDocumentType.FACTURA_VENTA,
                 ticket.getFecha(), organization.currentUser(authentication).getId(),
                 ticket.getDescuentoGlobal());
         invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
@@ -310,7 +310,7 @@ public class DocumentService {
     }
 
     private void addPayments(
-            Documento document, List<PaymentCommand> commands, String mismatchMessage) {
+            CommercialDocument document, List<PaymentCommand> commands, String mismatchMessage) {
         requirePaymentsPresent(commands);
         requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
         var resolved = commands.stream()
@@ -320,16 +320,16 @@ public class DocumentService {
         for (var index = 0; index < resolved.size(); index++) {
             var command = resolved.get(index);
             var method = paymentMethods.findById(command.metodoPagoId())
-                    .filter(MetodoPago::isActivo)
+                    .filter(PaymentMethod::isActivo)
                     .filter(value -> value.getEmpresaId().equals(
                             organization.currentCompany().getId()))
                     .orElseThrow(() -> new IllegalArgumentException(
                             "método de pago activo no encontrado"));
-            document.addPayment(new DocumentoPago(
+            document.addPayment(new DocumentPayment(
                     document, method, index + 1, command.importe(), command.principal(),
                     command.entregado(), command.cambio(), command.voucherCode(), Instant.now(clock)));
         }
-        if (document.getPagos().stream().noneMatch(DocumentoPago::isPrincipal)) {
+        if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
             throw new IllegalArgumentException("se requiere un pago principal");
         }
     }
@@ -349,9 +349,9 @@ public class DocumentService {
         }
     }
 
-    private PaymentCommand resolvePayment(Documento document, PaymentCommand command) {
+    private PaymentCommand resolvePayment(CommercialDocument document, PaymentCommand command) {
         var method = paymentMethods.findById(command.metodoPagoId())
-                .filter(MetodoPago::isActivo)
+                .filter(PaymentMethod::isActivo)
                 .filter(value -> value.getEmpresaId().equals(
                         organization.currentCompany().getId()))
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -372,12 +372,12 @@ public class DocumentService {
     }
     // Consume vales antes de registrar pagos para guardar el importe real aplicado.
 
-    private String nextNumber(Documento document) {
+    private String nextNumber(CommercialDocument document) {
         var type = document.getTipo();
         var period = DocumentNumbering.period(type, document.getFecha());
         var counter = counters.findByTiendaIdAndTipoAndPeriodo(
                         document.getTiendaId(), type.prefix(), period)
-                .orElseGet(() -> new ContadorDocumento(
+                .orElseGet(() -> new DocumentCounter(
                         document.getTiendaId(), type, document.getFecha()));
         var number = counter.siguiente(
                 type, document.getFecha(), organization.currentStore().getCodigoTienda());
@@ -385,18 +385,18 @@ public class DocumentService {
         return number;
     }
 
-    private Documento find(UUID id) {
+    private CommercialDocument find(UUID id) {
         var storeId = organization.currentStore().getId();
         return documents.findById(id)
                 .filter(document -> document.getTiendaId().equals(storeId))
                 .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
     }
 
-    private boolean requiresStock(Documento document) {
+    private boolean requiresStock(CommercialDocument document) {
         return DELIVERY_NOTES.contains(document.getTipo());
     }
 
-    private void validateConfirmation(Documento document) {
+    private void validateConfirmation(CommercialDocument document) {
         switch (document.getTipo()) {
             case FACTURA_VENTA, RECTIFICATIVA_VENTA -> {
                 if (document.getClienteId() == null) {
@@ -432,7 +432,7 @@ public class DocumentService {
     }
 
     private static void requireType(
-            DocumentCommand command, EnumSet<TipoDocumento> allowedTypes) {
+            DocumentCommand command, EnumSet<CommercialDocumentType> allowedTypes) {
         Objects.requireNonNull(command, "command");
         if (!allowedTypes.contains(command.tipo())) {
             throw new IllegalArgumentException("tipo documental no válido");

@@ -1,9 +1,9 @@
 package com.tpverp.backend.party;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.organization.Store;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
@@ -16,15 +16,15 @@ public class PartyContext {
         this.organization = organization;
     }
 
-    public Empresa currentCompany() {
+    public Company currentCompany() {
         return organization.currentCompany();
     }
 
-    public Tienda currentStore() {
+    public Store currentStore() {
         return organization.currentStore();
     }
 
-    public Usuario currentUser() {
+    public UserAccount currentUser() {
         return organization.currentUser(
                 SecurityContextHolder.getContext().getAuthentication());
     }

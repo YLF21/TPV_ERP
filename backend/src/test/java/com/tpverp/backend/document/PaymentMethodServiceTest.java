@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -18,11 +18,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PaymentMethodServiceTest {
 
     @Mock
-    private MetodoPagoRepository repository;
+    private PaymentMethodRepository repository;
     @Mock
     private CurrentOrganization organization;
     @Mock
-    private Empresa company;
+    private Company company;
 
     private PaymentMethodService service() {
         return new PaymentMethodService(repository, organization);
@@ -38,7 +38,7 @@ class PaymentMethodServiceTest {
     @Test
     void protectedMethodCannotBeDisabled() {
         var companyId = currentCompany();
-        var method = new MetodoPago(companyId, "EFECTIVO", true);
+        var method = new PaymentMethod(companyId, "EFECTIVO", true);
         when(repository.findByIdAndEmpresaId(method.getId(), companyId)).thenReturn(Optional.of(method));
 
         assertThatThrownBy(() -> service().setActive(method.getId(), false))

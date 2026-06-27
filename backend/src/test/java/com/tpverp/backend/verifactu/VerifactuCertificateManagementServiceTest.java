@@ -1,6 +1,6 @@
 package com.tpverp.backend.verifactu;
 
-import static com.tpverp.backend.audit.ResultadoAuditoria.EXITO;
+import static com.tpverp.backend.audit.AuditResult.EXITO;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,8 +13,8 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -47,8 +47,8 @@ class VerifactuCertificateManagementServiceTest {
     void setUp() {
         companyId = UUID.randomUUID();
         userId = UUID.randomUUID();
-        var company = mock(Empresa.class);
-        var user = mock(Usuario.class);
+        var company = mock(Company.class);
+        var user = mock(UserAccount.class);
         when(company.getId()).thenReturn(companyId);
         when(user.getId()).thenReturn(userId);
         when(organization.currentCompany()).thenReturn(company);
@@ -142,7 +142,7 @@ class VerifactuCertificateManagementServiceTest {
     private ManagedVerifactuCertificate certificate(
             ManagedCertificateStatus targetStatus, String path) {
         var certificate = ManagedVerifactuCertificate.active(
-                companyId, "CN=Empresa", "CN=AC", UUID.randomUUID().toString(),
+                companyId, "CN=Company", "CN=AC", UUID.randomUUID().toString(),
                 "B12345674", NOW.minusSeconds(60), NOW.plusSeconds(3600),
                 "A".repeat(64), new byte[] {1}, path, NOW.minusSeconds(120), userId);
         if (targetStatus == ManagedCertificateStatus.ANTERIOR) {
@@ -153,7 +153,7 @@ class VerifactuCertificateManagementServiceTest {
 
     private static ImportedCertificateMaterial material() {
         return new ImportedCertificateMaterial(
-                "CN=Empresa", "CN=AC", "1234", "B12345674",
+                "CN=Company", "CN=AC", "1234", "B12345674",
                 NOW.minusSeconds(60), NOW.plusSeconds(3600),
                 "B".repeat(64), new byte[] {1, 2}, new byte[] {3, 4});
     }

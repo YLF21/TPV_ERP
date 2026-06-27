@@ -6,10 +6,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,8 +37,8 @@ class ParkedSaleServiceTest {
     private CurrentOrganization organization;
 
     private ParkedSaleService service;
-    private Tienda store;
-    private Usuario user;
+    private Store store;
+    private UserAccount user;
 
     @BeforeEach
     void setUp() {
@@ -48,10 +48,10 @@ class ParkedSaleServiceTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        store = new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
-        user = new Usuario(store, "ADMIN", "hash", new Rol(store, "ADMIN"));
+        store = new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(any())).thenReturn(user);
         service = new ParkedSaleService(
@@ -71,14 +71,14 @@ class ParkedSaleServiceTest {
         assertThat(parked.getTicketNumber()).isNull();
         assertThat(parked.getComment()).isEqualTo("Cliente vuelve en 5 min");
         assertThat(parked.getTotal()).isEqualByComparingTo("10.00");
-        assertThat(opened.document().tipo()).isEqualTo(TipoDocumento.TICKET);
+        assertThat(opened.document().tipo()).isEqualTo(CommercialDocumentType.TICKET);
         verify(repository).delete(parked);
     }
 
     private static DocumentCommand command() {
         return new DocumentCommand(
                 UUID.randomUUID(),
-                TipoDocumento.TICKET,
+                CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 17),
                 UUID.randomUUID(),
                 null,

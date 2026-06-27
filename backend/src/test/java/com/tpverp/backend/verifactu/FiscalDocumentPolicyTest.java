@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.EstadoDocumento;
-import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentStatus;
+import com.tpverp.backend.document.CommercialDocumentType;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
@@ -17,12 +17,12 @@ class FiscalDocumentPolicyTest {
     @Test
     void rechazaBorradoresYCompras() {
         assertThatThrownBy(() -> policy.validate(
-                document(TipoDocumento.TICKET, EstadoDocumento.BORRADOR, BigDecimal.TEN),
+                document(CommercialDocumentType.TICKET, DocumentStatus.BORRADOR, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F2))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("estado");
         assertThatThrownBy(() -> policy.validate(
-                document(TipoDocumento.FACTURA_COMPRA, EstadoDocumento.PENDIENTE, BigDecimal.TEN),
+                document(CommercialDocumentType.FACTURA_COMPRA, DocumentStatus.PENDIENTE, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("venta");
@@ -31,14 +31,14 @@ class FiscalDocumentPolicyTest {
     @Test
     void exigeF2ParaTicketPositivoYR5ParaTicketNegativo() {
         policy.validate(
-                document(TipoDocumento.TICKET, EstadoDocumento.CONFIRMADO, BigDecimal.ZERO),
+                document(CommercialDocumentType.TICKET, DocumentStatus.CONFIRMADO, BigDecimal.ZERO),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F2);
         policy.validate(
-                document(TipoDocumento.TICKET, EstadoDocumento.CONFIRMADO, BigDecimal.ONE.negate()),
+                document(CommercialDocumentType.TICKET, DocumentStatus.CONFIRMADO, BigDecimal.ONE.negate()),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.R5);
 
         assertThatThrownBy(() -> policy.validate(
-                document(TipoDocumento.TICKET, EstadoDocumento.CONFIRMADO, BigDecimal.TEN),
+                document(CommercialDocumentType.TICKET, DocumentStatus.CONFIRMADO, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("F2");
@@ -47,17 +47,17 @@ class FiscalDocumentPolicyTest {
     @Test
     void validaFacturasYRectificativasDeVenta() {
         policy.validate(
-                document(TipoDocumento.FACTURA_VENTA, EstadoDocumento.PENDIENTE, BigDecimal.TEN),
+                document(CommercialDocumentType.FACTURA_VENTA, DocumentStatus.PENDIENTE, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F1);
         policy.validate(
-                document(TipoDocumento.FACTURA_VENTA, EstadoDocumento.PAGADO, BigDecimal.TEN),
+                document(CommercialDocumentType.FACTURA_VENTA, DocumentStatus.PAGADO, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F3);
         policy.validate(
-                document(TipoDocumento.RECTIFICATIVA_VENTA, EstadoDocumento.PENDIENTE, BigDecimal.TEN),
+                document(CommercialDocumentType.RECTIFICATIVA_VENTA, DocumentStatus.PENDIENTE, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.R1);
 
         assertThatThrownBy(() -> policy.validate(
-                document(TipoDocumento.FACTURA_VENTA, EstadoDocumento.ANULADO, BigDecimal.TEN),
+                document(CommercialDocumentType.FACTURA_VENTA, DocumentStatus.ANULADO, BigDecimal.TEN),
                 FiscalRecordOperation.ALTA, FiscalDocumentType.F1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("estado");
@@ -66,19 +66,19 @@ class FiscalDocumentPolicyTest {
     @Test
     void anulacionSoloAdmiteTicketsAnulados() {
         policy.validate(
-                document(TipoDocumento.TICKET, EstadoDocumento.ANULADO, BigDecimal.TEN),
+                document(CommercialDocumentType.TICKET, DocumentStatus.ANULADO, BigDecimal.TEN),
                 FiscalRecordOperation.ANULACION, FiscalDocumentType.F2);
 
         assertThatThrownBy(() -> policy.validate(
-                document(TipoDocumento.FACTURA_VENTA, EstadoDocumento.ANULADO, BigDecimal.TEN),
+                document(CommercialDocumentType.FACTURA_VENTA, DocumentStatus.ANULADO, BigDecimal.TEN),
                 FiscalRecordOperation.ANULACION, FiscalDocumentType.F1))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ticket");
     }
 
-    private static Documento document(
-            TipoDocumento type, EstadoDocumento state, BigDecimal total) {
-        var document = mock(Documento.class);
+    private static CommercialDocument document(
+            CommercialDocumentType type, DocumentStatus state, BigDecimal total) {
+        var document = mock(CommercialDocument.class);
         when(document.getTipo()).thenReturn(type);
         when(document.getEstado()).thenReturn(state);
         when(document.getTotal()).thenReturn(total);

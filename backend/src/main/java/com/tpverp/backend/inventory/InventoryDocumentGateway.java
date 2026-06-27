@@ -1,8 +1,8 @@
 package com.tpverp.backend.inventory;
 
-import com.tpverp.backend.document.Documento;
+import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.StockDocumentGateway;
-import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.document.CommercialDocumentType;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumMap;
@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class InventoryDocumentGateway implements StockDocumentGateway {
 
-    private static final Map<TipoDocumento, MovementDefinition> MOVEMENTS =
+    private static final Map<CommercialDocumentType, MovementDefinition> MOVEMENTS =
             movementDefinitions();
 
     private final StockLevelRepository stockLevels;
@@ -32,7 +32,7 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
     // Aplica una sola vez todos los movimientos de un documento confirmado.
     @Override
     @Transactional
-    public boolean confirm(Documento document) {
+    public boolean confirm(CommercialDocument document) {
         if (movements.existsByDocumentId(document.getId())) {
             return false;
         }
@@ -58,7 +58,7 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
     // Compensa cada movimiento original una sola vez y conserva su vínculo histórico.
     @Override
     @Transactional
-    public boolean cancel(Documento document) {
+    public boolean cancel(CommercialDocument document) {
         var applied = false;
         for (var original : movements.findByDocumentIdAndCompensationOfIdIsNull(
                 document.getId())) {
@@ -84,29 +84,29 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
         stockLevels.save(stock);
     }
 
-    private static Map<TipoDocumento, MovementDefinition> movementDefinitions() {
-        var definitions = new EnumMap<TipoDocumento, MovementDefinition>(
-                TipoDocumento.class);
+    private static Map<CommercialDocumentType, MovementDefinition> movementDefinitions() {
+        var definitions = new EnumMap<CommercialDocumentType, MovementDefinition>(
+                CommercialDocumentType.class);
         definitions.put(
-                TipoDocumento.ALBARAN_VENTA,
+                CommercialDocumentType.ALBARAN_VENTA,
                 new MovementDefinition(StockMovementType.ALBARAN_VENTA, -1));
         definitions.put(
-                TipoDocumento.ALBARAN_COMPRA,
+                CommercialDocumentType.ALBARAN_COMPRA,
                 new MovementDefinition(StockMovementType.ALBARAN_COMPRA, 1));
         definitions.put(
-                TipoDocumento.TICKET,
+                CommercialDocumentType.TICKET,
                 new MovementDefinition(StockMovementType.TICKET, -1));
         definitions.put(
-                TipoDocumento.FACTURA_VENTA,
+                CommercialDocumentType.FACTURA_VENTA,
                 new MovementDefinition(StockMovementType.FACTURA_VENTA, -1));
         definitions.put(
-                TipoDocumento.FACTURA_COMPRA,
+                CommercialDocumentType.FACTURA_COMPRA,
                 new MovementDefinition(StockMovementType.FACTURA_COMPRA, 1));
         definitions.put(
-                TipoDocumento.RECTIFICATIVA_VENTA,
+                CommercialDocumentType.RECTIFICATIVA_VENTA,
                 new MovementDefinition(StockMovementType.FACTURA_VENTA, 1));
         definitions.put(
-                TipoDocumento.RECTIFICATIVA_COMPRA,
+                CommercialDocumentType.RECTIFICATIVA_COMPRA,
                 new MovementDefinition(StockMovementType.FACTURA_COMPRA, -1));
         return Map.copyOf(definitions);
     }

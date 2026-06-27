@@ -1,8 +1,8 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.EstadoDocumento;
-import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentStatus;
+import com.tpverp.backend.document.CommercialDocumentType;
 import java.util.EnumSet;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +16,7 @@ public class FiscalDocumentPolicy {
 
     // Verifica que la operacion fiscal coincide con el tipo y estado comercial.
     public void validate(
-            Documento document,
+            CommercialDocument document,
             FiscalRecordOperation operation,
             FiscalDocumentType fiscalType) {
         if (operation == FiscalRecordOperation.ANULACION) {
@@ -43,8 +43,8 @@ public class FiscalDocumentPolicy {
     }
 
     private static void validateTicket(
-            Documento document, FiscalDocumentType fiscalType) {
-        if (document.getEstado() != EstadoDocumento.CONFIRMADO) {
+            CommercialDocument document, FiscalDocumentType fiscalType) {
+        if (document.getEstado() != DocumentStatus.CONFIRMADO) {
             throw invalid("El ticket debe estar en estado CONFIRMADO");
         }
         var expected = document.getTotal().signum() < 0
@@ -54,18 +54,18 @@ public class FiscalDocumentPolicy {
         }
     }
 
-    private static void validateCancellation(Documento document) {
-        if (document.getTipo() != TipoDocumento.TICKET) {
+    private static void validateCancellation(CommercialDocument document) {
+        if (document.getTipo() != CommercialDocumentType.TICKET) {
             throw invalid("Solo puede anularse fiscalmente un ticket");
         }
-        if (document.getEstado() != EstadoDocumento.ANULADO) {
+        if (document.getEstado() != DocumentStatus.ANULADO) {
             throw invalid("El ticket debe estar en estado ANULADO");
         }
     }
 
-    private static void requireInvoiceState(Documento document) {
-        if (document.getEstado() != EstadoDocumento.PENDIENTE
-                && document.getEstado() != EstadoDocumento.PAGADO) {
+    private static void requireInvoiceState(CommercialDocument document) {
+        if (document.getEstado() != DocumentStatus.PENDIENTE
+                && document.getEstado() != DocumentStatus.PAGADO) {
             throw invalid("La factura debe estar en estado PENDIENTE o PAGADO");
         }
     }

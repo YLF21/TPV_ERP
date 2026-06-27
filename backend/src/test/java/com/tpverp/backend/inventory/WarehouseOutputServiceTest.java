@@ -9,12 +9,12 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.document.ContadorDocumentoRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.document.DocumentCounterRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -34,7 +34,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 class WarehouseOutputServiceTest {
 
     @Mock private WarehouseOutputRepository outputs;
-    @Mock private ContadorDocumentoRepository counters;
+    @Mock private DocumentCounterRepository counters;
     @Mock private StockLevelRepository stockLevels;
     @Mock private StockMovementRepository movements;
     @Mock private CurrentOrganization organization;
@@ -42,8 +42,8 @@ class WarehouseOutputServiceTest {
     @Mock private WarehouseRepository warehouses;
 
     private WarehouseOutputService service;
-    private Tienda store;
-    private Usuario user;
+    private Store store;
+    private UserAccount user;
     private Product product;
     private Warehouse warehouse;
 
@@ -59,11 +59,11 @@ class WarehouseOutputServiceTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        store = new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
-        var role = new Rol(store, "ADMIN");
-        user = new Usuario(store, "ADMIN", "hash", role);
+        store = new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        var role = new Role(store, "ADMIN");
+        user = new UserAccount(store, "ADMIN", "hash", role);
         product = new Product(
                 store.getId(), UUID.randomUUID(), null, UUID.randomUUID(),
                 "Producto", null, java.math.BigDecimal.ZERO, true);

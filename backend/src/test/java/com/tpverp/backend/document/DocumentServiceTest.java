@@ -10,9 +10,9 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.FiscalAddress;
 import com.tpverp.backend.party.CustomerRepository;
@@ -20,8 +20,8 @@ import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -45,13 +45,13 @@ class DocumentServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-08T12:00:00Z");
 
     @Mock
-    private DocumentoRepository documentRepository;
+    private CommercialDocumentRepository documentRepository;
     @Mock
-    private ContadorDocumentoRepository counterRepository;
+    private DocumentCounterRepository counterRepository;
     @Mock
-    private MetodoPagoRepository paymentMethodRepository;
+    private PaymentMethodRepository paymentMethodRepository;
     @Mock
-    private DocumentoRelacionRepository relationRepository;
+    private DocumentRelationRepository relationRepository;
     @Mock
     private StockDocumentGateway stockGateway;
     @Mock
@@ -72,8 +72,8 @@ class DocumentServiceTest {
     private CashPaymentRecorder cashPaymentRecorder;
 
     private DocumentService service;
-    private Tienda store;
-    private Usuario user;
+    private Store store;
+    private UserAccount user;
     private UUID terminalId;
 
     @BeforeEach
@@ -84,11 +84,11 @@ class DocumentServiceTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        store = new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
-        var role = new Rol(store, "ADMIN");
-        user = new Usuario(store, "ADMIN", "hash", role);
+        store = new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        var role = new Role(store, "ADMIN");
+        user = new UserAccount(store, "ADMIN", "hash", role);
         terminalId = UUID.randomUUID();
         lenient().when(currentOrganization.currentStore()).thenReturn(store);
         lenient().when(currentOrganization.currentCompany())
@@ -119,7 +119,7 @@ class DocumentServiceTest {
         when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
 
         var created = service.createDeliveryNote(
-                command(TipoDocumento.ALBARAN_VENTA),
+                command(CommercialDocumentType.ALBARAN_VENTA),
                 new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                         "ADMIN", "n/a"));
 
@@ -129,7 +129,7 @@ class DocumentServiceTest {
 
     @Test
     void salesInvoiceCannotBeConfirmedWithoutCustomer() {
-        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
@@ -140,7 +140,7 @@ class DocumentServiceTest {
 
     @Test
     void salesInvoiceRequiresCompleteCustomerFiscalData() {
-        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         var customer = new Customer(
                 store.getEmpresa(), "Cliente", DocumentType.NIF, "12345678Z",
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
@@ -156,7 +156,7 @@ class DocumentServiceTest {
 
     @Test
     void confirmsDeliveryNoteWithAnnualNumber() {
-        var document = draft(TipoDocumento.ALBARAN_VENTA);
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
@@ -167,7 +167,7 @@ class DocumentServiceTest {
         var confirmed = service.confirm(document.getId(), authentication());
 
         assertThat(confirmed.getNumero()).isEqualTo("AV-001-26-000001");
-        assertThat(confirmed.getEstado()).isEqualTo(EstadoDocumento.CONFIRMADO);
+        assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
         assertThat(confirmed.isOrigenStock()).isTrue();
     }
 
@@ -177,7 +177,7 @@ class DocumentServiceTest {
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
         assertThatThrownBy(() -> service.createTicket(
-                command(TipoDocumento.TICKET),
+                command(CommercialDocumentType.TICKET),
                 List.of(new PaymentCommand(
                         UUID.randomUUID(), new BigDecimal("9.99"), true, null, null)),
                 authentication()))
@@ -195,7 +195,7 @@ class DocumentServiceTest {
                 .when(cashPaymentRecorder).requireOpenSession(terminalId);
 
         assertThatThrownBy(() -> service.createTicket(
-                command(TipoDocumento.TICKET),
+                command(CommercialDocumentType.TICKET),
                 List.of(new PaymentCommand(
                         UUID.randomUUID(), new BigDecimal("10.00"), true, null, null)),
                 authentication()))
@@ -208,8 +208,8 @@ class DocumentServiceTest {
 
     @Test
     void createsDirectTicketWithDailyNumberAndMixedPayments() {
-        var cash = new MetodoPago(store.getEmpresa().getId(), "EFECTIVO", true);
-        var card = new MetodoPago(store.getEmpresa().getId(), "TARJETA", true);
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
         when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
@@ -220,7 +220,7 @@ class DocumentServiceTest {
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
         var ticket = service.createTicket(
-                command(TipoDocumento.TICKET),
+                command(CommercialDocumentType.TICKET),
                 List.of(
                         new PaymentCommand(cash.getId(), new BigDecimal("5.00"), true,
                                 new BigDecimal("5.00"), BigDecimal.ZERO),
@@ -228,7 +228,7 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(ticket.getNumero()).isEqualTo("001-260608-00001");
-        assertThat(ticket.getEstado()).isEqualTo(EstadoDocumento.CONFIRMADO);
+        assertThat(ticket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
         assertThat(ticket.getPagos()).hasSize(2);
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
@@ -236,7 +236,7 @@ class DocumentServiceTest {
 
     @Test
     void ticketPaidWithVoucherConsumesAndStoresVoucherCode() {
-        var voucherMethod = new MetodoPago(store.getEmpresa().getId(), "VALE", true);
+        var voucherMethod = new PaymentMethod(store.getEmpresa().getId(), "VALE", true);
         when(paymentMethodRepository.findById(voucherMethod.getId()))
                 .thenReturn(Optional.of(voucherMethod));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
@@ -244,13 +244,13 @@ class DocumentServiceTest {
         when(stockGateway.confirm(any())).thenReturn(false);
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(voucherService.consume(any(), any(), any())).thenAnswer(invocation -> {
-            Documento purchaseTicket = invocation.getArgument(2);
+            CommercialDocument purchaseTicket = invocation.getArgument(2);
             assertThat(purchaseTicket.getNumero()).isEqualTo("001-260608-00001");
             return new VoucherConsumptionResult(null, invocation.getArgument(1), Optional.empty());
         });
 
         var ticket = service.createTicket(
-                command(TipoDocumento.TICKET),
+                command(CommercialDocumentType.TICKET),
                 List.of(new PaymentCommand(
                         voucherMethod.getId(), new BigDecimal("10.00"), true,
                         null, null, "VABC123")),
@@ -274,7 +274,7 @@ class DocumentServiceTest {
 
         assertThat(ticket.getTotal()).isEqualByComparingTo("-10.00");
         assertThat(ticket.getPagos())
-                .as("DocumentoPago rejects negative amounts, so negative tickets issue a voucher instead of recording a DEVOLUCION_EFECTIVO payment row.")
+                .as("DocumentPayment rejects negative amounts, so negative tickets issue a voucher instead of recording a DEVOLUCION_EFECTIVO payment row.")
                 .isEmpty();
         var order = inOrder(documentRepository, voucherService, fiscalIntegration);
         order.verify(documentRepository).save(ticket);
@@ -284,29 +284,29 @@ class DocumentServiceTest {
 
     @Test
     void cancelsTicketAndReversesAppliedStock() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(false);
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
         when(documentRepository.save(ticket)).thenReturn(ticket);
         when(stockGateway.cancel(ticket)).thenReturn(true);
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
         var cancelled = service.cancelTicket(ticket.getId(), authentication(), "ERROR");
 
-        assertThat(cancelled.getEstado()).isEqualTo(EstadoDocumento.ANULADO);
+        assertThat(cancelled.getEstado()).isEqualTo(DocumentStatus.ANULADO);
         assertThat(cancelled.getMotivoAnulacion()).isEqualTo("ERROR");
         verify(stockGateway).cancel(ticket);
     }
 
     @Test
     void ticketWithInvoiceCannotBeCancelled() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(true);
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
 
         assertThatThrownBy(() -> service.cancelTicket(
                 ticket.getId(), authentication(), "ERROR"))
@@ -319,11 +319,11 @@ class DocumentServiceTest {
 
     @Test
     void ticketWithVoucherImpactCannotBeCancelled() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(false);
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
         when(voucherService.hasVoucherImpact(ticket)).thenReturn(true);
 
         assertThatThrownBy(() -> service.cancelTicket(
@@ -337,12 +337,12 @@ class DocumentServiceTest {
 
     @Test
     void convertsConfirmedTicketToInvoiceOnceWithoutStockOrPayments() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         var customer = completeCustomer();
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(false);
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
                 store.getId(), "FV", "2026")).thenReturn(Optional.empty());
@@ -352,24 +352,24 @@ class DocumentServiceTest {
         var invoice = service.convertTicketToInvoice(
                 ticket.getId(), customer.getId(), authentication());
 
-        assertThat(invoice.getTipo()).isEqualTo(TipoDocumento.FACTURA_VENTA);
-        assertThat(invoice.getEstado()).isEqualTo(EstadoDocumento.PENDIENTE);
+        assertThat(invoice.getTipo()).isEqualTo(CommercialDocumentType.FACTURA_VENTA);
+        assertThat(invoice.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
         assertThat(invoice.getNumero()).isEqualTo("FV-001-26-000001");
         assertThat(invoice.getNumTicket()).isEqualTo("001-260608-00001");
         assertThat(invoice.getLineas()).hasSize(ticket.getLineas().size());
         verify(stockGateway, never()).confirm(invoice);
-        verify(relationRepository).save(any(DocumentoRelacion.class));
+        verify(relationRepository).save(any(DocumentRelation.class));
         verify(fiscalIntegration).registerInvoiceFromTicket(invoice, ticket);
     }
 
     @Test
     void ticketCannotBeConvertedTwice() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
         var customer = completeCustomer();
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), TipoRelacionDocumento.FACTURA_DE)).thenReturn(true);
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
 
         assertThatThrownBy(() -> service.convertTicketToInvoice(
                 ticket.getId(), customer.getId(), authentication()))
@@ -379,9 +379,9 @@ class DocumentServiceTest {
 
     @Test
     void invoiceMustBePaidInFull() {
-        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
-        var method = new MetodoPago(
+        var method = new PaymentMethod(
                 store.getEmpresa().getId(), "TRANSFERENCIA", false);
         when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
@@ -401,15 +401,15 @@ class DocumentServiceTest {
                         method.getId(), new BigDecimal("10.00"), true, null, null)),
                 authentication());
 
-        assertThat(paid.getEstado()).isEqualTo(EstadoDocumento.PAGADO);
+        assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
     }
 
     @Test
     void invoicePaymentRequiresOpenCashSessionAndRecordsCashOnly() {
-        var invoice = draft(TipoDocumento.FACTURA_VENTA);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
-        var cash = new MetodoPago(store.getEmpresa().getId(), "EFECTIVO", true);
-        var card = new MetodoPago(store.getEmpresa().getId(), "TARJETA", true);
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
         when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
@@ -422,14 +422,14 @@ class DocumentServiceTest {
                         new PaymentCommand(card.getId(), new BigDecimal("6.00"), false, null, null)),
                 authentication());
 
-        assertThat(paid.getEstado()).isEqualTo(EstadoDocumento.PAGADO);
+        assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
         verify(cashPaymentRecorder).requireOpenSession(terminalId);
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, invoice);
     }
 
     @Test
     void adminEditOfConfirmedDeliveryNoteDoesNotTouchStockOrIdentity() {
-        var note = draft(TipoDocumento.ALBARAN_COMPRA);
+        var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
         note.confirm("AC-001-26-000001", UUID.randomUUID(), NOW, true);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
         when(documentRepository.save(note)).thenReturn(note);
@@ -446,7 +446,7 @@ class DocumentServiceTest {
 
     @Test
     void adminCannotEditConfirmedDocumentWithFiscalRecord() {
-        var ticket = draft(TipoDocumento.TICKET);
+        var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
         when(fiscalIntegration.hasFiscalRecord(ticket.getId())).thenReturn(true);
@@ -461,12 +461,12 @@ class DocumentServiceTest {
 
     @Test
     void onlyInvoicesCanBeRelatedToOriginDocuments() {
-        var note = draft(TipoDocumento.ALBARAN_VENTA);
-        var origin = draft(TipoDocumento.TICKET);
+        var note = draft(CommercialDocumentType.ALBARAN_VENTA);
+        var origin = draft(CommercialDocumentType.TICKET);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
 
         assertThatThrownBy(() -> service.relate(
-                note.getId(), origin.getId(), TipoRelacionDocumento.FACTURA_DE))
+                note.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("factura");
 
@@ -475,13 +475,13 @@ class DocumentServiceTest {
 
     @Test
     void invoiceRelationRequiresCompatibleOriginType() {
-        var invoice = draft(TipoDocumento.FACTURA_VENTA);
-        var originInvoice = draft(TipoDocumento.FACTURA_VENTA);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        var originInvoice = draft(CommercialDocumentType.FACTURA_VENTA);
         when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
         when(documentRepository.findById(originInvoice.getId())).thenReturn(Optional.of(originInvoice));
 
         assertThatThrownBy(() -> service.relate(
-                invoice.getId(), originInvoice.getId(), TipoRelacionDocumento.FACTURA_DE))
+                invoice.getId(), originInvoice.getId(), DocumentRelationType.FACTURA_DE))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("origen");
 
@@ -491,7 +491,7 @@ class DocumentServiceTest {
     @Test
     void confirmedPurchaseDeliveryNoteRecordsSupplierProducts() {
         var supplier = supplier(true);
-        var note = purchaseDraft(TipoDocumento.ALBARAN_COMPRA, supplier, true);
+        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
         preparePurchaseConfirmation(note, supplier, true);
 
         service.confirm(note.getId(), authentication());
@@ -503,7 +503,7 @@ class DocumentServiceTest {
     @Test
     void confirmedDirectPurchaseInvoiceRecordsSupplierProducts() {
         var supplier = supplier(true);
-        var invoice = purchaseDraft(TipoDocumento.FACTURA_COMPRA, supplier, true);
+        var invoice = purchaseDraft(CommercialDocumentType.FACTURA_COMPRA, supplier, true);
         preparePurchaseConfirmation(invoice, supplier, true);
 
         service.confirm(invoice.getId(), authentication());
@@ -515,7 +515,7 @@ class DocumentServiceTest {
     @Test
     void confirmedNonDirectPurchaseInvoiceDoesNotRecordSupplierProductsAgain() {
         var supplier = supplier(true);
-        var invoice = purchaseDraft(TipoDocumento.FACTURA_COMPRA, supplier, false);
+        var invoice = purchaseDraft(CommercialDocumentType.FACTURA_COMPRA, supplier, false);
         preparePurchaseConfirmation(invoice, supplier, false);
 
         service.confirm(invoice.getId(), authentication());
@@ -526,7 +526,7 @@ class DocumentServiceTest {
     @Test
     void confirmedPurchaseCreditNoteDoesNotRecordSupplierProducts() {
         var supplier = supplier(true);
-        var invoice = purchaseDraft(TipoDocumento.RECTIFICATIVA_COMPRA, supplier, true);
+        var invoice = purchaseDraft(CommercialDocumentType.RECTIFICATIVA_COMPRA, supplier, true);
         preparePurchaseConfirmation(invoice, supplier, true);
 
         service.confirm(invoice.getId(), authentication());
@@ -536,7 +536,7 @@ class DocumentServiceTest {
 
     @Test
     void confirmedSalesDocumentDoesNotRecordSupplierProducts() {
-        var note = draft(TipoDocumento.ALBARAN_VENTA);
+        var note = draft(CommercialDocumentType.ALBARAN_VENTA);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
         when(documentRepository.save(note)).thenReturn(note);
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
@@ -550,7 +550,7 @@ class DocumentServiceTest {
 
     @Test
     void purchaseDeliveryNoteRequiresSupplierBeforeNumberingOrStock() {
-        var note = draft(TipoDocumento.ALBARAN_COMPRA);
+        var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
 
         assertThatThrownBy(() -> service.confirm(note.getId(), authentication()))
@@ -566,7 +566,7 @@ class DocumentServiceTest {
     @Test
     void purchaseDeliveryNoteRequiresActiveSupplierBeforeNumberingOrStock() {
         var supplier = supplier(false);
-        var note = purchaseDraft(TipoDocumento.ALBARAN_COMPRA, supplier, true);
+        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
         when(supplierRepository.findByIdAndCompanyId(
                 supplier.getId(), store.getEmpresa().getId()))
@@ -582,17 +582,17 @@ class DocumentServiceTest {
         verify(purchaseRecorder, never()).record(any(), any(), any());
     }
 
-    private Documento draft(TipoDocumento type) {
+    private CommercialDocument draft(CommercialDocumentType type) {
         var command = command(type);
-        var document = new Documento(
+        var document = new CommercialDocument(
                 store.getId(), command.almacenId(), type, command.fecha(),
                 user.getId(), command.descuentoGlobal());
         command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         return document;
     }
 
-    private Documento purchaseDraft(
-            TipoDocumento type, Supplier supplier, boolean stockOrigin) {
+    private CommercialDocument purchaseDraft(
+            CommercialDocumentType type, Supplier supplier, boolean stockOrigin) {
         var document = draft(type);
         document.setParties(null, supplier.getId(), null);
         document.setStockOrigin(stockOrigin);
@@ -600,7 +600,7 @@ class DocumentServiceTest {
     }
 
     private void preparePurchaseConfirmation(
-            Documento document, Supplier supplier, boolean appliesStock) {
+            CommercialDocument document, Supplier supplier, boolean appliesStock) {
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);
         when(supplierRepository.findByIdAndCompanyId(
@@ -633,14 +633,14 @@ class DocumentServiceTest {
                 null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
     }
 
-    private List<UUID> productIds(Documento document) {
+    private List<UUID> productIds(CommercialDocument document) {
         return document.getLineas().stream()
-                .map(DocumentoLinea::getProductoId)
+                .map(DocumentLine::getProductoId)
                 .distinct()
                 .toList();
     }
 
-    private DocumentCommand command(TipoDocumento type) {
+    private DocumentCommand command(CommercialDocumentType type) {
         return new DocumentCommand(
                 UUID.randomUUID(),
                 type,
@@ -663,7 +663,7 @@ class DocumentServiceTest {
     private DocumentCommand negativeTicketCommand() {
         return new DocumentCommand(
                 UUID.randomUUID(),
-                TipoDocumento.TICKET,
+                CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 8),
                 null,
                 null,

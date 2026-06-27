@@ -3,14 +3,14 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.licensing.ResultadoImportacion;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.ImportResult;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -147,7 +147,7 @@ class VerifactuAdminServiceTest {
         var repository = Mockito.mock(ManagedVerifactuCertificateRepository.class);
         var certificate = ManagedVerifactuCertificate.active(
                 dependencies.organization().currentCompany().getId(),
-                "CN=Empresa", "CN=CA", "123", "B00000000",
+                "CN=Company", "CN=CA", "123", "B00000000",
                 CLOCK.instant().minusSeconds(60), CLOCK.instant().plusSeconds(3600),
                 "A".repeat(64), new byte[]{1}, "secret.bin", CLOCK.instant(),
                 UUID.randomUUID());
@@ -167,7 +167,7 @@ class VerifactuAdminServiceTest {
 
         assertThat(status.certificateConfigured()).isTrue();
         assertThat(status.certificateValid()).isTrue();
-        assertThat(status.certificateSubject()).isEqualTo("CN=Empresa");
+        assertThat(status.certificateSubject()).isEqualTo("CN=Company");
         assertThat(status.endpointMode()).isEqualTo(VerifactuEndpointMode.TEST);
     }
 
@@ -271,7 +271,7 @@ class VerifactuAdminServiceTest {
         var validator = Mockito.mock(VerifactuCertificateValidator.class);
         when(validator.validate(Mockito.any()))
                 .thenReturn(new VerifactuCertificateStatus(
-                        true, null, "CN=Empresa", Instant.now(), Instant.now()));
+                        true, null, "CN=Company", Instant.now(), Instant.now()));
         return validator;
     }
 
@@ -283,8 +283,8 @@ class VerifactuAdminServiceTest {
     }
 
     private static ActivationDependencies activationDependencies(TaxpayerType taxpayerType) {
-        var company = new Empresa("B00000000", "Empresa", address());
-        var store = new Tienda(company, "Tienda", address(), "001", "Atlantic/Canary", "EUR", "es-ES");
+        var company = new Company("B00000000", "Company", address());
+        var store = new Store(company, "Store", address(), "001", "Atlantic/Canary", "EUR", "es-ES");
         var organization = Mockito.mock(CurrentOrganization.class);
         when(organization.currentCompany()).thenReturn(company);
         when(organization.currentStore()).thenReturn(store);
@@ -292,17 +292,17 @@ class VerifactuAdminServiceTest {
         var configurations = Mockito.mock(VerifactuConfigurationRepository.class);
         when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(configuration));
         when(configurations.save(configuration)).thenReturn(configuration);
-        var licenses = Mockito.mock(LicenciaRepository.class);
+        var licenses = Mockito.mock(LicenseRepository.class);
         when(licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId())).thenReturn(List.of(
                 license(store, taxpayerType)));
         return new ActivationDependencies(
                 organization, configurations, licenses, configuration);
     }
 
-    private static Licencia license(Tienda store, TaxpayerType taxpayerType) {
-        return new Licencia(
+    private static License license(Store store, TaxpayerType taxpayerType) {
+        return new License(
                 store,
-                new com.tpverp.backend.installation.Instalacion(
+                new com.tpverp.backend.installation.Installation(
                         "PUBLIC", "PRIVATE", Instant.parse("2026-01-01T00:00:00Z")),
                 "LIC-1",
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -317,7 +317,7 @@ class VerifactuAdminServiceTest {
                 1,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Map.of(),
-                ResultadoImportacion.ACEPTADA,
+                ImportResult.ACEPTADA,
                 null,
                 true);
     }
@@ -334,7 +334,7 @@ class VerifactuAdminServiceTest {
     private record ActivationDependencies(
             CurrentOrganization organization,
             VerifactuConfigurationRepository configurations,
-            LicenciaRepository licenses,
+            LicenseRepository licenses,
             VerifactuConfiguration configuration) {
     }
 }

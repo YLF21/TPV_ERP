@@ -1,6 +1,6 @@
 package com.tpverp.backend.verifactu;
 
-import static com.tpverp.backend.audit.ResultadoAuditoria.EXITO;
+import static com.tpverp.backend.audit.AuditResult.EXITO;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -10,8 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -61,8 +61,8 @@ class VerifactuCertificateMaintenanceTest {
         var certificates = mock(ManagedVerifactuCertificateRepository.class);
         var secrets = mock(VerifactuCertificateSecretStore.class);
         var audit = mock(AuditService.class);
-        var stores = mock(TiendaRepository.class);
-        when(stores.findByEmpresaId(any())).thenReturn(List.of(mock(Tienda.class)));
+        var stores = mock(StoreRepository.class);
+        when(stores.findByEmpresaId(any())).thenReturn(List.of(mock(Store.class)));
         return new Fixture(
                 certificates, secrets, audit,
                 new VerifactuCertificateMaintenance(
@@ -72,7 +72,7 @@ class VerifactuCertificateMaintenanceTest {
 
     private static ManagedVerifactuCertificate certificate(Instant validUntil) {
         return ManagedVerifactuCertificate.active(
-                UUID.randomUUID(), "CN=Empresa", "CN=AC", "1234", "B12345674",
+                UUID.randomUUID(), "CN=Company", "CN=AC", "1234", "B12345674",
                 NOW.minusSeconds(60), validUntil, "A".repeat(64), new byte[] {1},
                 "secret.dpapi", NOW.minusSeconds(120), UUID.randomUUID());
     }

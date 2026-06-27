@@ -5,18 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.backup.ConfiguracionBackupRepository;
+import com.tpverp.backend.backup.BackupSettingsRepository;
 import com.tpverp.backend.backup.application.BackupKeyStore;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.PermisoRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.PermissionRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
 import java.util.Map;
 import java.util.List;
@@ -39,16 +39,16 @@ class SecurityAdministrationServiceTest {
     void usersOnlyReturnsUsersFromAuthenticatedStore() {
         var currentStore = store();
         var foreignStore = store();
-        var currentRole = new Rol(currentStore, "CAJA");
-        var foreignRole = new Rol(foreignStore, "CAJA");
-        var currentUser = new Usuario(currentStore, "CURRENT", "hash", currentRole);
-        var foreignUser = new Usuario(foreignStore, "FOREIGN", "hash", foreignRole);
-        var users = org.mockito.Mockito.mock(UsuarioRepository.class);
+        var currentRole = new Role(currentStore, "CAJA");
+        var foreignRole = new Role(foreignStore, "CAJA");
+        var currentUser = new UserAccount(currentStore, "CURRENT", "hash", currentRole);
+        var foreignUser = new UserAccount(foreignStore, "FOREIGN", "hash", foreignRole);
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
         when(users.findAllByTiendaIdOrderByNombre(currentStore.getId()))
                 .thenReturn(List.of(currentUser));
         authenticate(currentUser);
 
-        var result = service(users, org.mockito.Mockito.mock(RolRepository.class)).users();
+        var result = service(users, org.mockito.Mockito.mock(RoleRepository.class)).users();
 
         assertThat(result).extracting(SecurityAdministrationService.UserItem::name)
                 .containsExactly("CURRENT");
@@ -58,30 +58,30 @@ class SecurityAdministrationServiceTest {
     void cannotDeactivateUserFromAnotherStore() {
         var currentStore = store();
         var foreignStore = store();
-        var currentUser = new Usuario(
-                currentStore, "CURRENT", "hash", new Rol(currentStore, "CAJA"));
-        var foreignUser = new Usuario(
-                foreignStore, "FOREIGN", "hash", new Rol(foreignStore, "CAJA"));
-        var users = org.mockito.Mockito.mock(UsuarioRepository.class);
+        var currentUser = new UserAccount(
+                currentStore, "CURRENT", "hash", new Role(currentStore, "CAJA"));
+        var foreignUser = new UserAccount(
+                foreignStore, "FOREIGN", "hash", new Role(foreignStore, "CAJA"));
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
         when(users.findByIdAndTiendaId(foreignUser.getId(), currentStore.getId()))
                 .thenReturn(Optional.empty());
         authenticate(currentUser);
 
-        assertThatThrownBy(() -> service(users, org.mockito.Mockito.mock(RolRepository.class))
+        assertThatThrownBy(() -> service(users, org.mockito.Mockito.mock(RoleRepository.class))
                 .setUserActive(foreignUser.getId(), false))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Usuario no encontrado");
+                .hasMessageContaining("UserAccount no encontrado");
         assertThat(foreignUser.isActivo()).isTrue();
     }
 
     @Test
     void protectedAdminRoleCannotBeAssignedToAnotherUser() {
-        var users = org.mockito.Mockito.mock(UsuarioRepository.class);
-        var roles = org.mockito.Mockito.mock(RolRepository.class);
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
         var store = store();
-        var normalRole = new Rol(store, "CAJA");
-        var adminRole = new Rol(store, "ADMIN");
-        var user = new Usuario(store, "USER", "hash", normalRole);
+        var normalRole = new Role(store, "CAJA");
+        var adminRole = new Role(store, "ADMIN");
+        var user = new UserAccount(store, "USER", "hash", normalRole);
         when(users.findByIdAndTiendaId(user.getId(), store.getId()))
                 .thenReturn(Optional.of(user));
         when(roles.findByIdAndTiendaId(adminRole.getId(), store.getId()))
@@ -97,36 +97,36 @@ class SecurityAdministrationServiceTest {
     }
 
     private static SecurityAdministrationService service(
-            UsuarioRepository users, RolRepository roles) {
+            UserAccountRepository users, RoleRepository roles) {
         var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
         when(organization.currentStore()).thenAnswer(invocation -> {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
-            return ((Usuario) authentication.getPrincipal()).getTienda();
+            return ((UserAccount) authentication.getPrincipal()).getTienda();
         });
         return new SecurityAdministrationService(
                 organization, users, roles,
-                org.mockito.Mockito.mock(PermisoRepository.class),
-                org.mockito.Mockito.mock(SesionRepository.class),
+                org.mockito.Mockito.mock(PermissionRepository.class),
+                org.mockito.Mockito.mock(UserSessionRepository.class),
                 org.mockito.Mockito.mock(PasswordEncoder.class),
                 Clock.systemUTC(),
                 org.mockito.Mockito.mock(AuditService.class),
                 org.mockito.Mockito.mock(BackupKeyStore.class),
-                org.mockito.Mockito.mock(ConfiguracionBackupRepository.class),
-                org.mockito.Mockito.mock(InstalacionRepository.class));
+                org.mockito.Mockito.mock(BackupSettingsRepository.class),
+                org.mockito.Mockito.mock(InstallationRepository.class));
     }
 
-    private static void authenticate(Usuario user) {
+    private static void authenticate(UserAccount user) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, "token"));
     }
 
-    private static Tienda store() {
+    private static Store store() {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 }

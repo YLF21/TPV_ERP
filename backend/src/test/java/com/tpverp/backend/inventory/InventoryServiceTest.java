@@ -13,8 +13,8 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,8 +37,8 @@ class InventoryServiceTest {
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockMovementRepository movementRepository;
-    @Mock private Tienda store;
-    @Mock private Usuario user;
+    @Mock private Store store;
+    @Mock private UserAccount user;
 
     private InventoryService service;
     private final UUID storeId = UUID.randomUUID();
@@ -60,7 +60,7 @@ class InventoryServiceTest {
 
     @Test
     void listsStockOnlyForAuthenticatedStoreWhenTwoStoresExist() {
-        var authenticatedStore = org.mockito.Mockito.mock(Tienda.class);
+        var authenticatedStore = org.mockito.Mockito.mock(Store.class);
         var firstStoreId = UUID.randomUUID();
         var authenticatedStoreId = UUID.randomUUID();
         when(authenticatedStore.getId()).thenReturn(authenticatedStoreId);

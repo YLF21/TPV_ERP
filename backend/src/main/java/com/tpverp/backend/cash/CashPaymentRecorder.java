@@ -1,7 +1,7 @@
 package com.tpverp.backend.cash;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.DocumentoPago;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentPayment;
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
@@ -37,7 +37,7 @@ public class CashPaymentRecorder {
     }
 
     // Registra solo pagos en efectivo positivos asociados al documento persistido.
-    public void recordDocumentPayments(UUID terminalId, Documento document) {
+    public void recordDocumentPayments(UUID terminalId, CommercialDocument document) {
         var session = openSession(terminalId);
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var user = organization.currentUser(authentication);
@@ -66,7 +66,7 @@ public class CashPaymentRecorder {
                 .orElseThrow(() -> new IllegalStateException("No hay una sesion de caja abierta"));
     }
 
-    private boolean isRecordableCashPayment(DocumentoPago payment) {
+    private boolean isRecordableCashPayment(DocumentPayment payment) {
         return CASH_METHOD.equals(payment.getMetodoPago().getNombre())
                 && Money.euros(payment.getImporte()).signum() > 0;
     }

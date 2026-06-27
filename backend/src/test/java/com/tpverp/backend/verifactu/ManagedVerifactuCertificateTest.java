@@ -41,7 +41,7 @@ class ManagedVerifactuCertificateTest {
 
     private static ManagedVerifactuCertificate active() {
         return ManagedVerifactuCertificate.active(
-                UUID.randomUUID(), "CN=Empresa", "CN=AC", "1234",
+                UUID.randomUUID(), "CN=Company", "CN=AC", "1234",
                 "B12345674", IMPORTED.minusSeconds(60),
                 IMPORTED.plusSeconds(365L * 24 * 60 * 60), "A".repeat(64),
                 new byte[] {1, 2, 3}, "empresa/cert/private-key.dpapi",

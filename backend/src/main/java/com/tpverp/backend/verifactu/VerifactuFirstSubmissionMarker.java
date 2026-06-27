@@ -1,6 +1,6 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.licensing.LicenciaRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
 import java.time.ZoneId;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -10,12 +10,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class VerifactuFirstSubmissionMarker {
 
     private final VerifactuConfigurationRepository configurations;
-    private final LicenciaRepository licenses;
+    private final LicenseRepository licenses;
     private final VerifactuActivationService activation;
 
     public VerifactuFirstSubmissionMarker(
             VerifactuConfigurationRepository configurations,
-            LicenciaRepository licenses,
+            LicenseRepository licenses,
             VerifactuActivationService activation) {
         this.configurations = configurations;
         this.licenses = licenses;

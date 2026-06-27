@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -31,7 +31,7 @@ class ManagedCertificateKeyStoreFactoryTest {
         var certificates = mock(ManagedVerifactuCertificateRepository.class);
         var secrets = mock(VerifactuCertificateSecretStore.class);
         var organization = mock(CurrentOrganization.class);
-        var company = mock(Empresa.class);
+        var company = mock(Company.class);
         when(company.getId()).thenReturn(companyId);
         when(organization.currentCompany()).thenReturn(company);
         when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ACTIVO))
@@ -51,7 +51,7 @@ class ManagedCertificateKeyStoreFactoryTest {
                 Path.of(System.getProperty("java.home"), "bin", "keytool.exe").toString(),
                 "-genkeypair", "-alias", "test", "-storetype", "PKCS12",
                 "-keystore", path.toString(), "-storepass", "secreto", "-keypass", "secreto",
-                "-keyalg", "RSA", "-dname", "CN=Empresa,SERIALNUMBER=IDCES-B12345674",
+                "-keyalg", "RSA", "-dname", "CN=Company,SERIALNUMBER=IDCES-B12345674",
                 "-validity", "365", "-noprompt")
                 .redirectErrorStream(true).start();
         if (process.waitFor() != 0) {

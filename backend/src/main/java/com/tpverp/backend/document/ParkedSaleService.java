@@ -26,7 +26,7 @@ public class ParkedSaleService {
     @Transactional
     public ParkedSale park(
             DocumentCommand command, String comment, Authentication authentication) {
-        if (command.tipo() != TipoDocumento.TICKET) {
+        if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("solo se aparcan tickets");
         }
         if (command.lineas() == null || command.lineas().isEmpty()) {

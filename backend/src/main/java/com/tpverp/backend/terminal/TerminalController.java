@@ -52,6 +52,6 @@ public class TerminalController {
     public record TerminalRequest(
             @NotNull UUID tiendaId,
             @NotBlank String name,
-            @NotNull TipoTerminal type) {
+            @NotNull TerminalType type) {
     }
 }

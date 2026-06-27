@@ -20,11 +20,11 @@ class VerifactuXmlServiceTest {
 
     @Test
     void generaLoteAltaConCabeceraDatosFiscalesHuellaYSistema() {
-        var xml = service().batchXml(request(record(FiscalRecordOperation.ALTA), "Empresa SL"));
+        var xml = service().batchXml(request(record(FiscalRecordOperation.ALTA), "Company SL"));
         var document = parse(xml);
 
         assertThat(text(document, "RegFactuSistemaFacturacion", 0)).isNotBlank();
-        assertThat(text(document, "NombreRazon", 0)).isEqualTo("Empresa SL");
+        assertThat(text(document, "NombreRazon", 0)).isEqualTo("Company SL");
         assertThat(text(document, "NIF", 0)).isEqualTo("B12345674");
         assertThat(text(document, "IDVersion", 0)).isEqualTo("1.0");
         assertThat(text(document, "IDEmisorFactura", 0)).isEqualTo("B12345674");
@@ -43,7 +43,7 @@ class VerifactuXmlServiceTest {
 
     @Test
     void generaLoteAnulacionConFacturaAnuladaYEncadenamiento() {
-        var xml = service().batchXml(request(record(FiscalRecordOperation.ANULACION), "Empresa SL"));
+        var xml = service().batchXml(request(record(FiscalRecordOperation.ANULACION), "Company SL"));
         var document = parse(xml);
 
         assertThat(text(document, "IDEmisorFacturaAnulada", 0)).isEqualTo("B12345674");
@@ -62,7 +62,7 @@ class VerifactuXmlServiceTest {
         var xml = service().batchXml(request(record(
                 FiscalRecordOperation.ALTA,
                 Map.of("regimenImpuesto", "IGIC", "porcentajeImpuesto", new BigDecimal("7.00"))),
-                "Empresa SL"));
+                "Company SL"));
         var document = parse(xml);
 
         assertThat(text(document, "Impuesto", 0)).isEqualTo("03");
@@ -83,7 +83,7 @@ class VerifactuXmlServiceTest {
                 "impuesto", new BigDecimal("2.00"));
 
         var document = parse(service().batchXml(request(
-                record(FiscalRecordOperation.ALTA, List.of(first, second)), "Empresa SL")));
+                record(FiscalRecordOperation.ALTA, List.of(first, second)), "Company SL")));
 
         assertThat(document.getElementsByTagNameNS("*", "DetalleDesglose").getLength())
                 .isEqualTo(2);
@@ -105,7 +105,7 @@ class VerifactuXmlServiceTest {
         var replacement = fiscalRecord(
                 FiscalDocumentType.F3, "FV-001-26-000001", snapshot);
 
-        var document = parse(service().batchXml(request(replacement, "Empresa SL")));
+        var document = parse(service().batchXml(request(replacement, "Company SL")));
 
         assertThat(text(document, "FacturasSustituidas", 0)).isNotBlank();
         assertThat(text(document, "IDFacturaSustituida", 0)).isNotBlank();
@@ -127,7 +127,7 @@ class VerifactuXmlServiceTest {
                 "B".repeat(64), "A".repeat(64), "C".repeat(64),
                 snapshot(Map.of(), "S"), "1.0", "SHA-256", "0.0.1");
 
-        var xml = service().batchXml(request(rectification, "Empresa SL"));
+        var xml = service().batchXml(request(rectification, "Company SL"));
         var document = parse(xml);
 
         assertThat(text(document, "TipoFactura", 0)).isEqualTo("R1");
@@ -146,7 +146,7 @@ class VerifactuXmlServiceTest {
 
         var xml = service().batchXml(request(
                 fiscalRecord(FiscalDocumentType.F1, "FV-001-26-000001", corrected),
-                "Empresa SL"));
+                "Company SL"));
 
         assertThat(xml).containsSubsequence(
                 "<sf:NombreRazonEmisor>",
@@ -162,7 +162,7 @@ class VerifactuXmlServiceTest {
 
     @Test
     void rechazaLotesSinRegistrosONombreEmisor() {
-        assertThatThrownBy(() -> service().batchXml(request(List.of(), "Empresa SL")))
+        assertThatThrownBy(() -> service().batchXml(request(List.of(), "Company SL")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("registro");
         assertThatThrownBy(() -> service().batchXml(request(record(FiscalRecordOperation.ALTA), " ")))

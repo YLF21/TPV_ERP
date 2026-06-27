@@ -1,7 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.audit.ResultadoAuditoria;
+import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -72,7 +72,7 @@ public class VerifactuCertificateManagementService {
                     active.isPresent()
                             ? "VERIFACTU_CERTIFICATE_REPLACED"
                             : "VERIFACTU_CERTIFICATE_IMPORTED",
-                    ResultadoAuditoria.EXITO,
+                    AuditResult.EXITO,
                     publicDetails(imported));
             return ManagedCertificateView.from(imported);
         } catch (RuntimeException exception) {
@@ -116,7 +116,7 @@ public class VerifactuCertificateManagementService {
         var secret = active.getSecretPath();
         active.deleteActive(Instant.now(clock), userId);
         certificates.save(active);
-        audit.record("VERIFACTU_CERTIFICATE_DELETED", ResultadoAuditoria.EXITO,
+        audit.record("VERIFACTU_CERTIFICATE_DELETED", AuditResult.EXITO,
                 publicDetails(active));
         afterCommit(() -> secrets.delete(secret));
     }

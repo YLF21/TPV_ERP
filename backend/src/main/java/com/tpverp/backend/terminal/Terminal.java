@@ -1,6 +1,6 @@
 package com.tpverp.backend.terminal;
 
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -25,14 +25,14 @@ public class Terminal {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "tienda_id", nullable = false)
-    private Tienda tienda;
+    private Store tienda;
 
     @Column(nullable = false, length = 128)
     private String nombre;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
-    private TipoTerminal tipo;
+    private TerminalType tipo;
 
     @Column(nullable = false)
     private boolean activa = true;
@@ -55,7 +55,7 @@ public class Terminal {
     protected Terminal() {
     }
 
-    public Terminal(Tienda tienda, String nombre, TipoTerminal tipo, String credentialHash) {
+    public Terminal(Store tienda, String nombre, TerminalType tipo, String credentialHash) {
         this.id = UUID.randomUUID();
         this.tienda = Objects.requireNonNull(tienda, "tienda");
         this.nombre = required(nombre, "nombre");
@@ -63,13 +63,13 @@ public class Terminal {
         this.credentialHash = required(credentialHash, "credentialHash");
     }
 
-    public static Terminal solicitar(
-            Tienda tienda,
+    public static Terminal request(
+            Store tienda,
             String nombre,
-            TipoTerminal tipo,
+            TerminalType tipo,
             String credentialHash) {
-        if (tipo == TipoTerminal.SERVIDOR) {
-            throw new IllegalArgumentException("No se puede solicitar otra terminal servidor");
+        if (tipo == TerminalType.SERVIDOR) {
+            throw new IllegalArgumentException("No se puede request otra terminal servidor");
         }
         Terminal terminal = new Terminal(tienda, nombre, tipo, credentialHash);
         terminal.aprobada = false;
@@ -85,7 +85,7 @@ public class Terminal {
         return id;
     }
 
-    public Tienda getTienda() {
+    public Store getTienda() {
         return tienda;
     }
 
@@ -97,7 +97,7 @@ public class Terminal {
         return aprobada;
     }
 
-    public TipoTerminal getTipo() {
+    public TerminalType getTipo() {
         return tipo;
     }
 
@@ -105,14 +105,14 @@ public class Terminal {
         return credentialHash;
     }
 
-    public void aprobar() {
+    public void approve() {
         aprobada = true;
         activa = true;
     }
 
-    public void desactivar() {
-        if (tipo == TipoTerminal.SERVIDOR) {
-            throw new IllegalStateException("La terminal servidor no se puede desactivar");
+    public void deactivate() {
+        if (tipo == TerminalType.SERVIDOR) {
+            throw new IllegalStateException("La terminal servidor no se puede deactivate");
         }
         activa = false;
     }

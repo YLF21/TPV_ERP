@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -24,9 +24,9 @@ class AuditServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-06-19T10:00:00Z");
 
-    @Mock private AuditoriaRepository repository;
+    @Mock private AuditEntryRepository repository;
     @Mock private CurrentOrganization organization;
-    @Mock private Tienda store;
+    @Mock private Store store;
 
     private AuditService service;
     private UUID storeId;

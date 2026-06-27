@@ -87,7 +87,7 @@ public class ParkedSale {
     public DocumentCommand documentCommand() {
         return new DocumentCommand(
                 uuid(documento.get("almacenId")),
-                TipoDocumento.valueOf((String) documento.get("tipo")),
+                CommercialDocumentType.valueOf((String) documento.get("tipo")),
                 LocalDate.parse((String) documento.get("fecha")),
                 uuid(documento.get("clienteId")),
                 null,
@@ -146,8 +146,8 @@ public class ParkedSale {
     }
 
     private static BigDecimal total(DocumentCommand command, UUID userId, UUID storeId) {
-        var document = new Documento(
-                storeId, command.almacenId(), TipoDocumento.TICKET,
+        var document = new CommercialDocument(
+                storeId, command.almacenId(), CommercialDocumentType.TICKET,
                 command.fecha(), userId, command.descuentoGlobal());
         command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         return document.getTotal();

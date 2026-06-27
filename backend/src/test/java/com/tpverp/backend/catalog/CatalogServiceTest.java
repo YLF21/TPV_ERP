@@ -10,7 +10,7 @@ import static org.mockito.Mockito.lenient;
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -33,7 +33,7 @@ class CatalogServiceTest {
     @Mock private ProductIdentifierRepository identifierRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockMovementRepository movementRepository;
-    @Mock private Tienda store;
+    @Mock private Store store;
 
     private CatalogService service;
     private final UUID storeId = UUID.randomUUID();
@@ -50,7 +50,7 @@ class CatalogServiceTest {
 
     @Test
     void listsCatalogOnlyForAuthenticatedStoreWhenTwoStoresExist() {
-        var authenticatedStore = org.mockito.Mockito.mock(Tienda.class);
+        var authenticatedStore = org.mockito.Mockito.mock(Store.class);
         var firstStoreId = UUID.randomUUID();
         var authenticatedStoreId = UUID.randomUUID();
         when(authenticatedStore.getId()).thenReturn(authenticatedStoreId);

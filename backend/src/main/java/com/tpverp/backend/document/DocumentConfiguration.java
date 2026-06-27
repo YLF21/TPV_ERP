@@ -12,12 +12,12 @@ public class DocumentConfiguration {
     StockDocumentGateway stockDocumentGateway() {
         return new StockDocumentGateway() {
             @Override
-            public boolean confirm(Documento document) {
+            public boolean confirm(CommercialDocument document) {
                 return false;
             }
 
             @Override
-            public boolean cancel(Documento document) {
+            public boolean cancel(CommercialDocument document) {
                 return false;
             }
         };

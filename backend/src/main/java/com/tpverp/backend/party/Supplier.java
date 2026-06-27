@@ -1,6 +1,6 @@
 package com.tpverp.backend.party;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -27,7 +27,7 @@ public class Supplier {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "empresa_id", nullable = false)
-    private Empresa company;
+    private Company company;
 
     @Column(name = "code_supplier", nullable = false, length = 8, updatable = false)
     private String codeSupplier;
@@ -70,7 +70,7 @@ public class Supplier {
     }
 
     public Supplier(
-            Empresa company,
+            Company company,
             String legalName,
             String tradeName,
             DocumentType documentType,

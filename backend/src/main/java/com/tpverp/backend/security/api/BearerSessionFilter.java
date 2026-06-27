@@ -1,7 +1,7 @@
 package com.tpverp.backend.security.api;
 
 import com.tpverp.backend.security.application.AuthenticationService;
-import com.tpverp.backend.security.domain.SesionRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,11 +17,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class BearerSessionFilter extends OncePerRequestFilter {
 
-	private final SesionRepository sesionRepository;
+	private final UserSessionRepository sesionRepository;
 	private final AuthenticationService authenticationService;
 
 	public BearerSessionFilter(
-			SesionRepository sesionRepository,
+			UserSessionRepository sesionRepository,
 			AuthenticationService authenticationService) {
 		this.sesionRepository = sesionRepository;
 		this.authenticationService = authenticationService;

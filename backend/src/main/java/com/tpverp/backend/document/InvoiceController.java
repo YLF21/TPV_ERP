@@ -64,12 +64,12 @@ public class InvoiceController {
         return view(service.relate(id, request.originId(), request.type()));
     }
 
-    private DocumentView view(Documento document) {
+    private DocumentView view(CommercialDocument document) {
         return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
     }
 
     public record RelationRequest(
             @NotNull UUID originId,
-            @NotNull TipoRelacionDocumento type) {
+            @NotNull DocumentRelationType type) {
     }
 }

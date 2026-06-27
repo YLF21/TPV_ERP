@@ -25,8 +25,8 @@ public class VoucherService {
     }
 
     @Transactional
-    public Voucher issueFromNegativeTicket(Documento ticket) {
-        if (ticket.getTipo() != TipoDocumento.TICKET || ticket.getTotal().signum() >= 0) {
+    public Voucher issueFromNegativeTicket(CommercialDocument ticket) {
+        if (ticket.getTipo() != CommercialDocumentType.TICKET || ticket.getTotal().signum() >= 0) {
             throw new IllegalArgumentException("solo un ticket negativo genera vale");
         }
         if (ticket.getNumero() == null || ticket.getNumero().isBlank()) {
@@ -43,7 +43,7 @@ public class VoucherService {
 
     @Transactional
     public VoucherConsumptionResult consume(
-            String code, BigDecimal pendingAmount, Documento purchaseTicket) {
+            String code, BigDecimal pendingAmount, CommercialDocument purchaseTicket) {
         requireNumberedPurchaseTicket(purchaseTicket);
         var voucher = findActive(code);
         var requested = Money.euros(pendingAmount);
@@ -70,8 +70,8 @@ public class VoucherService {
     }
 
     @Transactional(readOnly = true)
-    public boolean hasVoucherImpact(Documento ticket) {
-        if (ticket == null || ticket.getTipo() != TipoDocumento.TICKET) {
+    public boolean hasVoucherImpact(CommercialDocument ticket) {
+        if (ticket == null || ticket.getTipo() != CommercialDocumentType.TICKET) {
             return false;
         }
         return ticket.getPagos().stream().anyMatch(payment -> payment.getVoucherCode() != null)
@@ -85,11 +85,11 @@ public class VoucherService {
                 .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
     }
 
-    private boolean alreadyIssued(Documento ticket) {
+    private boolean alreadyIssued(CommercialDocument ticket) {
         return generatedVoucherExists(ticket);
     }
 
-    private boolean generatedVoucherExists(Documento ticket) {
+    private boolean generatedVoucherExists(CommercialDocument ticket) {
         if (ticket.getNumero() == null || ticket.getNumero().isBlank()) {
             return false;
         }
@@ -97,14 +97,14 @@ public class VoucherService {
                 .anyMatch(voucher -> voucher.originTickets().contains(ticket.getNumero()));
     }
 
-    private static void requireNumberedPurchaseTicket(Documento ticket) {
-        if (ticket == null || ticket.getTipo() != TipoDocumento.TICKET
+    private static void requireNumberedPurchaseTicket(CommercialDocument ticket) {
+        if (ticket == null || ticket.getTipo() != CommercialDocumentType.TICKET
                 || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
             throw new IllegalArgumentException("el consumo de vale necesita un ticket numerado");
         }
     }
 
-    private static List<String> origins(Voucher voucher, Documento ticket) {
+    private static List<String> origins(Voucher voucher, CommercialDocument ticket) {
         var origins = new ArrayList<>(voucher.originTickets());
         if (ticket.getNumero() != null && !origins.contains(ticket.getNumero())) {
             origins.add(ticket.getNumero());

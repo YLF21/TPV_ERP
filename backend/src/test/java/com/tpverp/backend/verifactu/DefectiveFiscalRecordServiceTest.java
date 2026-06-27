@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,8 +29,8 @@ class DefectiveFiscalRecordServiceTest {
     @Mock
     private CurrentOrganization organization;
 
-    private Empresa company;
-    private Tienda store;
+    private Company company;
+    private Store store;
     private DefectiveFiscalRecordService service;
 
     @BeforeEach
@@ -38,8 +38,8 @@ class DefectiveFiscalRecordServiceTest {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        company = new Empresa("B12345674", "Empresa", address);
-        store = new Tienda(company, "001", "Tienda", address, "hash",
+        company = new Company("B12345674", "Company", address);
+        store = new Store(company, "001", "Store", address, "hash",
                 "Atlantic/Canary", "EUR", "es-ES");
         when(organization.currentCompany()).thenReturn(company);
         when(organization.currentStore()).thenReturn(store);

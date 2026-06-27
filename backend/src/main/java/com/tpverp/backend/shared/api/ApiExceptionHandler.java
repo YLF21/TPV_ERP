@@ -2,7 +2,7 @@ package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -122,7 +122,7 @@ public class ApiExceptionHandler {
 
     private static SupportedLanguage language(HttpServletRequest request) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof Usuario user) {
+        if (authentication != null && authentication.getPrincipal() instanceof UserAccount user) {
             return user.getIdioma();
         }
         if (request == null) {

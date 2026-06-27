@@ -7,18 +7,18 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 public class AuditService {
 
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditEntryRepository auditoriaRepository;
     private final CurrentOrganization organization;
     private final Clock clock;
 
     public AuditService(
-            AuditoriaRepository auditoriaRepository,
+            AuditEntryRepository auditoriaRepository,
             CurrentOrganization organization,
             Clock clock) {
         this.auditoriaRepository = auditoriaRepository;
@@ -27,22 +27,22 @@ public class AuditService {
     }
 
     @Transactional
-    public void record(String event, ResultadoAuditoria result, Map<String, Object> details) {
+    public void record(String event, AuditResult result, Map<String, Object> details) {
         var store = organization.currentStore();
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var user = authentication == null ? null : organization.currentUser(authentication);
-        auditoriaRepository.save(new Auditoria(
+        auditoriaRepository.save(new AuditEntry(
                 store, user, null, event, result, details, Instant.now(clock)));
     }
 
     // Registra tareas internas sin atribuirlas a una sesion o usuario interactivo.
     @Transactional
     public void recordSystem(
-            Tienda store,
+            Store store,
             String event,
-            ResultadoAuditoria result,
+            AuditResult result,
             Map<String, Object> details) {
-        auditoriaRepository.save(new Auditoria(
+        auditoriaRepository.save(new AuditEntry(
                 store, null, null, event, result, details, Instant.now(clock)));
     }
 
@@ -73,7 +73,7 @@ public class AuditService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "auditoría no encontrada"));
         auditoriaRepository.delete(audit);
-        record("AUDIT_DELETED", ResultadoAuditoria.EXITO, Map.of("deletedAuditId", auditId));
+        record("AUDIT_DELETED", AuditResult.EXITO, Map.of("deletedAuditId", auditId));
     }
 
     @Transactional
@@ -85,10 +85,10 @@ public class AuditService {
     public record AuditItem(
             UUID id,
             String event,
-            ResultadoAuditoria result,
+            AuditResult result,
             Map<String, Object> details,
             Instant createdAt) {
-        static AuditItem from(Auditoria audit) {
+        static AuditItem from(AuditEntry audit) {
             return new AuditItem(
                     audit.getId(),
                     audit.getEvento(),

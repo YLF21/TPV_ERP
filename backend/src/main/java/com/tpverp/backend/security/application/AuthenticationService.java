@@ -1,10 +1,10 @@
 package com.tpverp.backend.security.application;
 
-import com.tpverp.backend.security.domain.Sesion;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.UserSession;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -20,16 +20,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthenticationService {
 
 	private final TerminalRepository terminalRepository;
-	private final UsuarioRepository usuarioRepository;
-	private final SesionRepository sesionRepository;
+	private final UserAccountRepository usuarioRepository;
+	private final UserSessionRepository sesionRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final Clock clock;
 	private final SecureRandom random = new SecureRandom();
 
 	public AuthenticationService(
 			TerminalRepository terminalRepository,
-			UsuarioRepository usuarioRepository,
-			SesionRepository sesionRepository,
+			UserAccountRepository usuarioRepository,
+			UserSessionRepository sesionRepository,
 			PasswordEncoder passwordEncoder,
 			Clock clock) {
 		this.terminalRepository = terminalRepository;
@@ -53,7 +53,7 @@ public class AuthenticationService {
 		var terminal = terminalRepository.findById(terminalId)
 				.filter(value -> value.isAprobada() && value.isActiva())
 				.orElseThrow(AuthenticationFailedException::new);
-		if (terminal.getTipo() != TipoTerminal.SERVIDOR
+		if (terminal.getTipo() != TerminalType.SERVIDOR
 				&& !passwordEncoder.matches(
 						terminalCredential == null ? "" : terminalCredential,
 						terminal.getCredentialHash())) {
@@ -67,21 +67,21 @@ public class AuthenticationService {
 			throw new AuthenticationFailedException();
 		}
 		var token = newToken();
-		sesionRepository.save(new Sesion(user, terminal, hash(token), Instant.now(clock)));
+		sesionRepository.save(new UserSession(user, terminal, hash(token), Instant.now(clock)));
 		return new LoginResult(token, user.getNombre(), user.getRol().getNombre());
 	}
 
 	@Transactional
 	public void logout(String accessToken) {
 		sesionRepository.findByTokenHash(hash(accessToken))
-				.filter(Sesion::isActiva)
+				.filter(UserSession::isActiva)
 				.ifPresent(session -> session.revocar(session.getUsuario(), "LOGOUT", Instant.now(clock)));
 	}
 
 	@Transactional
 	public LoginResult renew(String accessToken) {
 		var current = sesionRepository.findByTokenHash(hash(accessToken))
-				.filter(Sesion::isActiva)
+				.filter(UserSession::isActiva)
 				.filter(session -> session.getUsuario().isActivo())
 				.filter(session -> session.getTerminal() != null
 						&& session.getTerminal().isActiva()
@@ -89,7 +89,7 @@ public class AuthenticationService {
 				.orElseThrow(AuthenticationFailedException::new);
 		current.revocar(current.getUsuario(), "TOKEN_RENEWED", Instant.now(clock));
 		var token = newToken();
-		sesionRepository.save(new Sesion(
+		sesionRepository.save(new UserSession(
 				current.getUsuario(),
 				current.getTerminal(),
 				hash(token),

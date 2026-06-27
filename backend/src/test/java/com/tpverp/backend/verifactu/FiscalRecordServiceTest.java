@@ -10,19 +10,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.EstadoDocumento;
-import com.tpverp.backend.document.TipoDocumento;
-import com.tpverp.backend.document.DocumentoRepository;
-import com.tpverp.backend.installation.Instalacion;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentStatus;
+import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.CommercialDocumentRepository;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxpayerType;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.EmpresaRepository;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.CustomerRepository;
@@ -58,23 +58,23 @@ class FiscalRecordServiceTest {
     @Mock FiscalRecordRelationRepository relations;
     @Mock FiscalSubmissionStateRepository states;
     @Mock VerifactuConfigurationRepository configurations;
-    @Mock LicenciaRepository licenses;
-    @Mock EmpresaRepository companies;
-    @Mock TiendaRepository stores;
-    @Mock InstalacionRepository installations;
-    @Mock DocumentoRepository documents;
+    @Mock LicenseRepository licenses;
+    @Mock CompanyRepository companies;
+    @Mock StoreRepository stores;
+    @Mock InstallationRepository installations;
+    @Mock CommercialDocumentRepository documents;
     @Mock CustomerRepository customers;
 
     private FiscalRecordCommand command;
-    private Documento document;
+    private CommercialDocument document;
     private FiscalChain chain;
 
     @BeforeEach
     void setUp() {
         command = command(FiscalRecordOperation.ALTA, FiscalDocumentType.F2);
         document = document(
-                command.documentId(), command.storeId(), TipoDocumento.TICKET,
-                EstadoDocumento.CONFIRMADO, new BigDecimal("12.10"));
+                command.documentId(), command.storeId(), CommercialDocumentType.TICKET,
+                DocumentStatus.CONFIRMADO, new BigDecimal("12.10"));
         chain = new FiscalChain(command.companyId(), command.installationId(), TRUNCATED_NOW);
     }
 
@@ -219,19 +219,19 @@ class FiscalRecordServiceTest {
     @Test
     void rechazaBorradorCompraTicketF1YFacturaAnulada() {
         assertRejected(document(
-                command.documentId(), command.storeId(), TipoDocumento.TICKET,
-                EstadoDocumento.BORRADOR, BigDecimal.TEN), command);
+                command.documentId(), command.storeId(), CommercialDocumentType.TICKET,
+                DocumentStatus.BORRADOR, BigDecimal.TEN), command);
         assertRejected(document(
-                command.documentId(), command.storeId(), TipoDocumento.FACTURA_COMPRA,
-                EstadoDocumento.PENDIENTE, BigDecimal.TEN),
+                command.documentId(), command.storeId(), CommercialDocumentType.FACTURA_COMPRA,
+                DocumentStatus.PENDIENTE, BigDecimal.TEN),
                 command(FiscalRecordOperation.ALTA, FiscalDocumentType.F1));
         assertRejected(document(
-                command.documentId(), command.storeId(), TipoDocumento.TICKET,
-                EstadoDocumento.CONFIRMADO, BigDecimal.TEN),
+                command.documentId(), command.storeId(), CommercialDocumentType.TICKET,
+                DocumentStatus.CONFIRMADO, BigDecimal.TEN),
                 command(FiscalRecordOperation.ALTA, FiscalDocumentType.F1));
         assertRejected(document(
-                command.documentId(), command.storeId(), TipoDocumento.FACTURA_VENTA,
-                EstadoDocumento.ANULADO, BigDecimal.TEN),
+                command.documentId(), command.storeId(), CommercialDocumentType.FACTURA_VENTA,
+                DocumentStatus.ANULADO, BigDecimal.TEN),
                 command(FiscalRecordOperation.ALTA, FiscalDocumentType.F1));
     }
 
@@ -239,8 +239,8 @@ class FiscalRecordServiceTest {
     void rechazaAnulacionSinAltaPrevia() {
         var cancellation = command(FiscalRecordOperation.ANULACION, FiscalDocumentType.F2);
         var cancelled = document(
-                cancellation.documentId(), cancellation.storeId(), TipoDocumento.TICKET,
-                EstadoDocumento.ANULADO, BigDecimal.TEN);
+                cancellation.documentId(), cancellation.storeId(), CommercialDocumentType.TICKET,
+                DocumentStatus.ANULADO, BigDecimal.TEN);
         stubActive(cancellation, cancelled);
         when(chains.findForUpdate(cancellation.companyId(), cancellation.installationId()))
                 .thenReturn(Optional.of(chain));
@@ -262,8 +262,8 @@ class FiscalRecordServiceTest {
     void creaRelacionDeAnulacionConElAltaOriginal() {
         var cancellation = command(FiscalRecordOperation.ANULACION, FiscalDocumentType.F2);
         var cancelled = document(
-                cancellation.documentId(), cancellation.storeId(), TipoDocumento.TICKET,
-                EstadoDocumento.ANULADO, BigDecimal.TEN);
+                cancellation.documentId(), cancellation.storeId(), CommercialDocumentType.TICKET,
+                DocumentStatus.ANULADO, BigDecimal.TEN);
         var original = fiscalRecord(
                 chain, cancellation, FiscalRecordOperation.ALTA,
                 FiscalDocumentType.F2, 1, null);
@@ -295,8 +295,8 @@ class FiscalRecordServiceTest {
     void registraFacturaF3ComoSustitucionDelTicketOriginal() {
         command = command(FiscalRecordOperation.ALTA, FiscalDocumentType.F3);
         var invoice = document(
-                command.documentId(), command.storeId(), TipoDocumento.FACTURA_VENTA,
-                EstadoDocumento.PENDIENTE, new BigDecimal("12.10"));
+                command.documentId(), command.storeId(), CommercialDocumentType.FACTURA_VENTA,
+                DocumentStatus.PENDIENTE, new BigDecimal("12.10"));
         var ticketId = UUID.randomUUID();
         var original = new FiscalRecord(
                 chain.getId(), command.companyId(), command.installationId(), command.storeId(),
@@ -395,7 +395,7 @@ class FiscalRecordServiceTest {
         assertThat(field(state.getValue(), "updatedAt")).isEqualTo(TRUNCATED_NOW);
     }
 
-    private void assertRejected(Documento invalidDocument, FiscalRecordCommand invalidCommand) {
+    private void assertRejected(CommercialDocument invalidDocument, FiscalRecordCommand invalidCommand) {
         stubActive(invalidCommand, invalidDocument);
 
         assertThatThrownBy(() -> service().register(invalidCommand))
@@ -413,46 +413,46 @@ class FiscalRecordServiceTest {
         when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
-    private void stubActive(Documento value) {
+    private void stubActive(CommercialDocument value) {
         stubActive(command, value);
     }
 
-    private void stubActive(FiscalRecordCommand value, Documento persistedDocument) {
+    private void stubActive(FiscalRecordCommand value, CommercialDocument persistedDocument) {
         var configuration = new VerifactuConfiguration(value.companyId());
         configuration.activateVoluntarily(Instant.parse("2026-06-01T00:00:00Z"));
         stubContext(value, configuration, persistedDocument);
     }
 
     private void stubContext(
-            VerifactuConfiguration configuration, Documento persistedDocument) {
+            VerifactuConfiguration configuration, CommercialDocument persistedDocument) {
         stubContext(command, configuration, persistedDocument);
     }
 
     private void stubContext(
             FiscalRecordCommand value,
             VerifactuConfiguration configuration,
-            Documento persistedDocument) {
+            CommercialDocument persistedDocument) {
         stubIdentity(value, persistedDocument);
         when(configurations.findByCompanyId(value.companyId()))
                 .thenReturn(Optional.of(configuration));
     }
 
-    private void stubIdentity(Documento persistedDocument) {
+    private void stubIdentity(CommercialDocument persistedDocument) {
         stubIdentity(command, persistedDocument);
     }
 
     private void stubIdentity(
-            FiscalRecordCommand value, Documento persistedDocument) {
-        var company = new Empresa("B12345674", "Empresa", address());
-        var store = new Tienda(
-                company, "Tienda", address(), "hash",
+            FiscalRecordCommand value, CommercialDocument persistedDocument) {
+        var company = new Company("B12345674", "Company", address());
+        var store = new Store(
+                company, "Store", address(), "hash",
                 "Atlantic/Canary", "EUR", "es-ES");
         setId(company, value.companyId());
         setId(store, value.storeId());
         when(companies.findById(value.companyId())).thenReturn(Optional.of(company));
         when(stores.findById(value.storeId())).thenReturn(Optional.of(store));
         when(installations.findById(value.installationId()))
-                .thenReturn(Optional.of(mock(Instalacion.class)));
+                .thenReturn(Optional.of(mock(Installation.class)));
         when(documents.findById(value.documentId()))
                 .thenReturn(Optional.of(persistedDocument));
         var license = activeLicense();
@@ -476,13 +476,13 @@ class FiscalRecordServiceTest {
                 operation, documentType, "1.0", "SHA-256", "0.0.1");
     }
 
-    private static Documento document(
+    private static CommercialDocument document(
             UUID documentId,
             UUID storeId,
-            TipoDocumento type,
-            EstadoDocumento state,
+            CommercialDocumentType type,
+            DocumentStatus state,
             BigDecimal total) {
-        var value = mock(Documento.class);
+        var value = mock(CommercialDocument.class);
         when(value.getId()).thenReturn(documentId);
         when(value.getTiendaId()).thenReturn(storeId);
         when(value.getTipo()).thenReturn(type);
@@ -522,13 +522,13 @@ class FiscalRecordServiceTest {
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
     }
 
-    private static Empresa company(UUID id) {
-        var company = new Empresa("B12345674", "Empresa", address());
+    private static Company company(UUID id) {
+        var company = new Company("B12345674", "Company", address());
         setId(company, id);
         return company;
     }
 
-    private static Customer customer(Empresa company, String name, String documentNumber) {
+    private static Customer customer(Company company, String name, String documentNumber) {
         return new Customer(
                 company, name, DocumentType.NIF, documentNumber,
                 new FiscalAddress(
@@ -537,8 +537,8 @@ class FiscalRecordServiceTest {
                 null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
     }
 
-    private static Licencia activeLicense() {
-        var license = mock(Licencia.class);
+    private static License activeLicense() {
+        var license = mock(License.class);
         when(license.getTaxpayerType()).thenReturn(TaxpayerType.SOCIEDAD);
         when(license.getTaxId()).thenReturn("B12345674");
         when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));

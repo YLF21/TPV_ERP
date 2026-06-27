@@ -75,7 +75,7 @@ public class VerifactuSubmissionService {
                 configuration.systemId(), "0.0.1", record.getStoreId().toString(),
                 true, false, false);
         return xml.batchXml(new VerifactuXmlBatchRequest(
-                "Empresa", record.getIssuerTaxId(), List.of(record), system));
+                "Company", record.getIssuerTaxId(), List.of(record), system));
     }
 
     private VerifactuSubmissionResult recordResult(

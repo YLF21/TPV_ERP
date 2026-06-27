@@ -10,7 +10,7 @@ import java.util.UUID;
 
 public record DocumentRequest(
         @NotNull UUID almacenId,
-        @NotNull TipoDocumento tipo,
+        @NotNull CommercialDocumentType tipo,
         @NotNull LocalDate fecha,
         UUID clienteId,
         UUID proveedorId,

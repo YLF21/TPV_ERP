@@ -3,7 +3,7 @@ package com.tpverp.backend.catalog;
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -337,7 +337,7 @@ public class CatalogService {
         return value;
     }
 
-    private Tienda currentStore() {
+    private Store currentStore() {
         return organization.currentStore();
     }
 

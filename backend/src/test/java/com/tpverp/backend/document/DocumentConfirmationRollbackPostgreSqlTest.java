@@ -9,9 +9,9 @@ import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.ProductSupplierRepository;
 import com.tpverp.backend.inventory.InventoryDocumentGateway;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.EmpresaRepository;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -64,9 +64,9 @@ class DocumentConfirmationRollbackPostgreSqlTest {
 
     @Autowired private DocumentService service;
     @Autowired private JdbcTemplate jdbc;
-    @Autowired private TiendaRepository stores;
-    @Autowired private EmpresaRepository companies;
-    @Autowired private UsuarioRepository users;
+    @Autowired private StoreRepository stores;
+    @Autowired private CompanyRepository companies;
+    @Autowired private UserAccountRepository users;
     @Autowired private TransactionTemplate transactions;
     @MockitoBean private CurrentOrganization organization;
     @MockitoBean private DocumentFiscalIntegration fiscalIntegration;
@@ -138,13 +138,13 @@ class DocumentConfirmationRollbackPostgreSqlTest {
                 UUID.randomUUID());
         jdbc.update("""
                 insert into %s.empresa (id, tax_id, razon_social, domicilio_fiscal)
-                values (?, 'B00000000', 'Empresa', cast(? as jsonb))
+                values (?, 'B00000000', 'Company', cast(? as jsonb))
                 """.formatted(SCHEMA), ids.companyId(), address());
         jdbc.update("""
                 insert into %s.tienda (
                     id, empresa_id, codigo_tienda, nombre, direccion, address_normalized_hash,
                     timezone, moneda, locale)
-                values (?, ?, '001', 'Tienda', cast(? as jsonb), 'hash',
+                values (?, ?, '001', 'Store', cast(? as jsonb), 'hash',
                     'Atlantic/Canary', 'EUR', 'es-ES')
                 """.formatted(SCHEMA), ids.storeId(), ids.companyId(), address());
         jdbc.update("""

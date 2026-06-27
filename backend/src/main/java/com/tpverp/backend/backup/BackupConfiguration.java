@@ -5,9 +5,9 @@ import com.tpverp.backend.backup.application.BackupArchiveService;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -55,11 +55,11 @@ class BackupConfiguration {
 
     @Bean
     BackupService backupService(
-            ConfiguracionBackupRepository configurationRepository,
-            EjecucionBackupRepository executionRepository,
-            InstalacionRepository installationRepository,
-            TiendaRepository storeRepository,
-            UsuarioRepository userRepository,
+            BackupSettingsRepository configurationRepository,
+            BackupExecutionRepository executionRepository,
+            InstallationRepository installationRepository,
+            StoreRepository storeRepository,
+            UserAccountRepository userRepository,
             PasswordEncoder passwordEncoder,
             BackupKeyStore keyStore,
             BackupFileCrypto fileCrypto,

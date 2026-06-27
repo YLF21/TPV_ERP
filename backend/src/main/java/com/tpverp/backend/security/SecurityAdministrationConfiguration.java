@@ -3,10 +3,10 @@ package com.tpverp.backend.security;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.security.application.SecurityAdministrationService;
-import com.tpverp.backend.security.domain.PermisoRepository;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.PermissionRepository;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
@@ -15,14 +15,14 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.backup.application.BackupKeyStore;
-import com.tpverp.backend.backup.ConfiguracionBackupRepository;
-import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.backup.BackupSettingsRepository;
+import com.tpverp.backend.installation.InstallationRepository;
 
 @Configuration
 class SecurityAdministrationConfiguration {
 
     @Bean
-    CorePermissionBootstrap corePermissionBootstrap(PermisoRepository permisoRepository) {
+    CorePermissionBootstrap corePermissionBootstrap(PermissionRepository permisoRepository) {
         return new CorePermissionBootstrap(permisoRepository);
     }
 
@@ -35,16 +35,16 @@ class SecurityAdministrationConfiguration {
     @Bean
     SecurityAdministrationService securityAdministrationService(
             CurrentOrganization organization,
-            UsuarioRepository usuarioRepository,
-            RolRepository rolRepository,
-            PermisoRepository permisoRepository,
-            SesionRepository sesionRepository,
+            UserAccountRepository usuarioRepository,
+            RoleRepository rolRepository,
+            PermissionRepository permisoRepository,
+            UserSessionRepository sesionRepository,
             PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
             BackupKeyStore backupKeyStore,
-            ConfiguracionBackupRepository backupConfigurationRepository,
-            InstalacionRepository installationRepository) {
+            BackupSettingsRepository backupConfigurationRepository,
+            InstallationRepository installationRepository) {
         return new SecurityAdministrationService(
                 organization,
                 usuarioRepository,

@@ -3,15 +3,15 @@ package com.tpverp.backend.security.api;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.AuthenticationService;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Sesion;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserSession;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.Terminal;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -33,14 +33,14 @@ class BearerSessionFilterTest {
     @Test
     void rejectsSessionWhenTerminalWasDeactivated() throws Exception {
         SecurityContextHolder.clearContext();
-        var sessions = org.mockito.Mockito.mock(SesionRepository.class);
+        var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
         var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
         var terminal = new Terminal(
-                store(), "TPV", TipoTerminal.TERMINAL_VENTA, "hash");
-        terminal.desactivar();
-        var role = new Rol(terminal.getTienda(), "CAJA");
-        var user = new Usuario(terminal.getTienda(), "USER", "hash", role);
-        var session = new Sesion(user, terminal, "token-hash", Instant.now());
+                store(), "TPV", TerminalType.TERMINAL_VENTA, "hash");
+        terminal.deactivate();
+        var role = new Role(terminal.getTienda(), "CAJA");
+        var user = new UserAccount(terminal.getTienda(), "USER", "hash", role);
+        var session = new UserSession(user, terminal, "token-hash", Instant.now());
         when(authentication.hash("token")).thenReturn("token-hash");
         when(sessions.findByTokenHashAndRevocadaEnIsNull("token-hash"))
                 .thenReturn(Optional.of(session));
@@ -61,13 +61,13 @@ class BearerSessionFilterTest {
                 });
     }
 
-    private static Tienda store() {
+    private static Store store() {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 }

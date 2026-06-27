@@ -5,8 +5,8 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -85,7 +85,7 @@ public class InventoryService {
         UUID storeId = currentStore().getId();
         product(productId, storeId);
         warehouse(warehouseId, storeId);
-        Usuario user = organization.currentUser(authentication);
+        UserAccount user = organization.currentUser(authentication);
         StockLevel stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId)
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
         stock.apply(quantity);
@@ -109,7 +109,7 @@ public class InventoryService {
         product(productId, storeId);
         warehouse(sourceWarehouseId, storeId);
         warehouse(targetWarehouseId, storeId);
-        Usuario user = organization.currentUser(authentication);
+        UserAccount user = organization.currentUser(authentication);
         StockLevel source = stockLevel(productId, sourceWarehouseId);
         StockLevel target = stockLevel(productId, targetWarehouseId);
         source.apply(-positive(quantity));
@@ -154,7 +154,7 @@ public class InventoryService {
         return warehouse;
     }
 
-    private Tienda currentStore() {
+    private Store currentStore() {
         return organization.currentStore();
     }
 

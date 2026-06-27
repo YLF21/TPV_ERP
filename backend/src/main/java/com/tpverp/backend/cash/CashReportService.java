@@ -45,7 +45,7 @@ public class CashReportService {
         var currentStore = organization.currentStore();
         var reportStoreId = storeId == null ? currentStore.getId() : storeId;
         if (!reportStoreId.equals(currentStore.getId())) {
-            throw new IllegalArgumentException("Tienda no encontrada");
+            throw new IllegalArgumentException("Store no encontrada");
         }
         if (from == null || to == null || !from.isBefore(to)) {
             throw new IllegalArgumentException("Rango de fechas de caja no valido");

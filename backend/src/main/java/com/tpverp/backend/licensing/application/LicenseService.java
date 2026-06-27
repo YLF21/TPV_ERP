@@ -1,17 +1,17 @@
 package com.tpverp.backend.licensing.application;
 
-import com.tpverp.backend.installation.Instalacion;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.licensing.ResultadoImportacion;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.ImportResult;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.SpanishTaxId;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.audit.ResultadoAuditoria;
+import com.tpverp.backend.audit.AuditResult;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -23,9 +23,9 @@ import java.util.UUID;
 
 public class LicenseService {
 
-    private final InstalacionRepository instalacionRepository;
-    private final TiendaRepository tiendaRepository;
-    private final LicenciaRepository licenciaRepository;
+    private final InstallationRepository instalacionRepository;
+    private final StoreRepository tiendaRepository;
+    private final LicenseRepository licenciaRepository;
     private final InstallationIdentityStore identityStore;
     private final TrustedIssuerKeyProvider issuerKeyProvider;
     private final LicenseEnvelopeDecoder decoder;
@@ -34,9 +34,9 @@ public class LicenseService {
     private final JdbcTemplate jdbc;
 
     public LicenseService(
-            InstalacionRepository instalacionRepository,
-            TiendaRepository tiendaRepository,
-            LicenciaRepository licenciaRepository,
+            InstallationRepository instalacionRepository,
+            StoreRepository tiendaRepository,
+            LicenseRepository licenciaRepository,
             InstallationIdentityStore identityStore,
             TrustedIssuerKeyProvider issuerKeyProvider,
             LicenseEnvelopeDecoder decoder,
@@ -56,7 +56,7 @@ public class LicenseService {
 
     @Transactional(readOnly = true)
     public LicensePreview preview(String licenseFile) {
-        Instalacion installation = currentInstallation();
+        Installation installation = currentInstallation();
         var identity = identityStore.loadOrCreate();
         return decoder.decode(
                 licenseFile,
@@ -76,13 +76,13 @@ public class LicenseService {
             throw new LicenseValidationException("Esta licencia ya fue importada");
         }
 
-        Instalacion installation = currentInstallation();
-        Tienda store = currentStore();
+        Installation installation = currentInstallation();
+        Store store = currentStore();
         validateTaxpayer(store.getEmpresa(), preview.taxId());
         licenciaRepository.findByTiendaIdAndInstalacionIdAndActivaTrue(
                         store.getId(), installation.getId())
-                .ifPresent(Licencia::desactivar);
-        licenciaRepository.save(new Licencia(
+                .ifPresent(License::deactivate);
+        licenciaRepository.save(new License(
                 store,
                 installation,
                 preview.reference(),
@@ -98,13 +98,13 @@ public class LicenseService {
                 3,
                 Instant.now(clock),
                 Map.of("issuerKeyId", preview.issuerKeyId()),
-                ResultadoImportacion.ACEPTADA,
+                ImportResult.ACEPTADA,
                 null,
                 true));
         updateDefaultTax(store.getId(), preview.impuestos());
         auditService.record(
                 "LICENSE_ACTIVATED",
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 Map.of("reference", preview.reference(), "hash", preview.fileHash()));
         return preview;
     }
@@ -117,12 +117,12 @@ public class LicenseService {
                 .toList();
     }
 
-    private Instalacion currentInstallation() {
+    private Installation currentInstallation() {
         return instalacionRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La instalacion no esta inicializada"));
     }
 
-    private Tienda currentStore() {
+    private Store currentStore() {
         return tiendaRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
     }
@@ -155,9 +155,9 @@ public class LicenseService {
         }
     }
 
-    private void validateTaxpayer(Empresa company, String licensedTaxId) {
+    private void validateTaxpayer(Company company, String licensedTaxId) {
         String normalized = SpanishTaxId.normalize(licensedTaxId);
-        if (Empresa.DEMO_TAX_ID.equals(company.getTaxId())) {
+        if (Company.DEMO_TAX_ID.equals(company.getTaxId())) {
             company.adoptLicensedTaxId(normalized);
             return;
         }
@@ -177,7 +177,7 @@ public class LicenseService {
             TaxRegime impuestos,
             boolean active) {
 
-        static LicenseHistoryItem from(Licencia license) {
+        static LicenseHistoryItem from(License license) {
             return new LicenseHistoryItem(
                     license.getReferencia(),
                     license.getValidaDesde(),

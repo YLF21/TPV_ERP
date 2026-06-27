@@ -1,7 +1,7 @@
 package com.tpverp.backend.party;
 
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.Company;
 import java.util.Objects;
 import java.util.List;
 import java.util.UUID;
@@ -34,17 +34,17 @@ public class PartyCodeAllocator {
         this.jdbc = jdbc;
     }
 
-    public String nextClient(Tienda store) {
+    public String nextClient(Store store) {
         return "C-" + store.getCodigoTienda() + "-"
                 + six(next(store.getId(), PartyCodeType.CLIENT));
     }
 
-    public String nextMember(Tienda store) {
+    public String nextMember(Store store) {
         return "M-" + store.getCodigoTienda() + "-"
                 + six(next(store.getId(), PartyCodeType.MEMBER));
     }
 
-    public List<String> nextClients(Tienda store, int count) {
+    public List<String> nextClients(Store store, int count) {
         if (count < 1) {
             throw new IllegalArgumentException("La reserva debe contener clientes");
         }
@@ -55,11 +55,11 @@ public class PartyCodeAllocator {
                 .toList();
     }
 
-    public String nextSupplier(Empresa company) {
+    public String nextSupplier(Company company) {
         return "S-" + six(next(company.getId(), PartyCodeType.SUPPLIER));
     }
 
-    public String nextCommercial(Empresa company) {
+    public String nextCommercial(Company company) {
         return "CO-" + six(next(company.getId(), PartyCodeType.COMMERCIAL));
     }
 

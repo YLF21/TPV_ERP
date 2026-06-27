@@ -16,14 +16,14 @@ public record DocumentLineCommand(
         BigDecimal porcentajeImpuesto) {
 
     // Convierte la entrada validada en una línea con snapshot fiscal.
-    public DocumentoLinea toEntity(Documento document, int position) {
-        return new DocumentoLinea(
+    public DocumentLine toEntity(CommercialDocument document, int position) {
+        return new DocumentLine(
                 document, productoId, position, cantidad, codigo, nombre, tarifa,
                 precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
                 porcentajeImpuesto);
     }
 
-    DocumentoLinea toEntity(Documento document) {
+    DocumentLine toEntity(CommercialDocument document) {
         return toEntity(document, document.getLineas().size() + 1);
     }
 }

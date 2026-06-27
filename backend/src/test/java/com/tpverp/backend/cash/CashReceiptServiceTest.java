@@ -7,15 +7,15 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TipoTerminal;
+import com.tpverp.backend.terminal.TerminalType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -125,12 +125,12 @@ class CashReceiptServiceTest {
 
     private static Fixture fixture() {
         var store = store();
-        var user = new Usuario(store, "SELLER", "hash", new Rol(store, "SELLER"));
-        var terminal = new Terminal(store, "TPV 1", TipoTerminal.TERMINAL_VENTA, "hash");
+        var user = new UserAccount(store, "SELLER", "hash", new Role(store, "SELLER"));
+        var terminal = new Terminal(store, "TPV 1", TerminalType.TERMINAL_VENTA, "hash");
         var sessions = mock(CashSessionRepository.class);
         var movements = mock(CashMovementRepository.class);
         var terminals = mock(TerminalRepository.class);
-        var users = mock(UsuarioRepository.class);
+        var users = mock(UserAccountRepository.class);
         var organization = mock(CurrentOrganization.class);
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(org.mockito.ArgumentMatchers.any())).thenReturn(user);
@@ -149,23 +149,23 @@ class CashReceiptServiceTest {
         return session;
     }
 
-    private static UsernamePasswordAuthenticationToken salesAuthentication(Usuario user) {
+    private static UsernamePasswordAuthenticationToken salesAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
     }
 
-    private static UsernamePasswordAuthenticationToken accountingAuthentication(Usuario user) {
+    private static UsernamePasswordAuthenticationToken accountingAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
-    private static Tienda store() {
+    private static Store store() {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "001", "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                "001", "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 
@@ -173,8 +173,8 @@ class CashReceiptServiceTest {
             CashReceiptService service,
             CashSessionRepository sessions,
             CashMovementRepository movements,
-            Tienda store,
-            Usuario user,
+            Store store,
+            UserAccount user,
             Terminal terminal) {
     }
 }

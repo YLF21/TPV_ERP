@@ -1,6 +1,6 @@
 package com.tpverp.backend.party;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -21,7 +21,7 @@ public class SalesRepresentative {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "empresa_id", nullable = false)
-    private Empresa company;
+    private Company company;
 
     @Column(name = "code_commercial", nullable = false, length = 9, updatable = false)
     private String codeCommercial;
@@ -45,7 +45,7 @@ public class SalesRepresentative {
     }
 
     public SalesRepresentative(
-            Empresa company,
+            Company company,
             String name,
             String phone,
             String email,

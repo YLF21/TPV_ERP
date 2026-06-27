@@ -5,13 +5,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.licensing.ResultadoImportacion;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.licensing.ImportResult;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,12 +52,12 @@ class VerifactuFirstSubmissionMarkerTest {
     }
 
     private static Setup setup(TaxpayerType taxpayerType) {
-        var company = new Empresa("B00000000", "Empresa", address());
-        var store = new Tienda(company, "Tienda", address(), "001", "Atlantic/Canary", "EUR", "es-ES");
+        var company = new Company("B00000000", "Company", address());
+        var store = new Store(company, "Store", address(), "001", "Atlantic/Canary", "EUR", "es-ES");
         var configuration = new VerifactuConfiguration(company.getId());
         var configurations = Mockito.mock(VerifactuConfigurationRepository.class);
         when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(configuration));
-        var licenses = Mockito.mock(LicenciaRepository.class);
+        var licenses = Mockito.mock(LicenseRepository.class);
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                 Mockito.eq(store.getId()), Mockito.any()))
                 .thenReturn(Optional.of(license(store, taxpayerType)));
@@ -75,10 +75,10 @@ class VerifactuFirstSubmissionMarkerTest {
                 "1.0", "SHA-256", "0.0.1");
     }
 
-    private static Licencia license(Tienda store, TaxpayerType taxpayerType) {
-        return new Licencia(
+    private static License license(Store store, TaxpayerType taxpayerType) {
+        return new License(
                 store,
-                new com.tpverp.backend.installation.Instalacion(
+                new com.tpverp.backend.installation.Installation(
                         "PUBLIC", "PRIVATE", Instant.parse("2026-01-01T00:00:00Z")),
                 "LIC-1",
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -93,7 +93,7 @@ class VerifactuFirstSubmissionMarkerTest {
                 1,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Map.of(),
-                ResultadoImportacion.ACEPTADA,
+                ImportResult.ACEPTADA,
                 null,
                 true);
     }
@@ -108,10 +108,10 @@ class VerifactuFirstSubmissionMarkerTest {
     }
 
     private record Setup(
-            Empresa company,
-            Tienda store,
+            Company company,
+            Store store,
             VerifactuConfiguration configuration,
             VerifactuConfigurationRepository configurations,
-            LicenciaRepository licenses) {
+            LicenseRepository licenses) {
     }
 }

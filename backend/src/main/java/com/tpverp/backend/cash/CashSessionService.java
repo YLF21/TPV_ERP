@@ -2,7 +2,7 @@ package com.tpverp.backend.cash;
 
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.math.BigDecimal;

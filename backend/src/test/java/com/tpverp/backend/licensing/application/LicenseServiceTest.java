@@ -8,13 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.installation.Instalacion;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentity;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import java.security.PrivateKey;
@@ -39,9 +39,9 @@ class LicenseServiceTest {
             "linea1", "Calle Uno", "ciudad", "Las Palmas", "codigoPostal", "35001",
             "provincia", "Las Palmas", "pais", "ES");
 
-    @Mock private InstalacionRepository installations;
-    @Mock private TiendaRepository stores;
-    @Mock private LicenciaRepository licenses;
+    @Mock private InstallationRepository installations;
+    @Mock private StoreRepository stores;
+    @Mock private LicenseRepository licenses;
     @Mock private InstallationIdentityStore identityStore;
     @Mock private TrustedIssuerKeyProvider issuerKeys;
     @Mock private LicenseEnvelopeDecoder decoder;
@@ -51,15 +51,15 @@ class LicenseServiceTest {
     @Mock private PublicKey publicKey;
 
     private LicenseService service;
-    private Empresa company;
-    private Tienda store;
+    private Company company;
+    private Store store;
 
     @BeforeEach
     void setUp() {
-        company = new Empresa("DEMO-00000000", "Empresa", ADDRESS);
-        store = new Tienda(
-                company, "Tienda", ADDRESS, "hash", "Atlantic/Canary", "EUR", "es-ES");
-        var installation = new Instalacion(
+        company = new Company("DEMO-00000000", "Company", ADDRESS);
+        store = new Store(
+                company, "Store", ADDRESS, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        var installation = new Installation(
                 "INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
@@ -80,7 +80,7 @@ class LicenseServiceTest {
         service.activate("license", "hash");
 
         assertThat(company.getTaxId()).isEqualTo("B12345678");
-        verify(licenses).save(any(Licencia.class));
+        verify(licenses).save(any(License.class));
     }
 
     @Test
@@ -97,7 +97,7 @@ class LicenseServiceTest {
 
     private LicensePreview preview(String taxId) {
         return new LicensePreview(
-                "LIC-1", taxId, TaxpayerType.SOCIEDAD, "Empresa", "Tienda",
+                "LIC-1", taxId, TaxpayerType.SOCIEDAD, "Company", "Store",
                 Instant.parse("2026-06-08T00:00:00Z"),
                 Instant.parse("2027-06-09T00:00:00Z"),
                 1, 0, TaxRegime.IVA, "issuer", "hash");

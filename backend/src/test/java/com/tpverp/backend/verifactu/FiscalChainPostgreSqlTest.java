@@ -331,13 +331,13 @@ class FiscalChainPostgreSqlTest {
                 java.sql.Timestamp.from(Instant.parse("2026-01-31T00:00:00Z")));
         jdbc.update("""
                 insert into empresa (id, tax_id, razon_social, domicilio_fiscal)
-                values (?, 'B12345674', 'Empresa Fiscal', cast(? as jsonb))
+                values (?, 'B12345674', 'Company Fiscal', cast(? as jsonb))
                 """, fixture.companyId(), address());
         jdbc.update("""
                 insert into tienda (
                     id, empresa_id, codigo_tienda, nombre, direccion,
                     address_normalized_hash, timezone, moneda, locale)
-                values (?, ?, '001', 'Tienda Fiscal', cast(? as jsonb),
+                values (?, ?, '001', 'Store Fiscal', cast(? as jsonb),
                     'fiscal-hash', 'Atlantic/Canary', 'EUR', 'es-ES')
                 """, fixture.storeId(), fixture.companyId(), address());
         jdbc.update("""

@@ -8,16 +8,16 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.DocumentoLinea;
-import com.tpverp.backend.document.DocumentoPago;
-import com.tpverp.backend.document.MetodoPago;
-import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentPayment;
+import com.tpverp.backend.document.PaymentMethod;
+import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -76,7 +76,7 @@ class CashPaymentRecorderTest {
         var fixture = fixture();
         var document = document(fixture);
         document.addPayment(payment(document, cashMethod(fixture), 1, "4.00", true));
-        document.addPayment(payment(document, new MetodoPago(
+        document.addPayment(payment(document, new PaymentMethod(
                 fixture.store.getEmpresa().getId(), "TARJETA", true), 2, "6.00", false));
         when(fixture.sessions.findByTerminalIdAndStatus(
                 fixture.terminalId, CashSessionStatus.ABIERTA)).thenReturn(Optional.of(openSession(fixture)));
@@ -128,11 +128,11 @@ class CashPaymentRecorderTest {
                 NOW.minusSeconds(60), new BigDecimal("50.00"));
     }
 
-    private static Documento document(Fixture fixture) {
-        var document = new Documento(
-                fixture.store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,
+    private static CommercialDocument document(Fixture fixture) {
+        var document = new CommercialDocument(
+                fixture.store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 26), fixture.user.getId(), BigDecimal.ZERO);
-        document.addLine(new DocumentoLinea(
+        document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, 1, "P-1", "Producto", "VENTA",
                 new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
                 new BigDecimal("21")));
@@ -140,20 +140,20 @@ class CashPaymentRecorderTest {
         return document;
     }
 
-    private static DocumentoPago payment(
-            Documento document, MetodoPago method, int position, String amount, boolean principal) {
-        return new DocumentoPago(
+    private static DocumentPayment payment(
+            CommercialDocument document, PaymentMethod method, int position, String amount, boolean principal) {
+        return new DocumentPayment(
                 document, method, position, new BigDecimal(amount), principal,
                 null, null, NOW);
     }
 
-    private static MetodoPago cashMethod(Fixture fixture) {
-        return new MetodoPago(fixture.store.getEmpresa().getId(), "EFECTIVO", true);
+    private static PaymentMethod cashMethod(Fixture fixture) {
+        return new PaymentMethod(fixture.store.getEmpresa().getId(), "EFECTIVO", true);
     }
 
     private static Fixture fixture() {
         var store = store();
-        var user = new Usuario(store, "SELLER", "hash", new Rol(store, "SELLER"));
+        var user = new UserAccount(store, "SELLER", "hash", new Role(store, "SELLER"));
         var terminalId = UUID.randomUUID();
         var sessions = mock(CashSessionRepository.class);
         var movements = mock(CashMovementRepository.class);
@@ -167,16 +167,16 @@ class CashPaymentRecorderTest {
         return new Fixture(recorder, sessions, movements, organization, store, user, terminalId);
     }
 
-    private static Tienda store() {
+    private static Store store() {
         var address = Map.of(
                 "linea1", "Calle 1",
                 "ciudad", "Las Palmas",
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "001", "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                "001", "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 
@@ -185,8 +185,8 @@ class CashPaymentRecorderTest {
             CashSessionRepository sessions,
             CashMovementRepository movements,
             CurrentOrganization organization,
-            Tienda store,
-            Usuario user,
+            Store store,
+            UserAccount user,
             UUID terminalId) {
     }
 }

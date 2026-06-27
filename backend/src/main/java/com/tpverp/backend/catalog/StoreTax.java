@@ -63,7 +63,7 @@ public class StoreTax {
 
     public void deactivate() {
         if (predeterminado) {
-            throw new IllegalStateException("El impuesto predeterminado no se puede desactivar");
+            throw new IllegalStateException("El impuesto predeterminado no se puede deactivate");
         }
         activo = false;
     }

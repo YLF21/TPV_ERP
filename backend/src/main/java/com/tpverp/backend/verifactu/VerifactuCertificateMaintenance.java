@@ -1,8 +1,8 @@
 package com.tpverp.backend.verifactu;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.audit.ResultadoAuditoria;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.organization.StoreRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,14 +21,14 @@ public class VerifactuCertificateMaintenance {
     private final ManagedVerifactuCertificateRepository certificates;
     private final VerifactuCertificateSecretStore secrets;
     private final AuditService audit;
-    private final TiendaRepository stores;
+    private final StoreRepository stores;
     private final Clock clock;
 
     public VerifactuCertificateMaintenance(
             ManagedVerifactuCertificateRepository certificates,
             VerifactuCertificateSecretStore secrets,
             AuditService audit,
-            TiendaRepository stores,
+            StoreRepository stores,
             Clock clock) {
         this.certificates = certificates;
         this.secrets = secrets;
@@ -54,7 +54,7 @@ public class VerifactuCertificateMaintenance {
             audit.recordSystem(
                     firstStore(certificate),
                     "VERIFACTU_CERTIFICATE_EXPIRY_WARNING",
-                    ResultadoAuditoria.EXITO,
+                    AuditResult.EXITO,
                     details(certificate));
         }
     }
@@ -72,12 +72,12 @@ public class VerifactuCertificateMaintenance {
             audit.recordSystem(
                     firstStore(certificate),
                     "VERIFACTU_CERTIFICATE_PURGED",
-                    ResultadoAuditoria.EXITO,
+                    AuditResult.EXITO,
                     details(certificate));
         }
     }
 
-    private com.tpverp.backend.organization.Tienda firstStore(
+    private com.tpverp.backend.organization.Store firstStore(
             ManagedVerifactuCertificate certificate) {
         return stores.findByEmpresaId(certificate.getCompanyId()).stream()
                 .findFirst()

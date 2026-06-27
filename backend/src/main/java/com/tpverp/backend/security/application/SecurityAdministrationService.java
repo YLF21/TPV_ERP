@@ -1,13 +1,13 @@
 package com.tpverp.backend.security.application;
 
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.PermisoRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.security.domain.PermissionRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -18,39 +18,39 @@ import java.util.stream.Collectors;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.audit.ResultadoAuditoria;
+import com.tpverp.backend.audit.AuditResult;
 import java.util.Map;
 import com.tpverp.backend.backup.application.BackupKeyStore;
-import com.tpverp.backend.backup.ConfiguracionBackupRepository;
-import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.backup.BackupSettingsRepository;
+import com.tpverp.backend.installation.InstallationRepository;
 import java.nio.file.Path;
 
 public class SecurityAdministrationService {
 
     private final CurrentOrganization organization;
-    private final UsuarioRepository usuarioRepository;
-    private final RolRepository rolRepository;
-    private final PermisoRepository permisoRepository;
-    private final SesionRepository sesionRepository;
+    private final UserAccountRepository usuarioRepository;
+    private final RoleRepository rolRepository;
+    private final PermissionRepository permisoRepository;
+    private final UserSessionRepository sesionRepository;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final AuditService auditService;
     private final BackupKeyStore backupKeyStore;
-    private final ConfiguracionBackupRepository backupConfigurationRepository;
-    private final InstalacionRepository installationRepository;
+    private final BackupSettingsRepository backupConfigurationRepository;
+    private final InstallationRepository installationRepository;
 
     public SecurityAdministrationService(
             CurrentOrganization organization,
-            UsuarioRepository usuarioRepository,
-            RolRepository rolRepository,
-            PermisoRepository permisoRepository,
-            SesionRepository sesionRepository,
+            UserAccountRepository usuarioRepository,
+            RoleRepository rolRepository,
+            PermissionRepository permisoRepository,
+            UserSessionRepository sesionRepository,
             PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
             BackupKeyStore backupKeyStore,
-            ConfiguracionBackupRepository backupConfigurationRepository,
-            InstalacionRepository installationRepository) {
+            BackupSettingsRepository backupConfigurationRepository,
+            InstallationRepository installationRepository) {
         this.organization = organization;
         this.usuarioRepository = usuarioRepository;
         this.rolRepository = rolRepository;
@@ -66,44 +66,44 @@ public class SecurityAdministrationService {
 
     @Transactional
     public UserItem createUser(String name, String password, UUID roleId) {
-        Tienda store = currentStore();
+        Store store = currentStore();
         String normalized = normalize(name);
         if (usuarioRepository.findByTiendaIdAndNombre(store.getId(), normalized).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese usuario");
         }
-        Rol role = role(roleId);
+        Role role = role(roleId);
         requireAssignable(role);
-        Usuario user = usuarioRepository.save(
-                new Usuario(store, normalized, passwordEncoder.encode(password), role));
+        UserAccount user = usuarioRepository.save(
+                new UserAccount(store, normalized, passwordEncoder.encode(password), role));
         auditService.record(
-                "USER_CREATED", ResultadoAuditoria.EXITO, Map.of("userId", user.getId()));
+                "USER_CREATED", AuditResult.EXITO, Map.of("userId", user.getId()));
         return UserItem.from(user);
     }
 
     @Transactional
     public void setUserActive(UUID userId, boolean active) {
-        Usuario user = user(userId);
+        UserAccount user = user(userId);
         if (active) {
-            user.activar();
+            user.activate();
             return;
         }
-        user.desactivar();
+        user.deactivate();
         Instant now = Instant.now(clock);
         sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(userId)
                 .forEach(session -> session.revocar(user, "USER_DISABLED", now));
         auditService.record(
-                "USER_DISABLED", ResultadoAuditoria.EXITO, Map.of("userId", userId));
+                "USER_DISABLED", AuditResult.EXITO, Map.of("userId", userId));
     }
 
     @Transactional
     public UserItem changeUserRole(UUID userId, UUID roleId) {
-        Usuario user = user(userId);
+        UserAccount user = user(userId);
         var role = role(roleId);
         requireAssignable(role);
         user.cambiarRol(role);
         auditService.record(
                 "USER_ROLE_CHANGED",
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 Map.of("userId", userId, "roleId", roleId));
         return UserItem.from(user);
     }
@@ -116,8 +116,8 @@ public class SecurityAdministrationService {
 
     @Transactional
     public void changeAdminPassword(String currentPassword, String newPassword) {
-        Tienda store = currentStore();
-        Usuario admin = usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")
+        Store store = currentStore();
+        UserAccount admin = usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")
                 .orElseThrow(() -> new IllegalStateException("El usuario ADMIN no existe"));
         if (!passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
             throw new IllegalArgumentException("La contrasena ADMIN actual no es valida");
@@ -141,33 +141,33 @@ public class SecurityAdministrationService {
                 .forEach(session -> session.revocar(admin, "ADMIN_PASSWORD_CHANGED", now));
         auditService.record(
                 "ADMIN_PASSWORD_CHANGED",
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 Map.of("userId", admin.getId()));
     }
 
     @Transactional
     public RoleItem createRole(String name) {
-        Tienda store = currentStore();
+        Store store = currentStore();
         String normalized = normalize(name);
         if (rolRepository.findByTiendaIdAndNombre(store.getId(), normalized).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese rol");
         }
-        Rol role = rolRepository.save(new Rol(store, normalized));
+        Role role = rolRepository.save(new Role(store, normalized));
         auditService.record(
-                "ROLE_CREATED", ResultadoAuditoria.EXITO, Map.of("roleId", role.getId()));
+                "ROLE_CREATED", AuditResult.EXITO, Map.of("roleId", role.getId()));
         return RoleItem.from(role);
     }
 
     @Transactional
     public RoleItem assignPermissions(UUID roleId, Set<String> permissionCodes) {
-        Rol role = role(roleId);
+        Role role = role(roleId);
         var permissions = permissionCodes.stream()
                 .map(this::permission)
                 .collect(Collectors.toSet());
-        role.reemplazarPermisos(permissions);
+        role.replacePermissions(permissions);
         auditService.record(
                 "ROLE_PERMISSIONS_CHANGED",
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 Map.of("roleId", roleId, "permissions", permissionCodes));
         return RoleItem.from(role);
     }
@@ -178,29 +178,29 @@ public class SecurityAdministrationService {
                 .stream().map(RoleItem::from).toList();
     }
 
-    private Usuario user(UUID id) {
+    private UserAccount user(UUID id) {
         return usuarioRepository.findByIdAndTiendaId(id, currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("UserAccount no encontrado"));
     }
 
-    private Rol role(UUID id) {
+    private Role role(UUID id) {
         return rolRepository.findByIdAndTiendaId(id, currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Rol no encontrado"));
+                .orElseThrow(() -> new IllegalArgumentException("Role no encontrado"));
     }
 
-    private void requireAssignable(Rol role) {
+    private void requireAssignable(Role role) {
         if (role.isProtegido()) {
             throw new IllegalStateException(
                     "El rol ADMIN no se puede asignar a otros usuarios");
         }
     }
 
-    private com.tpverp.backend.security.domain.Permiso permission(String code) {
+    private com.tpverp.backend.security.domain.Permission permission(String code) {
         return permisoRepository.findByCodigo(normalize(code))
-                .orElseThrow(() -> new IllegalArgumentException("Permiso no encontrado: " + code));
+                .orElseThrow(() -> new IllegalArgumentException("Permission no encontrado: " + code));
     }
 
-    private Tienda currentStore() {
+    private Store currentStore() {
         return organization.currentStore();
     }
 
@@ -212,7 +212,7 @@ public class SecurityAdministrationService {
     }
 
     public record UserItem(UUID id, String name, String role, boolean active, boolean protectedUser) {
-        static UserItem from(Usuario user) {
+        static UserItem from(UserAccount user) {
             return new UserItem(
                     user.getId(), user.getNombre(), user.getRol().getNombre(),
                     user.isActivo(), user.isProtegido());
@@ -220,7 +220,7 @@ public class SecurityAdministrationService {
     }
 
     public record RoleItem(UUID id, String name, boolean protectedRole, Set<String> permissions) {
-        static RoleItem from(Rol role) {
+        static RoleItem from(Role role) {
             Set<String> permissions = role.isProtegido()
                     ? Set.of("ALL")
                     : role.getPermisos().stream()

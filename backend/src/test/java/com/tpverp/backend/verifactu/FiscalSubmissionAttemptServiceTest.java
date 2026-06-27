@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -37,9 +37,9 @@ class FiscalSubmissionAttemptServiceTest {
     @Mock
     private CurrentOrganization organization;
     @Mock
-    private Empresa company;
+    private Company company;
     @Mock
-    private Tienda store;
+    private Store store;
 
     private FiscalSubmissionAttemptService service;
     private UUID recordId;

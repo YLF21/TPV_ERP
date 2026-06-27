@@ -1,13 +1,13 @@
 package com.tpverp.backend.terminal;
 
 import com.tpverp.backend.installation.InstallationStatusService;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import com.tpverp.backend.security.domain.SesionRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
 import java.time.Clock;
 import com.tpverp.backend.audit.AuditService;
 
@@ -17,12 +17,12 @@ class TerminalConfiguration {
     @Bean
     TerminalRegistrationService terminalRegistrationService(
             TerminalRepository terminalRepository,
-            TiendaRepository tiendaRepository,
+            StoreRepository tiendaRepository,
             CurrentOrganization organization,
-            LicenciaRepository licenciaRepository,
+            LicenseRepository licenciaRepository,
             InstallationStatusService installationStatusService,
             PasswordEncoder passwordEncoder,
-            SesionRepository sesionRepository,
+            UserSessionRepository sesionRepository,
             Clock clock,
             AuditService auditService) {
         return new TerminalRegistrationService(

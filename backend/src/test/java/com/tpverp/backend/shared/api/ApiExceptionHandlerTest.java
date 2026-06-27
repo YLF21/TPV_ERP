@@ -2,11 +2,11 @@ package com.tpverp.backend.shared.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
 import java.util.Map;
@@ -98,16 +98,16 @@ class ApiExceptionHandlerTest {
         assertEquals("Product name is required", problem.getDetail());
     }
 
-    private static Usuario userWithLanguage(SupportedLanguage language) {
+    private static UserAccount userWithLanguage(SupportedLanguage language) {
         var store = store();
-        var user = new Usuario(store, "USER", "hash", new Rol(store, "VENTAS"));
+        var user = new UserAccount(store, "USER", "hash", new Role(store, "VENTAS"));
         user.cambiarIdioma(language);
         return user;
     }
 
-    private static Tienda store() {
-        var company = new Empresa("B00000000", "Empresa", address());
-        return new Tienda(company, "Tienda", address(), UUID.randomUUID().toString(),
+    private static Store store() {
+        var company = new Company("B00000000", "Company", address());
+        return new Store(company, "Store", address(), UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 

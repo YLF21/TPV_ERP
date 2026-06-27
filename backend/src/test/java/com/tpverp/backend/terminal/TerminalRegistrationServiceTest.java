@@ -7,14 +7,14 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.InstallationStatusService;
-import com.tpverp.backend.licensing.LicenciaRepository;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.SesionRepository;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserSessionRepository;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -38,15 +38,15 @@ class TerminalRegistrationServiceTest {
         var currentStore = store("001");
         var foreignStore = store("002");
         var current = new Terminal(
-                currentStore, "CURRENT", TipoTerminal.TERMINAL_VENTA, "hash");
+                currentStore, "CURRENT", TerminalType.TERMINAL_VENTA, "hash");
         var foreign = new Terminal(
-                foreignStore, "FOREIGN", TipoTerminal.TERMINAL_VENTA, "hash");
+                foreignStore, "FOREIGN", TerminalType.TERMINAL_VENTA, "hash");
         var terminals = mock(TerminalRepository.class);
         when(terminals.findAllByTiendaIdOrderByNombre(currentStore.getId()))
                 .thenReturn(List.of(current));
         authenticate(currentStore);
 
-        var result = service(terminals, mock(TiendaRepository.class)).list();
+        var result = service(terminals, mock(StoreRepository.class)).list();
 
         assertThat(result).extracting(TerminalRegistrationService.TerminalItem::name)
                 .containsExactly("CURRENT");
@@ -57,13 +57,13 @@ class TerminalRegistrationServiceTest {
         var currentStore = store("001");
         var foreignStore = store("002");
         var foreign = new Terminal(
-                foreignStore, "FOREIGN", TipoTerminal.TERMINAL_VENTA, "hash");
+                foreignStore, "FOREIGN", TerminalType.TERMINAL_VENTA, "hash");
         var terminals = mock(TerminalRepository.class);
         when(terminals.findByIdAndTiendaId(foreign.getId(), currentStore.getId()))
                 .thenReturn(Optional.empty());
         authenticate(currentStore);
 
-        assertThatThrownBy(() -> service(terminals, mock(TiendaRepository.class))
+        assertThatThrownBy(() -> service(terminals, mock(StoreRepository.class))
                 .deactivate(foreign.getId()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Terminal no encontrada");
@@ -78,36 +78,36 @@ class TerminalRegistrationServiceTest {
     }
 
     private static TerminalRegistrationService service(
-            TerminalRepository terminals, TiendaRepository stores) {
+            TerminalRepository terminals, StoreRepository stores) {
         var organization = mock(CurrentOrganization.class);
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var user = (Usuario) authentication.getPrincipal();
+        var user = (UserAccount) authentication.getPrincipal();
         when(organization.currentStore()).thenReturn(user.getTienda());
         return new TerminalRegistrationService(
                 terminals,
                 stores,
                 organization,
-                mock(LicenciaRepository.class),
+                mock(LicenseRepository.class),
                 mock(InstallationStatusService.class),
                 mock(PasswordEncoder.class),
-                mock(SesionRepository.class),
+                mock(UserSessionRepository.class),
                 Clock.systemUTC(),
                 mock(AuditService.class));
     }
 
-    private static void authenticate(Tienda store) {
-        var user = new Usuario(store, "ADMIN", "hash", new Rol(store, "ADMIN"));
+    private static void authenticate(Store store) {
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, "token"));
     }
 
-    private static Tienda store(String code) {
+    private static Store store(String code) {
         var address = Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
-        return new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                code, "Tienda", address, UUID.randomUUID().toString(),
+        return new Store(
+                new Company("B00000000", "Company", address),
+                code, "Store", address, UUID.randomUUID().toString(),
                 "Atlantic/Canary", "EUR", "es-ES");
     }
 }

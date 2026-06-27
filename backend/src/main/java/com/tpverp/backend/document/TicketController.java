@@ -74,7 +74,7 @@ public class TicketController {
                 request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList()));
     }
 
-    private DocumentView view(Documento document) {
+    private DocumentView view(CommercialDocument document) {
         return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
     }
 

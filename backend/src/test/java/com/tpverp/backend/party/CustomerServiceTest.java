@@ -8,13 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,19 +36,19 @@ class CustomerServiceTest {
 
     @Mock CustomerRepository customers;
     @Mock MemberBalanceMovementRepository movements;
-    @Mock TiendaRepository stores;
-    @Mock UsuarioRepository users;
+    @Mock StoreRepository stores;
+    @Mock UserAccountRepository users;
     @Mock PartyCodeAllocator codes;
 
-    private Empresa company;
-    private Tienda store;
-    private Usuario user;
+    private Company company;
+    private Store store;
+    private UserAccount user;
 
     @BeforeEach
     void setUp() {
         company = PartyTestData.company();
         store = PartyTestData.store(company);
-        user = new Usuario(store, "CAJA", "hash", new Rol(store, "VENDEDOR"));
+        user = new UserAccount(store, "CAJA", "hash", new Role(store, "VENDEDOR"));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("CAJA", "token"));
         when(stores.findAll()).thenReturn(List.of(store));

@@ -52,11 +52,11 @@ class InvoiceControllerTest {
         assertThat(view.qrUrl()).isEqualTo("qr-url");
     }
 
-    private static Documento document() {
-        var document = new Documento(
-                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.FACTURA_VENTA,
+    private static CommercialDocument document() {
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
                 LocalDate.of(2026, 6, 27), UUID.randomUUID(), BigDecimal.ZERO);
-        document.addLine(new DocumentoLinea(
+        document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, 1, "P-1", "Producto", "VENTA",
                 new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
                 new BigDecimal("21")));

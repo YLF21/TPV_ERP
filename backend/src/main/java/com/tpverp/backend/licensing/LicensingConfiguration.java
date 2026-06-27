@@ -1,11 +1,11 @@
 package com.tpverp.backend.licensing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.application.LicenseEnvelopeDecoder;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.application.TrustedIssuerKeyProvider;
-import com.tpverp.backend.organization.TiendaRepository;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -32,9 +32,9 @@ class LicensingConfiguration {
 
     @Bean
     LicenseService licenseService(
-            InstalacionRepository instalacionRepository,
-            TiendaRepository tiendaRepository,
-            LicenciaRepository licenciaRepository,
+            InstallationRepository instalacionRepository,
+            StoreRepository tiendaRepository,
+            LicenseRepository licenciaRepository,
             InstallationIdentityStore identityStore,
             TrustedIssuerKeyProvider issuerKeyProvider,
             LicenseEnvelopeDecoder decoder,

@@ -1,7 +1,7 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.licensing.Licencia;
-import com.tpverp.backend.licensing.LicenciaRepository;
+import com.tpverp.backend.licensing.License;
+import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
@@ -25,7 +25,7 @@ public class VerifactuAdminService {
     private final VerifactuSignaturePolicy signatures;
     private final VerifactuClockMonitor clock;
     private final VerifactuConfigurationRepository configurations;
-    private final LicenciaRepository licenses;
+    private final LicenseRepository licenses;
     private final CurrentOrganization organization;
     private final VerifactuActivationService activation;
     private final Clock systemClock;
@@ -54,7 +54,7 @@ public class VerifactuAdminService {
             VerifactuSignaturePolicy signatures,
             VerifactuClockMonitor clock,
             VerifactuConfigurationRepository configurations,
-            LicenciaRepository licenses,
+            LicenseRepository licenses,
             CurrentOrganization organization,
             VerifactuActivationService activation,
             Clock systemClock,
@@ -200,10 +200,10 @@ public class VerifactuAdminService {
                         "No se pudo inicializar la configuracion VERI*FACTU"));
     }
 
-    private Licencia activeLicense() {
+    private License activeLicense() {
         var store = requiredOrganization().currentStore();
         return licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
-                .filter(Licencia::isActiva)
+                .filter(License::isActiva)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "No existe una licencia activa para la tienda e instalacion"));

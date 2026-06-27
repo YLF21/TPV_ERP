@@ -23,7 +23,7 @@ class DocumentRulesTest {
 
     @Test
     void lineRoundsAmountsAndAppliesDiscount() {
-        var line = new DocumentoLinea(
+        var line = new DocumentLine(
                 document(), UUID.randomUUID(), 1, 3, "P-1", "Producto", "VENTA",
                 new BigDecimal("1.005"), new BigDecimal("10"), false, "IVA",
                 new BigDecimal("21"));
@@ -39,14 +39,14 @@ class DocumentRulesTest {
         var document = document();
         var method = paymentMethod();
 
-        assertThatThrownBy(() -> new DocumentoPago(
+        assertThatThrownBy(() -> new DocumentPayment(
                 document, method, 1, new BigDecimal("-0.01"), true, null, null, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new DocumentoPago(
+        assertThatThrownBy(() -> new DocumentPayment(
                 document, method, 1, new BigDecimal("10"), true,
                 new BigDecimal("9.99"), null, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new DocumentoPago(
+        assertThatThrownBy(() -> new DocumentPayment(
                 document, method, 1, new BigDecimal("10"), true,
                 new BigDecimal("20"), BigDecimal.ZERO, Instant.now()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -58,28 +58,28 @@ class DocumentRulesTest {
         var document = document();
         var method = paymentMethod();
 
-        document.addPayment(new DocumentoPago(
+        document.addPayment(new DocumentPayment(
                 document, method, 1, new BigDecimal("4"), true, null, null, Instant.now()));
 
-        assertThatThrownBy(() -> document.addPayment(new DocumentoPago(
+        assertThatThrownBy(() -> document.addPayment(new DocumentPayment(
                 document, method, 2, new BigDecimal("6"), true, null, null, Instant.now())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("principal");
     }
 
-    private DocumentoLinea line(Documento document, UUID productId, int quantity) {
-        return new DocumentoLinea(
+    private DocumentLine line(CommercialDocument document, UUID productId, int quantity) {
+        return new DocumentLine(
                 document, productId, 1, quantity, "P-1", "Producto", "VENTA",
                 BigDecimal.ONE, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
     }
 
-    private Documento document() {
-        return new Documento(
-                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.TICKET,
+    private CommercialDocument document() {
+        return new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 java.time.LocalDate.of(2026, 6, 8), UUID.randomUUID(), BigDecimal.ZERO);
     }
 
-    private MetodoPago paymentMethod() {
-        return new MetodoPago(UUID.randomUUID(), "EFECTIVO", false);
+    private PaymentMethod paymentMethod() {
+        return new PaymentMethod(UUID.randomUUID(), "EFECTIVO", false);
     }
 }

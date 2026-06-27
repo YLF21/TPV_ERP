@@ -1,17 +1,17 @@
 package com.tpverp.backend.backup;
 
 import com.tpverp.backend.audit.AuditService;
-import com.tpverp.backend.audit.ResultadoAuditoria;
+import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.backup.application.BackupFileCrypto;
 import com.tpverp.backend.backup.application.BackupArchiveService;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
-import com.tpverp.backend.installation.Instalacion;
-import com.tpverp.backend.installation.InstalacionRepository;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -30,11 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class BackupService {
 
-    private final ConfiguracionBackupRepository configurationRepository;
-    private final EjecucionBackupRepository executionRepository;
-    private final InstalacionRepository installationRepository;
-    private final TiendaRepository storeRepository;
-    private final UsuarioRepository userRepository;
+    private final BackupSettingsRepository configurationRepository;
+    private final BackupExecutionRepository executionRepository;
+    private final InstallationRepository installationRepository;
+    private final StoreRepository storeRepository;
+    private final UserAccountRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final BackupKeyStore keyStore;
     private final BackupFileCrypto fileCrypto;
@@ -46,11 +46,11 @@ public class BackupService {
     private final Path productImagesDirectory;
 
     public BackupService(
-            ConfiguracionBackupRepository configurationRepository,
-            EjecucionBackupRepository executionRepository,
-            InstalacionRepository installationRepository,
-            TiendaRepository storeRepository,
-            UsuarioRepository userRepository,
+            BackupSettingsRepository configurationRepository,
+            BackupExecutionRepository executionRepository,
+            InstallationRepository installationRepository,
+            StoreRepository storeRepository,
+            UserAccountRepository userRepository,
             PasswordEncoder passwordEncoder,
             BackupKeyStore keyStore,
             BackupFileCrypto fileCrypto,
@@ -87,10 +87,10 @@ public class BackupService {
         verifyAdminPassword(adminPassword);
         Path destination = (directory == null ? defaultDirectory : directory).toAbsolutePath().normalize();
         keyStore.initialize(adminPassword.toCharArray(), destination);
-        Instalacion installation = currentInstallation();
-        ConfiguracionBackup configuration = configurationRepository
+        Installation installation = currentInstallation();
+        BackupSettings configuration = configurationRepository
                 .findByInstalacionId(installation.getId())
-                .orElseGet(() -> new ConfiguracionBackup(
+                .orElseGet(() -> new BackupSettings(
                         installation,
                         time,
                         dailyRetention,
@@ -105,7 +105,7 @@ public class BackupService {
         configurationRepository.save(configuration);
         auditService.record(
                 "BACKUP_CONFIGURATION_UPDATED",
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 Map.of("dailyRetention", dailyRetention, "monthlyRetention", monthlyRetention));
         return BackupConfigurationItem.from(configuration);
     }
@@ -117,7 +117,7 @@ public class BackupService {
 
     @Transactional
     public void initializeDefaultIfMissing() {
-        Instalacion installation = currentInstallation();
+        Installation installation = currentInstallation();
         if (configurationRepository.findByInstalacionId(installation.getId()).isEmpty()) {
             configure(LocalTime.NOON, 30, 72, defaultDirectory, true, "0000");
         }
@@ -125,9 +125,9 @@ public class BackupService {
 
     @Transactional
     public ExecutionItem executeNow() {
-        ConfiguracionBackup configuration = currentConfiguration();
-        EjecucionBackup execution = executionRepository.save(
-                new EjecucionBackup(configuration, Instant.now(clock)));
+        BackupSettings configuration = currentConfiguration();
+        BackupExecution execution = executionRepository.save(
+                new BackupExecution(configuration, Instant.now(clock)));
         Path dump = null;
         Path archive = null;
         byte[] brk = null;
@@ -147,7 +147,7 @@ public class BackupService {
             enforceRetention(daily, configuration.getRetencionDiaria());
             enforceRetention(destination.resolve("monthly"), configuration.getRetencionMensual());
             execution.completar(
-                    ResultadoBackup.EXITO,
+                    BackupResult.EXITO,
                     Instant.now(clock),
                     Map.of(
                             "path", encrypted.toString(),
@@ -157,15 +157,15 @@ public class BackupService {
                             "imageFiles", archiveInfo.imageFiles()),
                     null);
             auditService.record(
-                    "BACKUP_COMPLETED", ResultadoAuditoria.EXITO, Map.of("path", encrypted.toString()));
+                    "BACKUP_COMPLETED", AuditResult.EXITO, Map.of("path", encrypted.toString()));
         } catch (Exception exception) {
             execution.completar(
-                    ResultadoBackup.FALLO,
+                    BackupResult.FALLO,
                     Instant.now(clock),
                     null,
                     safeMessage(exception));
             auditService.record(
-                    "BACKUP_FAILED", ResultadoAuditoria.FALLO, Map.of("reason", safeMessage(exception)));
+                    "BACKUP_FAILED", AuditResult.FALLO, Map.of("reason", safeMessage(exception)));
         } finally {
             if (brk != null) {
                 Arrays.fill(brk, (byte) 0);
@@ -202,12 +202,12 @@ public class BackupService {
             commands.restore(dump);
             auditService.record(
                     "BACKUP_RESTORED",
-                    ResultadoAuditoria.EXITO,
+                    AuditResult.EXITO,
                     Map.of("path", encryptedBackup.toAbsolutePath().toString()));
         } catch (Exception exception) {
             auditService.record(
                     "BACKUP_RESTORE_FAILED",
-                    ResultadoAuditoria.FALLO,
+                    AuditResult.FALLO,
                     Map.of("reason", safeMessage(exception)));
             throw new IllegalStateException("No se pudo restaurar el backup", exception);
         } finally {
@@ -231,7 +231,7 @@ public class BackupService {
 
     @Transactional(readOnly = true)
     public List<ExecutionItem> history() {
-        ConfiguracionBackup configuration = currentConfiguration();
+        BackupSettings configuration = currentConfiguration();
         return executionRepository.findByConfiguracionIdOrderByIniciadaEnDesc(configuration.getId())
                 .stream()
                 .map(ExecutionItem::from)
@@ -240,7 +240,7 @@ public class BackupService {
 
     @Transactional(readOnly = true)
     public boolean isDue() {
-        ConfiguracionBackup configuration = currentConfiguration();
+        BackupSettings configuration = currentConfiguration();
         if (!configuration.isActiva()) {
             return false;
         }
@@ -254,33 +254,33 @@ public class BackupService {
     }
 
     private void verifyAdminPassword(String password) {
-        Tienda store = storeRepository.findAll().stream().findFirst()
+        Store store = storeRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
-        Usuario admin = userRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")
+        UserAccount admin = userRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")
                 .orElseThrow(() -> new IllegalStateException("El usuario ADMIN no existe"));
         if (password == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
             throw new IllegalArgumentException("La contrasena ADMIN no es valida");
         }
     }
 
-    private ConfiguracionBackup currentConfiguration() {
+    private BackupSettings currentConfiguration() {
         return configurationRepository.findByInstalacionId(currentInstallation().getId())
                 .orElseThrow(() -> new IllegalStateException("El backup todavia no esta configurado"));
     }
 
-    private Instalacion currentInstallation() {
+    private Installation currentInstallation() {
         return installationRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La instalacion no esta inicializada"));
     }
 
-    private Path destination(ConfiguracionBackup configuration) {
+    private Path destination(BackupSettings configuration) {
         return Path.of(configuration.getDestino().get("path").toString());
     }
 
     private void createMonthlyCopyIfNeeded(
             Path dailyBackup,
             Path destination,
-            ConfiguracionBackup configuration) throws Exception {
+            BackupSettings configuration) throws Exception {
         LocalDate today = LocalDate.now(clock);
         if (today.getDayOfMonth() != 1) {
             return;
@@ -329,7 +329,7 @@ public class BackupService {
             int monthlyRetention,
             boolean active,
             String directory) {
-        static BackupConfigurationItem from(ConfiguracionBackup configuration) {
+        static BackupConfigurationItem from(BackupSettings configuration) {
             return new BackupConfigurationItem(
                     configuration.getHora(),
                     configuration.getRetencionDiaria(),
@@ -343,10 +343,10 @@ public class BackupService {
             UUID id,
             Instant startedAt,
             Instant finishedAt,
-            ResultadoBackup result,
+            BackupResult result,
             Map<String, Object> metadata,
             String errorReason) {
-        static ExecutionItem from(EjecucionBackup execution) {
+        static ExecutionItem from(BackupExecution execution) {
             return new ExecutionItem(
                     execution.getId(),
                     execution.getIniciadaEn(),

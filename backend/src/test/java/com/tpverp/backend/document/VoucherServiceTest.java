@@ -7,10 +7,10 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.Usuario;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.UserAccount;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,7 +37,7 @@ class VoucherServiceTest {
     private CurrentOrganization organization;
 
     private VoucherService service;
-    private Tienda store;
+    private Store store;
 
     @BeforeEach
     void setUp() {
@@ -47,10 +47,10 @@ class VoucherServiceTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        store = new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "Tienda", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
-        var user = new Usuario(store, "ADMIN", "hash", new Rol(store, "ADMIN"));
+        store = new Store(
+                new Company("B00000000", "Company", address),
+                "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         lenient().when(organization.currentStore()).thenReturn(store);
         service = new VoucherService(
                 vouchers, organization, Clock.fixed(NOW, ZoneOffset.UTC));
@@ -117,9 +117,9 @@ class VoucherServiceTest {
         assertThat(service.hasVoucherImpact(generated)).isTrue();
 
         var paidWithVoucher = ticket("001-260617-00002", "20.00");
-        paidWithVoucher.addPayment(new DocumentoPago(
+        paidWithVoucher.addPayment(new DocumentPayment(
                 paidWithVoucher,
-                new MetodoPago(store.getEmpresa().getId(), "VALE", true),
+                new PaymentMethod(store.getEmpresa().getId(), "VALE", true),
                 1,
                 new BigDecimal("20.00"),
                 true,
@@ -131,22 +131,22 @@ class VoucherServiceTest {
         assertThat(service.hasVoucherImpact(paidWithVoucher)).isTrue();
     }
 
-    private Documento draftTicket(String total) {
-        var document = new Documento(
-                store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,
+    private CommercialDocument draftTicket(String total) {
+        var document = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 17), UUID.randomUUID(), BigDecimal.ZERO);
-        document.addLine(new DocumentoLinea(
+        document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, 1,
                 "P-1", "Producto", "VENTA", new BigDecimal(total),
                 BigDecimal.ZERO, true, "IVA", new BigDecimal("21")));
         return document;
     }
 
-    private Documento ticket(String number, String total) {
-        var document = new Documento(
-                store.getId(), UUID.randomUUID(), TipoDocumento.TICKET,
+    private CommercialDocument ticket(String number, String total) {
+        var document = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 17), UUID.randomUUID(), BigDecimal.ZERO);
-        document.addLine(new DocumentoLinea(
+        document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, new BigDecimal(total).signum(),
                 "P-1", "Producto", "VENTA", new BigDecimal(total).abs(),
                 BigDecimal.ZERO, true, "IVA", new BigDecimal("21")));

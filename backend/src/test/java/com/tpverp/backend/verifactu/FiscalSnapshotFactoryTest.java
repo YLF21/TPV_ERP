@@ -3,12 +3,12 @@ package com.tpverp.backend.verifactu;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.DocumentoLinea;
-import com.tpverp.backend.document.DocumentoPago;
-import com.tpverp.backend.document.MetodoPago;
-import com.tpverp.backend.document.TipoDocumento;
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentPayment;
+import com.tpverp.backend.document.PaymentMethod;
+import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
@@ -26,21 +26,21 @@ class FiscalSnapshotFactoryTest {
     @Test
     void construyeUnaCopiaFiscalCompletaOrdenadaEInmutable() {
         var companyId = UUID.randomUUID();
-        var company = new Empresa("B12345674", "Empresa", address());
+        var company = new Company("B12345674", "Company", address());
         var customer = new Customer(
                 company, "Cliente Fiscal", DocumentType.NIF, "12345678Z",
                 new FiscalAddress(
                         "Calle Cliente 1", "35001", "Las Palmas",
                         "Las Palmas", "ES"),
                 null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
-        var document = new Documento(
-                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.TICKET,
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2027, 1, 2), UUID.randomUUID(), new BigDecimal("5.00"));
         setParties(document, customer.getId(), null);
         document.addLine(line(document, 2, "B"));
         document.addLine(line(document, 1, "A"));
-        var cash = new MetodoPago(companyId, "Efectivo", false);
-        document.addPayment(new DocumentoPago(
+        var cash = new PaymentMethod(companyId, "Efectivo", false);
+        document.addPayment(new DocumentPayment(
                 document, cash, 1, new BigDecimal("20.00"), true,
                 new BigDecimal("20.00"), BigDecimal.ZERO,
                 Instant.parse("2027-01-02T10:00:00Z")));
@@ -105,8 +105,8 @@ class FiscalSnapshotFactoryTest {
 
     @Test
     void marcaRectificativaPorSustitucionPorDefecto() {
-        var document = new Documento(
-                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.RECTIFICATIVA_VENTA,
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.RECTIFICATIVA_VENTA,
                 LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(line(document, 1, "R"));
         document.confirm(
@@ -122,8 +122,8 @@ class FiscalSnapshotFactoryTest {
 
     @Test
     void incluyeNumeroDeTicketEnFacturaSustitutiva() {
-        var invoice = new Documento(
-                UUID.randomUUID(), UUID.randomUUID(), TipoDocumento.FACTURA_VENTA,
+        var invoice = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
                 LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
         invoice.addLine(line(invoice, 1, "F"));
         setNumTicket(invoice, "001-270102-000001");
@@ -138,8 +138,8 @@ class FiscalSnapshotFactoryTest {
         assertThat(snapshot).containsEntry("numTicket", "001-270102-000001");
     }
 
-    private static DocumentoLinea line(Documento document, int position, String code) {
-        return new DocumentoLinea(
+    private static DocumentLine line(CommercialDocument document, int position, String code) {
+        return new DocumentLine(
                 document, UUID.randomUUID(), position, 1, code, "Producto " + code,
                 "VENTA", new BigDecimal("10.00"), BigDecimal.ZERO, true,
                 "IGIC", new BigDecimal("7.00"));
@@ -151,9 +151,9 @@ class FiscalSnapshotFactoryTest {
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES");
     }
 
-    private static void setParties(Documento document, UUID customerId, UUID supplierId) {
+    private static void setParties(CommercialDocument document, UUID customerId, UUID supplierId) {
         try {
-            var method = Documento.class.getDeclaredMethod(
+            var method = CommercialDocument.class.getDeclaredMethod(
                     "setParties", UUID.class, UUID.class, String.class);
             method.setAccessible(true);
             method.invoke(document, customerId, supplierId, null);
@@ -162,9 +162,9 @@ class FiscalSnapshotFactoryTest {
         }
     }
 
-    private static void setNumTicket(Documento document, String ticketNumber) {
+    private static void setNumTicket(CommercialDocument document, String ticketNumber) {
         try {
-            var method = Documento.class.getDeclaredMethod("setNumTicket", String.class);
+            var method = CommercialDocument.class.getDeclaredMethod("setNumTicket", String.class);
             method.setAccessible(true);
             method.invoke(document, ticketNumber);
         } catch (ReflectiveOperationException exception) {

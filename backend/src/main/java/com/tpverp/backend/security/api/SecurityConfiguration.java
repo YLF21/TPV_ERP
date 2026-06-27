@@ -1,7 +1,7 @@
 package com.tpverp.backend.security.api;
 
 import com.tpverp.backend.security.application.AuthenticationService;
-import com.tpverp.backend.security.domain.SesionRepository;
+import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.shared.access.OperationalAccessFilter;
 import com.tpverp.backend.shared.access.OperationalAccessPolicy;
@@ -20,7 +20,7 @@ class SecurityConfiguration {
 	@Bean
 	SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
-			SesionRepository sesionRepository,
+			UserSessionRepository sesionRepository,
 			AuthenticationService authenticationService,
 			InstallationStatusService installationStatusService) throws Exception {
 		var bearerFilter = new BearerSessionFilter(sesionRepository, authenticationService);

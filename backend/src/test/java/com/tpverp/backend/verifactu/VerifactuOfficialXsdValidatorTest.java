@@ -92,7 +92,7 @@ class VerifactuOfficialXsdValidatorTest {
 
     private static VerifactuXmlBatchRequest request(FiscalRecord record) {
         return new VerifactuXmlBatchRequest(
-                "Empresa SL",
+                "Company SL",
                 "B12345674",
                 List.of(record),
                 new VerifactuSystemInfo(

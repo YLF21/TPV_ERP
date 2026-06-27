@@ -18,9 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class VoucherController {
 
     private final VoucherService vouchers;
-    private final DocumentoRepository documents;
+    private final CommercialDocumentRepository documents;
 
-    public VoucherController(VoucherService vouchers, DocumentoRepository documents) {
+    public VoucherController(VoucherService vouchers, CommercialDocumentRepository documents) {
         this.vouchers = vouchers;
         this.documents = documents;
     }
@@ -46,7 +46,7 @@ public class VoucherController {
                 code, request.pendingAmount(), document(request.ticketId())));
     }
 
-    private Documento document(UUID id) {
+    private CommercialDocument document(UUID id) {
         var document = documents.findById(id);
         if (document.isEmpty()) {
             throw new IllegalArgumentException("documento no encontrado");

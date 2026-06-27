@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.security.domain.Permiso;
-import com.tpverp.backend.security.domain.PermisoRepository;
+import com.tpverp.backend.security.domain.Permission;
+import com.tpverp.backend.security.domain.PermissionRepository;
 import java.util.ArrayList;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -15,8 +15,8 @@ class CorePermissionBootstrapTest {
 
     @Test
     void registersCommercialPermissionsBySensitiveAction() {
-        var repository = Mockito.mock(PermisoRepository.class);
-        var saved = new ArrayList<Permiso>();
+        var repository = Mockito.mock(PermissionRepository.class);
+        var saved = new ArrayList<Permission>();
         when(repository.findByCodigo(any())).thenReturn(Optional.empty());
         when(repository.save(any())).thenAnswer(invocation -> {
             saved.add(invocation.getArgument(0));
@@ -25,7 +25,7 @@ class CorePermissionBootstrapTest {
 
         new CorePermissionBootstrap(repository).initialize();
 
-        assertThat(saved).extracting(Permiso::getCodigo).contains(
+        assertThat(saved).extracting(Permission::getCodigo).contains(
                 "PRODUCTS_READ",
                 "PRODUCTS_WRITE",
                 "PRODUCTS_DELETE",

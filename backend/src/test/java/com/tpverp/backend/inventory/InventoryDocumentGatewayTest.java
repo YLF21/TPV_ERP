@@ -6,8 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.document.DocumentLineCommand;
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.TipoDocumento;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,7 +41,7 @@ class InventoryDocumentGatewayTest {
 
     @Test
     void salesDeliveryNoteRemovesStockAndRecordsDocumentMovement() {
-        var document = confirmed(TipoDocumento.ALBARAN_VENTA, 3);
+        var document = confirmed(CommercialDocumentType.ALBARAN_VENTA, 3);
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
         when(stockRepository.findByProductIdAndWarehouseId(
@@ -56,7 +56,7 @@ class InventoryDocumentGatewayTest {
 
     @Test
     void purchaseDeliveryNoteAddsStock() {
-        var document = confirmed(TipoDocumento.ALBARAN_COMPRA, 2);
+        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, 2);
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
         when(stockRepository.findByProductIdAndWarehouseId(
@@ -70,7 +70,7 @@ class InventoryDocumentGatewayTest {
 
     @Test
     void salesCreditInvoiceRestoresStock() {
-        var document = confirmed(TipoDocumento.RECTIFICATIVA_VENTA, 2);
+        var document = confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, 2);
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
         stock.apply(-2);
@@ -85,7 +85,7 @@ class InventoryDocumentGatewayTest {
 
     @Test
     void cancellationAppliesTheOppositeQuantityOnce() {
-        var document = confirmed(TipoDocumento.TICKET, 4);
+        var document = confirmed(CommercialDocumentType.TICKET, 4);
         var original = StockMovement.document(
                 document.getLineas().getFirst().getProductoId(),
                 document.getAlmacenId(),
@@ -107,9 +107,9 @@ class InventoryDocumentGatewayTest {
         assertThat(stock.getQuantity()).isZero();
     }
 
-    private Documento confirmed(TipoDocumento type, int quantity) {
+    private CommercialDocument confirmed(CommercialDocumentType type, int quantity) {
         var userId = UUID.randomUUID();
-        var document = new Documento(
+        var document = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), type,
                 LocalDate.of(2026, 6, 8), userId, BigDecimal.ZERO);
         document.addLine(new DocumentLineCommand(

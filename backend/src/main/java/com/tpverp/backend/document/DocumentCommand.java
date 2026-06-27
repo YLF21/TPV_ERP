@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public record DocumentCommand(
         UUID almacenId,
-        TipoDocumento tipo,
+        CommercialDocumentType tipo,
         LocalDate fecha,
         UUID clienteId,
         UUID proveedorId,

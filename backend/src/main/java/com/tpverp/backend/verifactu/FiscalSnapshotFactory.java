@@ -1,8 +1,8 @@
 package com.tpverp.backend.verifactu;
 
-import com.tpverp.backend.document.Documento;
-import com.tpverp.backend.document.DocumentoLinea;
-import com.tpverp.backend.document.DocumentoPago;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.DocumentLine;
+import com.tpverp.backend.document.DocumentPayment;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.FiscalAddress;
@@ -16,7 +16,7 @@ public class FiscalSnapshotFactory {
 
     // Congela todos los datos fiscales persistidos con un orden estable para su huella.
     public Map<String, Object> create(
-            Documento document,
+            CommercialDocument document,
             String issuerTaxId,
             FiscalRecordOperation operation,
             FiscalDocumentType fiscalType,
@@ -44,11 +44,11 @@ public class FiscalSnapshotFactory {
         snapshot.put("impuestoTotal", document.getImpuestoTotal());
         snapshot.put("total", document.getTotal());
         snapshot.put("lineas", document.getLineas().stream()
-                .sorted(Comparator.comparingInt(DocumentoLinea::getPosicion))
+                .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
                 .map(FiscalSnapshotFactory::line)
                 .toList());
         snapshot.put("pagos", document.getPagos().stream()
-                .sorted(Comparator.comparingInt(DocumentoPago::getPosicion))
+                .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
                 .map(FiscalSnapshotFactory::payment)
                 .toList());
         return ImmutableJson.copy(snapshot);
@@ -80,7 +80,7 @@ public class FiscalSnapshotFactory {
         return value;
     }
 
-    private static Map<String, Object> line(DocumentoLinea line) {
+    private static Map<String, Object> line(DocumentLine line) {
         var value = new LinkedHashMap<String, Object>();
         value.put("productoId", line.getProductoId().toString());
         value.put("posicion", line.getPosicion());
@@ -99,7 +99,7 @@ public class FiscalSnapshotFactory {
         return value;
     }
 
-    private static Map<String, Object> payment(DocumentoPago payment) {
+    private static Map<String, Object> payment(DocumentPayment payment) {
         var value = new LinkedHashMap<String, Object>();
         value.put("metodoPagoId", payment.getMetodoPago().getId().toString());
         value.put("metodoPagoNombre", payment.getMetodoPago().getNombre());

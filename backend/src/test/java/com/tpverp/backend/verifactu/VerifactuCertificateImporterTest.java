@@ -21,7 +21,7 @@ class VerifactuCertificateImporterTest {
         var process = new ProcessBuilder(
                 keytool(), "-genkeypair", "-alias", "test", "-storetype", "PKCS12",
                 "-keystore", path.toString(), "-storepass", "secreto", "-keypass", "secreto",
-                "-keyalg", "RSA", "-dname", "CN=Empresa,SERIALNUMBER=IDCES-B12345674",
+                "-keyalg", "RSA", "-dname", "CN=Company,SERIALNUMBER=IDCES-B12345674",
                 "-validity", "365", "-noprompt")
                 .redirectErrorStream(true)
                 .start();

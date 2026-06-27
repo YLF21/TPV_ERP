@@ -22,24 +22,24 @@ class VerifactuCertificateValidatorTest {
     @Test
     void marcaCertificadoVigente() {
         var status = validator().validate(certificate(
-                "CN=Empresa SL, SERIALNUMBER=B12345674",
+                "CN=Company SL, SERIALNUMBER=B12345674",
                 "2026-01-01T00:00:00Z",
                 "2027-01-01T00:00:00Z"));
 
         assertThat(status.valid()).isTrue();
         assertThat(status.warning()).isNull();
-        assertThat(status.subject()).contains("Empresa SL");
+        assertThat(status.subject()).contains("Company SL");
     }
 
     @Test
     void avisaSiElCertificadoEstaCaducadoONoVigenteTodavia() {
         assertThat(validator().validate(certificate(
-                "CN=Empresa SL", "2026-01-01T00:00:00Z", "2026-06-01T00:00:00Z")))
+                "CN=Company SL", "2026-01-01T00:00:00Z", "2026-06-01T00:00:00Z")))
                 .extracting(VerifactuCertificateStatus::valid, VerifactuCertificateStatus::warning)
                 .containsExactly(false, "CERTIFICATE_EXPIRED");
 
         assertThat(validator().validate(certificate(
-                "CN=Empresa SL", "2026-07-01T00:00:00Z", "2027-01-01T00:00:00Z")))
+                "CN=Company SL", "2026-07-01T00:00:00Z", "2027-01-01T00:00:00Z")))
                 .extracting(VerifactuCertificateStatus::valid, VerifactuCertificateStatus::warning)
                 .containsExactly(false, "CERTIFICATE_NOT_YET_VALID");
     }

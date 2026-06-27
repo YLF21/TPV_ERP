@@ -8,8 +8,8 @@ import java.util.UUID;
 
 public record DocumentView(
         UUID id,
-        TipoDocumento tipo,
-        EstadoDocumento estado,
+        CommercialDocumentType tipo,
+        DocumentStatus estado,
         String numero,
         LocalDate fecha,
         BigDecimal base,
@@ -20,18 +20,18 @@ public record DocumentView(
         boolean origenStock,
         List<PaymentView> payments) {
 
-    public static DocumentView from(Documento document) {
+    public static DocumentView from(CommercialDocument document) {
         return from(document, null);
     }
 
-    public static DocumentView from(Documento document, String qrUrl) {
+    public static DocumentView from(CommercialDocument document, String qrUrl) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
                 document.getNumero(), document.getFecha(), document.getBaseTotal(),
                 document.getImpuestoTotal(), document.getTotal(),
                 document.getNumTicket(), qrUrl, document.isOrigenStock(),
                 document.getPagos().stream()
-                        .sorted(Comparator.comparingInt(DocumentoPago::getPosicion))
+                        .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
                         .map(PaymentView::from)
                         .toList());
     }
@@ -46,7 +46,7 @@ public record DocumentView(
             BigDecimal change,
             String voucherCode) {
 
-        static PaymentView from(DocumentoPago payment) {
+        static PaymentView from(DocumentPayment payment) {
             return new PaymentView(
                     payment.getMetodoPago().getId(),
                     payment.getMetodoPago().getNombre(),

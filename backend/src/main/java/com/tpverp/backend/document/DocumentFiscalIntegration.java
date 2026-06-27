@@ -1,6 +1,6 @@
 package com.tpverp.backend.document;
 
-import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
@@ -23,14 +23,14 @@ public class DocumentFiscalIntegration {
     private final FiscalRecordService fiscalRecords;
     private final FiscalRecordRepository recordRepository;
     private final CurrentOrganization organization;
-    private final InstalacionRepository installations;
+    private final InstallationRepository installations;
     private final ApplicationEventPublisher events;
 
     public DocumentFiscalIntegration(
             FiscalRecordService fiscalRecords,
             FiscalRecordRepository recordRepository,
             CurrentOrganization organization,
-            InstalacionRepository installations,
+            InstallationRepository installations,
             ApplicationEventPublisher events) {
         this.fiscalRecords = fiscalRecords;
         this.recordRepository = recordRepository;
@@ -40,7 +40,7 @@ public class DocumentFiscalIntegration {
     }
 
     // Registra el alta fiscal del documento de venta si VERI*FACTU esta activo.
-    public void registerAlta(Documento document, boolean invoiceFromTicket) {
+    public void registerAlta(CommercialDocument document, boolean invoiceFromTicket) {
         var type = altaType(document, invoiceFromTicket);
         if (type != null) {
             register(document, FiscalRecordOperation.ALTA, type);
@@ -48,18 +48,18 @@ public class DocumentFiscalIntegration {
     }
 
     // Registra la anulacion fiscal conservando el tipo original del ticket.
-    public void registerTicketCancellation(Documento ticket) {
+    public void registerTicketCancellation(CommercialDocument ticket) {
         register(ticket, FiscalRecordOperation.ANULACION, ticketType(ticket));
     }
 
-    public void registerInvoiceFromTicket(Documento invoice, Documento ticket) {
+    public void registerInvoiceFromTicket(CommercialDocument invoice, CommercialDocument ticket) {
         try {
             var record = fiscalRecords.registerSubstitution(
                     command(invoice, FiscalRecordOperation.ALTA, FiscalDocumentType.F3),
                     ticket.getId());
             events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
         } catch (VerifactuInactiveException ignored) {
-            // La conversión comercial sigue disponible antes de activar VERI*FACTU.
+            // La conversión comercial sigue disponible antes de activate VERI*FACTU.
         }
     }
     // Registra F3 y enlaza fiscalmente la factura simplificada sustituida.
@@ -70,7 +70,7 @@ public class DocumentFiscalIntegration {
     }
     // Indica si el contenido fiscal del documento ya quedo congelado.
 
-    private FiscalDocumentType altaType(Documento document, boolean invoiceFromTicket) {
+    private FiscalDocumentType altaType(CommercialDocument document, boolean invoiceFromTicket) {
         return switch (document.getTipo()) {
             case TICKET -> ticketType(document);
             case FACTURA_VENTA -> invoiceFromTicket
@@ -80,13 +80,13 @@ public class DocumentFiscalIntegration {
         };
     }
 
-    private FiscalDocumentType ticketType(Documento ticket) {
+    private FiscalDocumentType ticketType(CommercialDocument ticket) {
         return ticket.getTotal().compareTo(BigDecimal.ZERO) < 0
                 ? FiscalDocumentType.R5 : FiscalDocumentType.F2;
     }
 
     private void register(
-            Documento document, FiscalRecordOperation operation, FiscalDocumentType type) {
+            CommercialDocument document, FiscalRecordOperation operation, FiscalDocumentType type) {
         try {
             var record = fiscalRecords.register(command(document, operation, type));
             events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
@@ -96,7 +96,7 @@ public class DocumentFiscalIntegration {
     }
 
     private FiscalRecordCommand command(
-            Documento document, FiscalRecordOperation operation, FiscalDocumentType type) {
+            CommercialDocument document, FiscalRecordOperation operation, FiscalDocumentType type) {
         return new FiscalRecordCommand(
                 organization.currentCompany().getId(), currentInstallationId(),
                 organization.currentStore().getId(), document.getId(), operation, type,

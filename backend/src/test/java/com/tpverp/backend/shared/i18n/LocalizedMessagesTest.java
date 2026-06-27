@@ -13,13 +13,13 @@ class LocalizedMessagesTest {
 
     @Test
     void translatesSystemErrorsUsingSpanishAsFallback() {
-        assertEquals("Usuario o contraseña incorrectos",
+        assertEquals("UserAccount o contraseña incorrectos",
                 messages.system(SystemErrorCode.AUTHENTICATION_FAILED, SupportedLanguage.ES));
         assertEquals("Incorrect username or password",
                 messages.system(SystemErrorCode.AUTHENTICATION_FAILED, SupportedLanguage.EN));
         assertEquals("用户名或密码不正确",
                 messages.system(SystemErrorCode.AUTHENTICATION_FAILED, SupportedLanguage.ZH));
-        assertEquals("Usuario o contraseña incorrectos",
+        assertEquals("UserAccount o contraseña incorrectos",
                 messages.system(SystemErrorCode.AUTHENTICATION_FAILED, null));
     }
 

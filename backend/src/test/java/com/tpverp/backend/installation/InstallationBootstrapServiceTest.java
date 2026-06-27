@@ -6,14 +6,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.EmpresaRepository;
-import com.tpverp.backend.organization.Tienda;
-import com.tpverp.backend.organization.TiendaRepository;
-import com.tpverp.backend.security.domain.Rol;
-import com.tpverp.backend.security.domain.RolRepository;
-import com.tpverp.backend.security.domain.Usuario;
-import com.tpverp.backend.security.domain.UsuarioRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
+import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.security.domain.Role;
+import com.tpverp.backend.security.domain.RoleRepository;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentity;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.terminal.Terminal;
@@ -34,15 +34,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 class InstallationBootstrapServiceTest {
 
 	@Mock
-	private InstalacionRepository instalacionRepository;
+	private InstallationRepository instalacionRepository;
 	@Mock
-	private EmpresaRepository empresaRepository;
+	private CompanyRepository empresaRepository;
 	@Mock
-	private TiendaRepository tiendaRepository;
+	private StoreRepository tiendaRepository;
 	@Mock
-	private RolRepository rolRepository;
+	private RoleRepository rolRepository;
 	@Mock
-	private UsuarioRepository usuarioRepository;
+	private UserAccountRepository usuarioRepository;
 	@Mock
 	private TerminalRepository terminalRepository;
 	@Mock
@@ -72,16 +72,16 @@ class InstallationBootstrapServiceTest {
 		when(identityStore.loadOrCreate()).thenReturn(identity());
 		when(passwordEncoder.encode(any())).thenAnswer(invocation ->
 				"0000".equals(invocation.getArgument(0)) ? "admin-hash" : "credential-hash");
-		when(empresaRepository.save(any(Empresa.class))).thenAnswer(invocation -> invocation.getArgument(0));
-		when(tiendaRepository.save(any(Tienda.class))).thenAnswer(invocation -> invocation.getArgument(0));
-		when(rolRepository.save(any(Rol.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(empresaRepository.save(any(Company.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(tiendaRepository.save(any(Store.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(rolRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		service.initialize();
 
-		var installation = ArgumentCaptor.forClass(Instalacion.class);
-		var store = ArgumentCaptor.forClass(Tienda.class);
-		var role = ArgumentCaptor.forClass(Rol.class);
-		var user = ArgumentCaptor.forClass(Usuario.class);
+		var installation = ArgumentCaptor.forClass(Installation.class);
+		var store = ArgumentCaptor.forClass(Store.class);
+		var role = ArgumentCaptor.forClass(Role.class);
+		var user = ArgumentCaptor.forClass(UserAccount.class);
 		var terminal = ArgumentCaptor.forClass(Terminal.class);
 		verify(instalacionRepository).save(installation.capture());
 		verify(tiendaRepository).save(store.capture());

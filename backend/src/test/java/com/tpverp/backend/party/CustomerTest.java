@@ -3,7 +3,7 @@ package com.tpverp.backend.party;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.tpverp.backend.organization.Empresa;
+import com.tpverp.backend.organization.Company;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
@@ -66,8 +66,8 @@ class CustomerTest {
         assertThat(customer.getRate()).isEqualTo(CustomerRate.MEMBER);
     }
 
-    private Empresa company() {
-        return new Empresa("B00000000", "Empresa", Map.of(
+    private Company company() {
+        return new Company("B00000000", "Company", Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",
                 "codigoPostal", "35001", "provincia", "Las Palmas", "pais", "ES"));
     }

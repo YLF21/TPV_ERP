@@ -210,13 +210,13 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         jdbc.update("""
                 insert into %s.empresa (id, tax_id, razon_social, domicilio_fiscal)
-                values (?, 'B00000000', 'Empresa', cast(? as jsonb))
+                values (?, 'B00000000', 'Company', cast(? as jsonb))
                 """.formatted(SCHEMA), ids.companyId(), address());
         jdbc.update("""
                 insert into %s.tienda (
                     id, empresa_id, codigo_tienda, nombre, direccion, address_normalized_hash,
                     timezone, moneda, locale)
-                values (?, ?, '001', 'Tienda', cast(? as jsonb), 'hash',
+                values (?, ?, '001', 'Store', cast(? as jsonb), 'hash',
                     'Atlantic/Canary', 'EUR', 'es-ES')
                 """.formatted(SCHEMA), ids.storeId(), ids.companyId(), address());
         jdbc.update("""

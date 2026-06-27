@@ -7,11 +7,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.tpverp.backend.installation.Instalacion;
-import com.tpverp.backend.installation.InstalacionRepository;
+import com.tpverp.backend.installation.Installation;
+import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.organization.Empresa;
-import com.tpverp.backend.organization.Tienda;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
@@ -43,13 +43,13 @@ class DocumentFiscalIntegrationTest {
     @Mock
     private CurrentOrganization organization;
     @Mock
-    private InstalacionRepository installations;
+    private InstallationRepository installations;
     @Mock
     private ApplicationEventPublisher events;
 
     private DocumentFiscalIntegration integration;
-    private Tienda store;
-    private Instalacion installation;
+    private Store store;
+    private Installation installation;
 
     @BeforeEach
     void setUp() {
@@ -59,11 +59,11 @@ class DocumentFiscalIntegrationTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
-        store = new Tienda(
-                new Empresa("B00000000", "Empresa", address),
-                "001", "Tienda", address, "hash",
+        store = new Store(
+                new Company("B00000000", "Company", address),
+                "001", "Store", address, "hash",
                 "Atlantic/Canary", "EUR", "es-ES");
-        installation = new Instalacion("INSTALL", "public", Instant.parse("2026-01-01T00:00:00Z"));
+        installation = new Installation("INSTALL", "public", Instant.parse("2026-01-01T00:00:00Z"));
         lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(installations.findAll()).thenReturn(List.of(installation));
@@ -79,11 +79,11 @@ class DocumentFiscalIntegrationTest {
 
     @Test
     void classifiesTicketInvoiceAndCreditNote() {
-        integration.registerAlta(confirmed(TipoDocumento.TICKET, BigDecimal.TEN), false);
-        integration.registerAlta(confirmed(TipoDocumento.TICKET, BigDecimal.ONE.negate()), false);
-        integration.registerAlta(confirmed(TipoDocumento.FACTURA_VENTA, BigDecimal.TEN), false);
-        integration.registerAlta(confirmed(TipoDocumento.FACTURA_VENTA, BigDecimal.TEN), true);
-        integration.registerAlta(confirmed(TipoDocumento.RECTIFICATIVA_VENTA, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.ONE.negate()), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN), true);
+        integration.registerAlta(confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, BigDecimal.TEN), false);
 
         var commands = ArgumentCaptor.forClass(FiscalRecordCommand.class);
         verify(fiscalRecords, org.mockito.Mockito.times(5)).register(commands.capture());
@@ -102,7 +102,7 @@ class DocumentFiscalIntegrationTest {
     void inactiveVerifactuDoesNotBlockDocumentFlow() {
         when(fiscalRecords.register(any())).thenThrow(new VerifactuInactiveException());
 
-        integration.registerAlta(confirmed(TipoDocumento.TICKET, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
 
         verify(fiscalRecords).register(any());
     }
@@ -114,7 +114,7 @@ class DocumentFiscalIntegrationTest {
         when(record.getId()).thenReturn(recordId);
         when(fiscalRecords.register(any())).thenReturn(record);
 
-        integration.registerAlta(confirmed(TipoDocumento.TICKET, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
 
         verify(events).publishEvent(
                 new com.tpverp.backend.verifactu.FiscalRecordQueuedEvent(recordId));
@@ -122,14 +122,14 @@ class DocumentFiscalIntegrationTest {
 
     @Test
     void ignoresNonSalesFiscalDocuments() {
-        integration.registerAlta(confirmed(TipoDocumento.FACTURA_COMPRA, BigDecimal.TEN), false);
+        integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_COMPRA, BigDecimal.TEN), false);
 
         verify(fiscalRecords, never()).register(any());
     }
 
     @Test
     void registersTicketCancellationWithOriginalFiscalType() {
-        integration.registerTicketCancellation(confirmed(TipoDocumento.TICKET, BigDecimal.ONE.negate()));
+        integration.registerTicketCancellation(confirmed(CommercialDocumentType.TICKET, BigDecimal.ONE.negate()));
 
         var command = ArgumentCaptor.forClass(FiscalRecordCommand.class);
         verify(fiscalRecords).register(command.capture());
@@ -139,8 +139,8 @@ class DocumentFiscalIntegrationTest {
 
     @Test
     void registersInvoiceFromTicketAsF3Substitution() {
-        var ticket = confirmed(TipoDocumento.TICKET, BigDecimal.TEN);
-        var invoice = confirmed(TipoDocumento.FACTURA_VENTA, BigDecimal.TEN);
+        var ticket = confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN);
+        var invoice = confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN);
 
         integration.registerInvoiceFromTicket(invoice, ticket);
 
@@ -149,8 +149,8 @@ class DocumentFiscalIntegrationTest {
         assertThat(command.getValue().documentType()).isEqualTo(FiscalDocumentType.F3);
     }
 
-    private Documento confirmed(TipoDocumento type, BigDecimal amount) {
-        var document = new Documento(
+    private CommercialDocument confirmed(CommercialDocumentType type, BigDecimal amount) {
+        var document = new CommercialDocument(
                 store.getId(), UUID.randomUUID(), type, LocalDate.of(2026, 6, 8),
                 UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLineCommand(
