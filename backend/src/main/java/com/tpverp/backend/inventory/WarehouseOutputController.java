@@ -1,5 +1,6 @@
 package com.tpverp.backend.inventory;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_CONFIRM;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_DELETE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_EDIT;
@@ -32,14 +33,14 @@ public class WarehouseOutputController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSE_OUTPUTS_READ + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_READ + "','" + GESTION_PRODUCTO + "')")
     public List<WarehouseOutput> list() {
         return service.list();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "','" + GESTION_PRODUCTO + "')")
     public WarehouseOutput create(
             @Valid @RequestBody WarehouseOutputCommand command,
             Authentication authentication) {
@@ -47,7 +48,7 @@ public class WarehouseOutputController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "','" + GESTION_PRODUCTO + "')")
     public WarehouseOutput update(
             @PathVariable UUID id,
             @Valid @RequestBody WarehouseOutputCommand command) {
@@ -56,13 +57,13 @@ public class WarehouseOutputController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSE_OUTPUTS_DELETE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_DELETE + "','" + GESTION_PRODUCTO + "')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSE_OUTPUTS_CONFIRM + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
     public WarehouseOutput confirm(
             @PathVariable UUID id, Authentication authentication) {
         return service.confirm(id, authentication);

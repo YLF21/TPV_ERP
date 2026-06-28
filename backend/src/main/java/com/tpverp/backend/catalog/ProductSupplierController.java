@@ -1,5 +1,6 @@
 package com.tpverp.backend.catalog;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
 
@@ -31,20 +32,20 @@ public class ProductSupplierController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PRODUCTS_READ + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "')")
     public List<ProductSupplierView> list(@PathVariable UUID productId) {
         return service.list(productId);
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PRODUCTS_WRITE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public ProductSupplierView link(
             @PathVariable UUID productId, @Valid @RequestBody LinkRequest request) {
         return service.link(productId, request.supplierId(), request.supplierReference());
     }
 
     @PutMapping("/{supplierId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PRODUCTS_WRITE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public ProductSupplierView update(
             @PathVariable UUID productId,
             @PathVariable UUID supplierId,
@@ -53,7 +54,7 @@ public class ProductSupplierController {
     }
 
     @DeleteMapping("/{supplierId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PRODUCTS_WRITE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public ResponseEntity<Void> unlink(
             @PathVariable UUID productId, @PathVariable UUID supplierId) {
         service.unlink(productId, supplierId);

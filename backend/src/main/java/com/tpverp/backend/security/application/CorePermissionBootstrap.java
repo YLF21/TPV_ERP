@@ -17,6 +17,7 @@ public class CorePermissionBootstrap {
     public static final String PRODUCTS_READ = "PRODUCTS_READ";
     public static final String PRODUCTS_WRITE = "PRODUCTS_WRITE";
     public static final String PRODUCTS_DELETE = "PRODUCTS_DELETE";
+    public static final String GESTION_PRODUCTO = "GESTION_PRODUCTO";
     public static final String TAXES_MANAGE = "TAXES_MANAGE";
     public static final String WAREHOUSES_MANAGE = "WAREHOUSES_MANAGE";
     public static final String STOCK_READ = "STOCK_READ";
@@ -66,6 +67,7 @@ public class CorePermissionBootstrap {
                 permission(PRODUCTS_READ, "catalog.permissions.read", "CATALOG"),
                 permission(PRODUCTS_WRITE, "catalog.permissions.write", "CATALOG"),
                 permission(PRODUCTS_DELETE, "catalog.permissions.delete", "CATALOG"),
+                permission(GESTION_PRODUCTO, "catalog.permissions.productManagement", "CATALOG"),
                 permission(TAXES_MANAGE, "catalog.permissions.taxes", "CATALOG"),
                 permission(WAREHOUSES_MANAGE, "inventory.permissions.warehouses", "INVENTORY"),
                 permission(STOCK_READ, "inventory.permissions.read", "INVENTORY"),

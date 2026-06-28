@@ -1,5 +1,6 @@
 package com.tpverp.backend.inventory;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_ADJUST;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
@@ -30,7 +31,7 @@ public class StockController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_READ + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
     public List<InventoryService.StockItem> list(
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) UUID warehouseId) {
@@ -38,13 +39,13 @@ public class StockController {
     }
 
     @GetMapping("/movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_READ + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
     public List<StockMovement> movements(@RequestParam UUID productId) {
         return service.movements(productId);
     }
 
     @PostMapping("/adjustments")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_ADJUST + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_PRODUCTO + "')")
     public InventoryService.StockItem adjust(
             @Valid @RequestBody AdjustmentRequest request, Authentication authentication) {
         return service.adjust(
@@ -53,7 +54,7 @@ public class StockController {
     }
 
     @PostMapping("/transfers")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_TRANSFER + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "')")
     public InventoryService.TransferResult transfer(
             @Valid @RequestBody TransferRequest request, Authentication authentication) {
         return service.transfer(

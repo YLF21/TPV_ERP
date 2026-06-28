@@ -29,6 +29,7 @@ class CorePermissionBootstrapTest {
                 "PRODUCTS_READ",
                 "PRODUCTS_WRITE",
                 "PRODUCTS_DELETE",
+                "GESTION_PRODUCTO",
                 "STOCK_ADJUST",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_WRITE",

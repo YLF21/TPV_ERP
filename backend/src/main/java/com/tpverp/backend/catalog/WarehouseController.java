@@ -1,5 +1,7 @@
 package com.tpverp.backend.catalog;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
 import jakarta.validation.Valid;
@@ -29,32 +31,32 @@ public class WarehouseController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('STOCK_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
     public List<Warehouse> list() {
         return service.warehouses();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
     public Warehouse create(@Valid @RequestBody NameRequest request) {
         return service.createWarehouse(request.name());
     }
 
     @PutMapping("/{warehouseId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
     public Warehouse rename(@PathVariable UUID warehouseId, @Valid @RequestBody NameRequest request) {
         return service.renameWarehouse(warehouseId, request.name());
     }
 
     @PatchMapping("/{warehouseId}/active")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
     public Warehouse setActive(
             @PathVariable UUID warehouseId, @Valid @RequestBody TaxController.ActiveRequest request) {
         return service.setWarehouseActive(warehouseId, request.active());
     }
 
     @DeleteMapping("/{warehouseId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
     public ResponseEntity<Void> delete(@PathVariable UUID warehouseId) {
         service.deleteWarehouse(warehouseId);
         return ResponseEntity.noContent().build();
