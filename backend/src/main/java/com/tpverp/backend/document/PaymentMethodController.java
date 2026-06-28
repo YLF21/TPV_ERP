@@ -26,7 +26,7 @@ public class PaymentMethodController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('TICKETS_CREATE','INVOICES_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CREATE','INVOICES_WRITE')")
     public List<PaymentMethodView> list(@RequestParam UUID companyId) {
         return service.list(companyId).stream().map(PaymentMethodView::from).toList();
     }

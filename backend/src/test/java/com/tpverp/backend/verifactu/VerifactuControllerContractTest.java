@@ -64,8 +64,8 @@ class VerifactuControllerContractTest {
         assertSecuredGet("clock");
         assertSecuredGet("attempts", UUID.class);
 
-        assertSecuredPost("activateVoluntary", "/activate-voluntary");
-        assertSecuredPost("deactivateVoluntary", "/deactivate-voluntary");
+        assertAdminOnlyPost("activateVoluntary", "/activate-voluntary");
+        assertAdminOnlyPost("deactivateVoluntary", "/deactivate-voluntary");
 
         var retry = VerifactuAdminController.class.getDeclaredMethod("retryNext");
         assertThat(retry.getAnnotation(PostMapping.class).value())
@@ -107,6 +107,12 @@ class VerifactuControllerContractTest {
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("GESTION_VENTAS");
+    }
+
+    private static void assertAdminOnlyPost(String methodName, String path) throws NoSuchMethodException {
+        var method = VerifactuAdminController.class.getDeclaredMethod(methodName);
+        assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
+        assertAdminOnly(method);
     }
 
     private static void assertAdminOnly(Method method) {

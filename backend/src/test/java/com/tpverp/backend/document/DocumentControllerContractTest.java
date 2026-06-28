@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -32,6 +33,15 @@ class DocumentControllerContractTest {
 
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id}/invoice");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
+    }
+
+    @Test
+    void salesManagementCanListPaymentMethods() throws NoSuchMethodException {
+        var method = PaymentMethodController.class.getDeclaredMethod("list", UUID.class);
+
+        assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("GESTION_VENTAS");
     }

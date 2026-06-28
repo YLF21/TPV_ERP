@@ -44,13 +44,13 @@ public class VerifactuAdminController {
     }
 
     @PostMapping("/activate-voluntary")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN')")
     public VerifactuConfigurationView activateVoluntary() {
         return VerifactuConfigurationView.from(service.activateVoluntary());
     }
 
     @PostMapping("/deactivate-voluntary")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN')")
     public VerifactuConfigurationView deactivateVoluntary() {
         return VerifactuConfigurationView.from(service.deactivateVoluntary());
     }
