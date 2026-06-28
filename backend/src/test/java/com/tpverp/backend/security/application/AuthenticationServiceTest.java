@@ -44,7 +44,8 @@ class AuthenticationServiceTest {
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
-		when(usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")).thenReturn(Optional.of(user));
+		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
 
 		var service = service();
@@ -64,7 +65,8 @@ class AuthenticationServiceTest {
 		var role = new Role(store, "ADMIN");
 		var user = new UserAccount(store, "ADMIN", "password-hash", role);
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
-		when(usuarioRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")).thenReturn(Optional.of(user));
+		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+				.thenReturn(Optional.of(user));
 		when(passwordEncoder.matches("bad", "password-hash")).thenReturn(false);
 
 		assertThatThrownBy(() -> service().login(terminal.getId(), "ADMIN", "bad"))

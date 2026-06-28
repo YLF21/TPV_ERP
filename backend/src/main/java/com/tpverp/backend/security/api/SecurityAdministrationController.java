@@ -30,20 +30,20 @@ public class SecurityAdministrationController {
     }
 
     @GetMapping("/users")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
     public List<SecurityAdministrationService.UserItem> users() {
         return service.users();
     }
 
     @PostMapping("/users")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
     public SecurityAdministrationService.UserItem createUser(
             @Valid @RequestBody CreateUserRequest request) {
-        return service.createUser(request.name(), request.password(), request.roleId());
+        return service.createUser(request.name(), request.userName(), request.password(), request.roleId());
     }
 
     @PutMapping("/users/{userId}/role")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
     public SecurityAdministrationService.UserItem changeRole(
             @PathVariable UUID userId,
             @Valid @RequestBody ChangeRoleRequest request) {
@@ -51,7 +51,7 @@ public class SecurityAdministrationController {
     }
 
     @PatchMapping("/users/{userId}/active")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('USERS_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
     public ResponseEntity<Void> setActive(
             @PathVariable UUID userId,
             @Valid @RequestBody ActiveRequest request) {
@@ -59,8 +59,33 @@ public class SecurityAdministrationController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/users/{userId}/name")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    public SecurityAdministrationService.UserItem changeUserName(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UserNameRequest request) {
+        return service.changeUserName(userId, request.userName());
+    }
+
+    @PutMapping("/users/{userId}/password")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    public ResponseEntity<Void> resetPassword(
+            @PathVariable UUID userId,
+            @Valid @RequestBody ResetPasswordRequest request) {
+        service.resetPassword(userId, request.password());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/users/{userId}/stores")
+    @PreAuthorize("hasRole('ADMIN')")
+    public SecurityAdministrationService.UserItem replaceStoreAccess(
+            @PathVariable UUID userId,
+            @Valid @RequestBody StoreAccessRequest request) {
+        return service.replaceStoreAccess(userId, request.storeIds());
+    }
+
     @GetMapping("/roles")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
     public List<SecurityAdministrationService.RoleItem> roles() {
         return service.roles();
     }
@@ -74,14 +99,14 @@ public class SecurityAdministrationController {
     }
 
     @PostMapping("/roles")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
     public SecurityAdministrationService.RoleItem createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         return service.createRole(request.name());
     }
 
     @PutMapping("/roles/{roleId}/permissions")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
     public SecurityAdministrationService.RoleItem assignPermissions(
             @PathVariable UUID roleId,
             @Valid @RequestBody PermissionsRequest request) {
@@ -90,6 +115,7 @@ public class SecurityAdministrationController {
 
     public record CreateUserRequest(
             @NotBlank String name,
+            @NotBlank String userName,
             @NotBlank String password,
             @NotNull UUID roleId) {
     }
@@ -98,6 +124,15 @@ public class SecurityAdministrationController {
     }
 
     public record ActiveRequest(boolean active) {
+    }
+
+    public record UserNameRequest(@NotBlank String userName) {
+    }
+
+    public record ResetPasswordRequest(@NotBlank @Size(min = 4) String password) {
+    }
+
+    public record StoreAccessRequest(@NotNull Set<UUID> storeIds) {
     }
 
     public record CreateRoleRequest(@NotBlank String name) {

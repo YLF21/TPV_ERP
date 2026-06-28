@@ -11,6 +11,7 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.PermissionRepository;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.RoleRepository;
@@ -24,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,7 +38,7 @@ class SecurityAdministrationServiceTest {
     }
 
     @Test
-    void usersOnlyReturnsUsersFromAuthenticatedStore() {
+    void usersOnlyReturnsUsersFromAuthenticatedCompany() {
         var currentStore = store();
         var foreignStore = store();
         var currentRole = new Role(currentStore, "CAJA");
@@ -44,7 +46,7 @@ class SecurityAdministrationServiceTest {
         var currentUser = new UserAccount(currentStore, "CURRENT", "hash", currentRole);
         var foreignUser = new UserAccount(foreignStore, "FOREIGN", "hash", foreignRole);
         var users = org.mockito.Mockito.mock(UserAccountRepository.class);
-        when(users.findAllByTiendaIdOrderByNombre(currentStore.getId()))
+        when(users.findAllByEmpresaIdOrderByNombre(currentStore.getEmpresa().getId()))
                 .thenReturn(List.of(currentUser));
         authenticate(currentUser);
 
@@ -63,7 +65,7 @@ class SecurityAdministrationServiceTest {
         var foreignUser = new UserAccount(
                 foreignStore, "FOREIGN", "hash", new Role(foreignStore, "CAJA"));
         var users = org.mockito.Mockito.mock(UserAccountRepository.class);
-        when(users.findByIdAndTiendaId(foreignUser.getId(), currentStore.getId()))
+        when(users.findByIdAndEmpresaId(foreignUser.getId(), currentStore.getEmpresa().getId()))
                 .thenReturn(Optional.empty());
         authenticate(currentUser);
 
@@ -82,7 +84,7 @@ class SecurityAdministrationServiceTest {
         var normalRole = new Role(store, "CAJA");
         var adminRole = new Role(store, "ADMIN");
         var user = new UserAccount(store, "USER", "hash", normalRole);
-        when(users.findByIdAndTiendaId(user.getId(), store.getId()))
+        when(users.findByIdAndEmpresaId(user.getId(), store.getEmpresa().getId()))
                 .thenReturn(Optional.of(user));
         when(roles.findByIdAndTiendaId(adminRole.getId(), store.getId()))
                 .thenReturn(Optional.of(adminRole));
@@ -107,6 +109,8 @@ class SecurityAdministrationServiceTest {
                 organization, users, roles,
                 org.mockito.Mockito.mock(PermissionRepository.class),
                 org.mockito.Mockito.mock(UserSessionRepository.class),
+                org.mockito.Mockito.mock(StoreRepository.class),
+                org.mockito.Mockito.mock(JdbcTemplate.class),
                 org.mockito.Mockito.mock(PasswordEncoder.class),
                 Clock.systemUTC(),
                 org.mockito.Mockito.mock(AuditService.class),

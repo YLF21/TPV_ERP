@@ -18,6 +18,8 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 @Entity
 @Table(name = "usuario")
@@ -32,6 +34,13 @@ public class UserAccount {
 
     @Column(nullable = false, length = 64)
     private String nombre;
+
+    @Generated(event = EventType.INSERT)
+    @Column(name = "user_id", nullable = false, length = 8, insertable = false, updatable = false)
+    private String userId;
+
+    @Column(name = "user_name", nullable = false, length = 128)
+    private String userName;
 
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
@@ -67,6 +76,7 @@ public class UserAccount {
         this.id = UUID.randomUUID();
         this.tienda = Objects.requireNonNull(tienda, "tienda");
         this.nombre = uppercase(nombre);
+        this.userName = required(nombre, "userName");
         this.passwordHash = required(passwordHash, "passwordHash");
         this.rol = Objects.requireNonNull(rol, "rol");
         this.protegido = "ADMIN".equals(this.nombre);
@@ -74,6 +84,14 @@ public class UserAccount {
 
     public String getNombre() {
         return nombre;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public String getUserName() {
+        return userName;
     }
 
     public boolean isProtegido() {
@@ -106,6 +124,10 @@ public class UserAccount {
 
     public void cambiarIdioma(SupportedLanguage nuevoIdioma) {
         this.idioma = Objects.requireNonNullElse(nuevoIdioma, SupportedLanguage.ES);
+    }
+
+    public void cambiarUserName(String nuevoUserName) {
+        this.userName = required(nuevoUserName, "userName");
     }
 
     public void renombrar(String nuevoNombre) {

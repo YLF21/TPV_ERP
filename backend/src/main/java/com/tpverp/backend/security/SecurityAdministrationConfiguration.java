@@ -1,6 +1,7 @@
 package com.tpverp.backend.security;
 
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.security.application.SecurityAdministrationService;
 import com.tpverp.backend.security.domain.PermissionRepository;
@@ -8,6 +9,7 @@ import com.tpverp.backend.security.domain.RoleRepository;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,6 +41,8 @@ class SecurityAdministrationConfiguration {
             RoleRepository rolRepository,
             PermissionRepository permisoRepository,
             UserSessionRepository sesionRepository,
+            StoreRepository storeRepository,
+            JdbcTemplate jdbc,
             PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
@@ -51,6 +55,8 @@ class SecurityAdministrationConfiguration {
                 rolRepository,
                 permisoRepository,
                 sesionRepository,
+                storeRepository,
+                jdbc,
                 passwordEncoder,
                 clock,
                 auditService,

@@ -34,6 +34,7 @@ class CorePermissionBootstrapTest {
                 "SUPPLIERS_WRITE",
                 "GESTION_VENTAS",
                 "GESTION_CUENTAS",
+                "GESTION_USUARIO",
                 "CASH_READ",
                 "CASH_OPERATE",
                 "CASH_CONFIGURE",

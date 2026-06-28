@@ -60,8 +60,11 @@ public class AuthenticationService {
 			throw new AuthenticationFailedException();
 		}
 		var normalizedName = userName == null ? "" : userName.trim().toUpperCase(Locale.ROOT);
-		var user = usuarioRepository.findByTiendaIdAndNombre(terminal.getTienda().getId(), normalizedName)
+		var user = usuarioRepository.findByEmpresaIdAndNombre(
+						terminal.getTienda().getEmpresa().getId(), normalizedName)
 				.filter(value -> value.isActivo())
+				.filter(value -> value.isProtegido()
+						|| usuarioRepository.hasStoreAccess(value.getId(), terminal.getTienda().getId()))
 				.orElseThrow(AuthenticationFailedException::new);
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
 			throw new AuthenticationFailedException();

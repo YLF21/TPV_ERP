@@ -2,6 +2,7 @@ package com.tpverp.backend.security.application;
 
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.PermissionRepository;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.RoleRepository;
@@ -16,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.audit.AuditResult;
@@ -32,6 +34,8 @@ public class SecurityAdministrationService {
     private final RoleRepository rolRepository;
     private final PermissionRepository permisoRepository;
     private final UserSessionRepository sesionRepository;
+    private final StoreRepository storeRepository;
+    private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final AuditService auditService;
@@ -45,6 +49,8 @@ public class SecurityAdministrationService {
             RoleRepository rolRepository,
             PermissionRepository permisoRepository,
             UserSessionRepository sesionRepository,
+            StoreRepository storeRepository,
+            JdbcTemplate jdbc,
             PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
@@ -56,6 +62,8 @@ public class SecurityAdministrationService {
         this.rolRepository = rolRepository;
         this.permisoRepository = permisoRepository;
         this.sesionRepository = sesionRepository;
+        this.storeRepository = storeRepository;
+        this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
         this.auditService = auditService;
@@ -66,15 +74,22 @@ public class SecurityAdministrationService {
 
     @Transactional
     public UserItem createUser(String name, String password, UUID roleId) {
+        return createUser(name, name, password, roleId);
+    }
+
+    @Transactional
+    public UserItem createUser(String name, String userName, String password, UUID roleId) {
         Store store = currentStore();
         String normalized = normalize(name);
-        if (usuarioRepository.findByTiendaIdAndNombre(store.getId(), normalized).isPresent()) {
+        if (usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), normalized).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese usuario");
         }
         Role role = role(roleId);
         requireAssignable(role);
-        UserAccount user = usuarioRepository.save(
-                new UserAccount(store, normalized, passwordEncoder.encode(password), role));
+        UserAccount user = new UserAccount(store, normalized, passwordEncoder.encode(password), role);
+        user.cambiarUserName(userName);
+        user = usuarioRepository.save(user);
+        grantStoreAccess(user.getId(), Set.of(store.getId()), false);
         auditService.record(
                 "USER_CREATED", AuditResult.EXITO, Map.of("userId", user.getId()));
         return UserItem.from(user);
@@ -108,9 +123,40 @@ public class SecurityAdministrationService {
         return UserItem.from(user);
     }
 
+    @Transactional
+    public UserItem changeUserName(UUID userId, String userName) {
+        UserAccount user = user(userId);
+        user.cambiarUserName(userName);
+        auditService.record(
+                "USER_NAME_CHANGED", AuditResult.EXITO, Map.of("userId", userId));
+        return UserItem.from(user);
+    }
+
+    @Transactional
+    public void resetPassword(UUID userId, String newPassword) {
+        UserAccount user = user(userId);
+        user.cambiarPassword(passwordEncoder.encode(newPassword));
+        Instant now = Instant.now(clock);
+        sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(userId)
+                .forEach(session -> session.revocar(user, "PASSWORD_RESET", now));
+        auditService.record(
+                "USER_PASSWORD_RESET", AuditResult.EXITO, Map.of("userId", userId));
+    }
+
+    @Transactional
+    public UserItem replaceStoreAccess(UUID userId, Set<UUID> storeIds) {
+        UserAccount user = user(userId);
+        grantStoreAccess(user.getId(), storeIds, true);
+        auditService.record(
+                "USER_STORE_ACCESS_CHANGED",
+                AuditResult.EXITO,
+                Map.of("userId", userId, "storeIds", storeIds));
+        return UserItem.from(user);
+    }
+
     @Transactional(readOnly = true)
     public List<UserItem> users() {
-        return usuarioRepository.findAllByTiendaIdOrderByNombre(currentStore().getId())
+        return usuarioRepository.findAllByEmpresaIdOrderByNombre(currentStore().getEmpresa().getId())
                 .stream().map(UserItem::from).toList();
     }
 
@@ -179,8 +225,29 @@ public class SecurityAdministrationService {
     }
 
     private UserAccount user(UUID id) {
-        return usuarioRepository.findByIdAndTiendaId(id, currentStore().getId())
+        return usuarioRepository.findByIdAndEmpresaId(id, currentStore().getEmpresa().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.security.user_not_found"));
+    }
+
+    private void grantStoreAccess(UUID userId, Set<UUID> storeIds, boolean replace) {
+        if (storeIds == null || storeIds.isEmpty()) {
+            throw new IllegalArgumentException("message.security.store_access_required");
+        }
+        var companyId = currentStore().getEmpresa().getId();
+        var allowed = storeRepository.findByEmpresaId(companyId).stream()
+                .map(Store::getId)
+                .collect(Collectors.toSet());
+        if (!allowed.containsAll(storeIds)) {
+            throw new IllegalArgumentException("message.security.store_not_in_company");
+        }
+        if (replace) {
+            jdbc.update("delete from usuario_tienda where usuario_id = ?", userId);
+        }
+        storeIds.forEach(storeId -> jdbc.update("""
+                insert into usuario_tienda (usuario_id, tienda_id)
+                values (?, ?)
+                on conflict do nothing
+                """, userId, storeId));
     }
 
     private Role role(UUID id) {
@@ -211,10 +278,12 @@ public class SecurityAdministrationService {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 
-    public record UserItem(UUID id, String name, String role, boolean active, boolean protectedUser) {
+    public record UserItem(
+            UUID id, String userId, String name, String userName,
+            String role, boolean active, boolean protectedUser) {
         static UserItem from(UserAccount user) {
             return new UserItem(
-                    user.getId(), user.getNombre(), user.getRol().getNombre(),
+                    user.getId(), user.getUserId(), user.getNombre(), user.getUserName(), user.getRol().getNombre(),
                     user.isActivo(), user.isProtegido());
         }
     }
