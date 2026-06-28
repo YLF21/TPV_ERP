@@ -61,26 +61,29 @@ class ParkedSaleServiceTest {
     @Test
     void parksSaleWithoutTicketNumberAndRemovesItWhenOpened() {
         when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var customerId = UUID.randomUUID();
 
-        var parked = service.park(command(), "Cliente vuelve en 5 min", auth());
+        var parked = service.park(command(customerId), "Cliente vuelve en 5 min", auth());
         when(repository.findByIdAndTiendaId(parked.getId(), store.getId()))
                 .thenReturn(Optional.of(parked));
 
         var opened = service.openAndRemove(parked.getId());
 
         assertThat(parked.getTicketNumber()).isNull();
+        assertThat(parked.getCustomerId()).isEqualTo(customerId);
         assertThat(parked.getComment()).isEqualTo("Cliente vuelve en 5 min");
         assertThat(parked.getTotal()).isEqualByComparingTo("10.00");
         assertThat(opened.document().tipo()).isEqualTo(CommercialDocumentType.TICKET);
+        assertThat(opened.document().clienteId()).isEqualTo(customerId);
         verify(repository).delete(parked);
     }
 
-    private static DocumentCommand command() {
+    private static DocumentCommand command(UUID customerId) {
         return new DocumentCommand(
                 UUID.randomUUID(),
                 CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 6, 17),
-                UUID.randomUUID(),
+                customerId,
                 null,
                 null,
                 BigDecimal.ZERO,
