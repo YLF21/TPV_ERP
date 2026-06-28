@@ -49,6 +49,15 @@ public class DeliveryNoteController {
         return DocumentView.from(service.confirm(id, authentication));
     }
 
+    @PostMapping("/{id}/pay")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    public DocumentView pay(
+            @PathVariable UUID id,
+            @Valid @RequestBody PaymentRequest request,
+            Authentication authentication) {
+        return DocumentView.from(service.payDeliveryNote(id, request.toCommands(), authentication));
+    }
+
     @PutMapping("/{id}/admin")
     @PreAuthorize("hasRole('ADMIN')")
     public DocumentView adminEdit(

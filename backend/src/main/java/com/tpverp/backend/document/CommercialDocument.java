@@ -198,6 +198,18 @@ public class CommercialDocument {
         return List.copyOf(pagos);
     }
 
+    public BigDecimal getPaidTotal() {
+        return Money.euros(pagos.stream()
+                .map(DocumentPayment::getImporte)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+    // Sums actual payments recorded on the document.
+
+    public BigDecimal getPendingTotal() {
+        return Money.euros(total.subtract(getPaidTotal()));
+    }
+    // Calculates the unpaid amount without using cash-session expected totals.
+
     // Adds a line that belongs to this document.
     public void addLine(DocumentLine line) {
         if (line == null || line.getDocumento() != this) {
@@ -227,7 +239,7 @@ public class CommercialDocument {
         confirmadoPor = Objects.requireNonNull(userId, "usuario");
         confirmadoEn = Objects.requireNonNull(confirmedAt, "confirmadoEn");
         origenStock = stockApplied;
-        estado = isInvoice() ? DocumentStatus.PENDIENTE : DocumentStatus.CONFIRMADO;
+        estado = isReceivableDocument() ? DocumentStatus.PENDIENTE : DocumentStatus.CONFIRMADO;
     }
 
     // Cancels a confirmed ticket without removing its number or content.
@@ -241,13 +253,22 @@ public class CommercialDocument {
         estado = DocumentStatus.ANULADO;
     }
 
-    // Records full payment for a pending invoice.
-    public void markPaid() {
-        if (!isInvoice() || estado != DocumentStatus.PENDIENTE) {
-            throw new IllegalStateException("message.document.only_pending_invoice_can_be_paid");
+    public void updatePaymentStatus() {
+        if (!isReceivableDocument()
+                || (estado != DocumentStatus.PENDIENTE
+                && estado != DocumentStatus.PARCIAL
+                && estado != DocumentStatus.PAGADO)) {
+            throw new IllegalStateException("message.document.only_receivable_document_can_be_paid");
         }
-        estado = DocumentStatus.PAGADO;
+        var paid = getPaidTotal();
+        if (paid.compareTo(total) > 0) {
+            throw new IllegalStateException("message.document.payment_exceeds_total");
+        }
+        estado = paid.signum() == 0
+                ? DocumentStatus.PENDIENTE
+                : paid.compareTo(total) == 0 ? DocumentStatus.PAGADO : DocumentStatus.PARCIAL;
     }
+    // Recalculates PENDIENTE, PARCIAL, or PAGADO from recorded payments.
 
     // Replaces editable content without changing number, date, or historical stock flag.
     public void adminReplace(
@@ -255,7 +276,7 @@ public class CommercialDocument {
             UUID customerId,
             UUID supplierId,
             List<DocumentLineCommand> newLines) {
-        if (estado != DocumentStatus.CONFIRMADO
+        if (!isEditableConfirmedDocument()
                 || (tipo != CommercialDocumentType.TICKET
                 && tipo != CommercialDocumentType.ALBARAN_VENTA
                 && tipo != CommercialDocumentType.ALBARAN_COMPRA)) {
@@ -306,6 +327,19 @@ public class CommercialDocument {
                 || tipo == CommercialDocumentType.FACTURA_COMPRA
                 || tipo == CommercialDocumentType.RECTIFICATIVA_VENTA
                 || tipo == CommercialDocumentType.RECTIFICATIVA_COMPRA;
+    }
+
+    private boolean isReceivableDocument() {
+        return isInvoice()
+                || tipo == CommercialDocumentType.ALBARAN_VENTA
+                || tipo == CommercialDocumentType.ALBARAN_COMPRA;
+    }
+
+    private boolean isEditableConfirmedDocument() {
+        return estado == DocumentStatus.CONFIRMADO
+                || estado == DocumentStatus.PENDIENTE
+                || estado == DocumentStatus.PARCIAL
+                || estado == DocumentStatus.PAGADO;
     }
 
     private void recalculate() {

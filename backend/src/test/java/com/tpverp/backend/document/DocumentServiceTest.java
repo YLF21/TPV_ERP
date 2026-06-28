@@ -167,7 +167,7 @@ class DocumentServiceTest {
         var confirmed = service.confirm(document.getId(), authentication());
 
         assertThat(confirmed.getNumero()).isEqualTo("AV-001-26-000001");
-        assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
         assertThat(confirmed.isOrigenStock()).isTrue();
     }
 
@@ -383,7 +383,7 @@ class DocumentServiceTest {
     }
 
     @Test
-    void invoiceMustBePaidInFull() {
+    void invoiceCanBePaidPartiallyAndThenFully() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
         var method = new PaymentMethod(
@@ -392,21 +392,63 @@ class DocumentServiceTest {
         when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
         when(documentRepository.save(invoice)).thenReturn(invoice);
 
-        assertThatThrownBy(() -> service.payInvoice(
+        var partial = service.payInvoice(
                 invoice.getId(),
                 List.of(new PaymentCommand(
-                        method.getId(), new BigDecimal("9.99"), true, null, null)),
-                authentication()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("completo");
+                        method.getId(), new BigDecimal("4.00"), true, null, null)),
+                authentication());
+
+        assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
+        assertThat(partial.getPendingTotal()).isEqualByComparingTo("6.00");
 
         var paid = service.payInvoice(
                 invoice.getId(),
                 List.of(new PaymentCommand(
-                        method.getId(), new BigDecimal("10.00"), true, null, null)),
+                        method.getId(), new BigDecimal("6.00"), false, null, null)),
                 authentication());
 
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        assertThat(paid.getPagos()).hasSize(2);
+    }
+
+    @Test
+    void deliveryNoteCanBePaidPartially() {
+        var note = draft(CommercialDocumentType.ALBARAN_VENTA);
+        note.confirm("AV-001-26-000001", UUID.randomUUID(), NOW, true);
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TARJETA", false);
+        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
+        when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        when(documentRepository.save(note)).thenReturn(note);
+
+        var partial = service.payDeliveryNote(
+                note.getId(),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("3.00"), true, null, null)),
+                authentication());
+
+        assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
+        assertThat(partial.getPendingTotal()).isEqualByComparingTo("7.00");
+        verify(cashPaymentRecorder).recordDocumentPayments(terminalId, note);
+    }
+
+    @Test
+    void receivablePaymentCannotExceedPendingTotal() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("10.01"), true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.document.payment_exceeds_pending_total");
+
+        verify(documentRepository, never()).save(invoice);
     }
 
     @Test

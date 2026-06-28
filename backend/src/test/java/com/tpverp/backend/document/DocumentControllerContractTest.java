@@ -46,6 +46,18 @@ class DocumentControllerContractTest {
                 .contains("GESTION_VENTAS");
     }
 
+    @Test
+    void deliveryNotesExposePaymentEndpoint() throws NoSuchMethodException {
+        var method = DeliveryNoteController.class.getDeclaredMethod(
+                "pay", UUID.class, PaymentRequest.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/{id}/pay");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
+    }
+
     private void assertController(Class<?> type, String path) {
         assertThat(type.getAnnotation(RequestMapping.class).value()).containsExactly(path);
         assertThat(Arrays.stream(type.getDeclaredMethods())

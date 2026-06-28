@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -35,6 +36,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 class CashPaymentRecorderTest {
 
     private static final Instant NOW = Instant.parse("2026-06-26T10:15:00Z");
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void requireOpenSessionRejectsWhenNoOpenCashSession() {

@@ -5,5 +5,6 @@ public enum DocumentStatus {
     CONFIRMADO,
     ANULADO,
     PENDIENTE,
+    PARCIAL,
     PAGADO
 }

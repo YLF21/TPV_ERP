@@ -84,7 +84,7 @@ public class DocumentService {
                 organization.currentStore().getId(), DELIVERY_NOTES);
     }
 
-    // Confirma, numera y registra stock/compra en una unica transaccion.
+    // Confirms, numbers, and records stock/purchase in one transaction.
     @Transactional
     public CommercialDocument confirm(UUID id, Authentication authentication) {
         var document = find(id);
@@ -219,10 +219,25 @@ public class DocumentService {
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalArgumentException("el documento no es una factura");
         }
+        return payReceivable(invoice, payments, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument payDeliveryNote(UUID id, List<PaymentCommand> payments, Authentication authentication) {
+        var deliveryNote = find(id);
+        if (!DELIVERY_NOTES.contains(deliveryNote.getTipo())) {
+            throw new IllegalArgumentException("message.document.only_delivery_note_can_be_paid");
+        }
+        return payReceivable(deliveryNote, payments, authentication);
+    }
+    // Records actual delivery-note payments without applying stock again.
+
+    private CommercialDocument payReceivable(
+            CommercialDocument document, List<PaymentCommand> payments, Authentication authentication) {
         var terminalId = currentTerminal.terminalId(authentication);
-        addPayments(invoice, payments, "la factura debe pagarse por completo");
-        invoice.markPaid();
-        var saved = documents.save(invoice);
+        addPartialPayments(document, payments);
+        document.updatePaymentStatus();
+        var saved = documents.save(document);
         cashPayments.recordDocumentPayments(terminalId, saved);
         return saved;
     }
@@ -315,21 +330,39 @@ public class DocumentService {
                 .map(command -> resolvePayment(document, command))
                 .toList();
         requirePaymentTotal(resolved, document.getTotal(), mismatchMessage);
-        for (var index = 0; index < resolved.size(); index++) {
-            var command = resolved.get(index);
+        appendPayments(document, resolved);
+        if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
+            throw new IllegalArgumentException("se requiere un pago principal");
+        }
+    }
+
+    private void addPartialPayments(CommercialDocument document, List<PaymentCommand> commands) {
+        requirePaymentsPresent(commands);
+        var pending = document.getPendingTotal();
+        requirePaymentTotalAtMost(commands, pending);
+        var resolved = commands.stream()
+                .map(command -> resolvePayment(document, command))
+                .toList();
+        requirePaymentTotalAtMost(resolved, pending);
+        appendPayments(document, resolved);
+    }
+
+    private void appendPayments(CommercialDocument document, List<PaymentCommand> commands) {
+        var position = document.getPagos().size();
+        var hasPrincipal = document.getPagos().stream().anyMatch(DocumentPayment::isPrincipal);
+        for (var command : commands) {
             var method = paymentMethods.findById(command.metodoPagoId())
                     .filter(PaymentMethod::isActivo)
                     .filter(value -> value.getEmpresaId().equals(
                             organization.currentCompany().getId()))
                     .orElseThrow(() -> new IllegalArgumentException(
                             "message.payment_method.active_not_found"));
+            var principal = command.principal() && !hasPrincipal;
             document.addPayment(new DocumentPayment(
-                    document, method, index + 1, command.importe(), command.principal(),
+                    document, method, ++position, command.importe(), principal,
                     command.entregado(), command.cambio(), command.voucherCode(),
                     command.reference(), Instant.now(clock)));
-        }
-        if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
-            throw new IllegalArgumentException("se requiere un pago principal");
+            hasPrincipal = hasPrincipal || principal;
         }
     }
 
@@ -345,6 +378,14 @@ public class DocumentService {
                 .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (Money.euros(total).compareTo(expected) != 0) {
             throw new IllegalArgumentException(message);
+        }
+    }
+
+    private static void requirePaymentTotalAtMost(List<PaymentCommand> commands, BigDecimal maximum) {
+        var total = commands.stream().map(PaymentCommand::importe)
+                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (Money.euros(total).compareTo(maximum) > 0) {
+            throw new IllegalArgumentException("message.document.payment_exceeds_pending_total");
         }
     }
 
@@ -371,7 +412,7 @@ public class DocumentService {
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference());
     }
-    // Consume vales antes de registrar pagos para guardar el importe real aplicado.
+    // Consumes vouchers before storing payments so the applied amount is exact.
 
     private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
         if (method.isRequiereReferencia()
