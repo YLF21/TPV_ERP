@@ -244,7 +244,7 @@ public class CommercialDocument {
     // Records full payment for a pending invoice.
     public void markPaid() {
         if (!isInvoice() || estado != DocumentStatus.PENDIENTE) {
-            throw new IllegalStateException("solo se puede pagar una factura pendiente");
+            throw new IllegalStateException("message.document.only_pending_invoice_can_be_paid");
         }
         estado = DocumentStatus.PAGADO;
     }

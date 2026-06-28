@@ -292,7 +292,7 @@ class CashSessionServiceTest {
                 new CashWithdrawalRequest(new BigDecimal("50.01"), "retirada entre sesiones", List.of(), true),
                 accountingAuthentication(fixture.user)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("fondo pendiente");
+                .hasMessageContaining("message.cash.withdrawal_exceeds_pending_opening_fund");
         verify(fixture.movements, never()).save(any(CashMovement.class));
     }
 

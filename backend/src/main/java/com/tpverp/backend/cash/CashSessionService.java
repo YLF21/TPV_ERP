@@ -170,7 +170,7 @@ public class CashSessionService {
                 : cashConfig.isRequireEntryBreakdown();
         validateDenominations(amount, request.denominations(), breakdownRequired);
         if (request.withdrawal() && amount.compareTo(calculator.nextOpeningFund(terminal.getId())) > 0) {
-            throw new IllegalArgumentException("La retirada supera el fondo pendiente de apertura");
+            throw new IllegalArgumentException("message.cash.withdrawal_exceeds_pending_opening_fund");
         }
         var createdAt = Instant.now(clock);
         var user = organization.currentUser(authentication);
