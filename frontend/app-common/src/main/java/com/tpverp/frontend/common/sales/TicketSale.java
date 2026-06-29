@@ -51,6 +51,13 @@ public final class TicketSale {
         return Collections.unmodifiableList(lines);
     }
 
+    public void replaceLines(List<SaleLine> savedLines) {
+        lines.clear();
+        lines.addAll(savedLines);
+        selectedIndex = lines.isEmpty() ? -1 : lines.size() - 1;
+        globalDiscount = BigDecimal.ZERO;
+    }
+
     public int selectedIndex() {
         return selectedIndex;
     }

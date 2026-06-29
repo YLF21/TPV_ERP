@@ -25,6 +25,8 @@ import javafx.stage.Stage;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -34,8 +36,11 @@ public class AppVentaController {
 
     private final TicketSale sale = new TicketSale();
     private final ObservableList<ProductSnapshot> localProducts = FXCollections.observableArrayList(sampleProducts());
+    private final ObservableList<ParkedSale> parkedSales = FXCollections.observableArrayList();
     private final NumberFormat money = NumberFormat.getCurrencyInstance(Locale.of("es", "ES"));
+    private final DateTimeFormatter dateTimeFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
+    private int nextParkedSaleId = 1;
     private Stage documentStage;
     private LocalLoginResult session = new LocalLoginResult(false, "", Set.of());
 
@@ -264,11 +269,72 @@ public class AppVentaController {
 
     private void parkOrRecover() {
         if (sale.lines().isEmpty()) {
+            openParkedSalesDialog();
+            return;
+        }
+        parkedSales.add(new ParkedSale(nextParkedSaleId++, LocalDateTime.now(), session.userName(), List.copyOf(sale.lines())));
+        sale.clear();
+        status(message("status.saleParked"));
+        refresh();
+    }
+
+    private void openParkedSalesDialog() {
+        if (parkedSales.isEmpty()) {
             showInfo(message("dialog.parked.title"), message("dialog.parked.empty"));
             return;
         }
-        sale.clear();
-        status(message("status.saleParked"));
+        Stage dialog = new Stage();
+        dialog.setTitle(message("dialog.parked.title"));
+        dialog.initOwner(quickField.getScene().getWindow());
+        dialog.initModality(Modality.NONE);
+
+        TableView<ParkedSale> table = new TableView<>(parkedSales);
+        table.getStyleClass().add("product-dialog-table");
+        TableColumn<ParkedSale, String> id = new TableColumn<>(message("parked.column.id"));
+        id.setCellValueFactory(data -> text(Integer.toString(data.getValue().id())));
+        id.setPrefWidth(80);
+        TableColumn<ParkedSale, String> date = new TableColumn<>(message("parked.column.date"));
+        date.setCellValueFactory(data -> text(dateTimeFormat.format(data.getValue().parkedAt())));
+        date.setPrefWidth(150);
+        TableColumn<ParkedSale, String> user = new TableColumn<>(message("parked.column.user"));
+        user.setCellValueFactory(data -> text(data.getValue().userName()));
+        user.setPrefWidth(160);
+        TableColumn<ParkedSale, String> lines = new TableColumn<>(message("parked.column.lines"));
+        lines.setCellValueFactory(data -> text(Integer.toString(data.getValue().lines().size())));
+        lines.setPrefWidth(90);
+        TableColumn<ParkedSale, String> total = new TableColumn<>(message("parked.column.total"));
+        total.setCellValueFactory(data -> text(money.format(data.getValue().total())));
+        total.setPrefWidth(140);
+        table.getColumns().setAll(List.of(id, date, user, lines, total));
+        table.getSelectionModel().selectFirst();
+        table.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.INSERT) {
+                recoverParkedSale(table.getSelectionModel().getSelectedItem());
+                dialog.close();
+                event.consume();
+            } else if (event.getCode() == KeyCode.ESCAPE) {
+                dialog.close();
+                event.consume();
+            }
+        });
+
+        BorderPane pane = new BorderPane(table);
+        pane.getStyleClass().add("product-dialog");
+        javafx.scene.Scene scene = new javafx.scene.Scene(pane, 660, 360);
+        scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.setOnShown(event -> table.requestFocus());
+        dialog.setOnHidden(event -> quickField.requestFocus());
+        dialog.show();
+    }
+
+    private void recoverParkedSale(ParkedSale parkedSale) {
+        if (parkedSale == null) {
+            return;
+        }
+        sale.replaceLines(parkedSale.lines());
+        parkedSales.remove(parkedSale);
+        status(message("status.saleRecovered", parkedSale.id()));
         refresh();
     }
 
@@ -343,5 +409,14 @@ public class AppVentaController {
                 new ProductSnapshot("200", "8410000000201", "Pack Venta", new BigDecimal("1.20"), 24,
                         "Bebidas", "Pack")
         );
+    }
+
+    private record ParkedSale(int id, LocalDateTime parkedAt, String userName, List<SaleLine> lines) {
+
+        private BigDecimal total() {
+            return lines.stream()
+                    .map(SaleLine::totalAfterDiscount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
     }
 }

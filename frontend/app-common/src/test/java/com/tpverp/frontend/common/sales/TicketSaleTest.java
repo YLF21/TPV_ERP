@@ -3,6 +3,7 @@ package com.tpverp.frontend.common.sales;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -48,6 +49,18 @@ class TicketSaleTest {
         assertEquals(new BigDecimal("20"), sale.lines().get(0).discountPercent());
         assertEquals(new BigDecimal("20"), sale.lines().get(1).discountPercent());
         assertEquals(new BigDecimal("12.00"), sale.totalAfterDiscount());
+    }
+
+    @Test
+    void replaceLinesRestoresSavedSaleAndSelectsLastLine() {
+        var sale = new TicketSale();
+        sale.replaceLines(List.of(
+                new SaleLine(product("A", "Articulo A", "10.00", 12), BigDecimal.ZERO),
+                new SaleLine(product("B", "Articulo B", "5.00", 1), new BigDecimal("10"))));
+
+        assertEquals(2, sale.lines().size());
+        assertEquals(1, sale.selectedIndex());
+        assertEquals(new BigDecimal("14.50"), sale.totalAfterDiscount());
     }
 
     @Test
