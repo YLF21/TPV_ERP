@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane fx:controller="com.tpverp.frontend.venta.LoginController"
+            prefHeight="560.0" prefWidth="760.0"
+            styleClass="login-root"
+            xmlns="http://javafx.com/javafx/25"
+            xmlns:fx="http://javafx.com/fxml/1">
+    <center>
+        <VBox alignment="CENTER_LEFT" maxWidth="440" spacing="16" styleClass="login-panel">
+            <Label text="%app.title" styleClass="login-brand"/>
+            <Label text="%login.subtitle" styleClass="login-subtitle"/>
+            <Label text="%login.user"/>
+            <TextField fx:id="userNameField" promptText="%login.userPrompt" styleClass="login-field"/>
+            <Label text="%login.password"/>
+            <PasswordField fx:id="passwordField" promptText="%login.passwordPrompt" onAction="#login" styleClass="login-field"/>
+            <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#login" text="%login.submit" styleClass="login-button"/>
+            <Label fx:id="errorLabel" styleClass="login-error"/>
+        </VBox>
+    </center>
+    <padding>
+        <Insets bottom="24" left="24" right="24" top="24"/>
+    </padding>
+</BorderPane>

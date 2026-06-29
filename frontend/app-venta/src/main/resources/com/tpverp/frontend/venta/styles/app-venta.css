@@ -141,3 +141,48 @@
     -fx-font-weight: 800;
     -fx-padding: 32;
 }
+
+.login-root {
+    -fx-background-color: #161a1d;
+}
+
+.login-panel {
+    -fx-background-color: #f7f3e8;
+    -fx-border-color: #f0d36f;
+    -fx-border-width: 0 0 0 8;
+    -fx-padding: 34;
+}
+
+.login-brand {
+    -fx-text-fill: #161a1d;
+    -fx-font-size: 34px;
+    -fx-font-weight: 900;
+}
+
+.login-subtitle {
+    -fx-text-fill: #4c555a;
+    -fx-font-size: 15px;
+}
+
+.login-field {
+    -fx-background-color: white;
+    -fx-border-color: #31383d;
+    -fx-border-width: 2;
+    -fx-font-size: 20px;
+    -fx-font-weight: 800;
+    -fx-padding: 8;
+}
+
+.login-button {
+    -fx-background-color: #b9312b;
+    -fx-text-fill: white;
+    -fx-font-size: 21px;
+    -fx-font-weight: 900;
+    -fx-padding: 12;
+}
+
+.login-error {
+    -fx-text-fill: #b9312b;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+}

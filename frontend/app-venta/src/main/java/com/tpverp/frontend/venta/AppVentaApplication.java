@@ -14,14 +14,14 @@ public class AppVentaApplication extends Application {
     public void start(Stage stage) throws Exception {
         Locale locale = Locale.of("es");
         ResourceBundle messages = ResourceBundle.getBundle("com.tpverp.frontend.venta.i18n.messages", locale);
-        FXMLLoader loader = new FXMLLoader(AppVentaApplication.class.getResource("app-venta.fxml"), messages);
+        FXMLLoader loader = new FXMLLoader(AppVentaApplication.class.getResource("login.fxml"), messages);
 
-        Scene scene = new Scene(loader.load(), 1280, 760);
+        Scene scene = new Scene(loader.load(), 760, 560);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
 
         stage.setTitle(messages.getString("app.title"));
-        stage.setMinWidth(1100);
-        stage.setMinHeight(680);
+        stage.setMinWidth(720);
+        stage.setMinHeight(520);
         stage.setScene(scene);
         stage.show();
     }
