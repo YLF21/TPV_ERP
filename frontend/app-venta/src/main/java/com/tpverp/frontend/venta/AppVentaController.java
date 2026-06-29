@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ResourceBundle;
 
 public class AppVentaController {
 
@@ -32,6 +33,8 @@ public class AppVentaController {
 
     private Stage documentStage;
 
+    @FXML
+    private ResourceBundle resources;
     @FXML
     private TableView<SaleLine> lineTable;
     @FXML
@@ -79,7 +82,8 @@ public class AppVentaController {
 
     @FXML
     private void charge() {
-        showInfo("Cobro", "Total: " + money.format(sale.totalAfterDiscount()) + "\nFalta: 0,00 EUR");
+        showInfo(message("dialog.charge.title"),
+                message("dialog.charge.message", money.format(sale.totalAfterDiscount()), money.format(BigDecimal.ZERO)));
     }
 
     private void handleQuickKey(KeyEvent event) {
@@ -112,11 +116,11 @@ public class AppVentaController {
             event.consume();
         } else if (event.getCode() == KeyCode.F4 && event.isControlDown()) {
             sale.clear();
-            status("Ticket borrado");
+            status(message("status.ticketDeleted"));
             refresh();
             event.consume();
         } else if (event.getCode() == KeyCode.F5) {
-            status("Usuario cerrado");
+            status(message("status.userClosed"));
             event.consume();
         }
     }
@@ -131,32 +135,32 @@ public class AppVentaController {
                 case GLOBAL_DISCOUNT -> sale.applyGlobalDiscount(command.value());
                 case PACKAGES -> sale.applySelectedPackages(command.value());
                 case CHANGE_PRICE -> sale.changeSelectedPrice(command.value());
-                case UNKNOWN -> status("Atajo no implementado");
+                case UNKNOWN -> status(message("status.unknownShortcut"));
             }
             quickField.clear();
             refresh();
         } catch (RuntimeException ex) {
-            status(ex.getMessage());
+            status(message("status.operationRejected"));
         }
     }
 
     private void addProduct(String code) {
         ProductSnapshot product = products.get(code.trim());
         if (product == null) {
-            status("Articulo no encontrado: " + code);
+            status(message("status.productNotFound", code));
             return;
         }
         sale.addLine(product);
-        status("Articulo anadido: " + product.code());
+        status(message("status.productAdded", product.code()));
     }
 
     private void parkOrRecover() {
         if (sale.lines().isEmpty()) {
-            showInfo("Ventas aparcadas", "No hay ventas aparcadas en este prototipo local.");
+            showInfo(message("dialog.parked.title"), message("dialog.parked.empty"));
             return;
         }
         sale.clear();
-        status("Venta aparcada");
+        status(message("status.saleParked"));
         refresh();
     }
 
@@ -166,9 +170,9 @@ public class AppVentaController {
             return;
         }
         documentStage = new Stage();
-        documentStage.setTitle("Factura / Albaran");
+        documentStage.setTitle(message("document.window.title"));
         documentStage.initModality(Modality.NONE);
-        var label = new Label("Factura / Albaran\nGuardar sin confirmar e importar guardadas se conectara al backend.");
+        var label = new Label(message("document.placeholder"));
         label.getStyleClass().add("document-placeholder");
         var scene = new javafx.scene.Scene(label, 520, 260);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
@@ -215,6 +219,11 @@ public class AppVentaController {
 
     private SimpleStringProperty text(String text) {
         return new SimpleStringProperty(text);
+    }
+
+    private String message(String key, Object... args) {
+        String pattern = resources.getString(key);
+        return args.length == 0 ? pattern : String.format(pattern, args);
     }
 
     private static Map<String, ProductSnapshot> sampleProducts() {

@@ -57,21 +57,21 @@
         <VBox prefWidth="310" spacing="14" styleClass="side-panel">
             <VBox spacing="4" styleClass="total-box">
                 <Label text="%total.label" styleClass="total-label"/>
-                <Label fx:id="bigTotalLabel" text="0,00 EUR" styleClass="big-total"/>
+                <Label fx:id="bigTotalLabel" text="%total.zero" styleClass="big-total"/>
             </VBox>
             <VBox spacing="8">
                 <Label text="%quick.label" styleClass="quick-label"/>
                 <TextField fx:id="quickField" promptText="%quick.prompt" styleClass="quick-field"/>
             </VBox>
             <VBox spacing="8" styleClass="shortcut-panel">
-                <Label text="Enter  Codigo"/>
-                <Label text="Pausa  Cantidad"/>
-                <Label text="/  Dto linea"/>
-                <Label text="Ctrl+/  Dto ticket"/>
-                <Label text="Ctrl+*  Paquetes"/>
-                <Label text="Av Pag  Cobrar"/>
-                <Label text="Ctrl+F  Factura/Albaran"/>
-                <Label text="Ctrl+G  Aparcar/recuperar"/>
+                <Label text="%shortcut.enter"/>
+                <Label text="%shortcut.pause"/>
+                <Label text="%shortcut.lineDiscount"/>
+                <Label text="%shortcut.ticketDiscount"/>
+                <Label text="%shortcut.packages"/>
+                <Label text="%shortcut.charge"/>
+                <Label text="%shortcut.document"/>
+                <Label text="%shortcut.parked"/>
             </VBox>
             <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#charge" text="%action.charge" styleClass="charge-button"/>
         </VBox>

@@ -19,7 +19,7 @@ public class AppVentaApplication extends Application {
         Scene scene = new Scene(loader.load(), 1280, 760);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
 
-        stage.setTitle("APP VENTA");
+        stage.setTitle(messages.getString("app.title"));
         stage.setMinWidth(1100);
         stage.setMinHeight(680);
         stage.setScene(scene);
