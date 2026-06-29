@@ -110,7 +110,7 @@ public class AppVentaController {
             charge();
             event.consume();
         } else if (event.getCode() == KeyCode.DELETE) {
-            openProductDialog();
+            openProductDialog(quickField.getText());
             event.consume();
         } else if (event.getCode() == KeyCode.G && event.isControlDown()) {
             parkOrRecover();
@@ -162,7 +162,7 @@ public class AppVentaController {
         status(message("status.productAdded", product.code()));
     }
 
-    private void openProductDialog() {
+    private void openProductDialog(String initialSearch) {
         Stage dialog = new Stage();
         dialog.setTitle(message("product.dialog.title"));
         dialog.initOwner(quickField.getScene().getWindow());
@@ -170,6 +170,7 @@ public class AppVentaController {
 
         TextField searchField = new TextField();
         searchField.setPromptText(message("product.dialog.searchPrompt"));
+        searchField.setText(initialSearch == null ? "" : initialSearch.trim());
         searchField.getStyleClass().add("dialog-search-field");
 
         TableView<ProductSnapshot> table = new TableView<>();
