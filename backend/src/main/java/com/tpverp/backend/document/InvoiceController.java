@@ -26,13 +26,13 @@ public class InvoiceController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INVOICES_READ','VENTA')")
     public List<DocumentView> list() {
         return service.listInvoices().stream().map(this::view).toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INVOICES_WRITE','VENTA')")
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
@@ -40,7 +40,7 @@ public class InvoiceController {
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_CONFIRM')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INVOICES_CONFIRM','VENTA')")
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {
@@ -48,7 +48,7 @@ public class InvoiceController {
     }
 
     @PostMapping("/{id}/pay")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('INVOICES_PAY')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('INVOICES_PAY','VENTA')")
     public DocumentView pay(
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,

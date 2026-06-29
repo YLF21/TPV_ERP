@@ -4,6 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.GE
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_ADJUST;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -31,7 +32,7 @@ public class StockController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<InventoryService.StockItem> list(
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) UUID warehouseId) {
@@ -39,7 +40,7 @@ public class StockController {
     }
 
     @GetMapping("/movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<StockMovement> movements(@RequestParam UUID productId) {
         return service.movements(productId);
     }

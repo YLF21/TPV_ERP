@@ -33,6 +33,7 @@ class CorePermissionBootstrapTest {
                 "STOCK_ADJUST",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_WRITE",
+                "VENTA",
                 "GESTION_VENTAS",
                 "GESTION_CUENTAS",
                 "GESTION_USUARIO",

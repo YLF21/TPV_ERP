@@ -28,13 +28,13 @@ public class TicketController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TICKETS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('TICKETS_READ','VENTA')")
     public List<DocumentView> list() {
         return service.listTickets().stream().map(this::view).toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TICKETS_CREATE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('TICKETS_CREATE','VENTA')")
     public DocumentView create(
             @Valid @RequestBody CreateTicketRequest request,
             Authentication authentication) {
@@ -55,7 +55,7 @@ public class TicketController {
     }
 
     @PostMapping("/{id}/invoice")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
     public DocumentView convertToInvoice(
             @PathVariable UUID id,
             @Valid @RequestBody ConvertToInvoiceRequest request,

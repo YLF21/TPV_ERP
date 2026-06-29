@@ -4,6 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.PR
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -37,13 +38,13 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<Product> list() {
         return service.products();
     }
 
     @GetMapping("/{productId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public Product get(@PathVariable UUID productId) {
         return service.product(productId);
     }
@@ -77,10 +78,10 @@ public class ProductController {
             throw new IllegalArgumentException("No se pudo recibir la imagen del producto", exception);
         }
     }
-    // Recibe la imagen original y delega la conversion/almacenamiento al servicio de catalogo.
+    // Receives the original image and delegates conversion/storage to the catalog service.
 
     @GetMapping(path = "/{productId}/image", produces = ProductImageService.CONTENT_TYPE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public ResponseEntity<byte[]> image(
             @PathVariable UUID productId,
             @RequestParam(defaultValue = "false") boolean thumbnail) {

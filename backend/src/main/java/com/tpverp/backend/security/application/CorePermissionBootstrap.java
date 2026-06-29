@@ -33,6 +33,7 @@ public class CorePermissionBootstrap {
     public static final String SUPPLIERS_READ = "SUPPLIERS_READ";
     public static final String SUPPLIERS_WRITE = "SUPPLIERS_WRITE";
     public static final String SUPPLIERS_DELETE = "SUPPLIERS_DELETE";
+    public static final String VENTA = "VENTA";
     public static final String GESTION_VENTAS = "GESTION_VENTAS";
     public static final String GESTION_CUENTAS = "GESTION_CUENTAS";
     public static final String CASH_READ = "CASH_READ";
@@ -83,6 +84,7 @@ public class CorePermissionBootstrap {
                 permission(SUPPLIERS_READ, "party.permissions.suppliers.read", "PARTY"),
                 permission(SUPPLIERS_WRITE, "party.permissions.suppliers.write", "PARTY"),
                 permission(SUPPLIERS_DELETE, "party.permissions.suppliers.delete", "PARTY"),
+                permission(VENTA, "document.permissions.sales.operate", "DOCUMENTS"),
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),
                 permission(GESTION_CUENTAS, "cash.permissions.accounting", "CASH"),
                 permission(CASH_READ, "cash.permissions.read", "CASH"),

@@ -2,6 +2,7 @@ package com.tpverp.backend.catalog;
 
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
 import jakarta.validation.Valid;
@@ -31,7 +32,7 @@ public class WarehouseController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<Warehouse> list() {
         return service.warehouses();
     }
