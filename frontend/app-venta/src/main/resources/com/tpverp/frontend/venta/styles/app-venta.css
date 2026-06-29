@@ -217,3 +217,36 @@
 .parked-actions {
     -fx-padding: 12 0 0 0;
 }
+
+.payment-dialog {
+    -fx-background-color: #161a1d;
+    -fx-padding: 22;
+}
+
+.payment-dialog .label {
+    -fx-text-fill: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+}
+
+.payment-total {
+    -fx-font-size: 44px;
+    -fx-font-weight: 900;
+}
+
+.payment-remaining {
+    -fx-text-fill: #f0d36f;
+}
+
+.payment-method {
+    -fx-background-color: #f7f3e8;
+    -fx-text-fill: #161a1d;
+    -fx-font-size: 15px;
+    -fx-font-weight: 900;
+    -fx-padding: 9 10 9 10;
+}
+
+.payment-method:selected {
+    -fx-background-color: #b9312b;
+    -fx-text-fill: white;
+}

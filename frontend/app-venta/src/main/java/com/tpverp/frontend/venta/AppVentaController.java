@@ -5,6 +5,7 @@ import com.tpverp.frontend.common.sales.ProductSnapshot;
 import com.tpverp.frontend.common.sales.QuickCommand;
 import com.tpverp.frontend.common.sales.SaleLine;
 import com.tpverp.frontend.common.sales.TicketSale;
+import com.tpverp.frontend.common.sales.PaymentDraft;
 import com.tpverp.frontend.common.security.PermissionRules;
 import com.tpverp.frontend.common.ui.ProductManagementWindow;
 import javafx.beans.property.SimpleStringProperty;
@@ -15,6 +16,8 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -100,8 +103,112 @@ public class AppVentaController {
 
     @FXML
     private void charge() {
-        showInfo(message("dialog.charge.title"),
-                message("dialog.charge.message", money.format(sale.totalAfterDiscount()), money.format(BigDecimal.ZERO)));
+        if (sale.lines().isEmpty()) {
+            status(message("status.operationRejected"));
+            return;
+        }
+        openPaymentWindow();
+    }
+
+    private void openPaymentWindow() {
+        BigDecimal total = sale.totalAfterDiscount();
+        Stage dialog = new Stage();
+        dialog.setTitle(message("dialog.charge.title"));
+        dialog.initOwner(quickField.getScene().getWindow());
+        dialog.initModality(Modality.NONE);
+
+        Label totalLabel = new Label(money.format(total));
+        totalLabel.getStyleClass().add("payment-total");
+        Label remainingLabel = new Label();
+        remainingLabel.getStyleClass().add("payment-remaining");
+        TextField receivedField = new TextField(total.toPlainString());
+        receivedField.setPromptText(message("payment.received"));
+        receivedField.getStyleClass().add("dialog-search-field");
+        TextField differenceField = new TextField();
+        differenceField.setEditable(false);
+        differenceField.setPromptText(message("payment.difference"));
+        differenceField.getStyleClass().add("dialog-search-field");
+        TextField referenceField = new TextField();
+        referenceField.setPromptText(message("payment.reference"));
+        referenceField.getStyleClass().add("dialog-search-field");
+
+        ToggleGroup methods = new ToggleGroup();
+        ToggleButton cash = paymentMethodButton("payment.method.cash", methods);
+        ToggleButton card = paymentMethodButton("payment.method.card", methods);
+        ToggleButton transfer = paymentMethodButton("payment.method.transfer", methods);
+        ToggleButton voucher = paymentMethodButton("payment.method.voucher", methods);
+        ToggleButton other = paymentMethodButton("payment.method.other", methods);
+        cash.setSelected(true);
+
+        Runnable refreshPayment = () -> {
+            PaymentDraft draft = new PaymentDraft(total, decimal(receivedField.getText(), total));
+            remainingLabel.setText(message("payment.remaining", money.format(draft.remaining())));
+            differenceField.setText(money.format(draft.difference()));
+        };
+        receivedField.textProperty().addListener((ignored, oldValue, newValue) -> refreshPayment.run());
+        refreshPayment.run();
+
+        Button confirm = new Button(message("payment.confirm"));
+        confirm.setDefaultButton(true);
+        confirm.setOnAction(event -> {
+            sale.clear();
+            status(message("status.paymentRegistered"));
+            refresh();
+            dialog.close();
+        });
+
+        HBox methodBar = new HBox(8, cash, card, transfer, voucher, other);
+        VBox content = new VBox(12,
+                new Label(message("payment.total")),
+                totalLabel,
+                remainingLabel,
+                new HBox(10, receivedField, differenceField),
+                methodBar,
+                referenceField,
+                confirm);
+        content.getStyleClass().add("payment-dialog");
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 620, 390);
+        scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
+        scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.MULTIPLY) {
+                cash.setSelected(true);
+                event.consume();
+            } else if (event.getCode() == KeyCode.ADD || event.getCode() == KeyCode.PLUS) {
+                card.setSelected(true);
+                event.consume();
+            } else if (event.getCode() == KeyCode.F8) {
+                transfer.setSelected(true);
+                event.consume();
+            } else if (event.getCode() == KeyCode.F9) {
+                voucher.setSelected(true);
+                event.consume();
+            } else if (event.getCode() == KeyCode.F10) {
+                other.setSelected(true);
+                event.consume();
+            } else if (event.getCode() == KeyCode.ESCAPE) {
+                dialog.close();
+                event.consume();
+            }
+        });
+        dialog.setScene(scene);
+        dialog.setOnShown(event -> receivedField.requestFocus());
+        dialog.setOnHidden(event -> quickField.requestFocus());
+        dialog.show();
+    }
+
+    private ToggleButton paymentMethodButton(String key, ToggleGroup methods) {
+        ToggleButton button = new ToggleButton(message(key));
+        button.setToggleGroup(methods);
+        button.getStyleClass().add("payment-method");
+        return button;
+    }
+
+    private BigDecimal decimal(String text, BigDecimal fallback) {
+        try {
+            return new BigDecimal(text == null || text.isBlank() ? fallback.toPlainString() : text.replace(',', '.'));
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
     }
 
     private void handleQuickKey(KeyEvent event) {
