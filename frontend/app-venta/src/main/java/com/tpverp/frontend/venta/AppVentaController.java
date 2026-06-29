@@ -16,6 +16,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.TableColumn;
@@ -24,7 +25,9 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -117,20 +120,24 @@ public class AppVentaController {
         dialog.initOwner(quickField.getScene().getWindow());
         dialog.initModality(Modality.NONE);
 
-        Label totalLabel = new Label(money.format(total));
-        totalLabel.getStyleClass().add("payment-total");
-        Label remainingLabel = new Label();
-        remainingLabel.getStyleClass().add("payment-remaining");
+        ObservableList<PaymentLine> paymentLines = FXCollections.observableArrayList();
+
+        Label changeLabel = new Label();
+        changeLabel.getStyleClass().add("payment-screen-number");
+        Label chargedLabel = new Label();
+        chargedLabel.getStyleClass().add("payment-screen-number");
+        Label missingLabel = new Label();
+        missingLabel.getStyleClass().add("payment-footer-number");
         TextField receivedField = new TextField(total.toPlainString());
         receivedField.setPromptText(message("payment.received"));
-        receivedField.getStyleClass().add("dialog-search-field");
-        TextField differenceField = new TextField();
-        differenceField.setEditable(false);
-        differenceField.setPromptText(message("payment.difference"));
-        differenceField.getStyleClass().add("dialog-search-field");
-        TextField referenceField = new TextField();
-        referenceField.setPromptText(message("payment.reference"));
-        referenceField.getStyleClass().add("dialog-search-field");
+        receivedField.getStyleClass().add("payment-amount-field");
+        TextField documentField = new TextField();
+        documentField.setPromptText(message("payment.documentNo"));
+        documentField.getStyleClass().add("payment-text-field");
+        TextArea commentField = new TextArea();
+        commentField.setPromptText(message("payment.comment"));
+        commentField.getStyleClass().add("payment-comment");
+        commentField.setPrefRowCount(2);
 
         ToggleGroup methods = new ToggleGroup();
         ToggleButton cash = paymentMethodButton("payment.method.cash", methods);
@@ -140,12 +147,51 @@ public class AppVentaController {
         ToggleButton other = paymentMethodButton("payment.method.other", methods);
         cash.setSelected(true);
 
+        TableView<PaymentLine> table = new TableView<>(paymentLines);
+        table.getStyleClass().add("payment-table");
+        TableColumn<PaymentLine, String> methodColumn = new TableColumn<>(message("payment.column.method"));
+        methodColumn.setCellValueFactory(data -> text(data.getValue().method()));
+        methodColumn.setPrefWidth(185);
+        TableColumn<PaymentLine, String> amountColumn = new TableColumn<>(message("payment.column.amount"));
+        amountColumn.setCellValueFactory(data -> text(money.format(data.getValue().amount())));
+        amountColumn.setPrefWidth(130);
+        TableColumn<PaymentLine, String> documentColumn = new TableColumn<>(message("payment.column.document"));
+        documentColumn.setCellValueFactory(data -> text(data.getValue().documentNo()));
+        documentColumn.setPrefWidth(170);
+        TableColumn<PaymentLine, String> commentColumn = new TableColumn<>(message("payment.column.comment"));
+        commentColumn.setCellValueFactory(data -> text(data.getValue().comment()));
+        commentColumn.setPrefWidth(300);
+        table.getColumns().setAll(List.of(methodColumn, amountColumn, documentColumn, commentColumn));
+
         Runnable refreshPayment = () -> {
-            PaymentDraft draft = new PaymentDraft(total, decimal(receivedField.getText(), total));
-            remainingLabel.setText(message("payment.remaining", money.format(draft.remaining())));
-            differenceField.setText(money.format(draft.difference()));
+            BigDecimal charged = paymentLines.stream()
+                    .map(PaymentLine::amount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            PaymentDraft draft = new PaymentDraft(total, charged);
+            chargedLabel.setText(money.format(charged));
+            changeLabel.setText(money.format(draft.difference().max(BigDecimal.ZERO)));
+            missingLabel.setText(money.format(draft.remaining()));
         };
-        receivedField.textProperty().addListener((ignored, oldValue, newValue) -> refreshPayment.run());
+        Runnable addCurrentPayment = () -> {
+            BigDecimal amount = decimal(receivedField.getText(), total);
+            ToggleButton selected = (ToggleButton) methods.getSelectedToggle();
+            paymentLines.add(new PaymentLine(selected.getText(), amount, documentField.getText(), commentField.getText()));
+            table.getSelectionModel().selectLast();
+            receivedField.clear();
+            refreshPayment.run();
+            receivedField.requestFocus();
+        };
+        Button addPayment = new Button(message("payment.add"));
+        addPayment.setOnAction(event -> addCurrentPayment.run());
+        Button clearPayments = new Button(message("payment.clearAll"));
+        clearPayments.setOnAction(event -> {
+            paymentLines.clear();
+            refreshPayment.run();
+            receivedField.requestFocus();
+        });
+        Button back = new Button(message("payment.back"));
+        back.setOnAction(event -> dialog.close());
+
         refreshPayment.run();
 
         Button confirm = new Button(message("payment.confirm"));
@@ -157,17 +203,45 @@ public class AppVentaController {
             dialog.close();
         });
 
-        HBox methodBar = new HBox(8, cash, card, transfer, voucher, other);
-        VBox content = new VBox(12,
-                new Label(message("payment.total")),
-                totalLabel,
-                remainingLabel,
-                new HBox(10, receivedField, differenceField),
-                methodBar,
-                referenceField,
-                confirm);
-        content.getStyleClass().add("payment-dialog");
-        javafx.scene.Scene scene = new javafx.scene.Scene(content, 620, 390);
+        HBox toolbar = new HBox(8, paymentToolbarLabel("payment.toolbar.method"), addPayment, clearPayments,
+                paymentToolbarLabel("payment.toolbar.document"), paymentToolbarLabel("payment.toolbar.comment"), back);
+        toolbar.getStyleClass().add("payment-toolbar");
+
+        GridPane header = new GridPane();
+        header.setHgap(14);
+        header.setVgap(10);
+        header.add(label("payment.charge"), 0, 0);
+        header.add(receivedField, 1, 0);
+        header.add(label("payment.change"), 0, 1);
+        header.add(changeLabel, 1, 1);
+        header.add(label("payment.documentNo"), 2, 0);
+        header.add(documentField, 3, 0);
+        header.add(label("payment.comment"), 2, 1);
+        header.add(commentField, 3, 1);
+        GridPane.setHgrow(documentField, Priority.ALWAYS);
+        GridPane.setHgrow(commentField, Priority.ALWAYS);
+        header.getStyleClass().add("payment-header");
+
+        HBox methodBar = new HBox(0, cash, card, transfer, voucher, other);
+        methodBar.getStyleClass().add("payment-method-bar");
+
+        GridPane footer = new GridPane();
+        footer.setHgap(12);
+        footer.add(label("payment.amount"), 0, 0);
+        footer.add(new Label(money.format(total)), 1, 0);
+        footer.add(label("payment.charged"), 2, 0);
+        footer.add(chargedLabel, 3, 0);
+        footer.add(label("payment.missing"), 4, 0);
+        footer.add(missingLabel, 5, 0);
+        footer.getStyleClass().add("payment-footer");
+
+        HBox actions = new HBox(18, confirm, back);
+        actions.getStyleClass().add("payment-actions");
+
+        VBox content = new VBox(toolbar, header, methodBar, table, footer, actions);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        content.getStyleClass().add("payment-window");
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 980, 620);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
         scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.MULTIPLY) {
@@ -185,6 +259,13 @@ public class AppVentaController {
             } else if (event.getCode() == KeyCode.F10) {
                 other.setSelected(true);
                 event.consume();
+            } else if (event.getCode() == KeyCode.INSERT) {
+                addCurrentPayment.run();
+                event.consume();
+            } else if (event.getCode() == KeyCode.F12) {
+                paymentLines.clear();
+                refreshPayment.run();
+                event.consume();
             } else if (event.getCode() == KeyCode.ESCAPE) {
                 dialog.close();
                 event.consume();
@@ -194,6 +275,18 @@ public class AppVentaController {
         dialog.setOnShown(event -> receivedField.requestFocus());
         dialog.setOnHidden(event -> quickField.requestFocus());
         dialog.show();
+    }
+
+    private Label label(String key) {
+        Label label = new Label(message(key));
+        label.getStyleClass().add("payment-label");
+        return label;
+    }
+
+    private Label paymentToolbarLabel(String key) {
+        Label label = new Label(message(key));
+        label.getStyleClass().add("payment-toolbar-label");
+        return label;
     }
 
     private ToggleButton paymentMethodButton(String key, ToggleGroup methods) {
@@ -549,5 +642,8 @@ public class AppVentaController {
                     .map(SaleLine::totalAfterDiscount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
+    }
+
+    private record PaymentLine(String method, BigDecimal amount, String documentNo, String comment) {
     }
 }
