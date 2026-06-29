@@ -1,5 +1,6 @@
 package com.tpverp.frontend.venta;
 
+import com.tpverp.frontend.common.sales.ProductCatalog;
 import com.tpverp.frontend.common.sales.ProductSnapshot;
 import com.tpverp.frontend.common.sales.QuickCommand;
 import com.tpverp.frontend.common.sales.SaleLine;
@@ -14,21 +15,21 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.ResourceBundle;
 
 public class AppVentaController {
 
     private final TicketSale sale = new TicketSale();
-    private final Map<String, ProductSnapshot> products = sampleProducts();
+    private final ProductCatalog products = new ProductCatalog(sampleProducts());
     private final NumberFormat money = NumberFormat.getCurrencyInstance(Locale.of("es", "ES"));
 
     private Stage documentStage;
@@ -108,6 +109,9 @@ public class AppVentaController {
         } else if (event.getCode() == KeyCode.PAGE_DOWN) {
             charge();
             event.consume();
+        } else if (event.getCode() == KeyCode.DELETE) {
+            openProductDialog();
+            event.consume();
         } else if (event.getCode() == KeyCode.G && event.isControlDown()) {
             parkOrRecover();
             event.consume();
@@ -145,13 +149,84 @@ public class AppVentaController {
     }
 
     private void addProduct(String code) {
-        ProductSnapshot product = products.get(code.trim());
+        ProductSnapshot product = products.findByCodeOrBarcode(code).orElse(null);
         if (product == null) {
             status(message("status.productNotFound", code));
             return;
         }
+        addProduct(product);
+    }
+
+    private void addProduct(ProductSnapshot product) {
         sale.addLine(product);
         status(message("status.productAdded", product.code()));
+    }
+
+    private void openProductDialog() {
+        Stage dialog = new Stage();
+        dialog.setTitle(message("product.dialog.title"));
+        dialog.initOwner(quickField.getScene().getWindow());
+        dialog.initModality(Modality.NONE);
+
+        TextField searchField = new TextField();
+        searchField.setPromptText(message("product.dialog.searchPrompt"));
+        searchField.getStyleClass().add("dialog-search-field");
+
+        TableView<ProductSnapshot> table = new TableView<>();
+        table.getStyleClass().add("product-dialog-table");
+        TableColumn<ProductSnapshot, String> code = new TableColumn<>(message("column.code"));
+        code.setCellValueFactory(data -> text(data.getValue().code()));
+        code.setPrefWidth(120);
+        TableColumn<ProductSnapshot, String> name = new TableColumn<>(message("column.name"));
+        name.setCellValueFactory(data -> text(data.getValue().name()));
+        name.setPrefWidth(330);
+        TableColumn<ProductSnapshot, String> price = new TableColumn<>(message("column.price"));
+        price.setCellValueFactory(data -> text(money.format(data.getValue().salePrice())));
+        price.setPrefWidth(120);
+        table.getColumns().setAll(List.of(code, name, price));
+
+        Runnable refreshList = () -> {
+            table.setItems(FXCollections.observableArrayList(products.search(searchField.getText())));
+            if (!table.getItems().isEmpty()) {
+                table.getSelectionModel().selectFirst();
+            }
+        };
+        searchField.textProperty().addListener((ignored, oldValue, newValue) -> refreshList.run());
+        table.addEventFilter(KeyEvent.KEY_PRESSED, keyEvent -> {
+            if (keyEvent.getCode() == KeyCode.INSERT || keyEvent.getCode() == KeyCode.ENTER) {
+                ProductSnapshot selected = table.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    addProduct(selected);
+                    refresh();
+                    dialog.close();
+                }
+                keyEvent.consume();
+            } else if (keyEvent.getCode() == KeyCode.ESCAPE) {
+                dialog.close();
+                keyEvent.consume();
+            }
+        });
+        searchField.addEventFilter(KeyEvent.KEY_PRESSED, keyEvent -> {
+            if (keyEvent.getCode() == KeyCode.DOWN) {
+                table.requestFocus();
+                table.getSelectionModel().selectFirst();
+                keyEvent.consume();
+            } else if (keyEvent.getCode() == KeyCode.ESCAPE) {
+                dialog.close();
+                keyEvent.consume();
+            }
+        });
+
+        refreshList.run();
+        BorderPane pane = new BorderPane(table);
+        pane.setTop(new VBox(searchField));
+        pane.getStyleClass().add("product-dialog");
+        javafx.scene.Scene scene = new javafx.scene.Scene(pane, 640, 430);
+        scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.setOnShown(event -> searchField.requestFocus());
+        dialog.setOnHidden(event -> quickField.requestFocus());
+        dialog.show();
     }
 
     private void parkOrRecover() {
@@ -226,13 +301,11 @@ public class AppVentaController {
         return args.length == 0 ? pattern : String.format(pattern, args);
     }
 
-    private static Map<String, ProductSnapshot> sampleProducts() {
-        var map = new LinkedHashMap<String, ProductSnapshot>();
-        List.of(
-                new ProductSnapshot("20", "Articulo Mostrador", new BigDecimal("3.50"), 12),
-                new ProductSnapshot("100", "Producto Caja", new BigDecimal("9.95"), 6),
-                new ProductSnapshot("200", "Pack Venta", new BigDecimal("1.20"), 24)
-        ).forEach(product -> map.put(product.code(), product));
-        return map;
+    private static List<ProductSnapshot> sampleProducts() {
+        return List.of(
+                new ProductSnapshot("20", "8410000000200", "Articulo Mostrador", new BigDecimal("3.50"), 12),
+                new ProductSnapshot("100", "8410000000100", "Producto Caja", new BigDecimal("9.95"), 6),
+                new ProductSnapshot("200", "8410000000201", "Pack Venta", new BigDecimal("1.20"), 24)
+        );
     }
 }

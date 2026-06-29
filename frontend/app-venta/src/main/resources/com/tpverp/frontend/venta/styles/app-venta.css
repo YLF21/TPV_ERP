@@ -186,3 +186,30 @@
     -fx-font-size: 15px;
     -fx-font-weight: 800;
 }
+
+.product-dialog {
+    -fx-background-color: #f7f3e8;
+    -fx-padding: 14;
+}
+
+.dialog-search-field {
+    -fx-background-color: white;
+    -fx-border-color: #111517;
+    -fx-border-width: 2;
+    -fx-font-size: 22px;
+    -fx-font-weight: 900;
+    -fx-padding: 8;
+}
+
+.product-dialog-table {
+    -fx-background-color: #fbfbf7;
+    -fx-border-color: #22282c;
+    -fx-border-width: 2;
+    -fx-font-size: 16px;
+}
+
+.product-dialog-table .table-row-cell:selected {
+    -fx-background-color: #1b2428;
+    -fx-text-background-color: white;
+    -fx-font-weight: 900;
+}

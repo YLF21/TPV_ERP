@@ -22,6 +22,8 @@ class AppVentaMessagesTest {
             "login.submit",
             "login.error.invalid",
             "login.error.noAccess",
+            "product.dialog.title",
+            "product.dialog.searchPrompt",
             "dialog.parked.title",
             "dialog.parked.empty",
             "document.window.title",
