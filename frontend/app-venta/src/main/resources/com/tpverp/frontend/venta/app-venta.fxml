@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane fx:controller="com.tpverp.frontend.venta.AppVentaController"
+            prefHeight="760.0" prefWidth="1280.0"
+            styleClass="app-root"
+            xmlns="http://javafx.com/javafx/25"
+            xmlns:fx="http://javafx.com/fxml/1">
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="18" styleClass="top-bar">
+            <Label text="%app.title" styleClass="brand"/>
+            <Label text="%app.context" styleClass="context"/>
+            <Label fx:id="statusLabel" text="%status.ready" styleClass="status"/>
+        </HBox>
+    </top>
+
+    <center>
+        <VBox spacing="0" styleClass="ticket-area">
+            <TableView fx:id="lineTable" VBox.vgrow="ALWAYS" styleClass="sale-table">
+                <columns>
+                    <TableColumn fx:id="codeColumn" prefWidth="120" text="%column.code"/>
+                    <TableColumn fx:id="nameColumn" prefWidth="360" text="%column.name"/>
+                    <TableColumn fx:id="quantityColumn" prefWidth="120" text="%column.quantity"/>
+                    <TableColumn fx:id="packagesColumn" prefWidth="120" text="%column.packages"/>
+                    <TableColumn fx:id="priceColumn" prefWidth="120" text="%column.price"/>
+                    <TableColumn fx:id="discountColumn" prefWidth="100" text="%column.discount"/>
+                    <TableColumn fx:id="totalColumn" prefWidth="150" text="%column.total"/>
+                </columns>
+            </TableView>
+            <GridPane hgap="20" vgap="8" styleClass="summary-grid">
+                <Label text="%summary.lines"/>
+                <Label fx:id="lineCountLabel" GridPane.columnIndex="1"/>
+                <Label text="%summary.quantity" GridPane.columnIndex="2"/>
+                <Label fx:id="quantitySumLabel" GridPane.columnIndex="3"/>
+                <Label text="%summary.packages" GridPane.columnIndex="4"/>
+                <Label fx:id="packageSumLabel" GridPane.columnIndex="5"/>
+                <Label text="%summary.beforeDiscount" GridPane.columnIndex="6"/>
+                <Label fx:id="beforeDiscountLabel" GridPane.columnIndex="7"/>
+                <Label text="%summary.afterDiscount" GridPane.columnIndex="8"/>
+                <Label fx:id="afterDiscountLabel" GridPane.columnIndex="9" styleClass="summary-total"/>
+            </GridPane>
+        </VBox>
+    </center>
+
+    <right>
+        <VBox prefWidth="310" spacing="14" styleClass="side-panel">
+            <VBox spacing="4" styleClass="total-box">
+                <Label text="%total.label" styleClass="total-label"/>
+                <Label fx:id="bigTotalLabel" text="0,00 EUR" styleClass="big-total"/>
+            </VBox>
+            <VBox spacing="8">
+                <Label text="%quick.label" styleClass="quick-label"/>
+                <TextField fx:id="quickField" promptText="%quick.prompt" styleClass="quick-field"/>
+            </VBox>
+            <VBox spacing="8" styleClass="shortcut-panel">
+                <Label text="Enter  Codigo"/>
+                <Label text="Pausa  Cantidad"/>
+                <Label text="/  Dto linea"/>
+                <Label text="Ctrl+/  Dto ticket"/>
+                <Label text="Ctrl+*  Paquetes"/>
+                <Label text="Av Pag  Cobrar"/>
+                <Label text="Ctrl+F  Factura/Albaran"/>
+                <Label text="Ctrl+G  Aparcar/recuperar"/>
+            </VBox>
+            <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#charge" text="%action.charge" styleClass="charge-button"/>
+        </VBox>
+    </right>
+
+    <bottom>
+        <HBox alignment="CENTER_LEFT" spacing="12" styleClass="bottom-bar">
+            <Label text="%bottom.cashOpen"/>
+            <Label text="%bottom.ticketDefault"/>
+            <HBox HBox.hgrow="ALWAYS"/>
+            <Label text="%bottom.noNegativeStockWarning"/>
+        </HBox>
+    </bottom>
+
+    <padding>
+        <Insets bottom="0" left="0" right="0" top="0"/>
+    </padding>
+</BorderPane>

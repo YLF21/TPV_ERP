@@ -1,0 +1,143 @@
+.app-root {
+    -fx-background-color: #e9ece8;
+    -fx-font-family: "Segoe UI Semibold", "Segoe UI", sans-serif;
+}
+
+.top-bar {
+    -fx-background-color: #161a1d;
+    -fx-padding: 14 18;
+}
+
+.brand {
+    -fx-text-fill: white;
+    -fx-font-size: 24px;
+    -fx-font-weight: 800;
+}
+
+.context {
+    -fx-text-fill: #b9c1c7;
+    -fx-font-size: 13px;
+}
+
+.status {
+    -fx-text-fill: #f0d36f;
+    -fx-font-size: 15px;
+}
+
+.ticket-area {
+    -fx-padding: 16;
+}
+
+.sale-table {
+    -fx-background-color: #fbfbf7;
+    -fx-border-color: #22282c;
+    -fx-border-width: 2;
+    -fx-font-size: 17px;
+}
+
+.sale-table .column-header {
+    -fx-background-color: #31383d;
+}
+
+.sale-table .column-header .label {
+    -fx-text-fill: white;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+}
+
+.sale-table .table-row-cell {
+    -fx-background-color: #fbfbf7;
+    -fx-text-background-color: #121212;
+    -fx-cell-size: 42px;
+}
+
+.sale-table .table-row-cell:selected {
+    -fx-background-color: #1b2428;
+    -fx-text-background-color: white;
+    -fx-font-size: 18px;
+    -fx-font-weight: 900;
+}
+
+.summary-grid {
+    -fx-background-color: #d6dbd2;
+    -fx-border-color: #22282c;
+    -fx-border-width: 0 2 2 2;
+    -fx-padding: 12;
+    -fx-font-size: 14px;
+}
+
+.summary-total {
+    -fx-font-size: 18px;
+    -fx-font-weight: 900;
+}
+
+.side-panel {
+    -fx-background-color: #f7f3e8;
+    -fx-border-color: #22282c;
+    -fx-border-width: 0 0 0 2;
+    -fx-padding: 16;
+}
+
+.total-box {
+    -fx-background-color: #111517;
+    -fx-padding: 18;
+}
+
+.total-label {
+    -fx-text-fill: #f0d36f;
+    -fx-font-size: 14px;
+    -fx-font-weight: 800;
+}
+
+.big-total {
+    -fx-text-fill: white;
+    -fx-font-size: 42px;
+    -fx-font-weight: 900;
+}
+
+.quick-label {
+    -fx-text-fill: #22282c;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+}
+
+.quick-field {
+    -fx-background-color: white;
+    -fx-border-color: #111517;
+    -fx-border-width: 3;
+    -fx-font-size: 30px;
+    -fx-font-weight: 900;
+    -fx-padding: 8 10;
+}
+
+.shortcut-panel {
+    -fx-background-color: #e3dfd0;
+    -fx-padding: 12;
+    -fx-font-size: 14px;
+}
+
+.charge-button {
+    -fx-background-color: #b9312b;
+    -fx-text-fill: white;
+    -fx-font-size: 22px;
+    -fx-font-weight: 900;
+    -fx-padding: 14;
+}
+
+.bottom-bar {
+    -fx-background-color: #31383d;
+    -fx-padding: 10 16;
+}
+
+.bottom-bar .label {
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+}
+
+.document-placeholder {
+    -fx-background-color: #f7f3e8;
+    -fx-text-fill: #161a1d;
+    -fx-font-size: 22px;
+    -fx-font-weight: 800;
+    -fx-padding: 32;
+}
