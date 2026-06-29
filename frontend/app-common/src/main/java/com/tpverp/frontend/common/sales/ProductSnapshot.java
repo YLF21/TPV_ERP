@@ -2,10 +2,22 @@ package com.tpverp.frontend.common.sales;
 
 import java.math.BigDecimal;
 
-public record ProductSnapshot(String code, String barcode, String name, BigDecimal salePrice, int unitsPerPackage) {
+public record ProductSnapshot(
+        String code,
+        String barcode,
+        String name,
+        BigDecimal salePrice,
+        int unitsPerPackage,
+        String family,
+        String subfamily
+) {
 
     public ProductSnapshot(String code, String name, BigDecimal salePrice, int unitsPerPackage) {
         this(code, code, name, salePrice, unitsPerPackage);
+    }
+
+    public ProductSnapshot(String code, String barcode, String name, BigDecimal salePrice, int unitsPerPackage) {
+        this(code, barcode, name, salePrice, unitsPerPackage, "", "");
     }
 
     public ProductSnapshot {
@@ -24,5 +36,7 @@ public record ProductSnapshot(String code, String barcode, String name, BigDecim
         if (unitsPerPackage < 1) {
             unitsPerPackage = 1;
         }
+        family = family == null ? "" : family;
+        subfamily = subfamily == null ? "" : subfamily;
     }
 }

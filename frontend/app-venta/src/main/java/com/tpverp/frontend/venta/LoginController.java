@@ -37,6 +37,7 @@ public class LoginController {
         FXMLLoader loader = new FXMLLoader(AppVentaApplication.class.getResource("app-venta.fxml"), resources);
         Stage stage = (Stage) userNameField.getScene().getWindow();
         Scene scene = new Scene(loader.load(), 1280, 760);
+        loader.<AppVentaController>getController().setSession(result);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
         stage.setMinWidth(1100);
         stage.setMinHeight(680);

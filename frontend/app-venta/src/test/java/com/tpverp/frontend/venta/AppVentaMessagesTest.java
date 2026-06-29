@@ -24,6 +24,20 @@ class AppVentaMessagesTest {
             "login.error.noAccess",
             "product.dialog.title",
             "product.dialog.searchPrompt",
+            "product.management.title",
+            "product.management.family",
+            "product.management.subfamily",
+            "product.management.add",
+            "product.management.edit",
+            "product.management.delete",
+            "product.form.save",
+            "product.form.code",
+            "product.form.barcode",
+            "product.form.name",
+            "product.form.price",
+            "product.form.units",
+            "product.form.family",
+            "product.form.subfamily",
             "dialog.parked.title",
             "dialog.parked.empty",
             "document.window.title",
@@ -42,7 +56,8 @@ class AppVentaMessagesTest {
             "shortcut.packages",
             "shortcut.charge",
             "shortcut.document",
-            "shortcut.parked"
+            "shortcut.parked",
+            "shortcut.productManagement"
     );
 
     @Test

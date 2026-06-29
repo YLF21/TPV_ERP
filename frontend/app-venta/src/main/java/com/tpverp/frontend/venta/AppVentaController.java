@@ -5,11 +5,18 @@ import com.tpverp.frontend.common.sales.ProductSnapshot;
 import com.tpverp.frontend.common.sales.QuickCommand;
 import com.tpverp.frontend.common.sales.SaleLine;
 import com.tpverp.frontend.common.sales.TicketSale;
+import com.tpverp.frontend.common.security.PermissionRules;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.ObservableList;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -25,14 +32,17 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.stream.Stream;
 
 public class AppVentaController {
 
     private final TicketSale sale = new TicketSale();
-    private final ProductCatalog products = new ProductCatalog(sampleProducts());
+    private final ObservableList<ProductSnapshot> localProducts = FXCollections.observableArrayList(sampleProducts());
     private final NumberFormat money = NumberFormat.getCurrencyInstance(Locale.of("es", "ES"));
 
     private Stage documentStage;
+    private LocalLoginResult session = new LocalLoginResult(false, "", Set.of());
 
     @FXML
     private ResourceBundle resources;
@@ -81,6 +91,10 @@ public class AppVentaController {
         refresh();
     }
 
+    public void setSession(LocalLoginResult session) {
+        this.session = session;
+    }
+
     @FXML
     private void charge() {
         showInfo(message("dialog.charge.title"),
@@ -111,6 +125,9 @@ public class AppVentaController {
             event.consume();
         } else if (event.getCode() == KeyCode.DELETE) {
             openProductDialog(quickField.getText());
+            event.consume();
+        } else if (event.getCode() == KeyCode.F7 && event.isControlDown()) {
+            openProductManagement();
             event.consume();
         } else if (event.getCode() == KeyCode.G && event.isControlDown()) {
             parkOrRecover();
@@ -149,7 +166,7 @@ public class AppVentaController {
     }
 
     private void addProduct(String code) {
-        ProductSnapshot product = products.findByCodeOrBarcode(code).orElse(null);
+        ProductSnapshot product = catalog().findByCodeOrBarcode(code).orElse(null);
         if (product == null) {
             status(message("status.productNotFound", code));
             return;
@@ -187,7 +204,7 @@ public class AppVentaController {
         table.getColumns().setAll(List.of(code, name, price));
 
         Runnable refreshList = () -> {
-            table.setItems(FXCollections.observableArrayList(products.search(searchField.getText())));
+            table.setItems(FXCollections.observableArrayList(catalog().search(searchField.getText())));
             if (!table.getItems().isEmpty()) {
                 table.getSelectionModel().selectFirst();
             }
@@ -201,6 +218,9 @@ public class AppVentaController {
                     refresh();
                     dialog.close();
                 }
+                keyEvent.consume();
+            } else if (keyEvent.getCode() == KeyCode.F7) {
+                openProductManagement();
                 keyEvent.consume();
             } else if (keyEvent.getCode() == KeyCode.ESCAPE) {
                 dialog.close();
@@ -228,6 +248,148 @@ public class AppVentaController {
         dialog.setOnShown(event -> searchField.requestFocus());
         dialog.setOnHidden(event -> quickField.requestFocus());
         dialog.show();
+    }
+
+    private void openProductManagement() {
+        if (!PermissionRules.canManageProduct(session.permissions())) {
+            return;
+        }
+        Stage stage = new Stage();
+        stage.setTitle(message("product.management.title"));
+        stage.initOwner(quickField.getScene().getWindow());
+        stage.initModality(Modality.NONE);
+
+        ComboBox<String> familyFilter = new ComboBox<>();
+        familyFilter.setPromptText(message("product.management.family"));
+        ComboBox<String> subfamilyFilter = new ComboBox<>();
+        subfamilyFilter.setPromptText(message("product.management.subfamily"));
+
+        TableView<ProductSnapshot> table = new TableView<>();
+        table.getStyleClass().add("product-dialog-table");
+        TableColumn<ProductSnapshot, String> code = new TableColumn<>(message("column.code"));
+        code.setCellValueFactory(data -> text(data.getValue().code()));
+        code.setPrefWidth(115);
+        TableColumn<ProductSnapshot, String> name = new TableColumn<>(message("column.name"));
+        name.setCellValueFactory(data -> text(data.getValue().name()));
+        name.setPrefWidth(260);
+        TableColumn<ProductSnapshot, String> family = new TableColumn<>(message("product.management.family"));
+        family.setCellValueFactory(data -> text(data.getValue().family()));
+        family.setPrefWidth(150);
+        TableColumn<ProductSnapshot, String> subfamily = new TableColumn<>(message("product.management.subfamily"));
+        subfamily.setCellValueFactory(data -> text(data.getValue().subfamily()));
+        subfamily.setPrefWidth(150);
+        TableColumn<ProductSnapshot, String> price = new TableColumn<>(message("column.price"));
+        price.setCellValueFactory(data -> text(money.format(data.getValue().salePrice())));
+        price.setPrefWidth(110);
+        table.getColumns().setAll(List.of(code, name, family, subfamily, price));
+
+        Runnable refreshFilters = () -> {
+            familyFilter.setItems(FXCollections.observableArrayList(values(ProductSnapshot::family)));
+            subfamilyFilter.setItems(FXCollections.observableArrayList(values(ProductSnapshot::subfamily)));
+        };
+        Runnable refreshTable = () -> table.setItems(FXCollections.observableArrayList(localProducts.stream()
+                .filter(product -> matchesFilter(product.family(), familyFilter.getValue()))
+                .filter(product -> matchesFilter(product.subfamily(), subfamilyFilter.getValue()))
+                .toList()));
+        familyFilter.valueProperty().addListener((ignored, oldValue, newValue) -> refreshTable.run());
+        subfamilyFilter.valueProperty().addListener((ignored, oldValue, newValue) -> refreshTable.run());
+
+        Button add = new Button(message("product.management.add"));
+        add.setOnAction(event -> {
+            ProductSnapshot created = editProduct(null);
+            if (created != null) {
+                localProducts.add(created);
+                refreshFilters.run();
+                refreshTable.run();
+            }
+        });
+        Button edit = new Button(message("product.management.edit"));
+        edit.setOnAction(event -> {
+            ProductSnapshot selected = table.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                return;
+            }
+            ProductSnapshot edited = editProduct(selected);
+            if (edited != null) {
+                localProducts.set(localProducts.indexOf(selected), edited);
+                refreshFilters.run();
+                refreshTable.run();
+            }
+        });
+        Button delete = new Button(message("product.management.delete"));
+        delete.setOnAction(event -> {
+            ProductSnapshot selected = table.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                localProducts.remove(selected);
+                refreshFilters.run();
+                refreshTable.run();
+            }
+        });
+
+        VBox content = new VBox(10, new javafx.scene.layout.HBox(10, familyFilter, subfamilyFilter),
+                table, new javafx.scene.layout.HBox(10, add, edit, delete));
+        content.getStyleClass().add("product-dialog");
+        refreshFilters.run();
+        refreshTable.run();
+
+        javafx.scene.Scene scene = new javafx.scene.Scene(content, 860, 560);
+        scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
+        stage.setScene(scene);
+        stage.setOnHidden(event -> quickField.requestFocus());
+        stage.show();
+    }
+
+    private ProductSnapshot editProduct(ProductSnapshot current) {
+        Dialog<ProductSnapshot> dialog = new Dialog<>();
+        dialog.setTitle(current == null ? message("product.management.add") : message("product.management.edit"));
+        dialog.getDialogPane().getButtonTypes().addAll(
+                new ButtonType(message("product.form.save"), ButtonBar.ButtonData.OK_DONE),
+                ButtonType.CANCEL);
+
+        TextField code = field(current == null ? "" : current.code(), "product.form.code");
+        TextField barcode = field(current == null ? "" : current.barcode(), "product.form.barcode");
+        TextField name = field(current == null ? "" : current.name(), "product.form.name");
+        TextField price = field(current == null ? "0.00" : current.salePrice().toPlainString(), "product.form.price");
+        TextField units = field(current == null ? "1" : Integer.toString(current.unitsPerPackage()), "product.form.units");
+        TextField family = field(current == null ? "" : current.family(), "product.form.family");
+        TextField subfamily = field(current == null ? "" : current.subfamily(), "product.form.subfamily");
+        dialog.getDialogPane().setContent(new VBox(8, code, barcode, name, price, units, family, subfamily));
+        dialog.setResultConverter(button -> {
+            if (button.getButtonData() != ButtonBar.ButtonData.OK_DONE) {
+                return null;
+            }
+            return new ProductSnapshot(
+                    code.getText(),
+                    barcode.getText(),
+                    name.getText(),
+                    new BigDecimal(price.getText().replace(',', '.')),
+                    Integer.parseInt(units.getText()),
+                    family.getText(),
+                    subfamily.getText());
+        });
+        return dialog.showAndWait().orElse(null);
+    }
+
+    private TextField field(String value, String promptKey) {
+        TextField field = new TextField(value);
+        field.setPromptText(message(promptKey));
+        field.getStyleClass().add("dialog-search-field");
+        return field;
+    }
+
+    private ProductCatalog catalog() {
+        return new ProductCatalog(localProducts);
+    }
+
+    private List<String> values(java.util.function.Function<ProductSnapshot, String> extractor) {
+        return Stream.concat(Stream.of(""), localProducts.stream().map(extractor))
+                .filter(value -> value != null)
+                .distinct()
+                .toList();
+    }
+
+    private boolean matchesFilter(String value, String filter) {
+        return filter == null || filter.isBlank() || filter.equals(value);
     }
 
     private void parkOrRecover() {
@@ -304,9 +466,12 @@ public class AppVentaController {
 
     private static List<ProductSnapshot> sampleProducts() {
         return List.of(
-                new ProductSnapshot("20", "8410000000200", "Articulo Mostrador", new BigDecimal("3.50"), 12),
-                new ProductSnapshot("100", "8410000000100", "Producto Caja", new BigDecimal("9.95"), 6),
-                new ProductSnapshot("200", "8410000000201", "Pack Venta", new BigDecimal("1.20"), 24)
+                new ProductSnapshot("20", "8410000000200", "Articulo Mostrador", new BigDecimal("3.50"), 12,
+                        "General", "Mostrador"),
+                new ProductSnapshot("100", "8410000000100", "Producto Caja", new BigDecimal("9.95"), 6,
+                        "General", "Caja"),
+                new ProductSnapshot("200", "8410000000201", "Pack Venta", new BigDecimal("1.20"), 24,
+                        "Bebidas", "Pack")
         );
     }
 }

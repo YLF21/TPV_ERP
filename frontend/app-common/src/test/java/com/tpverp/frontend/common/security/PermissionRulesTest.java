@@ -31,4 +31,11 @@ class PermissionRulesTest {
         assertTrue(PermissionRules.canChangePrice(Set.of(), Set.of(Permission.CAMBIAR_PRECIO)));
         assertFalse(PermissionRules.canChangePrice(Set.of(Permission.VENTA), Set.of(Permission.APLICAR_DESCUENTO)));
     }
+
+    @Test
+    void productManagementRequiresProductPermissionOrAdmin() {
+        assertTrue(PermissionRules.canManageProduct(Set.of(Permission.GESTION_PRODUCTO)));
+        assertTrue(PermissionRules.canManageProduct(Set.of(Permission.ADMIN)));
+        assertFalse(PermissionRules.canManageProduct(Set.of(Permission.VENTA)));
+    }
 }
