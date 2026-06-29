@@ -213,3 +213,7 @@
     -fx-text-background-color: white;
     -fx-font-weight: 900;
 }
+
+.parked-actions {
+    -fx-padding: 12 0 0 0;
+}

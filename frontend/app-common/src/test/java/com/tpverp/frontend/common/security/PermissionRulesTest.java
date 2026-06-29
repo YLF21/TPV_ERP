@@ -38,4 +38,12 @@ class PermissionRulesTest {
         assertTrue(PermissionRules.canManageProduct(Set.of(Permission.ADMIN)));
         assertFalse(PermissionRules.canManageProduct(Set.of(Permission.VENTA)));
     }
+
+    @Test
+    void clearingParkedSalesRequiresSalesManagementOrAdmin() {
+        assertTrue(PermissionRules.canClearParkedSales(Set.of(Permission.GESTION_VENTAS)));
+        assertTrue(PermissionRules.canClearParkedSales(Set.of(Permission.ADMIN)));
+        assertFalse(PermissionRules.canClearParkedSales(Set.of(Permission.VENTA)));
+        assertFalse(PermissionRules.canClearParkedSales(Set.of(Permission.GESTION_PRODUCTO)));
+    }
 }

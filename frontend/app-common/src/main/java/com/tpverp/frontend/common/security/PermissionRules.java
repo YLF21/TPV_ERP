@@ -34,6 +34,10 @@ public final class PermissionRules {
         return hasAny(permissions, Set.of(Permission.ADMIN, Permission.GESTION_PRODUCTO));
     }
 
+    public static boolean canClearParkedSales(Set<Permission> permissions) {
+        return hasAny(permissions, Set.of(Permission.ADMIN, Permission.GESTION_VENTAS));
+    }
+
     private static boolean hasAny(Set<Permission> permissions, Set<Permission> accepted) {
         return permissions.stream().anyMatch(accepted::contains);
     }

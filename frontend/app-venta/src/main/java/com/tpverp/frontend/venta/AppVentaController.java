@@ -12,6 +12,8 @@ import javafx.collections.ObservableList;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -19,6 +21,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -319,6 +322,19 @@ public class AppVentaController {
         });
 
         BorderPane pane = new BorderPane(table);
+        if (PermissionRules.canClearParkedSales(session.permissions())) {
+            Button clear = new Button(message("parked.clear"));
+            clear.setOnAction(event -> {
+                if (confirm(message("parked.clear.confirm.title"), message("parked.clear.confirm.message"))) {
+                    parkedSales.clear();
+                    dialog.close();
+                    status(message("status.parkedSalesCleared"));
+                }
+            });
+            HBox actions = new HBox(clear);
+            actions.getStyleClass().add("parked-actions");
+            pane.setBottom(actions);
+        }
         pane.getStyleClass().add("product-dialog");
         javafx.scene.Scene scene = new javafx.scene.Scene(pane, 660, 360);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
@@ -389,6 +405,14 @@ public class AppVentaController {
         alert.setContentText(message);
         alert.showAndWait();
         quickField.requestFocus();
+    }
+
+    private boolean confirm(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        return alert.showAndWait().filter(ButtonType.OK::equals).isPresent();
     }
 
     private SimpleStringProperty text(String text) {
