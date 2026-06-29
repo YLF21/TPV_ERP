@@ -17,6 +17,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.TableColumn;
@@ -46,10 +47,12 @@ public class AppVentaController {
     private final TicketSale sale = new TicketSale();
     private final ObservableList<ProductSnapshot> localProducts = FXCollections.observableArrayList(sampleProducts());
     private final ObservableList<ParkedSale> parkedSales = FXCollections.observableArrayList();
+    private final ObservableList<DocumentDraft> documentDrafts = FXCollections.observableArrayList();
     private final NumberFormat money = NumberFormat.getCurrencyInstance(Locale.of("es", "ES"));
     private final DateTimeFormatter dateTimeFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     private int nextParkedSaleId = 1;
+    private int nextDocumentDraftId = 1;
     private Stage documentStage;
     private LocalLoginResult session = new LocalLoginResult(false, "", Set.of());
 
@@ -562,12 +565,74 @@ public class AppVentaController {
         documentStage = new Stage();
         documentStage.setTitle(message("document.window.title"));
         documentStage.initModality(Modality.NONE);
-        var label = new Label(message("document.placeholder"));
-        label.getStyleClass().add("document-placeholder");
-        var scene = new javafx.scene.Scene(label, 520, 260);
+
+        ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList(
+                message("document.type.invoice"),
+                message("document.type.deliveryNote")));
+        type.getSelectionModel().selectFirst();
+        type.getStyleClass().add("document-field");
+        TextField client = new TextField();
+        client.setPromptText(message("document.client"));
+        client.getStyleClass().add("document-field");
+        TextField number = new TextField();
+        number.setPromptText(message("document.number"));
+        number.getStyleClass().add("document-field");
+        TextArea comment = new TextArea();
+        comment.setPromptText(message("document.comment"));
+        comment.setPrefRowCount(3);
+        comment.getStyleClass().add("document-comment");
+        Label total = new Label(money.format(sale.totalAfterDiscount()));
+        total.getStyleClass().add("document-total");
+
+        Button saveDraft = new Button(message("document.saveDraft"));
+        saveDraft.setOnAction(event -> {
+            documentDrafts.add(new DocumentDraft(nextDocumentDraftId++, type.getValue(), client.getText(),
+                    number.getText(), comment.getText(), List.copyOf(sale.lines())));
+            status(message("status.documentSaved"));
+        });
+        Button importDrafts = new Button(message("document.importDrafts"));
+        importDrafts.setOnAction(event -> importDocumentDraft());
+        Button confirm = new Button(message("document.confirm"));
+        confirm.setOnAction(event -> status(message("status.documentConfirmed")));
+
+        GridPane form = new GridPane();
+        form.setHgap(12);
+        form.setVgap(12);
+        form.add(label("document.window.title"), 0, 0);
+        form.add(type, 1, 0);
+        form.add(label("document.client"), 0, 1);
+        form.add(client, 1, 1);
+        form.add(label("document.number"), 0, 2);
+        form.add(number, 1, 2);
+        form.add(label("document.comment"), 0, 3);
+        form.add(comment, 1, 3);
+        form.add(label("document.total"), 0, 4);
+        form.add(total, 1, 4);
+        GridPane.setHgrow(client, Priority.ALWAYS);
+        GridPane.setHgrow(number, Priority.ALWAYS);
+        GridPane.setHgrow(comment, Priority.ALWAYS);
+        form.getStyleClass().add("document-form");
+
+        HBox actions = new HBox(10, saveDraft, importDrafts, confirm);
+        actions.getStyleClass().add("document-actions");
+        VBox content = new VBox(12, form, actions);
+        content.getStyleClass().add("document-window");
+
+        var scene = new javafx.scene.Scene(content, 720, 430);
         scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
         documentStage.setScene(scene);
         documentStage.show();
+    }
+
+    private void importDocumentDraft() {
+        if (documentDrafts.isEmpty()) {
+            showInfo(message("document.window.title"), message("document.emptyDrafts"));
+            return;
+        }
+        DocumentDraft draft = documentDrafts.removeFirst();
+        sale.replaceLines(draft.lines());
+        status(message("status.documentImported", draft.id()));
+        refresh();
     }
 
     private void configureTable() {
@@ -645,5 +710,8 @@ public class AppVentaController {
     }
 
     private record PaymentLine(String method, BigDecimal amount, String documentNo, String comment) {
+    }
+
+    private record DocumentDraft(int id, String type, String client, String number, String comment, List<SaleLine> lines) {
     }
 }

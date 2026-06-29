@@ -142,6 +142,38 @@
     -fx-padding: 32;
 }
 
+.document-window {
+    -fx-background-color: #f7f3e8;
+    -fx-padding: 18;
+}
+
+.document-form {
+    -fx-background-color: #efebe1;
+    -fx-border-color: #31383d;
+    -fx-border-width: 2;
+    -fx-padding: 18;
+}
+
+.document-field,
+.document-comment {
+    -fx-background-color: white;
+    -fx-border-color: #31383d;
+    -fx-border-width: 0 0 2 0;
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+    -fx-padding: 7;
+}
+
+.document-total {
+    -fx-text-fill: #b9312b;
+    -fx-font-size: 34px;
+    -fx-font-weight: 900;
+}
+
+.document-actions {
+    -fx-alignment: CENTER_RIGHT;
+}
+
 .login-root {
     -fx-background-color: #161a1d;
 }
