@@ -257,8 +257,8 @@ public class Product {
     public BigDecimal price(PriceTier tier) {
         return prices.stream()
                 .filter(price -> price.getTier() == tier)
-                .map(ProductPrice::getAmount)
                 .findFirst()
+                .map(ProductPrice::getAmount)
                 .orElse(null);
     }
 

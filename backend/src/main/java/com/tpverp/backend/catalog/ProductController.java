@@ -49,6 +49,12 @@ public class ProductController {
         return service.product(productId);
     }
 
+    @GetMapping("/{productId}/price-history")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    public List<ProductPriceHistory> priceHistory(@PathVariable UUID productId) {
+        return service.priceHistory(productId);
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public Product create(@Valid @RequestBody CatalogService.ProductRequest request) {

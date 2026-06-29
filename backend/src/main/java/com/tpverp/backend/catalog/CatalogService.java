@@ -7,7 +7,10 @@ import com.tpverp.backend.organization.Store;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -25,8 +28,10 @@ public class CatalogService {
     private final SubfamilyRepository subfamilyRepository;
     private final ProductRepository productRepository;
     private final ProductIdentifierRepository identifierRepository;
+    private final ProductPriceHistoryRepository priceHistoryRepository;
     private final StockLevelRepository stockRepository;
     private final StockMovementRepository movementRepository;
+    private final Clock clock;
 
     public CatalogService(
             CurrentOrganization organization,
@@ -36,8 +41,10 @@ public class CatalogService {
             SubfamilyRepository subfamilyRepository,
             ProductRepository productRepository,
             ProductIdentifierRepository identifierRepository,
+            ProductPriceHistoryRepository priceHistoryRepository,
             StockLevelRepository stockRepository,
-            StockMovementRepository movementRepository) {
+            StockMovementRepository movementRepository,
+            Clock clock) {
         this.organization = organization;
         this.taxRepository = taxRepository;
         this.warehouseRepository = warehouseRepository;
@@ -45,8 +52,10 @@ public class CatalogService {
         this.subfamilyRepository = subfamilyRepository;
         this.productRepository = productRepository;
         this.identifierRepository = identifierRepository;
+        this.priceHistoryRepository = priceHistoryRepository;
         this.stockRepository = stockRepository;
         this.movementRepository = movementRepository;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -229,7 +238,9 @@ public class CatalogService {
                 storeId, request.familyId(), request.subfamilyId(), request.taxId(),
                 request.name(), request.description(), request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
-        return productRepository.save(product);
+        Product saved = productRepository.saveAndFlush(product);
+        recordInitialPrices(saved);
+        return saved;
     }
 
     @Transactional
@@ -237,11 +248,19 @@ public class CatalogService {
         Product product = product(productId);
         validateReferences(request, product.getStoreId());
         validateIdentifiers(product.getStoreId(), productId, request.code(), request.barcode());
+        PriceSnapshot before = PriceSnapshot.from(product);
         product.update(
                 request.familyId(), request.subfamilyId(), request.taxId(), request.name(),
                 request.description(), request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
+        recordChangedPrices(product, before);
         return product;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductPriceHistory> priceHistory(UUID productId) {
+        Product product = product(productId);
+        return priceHistoryRepository.findByProductIdOrderByUpdatedAtDesc(product.getId());
     }
 
     @Transactional
@@ -265,6 +284,74 @@ public class CatalogService {
         product.setPrice(PriceTier.MAYORISTA, request.wholesalePrice());
         product.setPrice(PriceTier.OFERTA, request.offerPrice());
         product.configureOffer(request.offerActive(), request.offerFrom(), request.offerUntil());
+    }
+
+    private void recordInitialPrices(Product product) {
+        var now = Instant.now(clock);
+        var entries = new ArrayList<ProductPriceHistory>();
+        addHistory(entries, product, ProductPriceHistoryType.COSTE, product.getPurchasePrice(), now);
+        addHistory(entries, product, ProductPriceHistoryType.VENTA, product.getSalePrice(), now);
+        addHistory(entries, product, ProductPriceHistoryType.MEMBER, product.getMemberPrice(), now);
+        addHistory(entries, product, ProductPriceHistoryType.MAYORISTA, product.getWholesalePrice(), now);
+        addHistory(entries, product, ProductPriceHistoryType.OFERTA, product.getOfferPrice(), now);
+        saveHistory(entries);
+    }
+
+    private void recordChangedPrices(Product product, PriceSnapshot before) {
+        var now = Instant.now(clock);
+        var entries = new ArrayList<ProductPriceHistory>();
+        addChangedHistory(
+                entries, product, ProductPriceHistoryType.COSTE,
+                before.purchasePrice(), product.getPurchasePrice(), now);
+        addChangedHistory(
+                entries, product, ProductPriceHistoryType.VENTA,
+                before.salePrice(), product.getSalePrice(), now);
+        addChangedHistory(
+                entries, product, ProductPriceHistoryType.MEMBER,
+                before.memberPrice(), product.getMemberPrice(), now);
+        addChangedHistory(
+                entries, product, ProductPriceHistoryType.MAYORISTA,
+                before.wholesalePrice(), product.getWholesalePrice(), now);
+        addChangedHistory(
+                entries, product, ProductPriceHistoryType.OFERTA,
+                before.offerPrice(), product.getOfferPrice(), now);
+        saveHistory(entries);
+    }
+
+    private void addChangedHistory(
+            List<ProductPriceHistory> entries,
+            Product product,
+            ProductPriceHistoryType type,
+            BigDecimal before,
+            BigDecimal after,
+            Instant updatedAt) {
+        if (!sameAmount(before, after)) {
+            addHistory(entries, product, type, after, updatedAt);
+        }
+    }
+
+    private void addHistory(
+            List<ProductPriceHistory> entries,
+            Product product,
+            ProductPriceHistoryType type,
+            BigDecimal amount,
+            Instant updatedAt) {
+        if (amount != null || type == ProductPriceHistoryType.COSTE || type == ProductPriceHistoryType.VENTA) {
+            entries.add(new ProductPriceHistory(product.getId(), type, amount, updatedAt));
+        }
+    }
+
+    private static boolean sameAmount(BigDecimal first, BigDecimal second) {
+        if (first == null || second == null) {
+            return first == second;
+        }
+        return first.compareTo(second) == 0;
+    }
+
+    private void saveHistory(List<ProductPriceHistory> entries) {
+        if (!entries.isEmpty()) {
+            priceHistoryRepository.saveAll(entries);
+        }
     }
 
     private void validateReferences(ProductRequest request, UUID storeId) {
@@ -360,6 +447,23 @@ public class CatalogService {
             LocalDate offerUntil) {
 
         public ProductRequest {
+        }
+    }
+
+    private record PriceSnapshot(
+            BigDecimal purchasePrice,
+            BigDecimal salePrice,
+            BigDecimal memberPrice,
+            BigDecimal wholesalePrice,
+            BigDecimal offerPrice) {
+
+        static PriceSnapshot from(Product product) {
+            return new PriceSnapshot(
+                    product.getPurchasePrice(),
+                    product.getSalePrice(),
+                    product.getMemberPrice(),
+                    product.getWholesalePrice(),
+                    product.getOfferPrice());
         }
     }
 }

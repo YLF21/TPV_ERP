@@ -12,12 +12,16 @@ import com.tpverp.backend.inventory.StockMovementRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,6 +35,7 @@ class CatalogServiceTest {
     @Mock private SubfamilyRepository subfamilyRepository;
     @Mock private ProductRepository productRepository;
     @Mock private ProductIdentifierRepository identifierRepository;
+    @Mock private ProductPriceHistoryRepository priceHistoryRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockMovementRepository movementRepository;
     @Mock private Store store;
@@ -45,7 +50,8 @@ class CatalogServiceTest {
         service = new CatalogService(
                 organization, taxRepository, warehouseRepository, familyRepository,
                 subfamilyRepository, productRepository, identifierRepository,
-                stockRepository, movementRepository);
+                priceHistoryRepository, stockRepository, movementRepository,
+                Clock.fixed(Instant.parse("2026-06-29T00:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -121,7 +127,7 @@ class CatalogServiceTest {
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
-        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var product = service.createProduct(request);
 
@@ -129,6 +135,37 @@ class CatalogServiceTest {
         assertThat(product.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("ABC");
         assertThat(product.price(PriceTier.VENTA)).isEqualByComparingTo("2.50");
         assertThat(product.isOfferActive()).isTrue();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProductPriceHistory>> history = ArgumentCaptor.forClass(List.class);
+        verify(priceHistoryRepository).saveAll(history.capture());
+        assertThat(history.getValue()).hasSize(3);
+    }
+
+    @Test
+    void updateStoresOnlyChangedPriceHistory() {
+        var initial = productRequest("ABC", null);
+        var product = new Product(
+                storeId, initial.familyId(), null, initial.taxId(),
+                "Producto", null, BigDecimal.ZERO, true);
+        product.replaceIdentifier(IdentifierType.CODIGO, "ABC");
+        product.setPrice(PriceTier.VENTA, new BigDecimal("2.50"));
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(initial.familyId()))
+                .thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(initial.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        var changed = new CatalogService.ProductRequest(
+                initial.familyId(), null, initial.taxId(), "Producto", null,
+                new BigDecimal("1.00"), true, "ABC", null,
+                new BigDecimal("3.00"), null, null, null,
+                false, null, null);
+
+        service.updateProduct(product.getId(), changed);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProductPriceHistory>> history = ArgumentCaptor.forClass(List.class);
+        verify(priceHistoryRepository).saveAll(history.capture());
+        assertThat(history.getValue()).hasSize(2);
     }
 
     @Test
