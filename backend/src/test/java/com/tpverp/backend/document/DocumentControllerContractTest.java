@@ -58,6 +58,32 @@ class DocumentControllerContractTest {
                 .contains("GESTION_VENTAS");
     }
 
+    @Test
+    void salesManagementCoversGranularSalesDocumentActions() throws NoSuchMethodException {
+        assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod("list"));
+        assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod(
+                "create", DocumentRequest.class, org.springframework.security.core.Authentication.class));
+        assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod(
+                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+        assertSalesManagement(TicketController.class.getDeclaredMethod("list"));
+        assertSalesManagement(TicketController.class.getDeclaredMethod(
+                "create", TicketController.CreateTicketRequest.class,
+                org.springframework.security.core.Authentication.class));
+        assertSalesManagement(TicketController.class.getDeclaredMethod(
+                "cancel", UUID.class, TicketController.CancelRequest.class,
+                org.springframework.security.core.Authentication.class));
+        assertSalesManagement(InvoiceController.class.getDeclaredMethod("list"));
+        assertSalesManagement(InvoiceController.class.getDeclaredMethod(
+                "create", DocumentRequest.class, org.springframework.security.core.Authentication.class));
+        assertSalesManagement(InvoiceController.class.getDeclaredMethod(
+                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+        assertSalesManagement(InvoiceController.class.getDeclaredMethod(
+                "pay", UUID.class, PaymentRequest.class,
+                org.springframework.security.core.Authentication.class));
+        assertSalesManagement(InvoiceController.class.getDeclaredMethod(
+                "relate", UUID.class, InvoiceController.RelationRequest.class));
+    }
+
     private void assertController(Class<?> type, String path) {
         assertThat(type.getAnnotation(RequestMapping.class).value()).containsExactly(path);
         assertThat(Arrays.stream(type.getDeclaredMethods())
@@ -67,5 +93,10 @@ class DocumentControllerContractTest {
                 .filter(method -> !method.isSynthetic())
                 .filter(method -> java.lang.reflect.Modifier.isPublic(method.getModifiers())))
                 .allMatch(method -> method.isAnnotationPresent(PreAuthorize.class));
+    }
+
+    private void assertSalesManagement(Method method) {
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_VENTAS");
     }
 }

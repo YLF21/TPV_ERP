@@ -27,13 +27,13 @@ public class DeliveryNoteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('DELIVERY_NOTES_READ','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_READ','VENTA')")
     public List<DocumentView> list() {
         return service.listDeliveryNotes().stream().map(DocumentView::from).toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('DELIVERY_NOTES_WRITE','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_WRITE','VENTA')")
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
@@ -42,7 +42,7 @@ public class DeliveryNoteController {
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('DELIVERY_NOTES_CONFIRM','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_CONFIRM','VENTA')")
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {

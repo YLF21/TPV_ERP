@@ -29,6 +29,8 @@ import java.nio.file.Path;
 
 public class SecurityAdministrationService {
 
+    private static final String NUMERIC_PASSWORD_PATTERN = "\\d{4,12}";
+
     private final CurrentOrganization organization;
     private final UserAccountRepository usuarioRepository;
     private final RoleRepository rolRepository;
@@ -81,6 +83,7 @@ public class SecurityAdministrationService {
     public UserItem createUser(String name, String userName, String password, UUID roleId) {
         Store store = currentStore();
         String normalized = normalize(name);
+        requireNumericPassword(password);
         if (usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), normalized).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese usuario");
         }
@@ -134,6 +137,7 @@ public class SecurityAdministrationService {
 
     @Transactional
     public void resetPassword(UUID userId, String newPassword) {
+        requireNumericPassword(newPassword);
         UserAccount user = user(userId);
         user.cambiarPassword(passwordEncoder.encode(newPassword));
         Instant now = Instant.now(clock);
@@ -168,9 +172,7 @@ public class SecurityAdministrationService {
         if (!passwordEncoder.matches(currentPassword, admin.getPasswordHash())) {
             throw new IllegalArgumentException("La contrasena ADMIN actual no es valida");
         }
-        if (newPassword == null || newPassword.length() < 8) {
-            throw new IllegalArgumentException("La nueva contrasena debe tener al menos 8 caracteres");
-        }
+        requireNumericPassword(newPassword);
         var installation = installationRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La instalacion no esta inicializada"));
         var backupConfiguration = backupConfigurationRepository
@@ -276,6 +278,12 @@ public class SecurityAdministrationService {
             throw new IllegalArgumentException("message.common.value_required");
         }
         return value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void requireNumericPassword(String value) {
+        if (value == null || !value.matches(NUMERIC_PASSWORD_PATTERN)) {
+            throw new IllegalArgumentException("La contrasena debe tener entre 4 y 12 cifras numericas");
+        }
     }
 
     public record UserItem(

@@ -4,7 +4,7 @@ import com.tpverp.backend.security.application.SecurityAdministrationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -116,7 +116,7 @@ public class SecurityAdministrationController {
     public record CreateUserRequest(
             @NotBlank String name,
             @NotBlank String userName,
-            @NotBlank String password,
+            @NotBlank @Pattern(regexp = "\\d{4,12}") String password,
             @NotNull UUID roleId) {
     }
 
@@ -129,7 +129,7 @@ public class SecurityAdministrationController {
     public record UserNameRequest(@NotBlank String userName) {
     }
 
-    public record ResetPasswordRequest(@NotBlank @Size(min = 4) String password) {
+    public record ResetPasswordRequest(@NotBlank @Pattern(regexp = "\\d{4,12}") String password) {
     }
 
     public record StoreAccessRequest(@NotNull Set<UUID> storeIds) {
@@ -143,6 +143,6 @@ public class SecurityAdministrationController {
 
     public record ChangeAdminPasswordRequest(
             @NotBlank String currentPassword,
-            @NotBlank @Size(min = 8) String newPassword) {
+            @NotBlank @Pattern(regexp = "\\d{4,12}") String newPassword) {
     }
 }

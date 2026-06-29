@@ -35,6 +35,8 @@ class CorePermissionBootstrapTest {
                 "SUPPLIERS_WRITE",
                 "VENTA",
                 "GESTION_VENTAS",
+                "CAMBIAR_PRECIO",
+                "APLICAR_DESCUENTO",
                 "GESTION_CUENTAS",
                 "GESTION_USUARIO",
                 "CASH_READ",

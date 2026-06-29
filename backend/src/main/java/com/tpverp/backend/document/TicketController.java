@@ -28,13 +28,13 @@ public class TicketController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('TICKETS_READ','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public List<DocumentView> list() {
         return service.listTickets().stream().map(this::view).toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('TICKETS_CREATE','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CREATE','VENTA')")
     public DocumentView create(
             @Valid @RequestBody CreateTicketRequest request,
             Authentication authentication) {
@@ -45,7 +45,7 @@ public class TicketController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TICKETS_CANCEL')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CANCEL')")
     public DocumentView cancel(
             @PathVariable UUID id,
             @Valid @RequestBody CancelRequest request,

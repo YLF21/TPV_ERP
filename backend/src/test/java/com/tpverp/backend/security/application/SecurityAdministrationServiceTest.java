@@ -2,6 +2,9 @@ package com.tpverp.backend.security.application;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
@@ -98,8 +101,67 @@ class SecurityAdministrationServiceTest {
                 .hasMessageContaining("ADMIN");
     }
 
+    @Test
+    void createUserRejectsNonNumericPassword() {
+        var store = store();
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        authenticate(user);
+
+        assertThatThrownBy(() -> service(
+                org.mockito.Mockito.mock(UserAccountRepository.class),
+                org.mockito.Mockito.mock(RoleRepository.class))
+                .createUser("CAJA", "CAJA", "12AB", UUID.randomUUID()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("4 y 12 cifras numericas");
+    }
+
+    @Test
+    void resetPasswordRejectsTooLongNumericPassword() {
+        assertThatThrownBy(() -> service(
+                org.mockito.Mockito.mock(UserAccountRepository.class),
+                org.mockito.Mockito.mock(RoleRepository.class))
+                .resetPassword(UUID.randomUUID(), "1234567890123"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("4 y 12 cifras numericas");
+    }
+
+    @Test
+    void changeAdminPasswordRejectsNonNumericPasswordBeforeRewrappingBackupKey() {
+        var store = store();
+        var admin = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var passwordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
+        var backupKeyStore = org.mockito.Mockito.mock(BackupKeyStore.class);
+        when(users.findByTiendaIdAndNombre(store.getId(), "ADMIN"))
+                .thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("0000", "hash")).thenReturn(true);
+        authenticate(admin);
+
+        assertThatThrownBy(() -> service(
+                users,
+                org.mockito.Mockito.mock(RoleRepository.class),
+                passwordEncoder,
+                backupKeyStore)
+                .changeAdminPassword("0000", "12AB"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("4 y 12 cifras numericas");
+        verify(backupKeyStore, never()).rewrap(any(char[].class), any(char[].class), any());
+    }
+
     private static SecurityAdministrationService service(
             UserAccountRepository users, RoleRepository roles) {
+        return service(
+                users,
+                roles,
+                org.mockito.Mockito.mock(PasswordEncoder.class),
+                org.mockito.Mockito.mock(BackupKeyStore.class));
+    }
+
+    private static SecurityAdministrationService service(
+            UserAccountRepository users,
+            RoleRepository roles,
+            PasswordEncoder passwordEncoder,
+            BackupKeyStore backupKeyStore) {
         var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
         when(organization.currentStore()).thenAnswer(invocation -> {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -111,10 +173,10 @@ class SecurityAdministrationServiceTest {
                 org.mockito.Mockito.mock(UserSessionRepository.class),
                 org.mockito.Mockito.mock(StoreRepository.class),
                 org.mockito.Mockito.mock(JdbcTemplate.class),
-                org.mockito.Mockito.mock(PasswordEncoder.class),
+                passwordEncoder,
                 Clock.systemUTC(),
                 org.mockito.Mockito.mock(AuditService.class),
-                org.mockito.Mockito.mock(BackupKeyStore.class),
+                backupKeyStore,
                 org.mockito.Mockito.mock(BackupSettingsRepository.class),
                 org.mockito.Mockito.mock(InstallationRepository.class));
     }
