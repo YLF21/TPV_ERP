@@ -48,6 +48,7 @@ public class AppVentaController {
     private final ObservableList<ProductSnapshot> localProducts = FXCollections.observableArrayList(sampleProducts());
     private final ObservableList<ParkedSale> parkedSales = FXCollections.observableArrayList();
     private final ObservableList<DocumentDraft> documentDrafts = FXCollections.observableArrayList();
+    private final ObservableList<CustomerSnapshot> localCustomers = FXCollections.observableArrayList(sampleCustomers());
     private final NumberFormat money = NumberFormat.getCurrencyInstance(Locale.of("es", "ES"));
     private final DateTimeFormatter dateTimeFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
@@ -55,6 +56,7 @@ public class AppVentaController {
     private int nextDocumentDraftId = 1;
     private Stage documentStage;
     private LocalLoginResult session = new LocalLoginResult(false, "", Set.of());
+    private CustomerSnapshot selectedCustomer;
 
     @FXML
     private ResourceBundle resources;
@@ -90,6 +92,8 @@ public class AppVentaController {
     private Label beforeDiscountLabel;
     @FXML
     private Label afterDiscountLabel;
+    @FXML
+    private Label selectedCustomerLabel;
 
     @FXML
     public void initialize() {
@@ -332,6 +336,9 @@ public class AppVentaController {
         } else if (event.getCode() == KeyCode.DELETE) {
             openProductDialog(quickField.getText());
             event.consume();
+        } else if (event.getCode() == KeyCode.END) {
+            openCustomerDialog();
+            event.consume();
         } else if (event.getCode() == KeyCode.F7 && event.isControlDown()) {
             openProductManagement();
             event.consume();
@@ -467,6 +474,81 @@ public class AppVentaController {
                 money,
                 AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm(),
                 quickField::requestFocus);
+    }
+
+    @FXML
+    private void openStockDialog() {
+        Stage dialog = new Stage();
+        dialog.setTitle(message("stock.dialog.title"));
+        dialog.initOwner(quickField.getScene().getWindow());
+        dialog.initModality(Modality.NONE);
+
+        TableView<ProductSnapshot> table = new TableView<>(localProducts);
+        table.getStyleClass().add("product-dialog-table");
+        TableColumn<ProductSnapshot, String> code = new TableColumn<>(message("column.code"));
+        code.setCellValueFactory(data -> text(data.getValue().code()));
+        code.setPrefWidth(120);
+        TableColumn<ProductSnapshot, String> name = new TableColumn<>(message("column.name"));
+        name.setCellValueFactory(data -> text(data.getValue().name()));
+        name.setPrefWidth(330);
+        TableColumn<ProductSnapshot, String> stock = new TableColumn<>(message("stock.column.available"));
+        stock.setCellValueFactory(data -> text(Integer.toString(data.getValue().unitsPerPackage() * 7)));
+        stock.setPrefWidth(130);
+        table.getColumns().setAll(List.of(code, name, stock));
+        openTableWindow(dialog, table, 650, 430);
+    }
+
+    @FXML
+    private void openCustomerDialog() {
+        Stage dialog = new Stage();
+        dialog.setTitle(message("customer.dialog.title"));
+        dialog.initOwner(quickField.getScene().getWindow());
+        dialog.initModality(Modality.NONE);
+
+        TableView<CustomerSnapshot> table = new TableView<>(localCustomers);
+        table.getStyleClass().add("product-dialog-table");
+        TableColumn<CustomerSnapshot, String> id = new TableColumn<>(message("customer.column.id"));
+        id.setCellValueFactory(data -> text(data.getValue().id()));
+        id.setPrefWidth(100);
+        TableColumn<CustomerSnapshot, String> name = new TableColumn<>(message("customer.column.name"));
+        name.setCellValueFactory(data -> text(data.getValue().name()));
+        name.setPrefWidth(260);
+        TableColumn<CustomerSnapshot, String> taxId = new TableColumn<>(message("customer.column.taxId"));
+        taxId.setCellValueFactory(data -> text(data.getValue().taxId()));
+        taxId.setPrefWidth(140);
+        TableColumn<CustomerSnapshot, String> phone = new TableColumn<>(message("customer.column.phone"));
+        phone.setCellValueFactory(data -> text(data.getValue().phone()));
+        phone.setPrefWidth(130);
+        table.getColumns().setAll(List.of(id, name, taxId, phone));
+        table.getSelectionModel().selectFirst();
+        table.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.INSERT) {
+                selectedCustomer = table.getSelectionModel().getSelectedItem();
+                refresh();
+                dialog.close();
+                event.consume();
+            } else if (event.getCode() == KeyCode.ESCAPE) {
+                dialog.close();
+                event.consume();
+            }
+        });
+        openTableWindow(dialog, table, 700, 430);
+    }
+
+    @FXML
+    private void openCashDialog() {
+        showInfo(message("secondary.cash"), message("bottom.cashOpen"));
+    }
+
+    private void openTableWindow(Stage dialog, TableView<?> table, int width, int height) {
+        BorderPane pane = new BorderPane(table);
+        pane.getStyleClass().add("product-dialog");
+        javafx.scene.Scene scene = new javafx.scene.Scene(pane, width, height);
+        scene.getStylesheets().add(AppVentaApplication.class.getResource("styles/app-venta.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.setOnShown(event -> table.requestFocus());
+        dialog.setOnHidden(event -> quickField.requestFocus());
+        dialog.show();
     }
 
     private ProductCatalog catalog() {
@@ -656,6 +738,8 @@ public class AppVentaController {
         packageSumLabel.setText(sale.totalPackages().toPlainString());
         beforeDiscountLabel.setText(money.format(sale.totalBeforeDiscount()));
         afterDiscountLabel.setText(money.format(sale.totalAfterDiscount()));
+        selectedCustomerLabel.setText(message("customer.selected",
+                selectedCustomer == null ? message("customer.none") : selectedCustomer.name()));
         quickField.requestFocus();
     }
 
@@ -700,6 +784,14 @@ public class AppVentaController {
         );
     }
 
+    private static List<CustomerSnapshot> sampleCustomers() {
+        return List.of(
+                new CustomerSnapshot("1", "Cliente Mostrador", "00000000T", "928000000"),
+                new CustomerSnapshot("2", "Empresa Norte", "B76000001", "928111111"),
+                new CustomerSnapshot("3", "Cliente Factura", "X1234567L", "928222222")
+        );
+    }
+
     private record ParkedSale(int id, LocalDateTime parkedAt, String userName, List<SaleLine> lines) {
 
         private BigDecimal total() {
@@ -713,5 +805,8 @@ public class AppVentaController {
     }
 
     private record DocumentDraft(int id, String type, String client, String number, String comment, List<SaleLine> lines) {
+    }
+
+    private record CustomerSnapshot(String id, String name, String taxId, String phone) {
     }
 }

@@ -74,6 +74,12 @@
                 <Label text="%shortcut.parked"/>
                 <Label text="%shortcut.productManagement"/>
             </VBox>
+            <VBox spacing="8" styleClass="secondary-panel">
+                <Label fx:id="selectedCustomerLabel"/>
+                <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#openStockDialog" text="%secondary.stock"/>
+                <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#openCustomerDialog" text="%secondary.customer"/>
+                <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#openCashDialog" text="%secondary.cash"/>
+            </VBox>
             <Button maxWidth="Infinity" mnemonicParsing="false" onAction="#charge" text="%action.charge" styleClass="charge-button"/>
         </VBox>
     </right>

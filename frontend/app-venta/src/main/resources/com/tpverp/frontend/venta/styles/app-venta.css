@@ -116,6 +116,19 @@
     -fx-font-size: 14px;
 }
 
+.secondary-panel {
+    -fx-background-color: #efebe1;
+    -fx-border-color: #31383d;
+    -fx-border-width: 2;
+    -fx-padding: 12;
+}
+
+.secondary-panel .label {
+    -fx-text-fill: #161a1d;
+    -fx-font-size: 15px;
+    -fx-font-weight: 900;
+}
+
 .charge-button {
     -fx-background-color: #b9312b;
     -fx-text-fill: white;
