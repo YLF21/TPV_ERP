@@ -349,14 +349,39 @@ public class AppVentaController {
             openDocumentWindow();
             event.consume();
         } else if (event.getCode() == KeyCode.F4 && event.isControlDown()) {
-            sale.clear();
-            status(message("status.ticketDeleted"));
-            refresh();
+            clearTicket();
             event.consume();
         } else if (event.getCode() == KeyCode.F5) {
             status(message("status.userClosed"));
             event.consume();
         }
+    }
+
+    @FXML
+    private void applyQuantityCommand() {
+        runCommand("PAUSE");
+    }
+
+    @FXML
+    private void applyPackageCommand() {
+        runCommand("CTRL_ASTERISK");
+    }
+
+    @FXML
+    private void applyLineDiscountCommand() {
+        runCommand("SLASH");
+    }
+
+    @FXML
+    private void applyTicketDiscountCommand() {
+        runCommand("CTRL_SLASH");
+    }
+
+    @FXML
+    private void clearTicket() {
+        sale.clear();
+        status(message("status.ticketDeleted"));
+        refresh();
     }
 
     private void runCommand(String key) {
@@ -561,6 +586,7 @@ public class AppVentaController {
         return new ProductCatalog(localProducts);
     }
 
+    @FXML
     private void parkOrRecover() {
         if (sale.lines().isEmpty()) {
             openParkedSalesDialog();

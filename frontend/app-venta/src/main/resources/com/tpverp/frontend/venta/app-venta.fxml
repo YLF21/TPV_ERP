@@ -27,6 +27,7 @@
                     <Menu mnemonicParsing="false" text="%menu.system">
                         <items>
                             <MenuItem mnemonicParsing="false" onAction="#openCashDialog" text="%menu.system.cash"/>
+                            <MenuItem mnemonicParsing="false" onAction="#clearTicket" text="%menu.system.clearTicket"/>
                             <MenuItem mnemonicParsing="false" onAction="#closeUser" text="%menu.system.closeUser"/>
                         </items>
                     </Menu>
@@ -35,12 +36,18 @@
                             <MenuItem mnemonicParsing="false" onAction="#openProductDialogFromMenu" text="%menu.product.search"/>
                             <MenuItem mnemonicParsing="false" onAction="#openStockDialog" text="%menu.product.stock"/>
                             <MenuItem mnemonicParsing="false" onAction="#openProductManagement" text="%menu.product.management"/>
+                            <MenuItem mnemonicParsing="false" onAction="#applyQuantityCommand" text="%menu.product.quantity"/>
+                            <MenuItem mnemonicParsing="false" onAction="#applyPackageCommand" text="%menu.product.packages"/>
                         </items>
                     </Menu>
                     <Menu mnemonicParsing="false" text="%menu.invoice">
                         <items>
                             <MenuItem mnemonicParsing="false" onAction="#openDocumentWindow" text="%menu.invoice.document"/>
                             <MenuItem mnemonicParsing="false" onAction="#openCustomerDialog" text="%menu.invoice.customers"/>
+                            <MenuItem mnemonicParsing="false" onAction="#charge" text="%menu.invoice.charge"/>
+                            <MenuItem mnemonicParsing="false" onAction="#parkOrRecover" text="%menu.invoice.parked"/>
+                            <MenuItem mnemonicParsing="false" onAction="#applyLineDiscountCommand" text="%menu.invoice.lineDiscount"/>
+                            <MenuItem mnemonicParsing="false" onAction="#applyTicketDiscountCommand" text="%menu.invoice.ticketDiscount"/>
                         </items>
                     </Menu>
                     <Menu mnemonicParsing="false" text="%menu.warehouse">
@@ -101,17 +108,6 @@
             <VBox spacing="8">
                 <Label text="%quick.label" styleClass="quick-label"/>
                 <TextField fx:id="quickField" promptText="%quick.prompt" styleClass="quick-field"/>
-            </VBox>
-            <VBox spacing="8" styleClass="shortcut-panel">
-                <Label text="%shortcut.enter"/>
-                <Label text="%shortcut.pause"/>
-                <Label text="%shortcut.lineDiscount"/>
-                <Label text="%shortcut.ticketDiscount"/>
-                <Label text="%shortcut.packages"/>
-                <Label text="%shortcut.charge"/>
-                <Label text="%shortcut.document"/>
-                <Label text="%shortcut.parked"/>
-                <Label text="%shortcut.productManagement"/>
             </VBox>
             <VBox spacing="8" styleClass="secondary-panel">
                 <Label fx:id="selectedCustomerLabel"/>
