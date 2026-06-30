@@ -392,6 +392,11 @@ public class AppVentaController {
         status(message("status.productAdded", product.code()));
     }
 
+    @FXML
+    private void openProductDialogFromMenu() {
+        openProductDialog(quickField.getText());
+    }
+
     private void openProductDialog(String initialSearch) {
         Stage dialog = new Stage();
         dialog.setTitle(message("product.dialog.title"));
@@ -463,6 +468,7 @@ public class AppVentaController {
         dialog.show();
     }
 
+    @FXML
     private void openProductManagement() {
         if (!PermissionRules.canManageProduct(session.permissions())) {
             return;
@@ -639,6 +645,7 @@ public class AppVentaController {
         refresh();
     }
 
+    @FXML
     private void openDocumentWindow() {
         if (documentStage != null && documentStage.isShowing()) {
             documentStage.requestFocus();
@@ -715,6 +722,22 @@ public class AppVentaController {
         sale.replaceLines(draft.lines());
         status(message("status.documentImported", draft.id()));
         refresh();
+    }
+
+    @FXML
+    private void openWarehouseMovementDialog() {
+        showInfo(message("menu.warehouse.movement"), message("warehouse.movement.placeholder"));
+    }
+
+    @FXML
+    private void openSalesReportDialog() {
+        showInfo(message("menu.salesReport.today"), message("salesReport.today.placeholder",
+                Integer.toString(sale.lines().size()), money.format(sale.totalAfterDiscount())));
+    }
+
+    @FXML
+    private void closeUser() {
+        status(message("status.userClosed"));
     }
 
     private void configureTable() {

@@ -8,6 +8,18 @@
     -fx-padding: 14 18;
 }
 
+.main-menu {
+    -fx-background-color: #e8e4da;
+    -fx-border-color: #31383d;
+    -fx-border-width: 0 0 2 0;
+}
+
+.main-menu .label {
+    -fx-text-fill: #161a1d;
+    -fx-font-size: 14px;
+    -fx-font-weight: 900;
+}
+
 .brand {
     -fx-text-fill: white;
     -fx-font-size: 24px;
