@@ -52,6 +52,9 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/v1/licenses")) {
             return OperationCategory.LICENSE_MANAGEMENT;
         }
+        if (path.startsWith("/api/v1/license/validate")) {
+            return OperationCategory.LICENSE_MANAGEMENT;
+        }
         if (path.startsWith("/api/v1/backups")) {
             return OperationCategory.BACKUP_OR_RESTORE;
         }

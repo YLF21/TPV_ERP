@@ -25,6 +25,7 @@ public class WarehouseOutputService {
     private final CurrentOrganization organization;
     private final ProductRepository products;
     private final WarehouseRepository warehouses;
+    private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
 
     public WarehouseOutputService(
@@ -35,6 +36,7 @@ public class WarehouseOutputService {
             CurrentOrganization organization,
             ProductRepository products,
             WarehouseRepository warehouses,
+            StockMovementSyncPublisher syncPublisher,
             Clock clock) {
         this.outputs = outputs;
         this.counters = counters;
@@ -43,6 +45,7 @@ public class WarehouseOutputService {
         this.organization = organization;
         this.products = products;
         this.warehouses = warehouses;
+        this.syncPublisher = syncPublisher;
         this.clock = clock;
     }
 
@@ -120,13 +123,14 @@ public class WarehouseOutputService {
                         line.getProductId(), output.getWarehouseId()));
         stock.apply(-line.getQuantity());
         stockLevels.save(stock);
-        movements.save(StockMovement.warehouseOutput(
+        var movement = movements.save(StockMovement.warehouseOutput(
                 line.getProductId(),
                 output.getWarehouseId(),
                 userId,
                 output.getId(),
                 line.getQuantity(),
                 Instant.now(clock)));
+        syncPublisher.enqueue(organization.currentCompany().getId(), output.getStoreId(), movement);
     }
 
     private void validate(WarehouseOutputCommand command, UUID storeId) {

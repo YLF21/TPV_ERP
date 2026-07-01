@@ -32,9 +32,7 @@ public class InstallationStatusService {
                 .findFirst()
                 .orElse(null);
         OperationalMode mode;
-        if (activeLicense != null
-                && !now.isBefore(activeLicense.getValidaDesde())
-                && now.isBefore(activeLicense.getValidaHasta())) {
+        if (activeLicense != null && activeLicense.isOperationalAt(now)) {
             mode = OperationalMode.LICENSED;
         } else if (activeLicense == null && now.isBefore(installation.getDemoHasta())) {
             mode = OperationalMode.DEMO;

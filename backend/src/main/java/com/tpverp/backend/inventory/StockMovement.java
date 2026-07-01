@@ -170,6 +170,10 @@ public class StockMovement {
         return warehouseId;
     }
 
+    public UUID getUserId() {
+        return userId;
+    }
+
     public StockMovementType getType() {
         return tipo;
     }
@@ -188,6 +192,10 @@ public class StockMovement {
 
     public UUID getDocumentId() {
         return documentId;
+    }
+
+    public UUID getWarehouseOutputId() {
+        return warehouseOutputId;
     }
 
     public UUID getCompensationOfId() {

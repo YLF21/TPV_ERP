@@ -36,6 +36,12 @@ public class StockLevel {
         this.warehouseId = Objects.requireNonNull(warehouseId, "warehouseId");
     }
 
+    public static StockLevel snapshot(UUID productId, UUID warehouseId, long quantity) {
+        var stock = new StockLevel(productId, warehouseId);
+        stock.cantidad = Math.toIntExact(quantity);
+        return stock;
+    }
+
     public UUID getProductId() {
         return productId;
     }
@@ -52,6 +58,7 @@ public class StockLevel {
         if (delta == 0) {
             throw new IllegalArgumentException("El movimiento no puede ser cero");
         }
+        // Snapshot derivado: la fuente de verdad es movimiento_stock.
         cantidad = Math.addExact(cantidad, delta);
     }
 }

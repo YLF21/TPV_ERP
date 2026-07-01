@@ -24,6 +24,7 @@ public class InventoryService {
     private final WarehouseRepository warehouseRepository;
     private final StockLevelRepository stockRepository;
     private final StockMovementRepository movementRepository;
+    private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
 
     public InventoryService(
@@ -32,12 +33,14 @@ public class InventoryService {
             WarehouseRepository warehouseRepository,
             StockLevelRepository stockRepository,
             StockMovementRepository movementRepository,
+            StockMovementSyncPublisher syncPublisher,
             Clock clock) {
         this.organization = organization;
         this.productRepository = productRepository;
         this.warehouseRepository = warehouseRepository;
         this.stockRepository = stockRepository;
         this.movementRepository = movementRepository;
+        this.syncPublisher = syncPublisher;
         this.clock = clock;
     }
 
@@ -90,8 +93,9 @@ public class InventoryService {
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
         stock.apply(quantity);
         stockRepository.save(stock);
-        movementRepository.save(StockMovement.adjustment(
+        var movement = movementRepository.save(StockMovement.adjustment(
                 productId, warehouseId, user.getId(), quantity, reason, Instant.now(clock)));
+        enqueueStockMovement(movement);
         return StockItem.from(stock);
     }
 
@@ -119,13 +123,17 @@ public class InventoryService {
 
         UUID transferId = UUID.randomUUID();
         Instant now = Instant.now(clock);
-        movementRepository.save(StockMovement.transferOut(
-                productId, sourceWarehouseId, user.getId(), quantity, transferId, now));
-        movementRepository.save(StockMovement.transferIn(
-                productId, targetWarehouseId, user.getId(), quantity, transferId, now));
+        enqueueStockMovement(movementRepository.save(StockMovement.transferOut(
+                productId, sourceWarehouseId, user.getId(), quantity, transferId, now)));
+        enqueueStockMovement(movementRepository.save(StockMovement.transferIn(
+                productId, targetWarehouseId, user.getId(), quantity, transferId, now)));
         return new TransferResult(
                 transferId, productId, sourceWarehouseId, targetWarehouseId,
                 source.getQuantity(), target.getQuantity());
+    }
+
+    private void enqueueStockMovement(StockMovement movement) {
+        syncPublisher.enqueue(organization.currentCompany().getId(), currentStore().getId(), movement);
     }
 
     private StockLevel stockLevel(UUID productId, UUID warehouseId) {

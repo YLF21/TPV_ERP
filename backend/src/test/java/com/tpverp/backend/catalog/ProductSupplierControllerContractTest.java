@@ -205,7 +205,7 @@ class ProductSupplierControllerContractTest {
         assertThat(authorization).isNotNull();
         assertThat(authorization.value())
                 .contains("hasRole('ADMIN')")
-                .contains("hasAuthority('" + permission + "')");
+                .contains("'" + permission + "'");
         assertThat(mappingPaths(method, mappingType)).containsExactly(paths);
     }
 

@@ -15,6 +15,7 @@ import com.tpverp.backend.document.DocumentCounterRepository;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.sync.SyncOutboxService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -40,6 +41,7 @@ class WarehouseOutputServiceTest {
     @Mock private CurrentOrganization organization;
     @Mock private ProductRepository products;
     @Mock private WarehouseRepository warehouses;
+    @Mock private SyncOutboxService syncOutbox;
 
     private WarehouseOutputService service;
     private Store store;
@@ -51,7 +53,7 @@ class WarehouseOutputServiceTest {
     void setUp() {
         service = new WarehouseOutputService(
                 outputs, counters, stockLevels, movements, organization, products,
-                warehouses, Clock.fixed(
+                warehouses, new StockMovementSyncPublisher(syncOutbox), Clock.fixed(
                         Instant.parse("2026-06-09T10:00:00Z"), ZoneOffset.UTC));
         var address = Map.of(
                 "linea1", "Calle 1",
@@ -69,8 +71,10 @@ class WarehouseOutputServiceTest {
                 "Producto", null, java.math.BigDecimal.ZERO, true);
         warehouse = Warehouse.general(store.getId());
         lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(organization.currentUser(any())).thenReturn(user);
         lenient().when(outputs.save(any())).thenAnswer(call -> call.getArgument(0));
+        lenient().when(movements.save(any())).thenAnswer(call -> call.getArgument(0));
     }
 
     @Test
@@ -109,6 +113,7 @@ class WarehouseOutputServiceTest {
 
         assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000001");
         assertThat(stock.getQuantity()).isEqualTo(-3);
+        org.mockito.Mockito.verify(syncOutbox).enqueue(any());
     }
 
     @Test

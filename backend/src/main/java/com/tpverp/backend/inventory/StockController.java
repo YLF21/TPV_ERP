@@ -26,9 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class StockController {
 
     private final InventoryService service;
+    private final StockSnapshotRebuildService snapshotRebuildService;
 
-    public StockController(InventoryService service) {
+    public StockController(
+            InventoryService service,
+            StockSnapshotRebuildService snapshotRebuildService) {
         this.service = service;
+        this.snapshotRebuildService = snapshotRebuildService;
     }
 
     @GetMapping
@@ -61,6 +65,12 @@ public class StockController {
         return service.transfer(
                 request.productId(), request.sourceWarehouseId(), request.targetWarehouseId(),
                 request.quantity(), authentication);
+    }
+
+    @PostMapping("/snapshots/rebuild")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_PRODUCTO + "')")
+    public StockSnapshotRebuildResult rebuildSnapshots() {
+        return snapshotRebuildService.rebuild();
     }
 
     public record AdjustmentRequest(

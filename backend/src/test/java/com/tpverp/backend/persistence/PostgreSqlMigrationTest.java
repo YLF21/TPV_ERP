@@ -53,13 +53,14 @@ class PostgreSqlMigrationTest {
                             'producto_proveedor', 'metodo_pago', 'contador_documento',
                             'documento', 'documento_linea', 'documento_pago',
                             'documento_relacion', 'venta_aparcada', 'vale',
+                            'sync_outbox', 'sync_inbox',
                             'configuracion_verifactu',
                             'cadena_fiscal', 'registro_fiscal',
                             'registro_fiscal_relacion', 'estado_envio_fiscal',
                             'intento_envio_fiscal', 'certificado_verifactu')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(47);
+                assertThat(result.getInt(1)).isEqualTo(49);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);

@@ -16,6 +16,9 @@ import com.tpverp.backend.security.domain.Permission;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.sync.SyncOperation;
+import com.tpverp.backend.sync.SyncOutboundEventCommand;
+import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import com.tpverp.backend.terminal.TerminalType;
@@ -527,6 +530,54 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void closedCashSessionEnqueuesSyncEvent() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("100.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user));
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(fixture.syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().companyId()).isEqualTo(fixture.store.getEmpresa().getId());
+        assertThat(command.getValue().storeId()).isEqualTo(fixture.store.getId());
+        assertThat(command.getValue().terminalId()).isEqualTo(fixture.terminal.getId());
+        assertThat(command.getValue().entityType()).isEqualTo("CIERRE_CAJA");
+        assertThat(command.getValue().entityId()).isEqualTo(session.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CERRAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("estado", "CERRADA")
+                .containsEntry("efectivoTeorico", "100.00")
+                .containsEntry("fondoDejado", "100.00")
+                .containsEntry("descuadre", "0.00");
+    }
+
+    @Test
+    void firstMismatchDoesNotEnqueueSyncEventWhileSessionRemainsOpen() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(new BigDecimal("90.00"), List.of(), BigDecimal.ZERO, null, List.of()),
+                salesAuthentication(fixture.user));
+
+        verify(fixture.syncOutbox, never()).enqueue(any());
+    }
+
+    @Test
     void finalWithdrawalAffectsExpectedCashBeforeCounting() {
         var fixture = serviceFixture();
         var session = CashSession.open(
@@ -609,6 +660,7 @@ class CashSessionServiceTest {
         var organization = mock(CurrentOrganization.class);
         var users = mock(UserAccountRepository.class);
         var passwordEncoder = mock(PasswordEncoder.class);
+        var syncOutbox = mock(SyncOutboxService.class);
         when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId())).thenReturn(Optional.of(terminal));
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(any())).thenReturn(user);
@@ -619,10 +671,10 @@ class CashSessionServiceTest {
         var calculator = new CashAmountCalculator(sessions, movements);
         var service = new CashSessionService(
                 sessions, movements, configs, terminals, organization, permissions, calculator,
-                Clock.fixed(now, ZoneOffset.UTC));
+                syncOutbox, Clock.fixed(now, ZoneOffset.UTC));
         return new ServiceFixture(
                 service, sessions, movements, configs, terminals, organization, users, passwordEncoder,
-                store, user, terminal);
+                syncOutbox, store, user, terminal);
     }
 
     private static CashSession closedSession(UUID storeId, UUID terminalId, UUID userId, String retainedFund) {
@@ -679,6 +731,7 @@ class CashSessionServiceTest {
             CurrentOrganization organization,
             UserAccountRepository users,
             PasswordEncoder passwordEncoder,
+            SyncOutboxService syncOutbox,
             Store store,
             UserAccount user,
             Terminal terminal) {

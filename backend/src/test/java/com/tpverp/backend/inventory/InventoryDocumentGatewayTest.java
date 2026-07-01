@@ -3,11 +3,15 @@ package com.tpverp.backend.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.sync.SyncOutboxService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,14 +32,27 @@ class InventoryDocumentGatewayTest {
     private StockLevelRepository stockRepository;
     @Mock
     private StockMovementRepository movementRepository;
+    @Mock
+    private CurrentOrganization organization;
+    @Mock
+    private Company company;
+    @Mock
+    private SyncOutboxService syncOutbox;
 
     private InventoryDocumentGateway gateway;
+    private final UUID companyId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
+        lenient().when(company.getId()).thenReturn(companyId);
+        lenient().when(organization.currentCompany()).thenReturn(company);
+        lenient().when(movementRepository.save(any(StockMovement.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         gateway = new InventoryDocumentGateway(
                 stockRepository,
                 movementRepository,
+                organization,
+                new StockMovementSyncPublisher(syncOutbox),
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -52,6 +69,7 @@ class InventoryDocumentGatewayTest {
 
         assertThat(stock.getQuantity()).isEqualTo(-3);
         verify(movementRepository).save(any(StockMovement.class));
+        verify(syncOutbox).enqueue(any());
     }
 
     @Test
@@ -105,6 +123,7 @@ class InventoryDocumentGatewayTest {
         assertThat(gateway.cancel(document)).isTrue();
 
         assertThat(stock.getQuantity()).isZero();
+        verify(syncOutbox).enqueue(any());
     }
 
     private CommercialDocument confirmed(CommercialDocumentType type, int quantity) {

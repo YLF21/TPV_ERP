@@ -15,6 +15,9 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.sync.SyncOperation;
+import com.tpverp.backend.sync.SyncOutboundEventCommand;
+import com.tpverp.backend.sync.SyncOutboxService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -37,10 +40,13 @@ class InventoryServiceTest {
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockMovementRepository movementRepository;
+    @Mock private SyncOutboxService syncOutbox;
     @Mock private Store store;
     @Mock private UserAccount user;
+    @Mock private com.tpverp.backend.organization.Company company;
 
     private InventoryService service;
+    private final UUID companyId = UUID.randomUUID();
     private final UUID storeId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
     private final UsernamePasswordAuthenticationToken authentication =
@@ -49,12 +55,17 @@ class InventoryServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(store.getId()).thenReturn(storeId);
+        lenient().when(store.getEmpresa()).thenReturn(company);
+        lenient().when(company.getId()).thenReturn(companyId);
         lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentCompany()).thenReturn(company);
         lenient().when(user.getId()).thenReturn(userId);
         lenient().when(organization.currentUser(authentication)).thenReturn(user);
+        lenient().when(movementRepository.save(any(StockMovement.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         service = new InventoryService(
                 organization, productRepository, warehouseRepository,
-                stockRepository, movementRepository,
+                stockRepository, movementRepository, new StockMovementSyncPublisher(syncOutbox),
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -91,6 +102,36 @@ class InventoryServiceTest {
 
         assertThat(result.quantity()).isEqualTo(-3);
         verify(movementRepository).save(any(StockMovement.class));
+    }
+
+    @Test
+    void adjustmentEnqueuesStockMovementSyncEvent() {
+        var product = product();
+        var warehouse = new Warehouse(storeId, "GENERAL 2");
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouseRepository.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(stockRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId()))
+                .thenReturn(Optional.empty());
+        when(stockRepository.save(any(StockLevel.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(movementRepository.save(any(StockMovement.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.adjust(product.getId(), warehouse.getId(), -3, "ROTURA", authentication);
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().companyId()).isEqualTo(companyId);
+        assertThat(command.getValue().storeId()).isEqualTo(storeId);
+        assertThat(command.getValue().terminalId()).isNull();
+        assertThat(command.getValue().entityType()).isEqualTo("STOCK_MOVEMENT");
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CREAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("productoId", product.getId().toString())
+                .containsEntry("almacenId", warehouse.getId().toString())
+                .containsEntry("usuarioId", userId.toString())
+                .containsEntry("tipo", "AJUSTE")
+                .containsEntry("cantidad", -3)
+                .containsEntry("motivo", "ROTURA")
+                .containsEntry("creadoEn", "2026-06-08T12:00:00Z");
     }
 
     @Test

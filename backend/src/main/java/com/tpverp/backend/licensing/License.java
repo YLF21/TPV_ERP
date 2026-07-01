@@ -15,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -74,6 +75,13 @@ public class License {
 
     @Column(name = "importada_en", nullable = false)
     private Instant importadaEn;
+
+    @Column(name = "ultima_validacion_saas", nullable = false)
+    private Instant ultimaValidacionSaas;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_saas", nullable = false, length = 32)
+    private LicenseSaasStatus estadoSaas = LicenseSaasStatus.VALIDA;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "import_metadata", columnDefinition = "jsonb")
@@ -140,6 +148,8 @@ public class License {
         this.hash = required(hash, "hash");
         this.formatVersion = formatVersion;
         this.importadaEn = Objects.requireNonNull(importadaEn, "importadaEn");
+        this.ultimaValidacionSaas = this.importadaEn;
+        this.estadoSaas = LicenseSaasStatus.VALIDA;
         this.metadataImportacion = metadataImportacion == null ? null : new LinkedHashMap<>(metadataImportacion);
         this.resultadoImportacion = Objects.requireNonNull(resultadoImportacion, "resultadoImportacion");
         this.motivoImportacion = resultadoImportacion == ImportResult.ACEPTADA ? null : motivoImportacion.trim();
@@ -148,6 +158,18 @@ public class License {
 
     public UUID getId() {
         return id;
+    }
+
+    public UUID getTiendaId() {
+        return tienda.getId();
+    }
+
+    public UUID getInstalacionId() {
+        return instalacion.getId();
+    }
+
+    public String getInstalacionReferencia() {
+        return instalacion.getReferencia();
     }
 
     public String getReferencia() {
@@ -186,8 +208,53 @@ public class License {
         return formatVersion;
     }
 
+    public String getHash() {
+        return hash;
+    }
+
     public boolean isActiva() {
         return activa;
+    }
+
+    public Instant getUltimaValidacionSaas() {
+        return ultimaValidacionSaas;
+    }
+
+    public LicenseSaasStatus getEstadoSaas() {
+        return estadoSaas;
+    }
+
+    public void markSaasValidated(Instant validatedAt, Instant validUntil) {
+        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
+        validaHasta = Objects.requireNonNull(validUntil, "validUntil");
+        estadoSaas = LicenseSaasStatus.VALIDA;
+    }
+
+    public void markSaasBlocked(Instant validatedAt) {
+        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
+        estadoSaas = LicenseSaasStatus.BLOQUEADA_MANUAL;
+    }
+
+    public boolean isOperationalAt(Instant now) {
+        Objects.requireNonNull(now, "now");
+        if (estadoSaas == LicenseSaasStatus.BLOQUEADA_MANUAL) {
+            return false;
+        }
+        if (now.isBefore(validaDesde)) {
+            return false;
+        }
+        boolean expired = !now.isBefore(validaHasta);
+        boolean missingSaasValidationForMoreThanOneMonth =
+                ultimaValidacionSaas.plus(30, ChronoUnit.DAYS).isBefore(now);
+        return !expired || !missingSaasValidationForMoreThanOneMonth;
+    }
+
+    public boolean requiresOfflineExpiredWarningAt(Instant now) {
+        Objects.requireNonNull(now, "now");
+        boolean expired = !now.isBefore(validaHasta);
+        boolean missingSaasValidationForOneWeek =
+                !now.isBefore(ultimaValidacionSaas.plus(7, ChronoUnit.DAYS));
+        return expired && missingSaasValidationForOneWeek;
     }
 
     public void deactivate() {

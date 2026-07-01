@@ -22,6 +22,9 @@ import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.sync.SyncOperation;
+import com.tpverp.backend.sync.SyncOutboundEventCommand;
+import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -70,6 +73,8 @@ class DocumentServiceTest {
     private CurrentTerminal currentTerminal;
     @Mock
     private CashPaymentRecorder cashPaymentRecorder;
+    @Mock
+    private SyncOutboxService syncOutbox;
 
     private DocumentService service;
     private Store store;
@@ -109,6 +114,7 @@ class DocumentServiceTest {
                 voucherService,
                 currentTerminal,
                 cashPaymentRecorder,
+                syncOutbox,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -169,6 +175,26 @@ class DocumentServiceTest {
         assertThat(confirmed.getNumero()).isEqualTo("AV-001-26-000001");
         assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
         assertThat(confirmed.isOrigenStock()).isTrue();
+    }
+
+    @Test
+    void confirmedDeliveryNoteEnqueuesSyncEvent() {
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
+                document.getTiendaId(), "AV", "2026")).thenReturn(Optional.empty());
+        when(stockGateway.confirm(document)).thenReturn(true);
+
+        var confirmed = service.confirm(document.getId(), authentication());
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().entityId()).isEqualTo(confirmed.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("tipo", "ALBARAN_VENTA")
+                .containsEntry("numero", confirmed.getNumero());
     }
 
     @Test
@@ -240,6 +266,65 @@ class DocumentServiceTest {
     }
 
     @Test
+    void confirmedTicketEnqueuesSyncEvent() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true, null, null)),
+                authentication());
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().companyId()).isEqualTo(store.getEmpresa().getId());
+        assertThat(command.getValue().storeId()).isEqualTo(store.getId());
+        assertThat(command.getValue().terminalId()).isEqualTo(terminalId);
+        assertThat(command.getValue().entityType()).isEqualTo("DOCUMENTO");
+        assertThat(command.getValue().entityId()).isEqualTo(ticket.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("tipo", "TICKET")
+                .containsEntry("numero", ticket.getNumero())
+                .containsEntry("fecha", "2026-06-08")
+                .containsEntry("clienteId", null)
+                .containsEntry("proveedorId", null)
+                .containsEntry("almacenId", ticket.getAlmacenId().toString())
+                .containsEntry("descuentoGlobal", "0.00")
+                .containsEntry("subtotal", "8.26")
+                .containsEntry("impuestos", "1.74");
+        assertThat(command.getValue().payload().get("lineas"))
+                .asList()
+                .singleElement()
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("productoId", ticket.getLineas().getFirst().getProductoId().toString())
+                .containsEntry("codigo", "P-1")
+                .containsEntry("nombre", "Producto")
+                .containsEntry("cantidad", "1")
+                .containsEntry("precioUnitario", "10.00")
+                .containsEntry("descuento", "0.00")
+                .containsEntry("impuestosIncluidos", true)
+                .containsEntry("regimenImpuesto", "IVA")
+                .containsEntry("porcentajeImpuesto", "21.00")
+                .containsEntry("base", "8.26")
+                .containsEntry("impuesto", "1.74")
+                .containsEntry("total", "10.00");
+        assertThat(command.getValue().payload().get("pagos"))
+                .asList()
+                .singleElement()
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("metodoPagoId", cash.getId().toString())
+                .containsEntry("metodoPago", "EFECTIVO")
+                .containsEntry("importe", "10.00")
+                .containsEntry("principal", true);
+    }
+
+    @Test
     void ticketPaidWithVoucherConsumesAndStoresVoucherCode() {
         var voucherMethod = new PaymentMethod(store.getEmpresa().getId(), "VALE", true);
         when(paymentMethodRepository.findById(voucherMethod.getId()))
@@ -306,6 +391,26 @@ class DocumentServiceTest {
     }
 
     @Test
+    void cancelledTicketEnqueuesSyncEvent() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(documentRepository.save(ticket)).thenReturn(ticket);
+
+        var cancelled = service.cancelTicket(ticket.getId(), authentication(), "ERROR");
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().entityId()).isEqualTo(cancelled.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.ANULAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("tipo", "TICKET")
+                .containsEntry("estado", "ANULADO");
+    }
+
+    @Test
     void ticketWithInvoiceCannotBeCancelled() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
@@ -368,6 +473,32 @@ class DocumentServiceTest {
     }
 
     @Test
+    void invoiceFromTicketEnqueuesSyncEvent() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
+        var customer = completeCustomer();
+        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
+                store.getId(), "FV", "2026")).thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var invoice = service.convertTicketToInvoice(
+                ticket.getId(), customer.getId(), authentication());
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().entityId()).isEqualTo(invoice.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.CONFIRMAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("tipo", "FACTURA_VENTA")
+                .containsEntry("numero", invoice.getNumero())
+                .containsEntry("clienteId", customer.getId().toString());
+    }
+
+    @Test
     void ticketCannotBeConvertedTwice() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
@@ -409,6 +540,37 @@ class DocumentServiceTest {
 
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
         assertThat(paid.getPagos()).hasSize(2);
+    }
+
+    @Test
+    void invoicePaymentEnqueuesSyncUpdateWithPayments() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        when(documentRepository.save(invoice)).thenReturn(invoice);
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("4.00"), true, null, null)),
+                authentication());
+
+        var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
+        verify(syncOutbox).enqueue(command.capture());
+        assertThat(command.getValue().entityId()).isEqualTo(paid.getId());
+        assertThat(command.getValue().operation()).isEqualTo(SyncOperation.ACTUALIZAR);
+        assertThat(command.getValue().payload())
+                .containsEntry("estado", "PARCIAL");
+        assertThat(command.getValue().payload().get("pagos"))
+                .asList()
+                .singleElement()
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("metodoPagoId", method.getId().toString())
+                .containsEntry("importe", "4.00")
+                .containsEntry("principal", true);
     }
 
     @Test

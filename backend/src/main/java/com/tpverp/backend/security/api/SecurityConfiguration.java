@@ -34,6 +34,7 @@ class SecurityConfiguration {
 								"/api/v1/auth/login",
 								"/api/v1/installation/status",
 								"/api/v1/installation/license-request",
+								"/api/v1/license/validate",
 								"/api/v1/terminals/request",
 								"/actuator/health")
 						.permitAll()

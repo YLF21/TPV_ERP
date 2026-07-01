@@ -270,8 +270,7 @@ public class FiscalRecordService {
                         command.storeId(), command.installationId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No existe una licencia activa para la tienda e instalacion"));
-        if (generatedAt.isBefore(license.getValidaDesde())
-                || !generatedAt.isBefore(license.getValidaHasta())) {
+        if (!license.isOperationalAt(generatedAt)) {
             throw new IllegalStateException("La licencia no esta vigente");
         }
         var companyTaxId = SpanishTaxId.validate(company.getTaxId());

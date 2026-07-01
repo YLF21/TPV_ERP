@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.StockDocumentGateway;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumMap;
@@ -18,14 +19,20 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
 
     private final StockLevelRepository stockLevels;
     private final StockMovementRepository movements;
+    private final CurrentOrganization organization;
+    private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
 
     public InventoryDocumentGateway(
             StockLevelRepository stockLevels,
             StockMovementRepository movements,
+            CurrentOrganization organization,
+            StockMovementSyncPublisher syncPublisher,
             Clock clock) {
         this.stockLevels = stockLevels;
         this.movements = movements;
+        this.organization = organization;
+        this.syncPublisher = syncPublisher;
         this.clock = clock;
     }
 
@@ -43,14 +50,14 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
         for (var line : document.getLineas()) {
             var quantity = Math.multiplyExact(definition.sign(), line.getCantidad());
             apply(line.getProductoId(), document.getAlmacenId(), quantity);
-            movements.save(StockMovement.document(
+            enqueue(document, movements.save(StockMovement.document(
                     line.getProductoId(),
                     document.getAlmacenId(),
                     document.getStockUserId(),
                     document.getId(),
                     definition.type(),
                     quantity,
-                    Instant.now(clock)));
+                    Instant.now(clock))));
         }
         return true;
     }
@@ -71,10 +78,14 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
                     compensation.getProductId(),
                     compensation.getWarehouseId(),
                     compensation.getQuantity());
-            movements.save(compensation);
+            enqueue(document, movements.save(compensation));
             applied = true;
         }
         return applied;
+    }
+
+    private void enqueue(CommercialDocument document, StockMovement movement) {
+        syncPublisher.enqueue(organization.currentCompany().getId(), document.getTiendaId(), movement);
     }
 
     private void apply(java.util.UUID productId, java.util.UUID warehouseId, int quantity) {

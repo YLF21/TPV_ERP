@@ -202,15 +202,18 @@ class FiscalRecordServiceTest {
                 .thenReturn(Optional.of(license));
 
         when(license.getValidaDesde()).thenReturn(NOW.plusSeconds(1));
+        when(license.isOperationalAt(TRUNCATED_NOW)).thenReturn(false);
         assertThatThrownBy(() -> service().register(command))
                 .hasMessageContaining("vigente");
 
         when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));
         when(license.getValidaHasta()).thenReturn(TRUNCATED_NOW);
+        when(license.isOperationalAt(TRUNCATED_NOW)).thenReturn(false);
         assertThatThrownBy(() -> service().register(command))
                 .hasMessageContaining("vigente");
 
         when(license.getValidaHasta()).thenReturn(NOW.plusSeconds(60));
+        when(license.isOperationalAt(TRUNCATED_NOW)).thenReturn(true);
         when(license.getTaxId()).thenReturn("A58818501");
         assertThatThrownBy(() -> service().register(command))
                 .hasMessageContaining("NIF");
@@ -543,6 +546,7 @@ class FiscalRecordServiceTest {
         when(license.getTaxId()).thenReturn("B12345674");
         when(license.getValidaDesde()).thenReturn(NOW.minusSeconds(60));
         when(license.getValidaHasta()).thenReturn(NOW.plusSeconds(60));
+        when(license.isOperationalAt(TRUNCATED_NOW)).thenReturn(true);
         return license;
     }
 

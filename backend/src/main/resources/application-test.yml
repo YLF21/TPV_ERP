@@ -5,7 +5,7 @@ spring:
   datasource:
     url: ${TPV_TEST_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_test}
     username: ${TPV_TEST_DB_USERNAME:tpv_erp_test}
-    password: ${TPV_TEST_DB_PASSWORD:}
+    password: ${TPV_TEST_DB_PASSWORD:admin}
   jpa:
     show-sql: false
 

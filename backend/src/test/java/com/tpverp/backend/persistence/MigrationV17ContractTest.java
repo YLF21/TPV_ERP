@@ -42,7 +42,7 @@ class MigrationV17ContractTest {
         registry.add("spring.datasource.username",
                 () -> environment("TPV_TEST_DB_USERNAME", "tpv_erp_test"));
         registry.add("spring.datasource.password",
-                () -> environment("TPV_TEST_DB_PASSWORD", ""));
+                () -> environment("TPV_TEST_DB_PASSWORD", "admin"));
         registry.add("spring.flyway.schemas", () -> SCHEMA);
         registry.add("spring.flyway.default-schema", () -> SCHEMA);
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
@@ -55,7 +55,7 @@ class MigrationV17ContractTest {
         try (var connection = DriverManager.getConnection(
                 databaseUrl(),
                 environment("TPV_TEST_DB_USERNAME", "tpv_erp_test"),
-                environment("TPV_TEST_DB_PASSWORD", ""));
+                environment("TPV_TEST_DB_PASSWORD", "admin"));
                 var statement = connection.createStatement()) {
             statement.execute("drop schema if exists " + SCHEMA + " cascade");
         }

@@ -3,6 +3,9 @@ package com.tpverp.backend.cash;
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.sync.SyncOperation;
+import com.tpverp.backend.sync.SyncOutboundEventCommand;
+import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.math.BigDecimal;
@@ -10,6 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -25,6 +29,7 @@ public class CashSessionService {
     private final CurrentOrganization organization;
     private final CashPermissionService permissions;
     private final CashAmountCalculator calculator;
+    private final SyncOutboxService syncOutbox;
     private final Clock clock;
 
     public CashSessionService(
@@ -35,6 +40,7 @@ public class CashSessionService {
             CurrentOrganization organization,
             CashPermissionService permissions,
             CashAmountCalculator calculator,
+            SyncOutboxService syncOutbox,
             Clock clock) {
         this.sessions = sessions;
         this.movements = movements;
@@ -43,6 +49,7 @@ public class CashSessionService {
         this.organization = organization;
         this.permissions = permissions;
         this.calculator = calculator;
+        this.syncOutbox = syncOutbox;
         this.clock = clock;
     }
 
@@ -151,7 +158,28 @@ public class CashSessionService {
             session.markLateClosing();
         }
         sessions.save(session);
+        if (attempt.closedSession()) {
+            enqueueClosedSession(session);
+        }
         return view(session, permissions.canSeeExpectedTotals(authentication), attempt);
+    }
+
+    private void enqueueClosedSession(CashSession session) {
+        syncOutbox.enqueue(new SyncOutboundEventCommand(
+                organization.currentStore().getEmpresa().getId(),
+                session.getStoreId(),
+                session.getTerminalId(),
+                "CIERRE_CAJA",
+                session.getId(),
+                SyncOperation.CERRAR,
+                Map.of(
+                        "estado", session.getStatus().name(),
+                        "abiertaEn", session.getOpenedAt().toString(),
+                        "cerradaEn", session.getClosedAt().toString(),
+                        "efectivoTeorico", session.getExpectedCash().toPlainString(),
+                        "fondoDejado", session.getRetainedFund().toPlainString(),
+                        "descuadre", session.getDiscrepancy().toPlainString(),
+                        "cierreTardio", session.isLateClosing())));
     }
 
     // Records prepared cash between sessions when no cash session is open.
