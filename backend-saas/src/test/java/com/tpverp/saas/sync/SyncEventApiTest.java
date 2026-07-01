@@ -1,6 +1,7 @@
 package com.tpverp.saas.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -102,6 +103,58 @@ class SyncEventApiTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void consultaEventosSyncPorTipoDesdeAdmin() throws Exception {
+        CreateCompanyResponse company = createCompany("B77777777");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+        UUID saleEventId = UUID.randomUUID();
+        UUID stockEventId = UUID.randomUUID();
+        UUID cashEventId = UUID.randomUUID();
+
+        sendEvent(link, new SyncEventRequest(
+                saleEventId,
+                company.companyId(),
+                company.storeId(),
+                UUID.randomUUID(),
+                "DOCUMENTO",
+                UUID.randomUUID(),
+                SyncOperation.CONFIRMAR,
+                Map.of("numero", "T-100", "total", "25.00")));
+        sendEvent(link, new SyncEventRequest(
+                stockEventId,
+                company.companyId(),
+                company.storeId(),
+                null,
+                "STOCK_MOVEMENT",
+                UUID.randomUUID(),
+                SyncOperation.CREAR,
+                Map.of("cantidad", 3, "tipo", "AJUSTE")));
+        sendEvent(link, new SyncEventRequest(
+                cashEventId,
+                company.companyId(),
+                company.storeId(),
+                UUID.randomUUID(),
+                "CIERRE_CAJA",
+                UUID.randomUUID(),
+                SyncOperation.CERRAR,
+                Map.of("descuadre", "0.00")));
+
+        AdminSyncEventView[] sales = getAdminEvents("/api/v1/admin/sync/sales");
+        AdminSyncEventView[] stock = getAdminEvents("/api/v1/admin/sync/stock-movements");
+        AdminSyncEventView[] cash = getAdminEvents("/api/v1/admin/sync/cash-closures");
+
+        assertThat(sales)
+                .filteredOn(event -> event.eventId().equals(saleEventId))
+                .singleElement()
+                .satisfies(event -> assertThat(event.payload()).containsEntry("numero", "T-100"));
+        assertThat(stock)
+                .extracting(AdminSyncEventView::eventId)
+                .contains(stockEventId);
+        assertThat(cash)
+                .extracting(AdminSyncEventView::eventId)
+                .contains(cashEventId);
+    }
+
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -117,6 +170,22 @@ class SyncEventApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
+    }
+
+    private void sendEvent(LicenseSaasLinkResponse link, SyncEventRequest request) throws Exception {
+        mvc.perform(post("/api/v1/sync/events")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+    }
+
+    private AdminSyncEventView[] getAdminEvents(String path) throws Exception {
+        var result = mvc.perform(get(path)
+                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return mapper.readValue(result.getResponse().getContentAsString(), AdminSyncEventView[].class);
     }
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {

@@ -74,4 +74,40 @@ public class SaasSyncEvent {
         this.payload = payload;
         this.receivedAt = receivedAt;
     }
+
+    public UUID getEventId() {
+        return eventId;
+    }
+
+    public SaasCompany getCompany() {
+        return company;
+    }
+
+    public SaasStore getStore() {
+        return store;
+    }
+
+    public SaasInstallation getInstallation() {
+        return installation;
+    }
+
+    public String getEntityType() {
+        return entityType;
+    }
+
+    public UUID getEntityId() {
+        return entityId;
+    }
+
+    public SyncOperation getOperation() {
+        return operation;
+    }
+
+    public String getPayload() {
+        return payload;
+    }
+
+    public Instant getReceivedAt() {
+        return receivedAt;
+    }
 }
