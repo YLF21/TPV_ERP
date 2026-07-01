@@ -348,7 +348,7 @@ class ProductImportServiceTest {
     void confirmExistingProductUpdatesOnlyEnabledMappedFields() throws Exception {
         var warehouseId = UUID.randomUUID();
         var supplierId = UUID.randomUUID();
-        var existing = product();
+        var existing = productWithTax(defaultTax);
         existing.replaceIdentifier(IdentifierType.CODIGO, "ABC");
         existing.setPrice(PriceTier.MAYORISTA, new BigDecimal("11.00"));
         existing.setPrice(PriceTier.MEMBER, new BigDecimal("12.00"));
@@ -358,7 +358,7 @@ class ProductImportServiceTest {
         when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
                 .thenReturn(Optional.of(identifier));
         when(products.findById(existing.getId())).thenReturn(Optional.of(existing));
-        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+        when(taxes.findById(defaultTax.getId()))
                 .thenReturn(Optional.of(defaultTax));
         when(catalogService.createOrUpdateFromImport(any(), eq(existing.getId()))).thenReturn(existing);
         when(documentService.createDeliveryNote(any(), eq(authentication)))
@@ -441,6 +441,162 @@ class ProductImportServiceTest {
 
         verify(documentService, never()).createDeliveryNote(any(), any());
         verify(documentService, never()).createInvoice(any(), any());
+    }
+
+    @Test
+    void confirmExistingProductWithBlankTaxPreservesProductTax() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var productTax = new StoreTax(store.getId(), new BigDecimal("7.00"), false);
+        var existing = productWithTax(productTax);
+        existing.replaceIdentifier(IdentifierType.CODIGO, "ABC");
+        var identifier = new ProductIdentifier(store.getId(), existing.getId(),
+                IdentifierType.CODIGO, "ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(taxes.findById(productTax.getId())).thenReturn(Optional.of(productTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(existing.getId()))).thenReturn(existing);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("ABC", null, "Nombre Nuevo", "20.00", null, "1"),
+                confirmRequest(mapping(true), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(existing.getId()));
+        assertThat(productCaptor.getValue().taxId()).isEqualTo(productTax.getId());
+        var documentCaptor = ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documentService).createDeliveryNote(documentCaptor.capture(), eq(authentication));
+        assertThat(documentCaptor.getValue().lineas().get(0).porcentajeImpuesto())
+                .isEqualByComparingTo("7.00");
+    }
+
+    @Test
+    void nonexistentTaxPercentageReturnsPreviewErrorAndConfirmDoesNotCreateDocument() throws Exception {
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+        when(taxes.findByStoreIdAndPorcentaje(store.getId(), new BigDecimal("8.00")))
+                .thenReturn(Optional.empty());
+
+        var preview = service.preview(
+                workbookWithRow("ABC", null, "Producto Excel", "10.00", null, "1", "8"),
+                mappingWithTax());
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("impuesto no encontrado");
+
+        assertThatThrownBy(() -> service.confirm(
+                workbookWithRow("ABC", null, "Producto Excel", "10.00", null, "1", "8"),
+                confirmRequest(mappingWithTax(), UUID.randomUUID(), UUID.randomUUID(),
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(documentService, never()).createDeliveryNote(any(), any());
+    }
+
+    @Test
+    void confirmExistingProductMatchedByBarcodePreservesExistingIdentifiers() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var existing = productWithTax(defaultTax);
+        existing.replaceIdentifier(IdentifierType.CODIGO, "OLD");
+        existing.replaceIdentifier(IdentifierType.CODIGO_BARRAS, "777");
+        var identifier = new ProductIdentifier(store.getId(), existing.getId(),
+                IdentifierType.CODIGO_BARRAS, "777");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "NEW")).thenReturn(Optional.empty());
+        when(identifiers.findByStoreIdAndValor(store.getId(), "777"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(taxes.findById(existing.getTaxId())).thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(existing.getId()))).thenReturn(existing);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("NEW", "777", "Nombre Nuevo", "20.00", null, "1"),
+                confirmRequest(mapping(true), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(existing.getId()));
+        assertThat(productCaptor.getValue().code()).isEqualTo("OLD");
+        assertThat(productCaptor.getValue().barcode()).isEqualTo("777");
+    }
+
+    @Test
+    void confirmExistingProductUsesExcelPurchasePriceForLineWithoutUpdatingCatalogPrice() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var existing = productWithTax(defaultTax);
+        existing.replaceIdentifier(IdentifierType.CODIGO, "ABC");
+        var identifier = new ProductIdentifier(store.getId(), existing.getId(),
+                IdentifierType.CODIGO, "ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(taxes.findById(existing.getTaxId())).thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(existing.getId()))).thenReturn(existing);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("ABC", null, "Nombre Nuevo", "20.00", null, "1"),
+                confirmRequest(mapping(true), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(existing.getId()));
+        assertThat(productCaptor.getValue().purchasePrice()).isEqualByComparingTo("10.00");
+        var documentCaptor = ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documentService).createDeliveryNote(documentCaptor.capture(), eq(authentication));
+        assertThat(documentCaptor.getValue().lineas().get(0).precioUnitario())
+                .isEqualByComparingTo("20.00");
+    }
+
+    @Test
+    void confirmPurchaseInvoiceCallsCreateInvoice() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var saved = productWithCode("ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null))).thenReturn(saved);
+        when(documentService.createInvoice(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.FACTURA_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("ABC", null, "Producto Excel", "10.00", null, "1"),
+                confirmRequest(mapping(false), warehouseId, supplierId,
+                        CommercialDocumentType.FACTURA_COMPRA),
+                authentication);
+
+        var documentCaptor = ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documentService).createInvoice(documentCaptor.capture(), eq(authentication));
+        assertThat(documentCaptor.getValue().tipo()).isEqualTo(CommercialDocumentType.FACTURA_COMPRA);
+        verify(documentService, never()).createDeliveryNote(any(), any());
+    }
+
+    @Test
+    void confirmNonPurchaseDocumentTypeThrows() {
+        assertThatThrownBy(() -> service.confirm(
+                workbookWithRow("ABC", null, "Producto Excel", "10.00", null, "1"),
+                confirmRequest(mapping(false), UUID.randomUUID(), UUID.randomUUID(),
+                        CommercialDocumentType.ALBARAN_VENTA),
+                authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("tipo de documento de importacion no permitido");
     }
 
     private static ByteArrayInputStream workbookWithRow(
@@ -620,6 +776,13 @@ class ProductImportServiceTest {
 
     private Product product() {
         var product = new Product(store.getId(), UUID.randomUUID(), null, UUID.randomUUID(),
+                "Producto Actual", null, new BigDecimal("10.00"), true);
+        product.setPrice(PriceTier.VENTA, new BigDecimal("15.00"));
+        return product;
+    }
+
+    private Product productWithTax(StoreTax tax) {
+        var product = new Product(store.getId(), UUID.randomUUID(), null, tax.getId(),
                 "Producto Actual", null, new BigDecimal("10.00"), true);
         product.setPrice(PriceTier.VENTA, new BigDecimal("15.00"));
         return product;

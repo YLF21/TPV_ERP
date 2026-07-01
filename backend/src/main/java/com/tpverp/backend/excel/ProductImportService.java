@@ -79,7 +79,7 @@ public class ProductImportService {
         return new ProductImportPreview(List.copyOf(rows));
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CommercialDocument confirm(
             InputStream input,
             ProductImportConfirmRequest request,
@@ -112,7 +112,7 @@ public class ProductImportService {
                 if (!errors.isEmpty()) {
                     throw new IllegalArgumentException(String.join(", ", errors));
                 }
-                var tax = resolveTax(storeId, row, request.mapping());
+                var tax = resolveTax(storeId, row, request.mapping(), existing);
                 var productRequest = productRequest(row, request.mapping(), existing, tax);
                 var saved = catalogService.createOrUpdateFromImport(
                         productRequest,
@@ -125,7 +125,7 @@ public class ProductImportService {
                             saved.getCode(),
                             saved.getName(),
                             null,
-                            saved.getPurchasePrice(),
+                            linePurchasePrice(row, request.mapping(), saved),
                             BigDecimal.ZERO,
                             saved.isTaxesIncluded(),
                             "GENERAL",
@@ -161,7 +161,7 @@ public class ProductImportService {
         var barcode = ExcelCellReader.text(row, mapping.codigoBarras());
         var name = ExcelCellReader.text(row, mapping.nombre());
         var description = ExcelCellReader.text(row, mapping.descripcion());
-        percentage(row, mapping.impuesto(), errors);
+        validateTax(storeId, row, mapping, errors);
         validateQuantity(row, mapping.cantidad(), errors);
 
         var product = existingProduct(storeId, code, barcode, errors);
@@ -231,8 +231,8 @@ public class ProductImportService {
                 description,
                 purchasePrice,
                 product.isTaxesIncluded(),
-                textOrCurrent(row, mapping.codigo(), product.getCode()),
-                textOrCurrent(row, mapping.codigoBarras(), product.getBarcode()),
+                product.getCode(),
+                product.getBarcode(),
                 salePrice,
                 memberPrice,
                 wholesalePrice,
@@ -270,11 +270,17 @@ public class ProductImportService {
                 null);
     }
 
-    private StoreTax resolveTax(UUID storeId, Row row, ProductImportMapping mapping) {
+    private StoreTax resolveTax(
+            UUID storeId,
+            Row row,
+            ProductImportMapping mapping,
+            Optional<Product> existing) {
         var percentage = percentage(row, mapping.impuesto(), new ArrayList<>());
-        var tax = percentage == null
-                ? taxes.findByStoreIdAndPredeterminadoTrue(storeId)
-                : taxes.findByStoreIdAndPorcentaje(storeId, percentage);
+        var tax = percentage == null && existing.isPresent()
+                ? taxes.findById(existing.get().getTaxId())
+                : percentage == null
+                        ? taxes.findByStoreIdAndPredeterminadoTrue(storeId)
+                        : taxes.findByStoreIdAndPorcentaje(storeId, percentage);
         var resolved = tax.orElseThrow(() -> new IllegalArgumentException("impuesto no encontrado"));
         resolved.requireSelectable();
         return resolved;
@@ -285,11 +291,6 @@ public class ProductImportService {
                 && type != CommercialDocumentType.FACTURA_COMPRA) {
             throw new IllegalArgumentException("tipo de documento de importacion no permitido");
         }
-    }
-
-    private static String textOrCurrent(Row row, String column, String current) {
-        var value = ExcelCellReader.text(row, column);
-        return value == null ? current : value;
     }
 
     private static String valueOrCurrent(boolean enabled, String value, String current) {
@@ -306,6 +307,34 @@ public class ProductImportService {
 
     private static Integer quantity(Row row, String column) {
         return ExcelCellReader.text(row, column) == null ? null : ExcelCellReader.integer(row, column);
+    }
+
+    private static BigDecimal linePurchasePrice(Row row, ProductImportMapping mapping, Product saved) {
+        var excel = money(row, mapping.precioCompra());
+        return excel == null ? saved.getPurchasePrice() : excel;
+    }
+
+    private void validateTax(
+            UUID storeId,
+            Row row,
+            ProductImportMapping mapping,
+            List<String> errors) {
+        if (ExcelCellReader.text(row, mapping.impuesto()) == null) {
+            return;
+        }
+        var before = errors.size();
+        var value = percentage(row, mapping.impuesto(), errors);
+        if (errors.size() != before) {
+            return;
+        }
+        var tax = taxes.findByStoreIdAndPorcentaje(storeId, value);
+        if (tax.isEmpty()) {
+            errors.add("impuesto no encontrado");
+            return;
+        }
+        if (!tax.get().isActive()) {
+            errors.add("impuesto no activo");
+        }
     }
 
     private Optional<Product> existingProduct(
