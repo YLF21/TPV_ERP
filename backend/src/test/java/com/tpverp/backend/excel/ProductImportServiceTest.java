@@ -1,6 +1,8 @@
 package com.tpverp.backend.excel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.IdentifierType;
@@ -23,7 +25,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class ProductImportServiceTest {
@@ -109,6 +113,128 @@ class ProductImportServiceTest {
                 .contains("cantidad debe ser positiva");
     }
 
+    @Test
+    void previewIsReadOnlyTransactional() throws Exception {
+        var annotation = ProductImportService.class
+                .getMethod("preview", java.io.InputStream.class, ProductImportMapping.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.readOnly()).isTrue();
+    }
+
+    @Test
+    void negativePurchasePriceReturnsError() throws Exception {
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+
+        var preview = service.preview(workbookWithRow("ABC", null, "Producto Excel", "-1.00", null, null),
+                mapping(false));
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("precioCompra no puede ser negativo");
+    }
+
+    @Test
+    void optionalWholesalePriceBelowMinimumReturnsError() throws Exception {
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+
+        var preview = service.preview(
+                workbookWithPriceColumns("ABC", "Producto Excel", "10.00", null, "0.00", null),
+                mappingWithOptionalPrices(false));
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("precioMayorista debe ser mayor o igual a 0.01");
+    }
+
+    @Test
+    void existingProductUpdateSalePriceValidatesNegativeValue() throws Exception {
+        var product = product();
+        var identifier = new ProductIdentifier(store.getId(), product.getId(),
+                IdentifierType.CODIGO, "ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+
+        var preview = service.preview(
+                workbookWithPriceColumns("ABC", "Producto Excel", "10.00", "-1.00", null, null),
+                mappingWithOptionalPrices(true));
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("precioVenta no puede ser negativo");
+    }
+
+    @Test
+    void taxAboveOneHundredReturnsError() throws Exception {
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+
+        var preview = service.preview(
+                workbookWithRow("ABC", null, "Producto Excel", "10.00", null, null, "101"),
+                mappingWithTax());
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("impuesto debe estar entre 0 y 100");
+    }
+
+    @Test
+    void codeAndBarcodeMatchingDifferentProductsReturnsError() throws Exception {
+        var codeProductId = UUID.randomUUID();
+        var barcodeProductId = UUID.randomUUID();
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(new ProductIdentifier(store.getId(), codeProductId,
+                        IdentifierType.CODIGO, "ABC")));
+        when(identifiers.findByStoreIdAndValor(store.getId(), "123"))
+                .thenReturn(Optional.of(new ProductIdentifier(store.getId(), barcodeProductId,
+                        IdentifierType.CODIGO_BARRAS, "123")));
+
+        var preview = service.preview(workbookWithRow("ABC", "123", "Producto Excel", "10.00", null, null),
+                mapping(false));
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.ERROR);
+        assertThat(preview.rows().get(0).errors())
+                .contains("codigo y codigoBarras pertenecen a productos distintos");
+    }
+
+    @Test
+    void existingProductWithAllUpdateFlagsFalseDoesNotReadPrices() throws Exception {
+        var product = Mockito.spy(product());
+        var identifier = new ProductIdentifier(store.getId(), product.getId(),
+                IdentifierType.CODIGO, "ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+
+        var preview = service.preview(workbookWithRow("ABC", null, "Producto Excel", "10.00", "15.00", null),
+                mapping(false));
+
+        assertThat(preview.rows()).hasSize(1);
+        assertThat(preview.rows().get(0).status())
+                .isEqualTo(ProductImportPreviewRow.Status.PRODUCT_ONLY);
+        verify(product, never()).getPurchasePrice();
+        verify(product, never()).getSalePrice();
+        verify(product, never()).getWholesalePrice();
+        verify(product, never()).getMemberPrice();
+    }
+
     private static ByteArrayInputStream workbookWithRow(
             String code,
             String barcode,
@@ -116,6 +242,17 @@ class ProductImportServiceTest {
             String purchasePrice,
             String salePrice,
             String quantity) throws Exception {
+        return workbookWithRow(code, barcode, name, purchasePrice, salePrice, quantity, null);
+    }
+
+    private static ByteArrayInputStream workbookWithRow(
+            String code,
+            String barcode,
+            String name,
+            String purchasePrice,
+            String salePrice,
+            String quantity,
+            String tax) throws Exception {
         try (var workbook = new XSSFWorkbook();
                 var output = new ByteArrayOutputStream()) {
             var row = workbook.createSheet().createRow(0);
@@ -136,6 +273,42 @@ class ProductImportServiceTest {
             }
             if (quantity != null) {
                 row.createCell(5).setCellValue(quantity);
+            }
+            if (tax != null) {
+                row.createCell(6).setCellValue(tax);
+            }
+            workbook.write(output);
+            return new ByteArrayInputStream(output.toByteArray());
+        }
+    }
+
+    private static ByteArrayInputStream workbookWithPriceColumns(
+            String code,
+            String name,
+            String purchasePrice,
+            String salePrice,
+            String wholesalePrice,
+            String memberPrice) throws Exception {
+        try (var workbook = new XSSFWorkbook();
+                var output = new ByteArrayOutputStream()) {
+            var row = workbook.createSheet().createRow(0);
+            if (code != null) {
+                row.createCell(0).setCellValue(code);
+            }
+            if (name != null) {
+                row.createCell(2).setCellValue(name);
+            }
+            if (purchasePrice != null) {
+                row.createCell(3).setCellValue(purchasePrice);
+            }
+            if (salePrice != null) {
+                row.createCell(4).setCellValue(salePrice);
+            }
+            if (wholesalePrice != null) {
+                row.createCell(7).setCellValue(wholesalePrice);
+            }
+            if (memberPrice != null) {
+                row.createCell(8).setCellValue(memberPrice);
             }
             workbook.write(output);
             return new ByteArrayInputStream(output.toByteArray());
@@ -160,6 +333,50 @@ class ProductImportServiceTest {
                 false,
                 false,
                 false,
+                false,
+                false);
+    }
+
+    private static ProductImportMapping mappingWithTax() {
+        return new ProductImportMapping(
+                "A",
+                "B",
+                "C",
+                null,
+                "D",
+                "E",
+                null,
+                null,
+                "G",
+                "F",
+                null,
+                1,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false);
+    }
+
+    private static ProductImportMapping mappingWithOptionalPrices(boolean updateSalePrice) {
+        return new ProductImportMapping(
+                "A",
+                "B",
+                "C",
+                null,
+                "D",
+                "E",
+                "H",
+                "I",
+                null,
+                "F",
+                null,
+                1,
+                false,
+                false,
+                false,
+                updateSalePrice,
                 false,
                 false);
     }

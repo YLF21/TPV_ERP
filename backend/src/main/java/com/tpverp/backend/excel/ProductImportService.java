@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProductImportService {
@@ -34,6 +35,7 @@ public class ProductImportService {
         this.products = products;
     }
 
+    @Transactional(readOnly = true)
     public ProductImportPreview preview(InputStream input, ProductImportMapping mapping) throws IOException {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(mapping, "mapping");
@@ -62,14 +64,18 @@ public class ProductImportService {
         var barcode = ExcelCellReader.text(row, mapping.codigoBarras());
         var name = ExcelCellReader.text(row, mapping.nombre());
         var description = ExcelCellReader.text(row, mapping.descripcion());
-        var purchasePrice = money(row, mapping.precioCompra(), "precioCompra", errors);
-        var salePrice = money(row, mapping.precioVenta(), "precioVenta", errors);
-        var wholesalePrice = money(row, mapping.precioMayorista(), "precioMayorista", errors);
-        var memberPrice = money(row, mapping.precioMiembro(), "precioMiembro", errors);
         percentage(row, mapping.impuesto(), errors);
         validateQuantity(row, mapping.cantidad(), errors);
 
         var product = existingProduct(storeId, code, barcode, errors);
+        var purchasePrice = price(row, mapping.precioCompra(), "precioCompra",
+                shouldReadPurchasePrice(product, mapping), BigDecimal.ZERO, errors);
+        var salePrice = price(row, mapping.precioVenta(), "precioVenta",
+                shouldReadSalePrice(product, mapping), BigDecimal.ZERO, errors);
+        var wholesalePrice = price(row, mapping.precioMayorista(), "precioMayorista",
+                shouldReadWholesalePrice(product, mapping), new BigDecimal("0.01"), errors);
+        var memberPrice = price(row, mapping.precioMiembro(), "precioMiembro",
+                shouldReadMemberPrice(product, mapping), new BigDecimal("0.01"), errors);
         if (product.isEmpty()) {
             validateNewProduct(code, barcode, name, purchasePrice, errors);
         }
@@ -163,12 +169,24 @@ public class ProductImportService {
         }
     }
 
-    private static BigDecimal money(Row row, String column, String field, List<String> errors) {
-        if (ExcelCellReader.text(row, column) == null) {
+    private static BigDecimal price(
+            Row row,
+            String column,
+            String field,
+            boolean read,
+            BigDecimal minimum,
+            List<String> errors) {
+        if (!read || ExcelCellReader.text(row, column) == null) {
             return null;
         }
         try {
-            return ExcelCellReader.money(row, column);
+            var value = ExcelCellReader.money(row, column);
+            if (value.compareTo(minimum) < 0) {
+                errors.add(minimum.signum() == 0
+                        ? field + " no puede ser negativo"
+                        : field + " debe ser mayor o igual a " + format(minimum));
+            }
+            return value;
         } catch (NumberFormatException exception) {
             errors.add(field + " no valido");
             return null;
@@ -180,7 +198,12 @@ public class ProductImportService {
             return null;
         }
         try {
-            return ExcelCellReader.money(row, column);
+            var value = ExcelCellReader.money(row, column);
+            if (value.compareTo(BigDecimal.ZERO) < 0
+                    || value.compareTo(new BigDecimal("100")) > 0) {
+                errors.add("impuesto debe estar entre 0 y 100");
+            }
+            return value;
         } catch (NumberFormatException exception) {
             errors.add("impuesto no valido");
             return null;
@@ -200,14 +223,18 @@ public class ProductImportService {
         addTextChange(changes, mapping.updateName(), "nombre", product.getName(), name);
         addTextChange(changes, mapping.updateDescription(), "descripcion",
                 product.getDescription(), description);
-        addMoneyChange(changes, mapping.updatePurchasePrice(), "precioCompra",
-                product.getPurchasePrice(), purchasePrice);
-        addMoneyChange(changes, mapping.updateSalePrice(), "precioVenta",
-                product.getSalePrice(), salePrice);
-        addMoneyChange(changes, mapping.updateWholesalePrice(), "precioMayorista",
-                product.getWholesalePrice(), wholesalePrice);
-        addMoneyChange(changes, mapping.updateMemberPrice(), "precioMiembro",
-                product.getMemberPrice(), memberPrice);
+        if (mapping.updatePurchasePrice()) {
+            addPurchasePriceChange(changes, product, purchasePrice);
+        }
+        if (mapping.updateSalePrice()) {
+            addSalePriceChange(changes, product, salePrice);
+        }
+        if (mapping.updateWholesalePrice()) {
+            addWholesalePriceChange(changes, product, wholesalePrice);
+        }
+        if (mapping.updateMemberPrice()) {
+            addMemberPriceChange(changes, product, memberPrice);
+        }
         return List.copyOf(changes);
     }
 
@@ -223,13 +250,40 @@ public class ProductImportService {
         changes.add(new ProductImportPreviewRow.ProductChange(field, current, excel));
     }
 
+    private static void addPurchasePriceChange(
+            List<ProductImportPreviewRow.ProductChange> changes,
+            Product product,
+            BigDecimal excel) {
+        addMoneyChange(changes, "precioCompra", product.getPurchasePrice(), excel);
+    }
+
+    private static void addSalePriceChange(
+            List<ProductImportPreviewRow.ProductChange> changes,
+            Product product,
+            BigDecimal excel) {
+        addMoneyChange(changes, "precioVenta", product.getSalePrice(), excel);
+    }
+
+    private static void addWholesalePriceChange(
+            List<ProductImportPreviewRow.ProductChange> changes,
+            Product product,
+            BigDecimal excel) {
+        addMoneyChange(changes, "precioMayorista", product.getWholesalePrice(), excel);
+    }
+
+    private static void addMemberPriceChange(
+            List<ProductImportPreviewRow.ProductChange> changes,
+            Product product,
+            BigDecimal excel) {
+        addMoneyChange(changes, "precioMiembro", product.getMemberPrice(), excel);
+    }
+
     private static void addMoneyChange(
             List<ProductImportPreviewRow.ProductChange> changes,
-            boolean enabled,
             String field,
             BigDecimal current,
             BigDecimal excel) {
-        if (!enabled || excel == null || sameMoney(current, excel)) {
+        if (excel == null || sameMoney(current, excel)) {
             return;
         }
         changes.add(new ProductImportPreviewRow.ProductChange(field,
@@ -246,6 +300,22 @@ public class ProductImportService {
 
     private static String format(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private static boolean shouldReadPurchasePrice(Optional<Product> product, ProductImportMapping mapping) {
+        return product.isEmpty() || mapping.updatePurchasePrice();
+    }
+
+    private static boolean shouldReadSalePrice(Optional<Product> product, ProductImportMapping mapping) {
+        return product.isEmpty() || mapping.updateSalePrice();
+    }
+
+    private static boolean shouldReadWholesalePrice(Optional<Product> product, ProductImportMapping mapping) {
+        return product.isEmpty() || mapping.updateWholesalePrice();
+    }
+
+    private static boolean shouldReadMemberPrice(Optional<Product> product, ProductImportMapping mapping) {
+        return product.isEmpty() || mapping.updateMemberPrice();
     }
 
     private static boolean isEmpty(Row row, ProductImportMapping mapping) {
