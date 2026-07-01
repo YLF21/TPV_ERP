@@ -1,13 +1,25 @@
 package com.tpverp.backend.excel;
 
+import com.tpverp.backend.catalog.CatalogService;
+import com.tpverp.backend.catalog.CatalogService.ProductRequest;
+import com.tpverp.backend.catalog.FamilyRepository;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductIdentifier;
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.StoreTax;
+import com.tpverp.backend.catalog.StoreTaxRepository;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentCommand;
+import com.tpverp.backend.document.DocumentLineCommand;
+import com.tpverp.backend.document.DocumentService;
 import com.tpverp.backend.organization.CurrentOrganization;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -16,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,14 +38,26 @@ public class ProductImportService {
     private final CurrentOrganization organization;
     private final ProductIdentifierRepository identifiers;
     private final ProductRepository products;
+    private final CatalogService catalogService;
+    private final DocumentService documentService;
+    private final FamilyRepository families;
+    private final StoreTaxRepository taxes;
 
     public ProductImportService(
             CurrentOrganization organization,
             ProductIdentifierRepository identifiers,
-            ProductRepository products) {
+            ProductRepository products,
+            CatalogService catalogService,
+            DocumentService documentService,
+            FamilyRepository families,
+            StoreTaxRepository taxes) {
         this.organization = organization;
         this.identifiers = identifiers;
         this.products = products;
+        this.catalogService = catalogService;
+        this.documentService = documentService;
+        this.families = families;
+        this.taxes = taxes;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +77,78 @@ public class ProductImportService {
             }
         }
         return new ProductImportPreview(List.copyOf(rows));
+    }
+
+    @Transactional
+    public CommercialDocument confirm(
+            InputStream input,
+            ProductImportConfirmRequest request,
+            Authentication authentication) throws IOException {
+        Objects.requireNonNull(input, "input");
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(request.mapping(), "mapping");
+        requirePurchaseDocumentType(request.documentType());
+        var bytes = input.readAllBytes();
+        var preview = preview(new ByteArrayInputStream(bytes), request.mapping());
+        if (preview.rows().stream().anyMatch(row -> row.status() == ProductImportPreviewRow.Status.ERROR)) {
+            throw new IllegalArgumentException("la importacion contiene errores");
+        }
+
+        var storeId = organization.currentStore().getId();
+        var lines = new ArrayList<DocumentLineCommand>();
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheetAt(0);
+            for (int index = request.mapping().firstRowIndex(); index <= sheet.getLastRowNum(); index++) {
+                var row = sheet.getRow(index);
+                if (isEmpty(row, request.mapping())) {
+                    continue;
+                }
+                var errors = new ArrayList<String>();
+                var existing = existingProduct(
+                        storeId,
+                        ExcelCellReader.text(row, request.mapping().codigo()),
+                        ExcelCellReader.text(row, request.mapping().codigoBarras()),
+                        errors);
+                if (!errors.isEmpty()) {
+                    throw new IllegalArgumentException(String.join(", ", errors));
+                }
+                var tax = resolveTax(storeId, row, request.mapping());
+                var productRequest = productRequest(row, request.mapping(), existing, tax);
+                var saved = catalogService.createOrUpdateFromImport(
+                        productRequest,
+                        existing.map(Product::getId).orElse(null));
+                var quantity = quantity(row, request.mapping().cantidad());
+                if (quantity != null && quantity > 0) {
+                    lines.add(new DocumentLineCommand(
+                            saved.getId(),
+                            quantity,
+                            saved.getCode(),
+                            saved.getName(),
+                            null,
+                            saved.getPurchasePrice(),
+                            BigDecimal.ZERO,
+                            saved.isTaxesIncluded(),
+                            "GENERAL",
+                            tax.getPercentage()));
+                }
+            }
+        }
+        if (lines.isEmpty()) {
+            throw new IllegalArgumentException("la importacion necesita al menos una linea con cantidad");
+        }
+        var command = new DocumentCommand(
+                request.warehouseId(),
+                request.documentType(),
+                request.date() == null ? LocalDate.now() : request.date(),
+                null,
+                request.supplierId(),
+                request.externalNumber(),
+                BigDecimal.ZERO,
+                false,
+                List.copyOf(lines));
+        return request.documentType() == CommercialDocumentType.ALBARAN_COMPRA
+                ? documentService.createDeliveryNote(command, authentication)
+                : documentService.createInvoice(command, authentication);
     }
 
     private ProductImportPreviewRow previewRow(
@@ -103,6 +200,112 @@ public class ProductImportService {
                 product.get().getId(),
                 List.of(),
                 changes);
+    }
+
+    private ProductRequest productRequest(
+            Row row,
+            ProductImportMapping mapping,
+            Optional<Product> existing,
+            StoreTax tax) {
+        if (existing.isEmpty()) {
+            return newProductRequest(row, mapping, tax);
+        }
+        var product = existing.get();
+        var name = valueOrCurrent(mapping.updateName(), ExcelCellReader.text(row, mapping.nombre()),
+                product.getName());
+        var description = valueOrCurrent(mapping.updateDescription(),
+                ExcelCellReader.text(row, mapping.descripcion()), product.getDescription());
+        var purchasePrice = moneyOrCurrent(mapping.updatePurchasePrice(),
+                money(row, mapping.precioCompra()), product.getPurchasePrice());
+        var salePrice = moneyOrCurrent(mapping.updateSalePrice(),
+                money(row, mapping.precioVenta()), product.getSalePrice());
+        var wholesalePrice = moneyOrCurrent(mapping.updateWholesalePrice(),
+                money(row, mapping.precioMayorista()), product.getWholesalePrice());
+        var memberPrice = moneyOrCurrent(mapping.updateMemberPrice(),
+                money(row, mapping.precioMiembro()), product.getMemberPrice());
+        return new ProductRequest(
+                product.getFamilyId(),
+                product.getSubfamilyId(),
+                tax.getId(),
+                name,
+                description,
+                purchasePrice,
+                product.isTaxesIncluded(),
+                textOrCurrent(row, mapping.codigo(), product.getCode()),
+                textOrCurrent(row, mapping.codigoBarras(), product.getBarcode()),
+                salePrice,
+                memberPrice,
+                wholesalePrice,
+                product.getOfferPrice(),
+                product.isOfferActive(),
+                product.getOfferFrom(),
+                product.getOfferUntil());
+    }
+
+    private ProductRequest newProductRequest(Row row, ProductImportMapping mapping, StoreTax tax) {
+        var barcode = ExcelCellReader.text(row, mapping.codigoBarras());
+        var code = ExcelCellReader.text(row, mapping.codigo());
+        if (isBlank(code)) {
+            code = barcode;
+        }
+        var family = families.findByStoreIdAndPredeterminadaTrue(tax.getStoreId())
+                .orElseThrow(() -> new IllegalStateException("La familia GENERAL no esta inicializada"));
+        var salePrice = money(row, mapping.precioVenta());
+        return new ProductRequest(
+                family.getId(),
+                null,
+                tax.getId(),
+                ExcelCellReader.text(row, mapping.nombre()),
+                ExcelCellReader.text(row, mapping.descripcion()),
+                money(row, mapping.precioCompra()),
+                true,
+                code,
+                barcode,
+                salePrice == null ? BigDecimal.ZERO : salePrice,
+                money(row, mapping.precioMiembro()),
+                money(row, mapping.precioMayorista()),
+                null,
+                false,
+                null,
+                null);
+    }
+
+    private StoreTax resolveTax(UUID storeId, Row row, ProductImportMapping mapping) {
+        var percentage = percentage(row, mapping.impuesto(), new ArrayList<>());
+        var tax = percentage == null
+                ? taxes.findByStoreIdAndPredeterminadoTrue(storeId)
+                : taxes.findByStoreIdAndPorcentaje(storeId, percentage);
+        var resolved = tax.orElseThrow(() -> new IllegalArgumentException("impuesto no encontrado"));
+        resolved.requireSelectable();
+        return resolved;
+    }
+
+    private static void requirePurchaseDocumentType(CommercialDocumentType type) {
+        if (type != CommercialDocumentType.ALBARAN_COMPRA
+                && type != CommercialDocumentType.FACTURA_COMPRA) {
+            throw new IllegalArgumentException("tipo de documento de importacion no permitido");
+        }
+    }
+
+    private static String textOrCurrent(Row row, String column, String current) {
+        var value = ExcelCellReader.text(row, column);
+        return value == null ? current : value;
+    }
+
+    private static String valueOrCurrent(boolean enabled, String value, String current) {
+        return enabled && value != null ? value : current;
+    }
+
+    private static BigDecimal moneyOrCurrent(boolean enabled, BigDecimal value, BigDecimal current) {
+        return enabled && value != null ? value : current;
+    }
+
+    private static BigDecimal money(Row row, String column) {
+        return ExcelCellReader.text(row, column) == null ? null : ExcelCellReader.money(row, column);
+    }
+
+    private static Integer quantity(Row row, String column) {
+        return ExcelCellReader.text(row, column) == null ? null : ExcelCellReader.integer(row, column);
     }
 
     private Optional<Product> existingProduct(

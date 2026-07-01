@@ -1,22 +1,38 @@
 package com.tpverp.backend.excel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.catalog.CatalogService;
+import com.tpverp.backend.catalog.CatalogService.ProductRequest;
+import com.tpverp.backend.catalog.Family;
+import com.tpverp.backend.catalog.FamilyRepository;
 import com.tpverp.backend.catalog.IdentifierType;
 import com.tpverp.backend.catalog.PriceTier;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductIdentifier;
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.StoreTax;
+import com.tpverp.backend.catalog.StoreTaxRepository;
+import com.tpverp.backend.document.CommercialDocument;
+import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentCommand;
+import com.tpverp.backend.document.DocumentService;
+import com.tpverp.backend.document.DocumentStatus;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,9 +40,11 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,16 +53,26 @@ class ProductImportServiceTest {
     @Mock private CurrentOrganization organization;
     @Mock private ProductIdentifierRepository identifiers;
     @Mock private ProductRepository products;
+    @Mock private CatalogService catalogService;
+    @Mock private DocumentService documentService;
+    @Mock private FamilyRepository families;
+    @Mock private StoreTaxRepository taxes;
+    @Mock private Authentication authentication;
 
     private ProductImportService service;
     private Store store;
+    private Family generalFamily;
+    private StoreTax defaultTax;
 
     @BeforeEach
     void setUp() {
         var company = new Company("B00000000", "Company", address());
         store = new Store(company, "Store", address(), "hash",
                 "Atlantic/Canary", "EUR", "es-ES");
-        service = new ProductImportService(organization, identifiers, products);
+        generalFamily = Family.general(store.getId());
+        defaultTax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
+        service = new ProductImportService(organization, identifiers, products,
+                catalogService, documentService, families, taxes);
     }
 
     @Test
@@ -235,6 +263,186 @@ class ProductImportServiceTest {
         verify(product, never()).getMemberPrice();
     }
 
+    @Test
+    void confirmNewProductWithQuantityCreatesDraftPurchaseDeliveryNote() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var saved = productWithCode("ABC");
+        saved.replaceIdentifier(IdentifierType.CODIGO_BARRAS, "123");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+        when(identifiers.findByStoreIdAndValor(store.getId(), "123")).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null))).thenReturn(saved);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        var result = service.confirm(
+                workbookWithRow("ABC", "123", "Producto Excel", "10.00", "15.00", "2"),
+                confirmRequest(mapping(false), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        assertThat(result.getEstado()).isEqualTo(DocumentStatus.BORRADOR);
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(null));
+        assertThat(productCaptor.getValue().familyId()).isEqualTo(generalFamily.getId());
+        assertThat(productCaptor.getValue().subfamilyId()).isNull();
+        assertThat(productCaptor.getValue().taxId()).isEqualTo(defaultTax.getId());
+        assertThat(productCaptor.getValue().code()).isEqualTo("ABC");
+        assertThat(productCaptor.getValue().barcode()).isEqualTo("123");
+        assertThat(productCaptor.getValue().name()).isEqualTo("Producto Excel");
+        assertThat(productCaptor.getValue().purchasePrice()).isEqualByComparingTo("10.00");
+        assertThat(productCaptor.getValue().salePrice()).isEqualByComparingTo("15.00");
+
+        var documentCaptor = ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documentService).createDeliveryNote(documentCaptor.capture(), eq(authentication));
+        assertThat(documentCaptor.getValue().tipo()).isEqualTo(CommercialDocumentType.ALBARAN_COMPRA);
+        assertThat(documentCaptor.getValue().almacenId()).isEqualTo(warehouseId);
+        assertThat(documentCaptor.getValue().proveedorId()).isEqualTo(supplierId);
+        assertThat(documentCaptor.getValue().directo()).isFalse();
+        assertThat(documentCaptor.getValue().lineas()).hasSize(1);
+        var line = documentCaptor.getValue().lineas().get(0);
+        assertThat(line.productoId()).isEqualTo(saved.getId());
+        assertThat(line.cantidad()).isEqualTo(2);
+        assertThat(line.precioUnitario()).isEqualByComparingTo("10.00");
+        assertThat(line.porcentajeImpuesto()).isEqualByComparingTo("21.00");
+    }
+
+    @Test
+    void confirmProductOnlyRowCreatesProductButNotDocumentLine() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var productOnly = productWithCode("ONLY");
+        var lineProduct = productWithCode("LINE");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(eq(store.getId()), any())).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null)))
+                .thenReturn(productOnly, lineProduct);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRows(List.of(
+                        rowValues("ONLY", null, "Producto sin cantidad", "5.00", null, null, null),
+                        rowValues("LINE", null, "Producto con cantidad", "8.00", null, "3", null))),
+                confirmRequest(mapping(false), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        verify(catalogService, Mockito.times(2)).createOrUpdateFromImport(any(), eq(null));
+        var documentCaptor = ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documentService).createDeliveryNote(documentCaptor.capture(), eq(authentication));
+        assertThat(documentCaptor.getValue().lineas())
+                .extracting(line -> line.productoId())
+                .containsExactly(lineProduct.getId());
+    }
+
+    @Test
+    void confirmExistingProductUpdatesOnlyEnabledMappedFields() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var existing = product();
+        existing.replaceIdentifier(IdentifierType.CODIGO, "ABC");
+        existing.setPrice(PriceTier.MAYORISTA, new BigDecimal("11.00"));
+        existing.setPrice(PriceTier.MEMBER, new BigDecimal("12.00"));
+        var identifier = new ProductIdentifier(store.getId(), existing.getId(),
+                IdentifierType.CODIGO, "ABC");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC"))
+                .thenReturn(Optional.of(identifier));
+        when(products.findById(existing.getId())).thenReturn(Optional.of(existing));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(existing.getId()))).thenReturn(existing);
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("ABC", null, "Nombre Nuevo", "20.00", "30.00", "1"),
+                confirmRequest(mapping(true), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(existing.getId()));
+        assertThat(productCaptor.getValue().name()).isEqualTo("Nombre Nuevo");
+        assertThat(productCaptor.getValue().purchasePrice()).isEqualByComparingTo("10.00");
+        assertThat(productCaptor.getValue().salePrice()).isEqualByComparingTo("15.00");
+        assertThat(productCaptor.getValue().wholesalePrice()).isEqualByComparingTo("11.00");
+        assertThat(productCaptor.getValue().memberPrice()).isEqualByComparingTo("12.00");
+    }
+
+    @Test
+    void confirmMissingSalePriceDefaultsNewProductSalePriceToZero() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null))).thenReturn(productWithCode("ABC"));
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow("ABC", null, "Producto Excel", "10.00", null, "1"),
+                confirmRequest(mapping(false), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(null));
+        assertThat(productCaptor.getValue().salePrice()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void confirmBarcodeOnlyNewProductUsesBarcodeAsCode() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "777")).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null))).thenReturn(productWithCode("777"));
+        when(documentService.createDeliveryNote(any(), eq(authentication)))
+                .thenReturn(draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId));
+
+        service.confirm(workbookWithRow(null, "777", "Producto Excel", "10.00", null, "1"),
+                confirmRequest(mapping(false), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        var productCaptor = ArgumentCaptor.forClass(ProductRequest.class);
+        verify(catalogService).createOrUpdateFromImport(productCaptor.capture(), eq(null));
+        assertThat(productCaptor.getValue().code()).isEqualTo("777");
+        assertThat(productCaptor.getValue().barcode()).isEqualTo("777");
+    }
+
+    @Test
+    void confirmPreviewErrorThrowsAndDoesNotCreateDocument() {
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(store.getId(), "ABC")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.confirm(
+                workbookWithRow("ABC", null, "Producto Excel", "-1.00", null, "1"),
+                confirmRequest(mapping(false), UUID.randomUUID(), UUID.randomUUID(),
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(documentService, never()).createDeliveryNote(any(), any());
+        verify(documentService, never()).createInvoice(any(), any());
+    }
+
     private static ByteArrayInputStream workbookWithRow(
             String code,
             String barcode,
@@ -315,6 +523,35 @@ class ProductImportServiceTest {
         }
     }
 
+    private static ByteArrayInputStream workbookWithRows(List<String[]> rows) throws Exception {
+        try (var workbook = new XSSFWorkbook();
+                var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet();
+            for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+                var row = sheet.createRow(rowIndex);
+                var values = rows.get(rowIndex);
+                for (int cellIndex = 0; cellIndex < values.length; cellIndex++) {
+                    if (values[cellIndex] != null) {
+                        row.createCell(cellIndex).setCellValue(values[cellIndex]);
+                    }
+                }
+            }
+            workbook.write(output);
+            return new ByteArrayInputStream(output.toByteArray());
+        }
+    }
+
+    private static String[] rowValues(
+            String code,
+            String barcode,
+            String name,
+            String purchasePrice,
+            String salePrice,
+            String quantity,
+            String tax) {
+        return new String[] {code, barcode, name, purchasePrice, salePrice, quantity, tax};
+    }
+
     private static ProductImportMapping mapping(boolean updateName) {
         return new ProductImportMapping(
                 "A",
@@ -386,6 +623,31 @@ class ProductImportServiceTest {
                 "Producto Actual", null, new BigDecimal("10.00"), true);
         product.setPrice(PriceTier.VENTA, new BigDecimal("15.00"));
         return product;
+    }
+
+    private Product productWithCode(String code) {
+        var product = product();
+        product.replaceIdentifier(IdentifierType.CODIGO, code);
+        return product;
+    }
+
+    private ProductImportConfirmRequest confirmRequest(
+            ProductImportMapping mapping,
+            UUID warehouseId,
+            UUID supplierId,
+            CommercialDocumentType type) {
+        return new ProductImportConfirmRequest(
+                mapping, warehouseId, supplierId, "EXT-1", type, LocalDate.of(2026, 7, 1));
+    }
+
+    private CommercialDocument draftDocument(
+            UUID warehouseId,
+            CommercialDocumentType type,
+            UUID supplierId) {
+        var document = new CommercialDocument(
+                store.getId(), warehouseId, type, LocalDate.of(2026, 7, 1),
+                UUID.randomUUID(), BigDecimal.ZERO);
+        return document;
     }
 
     private static Map<String, String> address() {
