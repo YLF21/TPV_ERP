@@ -27,7 +27,7 @@ final class ExcelCellReader {
         if (value == null) {
             return null;
         }
-        return new BigDecimal(value.replace("%", "").replace(",", "."))
+        return new BigDecimal(value.replace("%", "").trim().replace(",", "."))
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
