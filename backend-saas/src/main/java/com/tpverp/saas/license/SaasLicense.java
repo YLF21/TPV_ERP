@@ -91,6 +91,12 @@ public class SaasLicense {
         return maxPda;
     }
 
+    public void renew(Instant validUntil, int maxWindows, int maxPda) {
+        this.validUntil = validUntil;
+        this.maxWindows = Math.max(1, maxWindows);
+        this.maxPda = Math.max(0, maxPda);
+    }
+
     public void block() {
         status = LicenseSaasStatus.BLOQUEADA_MANUAL;
     }

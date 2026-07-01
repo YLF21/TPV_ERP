@@ -12,6 +12,8 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -95,13 +97,63 @@ public class AdminService {
         return response(license);
     }
 
+    @Transactional(readOnly = true)
+    public List<LicenseSummaryResponse> licenses() {
+        return licenses.findAll().stream()
+                .sorted(Comparator.comparing(SaasLicense::getReference))
+                .map(license -> new LicenseSummaryResponse(
+                        license.getReference(),
+                        license.getCompany().getId(),
+                        license.getCompany().getName(),
+                        license.getCompany().getTaxId(),
+                        license.getStatus(),
+                        license.getValidUntil(),
+                        license.getMaxWindows(),
+                        license.getMaxPda()))
+                .toList();
+    }
+
+    @Transactional
+    public AdminLicenseResponse renew(String reference, RenewLicenseRequest request) {
+        SaasLicense license = license(reference);
+        license.renew(request.validUntil(), request.maxWindows(), request.maxPda());
+        return response(license);
+    }
+
+    @Transactional
+    public PairingCodeResponse regeneratePairingCode(String reference) {
+        Instant now = clock.instant();
+        SaasLicense license = license(reference);
+        pairingCodes.findByLicense_ReferenceAndConsumedAtIsNull(reference)
+                .forEach(code -> code.expire(now));
+        SaasStore store = stores.findByCompany_IdOrderByCodeAsc(license.getCompany().getId()).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Licencia sin tienda"));
+        String code = newPairingCode();
+        Instant expiresAt = now.plus(Duration.ofDays(7));
+        pairingCodes.save(new SaasPairingCode(
+                UUID.randomUUID(),
+                license.getCompany(),
+                store,
+                license,
+                code,
+                expiresAt,
+                now));
+        return new PairingCodeResponse(reference, code, expiresAt);
+    }
+
     private SaasLicense license(String reference) {
         return licenses.findByReference(reference)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Licencia no existe"));
     }
 
     private AdminLicenseResponse response(SaasLicense license) {
-        return new AdminLicenseResponse(license.getReference(), license.getStatus(), license.getValidUntil());
+        return new AdminLicenseResponse(
+                license.getReference(),
+                license.getStatus(),
+                license.getValidUntil(),
+                license.getMaxWindows(),
+                license.getMaxPda());
     }
 
     private String newPairingCode() {

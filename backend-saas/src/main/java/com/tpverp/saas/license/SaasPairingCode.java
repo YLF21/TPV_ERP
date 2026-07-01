@@ -73,11 +73,27 @@ public class SaasPairingCode {
         return license;
     }
 
+    public String getCode() {
+        return code;
+    }
+
+    public Instant getConsumedAt() {
+        return consumedAt;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
     public boolean usableAt(Instant now) {
         return consumedAt == null && expiresAt.isAfter(now);
     }
 
     public void consume(Instant now) {
         consumedAt = now;
+    }
+
+    public void expire(Instant now) {
+        expiresAt = now;
     }
 }

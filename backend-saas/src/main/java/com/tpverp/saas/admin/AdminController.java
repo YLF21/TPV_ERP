@@ -1,6 +1,8 @@
 package com.tpverp.saas.admin;
 
 import jakarta.validation.Valid;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,6 +22,23 @@ public class AdminController {
     @PostMapping("/companies")
     public CreateCompanyResponse createCompany(@Valid @RequestBody CreateCompanyRequest request) {
         return service.createCompany(request);
+    }
+
+    @GetMapping("/licenses")
+    public List<LicenseSummaryResponse> licenses() {
+        return service.licenses();
+    }
+
+    @PostMapping("/licenses/{reference}/renew")
+    public AdminLicenseResponse renew(
+            @PathVariable String reference,
+            @Valid @RequestBody RenewLicenseRequest request) {
+        return service.renew(reference, request);
+    }
+
+    @PostMapping("/licenses/{reference}/pairing-codes")
+    public PairingCodeResponse regeneratePairingCode(@PathVariable String reference) {
+        return service.regeneratePairingCode(reference);
     }
 
     @PostMapping("/licenses/{reference}/block")
