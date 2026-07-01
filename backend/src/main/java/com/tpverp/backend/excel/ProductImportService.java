@@ -226,7 +226,7 @@ public class ProductImportService {
         return new ProductRequest(
                 product.getFamilyId(),
                 product.getSubfamilyId(),
-                tax.getId(),
+                product.getTaxId(),
                 name,
                 description,
                 purchasePrice,
