@@ -1,5 +1,6 @@
 package com.tpverp.backend.excel;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,6 +17,7 @@ import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentStatus;
 import java.io.InputStream;
+import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -44,6 +46,8 @@ class ProductImportControllerContractTest {
 
     private static final UUID WAREHOUSE_ID = UUID.randomUUID();
     private static final UUID SUPPLIER_ID = UUID.randomUUID();
+    private static final String PRODUCT_IMPORT_PERMISSION =
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','PRODUCTS_WRITE')";
 
     @Autowired
     private MockMvc mvc;
@@ -86,6 +90,55 @@ class ProductImportControllerContractTest {
     }
 
     @Test
+    void previewAllowsAdminUsers() throws Exception {
+        when(service.preview(any(InputStream.class), any(ProductImportMapping.class)))
+                .thenReturn(new ProductImportPreview(List.of()));
+
+        mvc.perform(multipart("/api/v1/excel/product-import/preview")
+                        .file(file())
+                        .file(jsonPart("mapping", mapping()))
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void previewAllowsGestionProductoUsers() throws Exception {
+        when(service.preview(any(InputStream.class), any(ProductImportMapping.class)))
+                .thenReturn(new ProductImportPreview(List.of()));
+
+        mvc.perform(multipart("/api/v1/excel/product-import/preview")
+                        .file(file())
+                        .file(jsonPart("mapping", mapping()))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
+                        .with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void previewForbidsUsersWithUnrelatedAuthority() throws Exception {
+        mvc.perform(multipart("/api/v1/excel/product-import/preview")
+                        .file(file())
+                        .file(jsonPart("mapping", mapping()))
+                        .with(user("reader").authorities(() -> "PRODUCTS_READ"))
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void previewReportsExcelReadFailuresAsBadRequest() throws Exception {
+        when(service.preview(any(InputStream.class), any(ProductImportMapping.class)))
+                .thenThrow(new IOException("broken file"));
+
+        mvc.perform(multipart("/api/v1/excel/product-import/preview")
+                        .file(file())
+                        .file(jsonPart("mapping", mapping()))
+                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(csrf()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void confirmAcceptsMultipartFileAndRequestAndDelegatesToService() throws Exception {
         ProductImportConfirmRequest request = request();
         CommercialDocument document = document();
@@ -104,16 +157,31 @@ class ProductImportControllerContractTest {
         assertThat(input.getValue().readAllBytes()).containsExactly(1, 2, 3);
     }
 
+    @Test
+    void confirmRejectsRequestsWithoutMapping() throws Exception {
+        ProductImportConfirmRequest request = new ProductImportConfirmRequest(
+                null,
+                WAREHOUSE_ID,
+                SUPPLIER_ID,
+                "EXT-1",
+                CommercialDocumentType.ALBARAN_COMPRA,
+                LocalDate.of(2026, 7, 1));
+
+        mvc.perform(multipart("/api/v1/excel/product-import/confirm")
+                        .file(file())
+                        .file(jsonPart("request", request))
+                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(csrf()))
+                .andExpect(status().isBadRequest());
+    }
+
     private void assertEndpoint(String methodName, String[] paths, Class<?>... parameterTypes)
             throws Exception {
         Method method = ProductImportController.class.getDeclaredMethod(methodName, parameterTypes);
         PreAuthorize authorization = method.getAnnotation(PreAuthorize.class);
 
         assertThat(authorization).isNotNull();
-        assertThat(authorization.value())
-                .contains("hasRole('ADMIN')")
-                .contains("'GESTION_PRODUCTO'")
-                .contains("'PRODUCTS_WRITE'");
+        assertThat(authorization.value()).isEqualTo(PRODUCT_IMPORT_PERMISSION);
         assertThat(mappingPaths(method, PostMapping.class)).containsExactly(paths);
     }
 

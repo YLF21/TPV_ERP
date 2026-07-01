@@ -1,6 +1,8 @@
 package com.tpverp.backend.excel;
 
 import com.tpverp.backend.document.DocumentView;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import java.io.IOException;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,18 +27,24 @@ public class ProductImportController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','PRODUCTS_WRITE')")
     public ProductImportPreview preview(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("mapping") ProductImportMapping mapping)
-            throws IOException {
-        return service.preview(file.getInputStream(), mapping);
+            @Valid @NotNull @RequestPart("mapping") ProductImportMapping mapping) {
+        try {
+            return service.preview(file.getInputStream(), mapping);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("archivo Excel no valido", exception);
+        }
     }
 
     @PostMapping(value = "/confirm", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','PRODUCTS_WRITE')")
     public DocumentView confirm(
             @RequestPart("file") MultipartFile file,
-            @RequestPart("request") ProductImportConfirmRequest request,
-            Authentication authentication)
-            throws IOException {
-        return DocumentView.from(service.confirm(file.getInputStream(), request, authentication));
+            @Valid @NotNull @RequestPart("request") ProductImportConfirmRequest request,
+            Authentication authentication) {
+        try {
+            return DocumentView.from(service.confirm(file.getInputStream(), request, authentication));
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("archivo Excel no valido", exception);
+        }
     }
 }

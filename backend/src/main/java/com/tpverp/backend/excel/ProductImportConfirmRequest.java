@@ -1,14 +1,16 @@
 package com.tpverp.backend.excel;
 
 import com.tpverp.backend.document.CommercialDocumentType;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.UUID;
 
 public record ProductImportConfirmRequest(
-        ProductImportMapping mapping,
-        UUID warehouseId,
-        UUID supplierId,
+        @Valid @NotNull ProductImportMapping mapping,
+        @NotNull UUID warehouseId,
+        @NotNull UUID supplierId,
         String externalNumber,
-        CommercialDocumentType documentType,
-        LocalDate date) {
+        @NotNull CommercialDocumentType documentType,
+        @NotNull LocalDate date) {
 }
