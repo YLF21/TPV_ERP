@@ -1,0 +1,18 @@
+server:
+  port: ${TPV_SAAS_PORT:8090}
+
+spring:
+  application:
+    name: tpv-erp-saas-backend
+  datasource:
+    url: ${TPV_SAAS_DB_URL:jdbc:postgresql://localhost:5432/tpv_erp_saas}
+    username: ${TPV_SAAS_DB_USERNAME:tpv_erp_saas}
+    password: ${TPV_SAAS_DB_PASSWORD:admin}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+tpv:
+  saas:
+    admin-key: ${TPV_SAAS_ADMIN_KEY:dev-admin-key}
