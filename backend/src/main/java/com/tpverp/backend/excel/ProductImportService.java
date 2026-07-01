@@ -42,6 +42,7 @@ public class ProductImportService {
     private final DocumentService documentService;
     private final FamilyRepository families;
     private final StoreTaxRepository taxes;
+    private final ProductImportLineMetadataRepository lineMetadata;
 
     public ProductImportService(
             CurrentOrganization organization,
@@ -50,7 +51,8 @@ public class ProductImportService {
             CatalogService catalogService,
             DocumentService documentService,
             FamilyRepository families,
-            StoreTaxRepository taxes) {
+            StoreTaxRepository taxes,
+            ProductImportLineMetadataRepository lineMetadata) {
         this.organization = organization;
         this.identifiers = identifiers;
         this.products = products;
@@ -58,6 +60,7 @@ public class ProductImportService {
         this.documentService = documentService;
         this.families = families;
         this.taxes = taxes;
+        this.lineMetadata = lineMetadata;
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +99,7 @@ public class ProductImportService {
 
         var storeId = organization.currentStore().getId();
         var lines = new ArrayList<DocumentLineCommand>();
+        var metadataDrafts = new ArrayList<ProductImportLineMetadataDraft>();
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
             for (int index = request.mapping().firstRowIndex(); index <= sheet.getLastRowNum(); index++) {
@@ -119,6 +123,9 @@ public class ProductImportService {
                         existing.map(Product::getId).orElse(null));
                 var quantity = quantity(row, request.mapping().cantidad());
                 if (quantity != null && quantity > 0) {
+                    metadataDrafts.add(new ProductImportLineMetadataDraft(
+                            saved.getId(),
+                            supplierReference(row, request.mapping(), saved)));
                     lines.add(new DocumentLineCommand(
                             saved.getId(),
                             quantity,
@@ -146,9 +153,21 @@ public class ProductImportService {
                 BigDecimal.ZERO,
                 false,
                 List.copyOf(lines));
-        return request.documentType() == CommercialDocumentType.ALBARAN_COMPRA
+        var document = request.documentType() == CommercialDocumentType.ALBARAN_COMPRA
                 ? documentService.createDeliveryNote(command, authentication)
                 : documentService.createInvoice(command, authentication);
+        saveLineMetadata(document.getId(), metadataDrafts);
+        return document;
+    }
+
+    private void saveLineMetadata(UUID documentId, List<ProductImportLineMetadataDraft> metadataDrafts) {
+        if (metadataDrafts.isEmpty()) {
+            return;
+        }
+        lineMetadata.saveAll(metadataDrafts.stream()
+                .map(draft -> new ProductImportLineMetadata(
+                        documentId, draft.productId(), draft.supplierReference()))
+                .toList());
     }
 
     private ProductImportPreviewRow previewRow(
@@ -312,6 +331,11 @@ public class ProductImportService {
     private static BigDecimal linePurchasePrice(Row row, ProductImportMapping mapping, Product saved) {
         var excel = money(row, mapping.precioCompra());
         return excel == null ? saved.getPurchasePrice() : excel;
+    }
+
+    private static String supplierReference(Row row, ProductImportMapping mapping, Product saved) {
+        var reference = ExcelCellReader.text(row, mapping.referenciaProveedor());
+        return reference == null ? saved.getCode() : reference;
     }
 
     private void validateTax(
@@ -573,5 +597,8 @@ public class ProductImportService {
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record ProductImportLineMetadataDraft(UUID productId, String supplierReference) {
     }
 }

@@ -57,6 +57,7 @@ class ProductImportServiceTest {
     @Mock private DocumentService documentService;
     @Mock private FamilyRepository families;
     @Mock private StoreTaxRepository taxes;
+    @Mock private ProductImportLineMetadataRepository metadataRepository;
     @Mock private Authentication authentication;
 
     private ProductImportService service;
@@ -72,7 +73,7 @@ class ProductImportServiceTest {
         generalFamily = Family.general(store.getId());
         defaultTax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
         service = new ProductImportService(organization, identifiers, products,
-                catalogService, documentService, families, taxes);
+                catalogService, documentService, families, taxes, metadataRepository);
     }
 
     @Test
@@ -342,6 +343,54 @@ class ProductImportServiceTest {
         assertThat(documentCaptor.getValue().lineas())
                 .extracting(line -> line.productoId())
                 .containsExactly(lineProduct.getId());
+    }
+
+    @Test
+    void confirmPersistsSupplierReferenceMetadataOnlyForDocumentLines() throws Exception {
+        var warehouseId = UUID.randomUUID();
+        var supplierId = UUID.randomUUID();
+        var productOnly = productWithCode("ONLY");
+        var explicitReference = productWithCode("LINE");
+        var fallbackReference = productWithCode("FALLBACK");
+        when(organization.currentStore()).thenReturn(store);
+        when(identifiers.findByStoreIdAndValor(eq(store.getId()), any())).thenReturn(Optional.empty());
+        when(families.findByStoreIdAndPredeterminadaTrue(store.getId()))
+                .thenReturn(Optional.of(generalFamily));
+        when(taxes.findByStoreIdAndPredeterminadoTrue(store.getId()))
+                .thenReturn(Optional.of(defaultTax));
+        when(catalogService.createOrUpdateFromImport(any(), eq(null)))
+                .thenReturn(productOnly, explicitReference, fallbackReference);
+        var document = draftDocument(warehouseId, CommercialDocumentType.ALBARAN_COMPRA, supplierId);
+        when(documentService.createDeliveryNote(any(), eq(authentication))).thenReturn(document);
+
+        service.confirm(workbookWithRows(List.of(
+                        rowValuesWithSupplierReference(
+                                "ONLY", null, "Producto sin cantidad", "5.00", null, null, null,
+                                "NO-GUARDAR"),
+                        rowValuesWithSupplierReference(
+                                "LINE", null, "Producto con referencia", "8.00", null, "3", null,
+                                " ref-1 "),
+                        rowValuesWithSupplierReference(
+                                "FALLBACK", null, "Producto sin referencia", "9.00", null, "1", null,
+                                "   "))),
+                confirmRequest(mappingWithSupplierReference(), warehouseId, supplierId,
+                        CommercialDocumentType.ALBARAN_COMPRA),
+                authentication);
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        ArgumentCaptor<Iterable<ProductImportLineMetadata>> metadataCaptor =
+                ArgumentCaptor.forClass(Iterable.class);
+        verify(metadataRepository).saveAll(metadataCaptor.capture());
+        var metadata = metadataCaptor.getValue();
+        assertThat(metadata)
+                .extracting(ProductImportLineMetadata::documentId,
+                        ProductImportLineMetadata::productId,
+                        ProductImportLineMetadata::supplierReference)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                document.getId(), explicitReference.getId(), "REF-1"),
+                        org.assertj.core.groups.Tuple.tuple(
+                                document.getId(), fallbackReference.getId(), "FALLBACK"));
     }
 
     @Test
@@ -782,6 +831,41 @@ class ProductImportServiceTest {
                 null,
                 1,
                 updateName,
+                false,
+                false,
+                false,
+                false,
+                false);
+    }
+
+    private static String[] rowValuesWithSupplierReference(
+            String code,
+            String barcode,
+            String name,
+            String purchasePrice,
+            String salePrice,
+            String quantity,
+            String tax,
+            String supplierReference) {
+        return new String[] {
+                code, barcode, name, purchasePrice, salePrice, quantity, tax, supplierReference};
+    }
+
+    private static ProductImportMapping mappingWithSupplierReference() {
+        return new ProductImportMapping(
+                "A",
+                "B",
+                "C",
+                null,
+                "D",
+                "E",
+                null,
+                null,
+                "G",
+                "F",
+                "H",
+                1,
+                false,
                 false,
                 false,
                 false,
