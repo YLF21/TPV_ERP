@@ -1,0 +1,11 @@
+package com.tpverp.saas.admin;
+
+public enum AdminPermission {
+    ADD_COMPANY,
+    RENEW_LICENSE,
+    BLOCK_LICENSE,
+    UNBLOCK_LICENSE,
+    EDIT_COMPANY_DATA,
+    VIEW_ADMIN_DATA,
+    REGENERATE_PAIRING_CODE
+}

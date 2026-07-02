@@ -12,6 +12,3 @@ spring:
       ddl-auto: validate
     show-sql: false
 
-tpv:
-  saas:
-    admin-key: test-admin-key

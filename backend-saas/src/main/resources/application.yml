@@ -13,6 +13,3 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
-tpv:
-  saas:
-    admin-key: ${TPV_SAAS_ADMIN_KEY:dev-admin-key}

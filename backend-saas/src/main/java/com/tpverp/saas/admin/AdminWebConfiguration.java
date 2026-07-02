@@ -7,9 +7,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class AdminWebConfiguration implements WebMvcConfigurer {
 
-    private final AdminApiKeyInterceptor interceptor;
+    private final AdminAuthInterceptor interceptor;
 
-    public AdminWebConfiguration(AdminApiKeyInterceptor interceptor) {
+    public AdminWebConfiguration(AdminAuthInterceptor interceptor) {
         this.interceptor = interceptor;
     }
 

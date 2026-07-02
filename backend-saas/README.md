@@ -18,7 +18,7 @@ Por defecto escucha en `http://localhost:8090`.
 - `TPV_SAAS_DB_URL`: JDBC PostgreSQL.
 - `TPV_SAAS_DB_USERNAME`: usuario PostgreSQL.
 - `TPV_SAAS_DB_PASSWORD`: password PostgreSQL.
-- `TPV_SAAS_ADMIN_KEY`: clave temporal para endpoints `/api/v1/admin/**`.
+El usuario inicial de administracion es `admin` con password `admin`.
 
 ## Endpoints base
 
@@ -30,3 +30,5 @@ Por defecto escucha en `http://localhost:8090`.
 - `POST /api/v1/license/link`
 - `POST /api/v1/license/validate`
 - `POST /api/v1/sync/events`
+
+Los endpoints `/api/v1/admin/**` usan HTTP Basic Auth.

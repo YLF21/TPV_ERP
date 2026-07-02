@@ -12,7 +12,9 @@ import com.tpverp.saas.license.LicenseSaasStatus;
 import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +35,7 @@ class AdminApiTest {
     @Test
     void creaEmpresaLicenciaYCodigoDeEnlace() throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request("B12345678"))))
                 .andExpect(status().isOk())
@@ -49,10 +51,19 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaAdminSinClave() throws Exception {
+    void rechazaAdminSinCredenciales() throws Exception {
         mvc.perform(post("/api/v1/admin/companies")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request("B87654321"))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rechazaBasicAuthMalFormado() throws Exception {
+        mvc.perform(post("/api/v1/admin/companies")
+                        .header("Authorization", "Basic ???")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request("B88776655"))))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -61,7 +72,7 @@ class AdminApiTest {
         CreateCompanyResponse company = createCompany("B11223344");
 
         var result = mvc.perform(get("/api/v1/admin/licenses")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -91,7 +102,7 @@ class AdminApiTest {
                 .andExpect(status().isOk());
 
         var result = mvc.perform(get("/api/v1/admin/installations")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -114,7 +125,7 @@ class AdminApiTest {
         CreateCompanyResponse company = createCompany("B22334455");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new RenewLicenseRequest(
                                 Instant.parse("2028-01-01T00:00:00Z"),
@@ -133,11 +144,25 @@ class AdminApiTest {
     }
 
     @Test
+    void rechazaRenovarSinPermiso() throws Exception {
+        CreateCompanyResponse company = createCompany("B55667788");
+
+        mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new RenewLicenseRequest(
+                                Instant.parse("2028-01-01T00:00:00Z"),
+                                5,
+                                2))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void regeneraCodigoDeEnlaceEInvalidaElAnterior() throws Exception {
         CreateCompanyResponse company = createCompany("B33445566");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/pairing-codes", company.licenseReference())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -178,7 +203,7 @@ class AdminApiTest {
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request(taxId))))
                 .andExpect(status().isOk())
@@ -213,5 +238,10 @@ class AdminApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
+    }
+
+    private String basic(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (user + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 }

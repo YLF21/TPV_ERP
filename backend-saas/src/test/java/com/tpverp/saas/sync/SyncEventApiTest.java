@@ -12,7 +12,9 @@ import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -188,7 +190,7 @@ class SyncEventApiTest {
                         "cantidad", "-1")));
 
         var result = mvc.perform(get("/api/v1/admin/sync/stock-current")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         AdminStockSnapshotView[] stock = mapper.readValue(
@@ -232,7 +234,7 @@ class SyncEventApiTest {
 
         var result = mvc.perform(get("/api/v1/admin/sync/sales")
                         .queryParam("companyId", company.companyId().toString())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         AdminSyncEventView[] sales = mapper.readValue(
@@ -257,7 +259,7 @@ class SyncEventApiTest {
 
         var result = mvc.perform(get("/api/v1/admin/sync/sales-summary")
                         .queryParam("companyId", company.companyId().toString())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         AdminSalesSummaryView summary = mapper.readValue(
@@ -311,7 +313,7 @@ class SyncEventApiTest {
 
     private AdminSyncEventView[] getAdminEvents(String path) throws Exception {
         var result = mvc.perform(get(path)
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), AdminSyncEventView[].class);
@@ -319,7 +321,7 @@ class SyncEventApiTest {
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateCompanyRequest(
                                 "Empresa",
@@ -334,5 +336,10 @@ class SyncEventApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+    }
+
+    private String basic(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (user + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 }
