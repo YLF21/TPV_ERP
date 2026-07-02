@@ -186,6 +186,27 @@ class ProductSupplierServiceTest {
     }
 
     @Test
+    void confirmedPurchaseCanStoreSupplierReferences() {
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdIn(
+                eq(store.getId()), any())).thenReturn(List.of(product));
+
+        service.recordWithReferences(
+                supplier.getId(),
+                LocalDate.of(2026, 6, 9),
+                Map.of(product.getId(), "REF-1"));
+
+        verify(links).upsertPurchaseWithReference(
+                any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq("REF-1"),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+    }
+
+
+    @Test
     void confirmedPurchaseDelegatesNonDecreasingDateToAtomicUpsert() {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))

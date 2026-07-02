@@ -48,6 +48,10 @@ public class ProductIdentifier {
         return tipo;
     }
 
+    public UUID getProductId() {
+        return productId;
+    }
+
     public String getValue() {
         return valor;
     }

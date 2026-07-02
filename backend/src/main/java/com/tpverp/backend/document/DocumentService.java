@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.excel.ProductImportLineMetadata;
+import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.SupplierRepository;
@@ -44,6 +46,7 @@ public class DocumentService {
     private final CurrentTerminal currentTerminal;
     private final CashPaymentRecorder cashPayments;
     private final SyncOutboxService syncOutbox;
+    private final ProductImportLineMetadataRepository importMetadata;
     private final Clock clock;
 
     public DocumentService(
@@ -61,6 +64,7 @@ public class DocumentService {
             CurrentTerminal currentTerminal,
             CashPaymentRecorder cashPayments,
             SyncOutboxService syncOutbox,
+            ProductImportLineMetadataRepository importMetadata,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -76,6 +80,7 @@ public class DocumentService {
         this.currentTerminal = currentTerminal;
         this.cashPayments = cashPayments;
         this.syncOutbox = syncOutbox;
+        this.importMetadata = importMetadata;
         this.clock = clock;
     }
 
@@ -106,6 +111,17 @@ public class DocumentService {
         document.confirm(nextNumber(document), userId, Instant.now(clock), false);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
         if (recordsPurchase) {
+            recordPurchase(document);
+        }
+        var saved = documents.save(document);
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, null);
+        return saved;
+    }
+
+    private void recordPurchase(CommercialDocument document) {
+        var metadata = importMetadata.findByDocumentId(document.getId());
+        if (metadata.isEmpty()) {
             purchaseRecorder.record(
                     document.getProveedorId(),
                     document.getFecha(),
@@ -113,11 +129,15 @@ public class DocumentService {
                             .map(DocumentLine::getProductoId)
                             .distinct()
                             .toList());
+            return;
         }
-        var saved = documents.save(document);
-        fiscalIntegration.registerAlta(saved, false);
-        enqueueConfirmedDocument(saved, null);
-        return saved;
+        var references = new LinkedHashMap<UUID, String>();
+        for (var value : metadata) {
+            references.putIfAbsent(value.productId(), value.supplierReference());
+        }
+        purchaseRecorder.recordWithReferences(
+                document.getProveedorId(), document.getFecha(), references);
+        importMetadata.deleteByDocumentId(document.getId());
     }
 
     // Creates and confirms the ticket in one transaction.

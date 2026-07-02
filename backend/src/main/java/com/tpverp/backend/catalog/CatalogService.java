@@ -257,6 +257,13 @@ public class CatalogService {
         return product;
     }
 
+    @Transactional
+    public Product createOrUpdateFromImport(ProductRequest request, UUID existingProductId) {
+        return existingProductId == null
+                ? createProduct(request)
+                : updateProduct(existingProductId, request);
+    }
+
     @Transactional(readOnly = true)
     public List<ProductPriceHistory> priceHistory(UUID productId) {
         Product product = product(productId);

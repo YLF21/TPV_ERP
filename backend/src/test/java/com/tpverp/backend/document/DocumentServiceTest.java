@@ -10,6 +10,8 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.excel.ProductImportLineMetadata;
+import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -75,6 +77,8 @@ class DocumentServiceTest {
     private CashPaymentRecorder cashPaymentRecorder;
     @Mock
     private SyncOutboxService syncOutbox;
+    @Mock
+    private ProductImportLineMetadataRepository importMetadata;
 
     private DocumentService service;
     private Store store;
@@ -100,6 +104,7 @@ class DocumentServiceTest {
                 .thenReturn(store.getEmpresa());
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
+        lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
         service = new DocumentService(
                 documentRepository,
                 counterRepository,
@@ -115,6 +120,7 @@ class DocumentServiceTest {
                 currentTerminal,
                 cashPaymentRecorder,
                 syncOutbox,
+                importMetadata,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -741,6 +747,22 @@ class DocumentServiceTest {
 
         verify(purchaseRecorder).record(
                 supplier.getId(), note.getFecha(), productIds(note));
+    }
+
+    @Test
+    void confirmedImportedPurchaseRecordsSupplierReferencesAndClearsMetadata() {
+        var supplier = supplier(true);
+        var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
+        preparePurchaseConfirmation(note, supplier, true);
+        var productId = note.getLineas().getFirst().getProductoId();
+        when(importMetadata.findByDocumentId(note.getId())).thenReturn(List.of(
+                new ProductImportLineMetadata(note.getId(), productId, "REF-1")));
+
+        service.confirm(note.getId(), authentication());
+
+        verify(purchaseRecorder).recordWithReferences(
+                supplier.getId(), note.getFecha(), Map.of(productId, "REF-1"));
+        verify(importMetadata).deleteByDocumentId(note.getId());
     }
 
     @Test
