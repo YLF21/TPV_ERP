@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -82,6 +83,26 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
         for (Product product : uniqueProducts) {
             links.upsertPurchase(
                     UUID.randomUUID(), product.getId(), supplier.getId(), entryDate);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void recordWithReferences(
+            UUID supplierId, LocalDate date, Map<UUID, String> referencesByProductId) {
+        Supplier supplier = activeSupplier(supplierId);
+        LocalDate entryDate = Objects.requireNonNull(date, "fechaEntrada");
+        var references = Objects.requireNonNull(referencesByProductId, "referencias");
+        var uniqueIds = new LinkedHashSet<>(references.keySet());
+        List<Product> uniqueProducts = products.findAllByStoreIdAndIdIn(
+                organization.currentStore().getId(), uniqueIds);
+        if (uniqueProducts.size() != uniqueIds.size()) {
+            throw new IllegalArgumentException("Producto no encontrado");
+        }
+        for (Product product : uniqueProducts) {
+            links.upsertPurchaseWithReference(
+                    UUID.randomUUID(), product.getId(), supplier.getId(),
+                    references.get(product.getId()), entryDate);
         }
     }
 

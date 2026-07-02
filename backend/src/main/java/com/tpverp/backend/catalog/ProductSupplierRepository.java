@@ -31,6 +31,28 @@ public interface ProductSupplierRepository extends JpaRepository<ProductSupplier
             @Param("supplierId") UUID supplierId,
             @Param("entryDate") LocalDate entryDate);
 
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            insert into producto_proveedor as current_link (
+                id, producto_id, proveedor_id, referencia_proveedor,
+                ultima_fecha_entrada, version)
+            values (:id, :productId, :supplierId, :reference, :entryDate, 0)
+            on conflict (producto_id, proveedor_id) do update
+            set referencia_proveedor = coalesce(
+                    excluded.referencia_proveedor,
+                    current_link.referencia_proveedor),
+                ultima_fecha_entrada = greatest(
+                    current_link.ultima_fecha_entrada,
+                    excluded.ultima_fecha_entrada),
+                version = current_link.version + 1
+            """, nativeQuery = true)
+    int upsertPurchaseWithReference(
+            @Param("id") UUID id,
+            @Param("productId") UUID productId,
+            @Param("supplierId") UUID supplierId,
+            @Param("reference") String reference,
+            @Param("entryDate") LocalDate entryDate);
+
     @Query("""
             select link
             from ProductSupplier link
