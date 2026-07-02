@@ -155,6 +155,53 @@ class SyncEventApiTest {
                 .contains(cashEventId);
     }
 
+    @Test
+    void consultaStockActualCalculadoDesdeMovimientos() throws Exception {
+        CreateCompanyResponse company = createCompany("B77889900");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+        String productId = UUID.randomUUID().toString();
+        String warehouseId = UUID.randomUUID().toString();
+
+        sendEvent(link, new SyncEventRequest(
+                UUID.randomUUID(),
+                company.companyId(),
+                company.storeId(),
+                null,
+                "STOCK_MOVEMENT",
+                UUID.randomUUID(),
+                SyncOperation.CREAR,
+                Map.of(
+                        "productoId", productId,
+                        "almacenId", warehouseId,
+                        "cantidad", 3)));
+        sendEvent(link, new SyncEventRequest(
+                UUID.randomUUID(),
+                company.companyId(),
+                company.storeId(),
+                null,
+                "STOCK_MOVEMENT",
+                UUID.randomUUID(),
+                SyncOperation.CREAR,
+                Map.of(
+                        "productoId", productId,
+                        "almacenId", warehouseId,
+                        "cantidad", "-1")));
+
+        var result = mvc.perform(get("/api/v1/admin/sync/stock-current")
+                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminStockSnapshotView[] stock = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminStockSnapshotView[].class);
+
+        assertThat(stock)
+                .filteredOn(value -> value.productId().equals(productId)
+                        && value.warehouseId().equals(warehouseId))
+                .singleElement()
+                .satisfies(value -> assertThat(value.quantity()).isEqualTo("2"));
+    }
+
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -9,4 +9,6 @@ public interface SaasSyncEventRepository extends JpaRepository<SaasSyncEvent, UU
     List<SaasSyncEvent> findTop200ByOrderByReceivedAtDesc();
 
     List<SaasSyncEvent> findTop200ByEntityTypeOrderByReceivedAtDesc(String entityType);
+
+    List<SaasSyncEvent> findByEntityTypeOrderByReceivedAtAsc(String entityType);
 }

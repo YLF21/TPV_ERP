@@ -30,6 +30,11 @@ public class AdminSyncController {
         return service.stockMovements();
     }
 
+    @GetMapping("/stock-current")
+    public List<AdminStockSnapshotView> stockCurrent() {
+        return service.stockCurrent();
+    }
+
     @GetMapping("/cash-closures")
     public List<AdminSyncEventView> cashClosures() {
         return service.cashClosures();
