@@ -17,6 +17,7 @@ public class CustomerService {
     private final MemberBalanceMovementRepository movements;
     private final PartyContext context;
     private final PartyCodeAllocator codes;
+    private final MemberRepository members;
     private final Clock clock;
 
     public CustomerService(
@@ -24,23 +25,25 @@ public class CustomerService {
             MemberBalanceMovementRepository movements,
             PartyContext context,
             PartyCodeAllocator codes,
+            MemberRepository members,
             Clock clock) {
         this.customers = customers;
         this.movements = movements;
         this.context = context;
         this.codes = codes;
+        this.members = members;
         this.clock = clock;
     }
 
     @Transactional(readOnly = true)
     public List<CustomerView> list() {
         return customers.findByCompanyIdOrderByFiscalName(context.currentCompany().getId())
-                .stream().map(CustomerView::from).toList();
+                .stream().map(this::view).toList();
     }
 
     @Transactional(readOnly = true)
     public CustomerView get(UUID id) {
-        return CustomerView.from(customer(id));
+        return view(customer(id));
     }
 
     @Transactional
@@ -53,13 +56,19 @@ public class CustomerService {
                 company, command.fiscalName(), command.documentType(), command.documentNumber(),
                 command.address(), command.phone(), command.email(), command.notes(),
                 CustomerRate.VENTA, command.discount());
+        customer.updateProfile(
+                command.birthday(), command.gender(), command.commercialConsent(),
+                command.preferredCommercialChannelId());
         customer.assignClientCode(store.getId(), codes.nextClient(store));
-        customer.setNumMember(command.numMember());
+        customer = customers.save(customer);
+        Member member = null;
         if (command.member()) {
-            customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
-            customer.assignMemberStore(store.getId());
+            member = new Member(customer, codes.nextMember(store), LocalDate.now(clock));
+            member.assignMemberStore(store.getId());
+            member.setNumMember(command.numMember());
+            members.save(member);
         }
-        return CustomerView.from(customers.save(customer));
+        return view(customer, member);
     }
 
     @Transactional
@@ -85,15 +94,23 @@ public class CustomerService {
                     company, command.fiscalName(), command.documentType(),
                     command.documentNumber(), command.address(), command.phone(),
                     command.email(), command.notes(), CustomerRate.VENTA, command.discount());
+            customer.updateProfile(
+                    command.birthday(), command.gender(), command.commercialConsent(),
+                    command.preferredCommercialChannelId());
             customer.assignClientCode(store.getId(), reservedCodes.get(index));
-            customer.setNumMember(command.numMember());
-            if (command.member()) {
-                customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
-                customer.assignMemberStore(store.getId());
-            }
             pending.add(customer);
         }
-        return customers.saveAll(pending).stream().map(CustomerView::from).toList();
+        List<Customer> saved = customers.saveAll(pending);
+        for (int index = 0; index < saved.size(); index++) {
+            CustomerCommand command = ordered.get(index);
+            if (command.member()) {
+                var member = new Member(saved.get(index), codes.nextMember(store), LocalDate.now(clock));
+                member.assignMemberStore(store.getId());
+                member.setNumMember(command.numMember());
+                members.save(member);
+            }
+        }
+        return saved.stream().map(this::view).toList();
     }
 
     @Transactional
@@ -102,24 +119,29 @@ public class CustomerService {
         ensureUnique(context.currentCompany().getId(), command.documentType(),
                 command.documentNumber(), id);
         ensureUniqueMemberNumber(context.currentCompany().getId(), command.numMember(), id);
+        Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
+                .orElse(null);
         customer.update(
                 command.fiscalName(), command.documentType(), command.documentNumber(),
                 command.address(), command.phone(), command.email(), command.notes(),
-                customer.isMember() ? CustomerRate.MEMBER : CustomerRate.VENTA,
-                command.discount());
-        customer.setNumMember(command.numMember());
-        if (command.member() && !customer.isMember()) {
-            if (customer.getMemberId() == null) {
+                CustomerRate.VENTA, command.discount());
+        customer.updateProfile(
+                command.birthday(), command.gender(), command.commercialConsent(),
+                command.preferredCommercialChannelId());
+        if (command.member()) {
+            if (member == null) {
                 var store = context.currentStore();
-                customer.activateMember(codes.nextMember(store), LocalDate.now(clock));
-                customer.assignMemberStore(store.getId());
+                member = new Member(customer, codes.nextMember(store), LocalDate.now(clock));
+                member.assignMemberStore(store.getId());
+                members.save(member);
             } else {
-                customer.activateMember(customer.getMemberId(), customer.getMemberSince());
+                member.activate();
             }
-        } else if (!command.member() && customer.isMember()) {
-            customer.deactivateMember();
+            member.setNumMember(command.numMember());
+        } else if (member != null && member.isActive()) {
+            member.deactivate();
         }
-        return CustomerView.from(customer);
+        return view(customer, member);
     }
 
     @Transactional
@@ -142,28 +164,32 @@ public class CustomerService {
         if (!customer.hasCompleteFiscalData()) {
             throw new IllegalStateException("El cliente no tiene datos fiscales completos");
         }
-        return CustomerView.from(customer);
+        return view(customer);
     }
 
     @Transactional
     public BalanceView moveBalance(UUID id, BigDecimal amount, String reason) {
         Customer customer = customer(id);
-        customer.applyBalance(amount);
+        Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
+                .orElseThrow(() -> new IllegalStateException("Solo los clientes MEMBER tienen saldo"));
+        member.applyBalance(amount);
         var movement = movements.save(new MemberBalanceMovement(
                 customer, context.currentUser(), null, amount, reason,
                 Instant.now(clock), null));
         return new BalanceView(
                 movement.getId(), movement.getAmount(), movement.getReason(),
-                movement.getCreatedAt(), customer.getMemberBalance());
+                movement.getCreatedAt(), member.getMemberBalance());
     }
 
     @Transactional(readOnly = true)
     public List<BalanceView> balanceMovements(UUID id) {
         Customer customer = customer(id);
+        Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
+                .orElseThrow(() -> new IllegalStateException("Solo los clientes MEMBER tienen saldo"));
         return movements.findByCustomerIdOrderByCreatedAtDesc(id).stream()
                 .map(value -> new BalanceView(
                         value.getId(), value.getAmount(), value.getReason(),
-                        value.getCreatedAt(), customer.getMemberBalance()))
+                        value.getCreatedAt(), member.getMemberBalance()))
                 .toList();
     }
 
@@ -187,11 +213,19 @@ public class CustomerService {
         if (normalized == null) {
             return;
         }
-        customers.findByCompanyIdAndNumMember(companyId, normalized)
-                .filter(value -> !value.getId().equals(currentId))
+        members.findByCompanyIdAndNumMember(companyId, normalized)
+                .filter(value -> !value.getCustomer().getId().equals(currentId))
                 .ifPresent(value -> {
                     throw new IllegalArgumentException("Ya existe ese numero de member");
                 });
+    }
+
+    private CustomerView view(Customer customer) {
+        return view(customer, members.findByCustomerId(customer.getId()).orElse(null));
+    }
+
+    private CustomerView view(Customer customer, Member member) {
+        return CustomerView.from(customer, member);
     }
 
     public record CustomerCommand(
@@ -204,7 +238,26 @@ public class CustomerService {
             String notes,
             BigDecimal discount,
             boolean member,
-            String numMember) {
+            String numMember,
+            LocalDate birthday,
+            CustomerGender gender,
+            boolean commercialConsent,
+            UUID preferredCommercialChannelId) {
+
+        public CustomerCommand(
+                String fiscalName,
+                DocumentType documentType,
+                String documentNumber,
+                FiscalAddress address,
+                String phone,
+                String email,
+                String notes,
+                BigDecimal discount,
+                boolean member,
+                String numMember) {
+            this(fiscalName, documentType, documentNumber, address, phone, email, notes,
+                    discount, member, numMember, null, null, false, null);
+        }
     }
 
     public record CustomerView(
@@ -224,18 +277,28 @@ public class CustomerService {
             String numMember,
             LocalDate memberSince,
             BigDecimal balance,
+            LocalDate birthday,
+            CustomerGender gender,
+            boolean commercialConsent,
+            UUID preferredCommercialChannelId,
             boolean active,
             boolean fiscalDataComplete) {
 
-        static CustomerView from(Customer customer) {
+        static CustomerView from(Customer customer, Member member) {
+            boolean activeMember = member != null && member.isActive();
             return new CustomerView(
                     customer.getId(), customer.getClientId(), customer.getFiscalName(),
                     customer.getDocumentType(),
                     customer.getDocumentNumber(), customer.getFiscalAddress(),
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),
-                    customer.getRate(), customer.getDiscount(), customer.isMember(),
-                    customer.getMemberId(), customer.getNumMember(),
-                    customer.getMemberSince(), customer.getMemberBalance(),
+                    activeMember ? CustomerRate.MEMBER : customer.getRate(),
+                    customer.getDiscount(), activeMember,
+                    member == null ? null : member.getMemberId(),
+                    member == null ? null : member.getNumMember(),
+                    member == null ? null : member.getMemberSince(),
+                    member == null ? BigDecimal.ZERO.setScale(2) : member.getMemberBalance(),
+                    customer.getBirthday(), customer.getGender(),
+                    customer.hasCommercialConsent(), customer.getPreferredCommercialChannelId(),
                     customer.isActive(), customer.hasCompleteFiscalData());
         }
     }

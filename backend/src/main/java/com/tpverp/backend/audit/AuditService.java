@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.tpverp.backend.organization.Store;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +31,7 @@ public class AuditService {
     public void record(String event, AuditResult result, Map<String, Object> details) {
         var store = organization.currentStore();
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var user = authentication == null ? null : organization.currentUser(authentication);
+        var user = resolveUser(authentication);
         auditoriaRepository.save(new AuditEntry(
                 store, user, null, event, result, details, Instant.now(clock)));
     }
@@ -80,6 +81,18 @@ public class AuditService {
     public long purgeExpired() {
         return auditoriaRepository.deleteByCreadaEnBefore(
                 Instant.now(clock).minus(5L * 365L, ChronoUnit.DAYS));
+    }
+
+    private com.tpverp.backend.security.domain.UserAccount resolveUser(
+            org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        try {
+            return organization.currentUser(authentication);
+        } catch (IllegalStateException exception) {
+            return null;
+        }
     }
 
     public record AuditItem(

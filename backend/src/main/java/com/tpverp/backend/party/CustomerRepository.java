@@ -15,8 +15,6 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     Optional<Customer> findByIdAndCompanyId(UUID id, UUID companyId);
 
-    Optional<Customer> findByCompanyIdAndNumMember(UUID companyId, String numMember);
-
     @Query(value = "select exists(select 1 from documento where cliente_id = :customerId)",
             nativeQuery = true)
     boolean hasDocumentHistory(UUID customerId);
