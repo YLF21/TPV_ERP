@@ -106,15 +106,7 @@ public class AdminService {
     public List<LicenseSummaryResponse> licenses() {
         return licenses.findAll().stream()
                 .sorted(Comparator.comparing(SaasLicense::getReference))
-                .map(license -> new LicenseSummaryResponse(
-                        license.getReference(),
-                        license.getCompany().getId(),
-                        license.getCompany().getName(),
-                        license.getCompany().getTaxId(),
-                        license.getStatus(),
-                        license.getValidUntil(),
-                        license.getMaxWindows(),
-                        license.getMaxPda()))
+                .map(AdminService::licenseSummary)
                 .toList();
     }
 
@@ -123,6 +115,17 @@ public class AdminService {
         return installations.findAllByOrderByLinkedAtDesc().stream()
                 .map(AdminService::installationResponse)
                 .toList();
+    }
+
+    @Transactional
+    public LicenseSummaryResponse editCompany(UUID companyId, EditCompanyDataRequest request) {
+        SaasCompany company = companies.findById(companyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
+        company.updateData(request.name(), request.taxpayerType(), request.impuestos());
+        return licenses.findByCompany_Id(companyId).stream()
+                .findFirst()
+                .map(AdminService::licenseSummary)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Empresa sin licencia"));
     }
 
     @Transactional
@@ -162,6 +165,18 @@ public class AdminService {
     private AdminLicenseResponse response(SaasLicense license) {
         return new AdminLicenseResponse(
                 license.getReference(),
+                license.getStatus(),
+                license.getValidUntil(),
+                license.getMaxWindows(),
+                license.getMaxPda());
+    }
+
+    private static LicenseSummaryResponse licenseSummary(SaasLicense license) {
+        return new LicenseSummaryResponse(
+                license.getReference(),
+                license.getCompany().getId(),
+                license.getCompany().getName(),
+                license.getCompany().getTaxId(),
                 license.getStatus(),
                 license.getValidUntil(),
                 license.getMaxWindows(),

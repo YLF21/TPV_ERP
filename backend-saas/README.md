@@ -23,6 +23,7 @@ El usuario inicial de administracion es `admin` con password `admin`.
 ## Endpoints base
 
 - `POST /api/v1/admin/companies`
+- `PUT /api/v1/admin/companies/{companyId}`
 - `POST /api/v1/admin/licenses/{reference}/renew`
 - `POST /api/v1/admin/licenses/{reference}/block`
 - `POST /api/v1/admin/licenses/{reference}/unblock`

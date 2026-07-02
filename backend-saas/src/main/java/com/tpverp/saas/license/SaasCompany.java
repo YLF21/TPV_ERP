@@ -64,4 +64,10 @@ public class SaasCompany {
     public TaxRegime getTaxRegime() {
         return taxRegime;
     }
+
+    public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime) {
+        this.name = name;
+        this.taxpayerType = taxpayerType;
+        this.taxRegime = taxRegime;
+    }
 }

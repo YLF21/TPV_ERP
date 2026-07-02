@@ -5,9 +5,11 @@ import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -22,6 +24,13 @@ public class AdminController {
     @PostMapping("/companies")
     public CreateCompanyResponse createCompany(@Valid @RequestBody CreateCompanyRequest request) {
         return service.createCompany(request);
+    }
+
+    @PutMapping("/companies/{companyId}")
+    public LicenseSummaryResponse editCompany(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody EditCompanyDataRequest request) {
+        return service.editCompany(companyId, request);
     }
 
     @GetMapping("/licenses")

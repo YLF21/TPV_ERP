@@ -3,6 +3,7 @@ package com.tpverp.saas.admin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,6 +83,46 @@ class AdminApiTest {
         assertThat(licenses)
                 .extracting(LicenseSummaryResponse::licenseReference)
                 .contains(company.licenseReference());
+    }
+
+    @Test
+    void editaDatosEmpresa() throws Exception {
+        CreateCompanyResponse company = createCompany("B66554433");
+
+        mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new EditCompanyDataRequest(
+                                "Empresa Editada",
+                                TaxpayerType.AUTONOMO,
+                                TaxRegime.IVA))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/licenses")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        LicenseSummaryResponse[] licenses = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                LicenseSummaryResponse[].class);
+        assertThat(licenses)
+                .filteredOn(value -> value.companyId().equals(company.companyId()))
+                .singleElement()
+                .satisfies(value -> assertThat(value.companyName()).isEqualTo("Empresa Editada"));
+    }
+
+    @Test
+    void rechazaEditarEmpresaSinPermiso() throws Exception {
+        CreateCompanyResponse company = createCompany("B55443322");
+
+        mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new EditCompanyDataRequest(
+                                "Empresa Editada",
+                                TaxpayerType.AUTONOMO,
+                                TaxRegime.IVA))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
