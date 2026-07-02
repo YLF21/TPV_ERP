@@ -64,6 +64,18 @@ public class CustomerController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{id}/member/activate")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    public CustomerService.CustomerView activateMember(@PathVariable UUID id) {
+        return service.activateMember(id);
+    }
+
+    @PostMapping("/{id}/member/deactivate")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    public CustomerService.CustomerView deactivateMember(@PathVariable UUID id) {
+        return service.deactivateMember(id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_DELETE')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {

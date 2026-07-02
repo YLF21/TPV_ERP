@@ -42,6 +42,7 @@ class CustomerServiceTest {
     @Mock StoreRepository stores;
     @Mock UserAccountRepository users;
     @Mock PartyCodeAllocator codes;
+    @Mock MemberLoyaltyService memberLoyalty;
 
     private Company company;
     private Store store;
@@ -100,6 +101,7 @@ class CustomerServiceTest {
         verify(members).save(member.capture());
         assertThat(member.getValue().getCustomer()).isNotNull();
         assertThat(member.getValue().getMemberId()).isEqualTo("M-001-000001");
+        verify(memberLoyalty).activateMember(member.getValue());
     }
 
     @Test
@@ -169,6 +171,7 @@ class CustomerServiceTest {
         assertThat(updated.memberId()).isEqualTo("M-001-000001");
         assertThat(updated.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 5, 1));
         verify(codes, never()).nextMember(any());
+        verify(memberLoyalty).activateMember(member);
     }
 
     @Test
@@ -210,6 +213,7 @@ class CustomerServiceTest {
         var organization = new CurrentOrganization(stores, users);
         return new CustomerService(
                 customers, movements, new PartyContext(organization), codes,
-                members, Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
+                members, memberLoyalty,
+                Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
     }
 }

@@ -42,6 +42,7 @@ public class CommercialBootstrapService {
         createPaymentMethod(companyId, "EFECTIVO");
         createPaymentMethod(companyId, "TARJETA");
         createPaymentMethod(companyId, "VALE");
+        createPaymentMethod(companyId, "SALDO_MIEMBRO");
     }
 
     private void createPaymentMethod(UUID companyId, String name) {

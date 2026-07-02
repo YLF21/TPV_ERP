@@ -1,0 +1,14 @@
+package com.tpverp.backend.party;
+
+public enum MemberMovementType {
+    ALTA_MIEMBRO,
+    DESACTIVACION_MIEMBRO,
+    CAMBIO_CATEGORIA,
+    ACUMULACION_PUNTOS,
+    ACUMULACION_SALDO,
+    USO_SALDO,
+    CADUCIDAD_SALDO,
+    AJUSTE_MANUAL_SALDO,
+    AJUSTE_MANUAL_PUNTOS,
+    AJUSTE_SAAS
+}

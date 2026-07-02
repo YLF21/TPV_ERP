@@ -30,6 +30,18 @@ public record DocumentLineCommand(
                 precioUnitario, descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto);
     }
 
+    public DocumentLineCommand withPrice(BigDecimal price, String rate) {
+        return new DocumentLineCommand(
+                productoId, cantidad, codigo, nombre, rate, price, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto);
+    }
+
+    public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
+        return new DocumentLineCommand(
+                productoId, cantidad, codigo, nombre, rate, precioUnitario, discount,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto);
+    }
+
     // Converts validated input into a line with a fiscal snapshot.
     public DocumentLine toEntity(CommercialDocument document, int position) {
         return new DocumentLine(

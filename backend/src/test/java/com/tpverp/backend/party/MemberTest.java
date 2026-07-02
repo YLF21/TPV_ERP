@@ -42,6 +42,18 @@ class MemberTest {
         assertThat(member.getMemberSince()).isEqualTo(LocalDate.of(2026, 6, 24));
     }
 
+    @Test
+    void accumulatesPointsWithoutAllowingNegativeTotal() {
+        var member = member();
+
+        member.applyPoints(10);
+
+        assertThat(member.getMemberPoints()).isEqualTo(10);
+        assertThatThrownBy(() -> member.applyPoints(-11))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("puntos");
+    }
+
     private Member member() {
         var customer = new Customer(
                 PartyTestData.company(), "Member", DocumentType.NIF, "1",
