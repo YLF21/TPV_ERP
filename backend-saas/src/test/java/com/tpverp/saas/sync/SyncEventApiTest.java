@@ -202,6 +202,49 @@ class SyncEventApiTest {
                 .satisfies(value -> assertThat(value.quantity()).isEqualTo("2"));
     }
 
+    @Test
+    void filtraEventosAdminPorEmpresa() throws Exception {
+        CreateCompanyResponse company = createCompany("B88990011");
+        CreateCompanyResponse otherCompany = createCompany("B99001122");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+        LicenseSaasLinkResponse otherLink = link(otherCompany, UUID.randomUUID());
+        UUID eventId = UUID.randomUUID();
+        UUID otherEventId = UUID.randomUUID();
+
+        sendEvent(link, new SyncEventRequest(
+                eventId,
+                company.companyId(),
+                company.storeId(),
+                null,
+                "DOCUMENTO",
+                UUID.randomUUID(),
+                SyncOperation.CONFIRMAR,
+                Map.of("numero", "T-FILTRADO")));
+        sendEvent(otherLink, new SyncEventRequest(
+                otherEventId,
+                otherCompany.companyId(),
+                otherCompany.storeId(),
+                null,
+                "DOCUMENTO",
+                UUID.randomUUID(),
+                SyncOperation.CONFIRMAR,
+                Map.of("numero", "T-OTRO")));
+
+        var result = mvc.perform(get("/api/v1/admin/sync/sales")
+                        .queryParam("companyId", company.companyId().toString())
+                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminSyncEventView[] sales = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminSyncEventView[].class);
+
+        assertThat(sales)
+                .extracting(AdminSyncEventView::eventId)
+                .contains(eventId)
+                .doesNotContain(otherEventId);
+    }
+
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -26,24 +26,25 @@ public class AdminSyncQueryService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSyncEventView> events() {
-        return views(events.findTop200ByOrderByReceivedAtDesc());
+    public List<AdminSyncEventView> events(UUID companyId, UUID storeId) {
+        return views(filter(events.findTop200ByOrderByReceivedAtDesc(), companyId, storeId));
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSyncEventView> sales() {
-        return views(events.findTop200ByEntityTypeOrderByReceivedAtDesc("DOCUMENTO"));
+    public List<AdminSyncEventView> sales(UUID companyId, UUID storeId) {
+        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("DOCUMENTO"), companyId, storeId));
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSyncEventView> stockMovements() {
-        return views(events.findTop200ByEntityTypeOrderByReceivedAtDesc("STOCK_MOVEMENT"));
+    public List<AdminSyncEventView> stockMovements(UUID companyId, UUID storeId) {
+        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("STOCK_MOVEMENT"), companyId, storeId));
     }
 
     @Transactional(readOnly = true)
-    public List<AdminStockSnapshotView> stockCurrent() {
+    public List<AdminStockSnapshotView> stockCurrent(UUID companyId, UUID storeId) {
         Map<StockKey, BigDecimal> snapshot = new LinkedHashMap<>();
-        for (SaasSyncEvent event : events.findByEntityTypeOrderByReceivedAtAsc("STOCK_MOVEMENT")) {
+        for (SaasSyncEvent event : filter(
+                events.findByEntityTypeOrderByReceivedAtAsc("STOCK_MOVEMENT"), companyId, storeId)) {
             Map<String, Object> payload = payload(event.getPayload());
             var key = new StockKey(
                     event.getCompany().getId(),
@@ -66,8 +67,15 @@ public class AdminSyncQueryService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSyncEventView> cashClosures() {
-        return views(events.findTop200ByEntityTypeOrderByReceivedAtDesc("CIERRE_CAJA"));
+    public List<AdminSyncEventView> cashClosures(UUID companyId, UUID storeId) {
+        return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("CIERRE_CAJA"), companyId, storeId));
+    }
+
+    private List<SaasSyncEvent> filter(List<SaasSyncEvent> values, UUID companyId, UUID storeId) {
+        return values.stream()
+                .filter(event -> companyId == null || event.getCompany().getId().equals(companyId))
+                .filter(event -> storeId == null || event.getStore() != null && event.getStore().getId().equals(storeId))
+                .toList();
     }
 
     private List<AdminSyncEventView> views(List<SaasSyncEvent> values) {
