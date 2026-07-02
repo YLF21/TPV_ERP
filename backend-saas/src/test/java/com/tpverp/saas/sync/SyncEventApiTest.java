@@ -245,6 +245,29 @@ class SyncEventApiTest {
                 .doesNotContain(otherEventId);
     }
 
+    @Test
+    void resumeVentasDesdeDocumentosSinCompras() throws Exception {
+        CreateCompanyResponse company = createCompany("B10101010");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+
+        sendEvent(link, documentEvent(company, "TICKET", "12.50", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "FACTURA_VENTA", "7.50", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "FACTURA_COMPRA", "100.00", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "TICKET", "12.50", SyncOperation.ANULAR));
+
+        var result = mvc.perform(get("/api/v1/admin/sync/sales-summary")
+                        .queryParam("companyId", company.companyId().toString())
+                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminSalesSummaryView summary = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminSalesSummaryView.class);
+
+        assertThat(summary.documentCount()).isEqualTo(2);
+        assertThat(summary.total()).isEqualTo("20");
+    }
+
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
         var result = mvc.perform(post("/api/v1/license/link")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -268,6 +291,22 @@ class SyncEventApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
+    }
+
+    private SyncEventRequest documentEvent(
+            CreateCompanyResponse company,
+            String type,
+            String total,
+            SyncOperation operation) {
+        return new SyncEventRequest(
+                UUID.randomUUID(),
+                company.companyId(),
+                company.storeId(),
+                null,
+                "DOCUMENTO",
+                UUID.randomUUID(),
+                operation,
+                Map.of("tipo", type, "total", total));
     }
 
     private AdminSyncEventView[] getAdminEvents(String path) throws Exception {
