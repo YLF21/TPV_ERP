@@ -10,4 +10,6 @@ public interface SaasInstallationRepository extends JpaRepository<SaasInstallati
     Optional<SaasInstallation> findByInstallationIdAndLicense_Reference(UUID installationId, String licenseReference);
 
     List<SaasInstallation> findByCompany_Id(UUID companyId);
+
+    List<SaasInstallation> findAllByOrderByLinkedAtDesc();
 }

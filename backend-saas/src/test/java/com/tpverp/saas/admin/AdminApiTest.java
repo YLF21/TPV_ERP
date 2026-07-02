@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
 import com.tpverp.saas.license.LicenseSaasStatus;
+import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
 import java.time.Instant;
@@ -70,6 +71,42 @@ class AdminApiTest {
         assertThat(licenses)
                 .extracting(LicenseSummaryResponse::licenseReference)
                 .contains(company.licenseReference());
+    }
+
+    @Test
+    void listaInstalacionesVinculadas() throws Exception {
+        CreateCompanyResponse company = createCompany("B44556677");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+
+        mvc.perform(post("/api/v1/license/validate")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new LicenseSaasValidationRequest(
+                                installationId,
+                                "INST-1",
+                                company.storeId(),
+                                company.licenseReference(),
+                                "hash-local"))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/installations")
+                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        InstallationSummaryResponse[] installations = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                InstallationSummaryResponse[].class);
+        assertThat(installations)
+                .filteredOn(value -> value.installationId().equals(installationId))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.companyId()).isEqualTo(company.companyId());
+                    assertThat(value.storeId()).isEqualTo(company.storeId());
+                    assertThat(value.licenseReference()).isEqualTo(company.licenseReference());
+                    assertThat(value.lastValidatedAt()).isNotNull();
+                });
     }
 
     @Test
@@ -159,5 +196,22 @@ class AdminApiTest {
                 "TIENDA-1",
                 "B00000000",
                 "Empresa");
+    }
+
+    private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
+        var result = mvc.perform(post("/api/v1/license/link")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new LicenseSaasLinkRequest(
+                                company.pairingCode(),
+                                installationId,
+                                "INST-1",
+                                "public-key",
+                                company.storeId(),
+                                "TIENDA-1",
+                                "B00000000",
+                                "Empresa"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
     }
 }

@@ -4,6 +4,8 @@ import com.tpverp.saas.license.SaasCompany;
 import com.tpverp.saas.license.SaasCompanyRepository;
 import com.tpverp.saas.license.SaasLicense;
 import com.tpverp.saas.license.SaasLicenseRepository;
+import com.tpverp.saas.license.SaasInstallation;
+import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.SaasPairingCode;
 import com.tpverp.saas.license.SaasPairingCodeRepository;
 import com.tpverp.saas.license.SaasStore;
@@ -29,6 +31,7 @@ public class AdminService {
     private final SaasCompanyRepository companies;
     private final SaasStoreRepository stores;
     private final SaasLicenseRepository licenses;
+    private final SaasInstallationRepository installations;
     private final SaasPairingCodeRepository pairingCodes;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
@@ -37,11 +40,13 @@ public class AdminService {
             SaasCompanyRepository companies,
             SaasStoreRepository stores,
             SaasLicenseRepository licenses,
+            SaasInstallationRepository installations,
             SaasPairingCodeRepository pairingCodes,
             Clock clock) {
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
+        this.installations = installations;
         this.pairingCodes = pairingCodes;
         this.clock = clock;
     }
@@ -113,6 +118,13 @@ public class AdminService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<InstallationSummaryResponse> installations() {
+        return installations.findAllByOrderByLinkedAtDesc().stream()
+                .map(AdminService::installationResponse)
+                .toList();
+    }
+
     @Transactional
     public AdminLicenseResponse renew(String reference, RenewLicenseRequest request) {
         SaasLicense license = license(reference);
@@ -154,6 +166,17 @@ public class AdminService {
                 license.getValidUntil(),
                 license.getMaxWindows(),
                 license.getMaxPda());
+    }
+
+    private static InstallationSummaryResponse installationResponse(SaasInstallation installation) {
+        return new InstallationSummaryResponse(
+                installation.getInstallationId(),
+                installation.getInstallationReference(),
+                installation.getCompany().getId(),
+                installation.getStore().getId(),
+                installation.getLicense().getReference(),
+                installation.getLinkedAt(),
+                installation.getLastValidatedAt());
     }
 
     private String newPairingCode() {

@@ -29,6 +29,11 @@ public class AdminController {
         return service.licenses();
     }
 
+    @GetMapping("/installations")
+    public List<InstallationSummaryResponse> installations() {
+        return service.installations();
+    }
+
     @PostMapping("/licenses/{reference}/renew")
     public AdminLicenseResponse renew(
             @PathVariable String reference,
