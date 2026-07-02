@@ -52,6 +52,29 @@ class AdminApiTest {
     }
 
     @Test
+    void auditaAccionesAdmin() throws Exception {
+        CreateCompanyResponse company = createCompany("B91919191");
+
+        var result = mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminAuditLogResponse[] audit = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminAuditLogResponse[].class);
+        assertThat(audit)
+                .filteredOn(value -> value.action().equals("ADD_COMPANY")
+                        && value.targetId().equals(company.companyId().toString()))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.username()).isEqualTo("admin");
+                    assertThat(value.targetType()).isEqualTo("COMPANY");
+                    assertThat(value.createdAt()).isNotNull();
+                });
+    }
+
+    @Test
     void rechazaAdminSinCredenciales() throws Exception {
         mvc.perform(post("/api/v1/admin/companies")
                         .contentType(MediaType.APPLICATION_JSON)

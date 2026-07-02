@@ -16,9 +16,11 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService service;
+    private final AdminAuditService audit;
 
-    public AdminController(AdminService service) {
+    public AdminController(AdminService service, AdminAuditService audit) {
         this.service = service;
+        this.audit = audit;
     }
 
     @PostMapping("/companies")
@@ -41,6 +43,11 @@ public class AdminController {
     @GetMapping("/installations")
     public List<InstallationSummaryResponse> installations() {
         return service.installations();
+    }
+
+    @GetMapping("/audit")
+    public List<AdminAuditLogResponse> audit() {
+        return audit.recent();
     }
 
     @PostMapping("/licenses/{reference}/renew")

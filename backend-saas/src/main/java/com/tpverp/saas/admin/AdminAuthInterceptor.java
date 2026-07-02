@@ -35,6 +35,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
 
         Set<String> permissions = users.permissionCodes(user.getUsername());
         if (permissions.contains(requiredPermission(request).name())) {
+            request.setAttribute(AdminAuditService.USERNAME_ATTRIBUTE, user.getUsername());
             return true;
         }
         response.sendError(HttpServletResponse.SC_FORBIDDEN, "Permiso admin insuficiente");

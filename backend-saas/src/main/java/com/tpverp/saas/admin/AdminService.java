@@ -33,6 +33,7 @@ public class AdminService {
     private final SaasLicenseRepository licenses;
     private final SaasInstallationRepository installations;
     private final SaasPairingCodeRepository pairingCodes;
+    private final AdminAuditService audit;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
@@ -42,12 +43,14 @@ public class AdminService {
             SaasLicenseRepository licenses,
             SaasInstallationRepository installations,
             SaasPairingCodeRepository pairingCodes,
+            AdminAuditService audit,
             Clock clock) {
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
         this.installations = installations;
         this.pairingCodes = pairingCodes;
+        this.audit = audit;
         this.clock = clock;
     }
 
@@ -85,6 +88,7 @@ public class AdminService {
                 pairingCode,
                 now.plus(Duration.ofDays(7)),
                 now));
+        audit.log("ADD_COMPANY", "COMPANY", company.getId().toString());
         return new CreateCompanyResponse(company.getId(), store.getId(), licenseReference, pairingCode, license.getValidUntil());
     }
 
@@ -92,6 +96,7 @@ public class AdminService {
     public AdminLicenseResponse block(String reference) {
         SaasLicense license = license(reference);
         license.block();
+        audit.log("BLOCK_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -99,6 +104,7 @@ public class AdminService {
     public AdminLicenseResponse unblock(String reference) {
         SaasLicense license = license(reference);
         license.unblock();
+        audit.log("UNBLOCK_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -122,6 +128,7 @@ public class AdminService {
         SaasCompany company = companies.findById(companyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
         company.updateData(request.name(), request.taxpayerType(), request.impuestos());
+        audit.log("EDIT_COMPANY_DATA", "COMPANY", companyId.toString());
         return licenses.findByCompany_Id(companyId).stream()
                 .findFirst()
                 .map(AdminService::licenseSummary)
@@ -132,6 +139,7 @@ public class AdminService {
     public AdminLicenseResponse renew(String reference, RenewLicenseRequest request) {
         SaasLicense license = license(reference);
         license.renew(request.validUntil(), request.maxWindows(), request.maxPda());
+        audit.log("RENEW_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -154,6 +162,7 @@ public class AdminService {
                 code,
                 expiresAt,
                 now));
+        audit.log("REGENERATE_PAIRING_CODE", "LICENSE", reference);
         return new PairingCodeResponse(reference, code, expiresAt);
     }
 
