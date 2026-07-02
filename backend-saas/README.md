@@ -38,3 +38,11 @@ El usuario inicial de administracion es `admin` con password `admin`.
 - `POST /api/v1/sync/events`
 
 Los endpoints `/api/v1/admin/**` usan HTTP Basic Auth.
+
+## Tests PostgreSQL reales
+
+```powershell
+.\mvnw.cmd "-Dtest=AdminApiPostgresIT" test
+```
+
+Requiere Docker. Si Docker no esta disponible, Testcontainers marca el test como omitido.
