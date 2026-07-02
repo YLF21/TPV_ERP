@@ -56,30 +56,24 @@ public class Customer {
     @Column(columnDefinition = "text")
     private String observaciones;
 
+    private LocalDate birthday;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private CustomerGender gender;
+
+    @Column(name = "commercial_consent", nullable = false)
+    private boolean commercialConsent;
+
+    @Column(name = "preferred_commercial_channel_id")
+    private UUID preferredCommercialChannelId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private CustomerRate tarifa;
 
     @Column(nullable = false, precision = 5, scale = 2)
     private BigDecimal descuento;
-
-    @Column(name = "member_balance", nullable = false, precision = 19, scale = 2)
-    private BigDecimal memberBalance;
-
-    @Column(name = "is_member", nullable = false)
-    private boolean member;
-
-    @Column(name = "member_id", length = 12, updatable = false)
-    private String memberId;
-
-    @Column(name = "member_code_store_id", updatable = false)
-    private UUID memberCodeStoreId;
-
-    @Column(name = "num_member")
-    private String numMember;
-
-    @Column(name = "member_since", updatable = false)
-    private LocalDate memberSince;
 
     @Column(nullable = false)
     private boolean activo = true;
@@ -103,7 +97,6 @@ public class Customer {
             BigDecimal discount) {
         this.id = UUID.randomUUID();
         this.company = Objects.requireNonNull(company, "empresa");
-        this.memberBalance = BigDecimal.ZERO.setScale(2);
         update(fiscalName, documentType, documentNumber, fiscalAddress,
                 phone, email, notes, rate, discount);
     }
@@ -127,8 +120,21 @@ public class Customer {
         this.email = PartyValues.optional(email);
         this.observaciones = PartyValues.optional(notes);
         this.tarifa = newRate;
-        this.member = newRate == CustomerRate.MEMBER;
         this.descuento = PartyValues.discount(discount);
+    }
+
+    public void updateProfile(
+            LocalDate birthday,
+            CustomerGender gender,
+            boolean commercialConsent,
+            UUID preferredCommercialChannelId) {
+        if (commercialConsent && preferredCommercialChannelId == null) {
+            throw new IllegalArgumentException("Debe elegir canal comercial");
+        }
+        this.birthday = birthday;
+        this.gender = gender;
+        this.commercialConsent = commercialConsent;
+        this.preferredCommercialChannelId = preferredCommercialChannelId;
     }
 
     public void assignClientCode(UUID storeId, String code) {
@@ -137,41 +143,6 @@ public class Customer {
         }
         clientCodeStoreId = Objects.requireNonNull(storeId, "tienda");
         clientId = PartyValues.required(code, "clientId");
-    }
-
-    public void activateMember(String code, LocalDate date) {
-        if (memberId == null) {
-            memberId = PartyValues.required(code, "memberId");
-            memberSince = Objects.requireNonNull(date, "memberSince");
-        }
-        member = true;
-        tarifa = CustomerRate.MEMBER;
-    }
-
-    public void assignMemberStore(UUID storeId) {
-        if (memberCodeStoreId == null) {
-            memberCodeStoreId = Objects.requireNonNull(storeId, "tienda");
-        }
-    }
-
-    public void deactivateMember() {
-        member = false;
-        tarifa = CustomerRate.VENTA;
-    }
-
-    public void setNumMember(String value) {
-        numMember = PartyValues.optional(value);
-    }
-
-    public void applyBalance(BigDecimal amount) {
-        if (!member) {
-            throw new IllegalStateException("Solo los clientes MEMBER tienen saldo");
-        }
-        BigDecimal updated = memberBalance.add(PartyValues.money(amount));
-        if (updated.signum() < 0) {
-            throw new IllegalArgumentException("El saldo no puede ser negativo");
-        }
-        memberBalance = updated;
     }
 
     public boolean hasCompleteFiscalData() {
@@ -195,28 +166,8 @@ public class Customer {
         return documentNumber;
     }
 
-    public BigDecimal getMemberBalance() {
-        return memberBalance;
-    }
-
     public String getClientId() {
         return clientId;
-    }
-
-    public boolean isMember() {
-        return member;
-    }
-
-    public String getMemberId() {
-        return memberId;
-    }
-
-    public String getNumMember() {
-        return numMember;
-    }
-
-    public LocalDate getMemberSince() {
-        return memberSince;
     }
 
     public DocumentType getDocumentType() {
@@ -247,7 +198,27 @@ public class Customer {
         return descuento;
     }
 
+    public LocalDate getBirthday() {
+        return birthday;
+    }
+
+    public CustomerGender getGender() {
+        return gender;
+    }
+
+    public boolean hasCommercialConsent() {
+        return commercialConsent;
+    }
+
+    public UUID getPreferredCommercialChannelId() {
+        return preferredCommercialChannelId;
+    }
+
     public boolean isActive() {
         return activo;
+    }
+
+    public Company getCompany() {
+        return company;
     }
 }

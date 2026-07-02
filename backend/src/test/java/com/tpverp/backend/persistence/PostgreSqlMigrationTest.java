@@ -48,7 +48,8 @@ class PostgreSqlMigrationTest {
                             'producto_precio_historial',
                             'producto_importacion_excel_linea',
                             'existencia', 'movimiento_stock', 'salida_almacen',
-                            'salida_almacen_linea', 'cliente', 'member_balance_movement',
+                            'salida_almacen_linea', 'cliente', 'miembro',
+                            'commercial_contact_channel', 'member_balance_movement',
                             'proveedor', 'comercial', 'proveedor_comercial',
                             'party_code_counter',
                             'producto_proveedor', 'metodo_pago', 'contador_documento',
@@ -61,7 +62,7 @@ class PostgreSqlMigrationTest {
                             'intento_envio_fiscal', 'certificado_verifactu')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(50);
+                assertThat(result.getInt(1)).isEqualTo(52);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);

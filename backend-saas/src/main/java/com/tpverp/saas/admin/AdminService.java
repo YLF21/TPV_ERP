@@ -4,6 +4,8 @@ import com.tpverp.saas.license.SaasCompany;
 import com.tpverp.saas.license.SaasCompanyRepository;
 import com.tpverp.saas.license.SaasLicense;
 import com.tpverp.saas.license.SaasLicenseRepository;
+import com.tpverp.saas.license.SaasInstallation;
+import com.tpverp.saas.license.SaasInstallationRepository;
 import com.tpverp.saas.license.SaasPairingCode;
 import com.tpverp.saas.license.SaasPairingCodeRepository;
 import com.tpverp.saas.license.SaasStore;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,7 +32,12 @@ public class AdminService {
     private final SaasCompanyRepository companies;
     private final SaasStoreRepository stores;
     private final SaasLicenseRepository licenses;
+    private final SaasInstallationRepository installations;
     private final SaasPairingCodeRepository pairingCodes;
+    private final SaasAdminUserRepository adminUsers;
+    private final AdminPasswordHasher passwordHasher;
+    private final AdminAuditService audit;
+    private final JdbcTemplate jdbc;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
@@ -37,12 +45,22 @@ public class AdminService {
             SaasCompanyRepository companies,
             SaasStoreRepository stores,
             SaasLicenseRepository licenses,
+            SaasInstallationRepository installations,
             SaasPairingCodeRepository pairingCodes,
+            SaasAdminUserRepository adminUsers,
+            AdminPasswordHasher passwordHasher,
+            AdminAuditService audit,
+            JdbcTemplate jdbc,
             Clock clock) {
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
+        this.installations = installations;
         this.pairingCodes = pairingCodes;
+        this.adminUsers = adminUsers;
+        this.passwordHasher = passwordHasher;
+        this.audit = audit;
+        this.jdbc = jdbc;
         this.clock = clock;
     }
 
@@ -80,6 +98,7 @@ public class AdminService {
                 pairingCode,
                 now.plus(Duration.ofDays(7)),
                 now));
+        audit.log("ADD_COMPANY", "COMPANY", company.getId().toString());
         return new CreateCompanyResponse(company.getId(), store.getId(), licenseReference, pairingCode, license.getValidUntil());
     }
 
@@ -87,6 +106,7 @@ public class AdminService {
     public AdminLicenseResponse block(String reference) {
         SaasLicense license = license(reference);
         license.block();
+        audit.log("BLOCK_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -94,6 +114,7 @@ public class AdminService {
     public AdminLicenseResponse unblock(String reference) {
         SaasLicense license = license(reference);
         license.unblock();
+        audit.log("UNBLOCK_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -101,22 +122,81 @@ public class AdminService {
     public List<LicenseSummaryResponse> licenses() {
         return licenses.findAll().stream()
                 .sorted(Comparator.comparing(SaasLicense::getReference))
-                .map(license -> new LicenseSummaryResponse(
-                        license.getReference(),
-                        license.getCompany().getId(),
-                        license.getCompany().getName(),
-                        license.getCompany().getTaxId(),
-                        license.getStatus(),
-                        license.getValidUntil(),
-                        license.getMaxWindows(),
-                        license.getMaxPda()))
+                .map(AdminService::licenseSummary)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<InstallationSummaryResponse> installations() {
+        return installations.findAllByOrderByLinkedAtDesc().stream()
+                .map(AdminService::installationResponse)
+                .toList();
+    }
+
+    @Transactional
+    public LicenseSummaryResponse editCompany(UUID companyId, EditCompanyDataRequest request) {
+        SaasCompany company = companies.findById(companyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
+        company.updateData(request.name(), request.taxpayerType(), request.impuestos());
+        audit.log("EDIT_COMPANY_DATA", "COMPANY", companyId.toString());
+        return licenses.findByCompany_Id(companyId).stream()
+                .findFirst()
+                .map(AdminService::licenseSummary)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Empresa sin licencia"));
+    }
+
+    @Transactional
+    public void changePassword(String username, ChangeAdminPasswordRequest request) {
+        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        user.changePasswordHash(passwordHasher.hash(request.password()));
+        audit.log("CHANGE_ADMIN_PASSWORD", "ADMIN_USER", user.getUsername());
+    }
+
+    @Transactional
+    public AdminUserResponse createUser(CreateAdminUserRequest request) {
+        String username = request.username().trim();
+        if (adminUsers.existsByUsernameIgnoreCase(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Usuario admin ya existe");
+        }
+        SaasAdminUser user = adminUsers.saveAndFlush(new SaasAdminUser(
+                UUID.randomUUID(),
+                username,
+                passwordHasher.hash(request.password()),
+                true,
+                clock.instant()));
+        int assigned = jdbc.update("""
+                insert into saas_admin_user_role(user_id, role_id)
+                select ?, id from saas_admin_role where upper(name) = upper(?)
+                """, user.getId(), request.roleName());
+        if (assigned == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Rol admin no existe");
+        }
+        audit.log("CREATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
+        return userResponse(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminUserResponse> users() {
+        return adminUsers.findAll().stream()
+                .sorted(Comparator.comparing(SaasAdminUser::getUsername))
+                .map(AdminService::userResponse)
+                .toList();
+    }
+
+    @Transactional
+    public void deactivateUser(String username) {
+        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        user.deactivate();
+        audit.log("DEACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
     }
 
     @Transactional
     public AdminLicenseResponse renew(String reference, RenewLicenseRequest request) {
         SaasLicense license = license(reference);
         license.renew(request.validUntil(), request.maxWindows(), request.maxPda());
+        audit.log("RENEW_LICENSE", "LICENSE", reference);
         return response(license);
     }
 
@@ -139,6 +219,7 @@ public class AdminService {
                 code,
                 expiresAt,
                 now));
+        audit.log("REGENERATE_PAIRING_CODE", "LICENSE", reference);
         return new PairingCodeResponse(reference, code, expiresAt);
     }
 
@@ -154,6 +235,33 @@ public class AdminService {
                 license.getValidUntil(),
                 license.getMaxWindows(),
                 license.getMaxPda());
+    }
+
+    private static LicenseSummaryResponse licenseSummary(SaasLicense license) {
+        return new LicenseSummaryResponse(
+                license.getReference(),
+                license.getCompany().getId(),
+                license.getCompany().getName(),
+                license.getCompany().getTaxId(),
+                license.getStatus(),
+                license.getValidUntil(),
+                license.getMaxWindows(),
+                license.getMaxPda());
+    }
+
+    private static InstallationSummaryResponse installationResponse(SaasInstallation installation) {
+        return new InstallationSummaryResponse(
+                installation.getInstallationId(),
+                installation.getInstallationReference(),
+                installation.getCompany().getId(),
+                installation.getStore().getId(),
+                installation.getLicense().getReference(),
+                installation.getLinkedAt(),
+                installation.getLastValidatedAt());
+    }
+
+    private static AdminUserResponse userResponse(SaasAdminUser user) {
+        return new AdminUserResponse(user.getUsername(), user.isActive(), user.getCreatedAt());
     }
 
     private String newPairingCode() {

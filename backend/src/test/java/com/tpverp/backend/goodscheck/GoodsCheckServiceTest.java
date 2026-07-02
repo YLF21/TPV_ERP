@@ -101,7 +101,7 @@ class GoodsCheckServiceTest {
 
         assertThat(view.todos()).singleElement()
                 .extracting(GoodsCheckView.Item::expectedQuantity)
-                .isEqualTo(12);
+                .isEqualTo(new BigDecimal("12.000"));
     }
 
     @Test
@@ -133,24 +133,24 @@ class GoodsCheckServiceTest {
         var productId = UUID.randomUUID();
         var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, line(productId, 12));
         var check = new GoodsCheck(document.getId(), store.getId(), user.getId(), NOW);
-        check.addLine(productId, 12);
+        check.addLine(productId, new BigDecimal("12"));
         when(checks.findByIdAndTiendaId(check.getId(), store.getId())).thenReturn(Optional.of(check));
         when(documents.findById(document.getId())).thenReturn(Optional.of(document));
         when(organization.currentUser(any())).thenReturn(user);
         when(terminal.terminalId(any())).thenReturn(terminalId);
         when(checks.save(check)).thenReturn(check);
 
-        var first = service.scan(check.getId(), new GoodsCheckScanRequest(null, "P-1", 22), authentication());
-        var fixed = service.scan(check.getId(), new GoodsCheckScanRequest(productId, null, -10), authentication());
+        var first = service.scan(check.getId(), new GoodsCheckScanRequest(null, "P-1", new BigDecimal("22")), authentication());
+        var fixed = service.scan(check.getId(), new GoodsCheckScanRequest(productId, null, new BigDecimal("-10")), authentication());
 
         assertThat(first.registrados()).singleElement()
                 .extracting(GoodsCheckView.Item::extraQuantity)
-                .isEqualTo(10);
+                .isEqualTo(new BigDecimal("10.000"));
         assertThat(fixed.todos()).singleElement()
                 .extracting(GoodsCheckView.Item::registeredQuantity)
-                .isEqualTo(12);
+                .isEqualTo(new BigDecimal("12.000"));
         assertThatThrownBy(() -> service.scan(
-                check.getId(), new GoodsCheckScanRequest(productId, null, -13), authentication()))
+                check.getId(), new GoodsCheckScanRequest(productId, null, new BigDecimal("-13")), authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("message.goods_check.registered_quantity_negative");
     }
@@ -159,12 +159,12 @@ class GoodsCheckServiceTest {
     void closesAsCompleteOrWithDifferences() {
         var complete = new GoodsCheck(UUID.randomUUID(), store.getId(), user.getId(), NOW);
         var productId = UUID.randomUUID();
-        complete.addLine(productId, 2);
-        complete.register(productId, 2, user.getId(), terminalId, NOW);
+        complete.addLine(productId, new BigDecimal("2"));
+        complete.register(productId, new BigDecimal("2"), user.getId(), terminalId, NOW);
         complete.close(user.getId(), NOW);
 
         var different = new GoodsCheck(UUID.randomUUID(), store.getId(), user.getId(), NOW);
-        different.addLine(UUID.randomUUID(), 2);
+        different.addLine(UUID.randomUUID(), new BigDecimal("2"));
         different.close(user.getId(), NOW);
 
         assertThat(complete.getEstado()).isEqualTo(GoodsCheckStatus.COMPLETA);

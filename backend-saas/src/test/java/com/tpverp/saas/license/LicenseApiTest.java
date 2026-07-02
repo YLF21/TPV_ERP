@@ -7,7 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.saas.admin.CreateCompanyRequest;
 import com.tpverp.saas.admin.CreateCompanyResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,7 +96,7 @@ class LicenseApiTest {
         LicenseSaasLinkResponse link = link(company, installationId);
 
         mvc.perform(post("/api/v1/admin/licenses/{reference}/block", company.licenseReference())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk());
 
         var validationResult = mvc.perform(post("/api/v1/license/validate")
@@ -134,7 +136,7 @@ class LicenseApiTest {
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateCompanyRequest(
                                 "Empresa",
@@ -149,5 +151,10 @@ class LicenseApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+    }
+
+    private String basic(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (user + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 }

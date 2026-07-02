@@ -1,5 +1,6 @@
 package com.tpverp.backend.goodscheck;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,9 +16,9 @@ public record GoodsCheckView(
             UUID productId,
             String code,
             String name,
-            int expectedQuantity,
-            int registeredQuantity,
-            int missingQuantity,
-            int extraQuantity) {
+            BigDecimal expectedQuantity,
+            BigDecimal registeredQuantity,
+            BigDecimal missingQuantity,
+            BigDecimal extraQuantity) {
     }
 }

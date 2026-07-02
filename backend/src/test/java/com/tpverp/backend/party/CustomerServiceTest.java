@@ -18,10 +18,12 @@ import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +37,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 class CustomerServiceTest {
 
     @Mock CustomerRepository customers;
+    @Mock MemberRepository members;
     @Mock MemberBalanceMovementRepository movements;
     @Mock StoreRepository stores;
     @Mock UserAccountRepository users;
@@ -77,9 +80,10 @@ class CustomerServiceTest {
         when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
                 PartyTestData.id(company), DocumentType.NIF, "99Z"))
                 .thenReturn(Optional.empty());
-        when(customers.findByCompanyIdAndNumMember(PartyTestData.id(company), "EXT/2026 #1"))
+        when(members.findByCompanyIdAndNumMember(PartyTestData.id(company), "EXT/2026 #1"))
                 .thenReturn(Optional.empty());
         when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(members.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(codes.nextClient(store)).thenReturn("C-001-000001");
         when(codes.nextMember(store)).thenReturn("M-001-000001");
 
@@ -92,6 +96,31 @@ class CustomerServiceTest {
         assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
         assertThat(created.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 6, 8));
         assertThat(created.rate()).isEqualTo(CustomerRate.MEMBER);
+        var member = ArgumentCaptor.forClass(Member.class);
+        verify(members).save(member.capture());
+        assertThat(member.getValue().getCustomer()).isNotNull();
+        assertThat(member.getValue().getMemberId()).isEqualTo("M-001-000001");
+    }
+
+    @Test
+    void storesOptionalPersonalAndCommercialConsentData() {
+        UUID channelId = UUID.randomUUID();
+        when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
+                PartyTestData.id(company), DocumentType.NIF, "55A"))
+                .thenReturn(Optional.empty());
+        when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(codes.nextClient(store)).thenReturn("C-001-000001");
+
+        var created = service().create(new CustomerService.CustomerCommand(
+                "Cliente", DocumentType.NIF, "55a", null,
+                null, "cliente@example.com", null, BigDecimal.ZERO,
+                false, null, LocalDate.of(1990, 5, 12), CustomerGender.FEMENINO,
+                true, channelId));
+
+        assertThat(created.birthday()).isEqualTo(LocalDate.of(1990, 5, 12));
+        assertThat(created.gender()).isEqualTo(CustomerGender.FEMENINO);
+        assertThat(created.commercialConsent()).isTrue();
+        assertThat(created.preferredCommercialChannelId()).isEqualTo(channelId);
     }
 
     @Test
@@ -125,11 +154,13 @@ class CustomerServiceTest {
                 company, "Member", DocumentType.NIF, "M1", null,
                 null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         customer.assignClientCode(store.getId(), "C-001-000001");
-        customer.activateMember("M-001-000001", java.time.LocalDate.of(2026, 5, 1));
-        customer.assignMemberStore(store.getId());
-        customer.deactivateMember();
+        var member = new Member(customer, "M-001-000001", java.time.LocalDate.of(2026, 5, 1));
+        member.assignMemberStore(store.getId());
+        member.deactivate();
         when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
                 .thenReturn(Optional.of(customer));
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(member));
 
         var updated = service().update(customer.getId(), new CustomerService.CustomerCommand(
                 "Member", DocumentType.NIF, "M1", null,
@@ -144,9 +175,12 @@ class CustomerServiceTest {
     void recordsManualMemberBalanceMovementWithAuthenticatedUser() {
         var customer = new Customer(
                 company, "Member", DocumentType.NIF, "1", null,
-                null, null, null, CustomerRate.MEMBER, BigDecimal.ZERO);
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", java.time.LocalDate.of(2026, 5, 1));
         when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
                 .thenReturn(Optional.of(customer));
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(member));
         when(users.findByTiendaIdAndNombre(store.getId(), "CAJA")).thenReturn(Optional.of(user));
         when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -176,6 +210,6 @@ class CustomerServiceTest {
         var organization = new CurrentOrganization(stores, users);
         return new CustomerService(
                 customers, movements, new PartyContext(organization), codes,
-                Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
+                members, Clock.fixed(Instant.parse("2026-06-08T10:00:00Z"), ZoneOffset.UTC));
     }
 }

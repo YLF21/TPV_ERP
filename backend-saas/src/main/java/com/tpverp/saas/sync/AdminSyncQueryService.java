@@ -36,6 +36,25 @@ public class AdminSyncQueryService {
     }
 
     @Transactional(readOnly = true)
+    public AdminSalesSummaryView salesSummary(UUID companyId, UUID storeId) {
+        int count = 0;
+        BigDecimal total = BigDecimal.ZERO;
+        for (SaasSyncEvent event : filter(
+                events.findByEntityTypeOrderByReceivedAtAsc("DOCUMENTO"), companyId, storeId)) {
+            if (event.getOperation() == SyncOperation.ANULAR) {
+                continue;
+            }
+            Map<String, Object> payload = payload(event.getPayload());
+            if (!isSaleDocument(String.valueOf(payload.get("tipo")))) {
+                continue;
+            }
+            count++;
+            total = total.add(decimal(payload.get("total")));
+        }
+        return new AdminSalesSummaryView(count, total.stripTrailingZeros().toPlainString());
+    }
+
+    @Transactional(readOnly = true)
     public List<AdminSyncEventView> stockMovements(UUID companyId, UUID storeId) {
         return views(filter(events.findTop200ByEntityTypeOrderByReceivedAtDesc("STOCK_MOVEMENT"), companyId, storeId));
     }
@@ -108,6 +127,10 @@ public class AdminSyncQueryService {
             return new BigDecimal(number.toString());
         }
         return new BigDecimal(String.valueOf(value));
+    }
+
+    private boolean isSaleDocument(String type) {
+        return "TICKET".equals(type) || type.endsWith("_VENTA");
     }
 
     private record StockKey(UUID companyId, UUID storeId, String productId, String warehouseId) {

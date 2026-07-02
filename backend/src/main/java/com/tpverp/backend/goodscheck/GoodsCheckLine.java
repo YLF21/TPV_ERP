@@ -9,6 +9,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -25,10 +26,10 @@ public class GoodsCheckLine {
     private GoodsCheck comprobacion;
     @Column(name = "producto_id", nullable = false)
     private UUID productoId;
-    @Column(name = "cantidad_esperada", nullable = false)
-    private int cantidadEsperada;
-    @Column(name = "cantidad_registrada", nullable = false)
-    private int cantidadRegistrada;
+    @Column(name = "cantidad_esperada", nullable = false, precision = 19, scale = 3)
+    private BigDecimal cantidadEsperada;
+    @Column(name = "cantidad_registrada", nullable = false, precision = 19, scale = 3)
+    private BigDecimal cantidadRegistrada = BigDecimal.ZERO.setScale(3);
     @Column(name = "ultimo_usuario_id")
     private UUID ultimoUsuarioId;
     @Column(name = "terminal_id")
@@ -41,31 +42,32 @@ public class GoodsCheckLine {
     protected GoodsCheckLine() {
     }
 
-    public GoodsCheckLine(GoodsCheck comprobacion, UUID productoId, int cantidadEsperada) {
-        if (cantidadEsperada == 0) {
+    public GoodsCheckLine(GoodsCheck comprobacion, UUID productoId, BigDecimal cantidadEsperada) {
+        var expected = quantity(cantidadEsperada);
+        if (expected.signum() == 0) {
             throw new IllegalArgumentException("message.goods_check.expected_quantity_required");
         }
         this.id = UUID.randomUUID();
         this.comprobacion = Objects.requireNonNull(comprobacion, "comprobacion");
         this.productoId = Objects.requireNonNull(productoId, "productoId");
-        this.cantidadEsperada = cantidadEsperada;
+        this.cantidadEsperada = expected;
     }
 
     public UUID getProductoId() {
         return productoId;
     }
 
-    public int getCantidadEsperada() {
+    public BigDecimal getCantidadEsperada() {
         return cantidadEsperada;
     }
 
-    public int getCantidadRegistrada() {
+    public BigDecimal getCantidadRegistrada() {
         return cantidadRegistrada;
     }
 
-    public void addQuantity(int quantity, UUID userId, UUID terminalId, Instant now) {
-        var next = cantidadRegistrada + quantity;
-        if (next < 0) {
+    public void addQuantity(BigDecimal quantity, UUID userId, UUID terminalId, Instant now) {
+        var next = cantidadRegistrada.add(quantity(quantity));
+        if (next.signum() < 0) {
             throw new IllegalArgumentException("message.goods_check.registered_quantity_negative");
         }
         cantidadRegistrada = next;
@@ -74,4 +76,12 @@ public class GoodsCheckLine {
         actualizadoEn = Objects.requireNonNull(now, "now");
     }
     // Accumulates scan corrections while protecting the registered total from going below zero.
+
+    private static BigDecimal quantity(BigDecimal value) {
+        Objects.requireNonNull(value, "quantity");
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("message.document.quantity_scale");
+        }
+        return value.setScale(3);
+    }
 }

@@ -12,7 +12,9 @@ import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -188,7 +190,7 @@ class SyncEventApiTest {
                         "cantidad", "-1")));
 
         var result = mvc.perform(get("/api/v1/admin/sync/stock-current")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         AdminStockSnapshotView[] stock = mapper.readValue(
@@ -232,7 +234,7 @@ class SyncEventApiTest {
 
         var result = mvc.perform(get("/api/v1/admin/sync/sales")
                         .queryParam("companyId", company.companyId().toString())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         AdminSyncEventView[] sales = mapper.readValue(
@@ -243,6 +245,29 @@ class SyncEventApiTest {
                 .extracting(AdminSyncEventView::eventId)
                 .contains(eventId)
                 .doesNotContain(otherEventId);
+    }
+
+    @Test
+    void resumeVentasDesdeDocumentosSinCompras() throws Exception {
+        CreateCompanyResponse company = createCompany("B10101010");
+        LicenseSaasLinkResponse link = link(company, UUID.randomUUID());
+
+        sendEvent(link, documentEvent(company, "TICKET", "12.50", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "FACTURA_VENTA", "7.50", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "FACTURA_COMPRA", "100.00", SyncOperation.CONFIRMAR));
+        sendEvent(link, documentEvent(company, "TICKET", "12.50", SyncOperation.ANULAR));
+
+        var result = mvc.perform(get("/api/v1/admin/sync/sales-summary")
+                        .queryParam("companyId", company.companyId().toString())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminSalesSummaryView summary = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminSalesSummaryView.class);
+
+        assertThat(summary.documentCount()).isEqualTo(2);
+        assertThat(summary.total()).isEqualTo("20");
     }
 
     private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
@@ -270,9 +295,25 @@ class SyncEventApiTest {
                 .andExpect(status().isOk());
     }
 
+    private SyncEventRequest documentEvent(
+            CreateCompanyResponse company,
+            String type,
+            String total,
+            SyncOperation operation) {
+        return new SyncEventRequest(
+                UUID.randomUUID(),
+                company.companyId(),
+                company.storeId(),
+                null,
+                "DOCUMENTO",
+                UUID.randomUUID(),
+                operation,
+                Map.of("tipo", type, "total", total));
+    }
+
     private AdminSyncEventView[] getAdminEvents(String path) throws Exception {
         var result = mvc.perform(get(path)
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), AdminSyncEventView[].class);
@@ -280,7 +321,7 @@ class SyncEventApiTest {
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new CreateCompanyRequest(
                                 "Empresa",
@@ -295,5 +336,10 @@ class SyncEventApiTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return mapper.readValue(result.getResponse().getContentAsString(), CreateCompanyResponse.class);
+    }
+
+    private String basic(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (user + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 }

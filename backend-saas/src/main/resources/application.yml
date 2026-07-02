@@ -1,5 +1,6 @@
 server:
   port: ${TPV_SAAS_PORT:8090}
+  forward-headers-strategy: ${TPV_SAAS_FORWARD_HEADERS_STRATEGY:framework}
 
 spring:
   application:
@@ -15,4 +16,6 @@ spring:
 
 tpv:
   saas:
-    admin-key: ${TPV_SAAS_ADMIN_KEY:dev-admin-key}
+    admin-default-allowed: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:false}
+    cors:
+      allowed-origins: ${TPV_SAAS_CORS_ALLOWED_ORIGINS:}

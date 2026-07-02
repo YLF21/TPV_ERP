@@ -31,6 +31,13 @@ public class AdminSyncController {
         return service.sales(companyId, storeId);
     }
 
+    @GetMapping("/sales-summary")
+    public AdminSalesSummaryView salesSummary(
+            @RequestParam(required = false) UUID companyId,
+            @RequestParam(required = false) UUID storeId) {
+        return service.salesSummary(companyId, storeId);
+    }
+
     @GetMapping("/stock-movements")
     public List<AdminSyncEventView> stockMovements(
             @RequestParam(required = false) UUID companyId,

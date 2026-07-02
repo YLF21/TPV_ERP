@@ -11,6 +11,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -76,13 +77,13 @@ public class GoodsCheck {
         return List.copyOf(lineas);
     }
 
-    public void addLine(UUID productId, int expectedQuantity) {
+    public void addLine(UUID productId, BigDecimal expectedQuantity) {
         lineas.add(new GoodsCheckLine(this, productId, expectedQuantity));
     }
 
-    public void register(UUID productId, int quantity, UUID userId, UUID terminalId, Instant now) {
+    public void register(UUID productId, BigDecimal quantity, UUID userId, UUID terminalId, Instant now) {
         requireOpen();
-        if (quantity == 0) {
+        if (Objects.requireNonNull(quantity, "quantity").signum() == 0) {
             throw new IllegalArgumentException("message.goods_check.quantity_required");
         }
         lineas.stream()
@@ -96,7 +97,8 @@ public class GoodsCheck {
         requireOpen();
         cerradoPor = Objects.requireNonNull(userId, "userId");
         cerradoEn = Objects.requireNonNull(now, "now");
-        estado = lineas.stream().allMatch(line -> line.getCantidadEsperada() == line.getCantidadRegistrada())
+        estado = lineas.stream().allMatch(line -> line.getCantidadEsperada()
+                .compareTo(line.getCantidadRegistrada()) == 0)
                 ? GoodsCheckStatus.COMPLETA : GoodsCheckStatus.CON_DIFERENCIAS;
     }
     // Freezes the check and derives the final status from expected versus registered quantities.

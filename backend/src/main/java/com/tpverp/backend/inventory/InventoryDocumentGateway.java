@@ -1,9 +1,12 @@
 package com.tpverp.backend.inventory;
 
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.StockDocumentGateway;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.organization.CurrentOrganization;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumMap;
@@ -19,6 +22,7 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
 
     private final StockLevelRepository stockLevels;
     private final StockMovementRepository movements;
+    private final ProductRepository products;
     private final CurrentOrganization organization;
     private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
@@ -26,11 +30,13 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
     public InventoryDocumentGateway(
             StockLevelRepository stockLevels,
             StockMovementRepository movements,
+            ProductRepository products,
             CurrentOrganization organization,
             StockMovementSyncPublisher syncPublisher,
             Clock clock) {
         this.stockLevels = stockLevels;
         this.movements = movements;
+        this.products = products;
         this.organization = organization;
         this.syncPublisher = syncPublisher;
         this.clock = clock;
@@ -48,7 +54,10 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
             return false;
         }
         for (var line : document.getLineas()) {
-            var quantity = Math.multiplyExact(definition.sign(), line.getCantidad());
+            if (isService(line.getProductoId())) {
+                continue;
+            }
+            var quantity = line.getCantidad().multiply(BigDecimal.valueOf(definition.sign()));
             apply(line.getProductoId(), document.getAlmacenId(), quantity);
             enqueue(document, movements.save(StockMovement.document(
                     line.getProductoId(),
@@ -88,7 +97,13 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
         syncPublisher.enqueue(organization.currentCompany().getId(), document.getTiendaId(), movement);
     }
 
-    private void apply(java.util.UUID productId, java.util.UUID warehouseId, int quantity) {
+    private boolean isService(java.util.UUID productId) {
+        return products.findById(productId)
+                .map(product -> product.getProductType() == ProductType.SERVICE)
+                .orElse(false);
+    }
+
+    private void apply(java.util.UUID productId, java.util.UUID warehouseId, BigDecimal quantity) {
         var stock = stockLevels.findByProductIdAndWarehouseId(productId, warehouseId)
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
         stock.apply(quantity);

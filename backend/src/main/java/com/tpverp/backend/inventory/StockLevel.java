@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -21,8 +22,8 @@ public class StockLevel {
     @Column(name = "almacen_id", nullable = false)
     private UUID warehouseId;
 
-    @Column(nullable = false)
-    private int cantidad;
+    @Column(nullable = false, precision = 19, scale = 3)
+    private BigDecimal cantidad = BigDecimal.ZERO.setScale(3);
 
     @Version
     private long version;
@@ -36,9 +37,9 @@ public class StockLevel {
         this.warehouseId = Objects.requireNonNull(warehouseId, "warehouseId");
     }
 
-    public static StockLevel snapshot(UUID productId, UUID warehouseId, long quantity) {
+    public static StockLevel snapshot(UUID productId, UUID warehouseId, BigDecimal quantity) {
         var stock = new StockLevel(productId, warehouseId);
-        stock.cantidad = Math.toIntExact(quantity);
+        stock.cantidad = quantity(quantity);
         return stock;
     }
 
@@ -50,15 +51,27 @@ public class StockLevel {
         return warehouseId;
     }
 
-    public int getQuantity() {
+    public BigDecimal getQuantity() {
         return cantidad;
     }
 
     public void apply(int delta) {
-        if (delta == 0) {
+        apply(BigDecimal.valueOf(delta));
+    }
+
+    public void apply(BigDecimal delta) {
+        if (quantity(delta).signum() == 0) {
             throw new IllegalArgumentException("El movimiento no puede ser cero");
         }
         // Snapshot derivado: la fuente de verdad es movimiento_stock.
-        cantidad = Math.addExact(cantidad, delta);
+        cantidad = cantidad.add(quantity(delta));
+    }
+
+    private static BigDecimal quantity(BigDecimal value) {
+        Objects.requireNonNull(value, "cantidad");
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("message.inventory.quantity_scale");
+        }
+        return value.setScale(3);
     }
 }

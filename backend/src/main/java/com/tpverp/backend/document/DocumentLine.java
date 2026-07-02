@@ -28,8 +28,8 @@ public class DocumentLine {
     private UUID productoId;
     @Column(nullable = false)
     private int posicion;
-    @Column(nullable = false)
-    private int cantidad;
+    @Column(nullable = false, precision = 19, scale = 3)
+    private BigDecimal cantidad;
     @Column(nullable = false, length = 128)
     private String codigo;
     @Column(nullable = false)
@@ -71,7 +71,24 @@ public class DocumentLine {
             boolean impuestosIncluidos,
             String regimenImpuesto,
             BigDecimal porcentajeImpuesto) {
-        if (cantidad == 0) {
+        this(documento, productoId, posicion, BigDecimal.valueOf(cantidad), codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto);
+    }
+
+    public DocumentLine(
+            CommercialDocument documento,
+            UUID productoId,
+            int posicion,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto) {
+        if (quantity(cantidad).signum() == 0) {
             throw new IllegalArgumentException("cantidad no puede ser cero");
         }
         if (posicion < 1) {
@@ -81,7 +98,7 @@ public class DocumentLine {
         this.documento = Objects.requireNonNull(documento, "documento");
         this.productoId = Objects.requireNonNull(productoId, "productoId");
         this.posicion = posicion;
-        this.cantidad = cantidad;
+        this.cantidad = quantity(cantidad);
         this.codigo = required(codigo, "codigo");
         this.nombre = required(nombre, "nombre");
         this.tarifa = optional(tarifa);
@@ -105,7 +122,7 @@ public class DocumentLine {
         return posicion;
     }
 
-    public int getCantidad() {
+    public BigDecimal getCantidad() {
         return cantidad;
     }
 
@@ -154,7 +171,7 @@ public class DocumentLine {
     }
 
     private void calculateAmounts() {
-        var gross = Money.euros(precioUnitario.multiply(BigDecimal.valueOf(cantidad)));
+        var gross = Money.euros(precioUnitario.multiply(cantidad));
         var discounted = Money.euros(gross.subtract(Money.percentage(gross, descuento)));
         if (impuestosIncluidos) {
             var divisor = BigDecimal.ONE.add(porcentajeImpuesto.divide(HUNDRED));
@@ -174,6 +191,14 @@ public class DocumentLine {
             throw new IllegalArgumentException(field + " no puede ser negativo");
         }
         return amount;
+    }
+
+    private static BigDecimal quantity(BigDecimal value) {
+        Objects.requireNonNull(value, "cantidad");
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("message.document.quantity_scale");
+        }
+        return value.setScale(3, Money.ROUNDING);
     }
 
     private static String taxRegime(String value) {

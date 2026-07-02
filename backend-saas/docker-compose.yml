@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: tpv-erp-saas-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tpv_erp_saas}
+      POSTGRES_USER: ${POSTGRES_USER:-tpv_erp_saas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
+    ports:
+      - "5433:5432"
+    volumes:
+      - tpv_erp_saas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tpv_erp_saas} -d ${POSTGRES_DB:-tpv_erp_saas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  tpv_erp_saas_pgdata:

@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -74,8 +75,12 @@ public class Warehouse {
     }
 
     public void deactivate(long totalStock) {
+        deactivate(BigDecimal.valueOf(totalStock));
+    }
+
+    public void deactivate(BigDecimal totalStock) {
         requireEditable();
-        if (totalStock != 0) {
+        if (totalStock.compareTo(BigDecimal.ZERO) != 0) {
             throw new IllegalStateException("message.warehouse.only_zero_stock_can_deactivate");
         }
         activo = false;

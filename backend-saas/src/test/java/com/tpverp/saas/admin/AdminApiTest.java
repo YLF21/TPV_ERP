@@ -1,17 +1,22 @@
 package com.tpverp.saas.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.saas.license.LicenseSaasLinkRequest;
 import com.tpverp.saas.license.LicenseSaasLinkResponse;
 import com.tpverp.saas.license.LicenseSaasStatus;
+import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +37,7 @@ class AdminApiTest {
     @Test
     void creaEmpresaLicenciaYCodigoDeEnlace() throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request("B12345678"))))
                 .andExpect(status().isOk())
@@ -48,10 +53,119 @@ class AdminApiTest {
     }
 
     @Test
-    void rechazaAdminSinClave() throws Exception {
+    void auditaAccionesAdmin() throws Exception {
+        CreateCompanyResponse company = createCompany("B91919191");
+
+        var result = mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminAuditLogResponse[] audit = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                AdminAuditLogResponse[].class);
+        assertThat(audit)
+                .filteredOn(value -> value.action().equals("ADD_COMPANY")
+                        && value.targetId().equals(company.companyId().toString()))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.username()).isEqualTo("admin");
+                    assertThat(value.targetType()).isEqualTo("COMPANY");
+                    assertThat(value.createdAt()).isNotNull();
+                });
+    }
+
+    @Test
+    void cambiaPasswordUsuarioAdmin() throws Exception {
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("viewer-new-password"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("viewer", "admin")))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("viewer", "viewer-new-password")))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("123"))))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("admin"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void creaListaYDesactivaUsuarioAdmin() throws Exception {
+        mvc.perform(post("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new CreateAdminUserRequest(
+                                "support1",
+                                "supportpass",
+                                "VIEWER"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("support1", "supportpass")))
+                .andExpect(status().isOk());
+
+        var listResult = mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminUserResponse[] users = mapper.readValue(
+                listResult.getResponse().getContentAsString(),
+                AdminUserResponse[].class);
+        assertThat(users)
+                .filteredOn(value -> value.username().equals("support1"))
+                .singleElement()
+                .satisfies(value -> assertThat(value.active()).isTrue());
+
+        mvc.perform(delete("/api/v1/admin/users/{username}", "support1")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("support1", "supportpass")))
+                .andExpect(status().isUnauthorized());
+
+        var inactiveResult = mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminUserResponse[] inactiveUsers = mapper.readValue(
+                inactiveResult.getResponse().getContentAsString(),
+                AdminUserResponse[].class);
+        assertThat(inactiveUsers)
+                .filteredOn(value -> value.username().equals("support1"))
+                .singleElement()
+                .satisfies(value -> assertThat(value.active()).isFalse());
+    }
+
+    @Test
+    void rechazaAdminSinCredenciales() throws Exception {
         mvc.perform(post("/api/v1/admin/companies")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request("B87654321"))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rechazaBasicAuthMalFormado() throws Exception {
+        mvc.perform(post("/api/v1/admin/companies")
+                        .header("Authorization", "Basic ???")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(request("B88776655"))))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -60,7 +174,7 @@ class AdminApiTest {
         CreateCompanyResponse company = createCompany("B11223344");
 
         var result = mvc.perform(get("/api/v1/admin/licenses")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -73,11 +187,87 @@ class AdminApiTest {
     }
 
     @Test
+    void editaDatosEmpresa() throws Exception {
+        CreateCompanyResponse company = createCompany("B66554433");
+
+        mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new EditCompanyDataRequest(
+                                "Empresa Editada",
+                                TaxpayerType.AUTONOMO,
+                                TaxRegime.IVA))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/licenses")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        LicenseSummaryResponse[] licenses = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                LicenseSummaryResponse[].class);
+        assertThat(licenses)
+                .filteredOn(value -> value.companyId().equals(company.companyId()))
+                .singleElement()
+                .satisfies(value -> assertThat(value.companyName()).isEqualTo("Empresa Editada"));
+    }
+
+    @Test
+    void rechazaEditarEmpresaSinPermiso() throws Exception {
+        CreateCompanyResponse company = createCompany("B55443322");
+
+        mvc.perform(put("/api/v1/admin/companies/{companyId}", company.companyId())
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new EditCompanyDataRequest(
+                                "Empresa Editada",
+                                TaxpayerType.AUTONOMO,
+                                TaxRegime.IVA))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listaInstalacionesVinculadas() throws Exception {
+        CreateCompanyResponse company = createCompany("B44556677");
+        UUID installationId = UUID.randomUUID();
+        LicenseSaasLinkResponse link = link(company, installationId);
+
+        mvc.perform(post("/api/v1/license/validate")
+                        .header("X-TPV-Installation-Token", link.installationToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new LicenseSaasValidationRequest(
+                                installationId,
+                                "INST-1",
+                                company.storeId(),
+                                company.licenseReference(),
+                                "hash-local"))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/installations")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        InstallationSummaryResponse[] installations = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                InstallationSummaryResponse[].class);
+        assertThat(installations)
+                .filteredOn(value -> value.installationId().equals(installationId))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.companyId()).isEqualTo(company.companyId());
+                    assertThat(value.storeId()).isEqualTo(company.storeId());
+                    assertThat(value.licenseReference()).isEqualTo(company.licenseReference());
+                    assertThat(value.lastValidatedAt()).isNotNull();
+                });
+    }
+
+    @Test
     void renuevaLicenciaYCambiaLimites() throws Exception {
         CreateCompanyResponse company = createCompany("B22334455");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new RenewLicenseRequest(
                                 Instant.parse("2028-01-01T00:00:00Z"),
@@ -96,11 +286,25 @@ class AdminApiTest {
     }
 
     @Test
+    void rechazaRenovarSinPermiso() throws Exception {
+        CreateCompanyResponse company = createCompany("B55667788");
+
+        mvc.perform(post("/api/v1/admin/licenses/{reference}/renew", company.licenseReference())
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new RenewLicenseRequest(
+                                Instant.parse("2028-01-01T00:00:00Z"),
+                                5,
+                                2))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void regeneraCodigoDeEnlaceEInvalidaElAnterior() throws Exception {
         CreateCompanyResponse company = createCompany("B33445566");
 
         var result = mvc.perform(post("/api/v1/admin/licenses/{reference}/pairing-codes", company.licenseReference())
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key"))
+                        .header("Authorization", basic("admin", "admin")))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -141,7 +345,7 @@ class AdminApiTest {
 
     private CreateCompanyResponse createCompany(String taxId) throws Exception {
         var result = mvc.perform(post("/api/v1/admin/companies")
-                        .header("X-TPV-SaaS-Admin-Key", "test-admin-key")
+                        .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(request(taxId))))
                 .andExpect(status().isOk())
@@ -159,5 +363,27 @@ class AdminApiTest {
                 "TIENDA-1",
                 "B00000000",
                 "Empresa");
+    }
+
+    private LicenseSaasLinkResponse link(CreateCompanyResponse company, UUID installationId) throws Exception {
+        var result = mvc.perform(post("/api/v1/license/link")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new LicenseSaasLinkRequest(
+                                company.pairingCode(),
+                                installationId,
+                                "INST-1",
+                                "public-key",
+                                company.storeId(),
+                                "TIENDA-1",
+                                "B00000000",
+                                "Empresa"))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return mapper.readValue(result.getResponse().getContentAsString(), LicenseSaasLinkResponse.class);
+    }
+
+    private String basic(String user, String password) {
+        return "Basic " + Base64.getEncoder().encodeToString(
+                (user + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
 }

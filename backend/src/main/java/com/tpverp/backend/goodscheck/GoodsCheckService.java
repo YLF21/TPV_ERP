@@ -11,6 +11,7 @@ import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -125,10 +126,10 @@ public class GoodsCheckService {
                 && document.getEstado() != DocumentStatus.ANULADO;
     }
 
-    private static Map<UUID, Integer> expected(CommercialDocument document) {
-        var result = new LinkedHashMap<UUID, Integer>();
+    private static Map<UUID, BigDecimal> expected(CommercialDocument document) {
+        var result = new LinkedHashMap<UUID, BigDecimal>();
         for (var line : document.getLineas()) {
-            result.merge(line.getProductoId(), line.getCantidad(), Integer::sum);
+            result.merge(line.getProductoId(), line.getCantidad(), BigDecimal::add);
         }
         return result;
     }
@@ -177,8 +178,8 @@ public class GoodsCheckService {
                 check.getDocumentoId(),
                 check.getEstado(),
                 all,
-                all.stream().filter(item -> item.missingQuantity() > 0).toList(),
-                all.stream().filter(item -> item.registeredQuantity() > 0).toList());
+                all.stream().filter(item -> item.missingQuantity().signum() > 0).toList(),
+                all.stream().filter(item -> item.registeredQuantity().signum() > 0).toList());
     }
 
     private static Map<UUID, ProductLabel> labels(CommercialDocument document) {
@@ -190,8 +191,8 @@ public class GoodsCheckService {
     }
 
     private static GoodsCheckView.Item item(GoodsCheckLine line, ProductLabel label) {
-        var missing = Math.max(0, line.getCantidadEsperada() - line.getCantidadRegistrada());
-        var extra = Math.max(0, line.getCantidadRegistrada() - line.getCantidadEsperada());
+        var missing = line.getCantidadEsperada().subtract(line.getCantidadRegistrada()).max(BigDecimal.ZERO);
+        var extra = line.getCantidadRegistrada().subtract(line.getCantidadEsperada()).max(BigDecimal.ZERO);
         return new GoodsCheckView.Item(
                 line.getProductoId(),
                 label.code(),

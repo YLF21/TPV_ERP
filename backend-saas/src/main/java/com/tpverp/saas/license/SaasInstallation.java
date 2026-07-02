@@ -91,6 +91,18 @@ public class SaasInstallation {
         return installationId;
     }
 
+    public String getInstallationReference() {
+        return installationReference;
+    }
+
+    public Instant getLinkedAt() {
+        return linkedAt;
+    }
+
+    public Instant getLastValidatedAt() {
+        return lastValidatedAt;
+    }
+
     public boolean hasTokenHash(String value) {
         return tokenHash.equals(value);
     }

@@ -6,6 +6,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -100,12 +101,17 @@ public class CustomerController {
             String notes,
             @NotNull @DecimalMin("0.00") @DecimalMax("100.00") BigDecimal discount,
             boolean isMember,
-            String numMember) {
+            String numMember,
+            LocalDate birthday,
+            CustomerGender gender,
+            boolean commercialConsent,
+            UUID preferredCommercialChannelId) {
 
         CustomerService.CustomerCommand command() {
             return new CustomerService.CustomerCommand(
                     fiscalName, documentType, documentNumber, address,
-                    phone, email, notes, discount, isMember, numMember);
+                    phone, email, notes, discount, isMember, numMember,
+                    birthday, gender, commercialConsent, preferredCommercialChannelId);
         }
     }
 
