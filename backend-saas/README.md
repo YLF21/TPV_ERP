@@ -58,3 +58,36 @@ Requiere Docker. Si Docker no esta disponible, Testcontainers marca el test como
 ```
 
 Levanta el SaaS en un puerto aleatorio y valida por HTTP el flujo: crear empresa, vincular instalacion local, validar licencia y bloquearla manualmente.
+
+## Puesta en produccion
+
+Variables minimas:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE="prod"
+$env:TPV_SAAS_DB_URL="jdbc:postgresql://host:5432/tpv_erp_saas"
+$env:TPV_SAAS_DB_USERNAME="tpv_erp_saas"
+$env:TPV_SAAS_DB_PASSWORD="<password-fuerte>"
+$env:TPV_SAAS_CORS_ALLOWED_ORIGINS="https://panel.tudominio.com"
+$env:TPV_SAAS_ADMIN_DEFAULT_ALLOWED="false"
+```
+
+Ejecutar detras de un proxy HTTPS. La app ya lee `X-Forwarded-*` con `TPV_SAAS_FORWARD_HEADERS_STRATEGY=framework`.
+
+Despues del primer arranque, cambiar la password del usuario `admin` desde el endpoint de administracion. No dejar `TPV_SAAS_ADMIN_DEFAULT_ALLOWED=true` en produccion.
+
+## Backup y restore PostgreSQL
+
+Backup:
+
+```powershell
+pg_dump --format=custom --file ".\backups\tpv_erp_saas_$(Get-Date -Format yyyyMMdd_HHmmss).dump" "$env:TPV_SAAS_DB_URL"
+```
+
+Restore en una base vacia:
+
+```powershell
+pg_restore --clean --if-exists --dbname "$env:TPV_SAAS_DB_URL" ".\backups\tpv_erp_saas_YYYYMMDD_HHMMSS.dump"
+```
+
+Probar un restore completo antes de considerar validada una estrategia de backup.
