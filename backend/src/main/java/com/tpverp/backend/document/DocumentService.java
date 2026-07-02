@@ -10,6 +10,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -40,6 +43,7 @@ public class DocumentService {
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
     private final SupplierRepository suppliers;
+    private final ProductRepository products;
     private final ConfirmedPurchaseRecorder purchaseRecorder;
     private final DocumentFiscalIntegration fiscalIntegration;
     private final VoucherService vouchers;
@@ -58,6 +62,7 @@ public class DocumentService {
             CurrentOrganization organization,
             CustomerRepository customers,
             SupplierRepository suppliers,
+            ProductRepository products,
             ConfirmedPurchaseRecorder purchaseRecorder,
             DocumentFiscalIntegration fiscalIntegration,
             VoucherService vouchers,
@@ -74,6 +79,7 @@ public class DocumentService {
         this.organization = organization;
         this.customers = customers;
         this.suppliers = suppliers;
+        this.products = products;
         this.purchaseRecorder = purchaseRecorder;
         this.fiscalIntegration = fiscalIntegration;
         this.vouchers = vouchers;
@@ -411,10 +417,22 @@ public class DocumentService {
                         || command.tipo() == CommercialDocumentType.TICKET
                         || DELIVERY_NOTES.contains(command.tipo()));
         for (var line : command.lineas()) {
+            validateLineQuantity(line);
             document.addLine(line.toEntity(document));
         }
         return document;
     }
+
+    private void validateLineQuantity(DocumentLineCommand line) {
+        var product = products.findById(line.productoId())
+                .filter(value -> value.getStoreId().equals(organization.currentStore().getId()))
+                .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
+        if (product.getProductType() == ProductType.UNIT
+                && line.cantidad().stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("message.product.unit_quantity_must_be_integer");
+        }
+    }
+    // Enforces product quantity semantics before creating the fiscal line snapshot.
 
     private CommercialDocument invoiceFromTicket(
             CommercialDocument ticket, UUID customerId, Authentication authentication) {

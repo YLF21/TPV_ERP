@@ -10,6 +10,7 @@ import static org.mockito.Mockito.lenient;
 
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -100,7 +101,7 @@ class InventoryServiceTest {
         var result = service.adjust(
                 product.getId(), warehouse.getId(), -3, "ROTURA", authentication);
 
-        assertThat(result.quantity()).isEqualTo(-3);
+        assertThat(result.quantity()).isEqualByComparingTo("-3.000");
         verify(movementRepository).save(any(StockMovement.class));
     }
 
@@ -129,7 +130,7 @@ class InventoryServiceTest {
                 .containsEntry("almacenId", warehouse.getId().toString())
                 .containsEntry("usuarioId", userId.toString())
                 .containsEntry("tipo", "AJUSTE")
-                .containsEntry("cantidad", -3)
+                .containsEntry("cantidad", new BigDecimal("-3.000"))
                 .containsEntry("motivo", "ROTURA")
                 .containsEntry("creadoEn", "2026-06-08T12:00:00Z");
     }
@@ -139,6 +140,33 @@ class InventoryServiceTest {
         assertThatThrownBy(() -> service.adjust(
                 UUID.randomUUID(), UUID.randomUUID(), 1, " ", authentication))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void unitProductRejectsDecimalStockAdjustment() {
+        var product = product();
+        var warehouse = new Warehouse(storeId, "GENERAL 2");
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> service.adjust(
+                product.getId(), warehouse.getId(), new BigDecimal("1.500"), "ROTURA", authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.unit_quantity_must_be_integer");
+    }
+
+    @Test
+    void serviceProductRejectsStockAdjustment() {
+        var product = new Product(
+                storeId, UUID.randomUUID(), null, UUID.randomUUID(),
+                ProductType.SERVICE, com.tpverp.backend.catalog.DiscountType.NORMAL,
+                "SERVICIO", null, null, BigDecimal.ZERO, true);
+        var warehouse = new Warehouse(storeId, "GENERAL 2");
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+
+        assertThatThrownBy(() -> service.adjust(
+                product.getId(), warehouse.getId(), BigDecimal.ONE, "ROTURA", authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.service_has_no_stock");
     }
 
     @Test
@@ -157,8 +185,8 @@ class InventoryServiceTest {
         var result = service.transfer(
                 product.getId(), source.getId(), target.getId(), 4, authentication);
 
-        assertThat(result.sourceQuantity()).isEqualTo(-4);
-        assertThat(result.targetQuantity()).isEqualTo(4);
+        assertThat(result.sourceQuantity()).isEqualByComparingTo("-4.000");
+        assertThat(result.targetQuantity()).isEqualByComparingTo("4.000");
         verify(movementRepository, times(2)).save(any(StockMovement.class));
     }
 

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +26,7 @@ class StockSnapshotRebuildServiceTest {
         var productId = UUID.randomUUID();
         var warehouseId = UUID.randomUUID();
         when(movements.sumQuantitiesByProductAndWarehouse())
-                .thenReturn(List.of(new StockSnapshotQuantity(productId, warehouseId, 7)));
+                .thenReturn(List.of(new StockSnapshotQuantity(productId, warehouseId, new BigDecimal("7.000"))));
 
         var result = new StockSnapshotRebuildService(stockLevels, movements).rebuild();
 
@@ -38,6 +39,6 @@ class StockSnapshotRebuildServiceTest {
         assertThat(iterator.hasNext()).isFalse();
         assertThat(snapshot.getProductId()).isEqualTo(productId);
         assertThat(snapshot.getWarehouseId()).isEqualTo(warehouseId);
-        assertThat(snapshot.getQuantity()).isEqualTo(7);
+        assertThat(snapshot.getQuantity()).isEqualByComparingTo("7.000");
     }
 }

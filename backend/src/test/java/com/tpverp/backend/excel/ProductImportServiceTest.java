@@ -308,7 +308,7 @@ class ProductImportServiceTest {
         assertThat(documentCaptor.getValue().lineas()).hasSize(1);
         var line = documentCaptor.getValue().lineas().get(0);
         assertThat(line.productoId()).isEqualTo(saved.getId());
-        assertThat(line.cantidad()).isEqualTo(2);
+        assertThat(line.cantidad()).isEqualByComparingTo("2.000");
         assertThat(line.precioUnitario()).isEqualByComparingTo("10.00");
         assertThat(line.porcentajeImpuesto()).isEqualByComparingTo("21.00");
     }
