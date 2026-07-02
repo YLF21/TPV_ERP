@@ -46,3 +46,11 @@ Los endpoints `/api/v1/admin/**` usan HTTP Basic Auth.
 ```
 
 Requiere Docker. Si Docker no esta disponible, Testcontainers marca el test como omitido.
+
+## Test E2E HTTP licencia
+
+```powershell
+.\mvnw.cmd "-Dtest=LicenseHttpE2ETest" test
+```
+
+Levanta el SaaS en un puerto aleatorio y valida por HTTP el flujo: crear empresa, vincular instalacion local, validar licencia y bloquearla manualmente.
