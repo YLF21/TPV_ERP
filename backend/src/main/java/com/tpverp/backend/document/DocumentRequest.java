@@ -29,7 +29,7 @@ public record DocumentRequest(
 
     public record LineRequest(
             @NotNull UUID productoId,
-            int cantidad,
+            @NotNull BigDecimal cantidad,
             @NotNull String codigo,
             @NotNull String nombre,
             String tarifa,

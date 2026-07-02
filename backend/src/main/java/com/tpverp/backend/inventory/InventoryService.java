@@ -2,6 +2,7 @@ package com.tpverp.backend.inventory;
 
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -9,6 +10,7 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -50,9 +52,9 @@ public class InventoryService {
         if (productId != null && warehouseId != null) {
             Product product = product(productId, storeId);
             Warehouse warehouse = warehouse(warehouseId, storeId);
-            int quantity = stockRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
+            BigDecimal quantity = stockRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
                     .map(StockLevel::getQuantity)
-                    .orElse(0);
+                    .orElse(BigDecimal.ZERO.setScale(3));
             return List.of(new StockItem(product.getId(), warehouse.getId(), quantity));
         }
         if (productId != null) {
@@ -82,11 +84,21 @@ public class InventoryService {
             int quantity,
             String reason,
             Authentication authentication) {
+        return adjust(productId, warehouseId, BigDecimal.valueOf(quantity), reason, authentication);
+    }
+
+    @Transactional
+    public StockItem adjust(
+            UUID productId,
+            UUID warehouseId,
+            BigDecimal quantity,
+            String reason,
+            Authentication authentication) {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("El ajuste necesita un motivo");
         }
         UUID storeId = currentStore().getId();
-        product(productId, storeId);
+        validateStockQuantity(product(productId, storeId), quantity);
         warehouse(warehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
         StockLevel stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId)
@@ -106,17 +118,27 @@ public class InventoryService {
             UUID targetWarehouseId,
             int quantity,
             Authentication authentication) {
+        return transfer(productId, sourceWarehouseId, targetWarehouseId, BigDecimal.valueOf(quantity), authentication);
+    }
+
+    @Transactional
+    public TransferResult transfer(
+            UUID productId,
+            UUID sourceWarehouseId,
+            UUID targetWarehouseId,
+            BigDecimal quantity,
+            Authentication authentication) {
         if (Objects.equals(sourceWarehouseId, targetWarehouseId)) {
             throw new IllegalArgumentException("Los almacenes de origen y destino deben ser distintos");
         }
         UUID storeId = currentStore().getId();
-        product(productId, storeId);
+        validateStockQuantity(product(productId, storeId), quantity);
         warehouse(sourceWarehouseId, storeId);
         warehouse(targetWarehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
         StockLevel source = stockLevel(productId, sourceWarehouseId);
         StockLevel target = stockLevel(productId, targetWarehouseId);
-        source.apply(-positive(quantity));
+        source.apply(positive(quantity).negate());
         target.apply(quantity);
         stockRepository.save(source);
         stockRepository.save(target);
@@ -166,14 +188,32 @@ public class InventoryService {
         return organization.currentStore();
     }
 
-    private static int positive(int quantity) {
-        if (quantity <= 0) {
+    private static BigDecimal positive(BigDecimal quantity) {
+        var value = scale(quantity);
+        if (value.signum() <= 0) {
             throw new IllegalArgumentException("La cantidad debe ser positiva");
         }
-        return quantity;
+        return value;
     }
 
-    public record StockItem(UUID productId, UUID warehouseId, int quantity) {
+    private static void validateStockQuantity(Product product, BigDecimal quantity) {
+        if (product.getProductType() == ProductType.SERVICE) {
+            throw new IllegalArgumentException("message.product.service_has_no_stock");
+        }
+        if (product.getProductType() == ProductType.UNIT
+                && scale(quantity).stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("message.product.unit_quantity_must_be_integer");
+        }
+    }
+
+    private static BigDecimal scale(BigDecimal quantity) {
+        if (quantity.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("message.inventory.quantity_scale");
+        }
+        return quantity.setScale(3);
+    }
+
+    public record StockItem(UUID productId, UUID warehouseId, BigDecimal quantity) {
 
         static StockItem from(StockLevel stock) {
             return new StockItem(stock.getProductId(), stock.getWarehouseId(), stock.getQuantity());
@@ -185,7 +225,7 @@ public class InventoryService {
             UUID productId,
             UUID sourceWarehouseId,
             UUID targetWarehouseId,
-            int sourceQuantity,
-            int targetQuantity) {
+            BigDecimal sourceQuantity,
+            BigDecimal targetQuantity) {
     }
 }

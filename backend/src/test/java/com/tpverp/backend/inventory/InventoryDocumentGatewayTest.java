@@ -2,10 +2,14 @@ package com.tpverp.backend.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
@@ -33,6 +37,8 @@ class InventoryDocumentGatewayTest {
     @Mock
     private StockMovementRepository movementRepository;
     @Mock
+    private ProductRepository productRepository;
+    @Mock
     private CurrentOrganization organization;
     @Mock
     private Company company;
@@ -51,6 +57,7 @@ class InventoryDocumentGatewayTest {
         gateway = new InventoryDocumentGateway(
                 stockRepository,
                 movementRepository,
+                productRepository,
                 organization,
                 new StockMovementSyncPublisher(syncOutbox),
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
@@ -67,7 +74,7 @@ class InventoryDocumentGatewayTest {
 
         assertThat(gateway.confirm(document)).isTrue();
 
-        assertThat(stock.getQuantity()).isEqualTo(-3);
+        assertThat(stock.getQuantity()).isEqualByComparingTo("-3.000");
         verify(movementRepository).save(any(StockMovement.class));
         verify(syncOutbox).enqueue(any());
     }
@@ -83,7 +90,22 @@ class InventoryDocumentGatewayTest {
 
         gateway.confirm(document);
 
-        assertThat(stock.getQuantity()).isEqualTo(2);
+        assertThat(stock.getQuantity()).isEqualByComparingTo("2.000");
+    }
+
+    @Test
+    void serviceLineDoesNotMoveStock() {
+        var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, 2);
+        var line = document.getLineas().getFirst();
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getProductType()).thenReturn(ProductType.SERVICE);
+        when(productRepository.findById(line.getProductoId())).thenReturn(Optional.of(product));
+        when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
+
+        assertThat(gateway.confirm(document)).isTrue();
+
+        verify(stockRepository, never()).save(any());
+        verify(movementRepository, never()).save(any());
     }
 
     @Test

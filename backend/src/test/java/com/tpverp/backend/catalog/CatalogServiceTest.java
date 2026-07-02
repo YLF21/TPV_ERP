@@ -142,6 +142,23 @@ class CatalogServiceTest {
     }
 
     @Test
+    void discountPriceRequiresActiveOfferData() {
+        var base = productRequest("ABC", null);
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.DISCOUNT_PRICE,
+                "Producto", null, null, BigDecimal.ZERO, true, "ABC", null,
+                new BigDecimal("2.50"), null, null, null,
+                false, null, null);
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        assertThatThrownBy(() -> service.createProduct(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.discount_price_requires_offer");
+    }
+
+    @Test
     void updateStoresOnlyChangedPriceHistory() {
         var initial = productRequest("ABC", null);
         var product = new Product(
@@ -155,8 +172,8 @@ class CatalogServiceTest {
         when(taxRepository.findById(initial.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
         var changed = new CatalogService.ProductRequest(
-                initial.familyId(), null, initial.taxId(), "Producto", null,
-                new BigDecimal("1.00"), true, "ABC", null,
+                initial.familyId(), null, initial.taxId(), ProductType.UNIT, DiscountType.NORMAL,
+                "Producto", null, null, new BigDecimal("1.00"), true, "ABC", null,
                 new BigDecimal("3.00"), null, null, null,
                 false, null, null);
 
@@ -201,7 +218,7 @@ class CatalogServiceTest {
     void deletesEmptySecondaryWarehouse() {
         var warehouse = new Warehouse(storeId, "SECUNDARIO");
         when(warehouseRepository.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
-        when(stockRepository.sumQuantityByWarehouseId(warehouse.getId())).thenReturn(0L);
+        when(stockRepository.sumQuantityByWarehouseId(warehouse.getId())).thenReturn(BigDecimal.ZERO);
 
         service.deleteWarehouse(warehouse.getId());
 
@@ -210,8 +227,8 @@ class CatalogServiceTest {
 
     private CatalogService.ProductRequest productRequest(String code, String barcode) {
         return new CatalogService.ProductRequest(
-                UUID.randomUUID(), null, UUID.randomUUID(), "Producto", null,
-                BigDecimal.ZERO, true, code, barcode,
+                UUID.randomUUID(), null, UUID.randomUUID(), ProductType.UNIT, DiscountType.NORMAL,
+                "Producto", null, null, BigDecimal.ZERO, true, code, barcode,
                 new BigDecimal("2.50"), null, null, new BigDecimal("1.50"),
                 true, java.time.LocalDate.of(2026, 6, 1), null);
     }

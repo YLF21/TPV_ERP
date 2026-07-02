@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -37,8 +38,8 @@ public class StockMovement {
     @Column(nullable = false, length = 32)
     private StockMovementType tipo;
 
-    @Column(nullable = false)
-    private int cantidad;
+    @Column(nullable = false, precision = 19, scale = 3)
+    private BigDecimal cantidad;
 
     @Column(columnDefinition = "text")
     private String motivo;
@@ -63,11 +64,11 @@ public class StockMovement {
             UUID warehouseId,
             UUID userId,
             StockMovementType type,
-            int quantity,
+            BigDecimal quantity,
             String reason,
             UUID transferId,
             Instant createdAt) {
-        if (quantity == 0) {
+        if (quantity(quantity).signum() == 0) {
             throw new IllegalArgumentException("El movimiento no puede ser cero");
         }
         this.id = UUID.randomUUID();
@@ -75,7 +76,7 @@ public class StockMovement {
         this.warehouseId = Objects.requireNonNull(warehouseId, "warehouseId");
         this.userId = Objects.requireNonNull(userId, "userId");
         this.tipo = Objects.requireNonNull(type, "type");
-        this.cantidad = quantity;
+        this.cantidad = quantity(quantity);
         this.motivo = optional(reason);
         this.transferId = transferId;
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
@@ -83,6 +84,11 @@ public class StockMovement {
 
     public static StockMovement adjustment(
             UUID productId, UUID warehouseId, UUID userId, int quantity, String reason, Instant createdAt) {
+        return adjustment(productId, warehouseId, userId, BigDecimal.valueOf(quantity), reason, createdAt);
+    }
+
+    public static StockMovement adjustment(
+            UUID productId, UUID warehouseId, UUID userId, BigDecimal quantity, String reason, Instant createdAt) {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("El ajuste necesita un motivo");
         }
@@ -93,13 +99,23 @@ public class StockMovement {
 
     public static StockMovement transferOut(
             UUID productId, UUID warehouseId, UUID userId, int quantity, UUID transferId, Instant createdAt) {
+        return transferOut(productId, warehouseId, userId, BigDecimal.valueOf(quantity), transferId, createdAt);
+    }
+
+    public static StockMovement transferOut(
+            UUID productId, UUID warehouseId, UUID userId, BigDecimal quantity, UUID transferId, Instant createdAt) {
         return new StockMovement(
                 productId, warehouseId, userId, StockMovementType.TRANSFERENCIA_SALIDA,
-                -positive(quantity), null, Objects.requireNonNull(transferId, "transferId"), createdAt);
+                positive(quantity).negate(), null, Objects.requireNonNull(transferId, "transferId"), createdAt);
     }
 
     public static StockMovement transferIn(
             UUID productId, UUID warehouseId, UUID userId, int quantity, UUID transferId, Instant createdAt) {
+        return transferIn(productId, warehouseId, userId, BigDecimal.valueOf(quantity), transferId, createdAt);
+    }
+
+    public static StockMovement transferIn(
+            UUID productId, UUID warehouseId, UUID userId, BigDecimal quantity, UUID transferId, Instant createdAt) {
         return new StockMovement(
                 productId, warehouseId, userId, StockMovementType.TRANSFERENCIA_ENTRADA,
                 positive(quantity), null, Objects.requireNonNull(transferId, "transferId"), createdAt);
@@ -112,6 +128,17 @@ public class StockMovement {
             UUID documentId,
             StockMovementType type,
             int quantity,
+            Instant createdAt) {
+        return document(productId, warehouseId, userId, documentId, type, BigDecimal.valueOf(quantity), createdAt);
+    }
+
+    public static StockMovement document(
+            UUID productId,
+            UUID warehouseId,
+            UUID userId,
+            UUID documentId,
+            StockMovementType type,
+            BigDecimal quantity,
             Instant createdAt) {
         var movement = new StockMovement(
                 productId, warehouseId, userId, type, quantity, null, null, createdAt);
@@ -128,7 +155,7 @@ public class StockMovement {
                 userId,
                 original.documentId,
                 StockMovementType.ANULACION,
-                Math.negateExact(original.cantidad),
+                original.cantidad.negate(),
                 createdAt);
         movement.compensationOfId = original.id;
         return movement;
@@ -141,12 +168,22 @@ public class StockMovement {
             UUID outputId,
             int quantity,
             Instant createdAt) {
+        return warehouseOutput(productId, warehouseId, userId, outputId, BigDecimal.valueOf(quantity), createdAt);
+    }
+
+    public static StockMovement warehouseOutput(
+            UUID productId,
+            UUID warehouseId,
+            UUID userId,
+            UUID outputId,
+            BigDecimal quantity,
+            Instant createdAt) {
         var movement = new StockMovement(
                 productId,
                 warehouseId,
                 userId,
                 StockMovementType.SALIDA_ALMACEN,
-                -positive(quantity),
+                positive(quantity).negate(),
                 null,
                 null,
                 createdAt);
@@ -158,7 +195,7 @@ public class StockMovement {
         return id;
     }
 
-    public int getQuantity() {
+    public BigDecimal getQuantity() {
         return cantidad;
     }
 
@@ -202,11 +239,20 @@ public class StockMovement {
         return compensationOfId;
     }
 
-    private static int positive(int quantity) {
-        if (quantity <= 0) {
+    private static BigDecimal positive(BigDecimal quantity) {
+        var value = quantity(quantity);
+        if (value.signum() <= 0) {
             throw new IllegalArgumentException("La cantidad debe ser positiva");
         }
-        return quantity;
+        return value;
+    }
+
+    private static BigDecimal quantity(BigDecimal value) {
+        Objects.requireNonNull(value, "cantidad");
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException("message.inventory.quantity_scale");
+        }
+        return value.setScale(3);
     }
 
     private static String optional(String value) {
