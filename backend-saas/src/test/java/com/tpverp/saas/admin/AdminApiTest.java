@@ -75,6 +75,35 @@ class AdminApiTest {
     }
 
     @Test
+    void cambiaPasswordUsuarioAdmin() throws Exception {
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("viewer-new-password"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("viewer", "admin")))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("viewer", "viewer-new-password")))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("123"))))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("admin"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void rechazaAdminSinCredenciales() throws Exception {
         mvc.perform(post("/api/v1/admin/companies")
                         .contentType(MediaType.APPLICATION_JSON)

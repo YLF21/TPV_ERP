@@ -33,6 +33,8 @@ public class AdminService {
     private final SaasLicenseRepository licenses;
     private final SaasInstallationRepository installations;
     private final SaasPairingCodeRepository pairingCodes;
+    private final SaasAdminUserRepository adminUsers;
+    private final AdminPasswordHasher passwordHasher;
     private final AdminAuditService audit;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
@@ -43,6 +45,8 @@ public class AdminService {
             SaasLicenseRepository licenses,
             SaasInstallationRepository installations,
             SaasPairingCodeRepository pairingCodes,
+            SaasAdminUserRepository adminUsers,
+            AdminPasswordHasher passwordHasher,
             AdminAuditService audit,
             Clock clock) {
         this.companies = companies;
@@ -50,6 +54,8 @@ public class AdminService {
         this.licenses = licenses;
         this.installations = installations;
         this.pairingCodes = pairingCodes;
+        this.adminUsers = adminUsers;
+        this.passwordHasher = passwordHasher;
         this.audit = audit;
         this.clock = clock;
     }
@@ -133,6 +139,14 @@ public class AdminService {
                 .findFirst()
                 .map(AdminService::licenseSummary)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Empresa sin licencia"));
+    }
+
+    @Transactional
+    public void changePassword(String username, ChangeAdminPasswordRequest request) {
+        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        user.changePasswordHash(passwordHasher.hash(request.password()));
+        audit.log("CHANGE_ADMIN_PASSWORD", "ADMIN_USER", user.getUsername());
     }
 
     @Transactional

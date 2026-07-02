@@ -51,6 +51,9 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/companies/")) {
             return AdminPermission.EDIT_COMPANY_DATA;
         }
+        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/users/")) {
+            return AdminPermission.MANAGE_ADMIN_USERS;
+        }
         if ("POST".equals(method) && path.endsWith("/renew")) {
             return AdminPermission.RENEW_LICENSE;
         }

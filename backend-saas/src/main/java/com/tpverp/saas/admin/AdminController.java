@@ -35,6 +35,13 @@ public class AdminController {
         return service.editCompany(companyId, request);
     }
 
+    @PutMapping("/users/{username}/password")
+    public void changePassword(
+            @PathVariable String username,
+            @Valid @RequestBody ChangeAdminPasswordRequest request) {
+        service.changePassword(username, request);
+    }
+
     @GetMapping("/licenses")
     public List<LicenseSummaryResponse> licenses() {
         return service.licenses();

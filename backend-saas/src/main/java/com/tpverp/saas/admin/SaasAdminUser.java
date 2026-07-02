@@ -40,4 +40,8 @@ public class SaasAdminUser {
     public boolean isActive() {
         return active;
     }
+
+    public void changePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
 }
