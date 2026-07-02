@@ -18,7 +18,9 @@ Por defecto escucha en `http://localhost:8090`.
 - `TPV_SAAS_DB_URL`: JDBC PostgreSQL.
 - `TPV_SAAS_DB_USERNAME`: usuario PostgreSQL.
 - `TPV_SAAS_DB_PASSWORD`: password PostgreSQL.
+- `TPV_SAAS_ADMIN_DEFAULT_ALLOWED`: permite arrancar con perfil `prod` usando `admin/admin` si vale `true`.
 El usuario inicial de administracion es `admin` con password `admin`.
+En produccion debe cambiarse esa password tras el primer arranque. Si sigue activa con perfil `prod`, el servidor no arranca salvo override temporal con `TPV_SAAS_ADMIN_DEFAULT_ALLOWED=true`.
 
 ## Endpoints base
 

@@ -13,3 +13,6 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
+tpv:
+  saas:
+    admin-default-allowed: ${TPV_SAAS_ADMIN_DEFAULT_ALLOWED:false}
