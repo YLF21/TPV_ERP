@@ -3,6 +3,8 @@ package com.tpverp.backend.catalog;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
@@ -34,11 +36,22 @@ public class Product {
     @Column(name = "impuesto_id", nullable = false)
     private UUID taxId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_type", nullable = false, length = 16)
+    private ProductType productType = ProductType.UNIT;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", nullable = false, length = 32)
+    private DiscountType discountType = DiscountType.NORMAL;
+
     @Column(nullable = false)
     private String nombre;
 
     @Column(columnDefinition = "text")
     private String descripcion;
+
+    @Column(columnDefinition = "text")
+    private String comments;
 
     @Column(name = "precio_compra", nullable = false, precision = 19, scale = 2)
     private BigDecimal purchasePrice;
@@ -90,13 +103,32 @@ public class Product {
             String description,
             BigDecimal purchasePrice,
             boolean taxesIncluded) {
+        this(storeId, familyId, subfamilyId, taxId, ProductType.UNIT, DiscountType.NORMAL,
+                name, description, null, purchasePrice, taxesIncluded);
+    }
+
+    public Product(
+            UUID storeId,
+            UUID familyId,
+            UUID subfamilyId,
+            UUID taxId,
+            ProductType productType,
+            DiscountType discountType,
+            String name,
+            String description,
+            String comments,
+            BigDecimal purchasePrice,
+            boolean taxesIncluded) {
         this.id = UUID.randomUUID();
         this.storeId = Objects.requireNonNull(storeId, "storeId");
         this.familyId = Objects.requireNonNull(familyId, "familyId");
         this.subfamilyId = subfamilyId;
         this.taxId = Objects.requireNonNull(taxId, "taxId");
+        this.productType = Objects.requireNonNull(productType, "productType");
+        this.discountType = Objects.requireNonNull(discountType, "discountType");
         this.nombre = CatalogText.normalized(name, "nombre");
         this.descripcion = CatalogText.optional(description);
+        this.comments = CatalogText.optional(comments);
         this.purchasePrice = nonNegative(purchasePrice, "precioCompra");
         this.taxesIncluded = taxesIncluded;
     }
@@ -153,8 +185,20 @@ public class Product {
         return taxId;
     }
 
+    public ProductType getProductType() {
+        return productType;
+    }
+
+    public DiscountType getDiscountType() {
+        return discountType;
+    }
+
     public String getDescription() {
         return descripcion;
+    }
+
+    public String getComments() {
+        return comments;
     }
 
     public BigDecimal getPurchasePrice() {
@@ -197,11 +241,29 @@ public class Product {
             String description,
             BigDecimal purchasePrice,
             boolean taxesIncluded) {
+        update(familyId, subfamilyId, taxId, productType, discountType,
+                name, description, comments, purchasePrice, taxesIncluded);
+    }
+
+    public void update(
+            UUID familyId,
+            UUID subfamilyId,
+            UUID taxId,
+            ProductType productType,
+            DiscountType discountType,
+            String name,
+            String description,
+            String comments,
+            BigDecimal purchasePrice,
+            boolean taxesIncluded) {
         this.familyId = Objects.requireNonNull(familyId, "familyId");
         this.subfamilyId = subfamilyId;
         this.taxId = Objects.requireNonNull(taxId, "taxId");
+        this.productType = Objects.requireNonNull(productType, "productType");
+        this.discountType = Objects.requireNonNull(discountType, "discountType");
         this.nombre = CatalogText.normalized(name, "nombre");
         this.descripcion = CatalogText.optional(description);
+        this.comments = CatalogText.optional(comments);
         this.purchasePrice = nonNegative(purchasePrice, "precioCompra");
         this.taxesIncluded = taxesIncluded;
     }

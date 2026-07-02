@@ -189,8 +189,9 @@ public class CatalogService {
         Family general = familyRepository.findByStoreIdAndPredeterminadaTrue(family.getStoreId())
                 .orElseThrow(() -> new IllegalStateException("La familia GENERAL no esta inicializada"));
         productRepository.findByFamilyId(familyId).forEach(product -> product.update(
-                general.getId(), null, product.getTaxId(), product.getName(), product.getDescription(),
-                product.getPurchasePrice(), product.isTaxesIncluded()));
+                general.getId(), null, product.getTaxId(), product.getProductType(),
+                product.getDiscountType(), product.getName(), product.getDescription(),
+                product.getComments(), product.getPurchasePrice(), product.isTaxesIncluded()));
         familyRepository.delete(family);
     }
 
@@ -213,8 +214,9 @@ public class CatalogService {
         productRepository.findByStoreIdOrderByNombre(currentStore().getId()).stream()
                 .filter(product -> subfamilyId.equals(product.getSubfamilyId()))
                 .forEach(product -> product.update(
-                        product.getFamilyId(), null, product.getTaxId(), product.getName(),
-                        product.getDescription(), product.getPurchasePrice(), product.isTaxesIncluded()));
+                        product.getFamilyId(), null, product.getTaxId(), product.getProductType(),
+                        product.getDiscountType(), product.getName(), product.getDescription(),
+                        product.getComments(), product.getPurchasePrice(), product.isTaxesIncluded()));
         subfamilyRepository.delete(subfamily);
     }
 
@@ -236,7 +238,8 @@ public class CatalogService {
         validateIdentifiers(storeId, null, request.code(), request.barcode());
         Product product = new Product(
                 storeId, request.familyId(), request.subfamilyId(), request.taxId(),
-                request.name(), request.description(), request.purchasePrice(), request.taxesIncluded());
+                request.productType(), request.discountType(), request.name(), request.description(),
+                request.comments(), request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
         Product saved = productRepository.saveAndFlush(product);
         recordInitialPrices(saved);
@@ -250,8 +253,9 @@ public class CatalogService {
         validateIdentifiers(product.getStoreId(), productId, request.code(), request.barcode());
         PriceSnapshot before = PriceSnapshot.from(product);
         product.update(
-                request.familyId(), request.subfamilyId(), request.taxId(), request.name(),
-                request.description(), request.purchasePrice(), request.taxesIncluded());
+                request.familyId(), request.subfamilyId(), request.taxId(), request.productType(),
+                request.discountType(), request.name(), request.description(), request.comments(),
+                request.purchasePrice(), request.taxesIncluded());
         applyProductData(product, request);
         recordChangedPrices(product, before);
         return product;
@@ -280,6 +284,7 @@ public class CatalogService {
     }
 
     private void applyProductData(Product product, ProductRequest request) {
+        validateDiscountType(request);
         product.replaceIdentifier(IdentifierType.CODIGO, request.code());
         if (request.barcode() != null && !request.barcode().isBlank()) {
             product.replaceIdentifier(IdentifierType.CODIGO_BARRAS, request.barcode());
@@ -291,6 +296,13 @@ public class CatalogService {
         product.setPrice(PriceTier.MAYORISTA, request.wholesalePrice());
         product.setPrice(PriceTier.OFERTA, request.offerPrice());
         product.configureOffer(request.offerActive(), request.offerFrom(), request.offerUntil());
+    }
+
+    private static void validateDiscountType(ProductRequest request) {
+        if (request.discountType() == DiscountType.DISCOUNT_PRICE
+                && (!request.offerActive() || request.offerPrice() == null || request.offerFrom() == null)) {
+            throw new IllegalArgumentException("message.product.discount_price_requires_offer");
+        }
     }
 
     private void recordInitialPrices(Product product) {
@@ -439,8 +451,11 @@ public class CatalogService {
             @NotNull UUID familyId,
             UUID subfamilyId,
             @NotNull UUID taxId,
+            @NotNull ProductType productType,
+            @NotNull DiscountType discountType,
             @NotBlank String name,
             String description,
+            String comments,
             @NotNull BigDecimal purchasePrice,
             boolean taxesIncluded,
             @NotBlank String code,

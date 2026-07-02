@@ -2,11 +2,13 @@ package com.tpverp.backend.excel;
 
 import com.tpverp.backend.catalog.CatalogService;
 import com.tpverp.backend.catalog.CatalogService.ProductRequest;
+import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.FamilyRepository;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductIdentifier;
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.StoreTax;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.document.CommercialDocument;
@@ -246,8 +248,11 @@ public class ProductImportService {
                 product.getFamilyId(),
                 product.getSubfamilyId(),
                 product.getTaxId(),
+                product.getProductType(),
+                product.getDiscountType(),
                 name,
                 description,
+                product.getComments(),
                 purchasePrice,
                 product.isTaxesIncluded(),
                 product.getCode(),
@@ -274,8 +279,11 @@ public class ProductImportService {
                 family.getId(),
                 null,
                 tax.getId(),
+                ProductType.UNIT,
+                DiscountType.NORMAL,
                 ExcelCellReader.text(row, mapping.nombre()),
                 ExcelCellReader.text(row, mapping.descripcion()),
+                null,
                 money(row, mapping.precioCompra()),
                 true,
                 code,

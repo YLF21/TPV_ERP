@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -76,7 +77,7 @@ public class StockController {
     public record AdjustmentRequest(
             @NotNull UUID productId,
             @NotNull UUID warehouseId,
-            int quantity,
+            @NotNull BigDecimal quantity,
             @NotBlank String reason) {
     }
 
@@ -84,6 +85,6 @@ public class StockController {
             @NotNull UUID productId,
             @NotNull UUID sourceWarehouseId,
             @NotNull UUID targetWarehouseId,
-            @Positive int quantity) {
+            @NotNull @Positive BigDecimal quantity) {
     }
 }

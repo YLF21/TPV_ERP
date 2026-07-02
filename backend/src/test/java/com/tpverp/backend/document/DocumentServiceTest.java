@@ -10,6 +10,9 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.organization.Company;
@@ -66,6 +69,8 @@ class DocumentServiceTest {
     @Mock
     private SupplierRepository supplierRepository;
     @Mock
+    private ProductRepository productRepository;
+    @Mock
     private ConfirmedPurchaseRecorder purchaseRecorder;
     @Mock
     private DocumentFiscalIntegration fiscalIntegration;
@@ -105,6 +110,12 @@ class DocumentServiceTest {
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
+        lenient().when(productRepository.findById(any())).thenAnswer(invocation -> {
+            Product product = org.mockito.Mockito.mock(Product.class);
+            lenient().when(product.getStoreId()).thenReturn(store.getId());
+            lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
+            return Optional.of(product);
+        });
         service = new DocumentService(
                 documentRepository,
                 counterRepository,
@@ -114,6 +125,7 @@ class DocumentServiceTest {
                 currentOrganization,
                 customerRepository,
                 supplierRepository,
+                productRepository,
                 purchaseRecorder,
                 fiscalIntegration,
                 voucherService,
@@ -220,6 +232,28 @@ class DocumentServiceTest {
     }
 
     @Test
+    void unitProductRejectsDecimalQuantity() {
+        var command = new DocumentCommand(
+                UUID.randomUUID(),
+                CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 6, 8),
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                false,
+                List.of(new DocumentLineCommand(
+                        UUID.randomUUID(), new BigDecimal("1.500"), "P-1", "Producto", "VENTA",
+                        BigDecimal.TEN, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"))));
+
+        assertThatThrownBy(() -> service.createTicket(command, List.of(), authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.unit_quantity_must_be_integer");
+
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
     void ticketCreationLetsCashRecorderRequireOpenSessionWhenNeeded() {
         when(currentOrganization.currentStore()).thenReturn(store);
         when(currentOrganization.currentUser(any())).thenReturn(user);
@@ -311,7 +345,7 @@ class DocumentServiceTest {
                 .containsEntry("productoId", ticket.getLineas().getFirst().getProductoId().toString())
                 .containsEntry("codigo", "P-1")
                 .containsEntry("nombre", "Producto")
-                .containsEntry("cantidad", "1")
+                .containsEntry("cantidad", "1.000")
                 .containsEntry("precioUnitario", "10.00")
                 .containsEntry("descuento", "0.00")
                 .containsEntry("impuestosIncluidos", true)
