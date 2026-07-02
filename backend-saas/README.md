@@ -28,7 +28,10 @@ El usuario inicial de administracion es `admin` con password `admin`.
 - `POST /api/v1/admin/licenses/{reference}/block`
 - `POST /api/v1/admin/licenses/{reference}/unblock`
 - `POST /api/v1/admin/licenses/{reference}/pairing-codes`
+- `GET /api/v1/admin/users`
+- `POST /api/v1/admin/users`
 - `PUT /api/v1/admin/users/{username}/password`
+- `DELETE /api/v1/admin/users/{username}`
 - `GET /api/v1/admin/audit`
 - `POST /api/v1/license/link`
 - `POST /api/v1/license/validate`

@@ -3,6 +3,7 @@ package com.tpverp.saas.admin;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -40,6 +41,21 @@ public class AdminController {
             @PathVariable String username,
             @Valid @RequestBody ChangeAdminPasswordRequest request) {
         service.changePassword(username, request);
+    }
+
+    @PostMapping("/users")
+    public AdminUserResponse createUser(@Valid @RequestBody CreateAdminUserRequest request) {
+        return service.createUser(request);
+    }
+
+    @GetMapping("/users")
+    public List<AdminUserResponse> users() {
+        return service.users();
+    }
+
+    @DeleteMapping("/users/{username}")
+    public void deactivateUser(@PathVariable String username) {
+        service.deactivateUser(username);
     }
 
     @GetMapping("/licenses")

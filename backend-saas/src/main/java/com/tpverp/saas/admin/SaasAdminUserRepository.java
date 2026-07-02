@@ -10,6 +10,8 @@ public interface SaasAdminUserRepository extends JpaRepository<SaasAdminUser, UU
 
     Optional<SaasAdminUser> findByUsernameIgnoreCase(String username);
 
+    boolean existsByUsernameIgnoreCase(String username);
+
     @Query(value = """
             select distinct permission_code
             from saas_admin_user u

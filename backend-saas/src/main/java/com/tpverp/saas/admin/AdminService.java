@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,6 +37,7 @@ public class AdminService {
     private final SaasAdminUserRepository adminUsers;
     private final AdminPasswordHasher passwordHasher;
     private final AdminAuditService audit;
+    private final JdbcTemplate jdbc;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
@@ -48,6 +50,7 @@ public class AdminService {
             SaasAdminUserRepository adminUsers,
             AdminPasswordHasher passwordHasher,
             AdminAuditService audit,
+            JdbcTemplate jdbc,
             Clock clock) {
         this.companies = companies;
         this.stores = stores;
@@ -57,6 +60,7 @@ public class AdminService {
         this.adminUsers = adminUsers;
         this.passwordHasher = passwordHasher;
         this.audit = audit;
+        this.jdbc = jdbc;
         this.clock = clock;
     }
 
@@ -150,6 +154,45 @@ public class AdminService {
     }
 
     @Transactional
+    public AdminUserResponse createUser(CreateAdminUserRequest request) {
+        String username = request.username().trim();
+        if (adminUsers.existsByUsernameIgnoreCase(username)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Usuario admin ya existe");
+        }
+        SaasAdminUser user = adminUsers.saveAndFlush(new SaasAdminUser(
+                UUID.randomUUID(),
+                username,
+                passwordHasher.hash(request.password()),
+                true,
+                clock.instant()));
+        int assigned = jdbc.update("""
+                insert into saas_admin_user_role(user_id, role_id)
+                select ?, id from saas_admin_role where upper(name) = upper(?)
+                """, user.getId(), request.roleName());
+        if (assigned == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Rol admin no existe");
+        }
+        audit.log("CREATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
+        return userResponse(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminUserResponse> users() {
+        return adminUsers.findAll().stream()
+                .sorted(Comparator.comparing(SaasAdminUser::getUsername))
+                .map(AdminService::userResponse)
+                .toList();
+    }
+
+    @Transactional
+    public void deactivateUser(String username) {
+        SaasAdminUser user = adminUsers.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario admin no existe"));
+        user.deactivate();
+        audit.log("DEACTIVATE_ADMIN_USER", "ADMIN_USER", user.getUsername());
+    }
+
+    @Transactional
     public AdminLicenseResponse renew(String reference, RenewLicenseRequest request) {
         SaasLicense license = license(reference);
         license.renew(request.validUntil(), request.maxWindows(), request.maxPda());
@@ -215,6 +258,10 @@ public class AdminService {
                 installation.getLicense().getReference(),
                 installation.getLinkedAt(),
                 installation.getLastValidatedAt());
+    }
+
+    private static AdminUserResponse userResponse(SaasAdminUser user) {
+        return new AdminUserResponse(user.getUsername(), user.isActive(), user.getCreatedAt());
     }
 
     private String newPairingCode() {

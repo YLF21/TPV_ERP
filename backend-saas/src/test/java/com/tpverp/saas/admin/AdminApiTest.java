@@ -1,6 +1,7 @@
 package com.tpverp.saas.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -101,6 +102,54 @@ class AdminApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("admin"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void creaListaYDesactivaUsuarioAdmin() throws Exception {
+        mvc.perform(post("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new CreateAdminUserRequest(
+                                "support1",
+                                "supportpass",
+                                "VIEWER"))))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("support1", "supportpass")))
+                .andExpect(status().isOk());
+
+        var listResult = mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminUserResponse[] users = mapper.readValue(
+                listResult.getResponse().getContentAsString(),
+                AdminUserResponse[].class);
+        assertThat(users)
+                .filteredOn(value -> value.username().equals("support1"))
+                .singleElement()
+                .satisfies(value -> assertThat(value.active()).isTrue());
+
+        mvc.perform(delete("/api/v1/admin/users/{username}", "support1")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("support1", "supportpass")))
+                .andExpect(status().isUnauthorized());
+
+        var inactiveResult = mvc.perform(get("/api/v1/admin/users")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminUserResponse[] inactiveUsers = mapper.readValue(
+                inactiveResult.getResponse().getContentAsString(),
+                AdminUserResponse[].class);
+        assertThat(inactiveUsers)
+                .filteredOn(value -> value.username().equals("support1"))
+                .singleElement()
+                .satisfies(value -> assertThat(value.active()).isFalse());
     }
 
     @Test

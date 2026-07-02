@@ -29,6 +29,18 @@ public class SaasAdminUser {
     protected SaasAdminUser() {
     }
 
+    public SaasAdminUser(UUID id, String username, String passwordHash, boolean active, Instant createdAt) {
+        this.id = id;
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.active = active;
+        this.createdAt = createdAt;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
     public String getUsername() {
         return username;
     }
@@ -41,7 +53,15 @@ public class SaasAdminUser {
         return active;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public void changePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public void deactivate() {
+        active = false;
     }
 }
