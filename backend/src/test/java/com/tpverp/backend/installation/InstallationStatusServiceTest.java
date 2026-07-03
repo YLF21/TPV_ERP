@@ -24,14 +24,37 @@ class InstallationStatusServiceTest {
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
 
     @Test
-    void permiteTrabajarConLicenciaCaducadaSiSaasValidoHaceMenosDeUnMes() {
+    void reportsUnlinkedWhenThereIsNoActiveLicense() {
+        var service = serviceAt("2026-06-20T00:00:00Z");
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of());
+
+        var status = service.status();
+
+        assertThat(status.mode()).isEqualTo(OperationalMode.UNLINKED);
+        assertThat(status.activeLicenseReference()).isNull();
+    }
+
+    @Test
+    void reportsRestrictedWhenActiveLicenseIsSaasBlocked() {
+        var service = serviceAt("2026-08-20T00:00:00Z");
+        var license = license("2027-07-31T23:59:59Z", "2026-08-01T00:00:00Z");
+        license.markSaasBlocked(Instant.parse("2026-08-20T00:00:00Z"));
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of(license));
+
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.RESTRICTED);
+    }
+
+    @Test
+    void reportsOfflineWhenExpiredLicenseStillInsideOfflineGrace() {
         var service = serviceAt("2026-08-20T00:00:00Z");
         when(installations.findAll()).thenReturn(List.of(installation()));
         when(licenses.findAll()).thenReturn(List.of(license(
                 "2026-07-31T23:59:59Z",
                 "2026-08-01T00:00:00Z")));
 
-        assertThat(service.status().mode()).isEqualTo(OperationalMode.LICENSED);
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.OFFLINE);
     }
 
     @Test

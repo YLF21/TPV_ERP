@@ -11,6 +11,9 @@ public final class OperationalAccessPolicy {
 			OperationCategory.BACKUP_OR_RESTORE);
 
 	public boolean isAllowed(OperationalMode mode, OperationCategory category) {
-		return mode != OperationalMode.RESTRICTED || RESTRICTED_OPERATIONS.contains(category);
+		return switch (mode) {
+			case LICENSED, OFFLINE -> true;
+			case UNLINKED, RESTRICTED -> RESTRICTED_OPERATIONS.contains(category);
+		};
 	}
 }

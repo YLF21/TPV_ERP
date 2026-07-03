@@ -11,8 +11,8 @@ class OperationalAccessPolicyTest {
 
 	@ParameterizedTest
 	@EnumSource(OperationCategory.class)
-	void demoAllowsEveryOperation(OperationCategory category) {
-		assertThat(policy.isAllowed(OperationalMode.DEMO, category)).isTrue();
+	void offlineModeAllowsEveryOperation(OperationCategory category) {
+		assertThat(policy.isAllowed(OperationalMode.OFFLINE, category)).isTrue();
 	}
 
 	@ParameterizedTest
@@ -35,5 +35,13 @@ class OperationalAccessPolicyTest {
 			names = {"BUSINESS_WRITE", "SECURITY_WRITE", "TERMINAL_WRITE"})
 	void restrictedModeBlocksNormalWrites(OperationCategory category) {
 		assertThat(policy.isAllowed(OperationalMode.RESTRICTED, category)).isFalse();
+	}
+
+	@ParameterizedTest
+	@EnumSource(
+			value = OperationCategory.class,
+			names = {"BUSINESS_WRITE", "SECURITY_WRITE", "TERMINAL_WRITE"})
+	void unlinkedModeBlocksNormalWrites(OperationCategory category) {
+		assertThat(policy.isAllowed(OperationalMode.UNLINKED, category)).isFalse();
 	}
 }

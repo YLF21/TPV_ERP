@@ -67,37 +67,31 @@ class InstallationBootstrapServiceTest {
 	}
 
 	@Test
-	void createsDemoStoreServerAndProtectedAdminOnFirstStart() throws Exception {
+	void firstBootCreatesOnlyInstallationIdentityAndAdminBeforeSaasLink() throws Exception {
 		when(instalacionRepository.count()).thenReturn(0L);
 		when(identityStore.loadOrCreate()).thenReturn(identity());
 		when(passwordEncoder.encode(any())).thenAnswer(invocation ->
 				"0000".equals(invocation.getArgument(0)) ? "admin-hash" : "credential-hash");
-		when(empresaRepository.save(any(Company.class))).thenAnswer(invocation -> invocation.getArgument(0));
-		when(tiendaRepository.save(any(Store.class))).thenAnswer(invocation -> invocation.getArgument(0));
 		when(rolRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		service.initialize();
 
 		var installation = ArgumentCaptor.forClass(Installation.class);
-		var store = ArgumentCaptor.forClass(Store.class);
 		var role = ArgumentCaptor.forClass(Role.class);
 		var user = ArgumentCaptor.forClass(UserAccount.class);
-		var terminal = ArgumentCaptor.forClass(Terminal.class);
 		verify(instalacionRepository).save(installation.capture());
-		verify(tiendaRepository).save(store.capture());
 		verify(rolRepository).save(role.capture());
 		verify(usuarioRepository).save(user.capture());
-		verify(terminalRepository).save(terminal.capture());
+		verify(empresaRepository, never()).save(any(Company.class));
+		verify(tiendaRepository, never()).save(any(Store.class));
+		verify(terminalRepository, never()).save(any(Terminal.class));
 
 		assertThat(installation.getValue().getDemoHasta())
 				.isEqualTo(Instant.parse("2026-07-08T10:00:00Z"));
-		assertThat(store.getValue().getCodigoTienda()).isEqualTo("001");
-		assertThat(store.getValue().getTimezone()).isEqualTo("Atlantic/Canary");
 		assertThat(role.getValue().getNombre()).isEqualTo("ADMIN");
 		assertThat(role.getValue().isProtegido()).isTrue();
 		assertThat(user.getValue().getNombre()).isEqualTo("ADMIN");
 		assertThat(user.getValue().isProtegido()).isTrue();
-		assertThat(terminal.getValue().getNombre()).isEqualTo("SERVIDOR");
 	}
 
 	@Test

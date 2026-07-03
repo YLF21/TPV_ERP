@@ -254,9 +254,11 @@ public class BackupService {
     }
 
     private void verifyAdminPassword(String password) {
-        Store store = storeRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("La tienda no esta inicializada"));
-        UserAccount admin = userRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN")
+        UserAccount admin = storeRepository.findAll().stream().findFirst()
+                .flatMap(store -> userRepository.findByTiendaIdAndNombre(store.getId(), "ADMIN"))
+                .or(() -> userRepository.findAll().stream()
+                        .filter(user -> "ADMIN".equals(user.getNombre()))
+                        .findFirst())
                 .orElseThrow(() -> new IllegalStateException("El usuario ADMIN no existe"));
         if (password == null || !passwordEncoder.matches(password, admin.getPasswordHash())) {
             throw new IllegalArgumentException("La contrasena ADMIN no es valida");

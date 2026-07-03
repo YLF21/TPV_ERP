@@ -235,9 +235,18 @@ public class License {
         estadoSaas = LicenseSaasStatus.BLOQUEADA_MANUAL;
     }
 
+    public void markSaasRejected(Instant validatedAt, LicenseSaasStatus status, Instant validUntil) {
+        ultimaValidacionSaas = Objects.requireNonNull(validatedAt, "validatedAt");
+        estadoSaas = Objects.requireNonNull(status, "status");
+        if (validUntil != null) {
+            validaHasta = validUntil;
+        }
+    }
+    // Stores the exact SaaS rejection state so support can distinguish expired, blocked and update-required licenses.
+
     public boolean isOperationalAt(Instant now) {
         Objects.requireNonNull(now, "now");
-        if (estadoSaas == LicenseSaasStatus.BLOQUEADA_MANUAL) {
+        if (estadoSaas != LicenseSaasStatus.VALIDA) {
             return false;
         }
         if (now.isBefore(validaDesde)) {

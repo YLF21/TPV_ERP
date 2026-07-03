@@ -90,6 +90,32 @@ class LicenseSaasValidationServiceTest {
     }
 
     @Test
+    void caducadaPorSaasBloqueaYConservaEstadoExacto() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        when(client.validate(new LicenseSaasValidationRequest(
+                installation.getId(),
+                installation.getReferencia(),
+                store.getId(),
+                license.getReferencia(),
+                license.getHash())))
+                .thenReturn(new LicenseSaasValidationResponse(
+                        LicenseSaasStatus.CADUCADA,
+                        NOW.minusSeconds(1)));
+
+        service.validateActiveLicense();
+
+        assertThat(license.getEstadoSaas()).isEqualTo(LicenseSaasStatus.CADUCADA);
+        assertThat(license.isOperationalAt(NOW)).isFalse();
+        verify(licenses).save(license);
+    }
+
+    @Test
     void noHaceNadaSiNoHayLicenciaActiva() {
         var installation = installation();
         var store = store();

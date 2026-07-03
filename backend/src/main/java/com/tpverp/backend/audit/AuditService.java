@@ -29,7 +29,7 @@ public class AuditService {
 
     @Transactional
     public void record(String event, AuditResult result, Map<String, Object> details) {
-        var store = organization.currentStore();
+        var store = currentStoreOrNull();
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var user = resolveUser(authentication);
         auditoriaRepository.save(new AuditEntry(
@@ -90,6 +90,14 @@ public class AuditService {
         }
         try {
             return organization.currentUser(authentication);
+        } catch (IllegalStateException exception) {
+            return null;
+        }
+    }
+
+    private Store currentStoreOrNull() {
+        try {
+            return organization.currentStore();
         } catch (IllegalStateException exception) {
             return null;
         }
