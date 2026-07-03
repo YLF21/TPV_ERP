@@ -18,6 +18,7 @@ public class CustomerService {
     private final PartyContext context;
     private final PartyCodeAllocator codes;
     private final MemberRepository members;
+    private final MemberLoyaltyService memberLoyalty;
     private final Clock clock;
 
     public CustomerService(
@@ -26,12 +27,14 @@ public class CustomerService {
             PartyContext context,
             PartyCodeAllocator codes,
             MemberRepository members,
+            MemberLoyaltyService memberLoyalty,
             Clock clock) {
         this.customers = customers;
         this.movements = movements;
         this.context = context;
         this.codes = codes;
         this.members = members;
+        this.memberLoyalty = memberLoyalty;
         this.clock = clock;
     }
 
@@ -67,6 +70,7 @@ public class CustomerService {
             member.assignMemberStore(store.getId());
             member.setNumMember(command.numMember());
             members.save(member);
+            memberLoyalty.activateMember(member);
         }
         return view(customer, member);
     }
@@ -108,6 +112,7 @@ public class CustomerService {
                 member.assignMemberStore(store.getId());
                 member.setNumMember(command.numMember());
                 members.save(member);
+                memberLoyalty.activateMember(member);
             }
         }
         return saved.stream().map(this::view).toList();
@@ -134,12 +139,15 @@ public class CustomerService {
                 member = new Member(customer, codes.nextMember(store), LocalDate.now(clock));
                 member.assignMemberStore(store.getId());
                 members.save(member);
+                memberLoyalty.activateMember(member);
             } else {
-                member.activate();
+                if (!member.isActive()) {
+                    memberLoyalty.activateMember(member);
+                }
             }
             member.setNumMember(command.numMember());
         } else if (member != null && member.isActive()) {
-            member.deactivate();
+            memberLoyalty.deactivateMember(member);
         }
         return view(customer, member);
     }
@@ -147,6 +155,33 @@ public class CustomerService {
     @Transactional
     public void deactivate(UUID id) {
         customer(id).deactivate();
+    }
+
+    @Transactional
+    public CustomerView activateMember(UUID id) {
+        Customer customer = customer(id);
+        Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
+                .orElseGet(() -> {
+                    var store = context.currentStore();
+                    var created = new Member(customer, codes.nextMember(store), LocalDate.now(clock));
+                    created.assignMemberStore(store.getId());
+                    return members.save(created);
+                });
+        if (!member.isActive()) {
+            memberLoyalty.activateMember(member);
+        } else if (member.getMemberCategory() == null) {
+            memberLoyalty.activateMember(member);
+        }
+        return view(customer, member);
+    }
+
+    @Transactional
+    public CustomerView deactivateMember(UUID id) {
+        Customer customer = customer(id);
+        members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
+                .filter(Member::isActive)
+                .ifPresent(memberLoyalty::deactivateMember);
+        return view(customer);
     }
 
     @Transactional
@@ -273,6 +308,7 @@ public class CustomerService {
             CustomerRate rate,
             BigDecimal discount,
             boolean isMember,
+            UUID memberUuid,
             String memberId,
             String numMember,
             LocalDate memberSince,
@@ -293,6 +329,7 @@ public class CustomerService {
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),
                     activeMember ? CustomerRate.MEMBER : customer.getRate(),
                     customer.getDiscount(), activeMember,
+                    member == null ? null : member.getId(),
                     member == null ? null : member.getMemberId(),
                     member == null ? null : member.getNumMember(),
                     member == null ? null : member.getMemberSince(),

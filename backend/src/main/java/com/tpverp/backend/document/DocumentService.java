@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
@@ -17,6 +18,7 @@ import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
+import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
@@ -34,6 +36,8 @@ public class DocumentService {
     private static final EnumSet<CommercialDocumentType> INVOICES = EnumSet.of(
             CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.FACTURA_COMPRA,
             CommercialDocumentType.RECTIFICATIVA_VENTA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
+    private static final String MEMBER_BALANCE_METHOD = "SALDO_MIEMBRO";
+    private static final String VOUCHER_METHOD = "VALE";
 
     private final CommercialDocumentRepository documents;
     private final DocumentCounterRepository counters;
@@ -49,6 +53,7 @@ public class DocumentService {
     private final VoucherService vouchers;
     private final CurrentTerminal currentTerminal;
     private final CashPaymentRecorder cashPayments;
+    private final MemberLoyaltyService memberLoyalty;
     private final SyncOutboxService syncOutbox;
     private final ProductImportLineMetadataRepository importMetadata;
     private final Clock clock;
@@ -68,6 +73,7 @@ public class DocumentService {
             VoucherService vouchers,
             CurrentTerminal currentTerminal,
             CashPaymentRecorder cashPayments,
+            MemberLoyaltyService memberLoyalty,
             SyncOutboxService syncOutbox,
             ProductImportLineMetadataRepository importMetadata,
             Clock clock) {
@@ -85,6 +91,7 @@ public class DocumentService {
         this.vouchers = vouchers;
         this.currentTerminal = currentTerminal;
         this.cashPayments = cashPayments;
+        this.memberLoyalty = memberLoyalty;
         this.syncOutbox = syncOutbox;
         this.importMetadata = importMetadata;
         this.clock = clock;
@@ -172,6 +179,8 @@ public class DocumentService {
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
+        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+                saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
         if (saved.getTotal().signum() < 0) {
             vouchers.issueFromNegativeTicket(saved);
         }
@@ -353,10 +362,11 @@ public class DocumentService {
     private CommercialDocument payReceivable(
             CommercialDocument document, List<PaymentCommand> payments, Authentication authentication) {
         var terminalId = currentTerminal.terminalId(authentication);
-        addPartialPayments(document, payments);
+        var paidNow = addPartialPayments(document, payments);
         document.updatePaymentStatus();
         var saved = documents.save(document);
         cashPayments.recordDocumentPayments(terminalId, saved);
+        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(saved, paidNow));
         enqueueDocumentEvent(saved, terminalId, SyncOperation.ACTUALIZAR);
         return saved;
     }
@@ -417,16 +427,21 @@ public class DocumentService {
                         || command.tipo() == CommercialDocumentType.TICKET
                         || DELIVERY_NOTES.contains(command.tipo()));
         for (var line : command.lineas()) {
-            validateLineQuantity(line);
-            document.addLine(line.toEntity(document));
+            var product = productForLine(line);
+            validateLineQuantity(line, product);
+            var pricedLine = memberLoyalty.applyLineBenefit(command.clienteId(), line, product);
+            document.addLine(pricedLine.toEntity(document));
         }
         return document;
     }
 
-    private void validateLineQuantity(DocumentLineCommand line) {
-        var product = products.findById(line.productoId())
+    private Product productForLine(DocumentLineCommand line) {
+        return products.findById(line.productoId())
                 .filter(value -> value.getStoreId().equals(organization.currentStore().getId()))
                 .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
+    }
+
+    private void validateLineQuantity(DocumentLineCommand line, Product product) {
         if (product.getProductType() == ProductType.UNIT
                 && line.cantidad().stripTrailingZeros().scale() > 0) {
             throw new IllegalArgumentException("message.product.unit_quantity_must_be_integer");
@@ -467,7 +482,7 @@ public class DocumentService {
         }
     }
 
-    private void addPartialPayments(CommercialDocument document, List<PaymentCommand> commands) {
+    private BigDecimal addPartialPayments(CommercialDocument document, List<PaymentCommand> commands) {
         requirePaymentsPresent(commands);
         var pending = document.getPendingTotal();
         requirePaymentTotalAtMost(commands, pending);
@@ -476,6 +491,7 @@ public class DocumentService {
                 .toList();
         requirePaymentTotalAtMost(resolved, pending);
         appendPayments(document, resolved);
+        return loyaltyAccrualCommandTotal(resolved);
     }
 
     private void appendPayments(CommercialDocument document, List<PaymentCommand> commands) {
@@ -512,6 +528,11 @@ public class DocumentService {
         }
     }
 
+    private static BigDecimal paymentTotal(List<PaymentCommand> commands) {
+        return commands.stream().map(PaymentCommand::importe)
+                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private static void requirePaymentTotalAtMost(List<PaymentCommand> commands, BigDecimal maximum) {
         var total = commands.stream().map(PaymentCommand::importe)
                 .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -529,7 +550,14 @@ public class DocumentService {
                         "metodo de pago activo no encontrado"));
         requireReferenceIfNeeded(method, command);
         requireCashAmountsOnlyForDrawerMethods(method, command);
-        if (!"VALE".equals(method.getNombre())) {
+        if (MEMBER_BALANCE_METHOD.equals(method.getNombre())) {
+            rejectVoucherCode(command, "codigo de vale no permitido con SALDO_MIEMBRO");
+            var consumed = memberLoyalty.consumeBalanceForPayment(document, command.importe());
+            return new PaymentCommand(
+                    command.metodoPagoId(), consumed, command.principal(),
+                    command.entregado(), command.cambio(), null, command.reference());
+        }
+        if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
                 throw new IllegalArgumentException("codigo de vale solo permitido con metodo VALE");
             }
@@ -544,6 +572,62 @@ public class DocumentService {
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
+
+    private static void rejectVoucherCode(PaymentCommand command, String message) {
+        if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private static BigDecimal loyaltyAccrualPaymentTotal(List<DocumentPayment> payments) {
+        return payments.stream()
+                .filter(payment -> !MEMBER_BALANCE_METHOD.equals(payment.getMetodoPago().getNombre()))
+                .map(DocumentPayment::getImporte)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal loyaltyAccrualCommandTotal(List<PaymentCommand> commands) {
+        return commands.stream()
+                .filter(command -> paymentMethods.findById(command.metodoPagoId())
+                        .map(PaymentMethod::getNombre)
+                        .filter(MEMBER_BALANCE_METHOD::equals)
+                        .isEmpty())
+                .map(PaymentCommand::importe)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal eligibleAccrualAmount(CommercialDocument document, BigDecimal paidAmount) {
+        var paid = Money.euros(paidAmount);
+        if (paid.signum() <= 0 || document.getTotal().signum() <= 0) {
+            return BigDecimal.ZERO.setScale(Money.SCALE);
+        }
+        var eligibleTotal = eligibleDocumentTotal(document);
+        if (eligibleTotal.compareTo(document.getTotal()) >= 0) {
+            return paid;
+        }
+        return Money.euros(paid.multiply(eligibleTotal)
+                .divide(document.getTotal(), Money.SCALE + 4, Money.ROUNDING));
+    }
+    // Applies loyalty only to the paid proportion of document lines that allow automatic benefits.
+
+    private BigDecimal eligibleDocumentTotal(CommercialDocument document) {
+        var ids = document.getLineas().stream()
+                .map(DocumentLine::getProductoId)
+                .distinct()
+                .toList();
+        var eligibleIds = products.findAllByStoreIdAndIdIn(document.getTiendaId(), ids).stream()
+                .filter(product -> product.getDiscountType() != DiscountType.NONE)
+                .map(Product::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        var lineTotal = document.getLineas().stream()
+                .filter(line -> eligibleIds.contains(line.getProductoId()))
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var globalFactor = BigDecimal.ONE.subtract(document.getDescuentoGlobal().movePointLeft(2));
+        return Money.euros(lineTotal.multiply(globalFactor));
+    }
 
     private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
         if (method.isRequiereReferencia()

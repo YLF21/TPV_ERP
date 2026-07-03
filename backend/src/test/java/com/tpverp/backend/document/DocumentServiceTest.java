@@ -8,8 +8,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doReturn;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
@@ -25,6 +27,7 @@ import com.tpverp.backend.party.CustomerRate;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
+import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.sync.SyncOperation;
@@ -81,6 +84,8 @@ class DocumentServiceTest {
     @Mock
     private CashPaymentRecorder cashPaymentRecorder;
     @Mock
+    private MemberLoyaltyService memberLoyaltyService;
+    @Mock
     private SyncOutboxService syncOutbox;
     @Mock
     private ProductImportLineMetadataRepository importMetadata;
@@ -110,11 +115,24 @@ class DocumentServiceTest {
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
+        lenient().when(memberLoyaltyService.applyLineBenefit(any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(productRepository.findById(any())).thenAnswer(invocation -> {
             Product product = org.mockito.Mockito.mock(Product.class);
+            lenient().when(product.getId()).thenReturn(invocation.getArgument(0));
             lenient().when(product.getStoreId()).thenReturn(store.getId());
             lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
+            lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
             return Optional.of(product);
+        });
+        lenient().when(productRepository.findAllByStoreIdAndIdIn(any(), any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> ids = invocation.getArgument(1);
+            return ids.stream().map(id -> {
+                Product product = org.mockito.Mockito.mock(Product.class);
+                lenient().when(product.getId()).thenReturn(id);
+                lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+                return product;
+            }).toList();
         });
         service = new DocumentService(
                 documentRepository,
@@ -131,6 +149,7 @@ class DocumentServiceTest {
                 voucherService,
                 currentTerminal,
                 cashPaymentRecorder,
+                memberLoyaltyService,
                 syncOutbox,
                 importMetadata,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -303,6 +322,67 @@ class DocumentServiceTest {
         assertThat(ticket.getPagos()).hasSize(2);
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
+        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+    }
+
+    @Test
+    void memberBalancePaymentDoesNotAccrueNewLoyalty() {
+        var balance = new PaymentMethod(store.getEmpresa().getId(), "SALDO_MIEMBRO", true);
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(balance.getId())).thenReturn(Optional.of(balance));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        when(memberLoyaltyService.consumeBalanceForPayment(
+                any(), org.mockito.ArgumentMatchers.eq(new BigDecimal("4.00"))))
+                .thenReturn(new BigDecimal("4.00"));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET),
+                List.of(
+                        new PaymentCommand(balance.getId(), new BigDecimal("4.00"), true, null, null),
+                        new PaymentCommand(card.getId(), new BigDecimal("6.00"), false, null, null)),
+                authentication());
+
+        assertThat(ticket.getPagos()).hasSize(2);
+        verify(memberLoyaltyService).consumeBalanceForPayment(ticket, new BigDecimal("4.00"));
+        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("6.00"));
+    }
+
+    @Test
+    void loyaltyAccruesOnlyEligibleProductLines() {
+        var paidMethod = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        var eligibleId = UUID.randomUUID();
+        var excludedId = UUID.randomUUID();
+        var eligible = org.mockito.Mockito.mock(Product.class);
+        var excluded = org.mockito.Mockito.mock(Product.class);
+        when(eligible.getId()).thenReturn(eligibleId);
+        when(eligible.getStoreId()).thenReturn(store.getId());
+        when(eligible.getProductType()).thenReturn(ProductType.UNIT);
+        when(eligible.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(excluded.getStoreId()).thenReturn(store.getId());
+        when(excluded.getProductType()).thenReturn(ProductType.UNIT);
+        when(excluded.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(productRepository.findById(eligibleId)).thenReturn(Optional.of(eligible));
+        when(productRepository.findById(excludedId)).thenReturn(Optional.of(excluded));
+        doReturn(List.of(eligible, excluded))
+                .when(productRepository).findAllByStoreIdAndIdIn(any(), any());
+        when(paymentMethodRepository.findById(paidMethod.getId())).thenReturn(Optional.of(paidMethod));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(eligibleId, "P-1", "Producto", new BigDecimal("10.00")),
+                        line(excludedId, "P-2", "Excluido", new BigDecimal("30.00")))),
+                List.of(new PaymentCommand(paidMethod.getId(), new BigDecimal("40.00"), true, null, null)),
+                authentication());
+
+        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
     }
 
     @Test
@@ -571,6 +651,7 @@ class DocumentServiceTest {
 
         assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
         assertThat(partial.getPendingTotal()).isEqualByComparingTo("6.00");
+        verify(memberLoyaltyService).recordPaidSale(partial, new BigDecimal("4.00"));
 
         var paid = service.payInvoice(
                 invoice.getId(),
@@ -580,6 +661,7 @@ class DocumentServiceTest {
 
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
         assertThat(paid.getPagos()).hasSize(2);
+        verify(memberLoyaltyService).recordPaidSale(paid, new BigDecimal("6.00"));
     }
 
     @Test
@@ -940,6 +1022,10 @@ class DocumentServiceTest {
     }
 
     private DocumentCommand command(CommercialDocumentType type) {
+        return command(type, lines());
+    }
+
+    private DocumentCommand command(CommercialDocumentType type, List<DocumentLineCommand> lines) {
         return new DocumentCommand(
                 UUID.randomUUID(),
                 type,
@@ -949,14 +1035,17 @@ class DocumentServiceTest {
                 null,
                 BigDecimal.ZERO,
                 false,
-                lines());
+                lines);
     }
 
     private List<DocumentLineCommand> lines() {
-        return List.of(new DocumentLineCommand(
-                UUID.randomUUID(), 1, "P-1", "Producto", "VENTA",
-                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
-                new BigDecimal("21")));
+        return List.of(line(UUID.randomUUID(), "P-1", "Producto", new BigDecimal("10.00")));
+    }
+
+    private DocumentLineCommand line(UUID productId, String code, String name, BigDecimal price) {
+        return new DocumentLineCommand(
+                productId, 1, code, name, "VENTA", price,
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
     }
 
     private DocumentCommand negativeTicketCommand() {
