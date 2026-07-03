@@ -36,6 +36,10 @@ class HttpLicenseSaasLinkClientTest {
             assertThat(received.get().get("pairingCode").asText()).isEqualTo("ABC123");
             assertThat(received.get().get("installationReference").asText()).isEqualTo("INST-1");
             assertThat(result.licenseReference()).isEqualTo("LIC-SAAS-1");
+            assertThat(result.companyTaxId()).isEqualTo("B12345678");
+            assertThat(result.companyName()).isEqualTo("EMPRESA REAL");
+            assertThat(result.storeCode()).isEqualTo("001");
+            assertThat(result.storeName()).isEqualTo("TIENDA 001");
             assertThat(result.status()).isEqualTo(LicenseSaasStatus.VALIDA);
             assertThat(result.validUntil()).isEqualTo(Instant.parse("2027-08-10T00:00:00Z"));
         } finally {
@@ -82,10 +86,10 @@ class HttpLicenseSaasLinkClientTest {
                 UUID.randomUUID(),
                 "INST-1",
                 "public-key",
-                UUID.randomUUID(),
-                "001",
-                "B12345678",
-                "Empresa");
+                null,
+                null,
+                null,
+                null);
     }
 
     private String response() throws Exception {
@@ -93,6 +97,12 @@ class HttpLicenseSaasLinkClientTest {
                 "LIC-SAAS-1",
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                "B12345678",
+                "EMPRESA REAL",
+                address(),
+                "001",
+                "TIENDA 001",
+                address(),
                 Instant.parse("2027-08-10T00:00:00Z"),
                 LicenseSaasStatus.VALIDA,
                 2,
@@ -101,5 +111,14 @@ class HttpLicenseSaasLinkClientTest {
                 TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
                 "token"));
+    }
+
+    private java.util.Map<String, String> address() {
+        return java.util.Map.of(
+                "linea1", "Calle Uno",
+                "ciudad", "Las Palmas",
+                "codigoPostal", "35001",
+                "provincia", "Las Palmas",
+                "pais", "ES");
     }
 }

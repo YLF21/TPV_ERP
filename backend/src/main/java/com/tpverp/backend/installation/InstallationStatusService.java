@@ -32,10 +32,12 @@ public class InstallationStatusService {
                 .findFirst()
                 .orElse(null);
         OperationalMode mode;
-        if (activeLicense != null && activeLicense.isOperationalAt(now)) {
-            mode = OperationalMode.LICENSED;
-        } else if (activeLicense == null && now.isBefore(installation.getDemoHasta())) {
-            mode = OperationalMode.DEMO;
+        if (activeLicense == null) {
+            mode = OperationalMode.UNLINKED;
+        } else if (activeLicense.isOperationalAt(now)) {
+            mode = activeLicense.requiresOfflineExpiredWarningAt(now)
+                    ? OperationalMode.OFFLINE
+                    : OperationalMode.LICENSED;
         } else {
             mode = OperationalMode.RESTRICTED;
         }

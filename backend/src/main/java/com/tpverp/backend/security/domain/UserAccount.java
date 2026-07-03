@@ -28,8 +28,8 @@ public class UserAccount {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "tienda_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tienda_id")
     private Store tienda;
 
     @Column(nullable = false, length = 64)
@@ -74,12 +74,15 @@ public class UserAccount {
 
     public UserAccount(Store tienda, String nombre, String passwordHash, Role rol) {
         this.id = UUID.randomUUID();
-        this.tienda = Objects.requireNonNull(tienda, "tienda");
         this.nombre = uppercase(nombre);
         this.userName = required(nombre, "userName");
         this.passwordHash = required(passwordHash, "passwordHash");
         this.rol = Objects.requireNonNull(rol, "rol");
         this.protegido = "ADMIN".equals(this.nombre);
+        if (tienda == null && !this.protegido) {
+            throw new IllegalArgumentException("tienda es obligatoria");
+        }
+        this.tienda = tienda;
     }
 
     public String getNombre() {

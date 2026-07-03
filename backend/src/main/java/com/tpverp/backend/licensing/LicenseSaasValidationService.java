@@ -30,14 +30,15 @@ public class LicenseSaasValidationService {
     }
 
     @Transactional
-    public void validateActiveLicense() {
+    public LicenseSaasValidationResponse validateActiveLicense() {
         Installation installation = currentInstallation();
         Store store = currentStore();
-        licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId())
-                .ifPresent(license -> validate(installation, store, license));
+        return licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId())
+                .map(license -> validate(installation, store, license))
+                .orElse(null);
     }
 
-    private void validate(Installation installation, Store store, License license) {
+    private LicenseSaasValidationResponse validate(Installation installation, Store store, License license) {
         LicenseSaasValidationResponse response = client.validate(new LicenseSaasValidationRequest(
                 installation.getId(),
                 installation.getReferencia(),
@@ -45,12 +46,13 @@ public class LicenseSaasValidationService {
                 license.getReferencia(),
                 license.getHash()));
         Instant now = Instant.now(clock);
-        if (response.status() == LicenseSaasStatus.BLOQUEADA_MANUAL) {
-            license.markSaasBlocked(now);
-        } else {
+        if (response.status() == LicenseSaasStatus.VALIDA) {
             license.markSaasValidated(now, response.validUntil());
+        } else {
+            license.markSaasRejected(now, response.status(), response.validUntil());
         }
         licenses.save(license);
+        return response;
     }
 
     private Installation currentInstallation() {

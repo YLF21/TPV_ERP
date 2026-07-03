@@ -5,6 +5,7 @@ import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.application.LicenseEnvelopeDecoder;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.application.TrustedIssuerKeyProvider;
+import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
@@ -114,6 +115,7 @@ class LicensingConfiguration {
     @Bean
     LicenseSaasLinkService licenseSaasLinkService(
             InstallationRepository instalacionRepository,
+            CompanyRepository empresaRepository,
             StoreRepository tiendaRepository,
             LicenseRepository licenciaRepository,
             LicenseSaasLinkClient client,
@@ -123,6 +125,7 @@ class LicensingConfiguration {
             JdbcTemplate jdbcTemplate) {
         return new LicenseSaasLinkService(
                 instalacionRepository,
+                empresaRepository,
                 tiendaRepository,
                 licenciaRepository,
                 client,

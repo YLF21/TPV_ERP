@@ -48,6 +48,7 @@ tpv:
     key-directory: ${TPV_KEY_DIRECTORY:${user.home}/.tpv-erp/keys}
   license:
     issuer-public-key-file: ${TPV_LICENSE_ISSUER_PUBLIC_KEY_FILE:}
+    local-file-activation-enabled: ${TPV_LICENSE_LOCAL_FILE_ACTIVATION_ENABLED:false}
   backup:
     default-directory: ${TPV_BACKUP_DIRECTORY:${user.home}/TPV-ERP-Backups}
     pg-dump-command: ${TPV_PG_DUMP_COMMAND:pg_dump}
