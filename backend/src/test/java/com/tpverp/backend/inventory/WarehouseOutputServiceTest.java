@@ -112,7 +112,7 @@ class WarehouseOutputServiceTest {
         var confirmed = service.confirm(output.getId(), authentication());
 
         assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000001");
-        assertThat(stock.getQuantity()).isEqualTo(-3);
+        assertThat(stock.getQuantity()).isEqualByComparingTo("-3");
         org.mockito.Mockito.verify(syncOutbox).enqueue(any());
     }
 

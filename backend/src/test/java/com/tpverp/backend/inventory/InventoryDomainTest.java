@@ -16,7 +16,7 @@ class InventoryDomainTest {
 
         stock.apply(-7);
 
-        assertThat(stock.getQuantity()).isEqualTo(-7);
+        assertThat(stock.getQuantity()).isEqualByComparingTo("-7");
     }
 
     @Test
@@ -36,8 +36,8 @@ class InventoryDomainTest {
         var target = StockMovement.transferIn(
                 productId, UUID.randomUUID(), userId, 3, transferId, Instant.now());
 
-        assertThat(source.getQuantity()).isEqualTo(-3);
-        assertThat(target.getQuantity()).isEqualTo(3);
+        assertThat(source.getQuantity()).isEqualByComparingTo("-3");
+        assertThat(target.getQuantity()).isEqualByComparingTo("3");
         assertThat(source.getTransferId()).isEqualTo(target.getTransferId());
     }
 
