@@ -1,7 +1,12 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.terminal.PaymentCardMode;
+import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -42,6 +47,19 @@ public class DocumentPayment {
     private String voucherCode;
     @Column(length = 128)
     private String referencia;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "terminal_pago_modo", length = 16)
+    private PaymentCardMode cardMode;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "terminal_pago_provider", length = 32)
+    private PaymentTerminalProvider paymentTerminalProvider;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "terminal_pago_estado", length = 16)
+    private PaymentTerminalOperationStatus paymentTerminalStatus;
+    @Column(name = "autorizacion_tarjeta", length = 64)
+    private String cardAuthorizationCode;
+    @Column(name = "terminal_cobro_id")
+    private UUID paymentTerminalId;
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
     @Version
@@ -60,7 +78,12 @@ public class DocumentPayment {
             BigDecimal cambio,
             String voucherCode,
             String referencia,
-            Instant creadoEn) {
+            Instant creadoEn,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
@@ -74,8 +97,29 @@ public class DocumentPayment {
         this.cambio = nullableMoney(cambio);
         this.voucherCode = optionalCode(voucherCode);
         this.referencia = optionalReference(referencia);
+        this.cardMode = cardMode;
+        this.paymentTerminalProvider = paymentTerminalProvider;
+        this.paymentTerminalStatus = paymentTerminalStatus;
+        this.cardAuthorizationCode = optionalReference(cardAuthorizationCode);
+        this.paymentTerminalId = paymentTerminalId;
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
         validateCashAmounts();
+        validatePaymentTerminalMetadata();
+    }
+
+    public DocumentPayment(
+            CommercialDocument documento,
+            PaymentMethod metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String referencia,
+            Instant creadoEn) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio,
+                voucherCode, referencia, creadoEn, null, null, null, null, null);
     }
 
     public DocumentPayment(
@@ -143,6 +187,26 @@ public class DocumentPayment {
         return referencia;
     }
 
+    public PaymentCardMode getCardMode() {
+        return cardMode;
+    }
+
+    public PaymentTerminalProvider getPaymentTerminalProvider() {
+        return paymentTerminalProvider;
+    }
+
+    public PaymentTerminalOperationStatus getPaymentTerminalStatus() {
+        return paymentTerminalStatus;
+    }
+
+    public String getCardAuthorizationCode() {
+        return cardAuthorizationCode;
+    }
+
+    public UUID getPaymentTerminalId() {
+        return paymentTerminalId;
+    }
+
     // Adjusts only the principal payment when a ticket is administratively changed.
     public void adjustAmount(BigDecimal amount) {
         if (!principal) {
@@ -190,6 +254,24 @@ public class DocumentPayment {
         return value == null || value.isBlank()
                 ? null
                 : value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private void validatePaymentTerminalMetadata() {
+        if (cardMode == PaymentCardMode.INTEGRATED
+                && paymentTerminalStatus != PaymentTerminalOperationStatus.APPROVED) {
+            throw new IllegalArgumentException("message.payment_terminal.integrated_payment_not_approved");
+        }
+        if (cardMode == PaymentCardMode.INTEGRATED
+                && (paymentTerminalProvider == null
+                || paymentTerminalProvider == PaymentTerminalProvider.NONE
+                || paymentTerminalId == null)) {
+            throw new IllegalArgumentException("message.payment_terminal.integrated_provider_required");
+        }
+        if (cardMode == PaymentCardMode.MANUAL
+                && paymentTerminalProvider != null
+                && paymentTerminalProvider != PaymentTerminalProvider.NONE) {
+            throw new IllegalArgumentException("message.payment_terminal.manual_provider_must_be_none");
+        }
     }
 
     private static String optionalReference(String value) {

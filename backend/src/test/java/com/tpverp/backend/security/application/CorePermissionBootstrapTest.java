@@ -38,6 +38,7 @@ class CorePermissionBootstrapTest {
                 "CAMBIAR_PRECIO",
                 "APLICAR_DESCUENTO",
                 "GESTION_CUENTAS",
+                "CONFIGURACION_TERMINAL",
                 "GESTION_USUARIO",
                 "CASH_READ",
                 "CASH_OPERATE",

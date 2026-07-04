@@ -1,5 +1,8 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.terminal.PaymentCardMode;
+import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -20,7 +23,12 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
             BigDecimal entregado,
             BigDecimal cambio,
             String voucherCode,
-            String reference) {
+            String reference,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId) {
 
         public Item(
                 UUID metodoPagoId,
@@ -29,12 +37,27 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
                 BigDecimal entregado,
                 BigDecimal cambio,
                 String voucherCode) {
-            this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, null);
+            this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, null,
+                    null, null, null, null, null);
+        }
+
+        public Item(
+                UUID metodoPagoId,
+                BigDecimal importe,
+                boolean principal,
+                BigDecimal entregado,
+                BigDecimal cambio,
+                String voucherCode,
+                String reference) {
+            this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
+                    null, null, null, null, null);
         }
 
         PaymentCommand toCommand() {
             return new PaymentCommand(
-                    metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference);
+                    metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
+                    cardMode, paymentTerminalProvider, paymentTerminalStatus,
+                    cardAuthorizationCode, paymentTerminalId);
         }
     }
 }

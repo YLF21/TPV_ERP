@@ -31,6 +31,15 @@ import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.PaymentCardMode;
+import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
+import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
+import com.tpverp.backend.terminal.Terminal;
+import com.tpverp.backend.terminal.TerminalPaymentConfiguration;
+import com.tpverp.backend.terminal.TerminalPaymentConfigurationCommand;
+import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
+import com.tpverp.backend.terminal.TerminalType;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -78,6 +87,10 @@ class DocumentServiceTest {
     private VoucherService voucherService;
     @Mock
     private CurrentTerminal currentTerminal;
+    @Mock
+    private StorePaymentConfigurationRepository storePaymentConfigurations;
+    @Mock
+    private TerminalPaymentConfigurationRepository terminalPaymentConfigurations;
     @Mock
     private CashPaymentRecorder cashPaymentRecorder;
     @Mock
@@ -130,6 +143,8 @@ class DocumentServiceTest {
                 fiscalIntegration,
                 voucherService,
                 currentTerminal,
+                storePaymentConfigurations,
+                terminalPaymentConfigurations,
                 cashPaymentRecorder,
                 syncOutbox,
                 importMetadata,
@@ -690,6 +705,103 @@ class DocumentServiceTest {
                 authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("message.payment.reference_required");
+    }
+
+    @Test
+    void integratedCardPaymentMustMatchCurrentEnabledTerminalConfiguration() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        var terminal = new Terminal(store, "CAJA 1", TerminalType.TERMINAL_VENTA, "credential");
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.REDSYS_TPV_PC,
+                "PinPad",
+                true,
+                false,
+                Map.of("ip", "192.168.1.50"),
+                null));
+        when(terminalPaymentConfigurations.findByTerminalId(terminalId))
+                .thenReturn(Optional.of(configuration));
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "AUTH-1", PaymentCardMode.INTEGRATED,
+                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalOperationStatus.APPROVED,
+                        "A1B2C3", terminalId)),
+                authentication());
+
+        assertThat(paid.getPagos().getFirst().getPaymentTerminalId()).isEqualTo(terminalId);
+    }
+
+    @Test
+    void integratedCardPaymentCannotClaimAnotherTerminal() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "AUTH-1", PaymentCardMode.INTEGRATED,
+                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalOperationStatus.APPROVED,
+                        "A1B2C3", UUID.randomUUID())),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment_terminal.current_terminal_required");
+    }
+
+    @Test
+    void paymentTerminalMetadataRequiresExplicitCardMode() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "AUTH-1", null,
+                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalOperationStatus.APPROVED,
+                        "A1B2C3", terminalId)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment_terminal.card_mode_required");
+    }
+
+    @Test
+    void nonCardPaymentCannotIncludePaymentTerminalMetadata() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, null, PaymentCardMode.INTEGRATED,
+                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalOperationStatus.APPROVED,
+                        "A1B2C3", terminalId)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment_terminal.only_card_payment_allows_terminal_metadata");
     }
 
     @Test
