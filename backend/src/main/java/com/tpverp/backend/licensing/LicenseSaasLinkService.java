@@ -4,6 +4,7 @@ import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.Company;
@@ -11,6 +12,9 @@ import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.terminal.Terminal;
+import com.tpverp.backend.terminal.TerminalRepository;
+import com.tpverp.backend.terminal.TerminalType;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -23,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
 public class LicenseSaasLinkService {
@@ -33,9 +38,12 @@ public class LicenseSaasLinkService {
     private final LicenseRepository licenses;
     private final LicenseSaasLinkClient client;
     private final LicenseSaasCredentialStore credentials;
+    private final TerminalRepository terminals;
+    private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final AuditService auditService;
     private final JdbcTemplate jdbc;
+    private final CommercialBootstrapService commercialBootstrap;
 
     public LicenseSaasLinkService(
             InstallationRepository installations,
@@ -44,36 +52,62 @@ public class LicenseSaasLinkService {
             LicenseRepository licenses,
             LicenseSaasLinkClient client,
             LicenseSaasCredentialStore credentials,
+            TerminalRepository terminals,
+            PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
-            JdbcTemplate jdbc) {
+            JdbcTemplate jdbc,
+            CommercialBootstrapService commercialBootstrap) {
         this.installations = installations;
         this.companies = companies;
         this.stores = stores;
         this.licenses = licenses;
         this.client = client;
         this.credentials = credentials;
+        this.terminals = terminals;
+        this.passwordEncoder = passwordEncoder;
         this.clock = clock;
         this.auditService = auditService;
         this.jdbc = jdbc;
+        this.commercialBootstrap = commercialBootstrap;
     }
 
     @Transactional
-    public LicenseSaasLinkResponse link(String pairingCode) {
+    public LicenseSaasLinkResult link(String pairingCode) {
         Installation installation = currentInstallation();
         Optional<Store> existingStore = stores.findAll().stream().findFirst();
         String normalizedCode = required(pairingCode, "pairingCode");
         LicenseSaasLinkResponse response = client.link(existingStore
                 .map(store -> requestWithLocalStore(normalizedCode, installation, store))
                 .orElseGet(() -> requestWithoutLocalStore(normalizedCode, installation)));
-        credentials.writeToken(response.installationToken());
         Store store = resolveStore(response, existingStore);
+        Terminal server = ensureServerTerminal(store);
         activateLinkedLicense(installation, store, response);
+        credentials.writeToken(response.installationToken());
         auditService.record(
                 "LICENSE_SAAS_LINKED",
                 AuditResult.EXITO,
                 Map.of("reference", response.licenseReference(), "saasStoreId", response.storeId()));
-        return response;
+        return new LicenseSaasLinkResult(
+                response,
+                store.getEmpresa().getId(),
+                store.getId(),
+                server.getId());
+    }
+
+    private Terminal ensureServerTerminal(Store store) {
+        return terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR)
+                .map(terminal -> {
+                    if (!terminal.isAprobada() || !terminal.isActiva()) {
+                        terminal.approve();
+                    }
+                    return terminal;
+                })
+                .orElseGet(() -> terminals.save(new Terminal(
+                        store,
+                        "SERVIDOR",
+                        TerminalType.SERVIDOR,
+                        passwordEncoder.encode(UUID.randomUUID().toString()))));
     }
 
     private LicenseSaasLinkRequest requestWithLocalStore(
@@ -113,7 +147,7 @@ public class LicenseSaasLinkService {
                 SpanishTaxId.normalize(response.companyTaxId()),
                 response.companyName(),
                 response.companyAddress()));
-        return stores.save(new Store(
+        var store = stores.save(new Store(
                 company,
                 response.storeCode(),
                 response.storeName(),
@@ -122,14 +156,25 @@ public class LicenseSaasLinkService {
                 "Atlantic/Canary",
                 "EUR",
                 "es-ES"));
+        commercialBootstrap.initializeStore(store.getId(), company.getId());
+        return store;
     }
 
     private void activateLinkedLicense(
             Installation installation,
             Store store,
             LicenseSaasLinkResponse response) {
-        if (licenses.findByReferencia(response.licenseReference()).isPresent()) {
-            throw new LicenseValidationException("Esta licencia ya fue importada");
+        var existing = licenses.findByReferencia(response.licenseReference());
+        if (existing.isPresent()) {
+            License license = existing.get();
+            if (!license.getTiendaId().equals(store.getId())
+                    || !license.getInstalacionId().equals(installation.getId())) {
+                throw new LicenseValidationException("Esta licencia ya fue importada");
+            }
+            markSaasStatus(license, response, Instant.now(clock));
+            licenses.save(license);
+            updateDefaultTax(store.getId(), response.impuestos());
+            return;
         }
         licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId())
                 .ifPresent(License::deactivate);
@@ -153,13 +198,17 @@ public class LicenseSaasLinkService {
                 ImportResult.ACEPTADA,
                 null,
                 true);
+        markSaasStatus(license, response, now);
+        licenses.save(license);
+        updateDefaultTax(store.getId(), response.impuestos());
+    }
+
+    private void markSaasStatus(License license, LicenseSaasLinkResponse response, Instant now) {
         if (response.status() == LicenseSaasStatus.VALIDA) {
             license.markSaasValidated(now, response.validUntil());
         } else {
             license.markSaasRejected(now, response.status(), response.validUntil());
         }
-        licenses.save(license);
-        updateDefaultTax(store.getId(), response.impuestos());
     }
 
     private void validateResponse(Company company, LicenseSaasLinkResponse response) {

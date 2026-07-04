@@ -9,12 +9,16 @@ import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.terminal.Terminal;
+import com.tpverp.backend.terminal.TerminalRepository;
+import com.tpverp.backend.terminal.TerminalType;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -25,6 +29,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 class LicenseSaasLinkServiceTest {
 
@@ -36,8 +41,12 @@ class LicenseSaasLinkServiceTest {
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
     private final LicenseSaasLinkClient client = org.mockito.Mockito.mock(LicenseSaasLinkClient.class);
     private final LicenseSaasCredentialStore credentials = org.mockito.Mockito.mock(LicenseSaasCredentialStore.class);
+    private final TerminalRepository terminals = org.mockito.Mockito.mock(TerminalRepository.class);
+    private final PasswordEncoder passwordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
     private final AuditService audit = org.mockito.Mockito.mock(AuditService.class);
     private final JdbcTemplate jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
+    private final CommercialBootstrapService commercialBootstrap =
+            org.mockito.Mockito.mock(CommercialBootstrapService.class);
     private final LicenseSaasLinkService service = new LicenseSaasLinkService(
             installations,
             companies,
@@ -45,24 +54,30 @@ class LicenseSaasLinkServiceTest {
             licenses,
             client,
             credentials,
+            terminals,
+            passwordEncoder,
             Clock.fixed(NOW, ZoneOffset.UTC),
             audit,
-            jdbc);
+            jdbc,
+            commercialBootstrap);
 
     @Test
     void vinculaInstalacionConSaasYActivaLicenciaDevuelta() {
         var installation = installation();
         var store = store();
+        var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
         var previous = license(store, installation, "LIC-OLD");
         var saasCompanyId = UUID.randomUUID();
         var saasStoreId = UUID.randomUUID();
         when(installations.findAll()).thenReturn(List.of(installation));
         when(stores.findAll()).thenReturn(List.of(store));
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(server));
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
                 .thenReturn(Optional.of(previous));
         when(client.link(any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
 
-        LicenseSaasLinkResponse result = service.link("ABC123");
+        LicenseSaasLinkResult result = service.link("ABC123");
 
         var request = ArgumentCaptor.forClass(LicenseSaasLinkRequest.class);
         verify(client).link(request.capture());
@@ -84,7 +99,8 @@ class LicenseSaasLinkServiceTest {
         assertThat(saved.getValue().getMaxPda()).isEqualTo(1);
         assertThat(saved.getValue().getEstadoSaas()).isEqualTo(LicenseSaasStatus.VALIDA);
         assertThat(saved.getValue().getUltimaValidacionSaas()).isEqualTo(NOW);
-        assertThat(result.licenseReference()).isEqualTo("LIC-SAAS-1");
+        assertThat(result.license().licenseReference()).isEqualTo("LIC-SAAS-1");
+        assertThat(result.serverTerminalId()).isEqualTo(server.getId());
         verify(credentials).writeToken("token-instalacion");
         verify(audit).record(
                 org.mockito.Mockito.eq("LICENSE_SAAS_LINKED"),
@@ -102,8 +118,10 @@ class LicenseSaasLinkServiceTest {
         when(client.link(any())).thenReturn(saasResponse(saasCompanyId, saasStoreId));
         when(companies.save(any(Company.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(stores.save(any(Store.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(passwordEncoder.encode(any())).thenReturn("server-hash");
+        when(terminals.save(any(Terminal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service.link("ABC123");
+        LicenseSaasLinkResult result = service.link("ABC123");
 
         var request = ArgumentCaptor.forClass(LicenseSaasLinkRequest.class);
         verify(client).link(request.capture());
@@ -120,10 +138,39 @@ class LicenseSaasLinkServiceTest {
         verify(stores).save(store.capture());
         assertThat(store.getValue().getCodigoTienda()).isEqualTo("001");
         assertThat(store.getValue().getNombreEfectivo()).isEqualTo("TIENDA 001");
+        verify(commercialBootstrap).initializeStore(store.getValue().getId(), company.getValue().getId());
+        var terminal = ArgumentCaptor.forClass(Terminal.class);
+        verify(terminals).save(terminal.capture());
+        assertThat(terminal.getValue().getTipo()).isEqualTo(TerminalType.SERVIDOR);
+        assertThat(terminal.getValue().isAprobada()).isTrue();
+        assertThat(terminal.getValue().isActiva()).isTrue();
+        assertThat(result.localCompanyId()).isEqualTo(company.getValue().getId());
+        assertThat(result.localStoreId()).isEqualTo(store.getValue().getId());
+        assertThat(result.serverTerminalId()).isEqualTo(terminal.getValue().getId());
 
         var saved = ArgumentCaptor.forClass(License.class);
         verify(licenses).save(saved.capture());
         assertThat(saved.getValue().getReferencia()).isEqualTo("LIC-SAAS-1");
+    }
+
+    @Test
+    void reintentoDeMismaLicenciaSaasEsIdempotente() {
+        var installation = installation();
+        var store = store();
+        var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
+        var existing = license(store, installation, "LIC-SAAS-1");
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(client.link(any())).thenReturn(saasResponse(UUID.randomUUID(), UUID.randomUUID()));
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(server));
+        when(licenses.findByReferencia("LIC-SAAS-1")).thenReturn(Optional.of(existing));
+
+        LicenseSaasLinkResult result = service.link("ABC123");
+
+        assertThat(result.serverTerminalId()).isEqualTo(server.getId());
+        verify(licenses).save(existing);
+        verify(credentials).writeToken("token-instalacion");
     }
 
     private static Installation installation() {

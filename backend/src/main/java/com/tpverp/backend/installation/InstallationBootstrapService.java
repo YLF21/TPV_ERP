@@ -63,7 +63,9 @@ public class InstallationBootstrapService {
 		instalacionRepository.save(installation);
 
 		var adminRole = rolRepository.save(new Role(null, "ADMIN"));
-		usuarioRepository.save(new UserAccount(null, "ADMIN", passwordEncoder.encode("0000"), adminRole));
+		var admin = new UserAccount(null, "ADMIN", passwordEncoder.encode("0000"), adminRole);
+		admin.requirePasswordChange();
+		usuarioRepository.save(admin);
 	}
 
 	private String reference(String keyId) {

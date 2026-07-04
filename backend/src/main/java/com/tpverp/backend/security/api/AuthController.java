@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +31,21 @@ public class AuthController {
 				request.password());
 	}
 
+	@PostMapping("/installation-login")
+	public LoginResult installationLogin(@Valid @RequestBody InstallationLoginRequest request) {
+		return authenticationService.installationLogin(request.userName(), request.password());
+	}
+
+	@PutMapping("/installation-password")
+	public LoginResult changeInstallationPassword(
+			@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+			@Valid @RequestBody InstallationPasswordRequest request) {
+		return authenticationService.changeInstallationPassword(
+				BearerTokens.extract(authorization),
+				request.currentPassword(),
+				request.newPassword());
+	}
+
 	@PostMapping("/logout")
 	public ResponseEntity<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
 		authenticationService.logout(BearerTokens.extract(authorization));
@@ -39,5 +55,16 @@ public class AuthController {
 	@PostMapping("/renew")
 	public LoginResult renew(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
 		return authenticationService.renew(BearerTokens.extract(authorization));
+	}
+
+	public record InstallationLoginRequest(
+			@jakarta.validation.constraints.NotBlank String userName,
+			@jakarta.validation.constraints.NotBlank String password) {
+	}
+
+	public record InstallationPasswordRequest(
+			@jakarta.validation.constraints.NotBlank String currentPassword,
+			@jakarta.validation.constraints.NotBlank
+			@jakarta.validation.constraints.Pattern(regexp = "\\d{4,12}") String newPassword) {
 	}
 }

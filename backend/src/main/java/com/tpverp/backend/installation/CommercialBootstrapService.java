@@ -19,6 +19,12 @@ public class CommercialBootstrapService {
         jdbc.queryForList("select id, empresa_id from tienda").forEach(this::initializeStore);
     }
 
+    @Transactional
+    // Inicializa los datos comerciales obligatorios de una tienda creada despues del arranque.
+    public void initializeStore(UUID storeId, UUID companyId) {
+        initializeStore(Map.of("id", storeId, "empresa_id", companyId));
+    }
+
     private void initializeStore(Map<String, Object> row) {
         UUID storeId = (UUID) row.get("id");
         UUID companyId = (UUID) row.get("empresa_id");
@@ -39,18 +45,25 @@ public class CommercialBootstrapService {
                 UUID.randomUUID(),
                 storeId,
                 new BigDecimal("21.00"));
-        createPaymentMethod(companyId, "EFECTIVO");
-        createPaymentMethod(companyId, "TARJETA");
-        createPaymentMethod(companyId, "VALE");
-        createPaymentMethod(companyId, "SALDO_MIEMBRO");
+        createPaymentMethod(companyId, "EFECTIVO", false, true);
+        createPaymentMethod(companyId, "TARJETA", false, false);
+        createPaymentMethod(companyId, "TRANSFERENCIA", false, false);
+        createPaymentMethod(companyId, "VALE", false, false);
+        createPaymentMethod(companyId, "DESCUENTO", false, false);
+        createPaymentMethod(companyId, "OTRO", false, false);
+        createPaymentMethod(companyId, "SALDO_MIEMBRO", false, false);
     }
 
-    private void createPaymentMethod(UUID companyId, String name) {
+    private void createPaymentMethod(
+            UUID companyId, String name, boolean requiresReference, boolean opensCashDrawer) {
         jdbc.update(
-                "insert into metodo_pago (id, empresa_id, nombre, protegido, activo) "
-                        + "values (?, ?, ?, true, true) on conflict do nothing",
+                "insert into metodo_pago "
+                        + "(id, empresa_id, nombre, protegido, activo, requiere_referencia, abre_caja_registradora) "
+                        + "values (?, ?, ?, true, true, ?, ?) on conflict do nothing",
                 UUID.randomUUID(),
                 companyId,
-                name);
+                name,
+                requiresReference,
+                opensCashDrawer);
     }
 }

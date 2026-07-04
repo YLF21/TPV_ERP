@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class AuthenticationService {
 
+	private static final String NUMERIC_PASSWORD_PATTERN = "\\d{4,12}";
+
 	private final TerminalRepository terminalRepository;
 	private final UserAccountRepository usuarioRepository;
 	private final UserSessionRepository sesionRepository;
@@ -42,6 +44,37 @@ public class AuthenticationService {
 	@Transactional
 	public LoginResult login(UUID terminalId, String userName, String password) {
 		return login(terminalId, null, userName, password);
+	}
+
+	@Transactional
+	// Permite al ADMIN global entrar antes de que existan tienda y terminal.
+	public LoginResult installationLogin(String userName, String password) {
+		var user = usuarioRepository.findByNombreAndTiendaIsNull(normalize(userName))
+				.filter(value -> value.isProtegido() && value.isActivo())
+				.orElseThrow(AuthenticationFailedException::new);
+		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+			throw new AuthenticationFailedException();
+		}
+		return createSession(user, null);
+	}
+
+	@Transactional
+	// Sustituye la contrasena temporal inicial y emite una sesion ya desbloqueada.
+	public LoginResult changeInstallationPassword(String accessToken, String currentPassword, String newPassword) {
+		var session = sesionRepository.findByTokenHashAndRevocadaEnIsNull(hash(accessToken))
+				.filter(value -> value.getTerminal() == null)
+				.orElseThrow(AuthenticationFailedException::new);
+		var user = session.getUsuario();
+		if (!user.isProtegido() || user.getTienda() != null || !user.mustChangePassword()) {
+			throw new IllegalStateException("message.security.password_change_not_required");
+		}
+		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+			throw new AuthenticationFailedException();
+		}
+		requireNumericPassword(newPassword);
+		user.cambiarPassword(passwordEncoder.encode(newPassword));
+		session.revocar(user, "INITIAL_PASSWORD_CHANGED", Instant.now(clock));
+		return createSession(user, null);
 	}
 
 	@Transactional
@@ -69,9 +102,7 @@ public class AuthenticationService {
 		if (!passwordEncoder.matches(password, user.getPasswordHash())) {
 			throw new AuthenticationFailedException();
 		}
-		var token = newToken();
-		sesionRepository.save(new UserSession(user, terminal, hash(token), Instant.now(clock)));
-		return new LoginResult(token, user.getNombre(), user.getRol().getNombre());
+		return createSession(user, terminal);
 	}
 
 	@Transactional
@@ -86,9 +117,7 @@ public class AuthenticationService {
 		var current = sesionRepository.findByTokenHash(hash(accessToken))
 				.filter(UserSession::isActiva)
 				.filter(session -> session.getUsuario().isActivo())
-				.filter(session -> session.getTerminal() != null
-						&& session.getTerminal().isActiva()
-						&& session.getTerminal().isAprobada())
+				.filter(this::validSessionContext)
 				.orElseThrow(AuthenticationFailedException::new);
 		current.revocar(current.getUsuario(), "TOKEN_RENEWED", Instant.now(clock));
 		var token = newToken();
@@ -100,7 +129,8 @@ public class AuthenticationService {
 		return new LoginResult(
 				token,
 				current.getUsuario().getNombre(),
-				current.getUsuario().getRol().getNombre());
+				current.getUsuario().getRol().getNombre(),
+				current.getUsuario().mustChangePassword());
 	}
 
 	public String hash(String token) {
@@ -116,5 +146,30 @@ public class AuthenticationService {
 		var bytes = new byte[32];
 		random.nextBytes(bytes);
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	}
+
+	private boolean validSessionContext(UserSession session) {
+		if (session.getTerminal() == null) {
+			return session.getUsuario().isProtegido() && session.getUsuario().getTienda() == null;
+		}
+		return session.getTerminal().isActiva() && session.getTerminal().isAprobada();
+	}
+
+	private LoginResult createSession(
+			com.tpverp.backend.security.domain.UserAccount user,
+			com.tpverp.backend.terminal.Terminal terminal) {
+		var token = newToken();
+		sesionRepository.save(new UserSession(user, terminal, hash(token), Instant.now(clock)));
+		return new LoginResult(token, user.getNombre(), user.getRol().getNombre(), user.mustChangePassword());
+	}
+
+	private String normalize(String value) {
+		return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+	}
+
+	private void requireNumericPassword(String value) {
+		if (value == null || !value.matches(NUMERIC_PASSWORD_PATTERN)) {
+			throw new IllegalArgumentException("La contrasena debe tener entre 4 y 12 cifras numericas");
+		}
 	}
 }

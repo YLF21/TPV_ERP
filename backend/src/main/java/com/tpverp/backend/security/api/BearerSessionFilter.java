@@ -7,7 +7,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.List;
 import java.util.ArrayList;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -36,7 +35,9 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 		if (header != null && header.startsWith("Bearer ")) {
 			var token = header.substring(7);
 			sesionRepository.findByTokenHashAndRevocadaEnIsNull(authenticationService.hash(token))
-					.filter(session -> session.getTerminal() != null
+					.filter(session -> session.getTerminal() == null
+							? session.getUsuario().isProtegido() && session.getUsuario().getTienda() == null
+							: session.getTerminal() != null
 							&& session.getTerminal().isActiva()
 							&& session.getTerminal().isAprobada())
 					.map(session -> session.getUsuario())

@@ -53,9 +53,59 @@ class AuthenticationServiceTest {
 
 		assertThat(result.accessToken()).isNotBlank();
 		assertThat(result.userName()).isEqualTo("ADMIN");
+		assertThat(result.mustChangePassword()).isFalse();
 		var session = ArgumentCaptor.forClass(UserSession.class);
 		verify(sesionRepository).save(session.capture());
 		assertThat(session.getValue().getTokenHash()).doesNotContain(result.accessToken());
+	}
+
+	@Test
+	void installationAdminLoginDoesNotRequireTerminal() {
+		var role = new Role(null, "ADMIN");
+		var user = new UserAccount(null, "ADMIN", "password-hash", role);
+		user.requirePasswordChange();
+		when(usuarioRepository.findByNombreAndTiendaIsNull("ADMIN")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
+
+		var result = service().installationLogin("admin", "0000");
+
+		assertThat(result.accessToken()).isNotBlank();
+		assertThat(result.mustChangePassword()).isTrue();
+		var session = ArgumentCaptor.forClass(UserSession.class);
+		verify(sesionRepository).save(session.capture());
+		assertThat(session.getValue().getTerminal()).isNull();
+	}
+
+	@Test
+	void changingInitialPasswordClearsTemporaryPasswordFlag() {
+		var role = new Role(null, "ADMIN");
+		var user = new UserAccount(null, "ADMIN", "old-hash", role);
+		user.requirePasswordChange();
+		var session = new UserSession(user, null, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		when(sesionRepository.findByTokenHashAndRevocadaEnIsNull(any())).thenReturn(Optional.of(session));
+		when(passwordEncoder.matches("0000", "old-hash")).thenReturn(true);
+		when(passwordEncoder.encode("1234")).thenReturn("new-hash");
+
+		var result = service().changeInstallationPassword("token", "0000", "1234");
+
+		assertThat(result.mustChangePassword()).isFalse();
+		assertThat(user.mustChangePassword()).isFalse();
+		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+	}
+
+	@Test
+	void renewsInstallationAdminSessionWithoutTerminal() {
+		var role = new Role(null, "ADMIN");
+		var user = new UserAccount(null, "ADMIN", "hash", role);
+		var session = new UserSession(user, null, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		when(sesionRepository.findByTokenHash(any())).thenReturn(Optional.of(session));
+
+		var result = service().renew("token");
+
+		assertThat(result.accessToken()).isNotBlank();
+		var saved = ArgumentCaptor.forClass(UserSession.class);
+		verify(sesionRepository).save(saved.capture());
+		assertThat(saved.getValue().getTerminal()).isNull();
 	}
 
 	@Test

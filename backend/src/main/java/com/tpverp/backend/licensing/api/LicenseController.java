@@ -3,7 +3,7 @@ package com.tpverp.backend.licensing.api;
 import com.tpverp.backend.licensing.application.LicensePreview;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.LicenseSaasAdminService;
-import com.tpverp.backend.licensing.LicenseSaasLinkResponse;
+import com.tpverp.backend.licensing.LicenseSaasLinkResult;
 import com.tpverp.backend.licensing.LicenseSaasLinkService;
 import com.tpverp.backend.licensing.LicenseSaasValidationResponse;
 import com.tpverp.backend.licensing.LicenseSaasValidationService;
@@ -107,16 +107,19 @@ public class LicenseController {
             String licenseReference,
             UUID companyId,
             UUID storeId,
+            UUID serverTerminalId,
             Instant validUntil,
             String status,
             int maxWindows,
             int maxPda) {
 
-        static LinkSaasResponse from(LicenseSaasLinkResponse response) {
+        static LinkSaasResponse from(LicenseSaasLinkResult result) {
+            var response = result.license();
             return new LinkSaasResponse(
                     response.licenseReference(),
-                    response.companyId(),
-                    response.storeId(),
+                    result.localCompanyId(),
+                    result.localStoreId(),
+                    result.serverTerminalId(),
                     response.validUntil(),
                     response.status().name(),
                     response.maxWindows(),

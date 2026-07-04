@@ -2,6 +2,7 @@ package com.tpverp.backend.licensing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.installation.CommercialBootstrapService;
 import com.tpverp.backend.licensing.application.LicenseEnvelopeDecoder;
 import com.tpverp.backend.licensing.application.LicenseService;
 import com.tpverp.backend.licensing.application.TrustedIssuerKeyProvider;
@@ -9,6 +10,7 @@ import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
 import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
+import com.tpverp.backend.terminal.TerminalRepository;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -19,6 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Configuration
 class LicensingConfiguration {
@@ -120,9 +123,12 @@ class LicensingConfiguration {
             LicenseRepository licenciaRepository,
             LicenseSaasLinkClient client,
             LicenseSaasCredentialStore credentials,
+            TerminalRepository terminalRepository,
+            PasswordEncoder passwordEncoder,
             Clock clock,
             AuditService auditService,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            CommercialBootstrapService commercialBootstrap) {
         return new LicenseSaasLinkService(
                 instalacionRepository,
                 empresaRepository,
@@ -130,9 +136,12 @@ class LicensingConfiguration {
                 licenciaRepository,
                 client,
                 credentials,
+                terminalRepository,
+                passwordEncoder,
                 clock,
                 auditService,
-                jdbcTemplate);
+                jdbcTemplate,
+                commercialBootstrap);
     }
 
     @Bean

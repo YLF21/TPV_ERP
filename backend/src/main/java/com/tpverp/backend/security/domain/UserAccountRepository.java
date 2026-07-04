@@ -11,6 +11,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
 
     Optional<UserAccount> findByTiendaIdAndNombre(UUID tiendaId, String nombre);
 
+    Optional<UserAccount> findByNombreAndTiendaIsNull(String nombre);
+
     @Query("""
             select user from UserAccount user
             where user.tienda.empresa.id = :companyId and user.nombre = :nombre

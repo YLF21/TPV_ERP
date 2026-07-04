@@ -58,6 +58,9 @@ public class UserAccount {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 2)
     private SupportedLanguage idioma = SupportedLanguage.ES;
@@ -121,6 +124,10 @@ public class UserAccount {
         return activo;
     }
 
+    public boolean mustChangePassword() {
+        return mustChangePassword;
+    }
+
     public SupportedLanguage getIdioma() {
         return idioma;
     }
@@ -149,6 +156,11 @@ public class UserAccount {
 
     public void cambiarPassword(String nuevoPasswordHash) {
         this.passwordHash = required(nuevoPasswordHash, "nuevoPasswordHash");
+        this.mustChangePassword = false;
+    }
+
+    public void requirePasswordChange() {
+        this.mustChangePassword = true;
     }
 
     public void deactivate() {

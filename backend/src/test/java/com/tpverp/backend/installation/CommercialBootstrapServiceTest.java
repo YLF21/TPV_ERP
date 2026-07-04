@@ -32,5 +32,14 @@ class CommercialBootstrapServiceTest {
                         + "values (?, ?, 'GENERAL', true) on conflict do nothing",
                 storeId,
                 storeId);
+        verify(jdbc).update(
+                Mockito.eq("insert into metodo_pago "
+                        + "(id, empresa_id, nombre, protegido, activo, requiere_referencia, abre_caja_registradora) "
+                        + "values (?, ?, ?, true, true, ?, ?) on conflict do nothing"),
+                Mockito.any(UUID.class),
+                Mockito.eq(companyId),
+                Mockito.eq("EFECTIVO"),
+                Mockito.eq(false),
+                Mockito.eq(true));
     }
 }
