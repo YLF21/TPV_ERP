@@ -45,7 +45,12 @@ public record DocumentView(
             BigDecimal delivered,
             BigDecimal change,
             String voucherCode,
-            String reference) {
+            String reference,
+            String cardMode,
+            String paymentTerminalProvider,
+            String paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId) {
 
         static PaymentView from(DocumentPayment payment) {
             return new PaymentView(
@@ -57,7 +62,16 @@ public record DocumentView(
                     payment.getEntregado(),
                     payment.getCambio(),
                     payment.getVoucherCode(),
-                    payment.getReferencia());
+                    payment.getReferencia(),
+                    nullableEnum(payment.getCardMode()),
+                    nullableEnum(payment.getPaymentTerminalProvider()),
+                    nullableEnum(payment.getPaymentTerminalStatus()),
+                    payment.getCardAuthorizationCode(),
+                    payment.getPaymentTerminalId());
         }
+    }
+
+    private static String nullableEnum(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

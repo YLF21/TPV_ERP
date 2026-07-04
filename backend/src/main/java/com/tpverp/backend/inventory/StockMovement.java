@@ -252,7 +252,7 @@ public class StockMovement {
         if (value.stripTrailingZeros().scale() > 3) {
             throw new IllegalArgumentException("message.inventory.quantity_scale");
         }
-        return value.setScale(3);
+        return value;
     }
 
     private static String optional(String value) {

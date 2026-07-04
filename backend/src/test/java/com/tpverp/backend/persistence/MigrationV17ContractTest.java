@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.util.Comparator;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,53 @@ class MigrationV17ContractTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void insertBaseData() {
+        UUID companyId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID terminalId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        jdbcTemplate.update("""
+                insert into empresa (id, tax_id, razon_social, domicilio_fiscal)
+                values (?, 'B00000001', 'Company', '{
+                    "linea1":"Calle Uno",
+                    "ciudad":"Las Palmas",
+                    "codigoPostal":"35001",
+                    "provincia":"Las Palmas",
+                    "pais":"ES"
+                }')
+                """, companyId);
+        jdbcTemplate.update("""
+                insert into tienda (
+                    id, empresa_id, nombre, direccion, address_normalized_hash,
+                    timezone, moneda, locale, codigo_tienda)
+                values (
+                    ?, ?, 'TIENDA', '{
+                        "linea1":"Calle Uno",
+                        "ciudad":"Las Palmas",
+                        "codigoPostal":"35001",
+                        "provincia":"Las Palmas",
+                        "pais":"ES"
+                    }', ?, 'Atlantic/Canary', 'EUR', 'es-ES', '001')
+                """, storeId, companyId, "cash-test-" + storeId);
+        jdbcTemplate.update("""
+                insert into terminal (
+                    id, tienda_id, nombre, tipo, credential_hash)
+                values (?, ?, 'CAJA 1', 'TERMINAL_VENTA', 'hash')
+                """, terminalId, storeId);
+        jdbcTemplate.update("""
+                insert into rol (id, tienda_id, nombre, protegido)
+                values (?, ?, 'ADMIN', true)
+                """, roleId, storeId);
+        jdbcTemplate.update("""
+                insert into usuario (
+                    id, tienda_id, nombre, password_hash, rol_id, protegido, user_name)
+                values (?, ?, 'ADMIN', 'hash', ?, true, 'ADMIN')
+                """, userId, storeId, roleId);
+    }
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {

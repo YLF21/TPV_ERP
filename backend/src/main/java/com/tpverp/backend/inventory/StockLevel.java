@@ -23,7 +23,7 @@ public class StockLevel {
     private UUID warehouseId;
 
     @Column(nullable = false, precision = 19, scale = 3)
-    private BigDecimal cantidad = BigDecimal.ZERO.setScale(3);
+    private BigDecimal cantidad = BigDecimal.ZERO;
 
     @Version
     private long version;
@@ -72,6 +72,6 @@ public class StockLevel {
         if (value.stripTrailingZeros().scale() > 3) {
             throw new IllegalArgumentException("message.inventory.quantity_scale");
         }
-        return value.setScale(3);
+        return value;
     }
 }

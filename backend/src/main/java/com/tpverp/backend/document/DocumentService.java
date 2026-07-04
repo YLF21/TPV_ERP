@@ -24,6 +24,12 @@ import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.PaymentCardMode;
+import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
+import com.tpverp.backend.terminal.StorePaymentConfiguration;
+import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
+import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +58,8 @@ public class DocumentService {
     private final DocumentFiscalIntegration fiscalIntegration;
     private final VoucherService vouchers;
     private final CurrentTerminal currentTerminal;
+    private final StorePaymentConfigurationRepository storePaymentConfigurations;
+    private final TerminalPaymentConfigurationRepository terminalPaymentConfigurations;
     private final CashPaymentRecorder cashPayments;
     private final MemberLoyaltyService memberLoyalty;
     private final SyncOutboxService syncOutbox;
@@ -72,6 +80,8 @@ public class DocumentService {
             DocumentFiscalIntegration fiscalIntegration,
             VoucherService vouchers,
             CurrentTerminal currentTerminal,
+            StorePaymentConfigurationRepository storePaymentConfigurations,
+            TerminalPaymentConfigurationRepository terminalPaymentConfigurations,
             CashPaymentRecorder cashPayments,
             MemberLoyaltyService memberLoyalty,
             SyncOutboxService syncOutbox,
@@ -90,6 +100,8 @@ public class DocumentService {
         this.fiscalIntegration = fiscalIntegration;
         this.vouchers = vouchers;
         this.currentTerminal = currentTerminal;
+        this.storePaymentConfigurations = storePaymentConfigurations;
+        this.terminalPaymentConfigurations = terminalPaymentConfigurations;
         this.cashPayments = cashPayments;
         this.memberLoyalty = memberLoyalty;
         this.syncOutbox = syncOutbox;
@@ -174,7 +186,7 @@ public class DocumentService {
                 Instant.now(clock),
                 false);
         if (ticket.getTotal().signum() >= 0) {
-            addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket");
+            addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket", terminalId);
         }
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
@@ -258,7 +270,16 @@ public class DocumentService {
         payload.put("cambio", nullableAmount(payment.getCambio()));
         payload.put("voucherCode", payment.getVoucherCode());
         payload.put("referencia", payment.getReferencia());
+        payload.put("terminalPagoModo", nullableEnum(payment.getCardMode()));
+        payload.put("terminalPagoProvider", nullableEnum(payment.getPaymentTerminalProvider()));
+        payload.put("terminalPagoEstado", nullableEnum(payment.getPaymentTerminalStatus()));
+        payload.put("autorizacionTarjeta", payment.getCardAuthorizationCode());
+        payload.put("terminalCobroId", nullableUuid(payment.getPaymentTerminalId()));
         return payload;
+    }
+
+    private static String nullableEnum(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private static String nullableUuid(UUID value) {
@@ -362,7 +383,7 @@ public class DocumentService {
     private CommercialDocument payReceivable(
             CommercialDocument document, List<PaymentCommand> payments, Authentication authentication) {
         var terminalId = currentTerminal.terminalId(authentication);
-        var paidNow = addPartialPayments(document, payments);
+        var paidNow = addPartialPayments(document, payments, terminalId);
         document.updatePaymentStatus();
         var saved = documents.save(document);
         cashPayments.recordDocumentPayments(terminalId, saved);
@@ -469,11 +490,11 @@ public class DocumentService {
     }
 
     private void addPayments(
-            CommercialDocument document, List<PaymentCommand> commands, String mismatchMessage) {
+            CommercialDocument document, List<PaymentCommand> commands, String mismatchMessage, UUID terminalId) {
         requirePaymentsPresent(commands);
         requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
         var resolved = commands.stream()
-                .map(command -> resolvePayment(document, command))
+                .map(command -> resolvePayment(document, command, terminalId))
                 .toList();
         requirePaymentTotal(resolved, document.getTotal(), mismatchMessage);
         appendPayments(document, resolved);
@@ -482,12 +503,12 @@ public class DocumentService {
         }
     }
 
-    private BigDecimal addPartialPayments(CommercialDocument document, List<PaymentCommand> commands) {
+    private BigDecimal addPartialPayments(CommercialDocument document, List<PaymentCommand> commands, UUID terminalId) {
         requirePaymentsPresent(commands);
         var pending = document.getPendingTotal();
         requirePaymentTotalAtMost(commands, pending);
         var resolved = commands.stream()
-                .map(command -> resolvePayment(document, command))
+                .map(command -> resolvePayment(document, command, terminalId))
                 .toList();
         requirePaymentTotalAtMost(resolved, pending);
         appendPayments(document, resolved);
@@ -508,7 +529,9 @@ public class DocumentService {
             document.addPayment(new DocumentPayment(
                     document, method, ++position, command.importe(), principal,
                     command.entregado(), command.cambio(), command.voucherCode(),
-                    command.reference(), Instant.now(clock)));
+                    command.reference(), Instant.now(clock), command.cardMode(),
+                    command.paymentTerminalProvider(), command.paymentTerminalStatus(),
+                    command.cardAuthorizationCode(), command.paymentTerminalId()));
             hasPrincipal = hasPrincipal || principal;
         }
     }
@@ -541,7 +564,7 @@ public class DocumentService {
         }
     }
 
-    private PaymentCommand resolvePayment(CommercialDocument document, PaymentCommand command) {
+    private PaymentCommand resolvePayment(CommercialDocument document, PaymentCommand command, UUID terminalId) {
         var method = paymentMethods.findById(command.metodoPagoId())
                 .filter(PaymentMethod::isActivo)
                 .filter(value -> value.getEmpresaId().equals(
@@ -550,6 +573,7 @@ public class DocumentService {
                         "metodo de pago activo no encontrado"));
         requireReferenceIfNeeded(method, command);
         requireCashAmountsOnlyForDrawerMethods(method, command);
+        command = validateCardTerminalPayment(method, command, terminalId);
         if (MEMBER_BALANCE_METHOD.equals(method.getNombre())) {
             rejectVoucherCode(command, "codigo de vale no permitido con SALDO_MIEMBRO");
             var consumed = memberLoyalty.consumeBalanceForPayment(document, command.importe());
@@ -569,7 +593,9 @@ public class DocumentService {
         var result = vouchers.consume(command.voucherCode(), command.importe(), document);
         return new PaymentCommand(
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
-                command.entregado(), command.cambio(), command.voucherCode(), command.reference());
+                command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
+                command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
+                command.cardAuthorizationCode(), command.paymentTerminalId());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
 
@@ -641,6 +667,67 @@ public class DocumentService {
                 && (command.entregado() != null || command.cambio() != null)) {
             throw new IllegalArgumentException("message.payment.cash_amounts_only_for_cash_drawer");
         }
+    }
+
+    private PaymentCommand validateCardTerminalPayment(
+            PaymentMethod method, PaymentCommand command, UUID currentTerminalId) {
+        if (command.cardMode() == null) {
+            if (command.paymentTerminalProvider() != null
+                    || command.paymentTerminalStatus() != null
+                    || command.cardAuthorizationCode() != null
+                    || command.paymentTerminalId() != null) {
+                throw new IllegalArgumentException("message.payment_terminal.card_mode_required");
+            }
+            return command;
+        }
+        if (!"TARJETA".equals(method.getNombre())) {
+            throw new IllegalArgumentException("message.payment_terminal.only_card_payment_allows_terminal_metadata");
+        }
+        if (command.paymentTerminalId() != null && !command.paymentTerminalId().equals(currentTerminalId)) {
+            throw new IllegalArgumentException("message.payment_terminal.current_terminal_required");
+        }
+        var storeRules = storePaymentConfigurations.findByStoreId(organization.currentStore().getId())
+                .orElseGet(() -> new StorePaymentConfiguration(organization.currentStore()));
+        if (command.cardMode() == PaymentCardMode.MANUAL) {
+            if (!storeRules.isCardManualEnabled()) {
+                throw new IllegalArgumentException("message.payment_terminal.manual_card_disabled");
+            }
+            if (storeRules.isCardManualReferenceRequired()
+                    && (command.reference() == null || command.reference().isBlank())) {
+                throw new IllegalArgumentException("message.payment.reference_required");
+            }
+            return withCurrentTerminal(command, currentTerminalId);
+        }
+        if (!storeRules.isIntegratedCardEnabled()) {
+            throw new IllegalArgumentException("message.payment_terminal.integrated_card_disabled");
+        }
+        if (command.paymentTerminalProvider() == null
+                || command.paymentTerminalProvider() == PaymentTerminalProvider.NONE) {
+            throw new IllegalArgumentException("message.payment_terminal.integrated_provider_required");
+        }
+        if (!List.of(storeRules.getAllowedPaymentTerminalProviders().split(","))
+                .contains(command.paymentTerminalProvider().name())) {
+            throw new IllegalArgumentException("message.payment_terminal.provider_not_allowed");
+        }
+        var configuration = terminalPaymentConfigurations.findByTerminalId(currentTerminalId)
+                .orElseThrow(() -> new IllegalArgumentException("message.payment_terminal.configuration_not_found"));
+        if (configuration.getCardMode() != PaymentCardMode.INTEGRATED
+                || !configuration.isEnabled()
+                || configuration.getProvider() != command.paymentTerminalProvider()) {
+            throw new IllegalArgumentException("message.payment_terminal.configuration_not_enabled");
+        }
+        if (command.paymentTerminalStatus() != PaymentTerminalOperationStatus.APPROVED) {
+            throw new IllegalArgumentException("message.payment_terminal.integrated_payment_not_approved");
+        }
+        return withCurrentTerminal(command, currentTerminalId);
+    }
+
+    private static PaymentCommand withCurrentTerminal(PaymentCommand command, UUID currentTerminalId) {
+        return new PaymentCommand(
+                command.metodoPagoId(), command.importe(), command.principal(),
+                command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
+                command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
+                command.cardAuthorizationCode(), currentTerminalId);
     }
 
     private String nextNumber(CommercialDocument document) {

@@ -11,6 +11,7 @@ public class CorePermissionBootstrap {
     public static final String GESTION_USUARIO = "GESTION_USUARIO";
     public static final String ROLES_MANAGE = "ROLES_MANAGE";
     public static final String TERMINALS_MANAGE = "TERMINALS_MANAGE";
+    public static final String CONFIGURACION_TERMINAL = "CONFIGURACION_TERMINAL";
     public static final String LICENSES_MANAGE = "LICENSES_MANAGE";
     public static final String BACKUPS_MANAGE = "BACKUPS_MANAGE";
     public static final String AUDIT_READ = "AUDIT_READ";
@@ -64,6 +65,7 @@ public class CorePermissionBootstrap {
                 permission(GESTION_USUARIO, "security.permissions.userManagement", "SECURITY"),
                 permission(ROLES_MANAGE, "security.permissions.roles", "SECURITY"),
                 permission(TERMINALS_MANAGE, "security.permissions.terminals", "SECURITY"),
+                permission(CONFIGURACION_TERMINAL, "terminal.permissions.configure", "TERMINAL"),
                 permission(LICENSES_MANAGE, "security.permissions.licenses", "SYSTEM"),
                 permission(BACKUPS_MANAGE, "security.permissions.backups", "SYSTEM"),
                 permission(AUDIT_READ, "security.permissions.audit", "SYSTEM"),

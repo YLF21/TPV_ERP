@@ -130,7 +130,7 @@ class InventoryServiceTest {
                 .containsEntry("almacenId", warehouse.getId().toString())
                 .containsEntry("usuarioId", userId.toString())
                 .containsEntry("tipo", "AJUSTE")
-                .containsEntry("cantidad", new BigDecimal("-3.000"))
+                .containsEntry("cantidad", new BigDecimal("-3"))
                 .containsEntry("motivo", "ROTURA")
                 .containsEntry("creadoEn", "2026-06-08T12:00:00Z");
     }
