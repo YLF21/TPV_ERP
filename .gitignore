@@ -1,2 +1,8 @@
 .worktrees/
 ~$*.docx
+node_modules/
+dist/
+npm-cache/
+temp-npm-cache/
+probe-dir/
+vite-*.log
