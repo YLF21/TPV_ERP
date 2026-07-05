@@ -49,9 +49,10 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 								.map(value -> value.getPermiso().getCodigo())
 								.map(SimpleGrantedAuthority::new)
 								.forEach(authorities::add);
-						SecurityContextHolder.getContext().setAuthentication(
-								new UsernamePasswordAuthenticationToken(
-										user, token, authorities));
+						var securityContext = SecurityContextHolder.createEmptyContext();
+						securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(
+								user, token, authorities));
+						SecurityContextHolder.setContext(securityContext);
 					});
 		}
 		filterChain.doFilter(request, response);
