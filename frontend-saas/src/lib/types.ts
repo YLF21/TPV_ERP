@@ -8,6 +8,11 @@ export type Credentials = {
   password: string;
 };
 
+export type AdminSession = {
+  username: string;
+  permissions: string[];
+};
+
 export type CreateCompanyRequest = {
   name: string;
   taxId: string;
@@ -26,6 +31,8 @@ export type CreateCompanyResponse = {
   licenseReference: string;
   pairingCode: string;
   validUntil: string;
+  tenantUsername: string;
+  tenantInitialPassword: string;
 };
 
 export type LicenseSummary = {
@@ -47,6 +54,10 @@ export type InstallationSummary = {
   licenseReference: string;
   linkedAt: string;
   lastValidatedAt: string | null;
+  appVersion: string | null;
+  operatingSystem: string | null;
+  terminalName: string | null;
+  lastIp: string | null;
 };
 
 export type AdminUser = {
@@ -76,6 +87,225 @@ export type AdminLicenseResponse = {
   validUntil: string;
   maxWindows: number;
   maxPda: number;
+};
+
+export type CompanyOperations = {
+  companyId: string;
+  planName: string;
+  billingStatus: string;
+  renewalDate: string | null;
+  monthlyPrice: string | null;
+  supportStatus: string;
+  contactName: string | null;
+  contactEmail: string | null;
+  notes: string | null;
+};
+
+export type AdminNotification = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  severity: "INFO" | "WARNING" | "DANGER" | string;
+  title: string;
+  detail: string;
+  createdAt: string;
+  read?: boolean;
+};
+
+export type TechnicalStatus = {
+  generatedAt: string;
+  companies: number;
+  licenses: number;
+  installations: number;
+  eventsToday: number;
+  openTickets: number;
+  staleInstallations: number;
+  lastSyncAt: string | null;
+};
+
+export type SupportTicket = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportTicketComment = {
+  id: string;
+  ticketId: string;
+  author: string;
+  message: string;
+  createdAt: string;
+};
+
+export type CustomerHealth = {
+  companyId: string;
+  companyName: string;
+  taxId: string;
+  planName: string;
+  billingStatus: string;
+  licenseStatus: string;
+  validUntil: string | null;
+  installations: number;
+  staleInstallations: number;
+  lastValidationAt: string | null;
+  eventsLast7Days: number;
+  lastEventAt: string | null;
+  openTickets: number;
+  urgentTickets: number;
+  score: number;
+  riskLevel: "OK" | "WARNING" | "DANGER" | string;
+  signals: string[];
+};
+
+export type BillingCompany = {
+  companyId: string;
+  companyName: string;
+  taxId: string;
+  planName: string;
+  billingStatus: string;
+  renewalDate: string | null;
+  monthlyPrice: string | null;
+  licenseReference: string | null;
+  validUntil: string | null;
+  renewalDueSoon: boolean;
+  overdue: boolean;
+};
+
+export type BillingSummary = {
+  totalCompanies: number;
+  paidCompanies: number;
+  pendingCompanies: number;
+  overdueCompanies: number;
+  renewalsNext30Days: number;
+  monthlyRecurringRevenue: string;
+  companies: BillingCompany[];
+};
+
+export type BillingInvoice = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  number: string;
+  concept: string;
+  amount: string;
+  paidAmount: string;
+  currency: string;
+  status: string;
+  issuedAt: string;
+  dueAt: string;
+  createdAt: string;
+};
+
+export type BillingPayment = {
+  id: string;
+  invoiceId: string;
+  amount: string;
+  method: string;
+  reference: string | null;
+  paidAt: string;
+  createdAt: string;
+};
+
+export type TenantUser = {
+  id: string;
+  companyId: string;
+  username: string;
+  roleName: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export type ErpCustomer = {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type ErpProduct = {
+  id: string;
+  companyId: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  price: string;
+  taxRate: string;
+  minStock: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export type ErpSupplier = {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type ErpWarehouse = {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  address: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type TenantSession = {
+  username: string;
+  companyId: string;
+  companyName: string;
+  roleName: string;
+};
+
+export type TenantDashboard = {
+  companyId: string;
+  companyName: string;
+  licenses: number;
+  stores: number;
+  installations: number;
+  openTickets: number;
+  billingStatus: string;
+  renewalDate: string | null;
+  monthlyPrice: string | null;
+};
+
+export type TenantStore = {
+  storeId: string;
+  code: string;
+  name: string;
+  createdAt: string;
+};
+
+export type TenantPortalData = {
+  session: TenantSession;
+  dashboard: TenantDashboard;
+  licenses: LicenseSummary[];
+  stores: TenantStore[];
+  tickets: SupportTicket[];
+  invoices: BillingInvoice[];
+  customers: ErpCustomer[];
+  products: ErpProduct[];
+  suppliers: ErpSupplier[];
+  warehouses: ErpWarehouse[];
 };
 
 export type SyncEventView = {

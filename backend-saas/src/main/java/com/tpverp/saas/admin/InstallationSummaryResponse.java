@@ -10,5 +10,9 @@ public record InstallationSummaryResponse(
         UUID storeId,
         String licenseReference,
         Instant linkedAt,
-        Instant lastValidatedAt) {
+        Instant lastValidatedAt,
+        String appVersion,
+        String operatingSystem,
+        String terminalName,
+        String lastIp) {
 }

@@ -51,6 +51,18 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/companies/")) {
             return AdminPermission.EDIT_COMPANY_DATA;
         }
+        if (path.contains("/tickets") && ("POST".equals(method) || "PUT".equals(method))) {
+            return AdminPermission.MANAGE_SUPPORT_TICKETS;
+        }
+        if (path.contains("/invoices") && ("POST".equals(method) || "PUT".equals(method))) {
+            return AdminPermission.MANAGE_BILLING;
+        }
+        if (path.contains("/tenant-users") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
+            return AdminPermission.MANAGE_TENANT_USERS;
+        }
+        if (path.contains("/erp/") && ("POST".equals(method) || "PUT".equals(method) || "DELETE".equals(method))) {
+            return AdminPermission.MANAGE_ERP_MASTERS;
+        }
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/users/")) {
             return AdminPermission.MANAGE_ADMIN_USERS;
         }

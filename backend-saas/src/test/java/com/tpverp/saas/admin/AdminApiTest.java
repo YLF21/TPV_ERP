@@ -15,6 +15,7 @@ import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
@@ -328,6 +329,375 @@ class AdminApiTest {
                 linkResult.getResponse().getContentAsString(),
                 LicenseSaasLinkResponse.class);
         assertThat(link.licenseReference()).isEqualTo(company.licenseReference());
+    }
+
+    @Test
+    void calculaPulsoDeClienteConRiesgoPorFacturacionYSoporte() throws Exception {
+        CreateCompanyResponse company = createCompany("B33557799");
+        mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new UpdateCompanyOperationsRequest(
+                                "STANDARD",
+                                "IMPAGADO",
+                                null,
+                                "49.90",
+                                "NORMAL",
+                                "Cliente Demo",
+                                "cliente@example.com",
+                                "Pendiente de revisar"))))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/tickets", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new CreateSupportTicketRequest(
+                                "No sincroniza",
+                                "Caja sin eventos",
+                                "URGENTE"))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/health")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        CustomerHealthResponse[] health = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                CustomerHealthResponse[].class);
+        assertThat(health)
+                .filteredOn(value -> value.companyId().equals(company.companyId()))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.riskLevel()).isEqualTo("DANGER");
+                    assertThat(value.openTickets()).isEqualTo(1);
+                    assertThat(value.billingStatus()).isEqualTo("IMPAGADO");
+                    assertThat(value.signals()).contains("Facturacion pendiente");
+                });
+    }
+
+    @Test
+    void calculaResumenDeFacturacionSaas() throws Exception {
+        CreateCompanyResponse company = createCompany("B33779911");
+        mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new UpdateCompanyOperationsRequest(
+                                "PREMIUM",
+                                "IMPAGADO",
+                                Instant.now().plus(Duration.ofDays(10)),
+                                "79.90",
+                                "NORMAL",
+                                "Facturacion Demo",
+                                "billing@example.com",
+                                "Renovar manualmente"))))
+                .andExpect(status().isOk());
+
+        var result = mvc.perform(get("/api/v1/admin/billing-summary")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        BillingSummaryResponse summary = mapper.readValue(
+                result.getResponse().getContentAsString(),
+                BillingSummaryResponse.class);
+        assertThat(summary.overdueCompanies()).isGreaterThanOrEqualTo(1);
+        assertThat(summary.pendingCompanies()).isGreaterThanOrEqualTo(1);
+        assertThat(summary.renewalsNext30Days()).isGreaterThanOrEqualTo(1);
+        assertThat(summary.monthlyRecurringRevenue()).isGreaterThanOrEqualTo("79.90");
+        assertThat(summary.companies())
+                .filteredOn(value -> value.companyId().equals(company.companyId()))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.planName()).isEqualTo("PREMIUM");
+                    assertThat(value.billingStatus()).isEqualTo("IMPAGADO");
+                    assertThat(value.monthlyPrice()).isEqualTo("79.90");
+                    assertThat(value.renewalDueSoon()).isTrue();
+                });
+    }
+
+    @Test
+    void portalClienteConsultaSusDatosYCreaTicket() throws Exception {
+        CreateCompanyResponse company = createCompany("B44112233");
+        mvc.perform(put("/api/v1/admin/companies/{companyId}/operations", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new UpdateCompanyOperationsRequest(
+                                "STANDARD",
+                                "PENDIENTE",
+                                Instant.now().plus(Duration.ofDays(20)),
+                                "49.90",
+                                "NORMAL",
+                                "Cliente Portal",
+                                "cliente@example.com",
+                                "Portal activo"))))
+                .andExpect(status().isOk());
+
+        var sessionResult = mvc.perform(get("/api/v1/tenant/me")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                .andExpect(status().isOk())
+                .andReturn();
+        var session = mapper.readTree(sessionResult.getResponse().getContentAsString());
+        assertThat(session.get("companyId").asText()).isEqualTo(company.companyId().toString());
+        assertThat(session.get("companyName").asText()).isEqualTo("Empresa");
+        assertThat(session.get("roleName").asText()).isEqualTo("OWNER");
+
+        var dashboardResult = mvc.perform(get("/api/v1/tenant/dashboard")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                .andExpect(status().isOk())
+                .andReturn();
+        var dashboard = mapper.readTree(dashboardResult.getResponse().getContentAsString());
+        assertThat(dashboard.get("licenses").asInt()).isEqualTo(1);
+        assertThat(dashboard.get("stores").asInt()).isEqualTo(1);
+        assertThat(dashboard.get("billingStatus").asText()).isEqualTo("PENDIENTE");
+        assertThat(dashboard.get("monthlyPrice").asText()).isEqualTo("49.90");
+
+        mvc.perform(post("/api/v1/tenant/tickets")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new CreateSupportTicketRequest(
+                                "Consulta cliente",
+                                "Necesito revisar mi licencia",
+                                "NORMAL"))))
+                .andExpect(status().isOk());
+
+        var ticketResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/tickets", company.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        SupportTicketResponse[] tickets = mapper.readValue(
+                ticketResult.getResponse().getContentAsString(),
+                SupportTicketResponse[].class);
+        assertThat(tickets)
+                .filteredOn(value -> value.title().equals("Consulta cliente"))
+                .singleElement()
+                .satisfies(value -> assertThat(value.createdBy()).isEqualTo("tenant:" + company.tenantUsername()));
+    }
+
+    @Test
+    void fase8GestionaFacturasPagosYPortalClienteLasConsulta() throws Exception {
+        CreateCompanyResponse company = createCompany("B77889911");
+
+        var invoiceResult = mvc.perform(post("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "number": "SaaS-2026-0001",
+                                  "concept": "Suscripcion julio",
+                                  "amount": "79.90",
+                                  "currency": "EUR",
+                                  "issuedAt": "2026-07-01T00:00:00Z",
+                                  "dueAt": "2026-07-31T00:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        var invoice = mapper.readTree(invoiceResult.getResponse().getContentAsString());
+        assertThat(invoice.get("status").asText()).isEqualTo("PENDIENTE");
+        assertThat(invoice.get("paidAmount").asText()).isEqualTo("0.00");
+
+        mvc.perform(post("/api/v1/admin/invoices/{invoiceId}/payments", invoice.get("id").asText())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": "79.90",
+                                  "method": "TRANSFERENCIA",
+                                  "paidAt": "2026-07-05T10:00:00Z",
+                                  "reference": "TR-001"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        var adminInvoicesResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/invoices", company.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var adminInvoices = mapper.readTree(adminInvoicesResult.getResponse().getContentAsString());
+        assertThat(adminInvoices.get(0).get("status").asText()).isEqualTo("PAGADA");
+        assertThat(adminInvoices.get(0).get("paidAmount").asText()).isEqualTo("79.90");
+
+        var tenantInvoicesResult = mvc.perform(get("/api/v1/tenant/invoices")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                .andExpect(status().isOk())
+                .andReturn();
+        var tenantInvoices = mapper.readTree(tenantInvoicesResult.getResponse().getContentAsString());
+        assertThat(tenantInvoices).hasSize(1);
+        assertThat(tenantInvoices.get(0).get("number").asText()).isEqualTo("SaaS-2026-0001");
+        assertThat(tenantInvoices.get(0).get("status").asText()).isEqualTo("PAGADA");
+    }
+
+    @Test
+    void fase8GestionaUsuariosClienteCompletos() throws Exception {
+        CreateCompanyResponse company = createCompany("B77990011");
+
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/tenant-users", company.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "cliente-billing",
+                                  "password": "billing-pass",
+                                  "roleName": "BILLING"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        var usersResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/tenant-users", company.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var users = mapper.readTree(usersResult.getResponse().getContentAsString());
+        assertThat(users)
+                .anySatisfy(user -> {
+                    assertThat(user.get("username").asText()).isEqualTo("cliente-billing");
+                    assertThat(user.get("roleName").asText()).isEqualTo("BILLING");
+                    assertThat(user.get("active").asBoolean()).isTrue();
+                });
+
+        mvc.perform(get("/api/v1/tenant/me")
+                        .header("Authorization", basic("cliente-billing", "billing-pass")))
+                .andExpect(status().isOk());
+
+        mvc.perform(put("/api/v1/admin/tenant-users/{username}/password", "cliente-billing")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("billing-new-pass"))))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/tenant/me")
+                        .header("Authorization", basic("cliente-billing", "billing-pass")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/tenant/me")
+                        .header("Authorization", basic("cliente-billing", "billing-new-pass")))
+                .andExpect(status().isOk());
+
+        mvc.perform(delete("/api/v1/admin/tenant-users/{username}", "cliente-billing")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/tenant/me")
+                        .header("Authorization", basic("cliente-billing", "billing-new-pass")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void fase9GestionaMaestrosErpAisladosPorEmpresa() throws Exception {
+        CreateCompanyResponse companyA = createCompany("B90110011");
+        CreateCompanyResponse companyB = createCompany("B90110022");
+
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/erp/customers", companyA.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CLI-A",
+                                  "name": "Cliente A",
+                                  "taxId": "11111111A",
+                                  "email": "cliente-a@example.com",
+                                  "phone": "600000001"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/erp/customers", companyB.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "CLI-B",
+                                  "name": "Cliente B",
+                                  "taxId": "22222222B",
+                                  "email": "cliente-b@example.com",
+                                  "phone": "600000002"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/admin/companies/{companyId}/erp/products", companyA.companyId())
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sku": "PROD-A",
+                                  "name": "Producto A",
+                                  "category": "General",
+                                  "price": "12.50",
+                                  "taxRate": "21.00",
+                                  "minStock": "3.00"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        var customersAResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/erp/customers", companyA.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var customersA = mapper.readTree(customersAResult.getResponse().getContentAsString());
+        assertThat(customersA).hasSize(1);
+        assertThat(customersA.get(0).get("code").asText()).isEqualTo("CLI-A");
+        assertThat(customersA.get(0).get("companyId").asText()).isEqualTo(companyA.companyId().toString());
+
+        var customersBResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/erp/customers", companyB.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var customersB = mapper.readTree(customersBResult.getResponse().getContentAsString());
+        assertThat(customersB).hasSize(1);
+        assertThat(customersB.get(0).get("code").asText()).isEqualTo("CLI-B");
+
+        var productsAResult = mvc.perform(get("/api/v1/admin/companies/{companyId}/erp/products", companyA.companyId())
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        var productsA = mapper.readTree(productsAResult.getResponse().getContentAsString());
+        assertThat(productsA).hasSize(1);
+        assertThat(productsA.get(0).get("sku").asText()).isEqualTo("PROD-A");
+    }
+
+    @Test
+    void fase9PortalClienteGestionaSusMaestrosErp() throws Exception {
+        CreateCompanyResponse company = createCompany("B90110033");
+
+        mvc.perform(post("/api/v1/tenant/erp/suppliers")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "PROV-1",
+                                  "name": "Proveedor Portal",
+                                  "taxId": "33333333C",
+                                  "email": "proveedor@example.com",
+                                  "phone": "600000003"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/tenant/erp/warehouses")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "code": "ALM-1",
+                                  "name": "Almacen Portal",
+                                  "address": "Calle Portal 1"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        var suppliersResult = mvc.perform(get("/api/v1/tenant/erp/suppliers")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                .andExpect(status().isOk())
+                .andReturn();
+        var suppliers = mapper.readTree(suppliersResult.getResponse().getContentAsString());
+        assertThat(suppliers).hasSize(1);
+        assertThat(suppliers.get(0).get("code").asText()).isEqualTo("PROV-1");
+
+        var warehousesResult = mvc.perform(get("/api/v1/tenant/erp/warehouses")
+                        .header("Authorization", basic(company.tenantUsername(), company.tenantInitialPassword())))
+                .andExpect(status().isOk())
+                .andReturn();
+        var warehouses = mapper.readTree(warehousesResult.getResponse().getContentAsString());
+        assertThat(warehouses).hasSize(1);
+        assertThat(warehouses.get(0).get("code").asText()).isEqualTo("ALM-1");
     }
 
     private CreateCompanyRequest request(String taxId) {

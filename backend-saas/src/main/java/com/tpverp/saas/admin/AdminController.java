@@ -36,6 +36,109 @@ public class AdminController {
         return service.editCompany(companyId, request);
     }
 
+    @GetMapping("/companies/{companyId}/operations")
+    public CompanyOperationsResponse companyOperations(@PathVariable UUID companyId) {
+        return service.companyOperations(companyId);
+    }
+
+    @PutMapping("/companies/{companyId}/operations")
+    public CompanyOperationsResponse updateCompanyOperations(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody UpdateCompanyOperationsRequest request) {
+        return service.updateCompanyOperations(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/tenant-users")
+    public List<TenantUserResponse> tenantUsers(@PathVariable UUID companyId) {
+        return service.tenantUsers(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/tenant-users")
+    public TenantUserResponse createTenantUser(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateTenantUserRequest request) {
+        return service.createTenantUser(companyId, request);
+    }
+
+    @PutMapping("/tenant-users/{username}/password")
+    public void changeTenantPassword(
+            @PathVariable String username,
+            @Valid @RequestBody ChangeAdminPasswordRequest request) {
+        service.changeTenantPassword(username, request);
+    }
+
+    @DeleteMapping("/tenant-users/{username}")
+    public void deactivateTenantUser(@PathVariable String username) {
+        service.deactivateTenantUser(username);
+    }
+
+    @GetMapping("/companies/{companyId}/invoices")
+    public List<BillingInvoiceResponse> billingInvoices(@PathVariable UUID companyId) {
+        return service.billingInvoices(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/invoices")
+    public BillingInvoiceResponse createBillingInvoice(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateBillingInvoiceRequest request) {
+        return service.createBillingInvoice(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/erp/customers")
+    public List<ErpCustomerResponse> erpCustomers(@PathVariable UUID companyId) {
+        return service.erpCustomers(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/erp/customers")
+    public ErpCustomerResponse createErpCustomer(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateErpCustomerRequest request) {
+        return service.createErpCustomer(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/erp/products")
+    public List<ErpProductResponse> erpProducts(@PathVariable UUID companyId) {
+        return service.erpProducts(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/erp/products")
+    public ErpProductResponse createErpProduct(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateErpProductRequest request) {
+        return service.createErpProduct(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/erp/suppliers")
+    public List<ErpSupplierResponse> erpSuppliers(@PathVariable UUID companyId) {
+        return service.erpSuppliers(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/erp/suppliers")
+    public ErpSupplierResponse createErpSupplier(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateErpSupplierRequest request) {
+        return service.createErpSupplier(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/erp/warehouses")
+    public List<ErpWarehouseResponse> erpWarehouses(@PathVariable UUID companyId) {
+        return service.erpWarehouses(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/erp/warehouses")
+    public ErpWarehouseResponse createErpWarehouse(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateErpWarehouseRequest request) {
+        return service.createErpWarehouse(companyId, request);
+    }
+
+    @PostMapping("/invoices/{invoiceId}/payments")
+    public BillingPaymentResponse createBillingPayment(
+            @PathVariable UUID invoiceId,
+            @Valid @RequestBody CreateBillingPaymentRequest request) {
+        return service.createBillingPayment(invoiceId, request);
+    }
+
     @PutMapping("/users/{username}/password")
     public void changePassword(
             @PathVariable String username,
@@ -71,6 +174,72 @@ public class AdminController {
     @GetMapping("/audit")
     public List<AdminAuditLogResponse> audit() {
         return audit.recent();
+    }
+
+    @GetMapping("/me")
+    public AdminSessionResponse me() {
+        return service.session();
+    }
+
+    @GetMapping("/notifications")
+    public List<AdminNotificationResponse> notifications() {
+        return service.notifications();
+    }
+
+    @PutMapping("/notifications/{notificationId}/read")
+    public void markNotificationRead(@PathVariable String notificationId) {
+        service.markNotificationRead(notificationId);
+    }
+
+    @GetMapping("/technical-status")
+    public TechnicalStatusResponse technicalStatus() {
+        return service.technicalStatus();
+    }
+
+    @GetMapping("/billing-summary")
+    public BillingSummaryResponse billingSummary() {
+        return service.billingSummary();
+    }
+
+    @GetMapping("/health")
+    public List<CustomerHealthResponse> customerHealth() {
+        return service.customerHealth();
+    }
+
+    @GetMapping("/companies/{companyId}/health")
+    public CustomerHealthResponse customerHealth(@PathVariable UUID companyId) {
+        return service.customerHealth(companyId);
+    }
+
+    @GetMapping("/companies/{companyId}/tickets")
+    public List<SupportTicketResponse> supportTickets(@PathVariable UUID companyId) {
+        return service.supportTickets(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/tickets")
+    public SupportTicketResponse createSupportTicket(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateSupportTicketRequest request) {
+        return service.createSupportTicket(companyId, request);
+    }
+
+    @PutMapping("/tickets/{ticketId}")
+    public SupportTicketResponse updateSupportTicket(
+            @PathVariable UUID ticketId,
+            @Valid @RequestBody UpdateSupportTicketRequest request) {
+        return service.updateSupportTicket(ticketId, request);
+    }
+
+    @GetMapping("/tickets/{ticketId}/comments")
+    public List<SupportTicketCommentResponse> supportTicketComments(@PathVariable UUID ticketId) {
+        return service.supportTicketComments(ticketId);
+    }
+
+    @PostMapping("/tickets/{ticketId}/comments")
+    public SupportTicketCommentResponse createSupportTicketComment(
+            @PathVariable UUID ticketId,
+            @Valid @RequestBody CreateSupportTicketCommentRequest request) {
+        return service.createSupportTicketComment(ticketId, request);
     }
 
     @PostMapping("/licenses/{reference}/renew")

@@ -1,8 +1,8 @@
 package com.tpverp.backend.security.api;
 
+import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.domain.UserSessionRepository;
-import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.shared.access.OperationalAccessFilter;
 import com.tpverp.backend.shared.access.OperationalAccessPolicy;
 import java.util.ArrayList;
@@ -11,8 +11,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -28,11 +28,13 @@ class SecurityConfiguration {
 			AuthenticationService authenticationService,
 			InstallationStatusService installationStatusService,
 			Environment environment) throws Exception {
+
 		var bearerFilter = new BearerSessionFilter(sesionRepository, authenticationService);
 		var temporaryPasswordFilter = new TemporaryPasswordFilter();
 		var operationalFilter = new OperationalAccessFilter(
 				installationStatusService, new OperationalAccessPolicy());
 		var publicPaths = publicPaths(environment);
+
 		return http
 				.csrf(csrf -> csrf.disable())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -53,12 +55,15 @@ class SecurityConfiguration {
 				"/api/v1/installation/license-request",
 				"/api/v1/license/validate",
 				"/api/v1/terminals/request",
+				"/",
 				"/actuator/health"));
+
 		if (environment.acceptsProfiles(Profiles.of("dev"))) {
 			paths.add("/swagger-ui.html");
 			paths.add("/swagger-ui/**");
 			paths.add("/v3/api-docs/**");
 		}
+
 		return paths;
 	}
 }

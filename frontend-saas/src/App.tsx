@@ -1,25 +1,41 @@
 import { createContext, FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "./lib/api";
 import type {
+  AdminNotification,
+  AdminSession,
   AdminUser,
   AuditLog,
+  BillingInvoice,
+  BillingSummary,
+  CompanyOperations,
   CreateCompanyRequest,
+  CustomerHealth,
   Credentials,
   DashboardData,
+  ErpCustomer,
+  ErpProduct,
+  ErpSupplier,
+  ErpWarehouse,
   InstallationSummary,
   LicenseSummary,
   PairingCodeResponse,
   StockSnapshot,
+  SupportTicket,
+  SupportTicketComment,
   SyncEventView,
+  TenantPortalData,
+  TenantUser,
   TaxRegime,
+  TechnicalStatus,
   TaxpayerType
 } from "./lib/types";
 
-type View = "dashboard" | "licenses" | "sync" | "users" | "audit";
+type View = "dashboard" | "licenses" | "sync" | "users" | "audit" | "support" | "health" | "billing" | "masters";
 type Notice = { type: "success" | "error"; text: string } | null;
 type LicenseAction = "block" | "unblock" | "pairing";
-type SaasAdminRoleName = "ADMIN" | "VIEWER";
+type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
 type Language = "es" | "en" | "zh";
+type AuthMode = "admin" | "tenant";
 
 const LANGUAGE_OPTIONS: Array<{ value: Language; label: string; short: string }> = [
   { value: "es", label: "Español", short: "ES" },
@@ -39,6 +55,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     sync: "Sincronizacion",
     users: "Usuarios",
     audit: "Auditoria",
+    supportCenter: "Soporte",
+    customerHealth: "Pulso",
+    billing: "Facturacion",
+    masters: "Maestros",
     logout: "Salir",
     centralPanel: "Panel central",
     refresh: "Actualizar",
@@ -120,7 +140,178 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     deactivate: "Desactivar",
     adminAudit: "Auditoria administrativa",
     recentActions: "acciones recientes",
-    noAuditActions: "No hay acciones de auditoria."
+    noAuditActions: "No hay acciones de auditoria.",
+    globalSearch: "Buscar empresa, licencia, NIF o tienda",
+    clearSearch: "Limpiar busqueda",
+    alerts: "Alertas",
+    alertsSubtitle: "Riesgos operativos que conviene revisar",
+    noAlerts: "No hay alertas importantes.",
+    expiringSoon: "Licencias proximas a caducar",
+    staleInstallations: "Instalaciones sin validacion reciente",
+    expiringLicenseAlert: "Licencia proxima a caducar",
+    blockedLicenseAlert: "Licencia bloqueada",
+    staleInstallationAlert: "Instalacion sin validacion reciente",
+    companyDetail: "Ficha de empresa",
+    companyDetailSubtitle: "Licencia, instalaciones y actividad sincronizada",
+    selectCompany: "Selecciona una empresa para ver el detalle.",
+    syncHealth: "Salud de sincronizacion",
+    syncHealthSubtitle: "Actividad recibida por tiendas",
+    eventsToday: "Eventos hoy",
+    salesEvents: "Ventas",
+    stockEvents: "Stock",
+    cashEvents: "Caja",
+    lastSync: "Ultima sincronizacion",
+    viewDetail: "Ver ficha",
+    selected: "Seleccionada",
+    stores: "Tiendas",
+    recentActivity: "Actividad reciente",
+    noRecentActivity: "Sin actividad reciente.",
+    licenseExpires: "Caduca",
+    withoutValidation: "Sin validacion",
+    stale: "Atrasada",
+    phase2Operations: "Gestion SaaS",
+    phase2OperationsSubtitle: "Licencia, facturacion y soporte",
+    saveChanges: "Guardar cambios",
+    saving: "Guardando",
+    renewLicense: "Renovar licencia",
+    editCompany: "Editar empresa",
+    plan: "Plan",
+    billingStatus: "Estado de pago",
+    renewalDate: "Fecha renovacion",
+    monthlyPrice: "Precio mensual",
+    supportStatus: "Soporte",
+    contactName: "Contacto",
+    contactEmail: "Email contacto",
+    notes: "Notas",
+    deviceDetails: "Detalle tecnico",
+    appVersion: "Version TPV",
+    operatingSystem: "Sistema",
+    terminalName: "Terminal",
+    lastIp: "Ultima IP",
+    notAvailable: "Pendiente",
+    companyUpdated: "Empresa actualizada.",
+    licenseRenewed: "Licencia renovada.",
+    operationsUpdated: "Datos SaaS actualizados.",
+    notifications: "Notificaciones",
+    notificationsSubtitle: "Avisos internos calculados desde licencias, instalaciones y facturacion",
+    technicalPanel: "Estado tecnico",
+    technicalPanelSubtitle: "Pulso operativo del backend SaaS",
+    supportTickets: "Tickets de soporte",
+    supportTicketsSubtitle: "Incidencias internas por empresa",
+    newTicket: "Nuevo ticket",
+    title: "Titulo",
+    description: "Descripcion",
+    priority: "Prioridad",
+    openTickets: "Tickets abiertos",
+    backendStatus: "Backend SaaS",
+    generatedAt: "Generado",
+    createTicket: "Crear ticket",
+    ticketCreated: "Ticket creado.",
+    ticketUpdated: "Ticket actualizado.",
+    noNotifications: "No hay notificaciones internas.",
+    noTickets: "No hay tickets para esta empresa.",
+    allStatuses: "Todos los estados",
+    allPriorities: "Todas las prioridades",
+    comment: "Comentario",
+    addComment: "Añadir comentario",
+    markRead: "Marcar leida",
+    notificationRead: "Notificacion marcada como leida.",
+    commentAdded: "Comentario añadido.",
+    noComments: "Sin comentarios.",
+    permissions: "Permisos",
+    resolve: "Resolver",
+    inProgress: "En curso",
+    open: "Abierto",
+    urgent: "Urgente",
+    normal: "Normal",
+    high: "Alta",
+    technicalOk: "Operativo",
+    healthSubtitle: "Riesgo operativo por empresa",
+    healthScore: "Puntuacion",
+    riskLevel: "Riesgo",
+    riskOk: "OK",
+    riskWarning: "Atencion",
+    riskDanger: "Riesgo alto",
+    customersInRisk: "Clientes en riesgo",
+    inactiveCustomers: "Sin actividad",
+    noHealthData: "No hay datos de pulso.",
+    healthSignals: "Senales",
+    eventsLast7Days: "Eventos 7 dias",
+    urgentTickets: "Tickets urgentes",
+    lastEventAt: "Ultimo evento",
+    lastValidationAt: "Ultima validacion",
+    stableOperation: "Operativa estable",
+    billingSubtitle: "Cobros, renovaciones e ingresos estimados",
+    paidCompanies: "Al dia",
+    pendingBilling: "Pendientes",
+    overdueBilling: "Impagadas",
+    renewalsNext30Days: "Renovaciones 30 dias",
+    monthlyRecurringRevenue: "Ingresos mensuales",
+    billingPortfolio: "Cartera de facturacion",
+    billingPortfolioSubtitle: "Empresas ordenadas por urgencia de cobro",
+    noBillingData: "No hay datos de facturacion.",
+    dueSoon: "Renovacion proxima",
+    overdue: "Vencido",
+    paid: "Pagado",
+    clientPortal: "Portal cliente",
+    myCompany: "Mi empresa",
+    tenantWelcome: "Resumen operativo de tu SaaS",
+    myLicenses: "Mis licencias",
+    myStores: "Mis tiendas",
+    mySupport: "Mi soporte",
+    myMasters: "Mis maestros",
+    tenantAccess: "Acceso cliente",
+    tenantRole: "Rol cliente",
+    createSupportRequest: "Crear solicitud",
+    supportRequestCreated: "Solicitud creada.",
+    noTenantTickets: "No tienes tickets abiertos.",
+    tenantInitialAccess: "Acceso cliente inicial",
+    tenantInitialAccessHint: "Entrega estas credenciales al cliente para su primer acceso.",
+    initialPassword: "Password inicial",
+    realBilling: "Facturacion real",
+    invoices: "Facturas",
+    invoiceNumber: "Numero factura",
+    concept: "Concepto",
+    amount: "Importe",
+    currency: "Moneda",
+    issuedAt: "Emitida",
+    dueAt: "Vencimiento",
+    paidAmount: "Pagado",
+    createInvoice: "Crear factura",
+    registerPayment: "Registrar pago",
+    paymentMethod: "Metodo de pago",
+    paymentReference: "Referencia",
+    tenantUsers: "Usuarios cliente",
+    createTenantUser: "Crear usuario cliente",
+    tenantUserCreated: "Usuario cliente creado.",
+    tenantUserUpdated: "Usuario cliente actualizado.",
+    tenantUserDisabled: "Usuario cliente desactivado.",
+    changePassword: "Cambiar password",
+    newPassword: "Nuevo password",
+    noTenantUsers: "No hay usuarios cliente para esta empresa.",
+    erpMasters: "Maestros ERP",
+    erpMastersSubtitle: "Clientes, productos, proveedores y almacenes por empresa",
+    customers: "Clientes",
+    products: "Productos",
+    suppliers: "Proveedores",
+    warehouses: "Almacenes",
+    code: "Codigo",
+    name: "Nombre",
+    email: "Email",
+    phone: "Telefono",
+    sku: "SKU",
+    category: "Categoria",
+    price: "Precio",
+    taxRate: "Impuesto",
+    minStock: "Stock minimo",
+    address: "Direccion",
+    createCustomer: "Crear cliente",
+    createProduct: "Crear producto",
+    createSupplier: "Crear proveedor",
+    createWarehouse: "Crear almacen",
+    masterCreated: "Maestro creado.",
+    mastersBackendPending: "Maestros ERP pendiente de activar en el backend SaaS. Reinicia el backend para cargar esta fase.",
+    noMasterData: "No hay datos para este maestro."
   },
   en: {
     administration: "Administration",
@@ -133,6 +324,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     sync: "Synchronization",
     users: "Users",
     audit: "Audit",
+    supportCenter: "Support",
+    customerHealth: "Health",
+    billing: "Billing",
+    masters: "Masters",
     logout: "Sign out",
     centralPanel: "Central panel",
     refresh: "Refresh",
@@ -214,7 +409,119 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     deactivate: "Deactivate",
     adminAudit: "Admin audit",
     recentActions: "recent actions",
-    noAuditActions: "No audit actions."
+    noAuditActions: "No audit actions.",
+    globalSearch: "Search company, license, tax ID or store",
+    clearSearch: "Clear search",
+    alerts: "Alerts",
+    alertsSubtitle: "Operational risks worth reviewing",
+    noAlerts: "No important alerts.",
+    expiringSoon: "Licenses expiring soon",
+    staleInstallations: "Installations without recent validation",
+    expiringLicenseAlert: "License expiring soon",
+    blockedLicenseAlert: "Blocked license",
+    staleInstallationAlert: "Installation without recent validation",
+    companyDetail: "Company profile",
+    companyDetailSubtitle: "License, installations and synchronized activity",
+    selectCompany: "Select a company to view details.",
+    syncHealth: "Synchronization health",
+    syncHealthSubtitle: "Activity received from stores",
+    eventsToday: "Events today",
+    salesEvents: "Sales",
+    stockEvents: "Stock",
+    cashEvents: "Cash",
+    lastSync: "Last sync",
+    viewDetail: "View profile",
+    selected: "Selected",
+    stores: "Stores",
+    recentActivity: "Recent activity",
+    noRecentActivity: "No recent activity.",
+    licenseExpires: "Expires",
+    withoutValidation: "Without validation",
+    stale: "Delayed",
+    phase2Operations: "SaaS management",
+    phase2OperationsSubtitle: "License, billing and support",
+    saveChanges: "Save changes",
+    saving: "Saving",
+    renewLicense: "Renew license",
+    editCompany: "Edit company",
+    plan: "Plan",
+    billingStatus: "Billing status",
+    renewalDate: "Renewal date",
+    monthlyPrice: "Monthly price",
+    supportStatus: "Support",
+    contactName: "Contact",
+    contactEmail: "Contact email",
+    notes: "Notes",
+    deviceDetails: "Technical detail",
+    appVersion: "TPV version",
+    operatingSystem: "System",
+    terminalName: "Terminal",
+    lastIp: "Last IP",
+    notAvailable: "Pending",
+    companyUpdated: "Company updated.",
+    licenseRenewed: "License renewed.",
+    operationsUpdated: "SaaS data updated.",
+    notifications: "Notifications",
+    notificationsSubtitle: "Internal alerts calculated from licenses, installations and billing",
+    technicalPanel: "Technical status",
+    technicalPanelSubtitle: "Operational pulse of the SaaS backend",
+    supportTickets: "Support tickets",
+    supportTicketsSubtitle: "Internal issues by company",
+    newTicket: "New ticket",
+    title: "Title",
+    description: "Description",
+    priority: "Priority",
+    openTickets: "Open tickets",
+    backendStatus: "SaaS backend",
+    generatedAt: "Generated",
+    createTicket: "Create ticket",
+    ticketCreated: "Ticket created.",
+    ticketUpdated: "Ticket updated.",
+    noNotifications: "No internal notifications.",
+    noTickets: "No tickets for this company.",
+    allStatuses: "All statuses",
+    allPriorities: "All priorities",
+    comment: "Comment",
+    addComment: "Add comment",
+    markRead: "Mark read",
+    notificationRead: "Notification marked as read.",
+    commentAdded: "Comment added.",
+    noComments: "No comments.",
+    permissions: "Permissions",
+    resolve: "Resolve",
+    inProgress: "In progress",
+    open: "Open",
+    urgent: "Urgent",
+    normal: "Normal",
+    high: "High",
+    technicalOk: "Operational",
+    healthSubtitle: "Operational risk by company",
+    healthScore: "Score",
+    riskLevel: "Risk",
+    riskOk: "OK",
+    riskWarning: "Attention",
+    riskDanger: "High risk",
+    customersInRisk: "Customers at risk",
+    inactiveCustomers: "No activity",
+    noHealthData: "No health data.",
+    healthSignals: "Signals",
+    eventsLast7Days: "Events 7 days",
+    urgentTickets: "Urgent tickets",
+    lastEventAt: "Last event",
+    lastValidationAt: "Last validation",
+    stableOperation: "Stable operation",
+    billingSubtitle: "Payments, renewals and estimated revenue",
+    paidCompanies: "Paid",
+    pendingBilling: "Pending",
+    overdueBilling: "Overdue",
+    renewalsNext30Days: "Renewals 30 days",
+    monthlyRecurringRevenue: "Monthly revenue",
+    billingPortfolio: "Billing portfolio",
+    billingPortfolioSubtitle: "Companies ordered by collection urgency",
+    noBillingData: "No billing data.",
+    dueSoon: "Renewal soon",
+    overdue: "Overdue",
+    paid: "Paid"
   },
   zh: {
     administration: "管理",
@@ -328,7 +635,10 @@ function useI18n() {
 
 const SAAS_ADMIN_ROLES: Array<{ value: SaasAdminRoleName; label: string; description: string }> = [
   { value: "ADMIN", label: "ADMIN", description: "Gestion completa del SaaS" },
-  { value: "VIEWER", label: "VIEWER", description: "Solo consulta de datos admin" }
+  { value: "VIEWER", label: "VIEWER", description: "Solo consulta de datos admin" },
+  { value: "SUPPORT", label: "SUPPORT", description: "Soporte tecnico y codigos de enlace" },
+  { value: "BILLING", label: "BILLING", description: "Licencias, renovaciones y facturacion" },
+  { value: "AUDITOR", label: "AUDITOR", description: "Solo auditoria y lectura" }
 ];
 
 const initialCompanyForm: CreateCompanyRequest = {
@@ -351,8 +661,12 @@ export default function App() {
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [data, setData] = useState<DashboardData | null>(null);
+  const [tenantData, setTenantData] = useState<TenantPortalData | null>(null);
+  const [session, setSession] = useState<AdminSession | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const i18n = useMemo(
     () => ({
       language,
@@ -364,6 +678,8 @@ export default function App() {
     }),
     [language]
   );
+  const visibleData = useMemo(() => (data ? filterDashboardData(data, searchQuery) : null), [data, searchQuery]);
+  const permissions = useMemo(() => new Set(session?.permissions ?? fallbackPermissions(credentials?.username)), [session, credentials]);
 
   useEffect(() => {
     if (credentials) {
@@ -375,14 +691,35 @@ export default function App() {
     if (!activeCredentials) return;
     setLoading(true);
     try {
-      const dashboard = await api.dashboard(activeCredentials);
+      const [dashboard, nextSession] = await Promise.all([
+        api.dashboard(activeCredentials),
+        api.session(activeCredentials).catch((error) => {
+          if (isMissingPhase3Endpoint(error)) return fallbackSession(activeCredentials.username);
+          throw error;
+        })
+      ]);
       setData(dashboard);
+      setTenantData(null);
+      setSession(nextSession);
+      setAuthMode("admin");
       setNotice(null);
     } catch (error) {
-      setNotice({ type: "error", text: errorMessage(error) });
-      if (error instanceof ApiError && error.status === 401) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        try {
+          const nextTenantData = await api.tenantPortal(activeCredentials);
+          setTenantData(nextTenantData);
+          setData(null);
+          setSession(null);
+          setAuthMode("tenant");
+          setNotice(null);
+          return;
+        } catch (tenantError) {
+          setNotice({ type: "error", text: errorMessage(tenantError) });
+        }
         setCredentials(null);
         sessionStorage.removeItem("tpv-saas-credentials");
+      } else {
+        setNotice({ type: "error", text: errorMessage(error) });
       }
     } finally {
       setLoading(false);
@@ -398,6 +735,9 @@ export default function App() {
     sessionStorage.removeItem("tpv-saas-credentials");
     setCredentials(null);
     setData(null);
+    setTenantData(null);
+    setSession(null);
+    setAuthMode(null);
     setNotice(null);
   }
 
@@ -411,6 +751,17 @@ export default function App() {
 
   return (
     <I18nContext.Provider value={i18n}>
+    {authMode === "tenant" ? (
+      <TenantPortal
+        credentials={credentials}
+        data={tenantData}
+        loading={loading}
+        notice={notice}
+        onRefresh={() => void refresh()}
+        onLogout={logout}
+        onNotice={setNotice}
+      />
+    ) : (
     <div className="app-shell">
       <header className="app-header" aria-label={i18n.t("mainNavigation")}>
         <div className="brand">
@@ -425,6 +776,10 @@ export default function App() {
           <NavButton active={activeView === "licenses"} onClick={() => setActiveView("licenses")} label={i18n.t("licenses")} />
           <NavButton active={activeView === "sync"} onClick={() => setActiveView("sync")} label={i18n.t("sync")} />
           <NavButton active={activeView === "users"} onClick={() => setActiveView("users")} label={i18n.t("users")} />
+          <NavButton active={activeView === "support"} onClick={() => setActiveView("support")} label={i18n.t("supportCenter")} />
+          <NavButton active={activeView === "health"} onClick={() => setActiveView("health")} label={i18n.t("customerHealth")} />
+          <NavButton active={activeView === "billing"} onClick={() => setActiveView("billing")} label={i18n.t("billing")} />
+          <NavButton active={activeView === "masters"} onClick={() => setActiveView("masters")} label={i18n.t("masters")} />
           <NavButton active={activeView === "audit"} onClick={() => setActiveView("audit")} label={i18n.t("audit")} />
         </nav>
         <div className="app-actions" aria-label="Panel actions">
@@ -449,31 +804,69 @@ export default function App() {
           </button>
         </header>
 
+        {data && (
+          <div className="global-search" role="search">
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={i18n.t("globalSearch")}
+              aria-label={i18n.t("globalSearch")}
+            />
+            {searchQuery && (
+              <button className="small-button" type="button" onClick={() => setSearchQuery("")}>
+                {i18n.t("clearSearch")}
+              </button>
+            )}
+          </div>
+        )}
+
         {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
 
-        {!data ? (
+        {!visibleData ? (
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : (
           <>
-            {activeView === "dashboard" && <Dashboard data={data} />}
+            {activeView === "dashboard" && <Dashboard data={visibleData} />}
             {activeView === "licenses" && (
               <LicensesView
                 credentials={credentials}
-                licenses={data.licenses}
-                installations={data.installations}
+                licenses={visibleData.licenses}
+                installations={visibleData.installations}
+                events={visibleData.events}
+                permissions={permissions}
                 onChanged={() => void refresh()}
                 onNotice={setNotice}
               />
             )}
-            {activeView === "sync" && <SyncView credentials={credentials} licenses={data.licenses} onNotice={setNotice} />}
+            {activeView === "sync" && <SyncView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />}
             {activeView === "users" && (
-              <UsersView credentials={credentials} users={data.users} onChanged={() => void refresh()} onNotice={setNotice} />
+              <UsersView
+                credentials={credentials}
+                users={visibleData.users}
+                licenses={visibleData.licenses}
+                permissions={permissions}
+                onChanged={() => void refresh()}
+                onNotice={setNotice}
+              />
             )}
-            {activeView === "audit" && <AuditView audit={data.audit} />}
+            {activeView === "support" && (
+              <SupportView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "health" && (
+              <CustomerHealthView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />
+            )}
+            {activeView === "billing" && (
+              <BillingView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />
+            )}
+            {activeView === "masters" && (
+              <MastersView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "audit" && <AuditView audit={visibleData.audit} />}
           </>
         )}
       </main>
     </div>
+    )}
     </I18nContext.Provider>
   );
 }
@@ -540,12 +933,246 @@ function LoginScreen({ onLogin }: { onLogin: (credentials: Credentials) => void 
   );
 }
 
+function TenantPortal({
+  credentials,
+  data,
+  loading,
+  notice,
+  onRefresh,
+  onLogout,
+  onNotice
+}: {
+  credentials: Credentials;
+  data: TenantPortalData | null;
+  loading: boolean;
+  notice: Notice;
+  onRefresh: () => void;
+  onLogout: () => void;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("NORMAL");
+  const [busy, setBusy] = useState(false);
+
+  async function submitTicket(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api.createTenantTicket(credentials, { title, description, priority });
+      setTitle("");
+      setDescription("");
+      setPriority("NORMAL");
+      onNotice({ type: "success", text: t("supportRequestCreated") });
+      onRefresh();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="app-shell tenant-shell">
+      <header className="app-header" aria-label={t("clientPortal")}>
+        <div className="brand">
+          <span className="brand-mark">TPV</span>
+          <div>
+            <strong>{data?.session.companyName ?? "ERP SaaS"}</strong>
+            <span>{t("clientPortal")}</span>
+          </div>
+        </div>
+        <nav className="nav-list top-nav-list tenant-top-nav">
+          <span>{t("myCompany")}</span>
+          <span>{t("myLicenses")}</span>
+          <span>{t("myMasters")}</span>
+          <span>{t("mySupport")}</span>
+        </nav>
+        <div className="app-actions" aria-label="Tenant actions">
+          <LanguageSelector variant="floating" />
+          <button className="login-round-action" type="button" aria-label={t("logout")} onClick={onLogout}>
+            <svg className="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 3v8" />
+              <path d="M7.05 7.05a7 7 0 1 0 9.9 0" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main className="main-panel tenant-main">
+        <header className="tenant-hero">
+          <p className="eyebrow">{t("clientPortal")}</p>
+          <h1>{data?.session.companyName ?? t("myCompany")}</h1>
+          <p>{t("tenantWelcome")}</p>
+          <button className="secondary-button" type="button" onClick={onRefresh} disabled={loading}>
+            {loading ? t("refreshing") : t("refresh")}
+          </button>
+        </header>
+
+        {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
+
+        {!data ? (
+          <EmptyState text={loading ? t("loadingSaas") : t("noLoadedData")} />
+        ) : (
+          <div className="view-grid tenant-view">
+            <section className="metric-grid tenant-metrics">
+              <Metric label={t("licenses")} value={data.dashboard.licenses} />
+              <Metric label={t("stores")} value={data.dashboard.stores} />
+              <Metric label={t("installations")} value={data.dashboard.installations} />
+              <Metric label={t("openTickets")} value={data.dashboard.openTickets} />
+              <Metric label={t("billingStatus")} value={data.dashboard.billingStatus} />
+              <Metric label={t("monthlyPrice")} value={data.dashboard.monthlyPrice ?? "-"} detail={data.dashboard.renewalDate ? `${t("renewalDate")}: ${formatDate(data.dashboard.renewalDate)}` : undefined} />
+            </section>
+
+            <section className="content-section">
+              <SectionHeader title={t("myLicenses")} subtitle={`${data.licenses.length} ${t("records")}`} />
+              <LicenseTable licenses={data.licenses} compact />
+            </section>
+
+            <section className="content-section">
+              <SectionHeader title={t("invoices")} subtitle={`${data.invoices.length} ${t("records")}`} />
+              <InvoiceTable invoices={data.invoices} />
+            </section>
+
+            <section className="content-section">
+              <SectionHeader title={t("myMasters")} subtitle={t("erpMastersSubtitle")} />
+              <div className="tenant-master-grid">
+                <div>
+                  <h3>{t("customers")}</h3>
+                  <MasterTable mode="customers" customers={data.customers} products={[]} suppliers={[]} warehouses={[]} />
+                </div>
+                <div>
+                  <h3>{t("products")}</h3>
+                  <MasterTable mode="products" customers={[]} products={data.products} suppliers={[]} warehouses={[]} />
+                </div>
+                <div>
+                  <h3>{t("suppliers")}</h3>
+                  <MasterTable mode="suppliers" customers={[]} products={[]} suppliers={data.suppliers} warehouses={[]} />
+                </div>
+                <div>
+                  <h3>{t("warehouses")}</h3>
+                  <MasterTable mode="warehouses" customers={[]} products={[]} suppliers={[]} warehouses={data.warehouses} />
+                </div>
+              </div>
+            </section>
+
+            <section className="content-section two-column tenant-two-column">
+              <div>
+                <SectionHeader title={t("myStores")} subtitle={`${data.stores.length} ${t("records")}`} />
+                <div className="tenant-store-list">
+                  {data.stores.map((store) => (
+                    <div className="tenant-store" key={store.storeId}>
+                      <strong>{store.name}</strong>
+                      <span>{store.code}</span>
+                      <small>{formatDate(store.createdAt)}</small>
+                    </div>
+                  ))}
+                  {data.stores.length === 0 && <EmptyState text={t("noLoadedData")} />}
+                </div>
+              </div>
+              <div>
+                <SectionHeader title={t("mySupport")} subtitle={`${data.tickets.length} ${t("records")}`} />
+                <form className="ticket-form tenant-ticket-form" onSubmit={submitTicket}>
+                  <label>
+                    {t("title")}
+                    <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+                  </label>
+                  <label>
+                    {t("priority")}
+                    <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+                      <option value="NORMAL">{t("normal")}</option>
+                      <option value="ALTA">{t("high")}</option>
+                      <option value="URGENTE">{t("urgent")}</option>
+                    </select>
+                  </label>
+                  <label className="wide-field">
+                    {t("description")}
+                    <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
+                  </label>
+                  <button className="primary-button" type="submit" disabled={busy}>
+                    {busy ? t("saving") : t("createSupportRequest")}
+                  </button>
+                </form>
+                <TenantTicketList tickets={data.tickets.slice(0, 5)} />
+              </div>
+            </section>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function TenantTicketList({ tickets }: { tickets: SupportTicket[] }) {
+  const { t } = useI18n();
+  if (tickets.length === 0) return <EmptyState text={t("noTenantTickets")} />;
+  return (
+    <div className="ticket-list tenant-ticket-list">
+      {tickets.map((ticket) => (
+        <article className="ticket-card" key={ticket.id}>
+          <div className="ticket-main">
+            <div>
+              <strong>{ticket.title}</strong>
+              <span>{formatDate(ticket.createdAt)}</span>
+            </div>
+            <div className="ticket-badges">
+              <StatusPill status={ticketStatusLabel(ticket.status, t)} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} />
+              <StatusPill status={ticketPriorityLabel(ticket.priority, t)} tone={ticket.priority === "URGENTE" ? "warning" : "muted"} />
+            </div>
+          </div>
+          {ticket.description && <p>{ticket.description}</p>}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
+  const { t } = useI18n();
+  if (invoices.length === 0) return <EmptyState text={t("noBillingData")} />;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("invoiceNumber")}</th>
+            <th>{t("concept")}</th>
+            <th>{t("amount")}</th>
+            <th>{t("paidAmount")}</th>
+            <th>{t("status")}</th>
+            <th>{t("dueAt")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((invoice) => (
+            <tr key={invoice.id}>
+              <td>
+                <strong>{invoice.number}</strong>
+                <small>{formatDate(invoice.issuedAt)}</small>
+              </td>
+              <td>{invoice.concept}</td>
+              <td>{formatMoney(invoice.amount)} {invoice.currency}</td>
+              <td>{formatMoney(invoice.paidAmount)} {invoice.currency}</td>
+              <td>
+                <StatusPill status={billingStatusLabel(invoice.status, t)} tone={invoice.status === "PAGADA" ? "ok" : "warning"} />
+              </td>
+              <td>{formatDate(invoice.dueAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Dashboard({ data }: { data: DashboardData }) {
   const { t } = useI18n();
   const activeLicenses = data.licenses.filter((license) => license.status === "VALIDA").length;
   const blockedLicenses = data.licenses.filter((license) => license.status === "BLOQUEADA_MANUAL").length;
   const activeUsers = data.users.filter((user) => user.active).length;
   const lastEvent = data.events[0];
+  const alerts = operationalAlerts(data, t);
 
   return (
     <div className="view-grid">
@@ -556,6 +1183,11 @@ function Dashboard({ data }: { data: DashboardData }) {
         <Metric label={t("activeUsers")} value={activeUsers} />
         <Metric label={t("syncedSales")} value={data.salesSummary.documentCount} detail={`${data.salesSummary.total} ${t("total")}`} />
         <Metric label={t("observedStock")} value={data.stockCurrent.length} />
+      </section>
+
+      <section className="content-section">
+        <SectionHeader title={t("alerts")} subtitle={t("alertsSubtitle")} />
+        <AlertList alerts={alerts} />
       </section>
 
       <section className="content-section">
@@ -581,20 +1213,36 @@ function LicensesView({
   credentials,
   licenses,
   installations,
+  events,
+  permissions,
   onChanged,
   onNotice
 }: {
   credentials: Credentials;
   licenses: LicenseSummary[];
   installations: InstallationSummary[];
+  events: SyncEventView[];
+  permissions: Set<string>;
   onChanged: () => void;
   onNotice: (notice: Notice) => void;
 }) {
   const { t } = useI18n();
   const [companyForm, setCompanyForm] = useState<CreateCompanyRequest>(initialCompanyForm);
   const [pairingCode, setPairingCode] = useState<PairingCodeResponse | null>(null);
+  const [tenantAccess, setTenantAccess] = useState<{ username: string; password: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const isViewerSession = credentials.username.trim().toLowerCase() === "viewer";
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => licenses[0]?.companyId ?? "");
+  const canCreateCompany = permissions.has("ADD_COMPANY");
+  const canManageCompany = permissions.has("EDIT_COMPANY_DATA") || permissions.has("RENEW_LICENSE");
+  const canGenerateCode = permissions.has("REGENERATE_PAIRING_CODE");
+  const canChangeLicenseStatus = permissions.has("BLOCK_LICENSE") || permissions.has("UNBLOCK_LICENSE");
+  const selectedCompany = licenses.find((license) => license.companyId === selectedCompanyId) ?? licenses[0] ?? null;
+
+  useEffect(() => {
+    if (licenses.length > 0 && !licenses.some((license) => license.companyId === selectedCompanyId)) {
+      setSelectedCompanyId(licenses[0].companyId);
+    }
+  }, [licenses, selectedCompanyId]);
 
   async function createCompany(event: FormEvent) {
     event.preventDefault();
@@ -609,6 +1257,7 @@ function LicensesView({
         pairingCode: response.pairingCode,
         expiresAt: addDays(new Date(), 7).toISOString()
       });
+      setTenantAccess({ username: response.tenantUsername, password: response.tenantInitialPassword });
       setCompanyForm(initialCompanyForm);
       onNotice({ type: "success", text: `Licencia ${response.licenseReference} creada.` });
       onChanged();
@@ -655,7 +1304,7 @@ function LicensesView({
 
   return (
     <div className="view-grid">
-      {!isViewerSession && (
+      {canCreateCompany && (
         <section className="content-section">
           <SectionHeader title={t("createCompany")} subtitle={t("createCompanySubtitle")} />
           <form className="form-grid" onSubmit={createCompany}>
@@ -715,14 +1364,27 @@ function LicensesView({
       <section className="content-section">
         <SectionHeader title={t("licenses")} subtitle={`${licenses.length} ${t("records")}`} />
         {pairingCode && <PairingCodePanel pairingCode={pairingCode} onCopy={() => void copyPairingCode()} />}
+        {tenantAccess && <TenantAccessPanel access={tenantAccess} />}
         <LicenseTable
           licenses={licenses}
           onAction={(reference, action) => void licenseAction(reference, action)}
           busy={busy}
-          showPairingAction={!isViewerSession}
-          showStatusActions={!isViewerSession}
+          showStatusActions={canChangeLicenseStatus}
+          showPairingAction={canGenerateCode}
+          selectedCompanyId={selectedCompany?.companyId}
+          onSelectCompany={setSelectedCompanyId}
         />
       </section>
+
+      <CompanyDetail
+        credentials={credentials}
+        license={selectedCompany}
+        installations={installations.filter((installation) => installation.companyId === selectedCompany?.companyId)}
+        events={events.filter((event) => event.companyId === selectedCompany?.companyId)}
+        canManage={canManageCompany}
+        onChanged={onChanged}
+        onNotice={onNotice}
+      />
 
       <section className="content-section">
         <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
@@ -745,6 +1407,8 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
   const displayEvents = events.length > 0 ? events : sampleSyncEvents(mode, sampleCompanies, companyId);
   const displayStock = stock.length > 0 ? stock : sampleStock(sampleCompanies, companyId);
   const showingSamples = mode === "stock" ? stock.length === 0 : events.length === 0;
+  const healthEvents = mode === "stock" ? sampleSyncEvents("events", sampleCompanies, companyId) : displayEvents;
+  const lastReceivedAt = latestDate(healthEvents.map((event) => event.receivedAt));
 
   useEffect(() => {
     void load();
@@ -768,6 +1432,13 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
   return (
     <section className="content-section">
       <SectionHeader title={t("sync")} subtitle={loading ? t("consultingEvents") : t("syncSubtitle")} />
+      <div className="sync-health-grid">
+        <Metric label={t("eventsToday")} value={healthEvents.filter((event) => isToday(event.receivedAt)).length} />
+        <Metric label={t("salesEvents")} value={healthEvents.filter((event) => event.entityType === "DOCUMENTO").length} />
+        <Metric label={t("stockEvents")} value={mode === "stock" ? displayStock.length : healthEvents.filter((event) => event.entityType === "STOCK_MOVEMENT").length} />
+        <Metric label={t("cashEvents")} value={healthEvents.filter((event) => event.entityType === "CIERRE_CAJA").length} />
+        <Metric label={t("lastSync")} value={lastReceivedAt ? formatDate(lastReceivedAt) : "-"} />
+      </div>
       <div className="toolbar">
         <Segmented
           value={mode}
@@ -797,20 +1468,46 @@ function SyncView({ credentials, licenses, onNotice }: { credentials: Credential
 function UsersView({
   credentials,
   users,
+  licenses,
+  permissions,
   onChanged,
   onNotice
 }: {
   credentials: Credentials;
   users: AdminUser[];
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
   onChanged: () => void;
   onNotice: (notice: Notice) => void;
 }) {
   const { t } = useI18n();
+  const companyOptions = useMemo(() => uniqueCompanies(licenses), [licenses]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [roleName, setRoleName] = useState<SaasAdminRoleName>("ADMIN");
+  const [tenantCompanyId, setTenantCompanyId] = useState("");
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
+  const [tenantUsername, setTenantUsername] = useState("");
+  const [tenantPassword, setTenantPassword] = useState("");
+  const [tenantRoleName, setTenantRoleName] = useState("MANAGER");
+  const [tenantPasswordByUser, setTenantPasswordByUser] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const isViewerSession = credentials.username.trim().toLowerCase() === "viewer";
+  const canManageUsers = permissions.has("MANAGE_ADMIN_USERS");
+  const canManageTenantUsers = permissions.has("MANAGE_TENANT_USERS");
+
+  useEffect(() => {
+    if (!tenantCompanyId && companyOptions[0]) {
+      setTenantCompanyId(companyOptions[0].companyId);
+    }
+  }, [companyOptions, tenantCompanyId]);
+
+  useEffect(() => {
+    if (!tenantCompanyId) {
+      setTenantUsers([]);
+      return;
+    }
+    void loadTenantUsers(tenantCompanyId);
+  }, [tenantCompanyId]);
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -841,16 +1538,76 @@ function UsersView({
     }
   }
 
+  async function loadTenantUsers(companyId: string) {
+    try {
+      const response = await api.tenantUsers(credentials, companyId);
+      setTenantUsers(response);
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function createTenantUser(event: FormEvent) {
+    event.preventDefault();
+    if (!tenantCompanyId) return;
+    setBusy("create-tenant-user");
+    try {
+      await api.createTenantUser(credentials, tenantCompanyId, {
+        username: tenantUsername,
+        password: tenantPassword,
+        roleName: tenantRoleName
+      });
+      setTenantUsername("");
+      setTenantPassword("");
+      onNotice({ type: "success", text: t("tenantUserCreated") });
+      await loadTenantUsers(tenantCompanyId);
+    } catch (error) {
+      onNotice({ type: "error", text: userManagementErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeTenantPassword(user: string) {
+    const nextPassword = tenantPasswordByUser[user]?.trim();
+    if (!nextPassword) return;
+    setBusy(`tenant-password-${user}`);
+    try {
+      await api.changeTenantPassword(credentials, user, nextPassword);
+      setTenantPasswordByUser((current) => ({ ...current, [user]: "" }));
+      onNotice({ type: "success", text: t("tenantUserUpdated") });
+    } catch (error) {
+      onNotice({ type: "error", text: userManagementErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deactivateTenantUser(user: string) {
+    setBusy(`tenant-disable-${user}`);
+    try {
+      await api.deactivateTenantUser(credentials, user);
+      onNotice({ type: "success", text: t("tenantUserDisabled") });
+      if (tenantCompanyId) {
+        await loadTenantUsers(tenantCompanyId);
+      }
+    } catch (error) {
+      onNotice({ type: "error", text: userManagementErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="view-grid">
       <section className="content-section">
         <SectionHeader title={t("newUser")} subtitle={t("availableRoles")} />
-        {isViewerSession && (
+        {!canManageUsers && (
           <div className="permission-hint">
             {t("viewerPermissionHint")}
           </div>
         )}
-        {!isViewerSession && (
+        {canManageUsers && (
           <form className="form-grid three" onSubmit={create}>
             <Input label={t("username")} value={username} onChange={setUsername} required />
             <Input label={t("password")} type="password" value={password} onChange={setPassword} required />
@@ -885,7 +1642,7 @@ function UsersView({
                 <th>{t("username")}</th>
                 <th>{t("status")}</th>
                 <th>{t("created")}</th>
-                {!isViewerSession && <th></th>}
+                {canManageUsers && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -896,7 +1653,7 @@ function UsersView({
                     <StatusPill status={user.active ? t("active") : t("inactive")} tone={user.active ? "ok" : "muted"} />
                   </td>
                   <td>{formatDate(user.createdAt)}</td>
-                  {!isViewerSession && (
+                  {canManageUsers && (
                     <td className="row-actions">
                       <button
                         className="small-button"
@@ -914,6 +1671,102 @@ function UsersView({
           </table>
         </div>
       </section>
+      <section className="content-section">
+        <SectionHeader title={t("tenantUsers")} subtitle={t("tenantAccess")} />
+        <div className="toolbar">
+          <label className="toolbar-field">
+            {t("company")}
+            <select className="control-input" value={tenantCompanyId} onChange={(event) => setTenantCompanyId(event.target.value)}>
+              {companyOptions.map((company) => (
+                <option key={company.companyId} value={company.companyId}>
+                  {company.companyName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {canManageTenantUsers && (
+          <form className="form-grid four compact-form" onSubmit={createTenantUser}>
+            <Input label={t("username")} value={tenantUsername} onChange={setTenantUsername} required disabled={!tenantCompanyId} />
+            <Input label={t("password")} type="password" value={tenantPassword} onChange={setTenantPassword} required disabled={!tenantCompanyId} />
+            <label>
+              {t("role")}
+              <select
+                className="control-input"
+                value={tenantRoleName}
+                onChange={(event) => setTenantRoleName(event.target.value)}
+                disabled={!tenantCompanyId}
+              >
+                <option value="OWNER">OWNER</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="VIEWER">VIEWER</option>
+              </select>
+            </label>
+            <div className="form-actions">
+              <button className="primary-button" type="submit" disabled={!tenantCompanyId || busy === "create-tenant-user"}>
+                {t("createTenantUser")}
+              </button>
+            </div>
+          </form>
+        )}
+        {tenantUsers.length === 0 ? (
+          <EmptyState text={t("noTenantUsers")} />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("username")}</th>
+                  <th>{t("role")}</th>
+                  <th>{t("status")}</th>
+                  <th>{t("created")}</th>
+                  {canManageTenantUsers && <th></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {tenantUsers.map((user) => (
+                  <tr key={user.username}>
+                    <td>{user.username}</td>
+                    <td>{user.roleName}</td>
+                    <td>
+                      <StatusPill status={user.active ? t("active") : t("inactive")} tone={user.active ? "ok" : "muted"} />
+                    </td>
+                    <td>{formatDate(user.createdAt)}</td>
+                    {canManageTenantUsers && (
+                      <td className="row-actions tenant-user-actions">
+                        <input
+                          className="control-input inline-password"
+                          type="password"
+                          value={tenantPasswordByUser[user.username] ?? ""}
+                          placeholder={t("newPassword")}
+                          disabled={!user.active}
+                          onChange={(event) => setTenantPasswordByUser((current) => ({ ...current, [user.username]: event.target.value }))}
+                        />
+                        <button
+                          className="small-button"
+                          type="button"
+                          disabled={!user.active || !tenantPasswordByUser[user.username]?.trim() || busy === `tenant-password-${user.username}`}
+                          onClick={() => void changeTenantPassword(user.username)}
+                        >
+                          {t("changePassword")}
+                        </button>
+                        <button
+                          className="small-button danger"
+                          type="button"
+                          disabled={!user.active || busy === `tenant-disable-${user.username}`}
+                          onClick={() => void deactivateTenantUser(user.username)}
+                        >
+                          {t("deactivate")}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -928,13 +1781,983 @@ function AuditView({ audit }: { audit: AuditLog[] }) {
   );
 }
 
+function CustomerHealthView({
+  credentials,
+  licenses,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const visibleCompanyIds = useMemo(() => new Set(licenses.map((license) => license.companyId)), [licenses]);
+  const [health, setHealth] = useState<CustomerHealth[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const visibleHealth = health.filter((item) => visibleCompanyIds.size === 0 || visibleCompanyIds.has(item.companyId));
+  const selected = visibleHealth.find((item) => item.companyId === selectedCompanyId) ?? visibleHealth[0] ?? null;
+  const riskCount = visibleHealth.filter((item) => item.riskLevel === "DANGER").length;
+  const warningCount = visibleHealth.filter((item) => item.riskLevel === "WARNING").length;
+  const inactiveCount = visibleHealth.filter((item) => item.eventsLast7Days === 0).length;
+
+  useEffect(() => {
+    void loadHealth();
+  }, [credentials.username]);
+
+  useEffect(() => {
+    if (visibleHealth.length > 0 && !visibleHealth.some((item) => item.companyId === selectedCompanyId)) {
+      setSelectedCompanyId(visibleHealth[0].companyId);
+    }
+  }, [visibleHealth, selectedCompanyId]);
+
+  async function loadHealth() {
+    try {
+      setHealth(await api.customerHealth(credentials));
+      onNotice(null);
+    } catch (error) {
+      if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
+        setHealth(fallbackHealth(licenses));
+        onNotice(null);
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  return (
+    <div className="view-grid">
+      <section className="metric-grid">
+        <Metric label={t("customersInRisk")} value={riskCount} tone={riskCount > 0 ? "warning" : undefined} />
+        <Metric label={t("riskWarning")} value={warningCount} tone={warningCount > 0 ? "warning" : undefined} />
+        <Metric label={t("inactiveCustomers")} value={inactiveCount} tone={inactiveCount > 0 ? "warning" : undefined} />
+        <Metric label={t("company")} value={visibleHealth.length} />
+      </section>
+
+      <section className="content-section health-board">
+        <SectionHeader title={t("customerHealth")} subtitle={t("healthSubtitle")} />
+        {visibleHealth.length === 0 ? (
+          <EmptyState text={t("noHealthData")} />
+        ) : (
+          <div className="health-layout">
+            <div className="health-list">
+              {visibleHealth
+                .slice()
+                .sort((left, right) => left.score - right.score)
+                .map((item) => (
+                  <button
+                    className={`health-card ${item.riskLevel.toLowerCase()} ${selected?.companyId === item.companyId ? "active" : ""}`}
+                    type="button"
+                    key={item.companyId}
+                    onClick={() => setSelectedCompanyId(item.companyId)}
+                  >
+                    <span>{item.companyName}</span>
+                    <strong>{item.score}</strong>
+                    <small>{riskLabel(item.riskLevel, t)} - {item.billingStatus}</small>
+                  </button>
+                ))}
+            </div>
+
+            {selected && (
+              <article className={`health-detail ${selected.riskLevel.toLowerCase()}`}>
+                <div className="health-detail-header">
+                  <div>
+                    <span>{selected.taxId}</span>
+                    <h2>{selected.companyName}</h2>
+                  </div>
+                  <StatusPill status={riskLabel(selected.riskLevel, t)} tone={selected.riskLevel === "OK" ? "ok" : "warning"} />
+                </div>
+
+                <div className="health-score">
+                  <strong>{selected.score}</strong>
+                  <span>{t("healthScore")}</span>
+                </div>
+
+                <div className="health-facts">
+                  <Metric label={t("plan")} value={selected.planName} detail={selected.billingStatus} />
+                  <Metric label={t("license")} value={selected.licenseStatus} detail={selected.validUntil ? formatDate(selected.validUntil) : t("pending")} />
+                  <Metric label={t("eventsLast7Days")} value={selected.eventsLast7Days} detail={selected.lastEventAt ? `${t("lastEventAt")}: ${formatDate(selected.lastEventAt)}` : t("noEvents")} />
+                  <Metric label={t("installations")} value={selected.installations} detail={`${t("staleInstallations")}: ${selected.staleInstallations}`} />
+                  <Metric label={t("openTickets")} value={selected.openTickets} detail={`${t("urgentTickets")}: ${selected.urgentTickets}`} />
+                  <Metric label={t("lastValidationAt")} value={selected.lastValidationAt ? formatDate(selected.lastValidationAt) : t("pending")} />
+                </div>
+
+                <div className="health-signals">
+                  <strong>{t("healthSignals")}</strong>
+                  <div>
+                    {selected.signals.map((signal) => (
+                      <span key={signal}>{signal}</span>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function BillingView({
+  credentials,
+  licenses,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const visibleCompanyIds = useMemo(() => new Set(licenses.map((license) => license.companyId)), [licenses]);
+  const [summary, setSummary] = useState<BillingSummary | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const [invoiceForm, setInvoiceForm] = useState({
+    number: "",
+    concept: "",
+    amount: "",
+    currency: "EUR",
+    issuedAt: toLocalInput(new Date()),
+    dueAt: toLocalInput(addDays(new Date(), 30))
+  });
+  const [paymentForm, setPaymentForm] = useState({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const visibleCompanies = (summary?.companies ?? []).filter((company) => visibleCompanyIds.size === 0 || visibleCompanyIds.has(company.companyId));
+  const orderedCompanies = visibleCompanies.slice().sort((left, right) => Number(right.overdue) - Number(left.overdue) || Number(right.renewalDueSoon) - Number(left.renewalDueSoon) || left.companyName.localeCompare(right.companyName));
+  const localSummary = summary
+    ? {
+        ...summary,
+        totalCompanies: visibleCompanies.length,
+        paidCompanies: visibleCompanies.filter((company) => company.billingStatus === "PAGADO").length,
+        pendingCompanies: visibleCompanies.filter((company) => ["PENDIENTE", "VENCIDO", "IMPAGADO"].includes(company.billingStatus)).length,
+        overdueCompanies: visibleCompanies.filter((company) => company.overdue).length,
+        renewalsNext30Days: visibleCompanies.filter((company) => company.renewalDueSoon).length,
+        monthlyRecurringRevenue: visibleCompanies.reduce((total, company) => total + parseAmount(company.monthlyPrice), 0).toFixed(2)
+      }
+    : null;
+
+  useEffect(() => {
+    void loadBilling();
+  }, [credentials.username]);
+
+  useEffect(() => {
+    if (!selectedCompanyId && orderedCompanies[0]) {
+      setSelectedCompanyId(orderedCompanies[0].companyId);
+    }
+  }, [orderedCompanies, selectedCompanyId]);
+
+  useEffect(() => {
+    if (selectedCompanyId) {
+      void loadInvoices(selectedCompanyId);
+    }
+  }, [selectedCompanyId]);
+
+  async function loadBilling() {
+    try {
+      setSummary(await api.billingSummary(credentials));
+    } catch (error) {
+      if (isMissingPhase3Endpoint(error)) {
+        setSummary(fallbackBilling(licenses));
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function loadInvoices(companyId: string) {
+    try {
+      setInvoices(await api.billingInvoices(credentials, companyId));
+      onNotice(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status >= 500) {
+        setInvoices([]);
+        onNotice(null);
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function createInvoice(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedCompanyId) return;
+    setBusy("invoice");
+    try {
+      await api.createBillingInvoice(credentials, selectedCompanyId, {
+        ...invoiceForm,
+        issuedAt: new Date(invoiceForm.issuedAt).toISOString(),
+        dueAt: new Date(invoiceForm.dueAt).toISOString()
+      });
+      setInvoiceForm({
+        number: "",
+        concept: "",
+        amount: "",
+        currency: "EUR",
+        issuedAt: toLocalInput(new Date()),
+        dueAt: toLocalInput(addDays(new Date(), 30))
+      });
+      await loadInvoices(selectedCompanyId);
+      await loadBilling();
+      onNotice({ type: "success", text: t("createInvoice") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function registerPayment(event: FormEvent) {
+    event.preventDefault();
+    if (!paymentForm.invoiceId) return;
+    setBusy("payment");
+    try {
+      await api.createBillingPayment(credentials, paymentForm.invoiceId, {
+        amount: paymentForm.amount,
+        method: paymentForm.method,
+        paidAt: new Date().toISOString(),
+        reference: paymentForm.reference
+      });
+      setPaymentForm({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
+      if (selectedCompanyId) await loadInvoices(selectedCompanyId);
+      await loadBilling();
+      onNotice({ type: "success", text: t("registerPayment") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="view-grid">
+      <section className="metric-grid">
+        <Metric label={t("monthlyRecurringRevenue")} value={formatMoney(localSummary?.monthlyRecurringRevenue ?? "0")} />
+        <Metric label={t("paidCompanies")} value={localSummary?.paidCompanies ?? "-"} />
+        <Metric label={t("pendingBilling")} value={localSummary?.pendingCompanies ?? "-"} tone={(localSummary?.pendingCompanies ?? 0) > 0 ? "warning" : undefined} />
+        <Metric label={t("overdueBilling")} value={localSummary?.overdueCompanies ?? "-"} tone={(localSummary?.overdueCompanies ?? 0) > 0 ? "warning" : undefined} />
+        <Metric label={t("renewalsNext30Days")} value={localSummary?.renewalsNext30Days ?? "-"} tone={(localSummary?.renewalsNext30Days ?? 0) > 0 ? "warning" : undefined} />
+        <Metric label={t("company")} value={localSummary?.totalCompanies ?? "-"} />
+      </section>
+
+      <section className="content-section billing-board">
+        <SectionHeader title={t("billingPortfolio")} subtitle={t("billingPortfolioSubtitle")} />
+        {orderedCompanies.length === 0 ? (
+          <EmptyState text={t("noBillingData")} />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("company")}</th>
+                  <th>{t("plan")}</th>
+                  <th>{t("billingStatus")}</th>
+                  <th>{t("renewalDate")}</th>
+                  <th>{t("monthlyPrice")}</th>
+                  <th>{t("license")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderedCompanies.map((company) => (
+                  <tr key={company.companyId} className={company.overdue ? "billing-overdue" : company.renewalDueSoon ? "billing-due" : ""}>
+                    <td>
+                      <strong>{company.companyName}</strong>
+                      <small>{company.taxId}</small>
+                    </td>
+                    <td>{company.planName}</td>
+                    <td>
+                      <StatusPill
+                        status={billingStatusLabel(company.billingStatus, t)}
+                        tone={company.overdue || company.renewalDueSoon ? "warning" : "ok"}
+                      />
+                      {company.renewalDueSoon && <small>{t("dueSoon")}</small>}
+                    </td>
+                    <td>{company.renewalDate ? formatDate(company.renewalDate) : t("pending")}</td>
+                    <td>{formatMoney(company.monthlyPrice ?? "0")}</td>
+                    <td>
+                      <strong>{company.licenseReference ?? t("notAvailable")}</strong>
+                      <small>{company.validUntil ? formatDate(company.validUntil) : t("pending")}</small>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="content-section">
+        <SectionHeader title={t("realBilling")} subtitle={t("invoices")} />
+        <div className="toolbar">
+          <select value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)}>
+            {orderedCompanies.map((company) => (
+              <option value={company.companyId} key={company.companyId}>{company.companyName}</option>
+            ))}
+          </select>
+        </div>
+        <form className="compact-form-grid" onSubmit={createInvoice}>
+          <Input label={t("invoiceNumber")} value={invoiceForm.number} onChange={(number) => setInvoiceForm({ ...invoiceForm, number })} required />
+          <Input label={t("concept")} value={invoiceForm.concept} onChange={(concept) => setInvoiceForm({ ...invoiceForm, concept })} required />
+          <Input label={t("amount")} value={invoiceForm.amount} onChange={(amount) => setInvoiceForm({ ...invoiceForm, amount })} required />
+          <Input label={t("currency")} value={invoiceForm.currency} onChange={(currency) => setInvoiceForm({ ...invoiceForm, currency })} required />
+          <Input label={t("issuedAt")} type="datetime-local" value={invoiceForm.issuedAt} onChange={(issuedAt) => setInvoiceForm({ ...invoiceForm, issuedAt })} required />
+          <Input label={t("dueAt")} type="datetime-local" value={invoiceForm.dueAt} onChange={(dueAt) => setInvoiceForm({ ...invoiceForm, dueAt })} required />
+          <button className="primary-button" type="submit" disabled={busy === "invoice"}>{t("createInvoice")}</button>
+        </form>
+        <form className="compact-form-grid" onSubmit={registerPayment}>
+          <label>
+            {t("invoices")}
+            <select
+              className="control-input"
+              value={paymentForm.invoiceId}
+              onChange={(event) => {
+                const invoiceId = event.target.value;
+                const invoice = invoices.find((value) => value.id === invoiceId);
+                setPaymentForm({ ...paymentForm, invoiceId, amount: invoice ? invoice.amount : paymentForm.amount });
+              }}
+            >
+              <option value="">{t("pending")}</option>
+              {invoices.map((invoice) => (
+                <option value={invoice.id} key={invoice.id}>
+                  {invoice.number} - {formatMoney(invoice.amount)} {invoice.currency}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Input label={t("amount")} value={paymentForm.amount} onChange={(amount) => setPaymentForm({ ...paymentForm, amount })} required />
+          <Input label={t("paymentMethod")} value={paymentForm.method} onChange={(method) => setPaymentForm({ ...paymentForm, method })} required />
+          <Input label={t("paymentReference")} value={paymentForm.reference} onChange={(reference) => setPaymentForm({ ...paymentForm, reference })} />
+          <button className="primary-button" type="submit" disabled={busy === "payment" || !paymentForm.invoiceId}>{t("registerPayment")}</button>
+        </form>
+        <InvoiceTable invoices={invoices} />
+      </section>
+    </div>
+  );
+}
+
+type MasterMode = "customers" | "products" | "suppliers" | "warehouses";
+
+function MastersView({
+  credentials,
+  licenses,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const [companyId, setCompanyId] = useState("");
+  const [mode, setMode] = useState<MasterMode>("customers");
+  const [customers, setCustomers] = useState<ErpCustomer[]>([]);
+  const [products, setProducts] = useState<ErpProduct[]>([]);
+  const [suppliers, setSuppliers] = useState<ErpSupplier[]>([]);
+  const [warehouses, setWarehouses] = useState<ErpWarehouse[]>([]);
+  const [partyForm, setPartyForm] = useState({ code: "", name: "", taxId: "", email: "", phone: "" });
+  const [productForm, setProductForm] = useState({ sku: "", name: "", category: "", price: "0.00", taxRate: "21.00", minStock: "0.00" });
+  const [warehouseForm, setWarehouseForm] = useState({ code: "", name: "", address: "" });
+  const [busy, setBusy] = useState(false);
+  const canManage = permissions.has("MANAGE_ERP_MASTERS");
+
+  useEffect(() => {
+    if (!companyId && companies[0]) {
+      setCompanyId(companies[0].companyId);
+    }
+  }, [companies, companyId]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    void loadMasters(companyId);
+  }, [companyId]);
+
+  async function loadMasters(nextCompanyId: string) {
+    const [nextCustomers, nextProducts, nextSuppliers, nextWarehouses] = await Promise.all([
+      loadMasterList(() => api.erpCustomers(credentials, nextCompanyId)),
+      loadMasterList(() => api.erpProducts(credentials, nextCompanyId)),
+      loadMasterList(() => api.erpSuppliers(credentials, nextCompanyId)),
+      loadMasterList(() => api.erpWarehouses(credentials, nextCompanyId))
+    ]);
+    setCustomers(nextCustomers);
+    setProducts(nextProducts);
+    setSuppliers(nextSuppliers);
+    setWarehouses(nextWarehouses);
+    onNotice(null);
+  }
+
+  async function loadMasterList<T>(loader: () => Promise<T[]>): Promise<T[]> {
+    try {
+      return await loader();
+    } catch (error) {
+      if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
+        return [];
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+      return [];
+    }
+  }
+
+  async function createMaster(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    setBusy(true);
+    try {
+      if (mode === "customers") {
+        await api.createErpCustomer(credentials, companyId, partyForm);
+        setPartyForm({ code: "", name: "", taxId: "", email: "", phone: "" });
+      } else if (mode === "products") {
+        await api.createErpProduct(credentials, companyId, productForm);
+        setProductForm({ sku: "", name: "", category: "", price: "0.00", taxRate: "21.00", minStock: "0.00" });
+      } else if (mode === "suppliers") {
+        await api.createErpSupplier(credentials, companyId, partyForm);
+        setPartyForm({ code: "", name: "", taxId: "", email: "", phone: "" });
+      } else {
+        await api.createErpWarehouse(credentials, companyId, warehouseForm);
+        setWarehouseForm({ code: "", name: "", address: "" });
+      }
+      onNotice({ type: "success", text: t("masterCreated") });
+      await loadMasters(companyId);
+    } catch (error) {
+      if (isMissingPhase3Endpoint(error)) {
+        onNotice({ type: "error", text: t("mastersBackendPending") });
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="content-section">
+      <SectionHeader title={t("erpMasters")} subtitle={t("erpMastersSubtitle")} />
+      <div className="toolbar">
+        <Segmented
+          value={mode}
+          options={[
+            ["customers", t("customers")],
+            ["products", t("products")],
+            ["suppliers", t("suppliers")],
+            ["warehouses", t("warehouses")]
+          ]}
+          onChange={(value) => setMode(value as MasterMode)}
+        />
+        <label className="toolbar-field">
+          {t("company")}
+          <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+            {companies.map((company) => (
+              <option key={company.companyId} value={company.companyId}>
+                {company.companyName}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {canManage && (
+        <form className="compact-form-grid masters-form" onSubmit={createMaster}>
+          {mode === "products" ? (
+            <>
+              <Input label={t("sku")} value={productForm.sku} onChange={(sku) => setProductForm({ ...productForm, sku })} required />
+              <Input label={t("name")} value={productForm.name} onChange={(name) => setProductForm({ ...productForm, name })} required />
+              <Input label={t("category")} value={productForm.category} onChange={(category) => setProductForm({ ...productForm, category })} />
+              <Input label={t("price")} value={productForm.price} onChange={(price) => setProductForm({ ...productForm, price })} required />
+              <Input label={t("taxRate")} value={productForm.taxRate} onChange={(taxRate) => setProductForm({ ...productForm, taxRate })} required />
+              <Input label={t("minStock")} value={productForm.minStock} onChange={(minStock) => setProductForm({ ...productForm, minStock })} required />
+            </>
+          ) : mode === "warehouses" ? (
+            <>
+              <Input label={t("code")} value={warehouseForm.code} onChange={(code) => setWarehouseForm({ ...warehouseForm, code })} required />
+              <Input label={t("name")} value={warehouseForm.name} onChange={(name) => setWarehouseForm({ ...warehouseForm, name })} required />
+              <Input label={t("address")} value={warehouseForm.address} onChange={(address) => setWarehouseForm({ ...warehouseForm, address })} />
+            </>
+          ) : (
+            <>
+              <Input label={t("code")} value={partyForm.code} onChange={(code) => setPartyForm({ ...partyForm, code })} required />
+              <Input label={t("name")} value={partyForm.name} onChange={(name) => setPartyForm({ ...partyForm, name })} required />
+              <Input label={t("taxId")} value={partyForm.taxId} onChange={(taxId) => setPartyForm({ ...partyForm, taxId })} />
+              <Input label={t("email")} value={partyForm.email} onChange={(email) => setPartyForm({ ...partyForm, email })} />
+              <Input label={t("phone")} value={partyForm.phone} onChange={(phone) => setPartyForm({ ...partyForm, phone })} />
+            </>
+          )}
+          <div className="form-actions">
+            <button className="primary-button" type="submit" disabled={busy || !companyId}>
+              {mode === "customers" && t("createCustomer")}
+              {mode === "products" && t("createProduct")}
+              {mode === "suppliers" && t("createSupplier")}
+              {mode === "warehouses" && t("createWarehouse")}
+            </button>
+          </div>
+        </form>
+      )}
+      <MasterTable
+        mode={mode}
+        customers={customers}
+        products={products}
+        suppliers={suppliers}
+        warehouses={warehouses}
+      />
+    </section>
+  );
+}
+
+function MasterTable({
+  mode,
+  customers,
+  products,
+  suppliers,
+  warehouses
+}: {
+  mode: MasterMode;
+  customers: ErpCustomer[];
+  products: ErpProduct[];
+  suppliers: ErpSupplier[];
+  warehouses: ErpWarehouse[];
+}) {
+  const { t } = useI18n();
+  if (mode === "products") {
+    if (products.length === 0) return <EmptyState text={t("noMasterData")} />;
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t("sku")}</th>
+              <th>{t("name")}</th>
+              <th>{t("category")}</th>
+              <th>{t("price")}</th>
+              <th>{t("taxRate")}</th>
+              <th>{t("minStock")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((item) => (
+              <tr key={item.id}>
+                <td>{item.sku}</td>
+                <td>{item.name}</td>
+                <td>{item.category || "-"}</td>
+                <td>{formatMoney(item.price)}</td>
+                <td>{formatMoney(item.taxRate)}%</td>
+                <td>{formatMoney(item.minStock)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  if (mode === "warehouses") {
+    if (warehouses.length === 0) return <EmptyState text={t("noMasterData")} />;
+    return (
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t("code")}</th>
+              <th>{t("name")}</th>
+              <th>{t("address")}</th>
+              <th>{t("status")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {warehouses.map((item) => (
+              <tr key={item.id}>
+                <td>{item.code}</td>
+                <td>{item.name}</td>
+                <td>{item.address || "-"}</td>
+                <td><StatusPill status={item.active ? t("active") : t("inactive")} tone={item.active ? "ok" : "muted"} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  const rows = mode === "customers" ? customers : suppliers;
+  if (rows.length === 0) return <EmptyState text={t("noMasterData")} />;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("code")}</th>
+            <th>{t("name")}</th>
+            <th>{t("taxId")}</th>
+            <th>{t("email")}</th>
+            <th>{t("phone")}</th>
+            <th>{t("status")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((item) => (
+            <tr key={item.id}>
+              <td>{item.code}</td>
+              <td>{item.name}</td>
+              <td>{item.taxId || "-"}</td>
+              <td>{item.email || "-"}</td>
+              <td>{item.phone || "-"}</td>
+              <td><StatusPill status={item.active ? t("active") : t("inactive")} tone={item.active ? "ok" : "muted"} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SupportView({
+  credentials,
+  licenses,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const [companyId, setCompanyId] = useState("");
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [technicalStatus, setTechnicalStatus] = useState<TechnicalStatus | null>(null);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [commentsByTicket, setCommentsByTicket] = useState<Record<string, SupportTicketComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("NORMAL");
+  const [busy, setBusy] = useState<string | null>(null);
+  const canManage = permissions.has("MANAGE_SUPPORT_TICKETS");
+  const filteredTickets = tickets.filter((ticket) =>
+    (!statusFilter || ticket.status === statusFilter) &&
+    (!priorityFilter || ticket.priority === priorityFilter)
+  );
+
+  useEffect(() => {
+    if (!companyId && companies[0]) {
+      setCompanyId(companies[0].companyId);
+    }
+  }, [companies, companyId]);
+
+  useEffect(() => {
+    void loadOverview();
+  }, [credentials.username]);
+
+  useEffect(() => {
+    if (companyId) {
+      void loadTickets(companyId);
+    }
+  }, [companyId]);
+
+  async function loadOverview() {
+    const [nextNotifications, nextTechnicalStatus] = await Promise.allSettled([
+      api.notifications(credentials),
+      api.technicalStatus(credentials)
+    ]);
+
+    if (nextNotifications.status === "fulfilled") {
+      setNotifications(nextNotifications.value);
+    } else if (isMissingPhase3Endpoint(nextNotifications.reason) || isRecoverableBackendDataError(nextNotifications.reason)) {
+      setNotifications([]);
+    } else {
+      onNotice({ type: "error", text: errorMessage(nextNotifications.reason) });
+    }
+
+    if (nextTechnicalStatus.status === "fulfilled") {
+      setTechnicalStatus(nextTechnicalStatus.value);
+    } else if (isMissingPhase3Endpoint(nextTechnicalStatus.reason) || isRecoverableBackendDataError(nextTechnicalStatus.reason)) {
+      setTechnicalStatus(fallbackTechnicalStatus(licenses));
+      onNotice(null);
+    } else {
+      onNotice({ type: "error", text: errorMessage(nextTechnicalStatus.reason) });
+    }
+  }
+
+  async function loadTickets(nextCompanyId: string) {
+    try {
+      const nextTickets = await api.supportTickets(credentials, nextCompanyId);
+      setTickets(nextTickets);
+      await loadTicketComments(nextTickets);
+    } catch (error) {
+      if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) {
+        setTickets([]);
+        setCommentsByTicket({});
+        onNotice(null);
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function loadTicketComments(nextTickets: SupportTicket[]) {
+    const entries = await Promise.all(
+      nextTickets.map(async (ticket) => {
+        try {
+          return [ticket.id, await api.supportTicketComments(credentials, ticket.id)] as const;
+        } catch (error) {
+          if (isMissingPhase3Endpoint(error) || isRecoverableBackendDataError(error)) return [ticket.id, []] as const;
+          throw error;
+        }
+      })
+    );
+    setCommentsByTicket(Object.fromEntries(entries));
+  }
+
+  async function createTicket(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    setBusy("create");
+    try {
+      await api.createSupportTicket(credentials, companyId, { title, description, priority });
+      setTitle("");
+      setDescription("");
+      setPriority("NORMAL");
+      await Promise.all([loadTickets(companyId), loadOverview()]);
+      onNotice({ type: "success", text: t("ticketCreated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateTicket(ticket: SupportTicket, status: string) {
+    setBusy(ticket.id);
+    try {
+      await api.updateSupportTicket(credentials, ticket.id, { status, priority: ticket.priority });
+      await Promise.all([loadTickets(ticket.companyId), loadOverview()]);
+      onNotice({ type: "success", text: t("ticketUpdated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addComment(ticket: SupportTicket) {
+    const message = (commentDrafts[ticket.id] ?? "").trim();
+    if (!message) return;
+    setBusy(`comment:${ticket.id}`);
+    try {
+      await api.createSupportTicketComment(credentials, ticket.id, message);
+      setCommentDrafts((current) => ({ ...current, [ticket.id]: "" }));
+      await loadTicketComments(tickets);
+      onNotice({ type: "success", text: t("commentAdded") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    try {
+      setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+      await api.markNotificationRead(credentials, notificationId);
+      onNotice({ type: "success", text: t("notificationRead") });
+    } catch (error) {
+      if (!isMissingPhase3Endpoint(error) && !isRecoverableBackendDataError(error)) {
+        onNotice({ type: "error", text: errorMessage(error) });
+      }
+    }
+  }
+
+  return (
+    <div className="view-grid">
+      <section className="metric-grid support-metrics">
+        <Metric label={t("backendStatus")} value={t("technicalOk")} detail={technicalStatus ? `${t("generatedAt")} ${formatDate(technicalStatus.generatedAt)}` : t("loadingSaas")} />
+        <Metric label={t("company")} value={technicalStatus?.companies ?? "-"} />
+        <Metric label={t("licenses")} value={technicalStatus?.licenses ?? "-"} />
+        <Metric label={t("eventsToday")} value={technicalStatus?.eventsToday ?? "-"} />
+        <Metric label={t("openTickets")} value={technicalStatus?.openTickets ?? "-"} tone={(technicalStatus?.openTickets ?? 0) > 0 ? "warning" : undefined} />
+        <Metric label={t("lastSync")} value={technicalStatus?.lastSyncAt ? formatDate(technicalStatus.lastSyncAt) : t("pending")} />
+      </section>
+
+      <section className="content-section two-column support-layout">
+        <div>
+          <SectionHeader title={t("notifications")} subtitle={t("notificationsSubtitle")} />
+          <NotificationList notifications={notifications} onMarkRead={(notificationId) => void markNotificationRead(notificationId)} />
+        </div>
+        <div>
+          <SectionHeader title={t("technicalPanel")} subtitle={t("technicalPanelSubtitle")} />
+          <div className="technical-card">
+            <Metric label={t("installations")} value={technicalStatus?.installations ?? "-"} />
+            <Metric label={t("staleInstallations")} value={technicalStatus?.staleInstallations ?? "-"} tone={(technicalStatus?.staleInstallations ?? 0) > 0 ? "warning" : undefined} />
+          </div>
+        </div>
+      </section>
+
+      <section className="content-section support-tickets-panel">
+        <SectionHeader title={t("supportTickets")} subtitle={t("supportTicketsSubtitle")} />
+        {companies.length === 0 ? (
+          <EmptyState text={t("selectCompany")} />
+        ) : (
+          <>
+            <label className="company-ticket-selector">
+              {t("company")}
+              <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+                {companies.map((company) => (
+                  <option key={company.companyId} value={company.companyId}>
+                    {company.companyName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canManage && (
+              <form className="support-ticket-form" onSubmit={createTicket}>
+                <div className="support-ticket-form-top">
+                  <Input label={t("title")} value={title} onChange={setTitle} required />
+                  <Select label={t("priority")} value={priority} options={["NORMAL", "ALTA", "URGENTE"]} onChange={setPriority} />
+                  <div className="form-actions">
+                    <button className="primary-button" type="submit" disabled={busy === "create"}>
+                      {busy === "create" ? t("saving") : t("createTicket")}
+                    </button>
+                  </div>
+                </div>
+                <label className="support-ticket-description">
+                  {t("description")}
+                  <textarea
+                    className="control-input text-area"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+                </label>
+              </form>
+            )}
+            <div className="support-ticket-filters">
+              <Select label={t("status")} value={statusFilter} options={["", "ABIERTO", "EN_CURSO", "RESUELTO"]} onChange={setStatusFilter} emptyLabel={t("allStatuses")} />
+              <Select label={t("priority")} value={priorityFilter} options={["", "NORMAL", "ALTA", "URGENTE"]} onChange={setPriorityFilter} emptyLabel={t("allPriorities")} />
+            </div>
+            <TicketList
+              tickets={filteredTickets}
+              commentsByTicket={commentsByTicket}
+              commentDrafts={commentDrafts}
+              canManage={canManage}
+              busy={busy}
+              onUpdate={updateTicket}
+              onCommentDraftChange={(ticketId, message) => setCommentDrafts((current) => ({ ...current, [ticketId]: message }))}
+              onAddComment={(ticket) => void addComment(ticket)}
+            />
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function NotificationList({ notifications, onMarkRead }: { notifications: AdminNotification[]; onMarkRead: (notificationId: string) => void }) {
+  const { t } = useI18n();
+  if (notifications.length === 0) return <EmptyState text={t("noNotifications")} />;
+  return (
+    <div className="notification-list">
+      {notifications.map((notification) => (
+        <article className={`notification-card ${notification.severity.toLowerCase()}`} key={notification.id}>
+          <div>
+            <strong>{notification.title}</strong>
+            <span>{notification.companyName}</span>
+          </div>
+          <p>{notification.detail}</p>
+          <button className="small-button" type="button" onClick={() => onMarkRead(notification.id)}>
+            {t("markRead")}
+          </button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TicketList({
+  tickets,
+  commentsByTicket,
+  commentDrafts,
+  canManage,
+  busy,
+  onUpdate,
+  onCommentDraftChange,
+  onAddComment
+}: {
+  tickets: SupportTicket[];
+  commentsByTicket: Record<string, SupportTicketComment[]>;
+  commentDrafts: Record<string, string>;
+  canManage: boolean;
+  busy: string | null;
+  onUpdate: (ticket: SupportTicket, status: string) => void;
+  onCommentDraftChange: (ticketId: string, message: string) => void;
+  onAddComment: (ticket: SupportTicket) => void;
+}) {
+  const { t } = useI18n();
+  if (tickets.length === 0) return <EmptyState text={t("noTickets")} />;
+  return (
+    <div className="ticket-list">
+      {tickets.map((ticket) => (
+        <article className="ticket-card" key={ticket.id}>
+          <div className="ticket-main">
+            <div>
+              <strong>{ticket.title}</strong>
+              <span>{ticket.companyName} - {ticket.createdBy} - {formatDate(ticket.createdAt)}</span>
+            </div>
+            <div className="ticket-badges">
+              <StatusPill status={ticketStatusLabel(ticket.status, t)} tone={ticket.status === "RESUELTO" ? "ok" : "warning"} />
+              <StatusPill status={ticketPriorityLabel(ticket.priority, t)} tone={ticket.priority === "URGENTE" ? "warning" : "muted"} />
+            </div>
+          </div>
+          {ticket.description && <p>{ticket.description}</p>}
+          <div className="ticket-comments">
+            {(commentsByTicket[ticket.id] ?? []).length === 0 ? (
+              <span>{t("noComments")}</span>
+            ) : (
+              (commentsByTicket[ticket.id] ?? []).map((comment) => (
+                <div className="ticket-comment" key={comment.id}>
+                  <strong>{comment.author}</strong>
+                  <span>{formatDate(comment.createdAt)}</span>
+                  <p>{comment.message}</p>
+                </div>
+              ))
+            )}
+          </div>
+          {canManage && ticket.status !== "RESUELTO" && (
+            <div className="ticket-actions">
+              {ticket.status !== "EN_CURSO" && (
+                <button className="small-button" type="button" disabled={busy === ticket.id} onClick={() => onUpdate(ticket, "EN_CURSO")}>
+                  {t("inProgress")}
+                </button>
+              )}
+              <button className="small-button" type="button" disabled={busy === ticket.id} onClick={() => onUpdate(ticket, "RESUELTO")}>
+                {t("resolve")}
+              </button>
+            </div>
+          )}
+          {canManage && (
+            <div className="ticket-comment-form">
+              <input
+                className="control-input"
+                value={commentDrafts[ticket.id] ?? ""}
+                onChange={(event) => onCommentDraftChange(ticket.id, event.target.value)}
+                placeholder={t("comment")}
+              />
+              <button className="small-button" type="button" disabled={busy === `comment:${ticket.id}`} onClick={() => onAddComment(ticket)}>
+                {t("addComment")}
+              </button>
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function LicenseTable({
   licenses,
   compact = false,
   onAction,
   busy,
   showPairingAction = true,
-  showStatusActions = true
+  showStatusActions = true,
+  selectedCompanyId,
+  onSelectCompany
 }: {
   licenses: LicenseSummary[];
   compact?: boolean;
@@ -942,6 +2765,8 @@ function LicenseTable({
   busy?: string | null;
   showPairingAction?: boolean;
   showStatusActions?: boolean;
+  selectedCompanyId?: string;
+  onSelectCompany?: (companyId: string) => void;
 }) {
   const { t } = useI18n();
   const showActionColumn = Boolean(onAction && (showPairingAction || showStatusActions));
@@ -961,12 +2786,23 @@ function LicenseTable({
         </thead>
         <tbody>
           {licenses.map((license) => (
-            <tr key={license.licenseReference} className={busy?.endsWith(license.licenseReference) ? "is-busy" : ""}>
+            <tr
+              key={license.licenseReference}
+              className={[
+                busy?.endsWith(license.licenseReference) ? "is-busy" : "",
+                selectedCompanyId === license.companyId ? "is-selected" : ""
+              ].filter(Boolean).join(" ")}
+            >
               <td>
                 <strong>{license.licenseReference}</strong>
                 <small>{license.taxId}</small>
               </td>
-              <td>{license.companyName}</td>
+              <td>
+                <button className="link-button" type="button" onClick={() => onSelectCompany?.(license.companyId)}>
+                  {license.companyName}
+                </button>
+                {!compact && selectedCompanyId === license.companyId && <small>{t("selected")}</small>}
+              </td>
               <td>
                 <StatusPill
                   status={license.status === "VALIDA" ? t("valid") : t("blockedStatus")}
@@ -1017,12 +2853,26 @@ function PairingCodePanel({ pairingCode, onCopy }: { pairingCode: PairingCodeRes
         <span>{t("activePairingCode")}</span>
         <strong>{pairingCode.pairingCode}</strong>
         <small>
-          {pairingCode.licenseReference} · expira {formatDate(pairingCode.expiresAt)}
+          {pairingCode.licenseReference} - {t("expires")} {formatDate(pairingCode.expiresAt)}
         </small>
       </div>
       <button className="secondary-button" type="button" onClick={onCopy}>
         {t("copy")}
       </button>
+    </div>
+  );
+}
+
+function TenantAccessPanel({ access }: { access: { username: string; password: string } }) {
+  const { t } = useI18n();
+  return (
+    <div className="pairing-panel tenant-access-panel" role="status" aria-live="polite">
+      <div>
+        <span>{t("tenantInitialAccess")}</span>
+        <strong>{access.username}</strong>
+        <small>{t("initialPassword")}: {access.password}</small>
+        <small>{t("tenantInitialAccessHint")}</small>
+      </div>
     </div>
   );
 }
@@ -1039,6 +2889,7 @@ function InstallationsTable({ installations }: { installations: InstallationSumm
             <th>{t("license")}</th>
             <th>{t("linkedAt")}</th>
             <th>{t("lastValidation")}</th>
+            <th>{t("deviceDetails")}</th>
           </tr>
         </thead>
         <tbody>
@@ -1050,13 +2901,251 @@ function InstallationsTable({ installations }: { installations: InstallationSumm
               </td>
               <td>{installation.licenseReference}</td>
               <td>{formatDate(installation.linkedAt)}</td>
-              <td>{installation.lastValidatedAt ? formatDate(installation.lastValidatedAt) : t("pending")}</td>
+              <td>
+                {installation.lastValidatedAt ? formatDate(installation.lastValidatedAt) : t("pending")}
+                <InstallationHealth installation={installation} />
+              </td>
+              <td>
+                <strong>{installation.terminalName || t("notAvailable")}</strong>
+                <small>{t("appVersion")}: {installation.appVersion || t("notAvailable")}</small>
+                <small>{t("operatingSystem")}: {installation.operatingSystem || t("notAvailable")}</small>
+                <small>{t("lastIp")}: {installation.lastIp || t("notAvailable")}</small>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function CompanyDetail({
+  credentials,
+  license,
+  installations,
+  events,
+  canManage,
+  onChanged,
+  onNotice
+}: {
+  credentials: Credentials;
+  license: LicenseSummary | null;
+  installations: InstallationSummary[];
+  events: SyncEventView[];
+  canManage: boolean;
+  onChanged: () => void;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [companyName, setCompanyName] = useState("");
+  const [taxpayerType, setTaxpayerType] = useState<TaxpayerType>("SOCIEDAD");
+  const [taxRegime, setTaxRegime] = useState<TaxRegime>("IVA");
+  const [validUntil, setValidUntil] = useState("");
+  const [maxWindows, setMaxWindows] = useState("1");
+  const [maxPda, setMaxPda] = useState("0");
+  const [operations, setOperations] = useState<CompanyOperations | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!license) return;
+    setCompanyName(license.companyName);
+    setValidUntil(toLocalInput(new Date(license.validUntil)));
+    setMaxWindows(String(license.maxWindows));
+    setMaxPda(String(license.maxPda));
+    setOperations(null);
+    void loadOperations(license.companyId);
+  }, [license?.companyId]);
+
+  async function loadOperations(companyId: string) {
+    try {
+      setOperations(await api.companyOperations(credentials, companyId));
+    } catch {
+      setOperations(defaultCompanyOperations(companyId));
+    }
+  }
+
+  async function saveCompany(event: FormEvent) {
+    event.preventDefault();
+    if (!license) return;
+    setBusy("company");
+    try {
+      await api.editCompany(credentials, license.companyId, { name: companyName, taxpayerType, impuestos: taxRegime });
+      onNotice({ type: "success", text: t("companyUpdated") });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function renewSelectedLicense(event: FormEvent) {
+    event.preventDefault();
+    if (!license) return;
+    setBusy("license");
+    try {
+      await api.renewLicense(credentials, license.licenseReference, {
+        validUntil: new Date(validUntil).toISOString(),
+        maxWindows: Number(maxWindows),
+        maxPda: Number(maxPda)
+      });
+      onNotice({ type: "success", text: t("licenseRenewed") });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveOperations(event: FormEvent) {
+    event.preventDefault();
+    if (!license || !operations) return;
+    setBusy("operations");
+    try {
+      const saved = await api.updateCompanyOperations(credentials, license.companyId, {
+        planName: operations.planName,
+        billingStatus: operations.billingStatus,
+        renewalDate: operations.renewalDate ? new Date(operations.renewalDate).toISOString() : null,
+        monthlyPrice: operations.monthlyPrice,
+        supportStatus: operations.supportStatus,
+        contactName: operations.contactName,
+        contactEmail: operations.contactEmail,
+        notes: operations.notes
+      });
+      setOperations(saved);
+      onNotice({ type: "success", text: t("operationsUpdated") });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!license) {
+    return (
+      <section className="content-section">
+        <SectionHeader title={t("companyDetail")} subtitle={t("companyDetailSubtitle")} />
+        <EmptyState text={t("selectCompany")} />
+      </section>
+    );
+  }
+
+  const stores = new Set(installations.map((installation) => installation.storeId)).size;
+  const recentEvents = events.slice(0, 4);
+  const operationsForm = operations ?? defaultCompanyOperations(license.companyId);
+
+  return (
+    <section className="content-section company-detail">
+      <SectionHeader title={t("companyDetail")} subtitle={t("companyDetailSubtitle")} />
+      <div className="company-detail-grid">
+        <div className="company-card-main">
+          <strong>{license.companyName}</strong>
+          <span>{license.taxId}</span>
+          <StatusPill status={license.status === "VALIDA" ? t("valid") : t("blockedStatus")} tone={license.status === "VALIDA" ? "ok" : "warning"} />
+        </div>
+        <Metric label={t("installations")} value={installations.length} />
+        <Metric label={t("stores")} value={stores} />
+        <Metric label={t("quotas")} value={`${license.maxWindows} W / ${license.maxPda} PDA`} detail={`${t("licenseExpires")} ${formatDate(license.validUntil)}`} />
+      </div>
+      <div className="detail-columns">
+        <div>
+          <SectionHeader title={t("linkedInstallations")} subtitle={`${installations.length} ${t("installations").toLowerCase()}`} />
+          <InstallationsTable installations={installations} />
+        </div>
+        <div>
+          <SectionHeader title={t("recentActivity")} subtitle={events[0] ? formatDate(events[0].receivedAt) : t("noEvents")} />
+          {recentEvents.length > 0 ? <EventsTable events={recentEvents} /> : <EmptyState text={t("noRecentActivity")} />}
+        </div>
+      </div>
+      <div className="phase2-panel">
+        <SectionHeader title={t("phase2Operations")} subtitle={t("phase2OperationsSubtitle")} />
+        <div className="phase2-grid">
+          <form className="stack-form phase2-form" onSubmit={saveCompany}>
+            <h3>{t("editCompany")}</h3>
+            <Input label={t("company")} value={companyName} onChange={setCompanyName} disabled={!canManage} required />
+            <Select label={t("type")} value={taxpayerType} options={["SOCIEDAD", "AUTONOMO"]} onChange={(value) => setTaxpayerType(value as TaxpayerType)} disabled={!canManage} />
+            <Select label={t("taxes")} value={taxRegime} options={["IVA", "IGIC"]} onChange={(value) => setTaxRegime(value as TaxRegime)} disabled={!canManage} />
+            {canManage && (
+              <button className="secondary-button" type="submit" disabled={busy === "company"}>
+                {busy === "company" ? t("saving") : t("saveChanges")}
+              </button>
+            )}
+          </form>
+          <form className="stack-form phase2-form" onSubmit={renewSelectedLicense}>
+            <h3>{t("renewLicense")}</h3>
+            <Input label={t("validUntil")} type="datetime-local" value={validUntil} onChange={setValidUntil} disabled={!canManage} required />
+            <Input label="Windows" type="number" value={maxWindows} min={1} onChange={setMaxWindows} disabled={!canManage} required />
+            <Input label="PDA" type="number" value={maxPda} min={0} onChange={setMaxPda} disabled={!canManage} required />
+            {canManage && (
+              <button className="secondary-button" type="submit" disabled={busy === "license"}>
+                {busy === "license" ? t("saving") : t("saveChanges")}
+              </button>
+            )}
+          </form>
+          <form className="stack-form phase2-form wide" onSubmit={saveOperations}>
+            <h3>{t("billingStatus")} / {t("supportStatus")}</h3>
+            <div className="compact-form-grid">
+              <Input label={t("plan")} value={operationsForm.planName} onChange={(planName) => setOperations({ ...operationsForm, planName })} disabled={!canManage} />
+              <Input label={t("billingStatus")} value={operationsForm.billingStatus} onChange={(billingStatus) => setOperations({ ...operationsForm, billingStatus })} disabled={!canManage} />
+              <Input
+                label={t("renewalDate")}
+                type="datetime-local"
+                value={operationsForm.renewalDate ? toLocalInput(new Date(operationsForm.renewalDate)) : ""}
+                onChange={(renewalDate) => setOperations({ ...operationsForm, renewalDate })}
+                disabled={!canManage}
+              />
+              <Input label={t("monthlyPrice")} value={operationsForm.monthlyPrice ?? ""} onChange={(monthlyPrice) => setOperations({ ...operationsForm, monthlyPrice })} disabled={!canManage} />
+              <Input label={t("supportStatus")} value={operationsForm.supportStatus} onChange={(supportStatus) => setOperations({ ...operationsForm, supportStatus })} disabled={!canManage} />
+              <Input label={t("contactName")} value={operationsForm.contactName ?? ""} onChange={(contactName) => setOperations({ ...operationsForm, contactName })} disabled={!canManage} />
+              <Input label={t("contactEmail")} value={operationsForm.contactEmail ?? ""} onChange={(contactEmail) => setOperations({ ...operationsForm, contactEmail })} disabled={!canManage} />
+            </div>
+            <label>
+              {t("notes")}
+              <textarea
+                className="control-input text-area"
+                value={operationsForm.notes ?? ""}
+                onChange={(event) => setOperations({ ...operationsForm, notes: event.target.value })}
+                disabled={!canManage}
+              />
+            </label>
+            {canManage && (
+              <button className="secondary-button" type="submit" disabled={busy === "operations"}>
+                {busy === "operations" ? t("saving") : t("saveChanges")}
+              </button>
+            )}
+          </form>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AlertList({ alerts }: { alerts: Array<{ tone: "warning" | "danger"; title: string; detail: string }> }) {
+  const { t } = useI18n();
+  if (alerts.length === 0) return <EmptyState text={t("noAlerts")} />;
+  return (
+    <div className="alert-list">
+      {alerts.map((alert) => (
+        <article className={`alert-card ${alert.tone}`} key={`${alert.title}-${alert.detail}`}>
+          <strong>{alert.title}</strong>
+          <span>{alert.detail}</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function InstallationHealth({ installation }: { installation: InstallationSummary }) {
+  const { t } = useI18n();
+  if (!installation.lastValidatedAt) {
+    return <StatusPill status={t("withoutValidation")} tone="muted" />;
+  }
+  if (hoursSince(installation.lastValidatedAt) > 48) {
+    return <StatusPill status={t("stale")} tone="warning" />;
+  }
+  return null;
 }
 
 function EventsTable({ events }: { events: SyncEventView[] }) {
@@ -1126,7 +3215,7 @@ function AuditList({ audit, expanded = false }: { audit: AuditLog[]; expanded?: 
       {audit.map((item) => (
         <article className="audit-row" key={item.id}>
           <div>
-            <strong>{item.action}</strong>
+            <strong>{auditActionLabel(item.action)}</strong>
             <span>{item.username} · {formatDate(item.createdAt)}</span>
           </div>
           {expanded && (
@@ -1210,14 +3299,28 @@ function Input({
   );
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+function Select({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+  emptyLabel
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  emptyLabel?: string;
+}) {
   return (
     <label>
       {label}
-      <select className="control-input" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select className="control-input" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {option || emptyLabel || option}
           </option>
         ))}
       </select>
@@ -1308,6 +3411,10 @@ function viewTitle(view: View, t: (key: string) => string) {
     licenses: t("licensesCompanies"),
     sync: t("sync"),
     users: t("adminUsers"),
+    support: t("supportCenter"),
+    health: t("customerHealth"),
+    billing: t("billing"),
+    masters: t("masters"),
     audit: t("audit")
   }[view];
 }
@@ -1317,6 +3424,255 @@ function uniqueCompanies(licenses: LicenseSummary[]) {
     companyId: license.companyId,
     companyName: license.companyName
   }));
+}
+
+function defaultCompanyOperations(companyId: string): CompanyOperations {
+  return {
+    companyId,
+    planName: "STANDARD",
+    billingStatus: "PENDIENTE",
+    renewalDate: null,
+    monthlyPrice: "",
+    supportStatus: "NORMAL",
+    contactName: "",
+    contactEmail: "",
+    notes: ""
+  };
+}
+
+function fallbackHealth(licenses: LicenseSummary[]): CustomerHealth[] {
+  return uniqueCompanies(licenses).map((company) => {
+    const license = licenses.find((item) => item.companyId === company.companyId);
+    const validUntil = license?.validUntil ?? null;
+    const isBlocked = license?.status !== "VALIDA";
+    const expiresSoon = validUntil ? new Date(validUntil).getTime() < Date.now() + 30 * 24 * 60 * 60 * 1000 : true;
+    const score = isBlocked ? 45 : expiresSoon ? 70 : 92;
+    return {
+      companyId: company.companyId,
+      companyName: company.companyName,
+      taxId: license?.taxId ?? "",
+      planName: "STANDARD",
+      billingStatus: "PENDIENTE",
+      licenseStatus: license?.status ?? "SIN_LICENCIA",
+      validUntil,
+      installations: 0,
+      staleInstallations: 0,
+      lastValidationAt: null,
+      eventsLast7Days: 0,
+      lastEventAt: null,
+      openTickets: 0,
+      urgentTickets: 0,
+      score,
+      riskLevel: score < 50 ? "DANGER" : score < 75 ? "WARNING" : "OK",
+      signals: [isBlocked ? "Licencia no valida" : expiresSoon ? "Licencia proxima a caducar" : "Operativa estable"]
+    };
+  });
+}
+
+function fallbackTechnicalStatus(licenses: LicenseSummary[]): TechnicalStatus {
+  return {
+    generatedAt: new Date().toISOString(),
+    companies: uniqueCompanies(licenses).length,
+    licenses: licenses.length,
+    installations: 0,
+    eventsToday: 0,
+    openTickets: 0,
+    staleInstallations: 0,
+    lastSyncAt: null
+  };
+}
+
+function fallbackBilling(licenses: LicenseSummary[]): BillingSummary {
+  const companies = uniqueCompanies(licenses).map((company) => {
+    const license = licenses.find((item) => item.companyId === company.companyId);
+    const validUntil = license?.validUntil ?? null;
+    const renewalDueSoon = validUntil ? daysUntil(validUntil) <= 30 : false;
+    return {
+      companyId: company.companyId,
+      companyName: company.companyName,
+      taxId: license?.taxId ?? "",
+      planName: "STANDARD",
+      billingStatus: "PENDIENTE",
+      renewalDate: validUntil,
+      monthlyPrice: "",
+      licenseReference: license?.licenseReference ?? null,
+      validUntil,
+      renewalDueSoon,
+      overdue: false
+    };
+  });
+  return {
+    totalCompanies: companies.length,
+    paidCompanies: 0,
+    pendingCompanies: companies.length,
+    overdueCompanies: 0,
+    renewalsNext30Days: companies.filter((company) => company.renewalDueSoon).length,
+    monthlyRecurringRevenue: "0",
+    companies
+  };
+}
+
+function riskLabel(riskLevel: string, t: (key: string) => string) {
+  if (riskLevel === "DANGER") return t("riskDanger");
+  if (riskLevel === "WARNING") return t("riskWarning");
+  return t("riskOk");
+}
+
+function billingStatusLabel(status: string, t: (key: string) => string) {
+  const normalized = status.toUpperCase();
+  if (normalized === "PAGADO") return t("paid");
+  if (normalized === "IMPAGADO" || normalized === "VENCIDO") return t("overdue");
+  return status;
+}
+
+function parseAmount(value: string | null | undefined) {
+  if (!value) return 0;
+  const parsed = Number(value.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMoney(value: string | number) {
+  const amount = typeof value === "number" ? value : parseAmount(value);
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(amount);
+}
+
+function filterDashboardData(data: DashboardData, query: string): DashboardData {
+  const normalized = normalizeSearch(query);
+  if (!normalized) return data;
+
+  const matchingLicenses = data.licenses.filter((license) =>
+    [
+      license.licenseReference,
+      license.companyName,
+      license.taxId,
+      license.companyId
+    ].some((value) => normalizeSearch(value).includes(normalized))
+  );
+  const companyIds = new Set(matchingLicenses.map((license) => license.companyId));
+  const licenseReferences = new Set(matchingLicenses.map((license) => license.licenseReference));
+  const matchingInstallations = data.installations.filter((installation) =>
+    companyIds.has(installation.companyId) ||
+    licenseReferences.has(installation.licenseReference) ||
+    [
+      installation.installationReference,
+      installation.installationId,
+      installation.storeId
+    ].some((value) => normalizeSearch(value).includes(normalized))
+  );
+  matchingInstallations.forEach((installation) => {
+    companyIds.add(installation.companyId);
+    licenseReferences.add(installation.licenseReference);
+  });
+
+  return {
+    ...data,
+    licenses: data.licenses.filter((license) => companyIds.has(license.companyId) || licenseReferences.has(license.licenseReference)),
+    installations: data.installations.filter((installation) => companyIds.has(installation.companyId) || licenseReferences.has(installation.licenseReference)),
+    events: data.events.filter((event) => companyIds.has(event.companyId) || normalizeSearch(event.storeId).includes(normalized)),
+    stockCurrent: data.stockCurrent.filter((row) => companyIds.has(row.companyId) || normalizeSearch(row.storeId).includes(normalized)),
+    audit: data.audit.filter((item) =>
+      [item.username, item.action, item.targetType, item.targetId].some((value) => normalizeSearch(value).includes(normalized))
+    )
+  };
+}
+
+function operationalAlerts(data: DashboardData, t: (key: string) => string) {
+  const alerts: Array<{ tone: "warning" | "danger"; title: string; detail: string }> = [];
+  const soon = data.licenses.filter((license) => license.status === "VALIDA" && daysUntil(license.validUntil) <= 30);
+  const blocked = data.licenses.filter((license) => license.status === "BLOQUEADA_MANUAL");
+  const stale = data.installations.filter((installation) => !installation.lastValidatedAt || hoursSince(installation.lastValidatedAt) > 48);
+
+  soon.slice(0, 3).forEach((license) => {
+    alerts.push({
+      tone: "warning",
+      title: t("expiringLicenseAlert"),
+      detail: `${license.companyName} - ${license.licenseReference} - ${formatDate(license.validUntil)}`
+    });
+  });
+  blocked.slice(0, 3).forEach((license) => {
+    alerts.push({
+      tone: "danger",
+      title: t("blockedLicenseAlert"),
+      detail: `${license.companyName} - ${license.licenseReference}`
+    });
+  });
+  stale.slice(0, 3).forEach((installation) => {
+    alerts.push({
+      tone: "warning",
+      title: t("staleInstallationAlert"),
+      detail: `${installation.installationReference} - ${installation.lastValidatedAt ? formatDate(installation.lastValidatedAt) : "pendiente"}`
+    });
+  });
+
+  return alerts;
+}
+
+function auditActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    CREATE_COMPANY: "Empresa creada",
+    UPDATE_COMPANY: "Empresa actualizada",
+    CREATE_LICENSE: "Licencia creada",
+    RENEW_LICENSE: "Licencia renovada",
+    BLOCK_LICENSE: "Licencia bloqueada",
+    UNBLOCK_LICENSE: "Licencia desbloqueada",
+    REGENERATE_PAIRING_CODE: "Codigo de enlace regenerado",
+    CREATE_ADMIN_USER: "Usuario admin creado",
+    UPDATE_ADMIN_PASSWORD: "Password admin actualizada",
+    CHANGE_ADMIN_PASSWORD: "Password admin actualizada",
+    DELETE_ADMIN_USER: "Usuario admin desactivado",
+    DEACTIVATE_ADMIN_USER: "Usuario admin desactivado",
+    UPDATE_COMPANY_OPERATIONS: "Datos SaaS de empresa actualizados",
+    CREATE_SUPPORT_TICKET: "Ticket de soporte creado",
+    UPDATE_SUPPORT_TICKET: "Ticket de soporte actualizado"
+  };
+  return labels[action] ?? action.replaceAll("_", " ").toLowerCase().replace(/^\w/, (value) => value.toUpperCase());
+}
+
+function ticketStatusLabel(status: string, t: (key: string) => string) {
+  const labels: Record<string, string> = {
+    ABIERTO: t("open"),
+    EN_CURSO: t("inProgress"),
+    RESUELTO: t("resolve")
+  };
+  return labels[status] ?? status;
+}
+
+function ticketPriorityLabel(priority: string, t: (key: string) => string) {
+  const labels: Record<string, string> = {
+    NORMAL: t("normal"),
+    ALTA: t("high"),
+    URGENTE: t("urgent")
+  };
+  return labels[priority] ?? priority;
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function daysUntil(value: string) {
+  return Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000);
+}
+
+function hoursSince(value: string) {
+  return (Date.now() - new Date(value).getTime()) / 3_600_000;
+}
+
+function isToday(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
+
+function latestDate(values: string[]) {
+  return values.reduce<string | null>((latest, value) => {
+    if (!latest || new Date(value).getTime() > new Date(latest).getTime()) return value;
+    return latest;
+  }, null);
 }
 
 function sampleSyncEvents(
@@ -1618,8 +3974,58 @@ async function copyText(text: string) {
 }
 
 function errorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    try {
+      const body = JSON.parse(error.message) as { error?: string; message?: string; status?: number };
+      if (body.message) return body.message;
+      if (body.error === "Internal Server Error") return "Error interno del backend SaaS.";
+      if (body.error) return body.error;
+      if (body.status) return `Error ${body.status}`;
+    } catch {
+      return error.message;
+    }
+  }
   if (error instanceof Error) return error.message;
   return "Operacion no completada";
+}
+
+function isMissingPhase3Endpoint(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
+}
+
+function isRecoverableBackendDataError(error: unknown) {
+  return error instanceof ApiError && error.status >= 500;
+}
+
+function fallbackSession(username: string): AdminSession {
+  return {
+    username,
+    permissions: fallbackPermissions(username)
+  };
+}
+
+function fallbackPermissions(username?: string) {
+  const normalized = username?.trim().toLowerCase();
+  if (normalized === "viewer" || normalized === "auditor") {
+    return ["VIEW_ADMIN_DATA"];
+  }
+  if (normalized === "support") {
+    return ["VIEW_ADMIN_DATA", "REGENERATE_PAIRING_CODE", "MANAGE_SUPPORT_TICKETS"];
+  }
+  if (normalized === "billing") {
+    return ["VIEW_ADMIN_DATA", "RENEW_LICENSE", "EDIT_COMPANY_DATA"];
+  }
+  return [
+    "ADD_COMPANY",
+    "RENEW_LICENSE",
+    "BLOCK_LICENSE",
+    "UNBLOCK_LICENSE",
+    "EDIT_COMPANY_DATA",
+    "VIEW_ADMIN_DATA",
+    "REGENERATE_PAIRING_CODE",
+    "MANAGE_ADMIN_USERS",
+    "MANAGE_SUPPORT_TICKETS"
+  ];
 }
 
 function userManagementErrorMessage(error: unknown) {
