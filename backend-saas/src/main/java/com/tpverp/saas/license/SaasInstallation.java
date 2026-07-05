@@ -47,6 +47,18 @@ public class SaasInstallation {
     @Column(name = "last_validated_at")
     private Instant lastValidatedAt;
 
+    @Column(name = "app_version")
+    private String appVersion;
+
+    @Column(name = "operating_system")
+    private String operatingSystem;
+
+    @Column(name = "terminal_name")
+    private String terminalName;
+
+    @Column(name = "last_ip")
+    private String lastIp;
+
     protected SaasInstallation() {
     }
 
@@ -101,6 +113,22 @@ public class SaasInstallation {
 
     public Instant getLastValidatedAt() {
         return lastValidatedAt;
+    }
+
+    public String getAppVersion() {
+        return appVersion;
+    }
+
+    public String getOperatingSystem() {
+        return operatingSystem;
+    }
+
+    public String getTerminalName() {
+        return terminalName;
+    }
+
+    public String getLastIp() {
+        return lastIp;
     }
 
     public boolean hasTokenHash(String value) {

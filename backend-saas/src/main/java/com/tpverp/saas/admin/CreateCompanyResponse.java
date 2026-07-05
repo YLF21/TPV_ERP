@@ -8,5 +8,7 @@ public record CreateCompanyResponse(
         UUID storeId,
         String licenseReference,
         String pairingCode,
-        Instant validUntil) {
+        Instant validUntil,
+        String tenantUsername,
+        String tenantInitialPassword) {
 }
