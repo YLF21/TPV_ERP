@@ -1,0 +1,14 @@
+{
+  "name": "@tpverp/app-venta",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "tsc -p tsconfig.json && vite build"
+  },
+  "dependencies": {
+    "@tpverp/app-common": "0.0.1"
+  },
+  "devDependencies": {}
+}

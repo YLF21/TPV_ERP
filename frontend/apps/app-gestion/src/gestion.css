@@ -1,0 +1,80 @@
+.gestion-screen {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: #e7e9e6;
+}
+
+.gestion-nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 18px;
+  background: #1e2426;
+  color: white;
+}
+
+.gestion-nav h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.gestion-nav p {
+  margin: 0 0 14px;
+  color: #b8c2c5;
+}
+
+.gestion-nav button {
+  text-align: left;
+  border: 1px solid #445054;
+  background: #2b3336;
+  color: white;
+  padding: 10px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.gestion-workspace {
+  padding: 20px;
+}
+
+.gestion-workspace header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.gestion-workspace h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.gestion-workspace header span {
+  color: #05610f;
+  font-weight: 900;
+}
+
+.gestion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.gestion-grid article {
+  min-height: 120px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #c5cbc3;
+  border-radius: 6px;
+}
+
+.gestion-grid strong {
+  font-size: 20px;
+}
+
+.gestion-grid p {
+  color: #53605b;
+  font-weight: 700;
+}

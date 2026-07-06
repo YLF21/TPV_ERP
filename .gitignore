@@ -7,3 +7,5 @@ temp-npm-cache/
 probe-dir/
 vite-*.log
 frontend-saas/vite-cache/
+frontend/**/target/
+output/
