@@ -36,5 +36,10 @@ describe("SaleScreen", () => {
     expect(html).toContain("Venta");
     expect(html).toContain("Ticket actual");
     expect(html).toContain("Cobro");
+    expect(html).toContain("Sin venta iniciada");
+    expect(html).not.toContain("Cafe molido");
+    expect(html).not.toContain("Pan integral");
+    expect(html).not.toContain("Leche fresca");
+    expect(html).not.toContain("15,15");
   });
 });

@@ -94,9 +94,9 @@ describe("hardware facade", () => {
     expect(ticket.documentNumber).toBe("TEST-01");
     expect(ticket.storeName).toBe("Tienda Principal");
     expect(ticket.terminalCode).toBe("01");
-    expect(ticket.lines).toHaveLength(2);
-    expect(ticket.payments).toEqual([{ method: "EFECTIVO", amount: 4.5 }]);
-    expect(ticket.total).toBe(4.5);
+    expect(ticket.lines).toHaveLength(0);
+    expect(ticket.payments).toEqual([]);
+    expect(ticket.total).toBe(0);
   });
 
   it("builds unavailable results with a stable shape", () => {
@@ -133,8 +133,8 @@ describe("hardware facade", () => {
 
     expect(document.title).toBe("Prueba A4");
     expect(document.documentType).toBe("REPORT");
-    expect(document.lines).toHaveLength(2);
-    expect(document.total).toBe(36.75);
+    expect(document.lines).toHaveLength(0);
+    expect(document.total).toBe(0);
     expect(document.taxIncluded).toBe(true);
   });
 });

@@ -179,7 +179,7 @@ export function HardwareSettingsScreen({
 
   async function sendSaleDisplay() {
     const result = await hardware.updateCustomerDisplay(
-      createCustomerDisplaySaleState({ name: "Articulo prueba", quantity: 2, price: 1.25 })
+      createCustomerDisplaySaleState({ name: "TEST HARDWARE", quantity: 0, price: 0 })
     );
     setStatus(result.ok ? t("hardware.status.customerDisplaySent") : result.message);
   }

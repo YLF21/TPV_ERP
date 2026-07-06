@@ -196,10 +196,7 @@ export function createHardwareUnavailableResult<T = void>(message = "Hardware lo
 }
 
 export function createTestTicket(terminalContext: Pick<TerminalContext, "storeName" | "terminalCode">): TicketPrintRequest {
-  const lines: TicketLinePrint[] = [
-    { name: "Articulo prueba", quantity: 1, price: 2.5, total: 2.5 },
-    { name: "Articulo prueba 2", quantity: 2, price: 1, total: 2 }
-  ];
+  const lines: TicketLinePrint[] = [];
   const total = lines.reduce((sum, line) => sum + line.total, 0);
 
   return {
@@ -208,16 +205,13 @@ export function createTestTicket(terminalContext: Pick<TerminalContext, "storeNa
     terminalCode: terminalContext.terminalCode,
     issuedAt: new Date().toISOString(),
     lines,
-    payments: [{ method: "EFECTIVO", amount: total }],
+    payments: [],
     total
   };
 }
 
 export function createA4TestDocument(terminalContext: Pick<TerminalContext, "storeName" | "terminalCode">): A4DocumentPrintRequest {
-  const lines: TicketLinePrint[] = [
-    { name: "Articulo A4 prueba", quantity: 3, price: 7.5, total: 22.5 },
-    { name: "Servicio prueba", quantity: 1, price: 14.25, total: 14.25 }
-  ];
+  const lines: TicketLinePrint[] = [];
   const total = lines.reduce((sum, line) => sum + line.total, 0);
 
   return {

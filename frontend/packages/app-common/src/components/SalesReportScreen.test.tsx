@@ -40,5 +40,8 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain("Backend");
     expect(html).not.toContain("SaaS:");
     expect(html).not.toContain("Lineas visibles</span><strong>0");
+    expect(html).not.toContain("Cafe molido");
+    expect(html).not.toContain("Pan integral");
+    expect(html).not.toContain("Aceite oliva");
   });
 });

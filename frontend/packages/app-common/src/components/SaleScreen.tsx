@@ -13,12 +13,6 @@ type SaleScreenProps = {
   onLogout?: () => void;
 };
 
-const ticketLines = [
-  { name: "Cafe molido 250 g", quantity: "2", price: "4,50", total: "9,00" },
-  { name: "Pan integral", quantity: "1", price: "2,10", total: "2,10" },
-  { name: "Leche fresca", quantity: "3", price: "1,35", total: "4,05" }
-];
-
 export function SaleScreen({
   app,
   locale,
@@ -58,20 +52,12 @@ export function SaleScreen({
         <section className="sale-ticket work-panel" aria-label="Ticket actual">
           <header className="work-panel-heading">
             <h2>Ticket actual</h2>
-            <span>Mesa de venta directa</span>
+            <span>Sin venta iniciada</span>
           </header>
-          <div className="sale-ticket-lines">
-            {ticketLines.map((line) => (
-              <article className="sale-ticket-line" key={line.name}>
-                <strong>{line.name}</strong>
-                <span>{line.quantity} x {line.price}</span>
-                <b>{line.total}</b>
-              </article>
-            ))}
-          </div>
+          <div className="sale-ticket-lines sale-empty-state">Sin venta iniciada</div>
           <footer className="sale-total">
             <span>Total</span>
-            <strong>15,15</strong>
+            <strong>0,00</strong>
           </footer>
         </section>
 

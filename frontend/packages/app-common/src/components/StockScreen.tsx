@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
@@ -13,12 +15,11 @@ type StockScreenProps = {
   onLogout?: () => void;
 };
 
-const stockRows = [
-  { sku: "CAF-250", name: "Cafe molido 250 g", stock: 42, minimum: 12, location: "A-01", status: "OK" },
-  { sku: "PAN-INT", name: "Pan integral", stock: 8, minimum: 10, location: "B-03", status: "Bajo" },
-  { sku: "LEC-FRE", name: "Leche fresca", stock: 24, minimum: 18, location: "FR-01", status: "OK" },
-  { sku: "ACE-1L", name: "Aceite oliva 1 l", stock: 3, minimum: 8, location: "C-02", status: "Critico" }
-];
+type StockItemView = {
+  productId: string;
+  warehouseId: string;
+  quantity: number;
+};
 
 export function StockScreen({
   app,
@@ -30,6 +31,37 @@ export function StockScreen({
   onLogout
 }: StockScreenProps) {
   const t = createTranslator(locale);
+  const [stockRows, setStockRows] = useState<StockItemView[]>([]);
+  const [status, setStatus] = useState("Sin datos de stock");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session.accessToken) {
+      setStockRows([]);
+      setStatus("Sin datos de stock");
+      return;
+    }
+
+    async function loadStock() {
+      try {
+        const rows = await apiRequest<StockItemView[]>("/stock", { token: session.accessToken });
+        if (!cancelled) {
+          setStockRows(rows);
+          setStatus(rows.length === 0 ? "Sin datos de stock" : "Stock cargado desde base de datos");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStockRows([]);
+          setStatus(error instanceof Error ? error.message : "Sin datos de stock");
+        }
+      }
+    }
+
+    void loadStock();
+    return () => {
+      cancelled = true;
+    };
+  }, [session.accessToken]);
 
   return (
     <main className="stock-screen work-screen">
@@ -71,21 +103,18 @@ export function StockScreen({
           </div>
           <div className="stock-table">
             <div className="stock-row stock-row-head">
-              <span>Codigo</span>
-              <span>Articulo</span>
+              <span>Producto</span>
+              <span>Almacen</span>
               <span>Stock</span>
-              <span>Stock minimo</span>
-              <span>Ubicacion</span>
               <span>Estado</span>
             </div>
+            {stockRows.length === 0 && <div className="stock-empty-state">{status}</div>}
             {stockRows.map((row) => (
-              <article className={`stock-row stock-status-${row.status.toLowerCase()}`} key={row.sku}>
-                <strong>{row.sku}</strong>
-                <span>{row.name}</span>
-                <b>{row.stock}</b>
-                <span>{row.minimum}</span>
-                <span>{row.location}</span>
-                <em>{row.status}</em>
+              <article className="stock-row" key={`${row.productId}-${row.warehouseId}`}>
+                <strong>{row.productId}</strong>
+                <span>{row.warehouseId}</span>
+                <b>{row.quantity}</b>
+                <em>{status}</em>
               </article>
             ))}
           </div>
