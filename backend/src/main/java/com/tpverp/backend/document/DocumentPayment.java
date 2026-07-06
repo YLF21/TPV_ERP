@@ -167,6 +167,10 @@ public class DocumentPayment {
         return metodoPago;
     }
 
+    public Instant getCreadoEn() {
+        return creadoEn;
+    }
+
     public int getPosicion() {
         return posicion;
     }
