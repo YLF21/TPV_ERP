@@ -2,8 +2,8 @@ import electron from "electron";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const appKey = process.argv[2];
 const configs = {
   venta: {
     name: "APP VENTA",
@@ -17,44 +17,66 @@ const configs = {
   }
 };
 
-const config = configs[appKey];
-if (!config) {
-  throw new Error("Uso: node scripts/start-electron-app.mjs venta|gestion");
+export function resolveViteStartup(isAlreadyRunning) {
+  return {
+    shouldStartVite: !isAlreadyRunning,
+    ownsViteProcess: !isAlreadyRunning
+  };
 }
 
-const root = resolve(import.meta.dirname, "..");
-const url = `http://127.0.0.1:${config.port}`;
-
-if (await canConnect(url)) {
-  throw new Error(`El puerto ${config.port} ya esta en uso. Cierra la instancia anterior de ${config.name} antes de iniciar otra.`);
+if (isCliEntrypoint()) {
+  await main();
 }
 
-const vite = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npm run dev --workspace ${config.workspace}`], {
-  cwd: root,
-  stdio: "inherit"
-});
-
-await waitFor(url);
-
-const desktop = spawn(electron, [resolve(root, "desktop", "main.cjs")], {
-  cwd: root,
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    TPV_DESKTOP_APP_NAME: config.name,
-    TPV_DESKTOP_APP_URL: url
+async function main() {
+  const appKey = process.argv[2];
+  const config = configs[appKey];
+  if (!config) {
+    throw new Error("Uso: node scripts/start-electron-app.mjs venta|gestion");
   }
-});
 
-desktop.on("exit", (code) => {
-  vite.kill();
-  process.exit(code ?? 0);
-});
+  const root = resolve(import.meta.dirname, "..");
+  const url = `http://127.0.0.1:${config.port}`;
+  const viteStartup = resolveViteStartup(await canConnect(url));
+  let vite;
 
-process.on("SIGINT", () => {
-  desktop.kill();
-  vite.kill();
-});
+  if (viteStartup.shouldStartVite) {
+    vite = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npm run dev --workspace ${config.workspace}`], {
+      cwd: root,
+      stdio: "inherit"
+    });
+  }
+
+  await waitFor(url);
+
+  const desktop = spawn(electron, [resolve(root, "desktop", "main.cjs")], {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      TPV_DESKTOP_APP_NAME: config.name,
+      TPV_DESKTOP_APP_URL: url
+    }
+  });
+
+  desktop.on("exit", (code) => {
+    if (viteStartup.ownsViteProcess) {
+      vite?.kill();
+    }
+    process.exit(code ?? 0);
+  });
+
+  process.on("SIGINT", () => {
+    desktop.kill();
+    if (viteStartup.ownsViteProcess) {
+      vite?.kill();
+    }
+  });
+}
+
+function isCliEntrypoint() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
 
 async function waitFor(targetUrl) {
   const deadline = Date.now() + 30_000;
