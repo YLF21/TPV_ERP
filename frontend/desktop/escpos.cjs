@@ -72,6 +72,28 @@ function normalizeSerialPath(value) {
   return path;
 }
 
+function normalizePaymentMethod(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function shouldOpenCashDrawerForTicket(config, ticket) {
+  if (!config?.openCashDrawerWithTicket) {
+    return false;
+  }
+  const configuredMethods = Array.isArray(config.cashDrawerOpeningPaymentMethods)
+    ? config.cashDrawerOpeningPaymentMethods
+    : ["EFECTIVO"];
+  const enabledMethods = new Set(configuredMethods.map(normalizePaymentMethod));
+  if (enabledMethods.size === 0) {
+    return false;
+  }
+  return (ticket?.payments || []).some((payment) => enabledMethods.has(normalizePaymentMethod(payment.method)));
+}
+
 function writeNetwork(host, port, buffer) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ host, port, timeout: 5000 }, () => {
@@ -120,5 +142,6 @@ module.exports = {
   buildCashDrawerBuffer,
   buildTicketBuffer,
   normalizeSerialPath,
+  shouldOpenCashDrawerForTicket,
   sendEscposBuffer
 };

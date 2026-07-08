@@ -35,7 +35,7 @@ describe("HardwareSettingsScreen", () => {
     expect(html).toContain("DB:");
     expect(html).toContain("Conexión");
   });
-  it("renders the hardware diagnostics panel with device checks", () => {
+  it("renders the hardware navigation and cash drawer panel", () => {
     const html = renderToStaticMarkup(
       <HardwareSettingsScreen
         app="venta"
@@ -48,13 +48,11 @@ describe("HardwareSettingsScreen", () => {
       />
     );
 
+    expect(html).toContain("Impresora de ticket");
+    expect(html).toContain("Cajon de dinero");
+    expect(html).toContain("Escaner codigo barras");
     expect(html).toContain("Diagnostico");
-    expect(html).toContain("Electron");
-    expect(html).toContain("Impresoras");
-    expect(html).toContain("Ticket");
-    expect(html).toContain("A4");
-    expect(html).toContain("Cajon");
-    expect(html).toContain("Pantalla cliente");
-    expect(html).toContain("Probar todo");
+    expect(html).toContain("Abrir cajon al imprimir ticket");
+    expect(html).toContain("Abrir cajon");
   });
 });

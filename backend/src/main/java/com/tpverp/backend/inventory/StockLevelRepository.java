@@ -20,4 +20,7 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
 
     @Query("select coalesce(sum(value.cantidad), 0) from StockLevel value where value.warehouseId = :warehouseId")
     BigDecimal sumQuantityByWarehouseId(@Param("warehouseId") UUID warehouseId);
+
+    @Query("select coalesce(sum(value.cantidad), 0) from StockLevel value where value.productId = :productId")
+    BigDecimal sumQuantityByProductId(@Param("productId") UUID productId);
 }

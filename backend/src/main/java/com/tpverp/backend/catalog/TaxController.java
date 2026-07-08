@@ -1,6 +1,8 @@
 package com.tpverp.backend.catalog;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -37,7 +39,7 @@ public class TaxController {
     }
 
     @GetMapping("/selectable")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('PRODUCTS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_WRITE','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<StoreTax> selectable() {
         return service.selectableTaxes();
     }

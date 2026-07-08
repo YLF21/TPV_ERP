@@ -84,6 +84,16 @@ class CatalogServiceTest {
     }
 
     @Test
+    void listsSubfamiliesForFamily() {
+        var family = Family.general(storeId);
+        var subfamily = new Subfamily(family.getId(), "Cafe");
+        when(familyRepository.findById(family.getId())).thenReturn(Optional.of(family));
+        when(subfamilyRepository.findByFamilyIdOrderByNombre(family.getId())).thenReturn(List.of(subfamily));
+
+        assertThat(service.subfamilies(family.getId())).containsExactly(subfamily);
+    }
+
+    @Test
     void updatesTaxPercentageWithoutAllowingDuplicates() {
         var tax = new StoreTax(storeId, new BigDecimal("7"), false);
         when(taxRepository.findById(tax.getId())).thenReturn(Optional.of(tax));

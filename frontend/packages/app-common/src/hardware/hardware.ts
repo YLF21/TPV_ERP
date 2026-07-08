@@ -2,9 +2,11 @@ import type { TerminalContext } from "../types";
 
 export type ScannerMode = "KEYBOARD";
 export type ScannerSubmitKey = "ENTER";
-export type TicketPrinterMode = "WINDOWS_PRINTER" | "ESCPOS";
+export type TicketPrinterDriver = "WINDOWS_DRIVER" | "ESCPOS_RAW";
+export type TicketPrinterConnection = "WINDOWS_PRINTER" | "SERIAL" | "NETWORK";
+export type CashDrawerConnection = "NONE" | "PRINTER" | "SERIAL" | "NETWORK";
 export type CashDrawerCommandProfile = "ESCPOS_STANDARD";
-export type EscposConnectionType = "USB" | "SERIAL" | "NETWORK";
+export type CashDrawerPaymentMethod = "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "VALE" | "DESCUENTO" | "OTRO" | "PENDIENTE";
 export type CustomerDisplayMode = "COMPACT";
 export type PrintableDocumentType = "TICKET" | "INVOICE" | "DELIVERY_NOTE" | "REPORT";
 export type PrinterTarget = "TICKET_PRINTER" | "A4_PRINTER";
@@ -25,15 +27,21 @@ export type DocumentPrintRoute = {
 export type HardwareConfig = {
   scannerMode: ScannerMode;
   scannerSubmitKey: ScannerSubmitKey;
-  ticketPrinterMode: TicketPrinterMode;
+  ticketPrinterDriver: TicketPrinterDriver;
+  ticketPrinterConnection: TicketPrinterConnection;
   ticketPrinterName: string;
   openCashDrawerWithTicket: boolean;
+  cashDrawerOpeningPaymentMethods: CashDrawerPaymentMethod[];
+  cashDrawerConnection: CashDrawerConnection;
   cashDrawerCommandProfile: CashDrawerCommandProfile;
-  escposConnectionType: EscposConnectionType;
   escposDevicePath: string;
   escposSerialBaudRate: number;
   escposHost: string;
   escposPort: number;
+  cashDrawerDevicePath: string;
+  cashDrawerSerialBaudRate: number;
+  cashDrawerHost: string;
+  cashDrawerPort: number;
   customerDisplayEnabled: boolean;
   customerDisplayMode: CustomerDisplayMode;
   customerDisplayIdleLine1: string;
@@ -132,15 +140,21 @@ export type HardwareBridge = {
 export const defaultHardwareConfig: HardwareConfig = {
   scannerMode: "KEYBOARD",
   scannerSubmitKey: "ENTER",
-  ticketPrinterMode: "WINDOWS_PRINTER",
+  ticketPrinterDriver: "WINDOWS_DRIVER",
+  ticketPrinterConnection: "WINDOWS_PRINTER",
   ticketPrinterName: "",
   openCashDrawerWithTicket: true,
+  cashDrawerOpeningPaymentMethods: ["EFECTIVO"],
+  cashDrawerConnection: "PRINTER",
   cashDrawerCommandProfile: "ESCPOS_STANDARD",
-  escposConnectionType: "USB",
   escposDevicePath: "",
   escposSerialBaudRate: 9600,
   escposHost: "",
   escposPort: 9100,
+  cashDrawerDevicePath: "",
+  cashDrawerSerialBaudRate: 9600,
+  cashDrawerHost: "",
+  cashDrawerPort: 9100,
   customerDisplayEnabled: false,
   customerDisplayMode: "COMPACT",
   customerDisplayIdleLine1: "BIENVENIDO",

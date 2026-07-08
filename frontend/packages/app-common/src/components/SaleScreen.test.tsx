@@ -34,6 +34,7 @@ describe("SaleScreen", () => {
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("Venta");
+    expect(html).toContain("Añadir producto");
     expect(html).toContain("Ticket actual");
     expect(html).toContain("Cobro");
     expect(html).toContain("Sin venta iniciada");

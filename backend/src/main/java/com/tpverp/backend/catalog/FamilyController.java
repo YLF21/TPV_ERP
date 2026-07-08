@@ -3,6 +3,7 @@ package com.tpverp.backend.catalog;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import jakarta.validation.Valid;
 import java.util.List;
@@ -29,9 +30,15 @@ public class FamilyController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public List<Family> list() {
         return service.families();
+    }
+
+    @GetMapping("/{familyId}/subfamilies")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    public List<Subfamily> listSubfamilies(@PathVariable UUID familyId) {
+        return service.subfamilies(familyId);
     }
 
     @PostMapping

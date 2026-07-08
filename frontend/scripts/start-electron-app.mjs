@@ -25,6 +25,10 @@ if (!config) {
 const root = resolve(import.meta.dirname, "..");
 const url = `http://127.0.0.1:${config.port}`;
 
+if (await canConnect(url)) {
+  throw new Error(`El puerto ${config.port} ya esta en uso. Cierra la instancia anterior de ${config.name} antes de iniciar otra.`);
+}
+
 const vite = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `npm run dev --workspace ${config.workspace}`], {
   cwd: root,
   stdio: "inherit"

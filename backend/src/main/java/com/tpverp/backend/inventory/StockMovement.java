@@ -34,6 +34,9 @@ public class StockMovement {
     @Column(name = "salida_almacen_id")
     private UUID warehouseOutputId;
 
+    @Column(name = "entrada_almacen_id")
+    private UUID warehouseInputId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private StockMovementType tipo;
@@ -191,6 +194,36 @@ public class StockMovement {
         return movement;
     }
 
+    public static StockMovement warehouseInput(
+            UUID productId,
+            UUID warehouseId,
+            UUID userId,
+            UUID inputId,
+            int quantity,
+            Instant createdAt) {
+        return warehouseInput(productId, warehouseId, userId, inputId, BigDecimal.valueOf(quantity), createdAt);
+    }
+
+    public static StockMovement warehouseInput(
+            UUID productId,
+            UUID warehouseId,
+            UUID userId,
+            UUID inputId,
+            BigDecimal quantity,
+            Instant createdAt) {
+        var movement = new StockMovement(
+                productId,
+                warehouseId,
+                userId,
+                StockMovementType.ENTRADA_ALMACEN,
+                positive(quantity),
+                null,
+                null,
+                createdAt);
+        movement.warehouseInputId = Objects.requireNonNull(inputId, "inputId");
+        return movement;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -233,6 +266,10 @@ public class StockMovement {
 
     public UUID getWarehouseOutputId() {
         return warehouseOutputId;
+    }
+
+    public UUID getWarehouseInputId() {
+        return warehouseInputId;
     }
 
     public UUID getCompensationOfId() {

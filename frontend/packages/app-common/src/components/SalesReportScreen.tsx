@@ -8,6 +8,13 @@ import {
   loadReportVisualizationPreferences,
   saveReportVisualizationPreference
 } from "./salesReportVisualizationPreferences";
+import {
+  WarehouseDocumentDialog,
+  type WarehouseCustomerOption,
+  type WarehouseOption,
+  type WarehouseSupplierOption
+} from "./WarehouseDocumentDialog";
+import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import languageIcon from "../assets/language.png";
 import lockIcon from "../assets/lock.png";
 import deliveryNoteIcon from "../assets/reports/delivery-note.png";
@@ -136,6 +143,65 @@ type DocumentView = {
   user?: string;
   userName?: string;
   vendedor?: string;
+};
+
+type WarehouseOutputView = {
+  id?: string;
+  number?: string | null;
+  numero?: string | null;
+  date?: string;
+  fecha?: string;
+  warehouseId?: string;
+  almacenId?: string;
+  destination?: string | null;
+  destino?: string | null;
+  concept?: string | null;
+  concepto?: string | null;
+  status?: string;
+  estado?: string;
+  lines?: Array<{ productId?: string; productoId?: string; quantity?: number | string; cantidad?: number | string }>;
+};
+
+type WarehouseInputView = {
+  id?: string;
+  number?: string | null;
+  numero?: string | null;
+  date?: string;
+  fecha?: string;
+  warehouseId?: string;
+  almacenId?: string;
+  supplierId?: string | null;
+  proveedorId?: string | null;
+  origin?: string | null;
+  origen?: string | null;
+  concept?: string | null;
+  concepto?: string | null;
+  status?: string;
+  estado?: string;
+  lines?: Array<{ productId?: string; productoId?: string; quantity?: number | string; cantidad?: number | string }>;
+};
+
+type StockItemView = {
+  productId: string;
+  warehouseId: string;
+  quantity: number | string;
+};
+
+type StockMovementView = {
+  id?: string;
+  productId?: string;
+  warehouseId?: string;
+  userId?: string;
+  type?: string;
+  tipo?: string;
+  quantity?: number | string;
+  cantidad?: number | string;
+  reason?: string | null;
+  motivo?: string | null;
+  createdAt?: string;
+  creadoEn?: string;
+  documentId?: string | null;
+  warehouseOutputId?: string | null;
 };
 
 type DailyPaymentLine = {
@@ -480,11 +546,51 @@ function formatBackendDate(value: string | undefined) {
   if (!value) {
     return "";
   }
+  const datePart = value.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    value = datePart;
+  }
   const [year, month, day] = value.split("-");
   if (!year || !month || !day) {
     return value;
   }
   return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+}
+
+function formatBackendTime(value: string | undefined) {
+  if (!value) {
+    return "";
+  }
+  const match = value.match(/T(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
+function formatQuantity(value: number | string | undefined) {
+  const quantity = Number(value ?? 0);
+  if (!Number.isFinite(quantity)) {
+    return "0";
+  }
+  return quantity.toLocaleString("en-US", { maximumFractionDigits: 3 });
+}
+
+function sumOutputQuantity(output: WarehouseOutputView) {
+  return (output.lines ?? []).reduce((sum, line) => sum + Number(line.quantity ?? line.cantidad ?? 0), 0);
+}
+
+function sumInputQuantity(input: WarehouseInputView) {
+  return (input.lines ?? []).reduce((sum, line) => sum + Number(line.quantity ?? line.cantidad ?? 0), 0);
+}
+
+function movementType(movement: StockMovementView) {
+  return movement.type ?? movement.tipo ?? "";
+}
+
+function movementQuantity(movement: StockMovementView) {
+  return Number(movement.quantity ?? movement.cantidad ?? 0);
+}
+
+function isInputMovement(movement: StockMovementView) {
+  return movementQuantity(movement) > 0 && !["TICKET", "FACTURA_VENTA", "ALBARAN_VENTA"].includes(movementType(movement));
 }
 
 function paymentText(document: DocumentView) {
@@ -647,10 +753,13 @@ function emptyDailySalesSummary(date: string): DailySalesSummary {
   };
 }
 
-function buildDocumentReports(
+export function buildDocumentReports(
   tickets: DocumentView[],
   invoices: DocumentView[],
   deliveryNotes: DocumentView[],
+  warehouseOutputs: WarehouseOutputView[],
+  stockMovements: StockMovementView[],
+  warehouseInputs: WarehouseInputView[],
   session: UserSession,
   terminalContext: TerminalContext
 ): Partial<Record<string, ReportSample>> {
@@ -724,6 +833,30 @@ function buildDocumentReports(
     comment: "",
     total: formatAmount(Number(document.total ?? 0))
   }));
+  const warehouseOutputRows = warehouseOutputs.map((output) => ({
+    date: formatBackendDate(output.date ?? output.fecha),
+    time: "",
+    output: output.number || output.numero || output.id || "",
+    terminal,
+    user,
+    warehouse: output.warehouseId || output.almacenId || "",
+    productCount: formatQuantity(sumOutputQuantity(output)),
+    comment: output.concept || output.concepto || "",
+    reason: output.destination || output.destino || output.status || output.estado || "",
+    total: "0.00"
+  }));
+  const inputWarehouseRows = warehouseInputs.map((input) => ({
+    date: formatBackendDate(input.date ?? input.fecha),
+    time: "",
+    input: input.number || input.numero || input.id || "",
+    terminal,
+    user,
+    warehouse: input.warehouseId || input.almacenId || "",
+    productCount: formatQuantity(sumInputQuantity(input)),
+    comment: input.concept || input.concepto || "",
+    origin: input.origin || input.origen || input.supplierId || input.proveedorId || input.status || input.estado || "",
+    total: "0.00"
+  }));
   const salesDocuments = [...tickets, ...invoices.filter(isSalesDocument)];
   const dailyRows = buildDailySalesRows(ticketRows, invoiceRows, user, terminal);
   const dailySummaries = buildDailySalesSummaries(salesDocuments, user);
@@ -733,9 +866,23 @@ function buildDocumentReports(
     "salesReport.tickets": { ...reportSamples["salesReport.tickets"], rows: ticketRows },
     "salesReport.deliveryNotes": { ...reportSamples["salesReport.deliveryNotes"], rows: deliveryNoteRows },
     "salesReport.invoices": { ...reportSamples["salesReport.invoices"], rows: invoiceRows },
+    "salesReport.warehouseOutputs": { ...reportSamples["salesReport.warehouseOutputs"], rows: warehouseOutputRows },
     "salesReport.inputDeliveryNotes": { ...reportSamples["salesReport.inputDeliveryNotes"], rows: inputDeliveryNoteRows },
-    "salesReport.inputInvoices": { ...reportSamples["salesReport.inputInvoices"], rows: inputInvoiceRows }
+    "salesReport.inputInvoices": { ...reportSamples["salesReport.inputInvoices"], rows: inputInvoiceRows },
+    "salesReport.inputWarehouse": { ...reportSamples["salesReport.inputWarehouse"], rows: inputWarehouseRows }
   };
+}
+
+export function isWarehouseDocumentReport(reportKey: string) {
+  return reportKey === "salesReport.warehouseOutputs" || reportKey === "salesReport.inputWarehouse";
+}
+
+async function optionalApiRequest<T>(path: string, token: string, fallback: T): Promise<T> {
+  try {
+    return await apiRequest<T>(path, { token });
+  } catch {
+    return fallback;
+  }
 }
 
 function buildDailySalesRows(
@@ -804,6 +951,12 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [openFilterControl, setOpenFilterControl] = useState<keyof ReportFilters | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
+  const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
+  const [reportReloadKey, setReportReloadKey] = useState(0);
+  const [warehouseProducts, setWarehouseProducts] = useState<WarehouseImportProduct[]>([]);
+  const [warehouseMasterOptions, setWarehouseMasterOptions] = useState<WarehouseOption[]>([]);
+  const [warehouseCustomers, setWarehouseCustomers] = useState<WarehouseCustomerOption[]>([]);
+  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplierOption[]>([]);
   const [selectedReport, setSelectedReport] = useState(outputReports[0]);
   const [visualReport, setVisualReport] = useState(outputReports[0]);
   const [dragAttribute, setDragAttribute] = useState<string | null>(null);
@@ -838,6 +991,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
   const hasStatusFilter = !isDailySalesReport && selectedReport !== "salesReport.tickets" && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
+  const warehouseDocumentMode = selectedReport === "salesReport.inputWarehouse" ? "input" : "output";
 
   useEffect(() => {
     let cancelled = false;
@@ -875,13 +1029,33 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         return;
       }
       try {
-        const [tickets, invoices, deliveryNotes] = await Promise.all([
+        const [tickets, invoices, deliveryNotes, warehouseOutputs, warehouseInputs, stockItems] = await Promise.all([
           apiRequest<DocumentView[]>("/tickets", { token }),
           apiRequest<DocumentView[]>("/invoices", { token }),
-          apiRequest<DocumentView[]>("/delivery-notes", { token })
+          apiRequest<DocumentView[]>("/delivery-notes", { token }),
+          apiRequest<WarehouseOutputView[]>("/warehouse-outputs", { token }),
+          optionalApiRequest<WarehouseInputView[]>("/warehouse-inputs", token, []),
+          apiRequest<StockItemView[]>("/stock", { token })
         ]);
+        const [products, warehouses, customers, suppliers] = await Promise.all([
+          optionalApiRequest<WarehouseImportProduct[]>("/products", token, []),
+          optionalApiRequest<WarehouseOption[]>("/warehouses", token, []),
+          optionalApiRequest<WarehouseCustomerOption[]>("/customers", token, []),
+          optionalApiRequest<WarehouseSupplierOption[]>("/suppliers", token, [])
+        ]);
+        const productIds = Array.from(new Set(stockItems.map((item) => item.productId).filter(Boolean)));
+        const movementGroups = await Promise.all(
+          productIds.map((productId) =>
+            apiRequest<StockMovementView[]>(`/stock/movements?productId=${encodeURIComponent(productId)}`, { token })
+          )
+        );
+        const stockMovements = movementGroups.flat();
         if (!cancelled) {
-          setRemoteReports(buildDocumentReports(tickets, invoices, deliveryNotes, session, terminalContext));
+          setWarehouseProducts(products);
+          setWarehouseMasterOptions(warehouses);
+          setWarehouseCustomers(customers);
+          setWarehouseSuppliers(suppliers);
+          setRemoteReports(buildDocumentReports(tickets, invoices, deliveryNotes, warehouseOutputs, stockMovements, warehouseInputs, session, terminalContext));
         }
       } catch {
         if (!cancelled) {
@@ -894,7 +1068,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
     return () => {
       cancelled = true;
     };
-  }, [session, terminalContext]);
+  }, [session, terminalContext, reportReloadKey]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -1403,6 +1577,17 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           <img alt="" className="report-action-icon" src={filterIcon} />
           {t("salesReport.filter")}
         </button>
+        {isWarehouseDocumentReport(selectedReport) && (
+          <button
+            type="button"
+            onClick={() => {
+              setPrintMenuOpen(false);
+              setWarehouseDocumentOpen(true);
+            }}
+          >
+            {t("warehouseDocument.create")}
+          </button>
+        )}
         <button
           type="button"
           hidden={isDailySalesReport}
@@ -1735,6 +1920,21 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           </section>
         </div>
       )}
+
+      <WarehouseDocumentDialog
+        mode={warehouseDocumentMode}
+        open={warehouseDocumentOpen}
+        token={session.accessToken}
+        products={warehouseProducts}
+        warehouses={warehouseMasterOptions}
+        customers={warehouseCustomers}
+        suppliers={warehouseSuppliers}
+        onClose={() => setWarehouseDocumentOpen(false)}
+        onConfirmed={() => {
+          setWarehouseDocumentOpen(false);
+          setReportReloadKey((value) => value + 1);
+        }}
+      />
 
       {filterOpen && (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="filter-title">

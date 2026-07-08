@@ -170,6 +170,12 @@ public class CatalogService {
         return familyRepository.findByStoreIdOrderByNombre(currentStore().getId());
     }
 
+    @Transactional(readOnly = true)
+    public List<Subfamily> subfamilies(UUID familyId) {
+        family(familyId);
+        return subfamilyRepository.findByFamilyIdOrderByNombre(familyId);
+    }
+
     @Transactional
     public Family createFamily(String name) {
         return familyRepository.save(new Family(currentStore().getId(), name, false));
@@ -222,13 +228,15 @@ public class CatalogService {
 
     @Transactional(readOnly = true)
     public List<Product> products() {
-        return productRepository.findByStoreIdOrderByNombre(currentStore().getId());
+        return productRepository.findByStoreIdOrderByNombre(currentStore().getId()).stream()
+                .map(CatalogService::initializeProductForApi)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public Product product(UUID productId) {
-        return sameStore(productRepository.findById(productId)
-                .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado")));
+        return initializeProductForApi(sameStore(productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"))));
     }
 
     @Transactional
@@ -445,6 +453,16 @@ public class CatalogService {
 
     private Store currentStore() {
         return organization.currentStore();
+    }
+
+    private static Product initializeProductForApi(Product product) {
+        product.getCode();
+        product.getBarcode();
+        product.getSalePrice();
+        product.getMemberPrice();
+        product.getWholesalePrice();
+        product.getOfferPrice();
+        return product;
     }
 
     public record ProductRequest(

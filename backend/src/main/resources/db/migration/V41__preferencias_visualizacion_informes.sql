@@ -1,4 +1,4 @@
-create table preferencia_visualizacion_informe (
+create table if not exists preferencia_visualizacion_informe (
     id uuid primary key,
     usuario_id uuid not null references usuario(id) on delete cascade,
     app varchar(32) not null,
@@ -16,5 +16,5 @@ create table preferencia_visualizacion_informe (
     constraint preferencia_visualizacion_informe_usuario_app_report_uq unique (usuario_id, app, report_key)
 );
 
-create index ix_preferencia_visualizacion_informe_usuario_app
+create index if not exists ix_preferencia_visualizacion_informe_usuario_app
     on preferencia_visualizacion_informe(usuario_id, app);

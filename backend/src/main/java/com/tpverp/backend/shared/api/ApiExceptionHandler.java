@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -86,6 +87,22 @@ public class ApiExceptionHandler {
         return systemProblem(HttpStatus.CONFLICT, SystemErrorCode.DATA_INTEGRITY_CONFLICT, request);
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    ProblemDetail methodNotSupported(
+            HttpRequestMethodNotSupportedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var method = Optional.ofNullable(exception.getMethod()).orElse(request == null ? "" : request.getMethod());
+        var path = request == null ? "" : request.getRequestURI();
+        var supportedMethods = supportedMethods(exception.getSupportedMethods());
+        var detail = methodNotSupportedDetail(method, path, supportedMethods, language);
+        var problem = problem(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", detail, language);
+        problem.setProperty("method", method);
+        problem.setProperty("path", path);
+        problem.setProperty("supportedMethods", supportedMethods);
+        return problem;
+    }
+
     private ProblemDetail systemProblem(HttpStatus status, SystemErrorCode code, HttpServletRequest request) {
         var language = language(request);
         return problem(status, code.name(), messages.system(code, language), language);
@@ -118,6 +135,25 @@ public class ApiExceptionHandler {
         problem.setProperty("code", code);
         problem.setProperty("locale", language.localeCode());
         return problem;
+    }
+
+    private static String supportedMethods(String[] methods) {
+        if (methods == null || methods.length == 0) {
+            return "";
+        }
+        return String.join(", ", methods);
+    }
+
+    private static String methodNotSupportedDetail(
+            String method,
+            String path,
+            String supportedMethods,
+            SupportedLanguage language) {
+        return switch (language) {
+            case EN -> "Method %s is not allowed for %s. Use %s.".formatted(method, path, supportedMethods);
+            case ZH -> "%s 不允许对 %s 使用。请使用 %s。".formatted(method, path, supportedMethods);
+            default -> "Metodo %s no permitido para %s. Usa %s.".formatted(method, path, supportedMethods);
+        };
     }
 
     private static SupportedLanguage language(HttpServletRequest request) {

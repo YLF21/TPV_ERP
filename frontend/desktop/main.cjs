@@ -1,22 +1,29 @@
 const { app, BrowserWindow, ipcMain, Menu, screen } = require("electron");
+const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
-const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer } = require("./escpos.cjs");
+const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
 const defaultHardwareConfig = {
   scannerMode: "KEYBOARD",
   scannerSubmitKey: "ENTER",
-  ticketPrinterMode: "WINDOWS_PRINTER",
+  ticketPrinterDriver: "WINDOWS_DRIVER",
+  ticketPrinterConnection: "WINDOWS_PRINTER",
   ticketPrinterName: "",
   openCashDrawerWithTicket: true,
+  cashDrawerOpeningPaymentMethods: ["EFECTIVO"],
+  cashDrawerConnection: "PRINTER",
   cashDrawerCommandProfile: "ESCPOS_STANDARD",
-  escposConnectionType: "USB",
   escposDevicePath: "",
   escposSerialBaudRate: 9600,
   escposHost: "",
   escposPort: 9100,
+  cashDrawerDevicePath: "",
+  cashDrawerSerialBaudRate: 9600,
+  cashDrawerHost: "",
+  cashDrawerPort: 9100,
   customerDisplayEnabled: false,
   customerDisplayMode: "COMPACT",
   customerDisplayIdleLine1: "BIENVENIDO",
@@ -103,6 +110,20 @@ function structuredError(code, message) {
 
 function normalizeHardwareConfig(config) {
   const nextConfig = { ...defaultHardwareConfig, ...config };
+  if (config?.ticketPrinterMode === "ESCPOS") {
+    nextConfig.ticketPrinterDriver = "ESCPOS_RAW";
+    nextConfig.ticketPrinterConnection =
+      config.escposConnectionType === "SERIAL" ? "SERIAL" : config.escposConnectionType === "NETWORK" ? "NETWORK" : "WINDOWS_PRINTER";
+  } else if (config?.ticketPrinterMode === "WINDOWS_PRINTER") {
+    nextConfig.ticketPrinterDriver = "WINDOWS_DRIVER";
+    nextConfig.ticketPrinterConnection = "WINDOWS_PRINTER";
+  }
+  if (!nextConfig.cashDrawerConnection) {
+    nextConfig.cashDrawerConnection = "PRINTER";
+  }
+  if (!Array.isArray(nextConfig.cashDrawerOpeningPaymentMethods)) {
+    nextConfig.cashDrawerOpeningPaymentMethods = ["EFECTIVO"];
+  }
   const configuredRoutes = Array.isArray(config?.documentPrintRoutes) ? config.documentPrintRoutes : [];
   nextConfig.documentPrintRoutes = defaultHardwareConfig.documentPrintRoutes.map((defaultRoute) => ({
     ...defaultRoute,
@@ -312,6 +333,115 @@ function loadCustomerDisplayState(state) {
   return { ok: true };
 }
 
+function encodePowerShellCommand(command) {
+  return Buffer.from(command, "utf16le").toString("base64");
+}
+
+function sendWindowsRawPrinterBuffer(printerName, buffer) {
+  if (process.platform !== "win32") {
+    return Promise.reject(new Error("Impresion RAW Windows solo disponible en Windows"));
+  }
+
+  const bytes = Array.from(buffer).join(",");
+  const command = `
+$printerName = $env:TPV_RAW_PRINTER_NAME
+$source = @'
+using System;
+using System.Runtime.InteropServices;
+public class TpvRawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)] public class DOCINFOA { [MarshalAs(UnmanagedType.LPStr)] public string pDocName; [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile; [MarshalAs(UnmanagedType.LPStr)] public string pDataType; }
+  [DllImport("winspool.Drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool OpenPrinter(string name, out IntPtr printer, IntPtr defaults);
+  [DllImport("winspool.Drv", EntryPoint="ClosePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool ClosePrinter(IntPtr printer);
+  [DllImport("winspool.Drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool StartDocPrinter(IntPtr printer, Int32 level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA doc);
+  [DllImport("winspool.Drv", EntryPoint="EndDocPrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool EndDocPrinter(IntPtr printer);
+  [DllImport("winspool.Drv", EntryPoint="StartPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool StartPagePrinter(IntPtr printer);
+  [DllImport("winspool.Drv", EntryPoint="EndPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool EndPagePrinter(IntPtr printer);
+  [DllImport("winspool.Drv", EntryPoint="WritePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)] public static extern bool WritePrinter(IntPtr printer, byte[] bytes, Int32 count, out Int32 written);
+  public static int Send(string printerName, byte[] bytes) {
+    IntPtr printer;
+    if (!OpenPrinter(printerName, out printer, IntPtr.Zero)) return -1;
+    try {
+      DOCINFOA doc = new DOCINFOA(); doc.pDocName = "TPV ERP RAW"; doc.pDataType = "RAW";
+      if (!StartDocPrinter(printer, 1, doc)) return -2;
+      try {
+        if (!StartPagePrinter(printer)) return -3;
+        try { int written; return WritePrinter(printer, bytes, bytes.Length, out written) ? written : -4; }
+        finally { EndPagePrinter(printer); }
+      } finally { EndDocPrinter(printer); }
+    } finally { ClosePrinter(printer); }
+  }
+}
+'@
+Add-Type -TypeDefinition $source -ErrorAction Stop
+$written = [TpvRawPrinter]::Send($printerName, [byte[]](${bytes}))
+if ($written -ne ${buffer.length}) { throw "RAW_WRITE_FAILED:$written" }
+`;
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowerShellCommand(command)],
+      {
+        windowsHide: true,
+        timeout: 8000,
+        env: { ...process.env, TPV_RAW_PRINTER_NAME: printerName }
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || stdout || error.message));
+          return;
+        }
+        resolve();
+      }
+    );
+  });
+}
+
+async function openCashDrawerWithConfig(config) {
+  const nextConfig = { ...readHardwareConfig(), ...config };
+  if (nextConfig.cashDrawerConnection === "NONE") {
+    throw new Error("Cajon no configurado");
+  }
+  if (nextConfig.cashDrawerConnection === "PRINTER") {
+    await sendTicketPrinterRawBuffer(nextConfig, buildCashDrawerBuffer());
+    return;
+  }
+  await sendDrawerRawBuffer(nextConfig, buildCashDrawerBuffer());
+}
+
+async function sendTicketPrinterRawBuffer(config, buffer) {
+  if (config.ticketPrinterConnection === "WINDOWS_PRINTER") {
+    if (!config.ticketPrinterName) {
+      throw new Error("Impresora no configurada");
+    }
+    await sendWindowsRawPrinterBuffer(config.ticketPrinterName, buffer);
+    return;
+  }
+  await sendEscposBuffer(
+    {
+      escposConnectionType: config.ticketPrinterConnection,
+      escposDevicePath: config.escposDevicePath,
+      escposSerialBaudRate: config.escposSerialBaudRate,
+      escposHost: config.escposHost,
+      escposPort: config.escposPort
+    },
+    buffer
+  );
+}
+
+async function sendDrawerRawBuffer(config, buffer) {
+  await sendEscposBuffer(
+    {
+      escposConnectionType: config.cashDrawerConnection,
+      escposDevicePath: config.cashDrawerDevicePath,
+      escposSerialBaudRate: config.cashDrawerSerialBaudRate,
+      escposHost: config.cashDrawerHost,
+      escposPort: config.cashDrawerPort
+    },
+    buffer
+  );
+}
+
 function listCustomerDisplays() {
   const primaryDisplay = screen.getPrimaryDisplay();
   return screen.getAllDisplays().map((display, index) => ({
@@ -362,11 +492,18 @@ function openCustomerDisplay(config, state) {
 }
 
 async function printTicket(ticket, config) {
-  const nextConfig = { ...readHardwareConfig(), ...config };
+  const nextConfig = normalizeHardwareConfig({ ...readHardwareConfig(), ...config });
 
-  if (nextConfig.ticketPrinterMode === "ESCPOS") {
+  if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
     try {
-      await sendEscposBuffer(nextConfig, buildTicketBuffer(ticket));
+      const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
+      const ticketBuffer = shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
+        ? Buffer.concat([buildCashDrawerBuffer(), buildTicketBuffer(ticket)])
+        : buildTicketBuffer(ticket);
+      await sendTicketPrinterRawBuffer(nextConfig, ticketBuffer);
+      if (shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER") {
+        await openCashDrawerWithConfig(nextConfig);
+      }
       return { ok: true };
     } catch (error) {
       return structuredError("ESCPOS_NOT_AVAILABLE", error instanceof Error ? error.message : "Error ESC/POS");
@@ -398,6 +535,9 @@ async function printTicket(ticket, config) {
         reject(new Error(failureReason || "PRINT_FAILED"));
       });
     });
+    if (shouldOpenCashDrawerForTicket(nextConfig, ticket) && nextConfig.cashDrawerConnection !== "NONE") {
+      await openCashDrawerWithConfig(nextConfig);
+    }
     return { ok: true };
   } catch (error) {
     return structuredError("PRINT_FAILED", error instanceof Error ? error.message : "Error de impresion");
@@ -494,19 +634,16 @@ ipcMain.handle("tpv:hardware:print-ticket", (_event, ticket, config) => printTic
 ipcMain.handle("tpv:hardware:print-a4-document", (_event, document, config) => printA4Document(document, config));
 
 ipcMain.handle("tpv:hardware:open-cash-drawer", async (_event, config) => {
-  const nextConfig = { ...readHardwareConfig(), ...config };
-  if (nextConfig.ticketPrinterMode === "ESCPOS") {
-    try {
-      await sendEscposBuffer(nextConfig, buildCashDrawerBuffer());
-      return { ok: true };
-    } catch (error) {
-      return structuredError("ESCPOS_NOT_AVAILABLE", error instanceof Error ? error.message : "Error ESC/POS");
+  try {
+    await openCashDrawerWithConfig(config);
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error al abrir cajon";
+    if (message.includes("Impresora no configurada")) {
+      return structuredError("PRINTER_NOT_CONFIGURED", message);
     }
+    return structuredError("CASH_DRAWER_UNAVAILABLE", message);
   }
-  if (!nextConfig.ticketPrinterName) {
-    return structuredError("PRINTER_NOT_CONFIGURED", "Impresora no configurada");
-  }
-  return structuredError("CASH_DRAWER_UNAVAILABLE", "Apertura de cajon requiere perfil ESC/POS compatible");
 });
 
 ipcMain.handle("tpv:hardware:test-scanner-input", (_event, code) => ({

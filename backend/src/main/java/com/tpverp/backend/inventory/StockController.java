@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,12 +29,15 @@ public class StockController {
 
     private final InventoryService service;
     private final StockSnapshotRebuildService snapshotRebuildService;
+    private final StockTopSalesService topSalesService;
 
     public StockController(
             InventoryService service,
-            StockSnapshotRebuildService snapshotRebuildService) {
+            StockSnapshotRebuildService snapshotRebuildService,
+            StockTopSalesService topSalesService) {
         this.service = service;
         this.snapshotRebuildService = snapshotRebuildService;
+        this.topSalesService = topSalesService;
     }
 
     @GetMapping
@@ -42,6 +46,21 @@ public class StockController {
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) UUID warehouseId) {
         return service.stock(productId, warehouseId);
+    }
+
+    @GetMapping("/top-sales")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    public List<StockTopSalesRow> topSales(
+            @RequestParam(defaultValue = "week") String period,
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) LocalDate dateFrom,
+            @RequestParam(required = false) LocalDate dateTo) {
+        if (dateFrom != null || dateTo != null) {
+            var selectedFrom = dateFrom == null ? dateTo : dateFrom;
+            var selectedTo = dateTo == null ? selectedFrom : dateTo;
+            return topSalesService.topSales(selectedFrom, selectedTo);
+        }
+        return topSalesService.topSales(StockTopSalesPeriod.fromCode(period), date == null ? LocalDate.now() : date);
     }
 
     @GetMapping("/movements")

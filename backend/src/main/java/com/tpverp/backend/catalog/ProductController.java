@@ -56,7 +56,7 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public Product create(@Valid @RequestBody CatalogService.ProductRequest request) {
         return service.createProduct(request);
     }
@@ -76,7 +76,7 @@ public class ProductController {
     }
 
     @PutMapping(path = "/{productId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
     public Product uploadImage(@PathVariable UUID productId, @RequestPart("file") MultipartFile file) {
         try {
             return images.upload(productId, file.getBytes());

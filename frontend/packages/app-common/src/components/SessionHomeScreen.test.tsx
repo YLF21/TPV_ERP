@@ -28,6 +28,24 @@ function textContent(node: ReactNode): string {
   return "";
 }
 
+function directButtonText(node: ReactNode): string {
+  if (Array.isArray(node)) {
+    return node
+      .map((child) => {
+        if (typeof child === "string" || typeof child === "number") {
+          return String(child);
+        }
+        if (child && typeof child === "object" && "type" in child && "props" in child) {
+          const element = child as ReactElement<{ children?: ReactNode }>;
+          return element.type === "span" ? textContent(element.props.children) : "";
+        }
+        return "";
+      })
+      .join("");
+  }
+  return textContent(node);
+}
+
 function findButtonByText(node: ReactNode, text: string): ReactElement<{ onClick?: () => void }> | undefined {
   if (!node || typeof node !== "object") {
     return undefined;
@@ -45,10 +63,27 @@ function findButtonByText(node: ReactNode, text: string): ReactElement<{ onClick
     return undefined;
   }
   const element = node as ReactElement<{ children?: ReactNode; onClick?: () => void }>;
-  if (element.type === "button" && textContent(element.props.children).toLowerCase().includes(text.toLowerCase())) {
+  if (element.type === "button" && directButtonText(element.props.children).toLowerCase().includes(text.toLowerCase())) {
     return element;
   }
   return findButtonByText(element.props.children, text);
+}
+
+function buttonsIn(node: ReactNode): Array<ReactElement<{ children?: ReactNode; onClick?: () => void }>> {
+  if (!node || typeof node !== "object") {
+    return [];
+  }
+  if (Array.isArray(node)) {
+    return node.flatMap(buttonsIn);
+  }
+  if (!("type" in node) || !("props" in node)) {
+    return [];
+  }
+  const element = node as ReactElement<{ children?: ReactNode; onClick?: () => void }>;
+  return [
+    ...(element.type === "button" ? [element] : []),
+    ...buttonsIn(element.props.children)
+  ];
 }
 
 describe("SessionHomeScreen", () => {
@@ -89,7 +124,7 @@ describe("SessionHomeScreen", () => {
       onLocaleChange: vi.fn(),
       onOpenStock
     });
-    const stockButton = findButtonByText(tree, "STOCK");
+    const stockButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "INVENTARIO");
 
     expect(stockButton?.props.onClick).toBe(onOpenStock);
   });

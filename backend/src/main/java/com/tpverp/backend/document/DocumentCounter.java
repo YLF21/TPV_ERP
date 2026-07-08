@@ -52,6 +52,15 @@ public class DocumentCounter {
         return counter;
     }
 
+    public static DocumentCounter entradaAlmacen(UUID tiendaId, LocalDate fecha) {
+        var counter = new DocumentCounter();
+        counter.id = UUID.randomUUID();
+        counter.tiendaId = Objects.requireNonNull(tiendaId, "tiendaId");
+        counter.tipo = "ENT";
+        counter.periodo = Integer.toString(Objects.requireNonNull(fecha, "fecha").getYear());
+        return counter;
+    }
+
     // Increments the counter and returns the formatted number.
     public String siguiente(CommercialDocumentType tipo, LocalDate fecha) {
         return siguiente(tipo, fecha, "001");
@@ -76,5 +85,13 @@ public class DocumentCounter {
             throw new IllegalArgumentException("periodo no coincide con el contador de salida");
         }
         return "SAL-%d-%06d".formatted(fecha.getYear(), ++ultimoNumero);
+    }
+
+    public String siguienteEntradaAlmacen(LocalDate fecha) {
+        var year = Integer.toString(Objects.requireNonNull(fecha, "fecha").getYear());
+        if (!tipo.equals("ENT") || !periodo.equals(year)) {
+            throw new IllegalArgumentException("periodo no coincide con el contador de entrada");
+        }
+        return "ENT-%d-%06d".formatted(fecha.getYear(), ++ultimoNumero);
     }
 }

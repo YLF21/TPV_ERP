@@ -18,6 +18,7 @@ export { createTranslator, LocalizedMessages, messages } from "./i18n/LocalizedM
 export type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "./types";
 export type {
   HardwareBridge,
+  CashDrawerPaymentMethod,
   HardwareConfig,
   HardwarePrinter,
   HardwareResult,

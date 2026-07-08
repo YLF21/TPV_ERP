@@ -10,20 +10,34 @@ import {
   createCustomerDisplayPaymentState,
   createCustomerDisplaySaleState,
   defaultHardwareConfig,
-  getHardwareBridge,
-  type HardwareConfig,
-  type HardwarePrinter,
-  type CustomerDisplayScreen,
-  type DocumentPrintRoute
+  getHardwareBridge
+} from "../hardware/hardware";
+import type {
+  CashDrawerPaymentMethod,
+  CustomerDisplayScreen,
+  DocumentPrintRoute,
+  HardwareConfig,
+  HardwarePrinter
 } from "../hardware/hardware";
 
 type HardwareDiagnosticKey = "electron" | "printers" | "ticket" | "a4" | "drawer" | "customerDisplay";
+type HardwareSectionKey = "printer" | "cashDrawer" | "scanner" | "escpos" | "a4" | "customerDisplay" | "diagnostics";
 
 type HardwareDiagnosticResult = {
   ok: boolean;
   message: string;
   checkedAt: string;
 };
+
+const cashDrawerPaymentMethods: CashDrawerPaymentMethod[] = [
+  "EFECTIVO",
+  "TARJETA",
+  "TRANSFERENCIA",
+  "VALE",
+  "DESCUENTO",
+  "OTRO",
+  "PENDIENTE"
+];
 
 type HardwareSettingsScreenProps = {
   app: AppKind;
@@ -53,6 +67,7 @@ export function HardwareSettingsScreen({
   const [scannerValue, setScannerValue] = useState("");
   const [lastScan, setLastScan] = useState("");
   const [diagnostics, setDiagnostics] = useState<Partial<Record<HardwareDiagnosticKey, HardwareDiagnosticResult>>>({});
+  const [selectedSection, setSelectedSection] = useState<HardwareSectionKey>("cashDrawer");
 
   const diagnosticItems: Array<{ key: HardwareDiagnosticKey; label: string }> = [
     { key: "electron", label: t("hardware.diagnostics.electron") },
@@ -62,6 +77,16 @@ export function HardwareSettingsScreen({
     { key: "drawer", label: t("hardware.diagnostics.drawer") },
     { key: "customerDisplay", label: t("hardware.diagnostics.customerDisplay") }
   ];
+  const hardwareSections: Array<{ key: HardwareSectionKey; label: string }> = [
+    { key: "printer", label: t("hardware.printer") },
+    { key: "cashDrawer", label: t("hardware.cashDrawer") },
+    { key: "scanner", label: t("hardware.scanner") },
+    { key: "escpos", label: "ESC/POS" },
+    { key: "a4", label: t("hardware.a4Printer") },
+    { key: "customerDisplay", label: t("hardware.customerDisplay") },
+    { key: "diagnostics", label: t("hardware.diagnostics.title") }
+  ];
+  const selectedSectionLabel = hardwareSections.find((section) => section.key === selectedSection)?.label ?? t("hardware.title");
 
   useEffect(() => {
     void hardware.getHardwareConfig().then(setConfig);
@@ -206,6 +231,16 @@ export function HardwareSettingsScreen({
     });
   }
 
+  function toggleCashDrawerPaymentMethod(method: CashDrawerPaymentMethod, enabled: boolean) {
+    const current = new Set(config.cashDrawerOpeningPaymentMethods);
+    if (enabled) {
+      current.add(method);
+    } else {
+      current.delete(method);
+    }
+    updateConfig({ cashDrawerOpeningPaymentMethods: Array.from(current) as CashDrawerPaymentMethod[] });
+  }
+
   return (
     <main className="hardware-screen">
       <SessionTopControls
@@ -232,17 +267,41 @@ export function HardwareSettingsScreen({
         </div>
       </header>
 
-      <section className="hardware-panel">
-        <div className="hardware-section">
-          <h2>{t("hardware.printer")}</h2>
+      <section className="hardware-layout">
+        <aside className="hardware-nav">
+          <strong>{t("settings.sections")}</strong>
+          {hardwareSections.map((section) => (
+            <button
+              type="button"
+              className={selectedSection === section.key ? "selected" : ""}
+              key={section.key}
+              onClick={() => setSelectedSection(section.key)}
+            >
+              {section.label}
+            </button>
+          ))}
+          <button type="button" className="report-back" onClick={onBack}>
+            {t("common.back")}
+          </button>
+        </aside>
+
+        <section className="hardware-workspace">
+          <header className="hardware-workspace-heading">
+            <h2>{selectedSectionLabel}</h2>
+            <span>{status}</span>
+          </header>
+
+          {selectedSection === "printer" && (
+            <div className="hardware-section">
+              <h2>{t("hardware.printer")}</h2>
           <label>
             <span>{t("hardware.printerMode")}</span>
             <select
-              value={config.ticketPrinterMode}
-              onChange={(event) => updateConfig({ ticketPrinterMode: event.target.value as HardwareConfig["ticketPrinterMode"] })}
+              value={config.ticketPrinterDriver}
+              onChange={(event) => updateConfig({ ticketPrinterDriver: event.target.value as HardwareConfig["ticketPrinterDriver"] })}
             >
-              <option value="WINDOWS_PRINTER">{t("hardware.mode.windows")}</option>
-              <option value="ESCPOS">{t("hardware.mode.escpos")}</option>
+              <option value="WINDOWS_DRIVER">{t("hardware.mode.windows")}</option>
+              <option value="ESCPOS_RAW">{t("hardware.mode.escpos")}</option>
             </select>
           </label>
           <label>
@@ -263,10 +322,56 @@ export function HardwareSettingsScreen({
             <button type="button" onClick={refreshPrinters}>{t("hardware.detectPrinters")}</button>
             <button type="button" onClick={printTestTicket}>{t("hardware.printTest")}</button>
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section">
-          <h2>{t("hardware.cashDrawer")}</h2>
+          {selectedSection === "cashDrawer" && (
+            <div className="hardware-section hardware-section-focus">
+              <h2>{t("hardware.cashDrawer")}</h2>
+          <label>
+            <span>{t("hardware.connectionType")}</span>
+            <select
+              value={config.cashDrawerConnection}
+              onChange={(event) => updateConfig({ cashDrawerConnection: event.target.value as HardwareConfig["cashDrawerConnection"] })}
+            >
+              <option value="NONE">{t("hardware.drawer.none")}</option>
+              <option value="PRINTER">{t("hardware.drawer.printer")}</option>
+              <option value="SERIAL">COM</option>
+              <option value="NETWORK">LAN</option>
+            </select>
+          </label>
+          {config.cashDrawerConnection === "PRINTER" && (
+          <div className="hardware-device-summary">
+            <span>{t("hardware.windowsPrinter")}</span>
+            <strong>{config.ticketPrinterName || t("hardware.selectPrinter")}</strong>
+          </div>
+          )}
+          {config.cashDrawerConnection === "SERIAL" && (
+            <label>
+              <span>{t("hardware.devicePath")}</span>
+              <input
+                value={config.cashDrawerDevicePath}
+                onChange={(event) => updateConfig({ cashDrawerDevicePath: event.target.value })}
+                placeholder="COM3"
+              />
+            </label>
+          )}
+          {config.cashDrawerConnection === "NETWORK" && (
+            <div className="hardware-escpos-grid">
+              <label>
+                <span>{t("hardware.host")}</span>
+                <input value={config.cashDrawerHost} onChange={(event) => updateConfig({ cashDrawerHost: event.target.value })} />
+              </label>
+              <label>
+                <span>{t("hardware.port")}</span>
+                <input
+                  type="number"
+                  value={config.cashDrawerPort}
+                  onChange={(event) => updateConfig({ cashDrawerPort: Number(event.target.value) || 9100 })}
+                />
+              </label>
+            </div>
+          )}
           <label className="hardware-check">
             <input
               type="checkbox"
@@ -275,6 +380,21 @@ export function HardwareSettingsScreen({
             />
             <span>{t("hardware.openDrawerWithTicket")}</span>
           </label>
+          <div className="hardware-payment-methods">
+            <strong>{t("hardware.drawer.paymentMethods")}</strong>
+            <div>
+              {cashDrawerPaymentMethods.map((method) => (
+                <label className="hardware-check" key={method}>
+                  <input
+                    type="checkbox"
+                    checked={config.cashDrawerOpeningPaymentMethods.includes(method)}
+                    onChange={(event) => toggleCashDrawerPaymentMethod(method, event.target.checked)}
+                  />
+                  <span>{t(method)}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <label>
             <span>{t("hardware.drawerProfile")}</span>
             <select
@@ -287,10 +407,12 @@ export function HardwareSettingsScreen({
           <div className="hardware-actions">
             <button type="button" onClick={openCashDrawer}>{t("hardware.openDrawer")}</button>
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section">
-          <h2>{t("hardware.scanner")}</h2>
+          {selectedSection === "scanner" && (
+            <div className="hardware-section">
+              <h2>{t("hardware.scanner")}</h2>
           <label>
             <span>{t("hardware.scannerMode")}</span>
             <select value={config.scannerMode} onChange={() => updateConfig({ scannerMode: "KEYBOARD" })}>
@@ -314,18 +436,20 @@ export function HardwareSettingsScreen({
             <span>{t("hardware.lastScan")}</span>
             <strong>{lastScan || "-"}</strong>
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section hardware-section-wide">
-          <h2>ESC/POS</h2>
+          {selectedSection === "escpos" && (
+            <div className="hardware-section hardware-section-wide">
+              <h2>ESC/POS</h2>
           <div className="hardware-escpos-grid">
             <label>
               <span>{t("hardware.connectionType")}</span>
               <select
-                value={config.escposConnectionType}
-                onChange={(event) => updateConfig({ escposConnectionType: event.target.value as HardwareConfig["escposConnectionType"] })}
+                value={config.ticketPrinterConnection}
+                onChange={(event) => updateConfig({ ticketPrinterConnection: event.target.value as HardwareConfig["ticketPrinterConnection"] })}
               >
-                <option value="USB">USB</option>
+                <option value="WINDOWS_PRINTER">USB / Windows RAW</option>
                 <option value="SERIAL">COM</option>
                 <option value="NETWORK">LAN</option>
               </select>
@@ -347,10 +471,12 @@ export function HardwareSettingsScreen({
               />
             </label>
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section hardware-section-wide">
-          <h2>{t("hardware.a4Printer")}</h2>
+          {selectedSection === "a4" && (
+            <div className="hardware-section hardware-section-wide">
+              <h2>{t("hardware.a4Printer")}</h2>
           <div className="hardware-a4-grid">
             <label>
               <span>{t("hardware.a4PrinterName")}</span>
@@ -444,10 +570,12 @@ export function HardwareSettingsScreen({
               </div>
             ))}
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section hardware-section-wide">
-          <h2>{t("hardware.customerDisplay")}</h2>
+          {selectedSection === "customerDisplay" && (
+            <div className="hardware-section hardware-section-wide">
+              <h2>{t("hardware.customerDisplay")}</h2>
           <div className="hardware-display-grid">
             <label className="hardware-check">
               <input
@@ -494,13 +622,15 @@ export function HardwareSettingsScreen({
             <button type="button" onClick={sendSaleDisplay}>{t("hardware.sendSaleDisplay")}</button>
             <button type="button" onClick={sendPaymentDisplay}>{t("hardware.sendPaymentDisplay")}</button>
           </div>
-        </div>
+            </div>
+          )}
 
-        <div className="hardware-section hardware-section-wide hardware-diagnostics">
-          <div className="hardware-section-title-row">
-            <h2>{t("hardware.diagnostics.title")}</h2>
-            <button type="button" onClick={runAllDiagnostics}>{t("hardware.diagnostics.runAll")}</button>
-          </div>
+          {selectedSection === "diagnostics" && (
+            <div className="hardware-section hardware-section-wide hardware-diagnostics">
+              <div className="hardware-section-title-row">
+                <h2>{t("hardware.diagnostics.title")}</h2>
+                <button type="button" onClick={runAllDiagnostics}>{t("hardware.diagnostics.runAll")}</button>
+              </div>
           <div className="hardware-diagnostics-grid">
             {diagnosticItems.map((item) => {
               const result = diagnostics[item.key];
@@ -518,7 +648,9 @@ export function HardwareSettingsScreen({
               );
             })}
           </div>
-        </div>
+            </div>
+          )}
+        </section>
       </section>
 
       <footer className="hardware-footer">

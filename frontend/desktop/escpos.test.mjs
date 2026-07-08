@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { buildCashDrawerBuffer, buildTicketBuffer, normalizeSerialPath } = require("./escpos.cjs");
+const { buildCashDrawerBuffer, buildTicketBuffer, normalizeSerialPath, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 
 describe("escpos command builder", () => {
   it("builds a ticket with init, text, line feed and cut command", () => {
@@ -29,5 +29,27 @@ describe("escpos command builder", () => {
   it("normalizes Windows COM ports for direct serial writes", () => {
     expect(normalizeSerialPath("COM3")).toBe("\\\\.\\COM3");
     expect(normalizeSerialPath("\\\\.\\COM4")).toBe("\\\\.\\COM4");
+  });
+
+  it("opens the cash drawer only for configured payment methods", () => {
+    expect(
+      shouldOpenCashDrawerForTicket(
+        {
+          openCashDrawerWithTicket: true,
+          cashDrawerOpeningPaymentMethods: ["EFECTIVO"]
+        },
+        { payments: [{ method: "TARJETA", amount: 12 }] }
+      )
+    ).toBe(false);
+
+    expect(
+      shouldOpenCashDrawerForTicket(
+        {
+          openCashDrawerWithTicket: true,
+          cashDrawerOpeningPaymentMethods: ["EFECTIVO"]
+        },
+        { payments: [{ method: "Efectivo", amount: 12 }] }
+      )
+    ).toBe(true);
   });
 });

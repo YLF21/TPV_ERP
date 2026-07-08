@@ -9,6 +9,7 @@ import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +22,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 class ApiExceptionHandlerTest {
@@ -96,6 +98,22 @@ class ApiExceptionHandlerTest {
         assertEquals("VALIDATION_ERROR", problem.getProperties().get("code"));
         assertEquals("en", problem.getProperties().get("locale"));
         assertEquals("Product name is required", problem.getDetail());
+    }
+
+    @Test
+    void reportsMethodAndPathWhenRequestMethodIsNotSupported() {
+        var request = new MockHttpServletRequest("GET", "/api/v1/auth/login");
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+        var exception = new HttpRequestMethodNotSupportedException("GET", List.of("POST"));
+
+        var problem = handler.methodNotSupported(exception, request);
+
+        assertEquals(405, problem.getStatus());
+        assertEquals("METHOD_NOT_ALLOWED", problem.getProperties().get("code"));
+        assertEquals("GET", problem.getProperties().get("method"));
+        assertEquals("/api/v1/auth/login", problem.getProperties().get("path"));
+        assertEquals("POST", problem.getProperties().get("supportedMethods"));
+        assertEquals("Metodo GET no permitido para /api/v1/auth/login. Usa POST.", problem.getDetail());
     }
 
     private static UserAccount userWithLanguage(SupportedLanguage language) {

@@ -36,7 +36,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("DB:");
     expect(html).toContain("Conexión");
-    expect(html).toContain("Ajustes");
+    expect(html).toContain("AJUSTES");
     expect(html).toContain("Terminal");
     expect(html).toContain("Hardware");
   });

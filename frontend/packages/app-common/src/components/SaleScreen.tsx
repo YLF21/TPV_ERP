@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { ProductCreateDialog } from "./ProductCreateDialog";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 
@@ -23,6 +25,7 @@ export function SaleScreen({
   onLogout
 }: SaleScreenProps) {
   const t = createTranslator(locale);
+  const [productCreateOpen, setProductCreateOpen] = useState(false);
 
   return (
     <main className="sale-screen work-screen">
@@ -62,9 +65,14 @@ export function SaleScreen({
         </section>
 
         <section className="sale-tools work-panel" aria-label="Busqueda y cobro">
-          <div className="work-panel-heading">
-            <h2>Producto</h2>
-            <span>Entrada rapida por codigo, nombre o referencia</span>
+          <div className="work-panel-heading sale-product-heading">
+            <div>
+              <h2>Producto</h2>
+              <span>Entrada rapida por codigo, nombre o referencia</span>
+            </div>
+            <button type="button" className="stock-add-product-button" onClick={() => setProductCreateOpen(true)}>
+              {t("product.create.button")}
+            </button>
           </div>
           <label className="work-search">
             <span>Buscar producto</span>
@@ -88,6 +96,13 @@ export function SaleScreen({
 
         <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
       </section>
+
+      <ProductCreateDialog
+        open={productCreateOpen}
+        locale={locale}
+        token={session.accessToken}
+        onClose={() => setProductCreateOpen(false)}
+      />
     </main>
   );
 }
