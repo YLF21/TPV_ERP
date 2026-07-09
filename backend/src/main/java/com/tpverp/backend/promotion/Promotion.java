@@ -118,12 +118,32 @@ public class Promotion {
         return empresaId;
     }
 
+    public UUID versionOrigenId() {
+        return versionOrigenId;
+    }
+
     public String name() {
         return nombre;
     }
 
     public PromotionType type() {
         return tipo;
+    }
+
+    public PromotionScope scope() {
+        return ambito;
+    }
+
+    public PromotionCustomerSegment customerSegment() {
+        return segmentoCliente;
+    }
+
+    public LocalDate startDate() {
+        return fechaInicio;
+    }
+
+    public LocalDate endDate() {
+        return fechaFin;
     }
 
     public BigDecimal buyQuantity() {
@@ -166,6 +186,48 @@ public class Promotion {
         requireNotUsed();
         nombre = requiredMax(name, "nombre", 160);
         touch();
+    }
+
+    public void configureManagementFields(
+            LocalDate startDate,
+            LocalDate endDate,
+            PromotionScope scope,
+            PromotionCustomerSegment customerSegment) {
+        requireNotUsed();
+        fechaInicio = Objects.requireNonNull(startDate, "startDate");
+        fechaFin = endDate;
+        ambito = scope == null ? PromotionScope.SALE : scope;
+        segmentoCliente = customerSegment == null ? PromotionCustomerSegment.ALL : customerSegment;
+        touch();
+    }
+
+    public Promotion duplicateDraft() {
+        var duplicate = Promotion.draft(empresaId, nombre, tipo, fechaInicio);
+        duplicate.versionOrigenId = id;
+        duplicate.descripcion = descripcion;
+        duplicate.segmentoCliente = segmentoCliente;
+        duplicate.memberCategoryId = memberCategoryId;
+        duplicate.ambito = ambito;
+        duplicate.fechaFin = fechaFin;
+        duplicate.minimoImporte = minimoImporte;
+        duplicate.minimoCantidad = minimoCantidad;
+        duplicate.compraCantidad = compraCantidad;
+        duplicate.pagaCantidad = pagaCantidad;
+        duplicate.descuentoImporte = descuentoImporte;
+        duplicate.descuentoPorcentaje = descuentoPorcentaje;
+        duplicate.descuentoMaximo = descuentoMaximo;
+        duplicate.precioLote = precioLote;
+        duplicate.generaCupon = generaCupon;
+        duplicate.cuponImporte = cuponImporte;
+        duplicate.cuponPorcentaje = cuponPorcentaje;
+        duplicate.cuponDescuentoMaximo = cuponDescuentoMaximo;
+        duplicate.cuponMinimoImporte = cuponMinimoImporte;
+        duplicate.cuponValidoDesdeModo = cuponValidoDesdeModo;
+        duplicate.cuponValidoDesdeFecha = cuponValidoDesdeFecha;
+        duplicate.cuponValidoDesdeDias = cuponValidoDesdeDias;
+        duplicate.cuponValidoHastaFecha = cuponValidoHastaFecha;
+        duplicate.cuponValidoDias = cuponValidoDias;
+        return duplicate;
     }
 
     public void configureBuyXPayY(BigDecimal buyQuantity, BigDecimal payQuantity) {
