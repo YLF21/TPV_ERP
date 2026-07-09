@@ -122,6 +122,10 @@ public class Promotion {
         return versionOrigenId;
     }
 
+    public UUID rootVersionId() {
+        return versionOrigenId == null ? id : versionOrigenId;
+    }
+
     public String name() {
         return nombre;
     }
@@ -203,7 +207,7 @@ public class Promotion {
 
     public Promotion duplicateDraft() {
         var duplicate = Promotion.draft(empresaId, nombre, tipo, fechaInicio);
-        duplicate.versionOrigenId = id;
+        duplicate.versionOrigenId = rootVersionId();
         duplicate.descripcion = descripcion;
         duplicate.segmentoCliente = segmentoCliente;
         duplicate.memberCategoryId = memberCategoryId;

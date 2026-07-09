@@ -80,6 +80,35 @@ class PromotionServiceTest {
     }
 
     @Test
+    void duplicateCreatedFromDuplicateKeepsOriginalRootLineage() {
+        currentCompany();
+        var original = buyXPayY("3x2 Agua");
+        original.activate();
+        original.markUsed();
+        var duplicateA = original.duplicateDraft();
+        var duplicateC = original.duplicateDraft();
+        when(promotions.findByIdAndEmpresaId(duplicateC.id(), company.getId())).thenReturn(Optional.of(duplicateC));
+        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(original));
+        service().activate(duplicateC.id());
+
+        when(promotions.findByIdAndEmpresaId(duplicateA.id(), company.getId())).thenReturn(Optional.of(duplicateA));
+        when(promotions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var duplicateB = service().duplicate(duplicateA.id());
+
+        assertThat(duplicateB.versionOrigenId()).isEqualTo(original.id());
+        var saved = ArgumentCaptor.forClass(Promotion.class);
+        verify(promotions).save(saved.capture());
+        when(promotions.findByIdAndEmpresaId(duplicateB.id(), company.getId())).thenReturn(Optional.of(saved.getValue()));
+        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(duplicateC));
+
+        service().activate(duplicateB.id());
+
+        assertThat(original.status()).isEqualTo(PromotionStatus.INACTIVE);
+        assertThat(duplicateC.status()).isEqualTo(PromotionStatus.INACTIVE);
+        assertThat(saved.getValue().status()).isEqualTo(PromotionStatus.ACTIVE);
+    }
+
+    @Test
     void draftPromotionCanBeDeletedWhenUnused() {
         currentCompany();
         var promotion = buyXPayY("3x2 Agua");

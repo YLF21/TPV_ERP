@@ -47,7 +47,7 @@ public class PromotionService {
     @Transactional
     public PromotionView activate(UUID id) {
         var promotion = promotion(id);
-        var rootId = promotion.versionOrigenId() == null ? promotion.id() : promotion.versionOrigenId();
+        var rootId = promotion.rootVersionId();
         promotion.activate();
         promotions.findActiveLineageForUpdate(companyId(), rootId).stream()
                 .filter(active -> !active.id().equals(promotion.id()))
