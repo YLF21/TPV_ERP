@@ -96,7 +96,7 @@ public class Promotion {
     private Promotion(UUID companyId, String name, PromotionType type, LocalDate startDate) {
         id = UUID.randomUUID();
         empresaId = Objects.requireNonNull(companyId, "companyId");
-        nombre = required(name, "nombre");
+        nombre = requiredMax(name, "nombre", 160);
         tipo = Objects.requireNonNull(type, "type");
         estado = PromotionStatus.DRAFT;
         segmentoCliente = PromotionCustomerSegment.ALL;
@@ -148,12 +148,12 @@ public class Promotion {
 
     public void rename(String name) {
         requireNotUsed();
-        nombre = required(name, "nombre");
+        nombre = requiredMax(name, "nombre", 160);
         touch();
     }
 
     private void requireComplete() {
-        required(nombre, "nombre");
+        requiredMax(nombre, "nombre", 160);
         Objects.requireNonNull(tipo, "tipo");
         Objects.requireNonNull(segmentoCliente, "segmentoCliente");
         Objects.requireNonNull(ambito, "ambito");
@@ -173,10 +173,14 @@ public class Promotion {
         actualizadoEn = Instant.now();
     }
 
-    private static String required(String value, String field) {
+    private static String requiredMax(String value, String field, int maxLength) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(field + " es obligatorio");
         }
-        return value.trim();
+        var normalized = value.trim();
+        if (normalized.length() > maxLength) {
+            throw new IllegalArgumentException(field + " no puede superar " + maxLength + " caracteres");
+        }
+        return normalized;
     }
 }

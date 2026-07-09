@@ -54,8 +54,8 @@ public class PromotionalCouponAttempt {
         tiendaId = Objects.requireNonNull(storeId, "storeId");
         usuarioId = userId;
         this.terminalId = terminalId;
-        codigoHash = optional(codeHash);
-        codigoUltimos4 = optionalLast4(codeLast4);
+        codigoHash = optionalMax(codeHash, "codigoHash", 128);
+        codigoUltimos4 = optionalExactLength(codeLast4, "codigoUltimos4", 4);
         motivo = Objects.requireNonNull(reason, "reason");
         creadoEn = Objects.requireNonNull(createdAt, "createdAt");
     }
@@ -84,10 +84,18 @@ public class PromotionalCouponAttempt {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private static String optionalLast4(String value) {
+    private static String optionalMax(String value, String field, int maxLength) {
         var normalized = optional(value);
-        if (normalized != null && normalized.length() != 4) {
-            throw new IllegalArgumentException("message.coupon.last4_length");
+        if (normalized != null && normalized.length() > maxLength) {
+            throw new IllegalArgumentException(field + " no puede superar " + maxLength + " caracteres");
+        }
+        return normalized;
+    }
+
+    private static String optionalExactLength(String value, String field, int length) {
+        var normalized = optional(value);
+        if (normalized != null && normalized.length() != length) {
+            throw new IllegalArgumentException(field + " debe tener " + length + " caracteres");
         }
         return normalized;
     }

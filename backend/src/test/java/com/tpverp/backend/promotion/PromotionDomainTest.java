@@ -102,4 +102,31 @@ class PromotionDomainTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("coupon.expired_cannot_reactivate");
     }
+
+    @Test
+    void promotionNameRejectsDatabaseInvalidLength() {
+        assertThatThrownBy(() -> Promotion.draft(
+                UUID.randomUUID(),
+                "A".repeat(161),
+                PromotionType.BUY_X_PAY_Y,
+                LocalDate.now()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nombre");
+    }
+
+    @Test
+    void couponCodeHashRejectsDatabaseInvalidLength() {
+        assertThatThrownBy(() -> PromotionalCoupon.amount(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "H".repeat(129),
+                "0123",
+                new BigDecimal("10.00"),
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 7, 31)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("codigoHash");
+    }
 }
