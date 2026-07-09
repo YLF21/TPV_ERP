@@ -1,5 +1,5 @@
 alter table documento_linea
-    add column tipo_linea varchar(16) not null default 'PRODUCT',
+    add column tipo_linea varchar(24) not null default 'PRODUCT',
     add column promocion_id uuid,
     add column promocion_version_id uuid,
     add column cupon_promocional_id uuid,
