@@ -17,6 +17,7 @@ public class PromotionEngine {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final int MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP = 18;
+    private static final int MAX_EXACT_CANDIDATES = 24;
 
     public PromotionPreview preview(PromotionEvaluationRequest request) {
         var candidates = new ArrayList<Candidate>();
@@ -28,7 +29,13 @@ public class PromotionEngine {
                 .comparing((Candidate candidate) -> candidate.benefit().amount(), Comparator.reverseOrder())
                 .thenComparing(candidate -> candidate.benefit().name() == null ? "" : candidate.benefit().name()));
 
-        var selected = selectBest(candidates).stream()
+        // Exact selection is best for normal small tickets, but recursive search is
+        // exponential in candidate count. Above this cap, prefer predictable latency
+        // with deterministic greedy selection over exploring a very large tree.
+        var selectedCandidates = candidates.size() > MAX_EXACT_CANDIDATES
+                ? selectGreedy(candidates)
+                : selectBest(candidates);
+        var selected = selectedCandidates.stream()
                 .map(Candidate::benefit)
                 .toList();
 
@@ -92,10 +99,37 @@ public class PromotionEngine {
         }
         if (units.size() <= MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP) {
             var combinations = new ArrayList<Candidate>();
-            collectBuyXPayYCombinations(promotion, units, buy, pay, 0, new ArrayList<>(), combinations);
-            return combinations;
+            if (collectBuyXPayYCombinations(promotion, units, buy, pay, 0, new ArrayList<>(), combinations)) {
+                return combinations;
+            }
         }
+        return greedyBuyXPayYCandidates(promotion, units, buy, pay);
+    }
 
+    private static List<Candidate> secondUnitPercentCandidates(Promotion promotion, List<Unit> units) {
+        if (promotion.discountPercent() == null || promotion.discountPercent().signum() <= 0 || units.size() < 2) {
+            return List.of();
+        }
+        if (units.size() <= MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP) {
+            var result = new ArrayList<Candidate>();
+            for (var first = 0; first < units.size() - 1; first++) {
+                for (var second = first + 1; second < units.size(); second++) {
+                    if (result.size() == MAX_EXACT_CANDIDATES) {
+                        return greedySecondUnitPercentCandidates(promotion, units);
+                    }
+                    result.add(secondUnitPercentCandidate(promotion, List.of(units.get(first), units.get(second))));
+                }
+            }
+            return result;
+        }
+        return greedySecondUnitPercentCandidates(promotion, units);
+    }
+
+    private static List<Candidate> greedyBuyXPayYCandidates(
+            Promotion promotion,
+            List<Unit> units,
+            int buy,
+            int pay) {
         // Above the first-version exact cap, keep deterministic greedy generation to avoid
         // combinatorial explosion while still producing stable cashier previews.
         var sorted = units.stream()
@@ -114,20 +148,7 @@ public class PromotionEngine {
         return result;
     }
 
-    private static List<Candidate> secondUnitPercentCandidates(Promotion promotion, List<Unit> units) {
-        if (promotion.discountPercent() == null || promotion.discountPercent().signum() <= 0 || units.size() < 2) {
-            return List.of();
-        }
-        if (units.size() <= MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP) {
-            var result = new ArrayList<Candidate>();
-            for (var first = 0; first < units.size() - 1; first++) {
-                for (var second = first + 1; second < units.size(); second++) {
-                    result.add(secondUnitPercentCandidate(promotion, List.of(units.get(first), units.get(second))));
-                }
-            }
-            return result;
-        }
-
+    private static List<Candidate> greedySecondUnitPercentCandidates(Promotion promotion, List<Unit> units) {
         // Above the first-version exact cap, keep deterministic greedy generation to avoid
         // combinatorial explosion while still producing stable cashier previews.
         var sorted = units.stream()
@@ -135,15 +156,12 @@ public class PromotionEngine {
                 .toList();
         var result = new ArrayList<Candidate>();
         for (var start = 0; start + 2 <= sorted.size(); start += 2) {
-            var pair = sorted.subList(start, start + 2);
-            var cheaper = pair.stream().min(Comparator.comparing(Unit::price)).orElseThrow();
-            var discount = cheaper.price().multiply(promotion.discountPercent()).divide(HUNDRED, 6, RoundingMode.HALF_UP);
-            result.add(benefit(promotion, pair, discount));
+            result.add(secondUnitPercentCandidate(promotion, sorted.subList(start, start + 2)));
         }
         return result;
     }
 
-    private static void collectBuyXPayYCombinations(
+    private static boolean collectBuyXPayYCombinations(
             Promotion promotion,
             List<Unit> units,
             int buy,
@@ -157,15 +175,22 @@ public class PromotionEngine {
                     .limit(buy - pay)
                     .map(Unit::price)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (result.size() == MAX_EXACT_CANDIDATES) {
+                return false;
+            }
             result.add(benefit(promotion, selected, discounted));
-            return;
+            return true;
         }
         var needed = buy - selected.size();
         for (var index = start; index <= units.size() - needed; index++) {
             selected.add(units.get(index));
-            collectBuyXPayYCombinations(promotion, units, buy, pay, index + 1, selected, result);
+            if (!collectBuyXPayYCombinations(promotion, units, buy, pay, index + 1, selected, result)) {
+                selected.removeLast();
+                return false;
+            }
             selected.removeLast();
         }
+        return true;
     }
 
     private static Candidate secondUnitPercentCandidate(Promotion promotion, List<Unit> pair) {
@@ -226,6 +251,19 @@ public class PromotionEngine {
     private static List<Candidate> selectBest(List<Candidate> candidates) {
         return search(candidates, 0, new HashSet<>(), new ArrayList<>(), BigDecimal.ZERO, new Selection(List.of(), BigDecimal.ZERO))
                 .candidates();
+    }
+
+    private static List<Candidate> selectGreedy(List<Candidate> candidates) {
+        var selected = new ArrayList<Candidate>();
+        var usedUnits = new HashSet<String>();
+        for (var candidate : candidates) {
+            if (candidate.benefit().amount().signum() <= 0 || overlaps(usedUnits, candidate.unitKeys())) {
+                continue;
+            }
+            selected.add(candidate);
+            usedUnits.addAll(candidate.unitKeys());
+        }
+        return selected;
     }
 
     private static Selection search(

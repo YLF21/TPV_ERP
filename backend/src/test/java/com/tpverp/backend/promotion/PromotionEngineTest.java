@@ -7,10 +7,12 @@ import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class PromotionEngineTest {
 
@@ -206,6 +208,25 @@ class PromotionEngineTest {
         assertThat(preview.appliedPromotions())
                 .extracting(PromotionBenefit::promotionId)
                 .containsExactlyInAnyOrder(familyPromo.id(), productPromo.id());
+    }
+
+    @Test
+    @Timeout(2)
+    void largeCandidateSetFallsBackToDeterministicPreview() {
+        var familyId = UUID.randomUUID();
+        var promotion = secondUnitPercent("Segunda unidad Familia", new BigDecimal("50.00"));
+        var lines = new ArrayList<PromotionEvaluationLine>();
+        for (var position = 1; position <= 19; position++) {
+            lines.add(line(position, UUID.randomUUID(), familyId, null, "1", "1.00", "IVA"));
+        }
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                lines,
+                List.of(promotion),
+                List.of(new PromotionTarget(promotion.id(), PromotionTargetType.FAMILY, familyId))));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("4.50");
+        assertThat(preview.appliedPromotions()).hasSize(9);
     }
 
     @Test
