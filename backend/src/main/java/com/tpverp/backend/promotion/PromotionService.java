@@ -46,12 +46,16 @@ public class PromotionService {
 
     @Transactional
     public PromotionView activate(UUID id) {
-        var promotion = promotion(id);
+        var companyId = companyId();
+        var promotion = promotions.findByIdAndEmpresaId(id, companyId)
+                .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
         var rootId = promotion.rootVersionId();
-        promotion.activate();
-        promotions.findActiveLineageForUpdate(companyId(), rootId).stream()
+        promotions.findByIdAndEmpresaIdForUpdate(rootId, companyId)
+                .orElseThrow(() -> new IllegalStateException("message.promotion.inconsistent_lineage"));
+        promotions.findActiveLineage(companyId, rootId).stream()
                 .filter(active -> !active.id().equals(promotion.id()))
                 .forEach(Promotion::deactivate);
+        promotion.activate();
         return PromotionView.from(promotion);
     }
 

@@ -3,6 +3,7 @@ package com.tpverp.backend.promotion;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,7 +52,8 @@ class PromotionServiceTest {
         assertThat(saved.getValue().versionOrigenId()).isEqualTo(original.id());
         assertThat(saved.getValue().status()).isEqualTo(PromotionStatus.DRAFT);
         when(promotions.findByIdAndEmpresaId(duplicate.id(), company.getId())).thenReturn(Optional.of(saved.getValue()));
-        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(original));
+        when(promotions.findByIdAndEmpresaIdForUpdate(original.id(), company.getId())).thenReturn(Optional.of(original));
+        when(promotions.findActiveLineage(company.getId(), original.id())).thenReturn(List.of(original));
 
         service().activate(duplicate.id());
 
@@ -68,7 +70,8 @@ class PromotionServiceTest {
         var duplicateB = original.duplicateDraft();
         when(promotions.findByIdAndEmpresaId(duplicateA.id(), company.getId())).thenReturn(Optional.of(duplicateA));
         when(promotions.findByIdAndEmpresaId(duplicateB.id(), company.getId())).thenReturn(Optional.of(duplicateB));
-        when(promotions.findActiveLineageForUpdate(company.getId(), original.id()))
+        when(promotions.findByIdAndEmpresaIdForUpdate(original.id(), company.getId())).thenReturn(Optional.of(original));
+        when(promotions.findActiveLineage(company.getId(), original.id()))
                 .thenReturn(List.of(original), List.of(original, duplicateA));
 
         service().activate(duplicateA.id());
@@ -80,6 +83,27 @@ class PromotionServiceTest {
     }
 
     @Test
+    void activatingVersionLocksRootBeforeReadingActiveLineage() {
+        currentCompany();
+        var original = buyXPayY("3x2 Agua");
+        original.activate();
+        original.markUsed();
+        var duplicate = original.duplicateDraft();
+        when(promotions.findByIdAndEmpresaId(duplicate.id(), company.getId())).thenReturn(Optional.of(duplicate));
+        when(promotions.findByIdAndEmpresaIdForUpdate(original.id(), company.getId())).thenReturn(Optional.of(original));
+        when(promotions.findActiveLineage(company.getId(), original.id())).thenReturn(List.of(original));
+
+        service().activate(duplicate.id());
+
+        var inOrder = inOrder(promotions);
+        inOrder.verify(promotions).findByIdAndEmpresaId(duplicate.id(), company.getId());
+        inOrder.verify(promotions).findByIdAndEmpresaIdForUpdate(original.id(), company.getId());
+        inOrder.verify(promotions).findActiveLineage(company.getId(), original.id());
+        assertThat(original.status()).isEqualTo(PromotionStatus.INACTIVE);
+        assertThat(duplicate.status()).isEqualTo(PromotionStatus.ACTIVE);
+    }
+
+    @Test
     void duplicateCreatedFromDuplicateKeepsOriginalRootLineage() {
         currentCompany();
         var original = buyXPayY("3x2 Agua");
@@ -88,7 +112,8 @@ class PromotionServiceTest {
         var duplicateA = original.duplicateDraft();
         var duplicateC = original.duplicateDraft();
         when(promotions.findByIdAndEmpresaId(duplicateC.id(), company.getId())).thenReturn(Optional.of(duplicateC));
-        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(original));
+        when(promotions.findByIdAndEmpresaIdForUpdate(original.id(), company.getId())).thenReturn(Optional.of(original));
+        when(promotions.findActiveLineage(company.getId(), original.id())).thenReturn(List.of(original));
         service().activate(duplicateC.id());
 
         when(promotions.findByIdAndEmpresaId(duplicateA.id(), company.getId())).thenReturn(Optional.of(duplicateA));
@@ -99,7 +124,7 @@ class PromotionServiceTest {
         var saved = ArgumentCaptor.forClass(Promotion.class);
         verify(promotions).save(saved.capture());
         when(promotions.findByIdAndEmpresaId(duplicateB.id(), company.getId())).thenReturn(Optional.of(saved.getValue()));
-        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(duplicateC));
+        when(promotions.findActiveLineage(company.getId(), original.id())).thenReturn(List.of(duplicateC));
 
         service().activate(duplicateB.id());
 

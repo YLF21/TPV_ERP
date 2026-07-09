@@ -18,6 +18,8 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
     Optional<Promotion> findByIdAndEmpresaId(UUID id, UUID empresaId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Promotion> findByIdAndEmpresaIdForUpdate(UUID id, UUID empresaId);
+
     @Query("""
             select promotion
             from Promotion promotion
@@ -25,7 +27,7 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
               and promotion.estado = com.tpverp.backend.promotion.PromotionStatus.ACTIVE
               and (promotion.id = :rootId or promotion.versionOrigenId = :rootId)
             """)
-    List<Promotion> findActiveLineageForUpdate(
+    List<Promotion> findActiveLineage(
             @Param("empresaId") UUID empresaId,
             @Param("rootId") UUID rootId);
 }
