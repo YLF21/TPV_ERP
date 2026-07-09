@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,24 +18,18 @@ public class PromotionEngine {
     private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     public PromotionPreview preview(PromotionEvaluationRequest request) {
-        var candidates = new ArrayList<PromotionBenefit>();
+        var candidates = new ArrayList<Candidate>();
         for (var promotion : request.promotions()) {
             candidates.addAll(candidatesFor(promotion, request));
         }
 
         candidates.sort(Comparator
-                .comparing(PromotionBenefit::amount, Comparator.reverseOrder())
-                .thenComparing(benefit -> benefit.name() == null ? "" : benefit.name()));
+                .comparing((Candidate candidate) -> candidate.benefit().amount(), Comparator.reverseOrder())
+                .thenComparing(candidate -> candidate.benefit().name() == null ? "" : candidate.benefit().name()));
 
-        var usedPositions = new HashSet<Integer>();
-        var selected = new ArrayList<PromotionBenefit>();
-        for (var candidate : candidates) {
-            if (candidate.amount().signum() <= 0 || overlaps(usedPositions, candidate.affectedPositions())) {
-                continue;
-            }
-            selected.add(candidate);
-            usedPositions.addAll(candidate.affectedPositions());
-        }
+        var selected = selectBest(candidates).stream()
+                .map(Candidate::benefit)
+                .toList();
 
         var total = selected.stream()
                 .map(PromotionBenefit::amount)
@@ -63,10 +58,22 @@ public class PromotionEngine {
         return result;
     }
 
-    private static List<PromotionBenefit> candidatesFor(
+    private static List<Candidate> candidatesFor(
             Promotion promotion,
             PromotionEvaluationRequest request) {
         var units = eligibleUnits(promotion, request);
+        var unitsByTax = new HashMap<TaxKey, List<Unit>>();
+        for (var unit : units) {
+            unitsByTax.computeIfAbsent(TaxKey.of(unit.line()), ignored -> new ArrayList<>()).add(unit);
+        }
+        var result = new ArrayList<Candidate>();
+        for (var taxUnits : unitsByTax.values()) {
+            result.addAll(taxCandidatesFor(promotion, taxUnits));
+        }
+        return result;
+    }
+
+    private static List<Candidate> taxCandidatesFor(Promotion promotion, List<Unit> units) {
         if (promotion.type() == PromotionType.BUY_X_PAY_Y) {
             return buyXPayYCandidates(promotion, units);
         }
@@ -76,7 +83,7 @@ public class PromotionEngine {
         return List.of();
     }
 
-    private static List<PromotionBenefit> buyXPayYCandidates(Promotion promotion, List<Unit> units) {
+    private static List<Candidate> buyXPayYCandidates(Promotion promotion, List<Unit> units) {
         var buy = wholeQuantity(promotion.buyQuantity());
         var pay = wholeQuantity(promotion.payQuantity());
         if (buy <= 0 || pay < 0 || pay >= buy || units.size() < buy) {
@@ -86,7 +93,7 @@ public class PromotionEngine {
         var sorted = units.stream()
                 .sorted(Comparator.comparing(Unit::price).reversed())
                 .toList();
-        var result = new ArrayList<PromotionBenefit>();
+        var result = new ArrayList<Candidate>();
         for (var start = 0; start + buy <= sorted.size(); start += buy) {
             var pack = sorted.subList(start, start + buy);
             var discounted = pack.stream()
@@ -99,7 +106,7 @@ public class PromotionEngine {
         return result;
     }
 
-    private static List<PromotionBenefit> secondUnitPercentCandidates(Promotion promotion, List<Unit> units) {
+    private static List<Candidate> secondUnitPercentCandidates(Promotion promotion, List<Unit> units) {
         if (promotion.discountPercent() == null || promotion.discountPercent().signum() <= 0 || units.size() < 2) {
             return List.of();
         }
@@ -107,7 +114,7 @@ public class PromotionEngine {
         var sorted = units.stream()
                 .sorted(Comparator.comparing(Unit::price).reversed())
                 .toList();
-        var result = new ArrayList<PromotionBenefit>();
+        var result = new ArrayList<Candidate>();
         for (var start = 0; start + 2 <= sorted.size(); start += 2) {
             var pair = sorted.subList(start, start + 2);
             var cheaper = pair.stream().min(Comparator.comparing(Unit::price)).orElseThrow();
@@ -117,13 +124,15 @@ public class PromotionEngine {
         return result;
     }
 
-    private static PromotionBenefit benefit(Promotion promotion, List<Unit> units, BigDecimal amount) {
+    private static Candidate benefit(Promotion promotion, List<Unit> units, BigDecimal amount) {
         var first = units.getFirst().line();
         var positions = new HashSet<Integer>();
+        var unitKeys = new HashSet<String>();
         for (var unit : units) {
             positions.add(unit.line().position());
+            unitKeys.add(unit.key());
         }
-        return new PromotionBenefit(
+        var benefit = new PromotionBenefit(
                 promotion.id(),
                 promotion.name(),
                 positions,
@@ -131,6 +140,7 @@ public class PromotionEngine {
                 first.taxIncluded(),
                 first.taxRegime(),
                 first.taxPercent());
+        return new Candidate(benefit, unitKeys);
     }
 
     private static List<Unit> eligibleUnits(Promotion promotion, PromotionEvaluationRequest request) {
@@ -141,7 +151,7 @@ public class PromotionEngine {
             }
             var quantity = wholeQuantity(line.quantity());
             for (var index = 0; index < quantity; index++) {
-                result.add(new Unit(line));
+                result.add(new Unit(line, index + 1));
             }
         }
         return result;
@@ -163,9 +173,48 @@ public class PromotionEngine {
                         || (target.type() == PromotionTargetType.SUBFAMILY && target.targetId().equals(line.subfamilyId())));
     }
 
-    private static boolean overlaps(Set<Integer> usedPositions, Set<Integer> positions) {
-        for (var position : positions) {
-            if (usedPositions.contains(position)) {
+    private static List<Candidate> selectBest(List<Candidate> candidates) {
+        return search(candidates, 0, new HashSet<>(), new ArrayList<>(), BigDecimal.ZERO, new Selection(List.of(), BigDecimal.ZERO))
+                .candidates();
+    }
+
+    private static Selection search(
+            List<Candidate> candidates,
+            int index,
+            Set<String> usedUnits,
+            List<Candidate> selected,
+            BigDecimal total,
+            Selection best) {
+        if (index >= candidates.size()) {
+            if (total.compareTo(best.total()) > 0) {
+                return new Selection(List.copyOf(selected), total);
+            }
+            return best;
+        }
+
+        var bestWithout = search(candidates, index + 1, usedUnits, selected, total, best);
+        var candidate = candidates.get(index);
+        if (candidate.benefit().amount().signum() <= 0 || overlaps(usedUnits, candidate.unitKeys())) {
+            return bestWithout;
+        }
+
+        selected.add(candidate);
+        usedUnits.addAll(candidate.unitKeys());
+        var bestWith = search(
+                candidates,
+                index + 1,
+                usedUnits,
+                selected,
+                total.add(candidate.benefit().amount()),
+                bestWithout);
+        selected.removeLast();
+        usedUnits.removeAll(candidate.unitKeys());
+        return bestWith;
+    }
+
+    private static boolean overlaps(Set<String> usedUnits, Set<String> unitKeys) {
+        for (var unitKey : unitKeys) {
+            if (usedUnits.contains(unitKey)) {
                 return true;
             }
         }
@@ -180,10 +229,31 @@ public class PromotionEngine {
         return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private record Unit(PromotionEvaluationLine line) {
+    private record Candidate(PromotionBenefit benefit, Set<String> unitKeys) {
+
+        private Candidate {
+            unitKeys = Set.copyOf(unitKeys);
+        }
+    }
+
+    private record Selection(List<Candidate> candidates, BigDecimal total) {
+    }
+
+    private record TaxKey(boolean included, String regime, BigDecimal percent) {
+
+        private static TaxKey of(PromotionEvaluationLine line) {
+            return new TaxKey(line.taxIncluded(), line.taxRegime(), line.taxPercent());
+        }
+    }
+
+    private record Unit(PromotionEvaluationLine line, int index) {
 
         BigDecimal price() {
             return line.unitPrice();
+        }
+
+        String key() {
+            return line.position() + "#" + index;
         }
     }
 }

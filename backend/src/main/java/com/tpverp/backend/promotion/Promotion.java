@@ -193,6 +193,18 @@ public class Promotion {
         if (fechaFin != null && fechaFin.isBefore(fechaInicio)) {
             throw new IllegalStateException("message.promotion.invalid_dates");
         }
+        if (tipo == PromotionType.BUY_X_PAY_Y) {
+            if (compraCantidad == null || pagaCantidad == null
+                    || compraCantidad.signum() <= 0
+                    || pagaCantidad.signum() <= 0
+                    || pagaCantidad.compareTo(compraCantidad) >= 0) {
+                throw new IllegalStateException("compraCantidad y pagaCantidad son obligatorias");
+            }
+        }
+        if (tipo == PromotionType.SECOND_UNIT_PERCENT
+                && (descuentoPorcentaje == null || descuentoPorcentaje.signum() <= 0)) {
+            throw new IllegalStateException("descuentoPorcentaje es obligatorio");
+        }
     }
 
     private void requireNotUsed() {

@@ -26,5 +26,11 @@ public record PromotionEvaluationLine(
         Objects.requireNonNull(unitPrice, "unitPrice");
         Objects.requireNonNull(taxRegime, "taxRegime");
         Objects.requireNonNull(taxPercent, "taxPercent");
+        if (quantity.signum() <= 0 || quantity.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException("quantity debe ser un entero positivo");
+        }
+        if (unitPrice.signum() < 0) {
+            throw new IllegalArgumentException("unitPrice no puede ser negativo");
+        }
     }
 }

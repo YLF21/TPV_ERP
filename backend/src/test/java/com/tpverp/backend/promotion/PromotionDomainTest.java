@@ -115,6 +115,32 @@ class PromotionDomainTest {
     }
 
     @Test
+    void buyXPayYPromotionRequiresQuantitiesBeforeActivation() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(),
+                "3x2 Agua",
+                PromotionType.BUY_X_PAY_Y,
+                LocalDate.now());
+
+        assertThatThrownBy(promotion::activate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("compraCantidad");
+    }
+
+    @Test
+    void secondUnitPercentPromotionRequiresPositivePercentBeforeActivation() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(),
+                "Segunda unidad",
+                PromotionType.SECOND_UNIT_PERCENT,
+                LocalDate.now());
+
+        assertThatThrownBy(promotion::activate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("descuentoPorcentaje");
+    }
+
+    @Test
     void couponCodeHashRejectsDatabaseInvalidLength() {
         assertThatThrownBy(() -> PromotionalCoupon.amount(
                 UUID.randomUUID(),
