@@ -89,25 +89,42 @@ public class PromotionalCoupon {
             UUID generatedDocumentId,
             String codeHash,
             String codeLast4,
+            UUID customerId,
+            UUID memberId,
+            PromotionalCouponBenefitType benefitType,
             BigDecimal amount,
+            BigDecimal percent,
+            BigDecimal maximumDiscount,
+            BigDecimal minimumAmount,
             LocalDate validFrom,
-            LocalDate validUntil) {
+            LocalDate validUntil,
+            Instant createdAt) {
         id = UUID.randomUUID();
         empresaId = Objects.requireNonNull(companyId, "companyId");
         tiendaGeneradoId = Objects.requireNonNull(generatedStoreId, "generatedStoreId");
         promocionId = Objects.requireNonNull(promotionId, "promotionId");
         documentoGeneradoId = Objects.requireNonNull(generatedDocumentId, "generatedDocumentId");
+        clienteId = customerId;
+        memberId = memberId;
         codigoHash = requiredMax(codeHash, "codigoHash", 128);
         codigoUltimos4 = requiredExactLength(codeLast4, "codigoUltimos4", 4);
         estado = PromotionalCouponStatus.ACTIVE;
-        beneficioTipo = PromotionalCouponBenefitType.AMOUNT;
-        importe = positiveMoney(amount, "importe");
+        beneficioTipo = Objects.requireNonNull(benefitType, "benefitType");
+        if (beneficioTipo == PromotionalCouponBenefitType.AMOUNT) {
+            importe = positiveMoney(amount, "importe");
+            porcentaje = null;
+        } else {
+            porcentaje = validPercentage(percent, "porcentaje");
+            importe = null;
+        }
+        descuentoMaximo = maximumDiscount == null ? null : positiveMoney(maximumDiscount, "descuentoMaximo");
+        minimoImporte = minimumAmount == null ? null : nonNegativeMoney(minimumAmount, "minimoImporte");
         validoDesde = Objects.requireNonNull(validFrom, "validFrom");
         validoHasta = Objects.requireNonNull(validUntil, "validUntil");
         if (validoHasta.isBefore(validoDesde)) {
             throw new IllegalArgumentException("message.coupon.invalid_dates");
         }
-        creadoEn = Instant.now();
+        creadoEn = Objects.requireNonNull(createdAt, "createdAt");
     }
 
     public static PromotionalCoupon amount(
@@ -122,15 +139,117 @@ public class PromotionalCoupon {
             LocalDate validUntil) {
         return new PromotionalCoupon(
                 companyId, generatedStoreId, promotionId, generatedDocumentId,
-                codeHash, codeLast4, amount, validFrom, validUntil);
+                codeHash, codeLast4, null, null, PromotionalCouponBenefitType.AMOUNT,
+                amount, null, null, null, validFrom, validUntil, Instant.now());
+    }
+
+    public static PromotionalCoupon amount(
+            UUID companyId,
+            UUID generatedStoreId,
+            UUID promotionId,
+            UUID generatedDocumentId,
+            String codeHash,
+            String codeLast4,
+            UUID customerId,
+            UUID memberId,
+            BigDecimal amount,
+            BigDecimal minimumAmount,
+            LocalDate validFrom,
+            LocalDate validUntil,
+            Instant createdAt) {
+        return new PromotionalCoupon(
+                companyId, generatedStoreId, promotionId, generatedDocumentId,
+                codeHash, codeLast4, customerId, memberId, PromotionalCouponBenefitType.AMOUNT,
+                amount, null, null, minimumAmount, validFrom, validUntil, createdAt);
+    }
+
+    public static PromotionalCoupon percent(
+            UUID companyId,
+            UUID generatedStoreId,
+            UUID promotionId,
+            UUID generatedDocumentId,
+            String codeHash,
+            String codeLast4,
+            UUID customerId,
+            UUID memberId,
+            BigDecimal percent,
+            BigDecimal maximumDiscount,
+            BigDecimal minimumAmount,
+            LocalDate validFrom,
+            LocalDate validUntil,
+            Instant createdAt) {
+        return new PromotionalCoupon(
+                companyId, generatedStoreId, promotionId, generatedDocumentId,
+                codeHash, codeLast4, customerId, memberId, PromotionalCouponBenefitType.PERCENT,
+                null, percent, maximumDiscount, minimumAmount, validFrom, validUntil, createdAt);
     }
 
     public UUID id() {
         return id;
     }
 
+    public UUID companyId() {
+        return empresaId;
+    }
+
+    public UUID generatedStoreId() {
+        return tiendaGeneradoId;
+    }
+
+    public UUID promotionId() {
+        return promocionId;
+    }
+
+    public UUID generatedDocumentId() {
+        return documentoGeneradoId;
+    }
+
+    public UUID customerId() {
+        return clienteId;
+    }
+
+    public UUID memberId() {
+        return memberId;
+    }
+
+    public String codeHash() {
+        return codigoHash;
+    }
+
+    public String codeLast4() {
+        return codigoUltimos4;
+    }
+
     public PromotionalCouponStatus status() {
         return estado;
+    }
+
+    public PromotionalCouponBenefitType benefitType() {
+        return beneficioTipo;
+    }
+
+    public BigDecimal amount() {
+        return importe;
+    }
+
+    public BigDecimal percent() {
+        return porcentaje;
+    }
+
+    public BigDecimal maximumDiscount() {
+        return descuentoMaximo;
+    }
+
+    public BigDecimal minimumAmount() {
+        return minimoImporte;
+    }
+
+    public LocalDate validFrom() {
+        return validoDesde;
+    }
+
+    public LocalDate validUntil() {
+        return validoHasta;
     }
 
     public UUID redeemedStoreId() {
@@ -149,6 +268,13 @@ public class PromotionalCoupon {
         documentoCanjeadoId = Objects.requireNonNull(documentId, "documentId");
         usadoEn = Objects.requireNonNull(usedAt, "usedAt");
         estado = PromotionalCouponStatus.USED;
+    }
+
+    public void expire(Instant expiredAt) {
+        if (estado == PromotionalCouponStatus.ACTIVE) {
+            canceladoEn = Objects.requireNonNull(expiredAt, "expiredAt");
+            estado = PromotionalCouponStatus.EXPIRED;
+        }
     }
 
     public void cancel(UUID userId, String reason, Instant cancelledAt) {
@@ -180,6 +306,23 @@ public class PromotionalCoupon {
             throw new IllegalArgumentException(field + " debe ser positivo");
         }
         return amount;
+    }
+
+    private static BigDecimal nonNegativeMoney(BigDecimal value, String field) {
+        var amount = Money.euros(value);
+        if (amount.signum() < 0) {
+            throw new IllegalArgumentException(field + " no puede ser negativo");
+        }
+        return amount;
+    }
+
+    private static BigDecimal validPercentage(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        var percent = value.setScale(2, java.math.RoundingMode.HALF_UP);
+        if (percent.signum() <= 0 || percent.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException(field + " debe estar entre 0 y 100");
+        }
+        return percent;
     }
 
     private static String required(String value, String field) {

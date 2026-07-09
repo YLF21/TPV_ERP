@@ -25,6 +25,8 @@ public class PromotionalCouponAttempt {
     private UUID usuarioId;
     @Column(name = "terminal_id")
     private UUID terminalId;
+    @Column(name = "documento_id")
+    private UUID documentoId;
     @Column(name = "codigo_hash", length = 128)
     private String codigoHash;
     @Column(name = "codigo_ultimos4", length = 4)
@@ -45,6 +47,7 @@ public class PromotionalCouponAttempt {
             UUID storeId,
             UUID userId,
             UUID terminalId,
+            UUID documentId,
             String codeHash,
             String codeLast4,
             CouponRejectReason reason,
@@ -54,6 +57,7 @@ public class PromotionalCouponAttempt {
         tiendaId = Objects.requireNonNull(storeId, "storeId");
         usuarioId = userId;
         this.terminalId = terminalId;
+        documentoId = documentId;
         codigoHash = optionalMax(codeHash, "codigoHash", 128);
         codigoUltimos4 = optionalExactLength(codeLast4, "codigoUltimos4", 4);
         motivo = Objects.requireNonNull(reason, "reason");
@@ -74,6 +78,18 @@ public class PromotionalCouponAttempt {
 
     public CouponRejectReason reason() {
         return motivo;
+    }
+
+    public UUID documentId() {
+        return documentoId;
+    }
+
+    public String codeHash() {
+        return codigoHash;
+    }
+
+    public String codeLast4() {
+        return codigoUltimos4;
     }
 
     public Instant createdAt() {

@@ -221,6 +221,7 @@ create table cupon_promocional_intento (
     tienda_id uuid not null references tienda(id),
     usuario_id uuid references usuario(id),
     terminal_id uuid references terminal(id),
+    documento_id uuid references documento(id),
     codigo_hash varchar(128),
     codigo_ultimos4 varchar(4),
     motivo varchar(48) not null,
