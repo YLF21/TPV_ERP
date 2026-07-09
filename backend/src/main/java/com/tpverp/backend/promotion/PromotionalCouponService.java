@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class PromotionalCouponService {
     private final CouponCodeGenerator codeGenerator;
     private final Clock clock;
 
+    @Autowired
     public PromotionalCouponService(
             PromotionalCouponRepository coupons,
             PromotionalCouponAttemptRepository attempts) {

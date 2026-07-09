@@ -18,7 +18,15 @@ public interface PromotionRepository extends JpaRepository<Promotion, UUID> {
     Optional<Promotion> findByIdAndEmpresaId(UUID id, UUID empresaId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<Promotion> findByIdAndEmpresaIdForUpdate(UUID id, UUID empresaId);
+    @Query("""
+            select promotion
+            from Promotion promotion
+            where promotion.id = :id
+              and promotion.empresaId = :empresaId
+            """)
+    Optional<Promotion> findByIdAndEmpresaIdForUpdate(
+            @Param("id") UUID id,
+            @Param("empresaId") UUID empresaId);
 
     @Query("""
             select promotion
