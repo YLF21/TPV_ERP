@@ -29,6 +29,11 @@ import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.promotion.PromotionEngine;
+import com.tpverp.backend.promotion.PromotionRepository;
+import com.tpverp.backend.promotion.PromotionStatus;
+import com.tpverp.backend.promotion.PromotionTargetRepository;
+import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.sync.SyncOperation;
@@ -103,6 +108,12 @@ class DocumentServiceTest {
     private SyncOutboxService syncOutbox;
     @Mock
     private ProductImportLineMetadataRepository importMetadata;
+    @Mock
+    private PromotionRepository promotionRepository;
+    @Mock
+    private PromotionTargetRepository promotionTargetRepository;
+    @Mock
+    private PromotionalCouponService promotionalCoupons;
 
     private DocumentService service;
     private Store store;
@@ -129,6 +140,9 @@ class DocumentServiceTest {
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
+        lenient().when(promotionRepository.findByEmpresaIdAndEstado(any(), any(PromotionStatus.class)))
+                .thenReturn(List.of());
+        lenient().when(promotionTargetRepository.findByPromocionIdIn(any())).thenReturn(List.of());
         lenient().when(memberLoyaltyService.applyLineBenefit(any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(productRepository.findById(any())).thenAnswer(invocation -> {
@@ -168,6 +182,10 @@ class DocumentServiceTest {
                 memberLoyaltyService,
                 syncOutbox,
                 importMetadata,
+                promotionRepository,
+                promotionTargetRepository,
+                new PromotionEngine(),
+                promotionalCoupons,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

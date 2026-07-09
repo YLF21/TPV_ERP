@@ -162,6 +162,46 @@ public class Promotion {
         return descuentoPorcentaje;
     }
 
+    public UUID memberCategoryId() {
+        return memberCategoryId;
+    }
+
+    public boolean generatesCoupon() {
+        return generaCupon;
+    }
+
+    public BigDecimal couponAmount() {
+        return cuponImporte;
+    }
+
+    public BigDecimal couponPercent() {
+        return cuponPorcentaje;
+    }
+
+    public BigDecimal couponMaximumDiscount() {
+        return cuponDescuentoMaximo;
+    }
+
+    public BigDecimal couponMinimumAmount() {
+        return cuponMinimoImporte;
+    }
+
+    public LocalDate couponValidFromDate() {
+        return cuponValidoDesdeFecha;
+    }
+
+    public Integer couponValidFromDays() {
+        return cuponValidoDesdeDias;
+    }
+
+    public LocalDate couponValidUntilDate() {
+        return cuponValidoHastaFecha;
+    }
+
+    public Integer couponValidDays() {
+        return cuponValidoDias;
+    }
+
     public PromotionStatus status() {
         return estado;
     }
@@ -250,6 +290,27 @@ public class Promotion {
         touch();
     }
 
+    public void configureGeneratedAmountCoupon(
+            BigDecimal amount,
+            BigDecimal minimumAmount,
+            LocalDate validFrom,
+            LocalDate validUntil) {
+        requireNotUsed();
+        generaCupon = true;
+        cuponImporte = positiveAmount(amount, "cuponImporte");
+        cuponPorcentaje = null;
+        cuponDescuentoMaximo = null;
+        cuponMinimoImporte = minimumAmount == null ? null : nonNegativeAmount(minimumAmount, "cuponMinimoImporte");
+        cuponValidoDesdeFecha = Objects.requireNonNull(validFrom, "validFrom");
+        cuponValidoHastaFecha = Objects.requireNonNull(validUntil, "validUntil");
+        cuponValidoDesdeDias = null;
+        cuponValidoDias = null;
+        if (validUntil.isBefore(validFrom)) {
+            throw new IllegalArgumentException("message.coupon.invalid_dates");
+        }
+        touch();
+    }
+
     private void requireComplete() {
         requiredMax(nombre, "nombre", 160);
         Objects.requireNonNull(tipo, "tipo");
@@ -308,6 +369,22 @@ public class Promotion {
         Objects.requireNonNull(value, field);
         if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException(field + " debe estar entre 0 y 100");
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal positiveAmount(BigDecimal value, String field) {
+        var amount = nonNegativeAmount(value, field);
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException(field + " debe ser positivo");
+        }
+        return amount;
+    }
+
+    private static BigDecimal nonNegativeAmount(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        if (value.signum() < 0) {
+            throw new IllegalArgumentException(field + " no puede ser negativo");
         }
         return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
