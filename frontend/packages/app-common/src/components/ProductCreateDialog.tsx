@@ -10,6 +10,7 @@ type ProductCreateDialogProps = {
   open: boolean;
   locale: LocaleCode;
   token?: string;
+  editProduct?: ProductCreateEditProduct | null;
   onClose: () => void;
   onCreated?: (product: ProductCreateResponse) => void;
 };
@@ -40,6 +41,11 @@ export type ProductCreateFormState = {
   offerActive: boolean;
   offerFrom: string;
   offerUntil: string;
+};
+
+export type ProductCreateEditProduct = {
+  id: string;
+  form: Partial<ProductCreateFormState>;
 };
 
 export type ProductCreateFieldName =
@@ -97,7 +103,9 @@ type SaveProductOptions = {
   form: ProductCreateFormState;
   token: string;
   imageFile: File | null;
+  productId?: string;
   createProduct?: (body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
+  updateProduct?: (productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
   uploadImage?: (productId: string, file: File, token: string) => Promise<void>;
 };
 
@@ -151,6 +159,13 @@ export function createDefaultProductForm(): ProductCreateFormState {
     offerActive: false,
     offerFrom: "",
     offerUntil: ""
+  };
+}
+
+export function createProductFormFromEditProduct(product?: ProductCreateEditProduct | null): ProductCreateFormState {
+  return {
+    ...createDefaultProductForm(),
+    ...(product?.form ?? {})
   };
 }
 
@@ -405,14 +420,26 @@ async function createProductRequest(body: ReturnType<typeof buildCreateProductRe
   });
 }
 
+async function updateProductRequest(productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) {
+  return apiRequest<ProductCreateResponse>(`/products/${encodeURIComponent(productId)}`, {
+    method: "PUT",
+    token,
+    body
+  });
+}
+
 export async function saveProductWithOptionalImage({
   form,
   token,
   imageFile,
+  productId,
   createProduct = createProductRequest,
+  updateProduct = updateProductRequest,
   uploadImage = uploadProductImage
 }: SaveProductOptions): Promise<SaveProductResult> {
-  const product = await createProduct(buildCreateProductRequest(form), token);
+  const product = productId
+    ? await updateProduct(productId, buildCreateProductRequest(form), token)
+    : await createProduct(buildCreateProductRequest(form), token);
   if (!imageFile) {
     return { product, imageUploadFailed: false };
   }
@@ -462,11 +489,12 @@ export function ProductCreateDialog({
   open,
   locale,
   token,
+  editProduct,
   onClose,
   onCreated
 }: ProductCreateDialogProps) {
   const t = createTranslator(locale);
-  const [form, setForm] = useState<ProductCreateFormState>(() => createDefaultProductForm());
+  const [form, setForm] = useState<ProductCreateFormState>(() => createProductFormFromEditProduct(editProduct));
   const [families, setFamilies] = useState<FamilyView[]>([]);
   const [subfamilies, setSubfamilies] = useState<SubfamilyView[]>([]);
   const [taxes, setTaxes] = useState<TaxView[]>([]);
@@ -487,9 +515,10 @@ export function ProductCreateDialog({
   const selectedPriceUseMode = normalizePriceUseMode(form);
   const offerActive = isOfferPriceUseMode(selectedPriceUseMode);
   const calendarTitle = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { month: "long", year: "numeric" }).format(calendarMonth);
+  const editingProduct = Boolean(editProduct?.id);
 
   function resetDialogState() {
-    setForm(createDefaultProductForm());
+    setForm(createProductFormFromEditProduct(editProduct));
     setStatus("");
     setSaving(false);
     setOpenDropdown("");
@@ -502,9 +531,38 @@ export function ProductCreateDialog({
   }
 
   function closeProductDialog() {
-    resetDialogState();
+    setForm(createDefaultProductForm());
+    setStatus("");
+    setSaving(false);
+    setOpenDropdown("");
+    setFamilyPickerOpen(false);
+    setSelectedProductFamily({ familyId: "", subfamilyId: "" });
+    setOfferPickerOpen(false);
+    setOfferRangeStart(null);
+    setCalendarMonth(startOfMonth(new Date()));
+    changeImage(null);
     onClose();
   }
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const nextForm = createProductFormFromEditProduct(editProduct);
+    setForm(nextForm);
+    setSelectedProductFamily({
+      familyId: nextForm.familyId,
+      subfamilyId: nextForm.subfamilyId
+    });
+    setStatus("");
+    setSaving(false);
+    setOpenDropdown("");
+    setFamilyPickerOpen(false);
+    setOfferPickerOpen(false);
+    setOfferRangeStart(null);
+    setCalendarMonth(startOfMonth(new Date()));
+    changeImage(null);
+  }, [open, editProduct?.id]);
 
   useEffect(() => {
     if (!open || !token) {
@@ -770,7 +828,8 @@ export function ProductCreateDialog({
       const result = await saveProductWithOptionalImage({
         form,
         token,
-        imageFile
+        imageFile,
+        productId: editProduct?.id
       });
       onCreated?.(result.product);
       resetDialogState();
@@ -801,7 +860,7 @@ export function ProductCreateDialog({
       <section className="filter-dialog product-create-dialog">
         <header className="filter-header">
           <div>
-            <h2 id="product-create-title">{t("product.create.title")}</h2>
+            <h2 id="product-create-title">{t(editingProduct ? "product.edit.title" : "product.create.title")}</h2>
             <span>{selectedFamily?.name ?? t("product.create.subtitle")}</span>
           </div>
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>

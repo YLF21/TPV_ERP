@@ -4625,6 +4625,11 @@ input {
   overflow: auto;
 }
 
+.stock-table:focus-visible {
+  outline: 2px solid #244e86;
+  outline-offset: -2px;
+}
+
 .stock-row {
   min-height: 48px;
   display: grid;
@@ -4652,6 +4657,12 @@ input {
   border-radius: 13px;
   background: #ffffff;
   padding: 0 12px;
+}
+
+.stock-row.selected {
+  border-color: #244e86;
+  background: #f4f8ff;
+  box-shadow: inset 3px 0 0 #244e86;
 }
 
 .stock-row > * {
@@ -4803,6 +4814,89 @@ input {
 .stock-status-critico em {
   background: #fff0f0;
   color: #c52828;
+}
+
+.stock-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 19, 34, 0.42);
+  padding: 28px;
+}
+
+.stock-detail-dialog {
+  width: min(820px, calc(100vw - 56px));
+  max-height: min(680px, calc(100vh - 56px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(9, 19, 34, 0.22);
+  padding: 20px;
+}
+
+.stock-detail-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stock-detail-tabs button {
+  min-height: 36px;
+  border: 1px solid #d7e0ea;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #17233b;
+  padding: 0 12px;
+  font-weight: 900;
+}
+
+.stock-detail-tabs button.active,
+.stock-detail-tabs button:hover,
+.stock-detail-tabs button:focus-visible {
+  border-color: #244e86;
+  background: #244e86;
+  color: #ffffff;
+  outline: none;
+}
+
+.stock-detail-table {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+}
+
+.stock-detail-row {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.5fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #e6ecf3;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0 12px;
+}
+
+.stock-detail-row.header {
+  min-height: 34px;
+  background: #244e86;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.stock-detail-row.total {
+  border-color: #244e86;
+  background: #f4f8ff;
+  font-weight: 950;
 }
 
 .warehouse-document-overlay {

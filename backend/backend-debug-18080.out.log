@@ -1,0 +1,97 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ---------------------< com.tpverp:tpv-erp-backend >---------------------
+[INFO] Building TPV ERP Backend 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:4.0.6:run (default-cli) > test-compile @ tpv-erp-backend >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ tpv-erp-backend ---
+[INFO] Copying 4 resources from src\main\resources to target\classes
+[INFO] Copying 46 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.1:compile (default-compile) @ tpv-erp-backend ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ tpv-erp-backend ---
+[INFO] skip non existing resourceDirectory C:\Users\YLF\Documents\TPV ERP\backend\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.1:testCompile (default-testCompile) @ tpv-erp-backend ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:4.0.6:run (default-cli) < test-compile @ tpv-erp-backend <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:4.0.6:run (default-cli) @ tpv-erp-backend ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.0.6)
+
+2026-07-08T21:26:49.364+01:00  INFO 71380 --- [TPV ERP Backend] [           main] c.t.backend.TpvErpBackendApplication     : Starting TpvErpBackendApplication using Java 25.0.3 with PID 71380 (C:\Users\YLF\Documents\TPV ERP\backend\target\classes started by YLF in C:\Users\YLF\Documents\TPV ERP\backend)
+2026-07-08T21:26:49.366+01:00 DEBUG 71380 --- [TPV ERP Backend] [           main] c.t.backend.TpvErpBackendApplication     : Running with Spring Boot v4.0.6, Spring v7.0.7
+2026-07-08T21:26:49.367+01:00  INFO 71380 --- [TPV ERP Backend] [           main] c.t.backend.TpvErpBackendApplication     : No active profile set, falling back to 1 default profile: "dev"
+2026-07-08T21:26:50.234+01:00  INFO 71380 --- [TPV ERP Backend] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-07-08T21:26:50.392+01:00  INFO 71380 --- [TPV ERP Backend] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 152 ms. Found 66 JPA repository interfaces.
+2026-07-08T21:26:50.838+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18080 (http)
+2026-07-08T21:26:50.847+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-07-08T21:26:50.848+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.21]
+2026-07-08T21:26:50.881+01:00  INFO 71380 --- [TPV ERP Backend] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 1484 ms
+2026-07-08T21:26:51.114+01:00  INFO 71380 --- [TPV ERP Backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-07-08T21:26:51.210+01:00  INFO 71380 --- [TPV ERP Backend] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@2558f65c
+2026-07-08T21:26:51.211+01:00  INFO 71380 --- [TPV ERP Backend] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-07-08T21:26:51.228+01:00  INFO 71380 --- [TPV ERP Backend] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:postgresql://localhost:5432/tpv_erp_dev (PostgreSQL 18.3)
+2026-07-08T21:26:51.277+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 40 migrations (execution time 00:00.033s)
+2026-07-08T21:26:51.418+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 41
+2026-07-08T21:26:51.420+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.f.core.internal.command.DbMigrate      : Schema "public" is up to date. No migration necessary.
+2026-07-08T21:26:51.494+01:00  INFO 71380 --- [TPV ERP Backend] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
+2026-07-08T21:26:51.522+01:00  INFO 71380 --- [TPV ERP Backend] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.2.12.Final
+2026-07-08T21:26:51.778+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-07-08T21:26:51.828+01:00  INFO 71380 --- [TPV ERP Backend] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:postgresql://localhost:5432/tpv_erp_dev]
+	Database driver: PostgreSQL JDBC Driver
+	Database dialect: PostgreSQLDialect
+	Database version: 18.3
+	Default catalog/schema: tpv_erp_dev/public
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: none
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-07-08T21:26:52.921+01:00  INFO 71380 --- [TPV ERP Backend] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-07-08T21:26:52.964+01:00  INFO 71380 --- [TPV ERP Backend] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-07-08T21:26:53.024+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-07-08T21:26:55.032+01:00  WARN 71380 --- [TPV ERP Backend] [           main] .s.a.UserDetailsServiceAutoConfiguration : 
+
+Using generated security password: 727390b5-5af2-47cf-b38b-717762ce31e6
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-07-08T21:26:55.039+01:00  INFO 71380 --- [TPV ERP Backend] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-07-08T21:26:55.606+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
+2026-07-08T21:26:55.666+01:00  INFO 71380 --- [TPV ERP Backend] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18080 (http) with context path '/'
+2026-07-08T21:26:55.677+01:00  INFO 71380 --- [TPV ERP Backend] [           main] c.t.backend.TpvErpBackendApplication     : Started TpvErpBackendApplication in 6.564 seconds (process running for 6.801)
+2026-07-08T21:27:19.871+01:00  INFO 71380 --- [TPV ERP Backend] [.0-18080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-07-08T21:27:19.872+01:00  INFO 71380 --- [TPV ERP Backend] [.0-18080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-07-08T21:27:19.874+01:00  INFO 71380 --- [TPV ERP Backend] [.0-18080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 2 ms
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  10:43 min
+[INFO] Finished at: 2026-07-08T21:37:30+01:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:4.0.6:run (default-cli) on project tpv-erp-backend: Process terminated with exit code: -1 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException

@@ -354,4 +354,33 @@ describe("ProductCreateDialog", () => {
     expect(createProduct).toHaveBeenCalledWith(buildCreateProductRequest(form), "token");
     expect(uploadImage).toHaveBeenCalledWith("product-1", expect.anything(), "token");
   });
+
+  it("updates an existing product when a product id is provided", async () => {
+    const form = {
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Cafe",
+      code: "A001",
+      purchasePrice: "1.20",
+      salePrice: "2.40"
+    };
+    const updatedProduct = { id: "product-1", code: "A001", name: "Cafe" };
+    const createProduct = vi.fn();
+    const updateProduct = vi.fn().mockResolvedValue(updatedProduct);
+
+    await expect(saveProductWithOptionalImage({
+      form,
+      token: "token",
+      imageFile: null,
+      productId: "product-1",
+      createProduct,
+      updateProduct
+    })).resolves.toEqual({
+      product: updatedProduct,
+      imageUploadFailed: false
+    });
+    expect(createProduct).not.toHaveBeenCalled();
+    expect(updateProduct).toHaveBeenCalledWith("product-1", buildCreateProductRequest(form), "token");
+  });
 });

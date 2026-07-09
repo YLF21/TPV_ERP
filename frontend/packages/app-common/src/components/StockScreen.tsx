@@ -1,15 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
+import type { ProductCreateEditProduct, ProductCreateFormState } from "./ProductCreateDialog";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import stockFilterIcon from "../assets/stock/filter.png";
 import stockSearchIcon from "../assets/stock/search.png";
 
-export type StockViewKey = "stock.topSales" | "stock.current" | "stock.low" | "stock.empty";
+export type StockViewKey =
+  | "stock.current"
+  | "stock.topSales"
+  | "stock.offers"
+  | "stock.memberPrice"
+  | "stock.promotions"
+  | "stock.noDiscount"
+  | "stock.bulkEdit";
+type StockDetailTab = "stock" | "sales" | "edit";
 export type StockTopSalesPeriod = "day" | "week" | "month" | "year" | "custom";
 type StockTopSalesQuickPeriod = Exclude<StockTopSalesPeriod, "custom">;
 
@@ -34,6 +43,8 @@ type ProductView = {
   code?: string | null;
   barcode?: string | null;
   name?: string | null;
+  description?: string | null;
+  comments?: string | null;
   purchasePrice?: number | string | null;
   salePrice?: number | string | null;
   memberPrice?: number | string | null;
@@ -46,6 +57,7 @@ type ProductView = {
   subfamilyId?: string | null;
   taxId?: string | null;
   taxesIncluded?: boolean | null;
+  offerDiscountPercent?: number | string | null;
   offerActive?: boolean | null;
   offerFrom?: string | null;
   offerUntil?: string | null;
@@ -80,11 +92,14 @@ export type StockInventoryRow = {
   code: string;
   barcode: string;
   name: string;
+  description?: string;
+  comments?: string;
   purchasePrice: string;
   salePrice: string;
   memberPrice: string;
   wholesalePrice: string;
   offerPrice: string;
+  offerDiscountPercent?: string;
   productType: string;
   discountType: string;
   familyId: string;
@@ -99,6 +114,7 @@ export type StockInventoryRow = {
   offerUntil: string;
   warehouseName: string;
   quantity: number;
+  totalQuantity: number;
 };
 
 export type StockTopSalesSupplierView = {
@@ -154,7 +170,15 @@ export type StockTopSalesFamilyNode = {
   }>;
 };
 
-const stockViews: StockViewKey[] = ["stock.topSales", "stock.current", "stock.low", "stock.empty"];
+export const stockViews: StockViewKey[] = [
+  "stock.current",
+  "stock.topSales",
+  "stock.offers",
+  "stock.memberPrice",
+  "stock.promotions",
+  "stock.noDiscount",
+  "stock.bulkEdit"
+];
 const stockTopSalesPeriods: StockTopSalesQuickPeriod[] = ["day", "week", "month", "year"];
 const stockColumnMinWidth = 72;
 const stockColumnMaxWidth = 420;
@@ -194,7 +218,7 @@ const stockInventoryColumns: StockColumnDefinition[] = [
   { key: "barcode", labelKey: "stock.column.barcode", defaultWidth: 140 },
   { key: "name", labelKey: "stock.column.name", defaultWidth: 220 },
   { key: "type", labelKey: "stock.column.type", defaultWidth: 88 },
-  { key: "discount", labelKey: "stock.column.discount", defaultWidth: 88 },
+  { key: "discount", labelKey: "product.field.usePrice", defaultWidth: 120 },
   { key: "family", labelKey: "stock.column.family", defaultWidth: 180 },
   { key: "subfamily", labelKey: "stock.column.subfamily", defaultWidth: 180 },
   { key: "tax", labelKey: "stock.column.tax", defaultWidth: 180 },
@@ -208,15 +232,19 @@ const stockInventoryColumns: StockColumnDefinition[] = [
   { key: "offerFrom", labelKey: "stock.column.offerFrom", defaultWidth: 110 },
   { key: "offerUntil", labelKey: "stock.column.offerUntil", defaultWidth: 110 },
   { key: "warehouse", labelKey: "stock.column.warehouse", defaultWidth: 140 },
-  { key: "stock", labelKey: "stock.column.stock", defaultWidth: 86 },
+  { key: "localStock", labelKey: "stock.column.localStock", defaultWidth: 96 },
+  { key: "totalStock", labelKey: "stock.column.totalStock", defaultWidth: 96 },
   { key: "status", labelKey: "stock.column.status", defaultWidth: 180 }
 ];
 
 const stockColumnDefinitions: Record<StockViewKey, StockColumnDefinition[]> = {
   "stock.topSales": stockTopSalesColumns,
   "stock.current": stockInventoryColumns,
-  "stock.low": stockInventoryColumns,
-  "stock.empty": stockInventoryColumns
+  "stock.offers": stockInventoryColumns,
+  "stock.memberPrice": stockInventoryColumns,
+  "stock.promotions": stockInventoryColumns,
+  "stock.noDiscount": stockInventoryColumns,
+  "stock.bulkEdit": stockInventoryColumns
 };
 
 export type StockColumnSettingsByView = Record<StockViewKey, StockColumnSetting[]>;
@@ -255,12 +283,10 @@ function stockColumnDefaultsForView(view: StockViewKey): StockColumnSetting[] {
 }
 
 export function createDefaultStockColumnSettings(): StockColumnSettingsByView {
-  return {
-    "stock.topSales": stockColumnDefaultsForView("stock.topSales"),
-    "stock.current": stockColumnDefaultsForView("stock.current"),
-    "stock.low": stockColumnDefaultsForView("stock.low"),
-    "stock.empty": stockColumnDefaultsForView("stock.empty")
-  };
+  return stockViews.reduce((settings, view) => ({
+    ...settings,
+    [view]: stockColumnDefaultsForView(view)
+  }), {} as StockColumnSettingsByView);
 }
 
 export function stockColumnStorageKey(app: AppKind, username: string) {
@@ -320,6 +346,83 @@ function stockColumnGridTemplate(columns: StockColumnSetting[]) {
   return columns.map((column) => `${column.width}px`).join(" ");
 }
 
+export function stockDetailKeyAction(key: string): StockDetailTab | "close" | null {
+  if (key === "F5" || key === "Enter") {
+    return "stock";
+  }
+  if (key === "F6") {
+    return "sales";
+  }
+  if (key === "F7") {
+    return "edit";
+  }
+  if (key === "Escape") {
+    return "close";
+  }
+  return null;
+}
+
+function productTypeForForm(value: string): ProductCreateFormState["productType"] {
+  return value === "SERVICE" || value === "WEIGHT" ? value : "UNIT";
+}
+
+function priceUseModeForForm(value: string): ProductCreateFormState["priceUseMode"] {
+  if (value === "MEMBER_PRICE" || value === "OFFER_PRICE" || value === "OFFER_DISCOUNT") {
+    return value;
+  }
+  return "NORMAL";
+}
+
+function discountTypeForForm(value: string): ProductCreateFormState["discountType"] {
+  if (value === "NONE" || value === "MEMBER_PRICE" || value === "DISCOUNT_PRICE") {
+    return value;
+  }
+  return "NORMAL";
+}
+
+export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEditProduct {
+  const priceUseMode = priceUseModeForForm(row.discountType);
+  return {
+    id: row.productId,
+    form: {
+      familyId: row.familyId,
+      subfamilyId: row.subfamilyId,
+      taxId: row.taxId,
+      productType: productTypeForForm(row.productType),
+      priceUseMode,
+      discountType: discountTypeForForm(priceUseMode === "MEMBER_PRICE" ? "MEMBER_PRICE" : priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT" ? "DISCOUNT_PRICE" : row.discountType),
+      name: row.name,
+      description: row.description ?? "",
+      comments: row.comments ?? "",
+      purchasePrice: row.purchasePrice || "0.00",
+      taxesIncluded: row.taxesIncluded === "common.yes",
+      code: row.code,
+      barcode: row.barcode,
+      salePrice: row.salePrice || "0.00",
+      memberPrice: row.memberPrice,
+      wholesalePrice: row.wholesalePrice,
+      offerPrice: row.offerPrice,
+      offerDiscountPercent: row.offerDiscountPercent ?? "",
+      offerActive: priceUseMode === "OFFER_PRICE" || priceUseMode === "OFFER_DISCOUNT",
+      offerFrom: row.offerFrom,
+      offerUntil: row.offerUntil
+    }
+  };
+}
+
+export function nextStockSelectedIndex(currentIndex: number, rowCount: number, key: string) {
+  if (rowCount <= 0) {
+    return -1;
+  }
+  if (key === "ArrowDown") {
+    return Math.min(rowCount - 1, currentIndex + 1);
+  }
+  if (key === "ArrowUp") {
+    return Math.max(0, currentIndex - 1);
+  }
+  return currentIndex;
+}
+
 function uniqueStockOptions(rows: StockInventoryRow[], valueKey: keyof StockInventoryRow, labelKey: keyof StockInventoryRow) {
   const options = new Map<string, string>();
   rows.forEach((row) => {
@@ -371,6 +474,10 @@ export function buildStockInventoryRows(
   const subfamiliesById = new Map((catalog.subfamilies ?? []).map((subfamily) => [subfamily.id, subfamily]));
   const taxesById = new Map((catalog.taxes ?? []).map((tax) => [tax.id, tax]));
   const defaultWarehouse = warehouses.find((warehouse) => warehouse.defaultWarehouse) ?? warehouses[0];
+  const totalStockByProduct = stock.reduce<Map<string, number>>((totals, item) => {
+    totals.set(item.productId, (totals.get(item.productId) ?? 0) + valueNumber(item.quantity));
+    return totals;
+  }, new Map());
   const seenProducts = new Set<string>();
 
   function productRow(product: ProductView | undefined, productId: string, warehouseId: string, warehouseName: string, quantity: number): StockInventoryRow {
@@ -383,11 +490,14 @@ export function buildStockInventoryRows(
       code: valueText(product?.code),
       barcode: valueText(product?.barcode),
       name: valueText(product?.name ?? productId),
+      description: valueText(product?.description),
+      comments: valueText(product?.comments),
       purchasePrice: valueText(product?.purchasePrice),
       salePrice: valueText(product?.salePrice),
       memberPrice: valueText(product?.memberPrice),
       wholesalePrice: valueText(product?.wholesalePrice),
       offerPrice: valueText(product?.offerPrice),
+      offerDiscountPercent: valueText(product?.offerDiscountPercent),
       productType: valueText(product?.productType),
       discountType: valueText(product?.priceUseMode ?? product?.discountType),
       familyId: valueText(product?.familyId),
@@ -401,7 +511,8 @@ export function buildStockInventoryRows(
       offerFrom: valueText(product?.offerFrom),
       offerUntil: valueText(product?.offerUntil),
       warehouseName,
-      quantity
+      quantity,
+      totalQuantity: totalStockByProduct.get(productId) ?? quantity
     };
   }
 
@@ -507,10 +618,16 @@ export function filterStockInventoryRows(
   const normalizedSearch = searchText.trim().toLocaleLowerCase("es");
 
   return rows.filter((row) => {
-    if (selectedView === "stock.low" && (row.quantity <= 0 || row.quantity > 5)) {
+    if (selectedView === "stock.offers" && !["OFFER_PRICE", "OFFER_DISCOUNT", "DISCOUNT_PRICE"].includes(row.discountType)) {
       return false;
     }
-    if (selectedView === "stock.empty" && row.quantity > 0) {
+    if (selectedView === "stock.memberPrice" && row.discountType !== "MEMBER_PRICE") {
+      return false;
+    }
+    if (selectedView === "stock.noDiscount" && row.discountType !== "NONE") {
+      return false;
+    }
+    if (selectedView === "stock.promotions" || selectedView === "stock.bulkEdit") {
       return false;
     }
     if (filters.type && row.productType !== filters.type) {
@@ -828,7 +945,7 @@ export function StockScreen({
 }: StockScreenProps) {
   const t = createTranslator(locale);
   const stockTitle = t("home.stock").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
-  const [selectedView, setSelectedView] = useState<StockViewKey>("stock.topSales");
+  const [selectedView, setSelectedView] = useState<StockViewKey>("stock.current");
   const [searchText, setSearchText] = useState("");
   const [stockRows, setStockRows] = useState<StockInventoryRow[]>([]);
   const [status, setStatus] = useState("stock.status.noData");
@@ -874,6 +991,11 @@ export function StockScreen({
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({});
   const [selectedFamily, setSelectedFamily] = useState({ family: "", subfamily: "" });
   const [columnSettings, setColumnSettings] = useState<StockColumnSettingsByView>(() => loadStoredStockColumnSettings(app, session.username));
+  const [selectedStockIndex, setSelectedStockIndex] = useState(0);
+  const [detailRow, setDetailRow] = useState<StockInventoryRow | null>(null);
+  const [detailTab, setDetailTab] = useState<StockDetailTab>("stock");
+  const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
+  const stockTableRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -957,6 +1079,8 @@ export function StockScreen({
   const selectedGridStyle: CSSProperties = {
     gridTemplateColumns: stockColumnGridTemplate(selectedColumnSettings)
   };
+  const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
+  const detailStockRows = detailRow ? stockRows.filter((row) => row.productId === detailRow.productId) : [];
 
   useEffect(() => {
     setColumnSettings(loadStoredStockColumnSettings(app, session.username));
@@ -965,6 +1089,40 @@ export function StockScreen({
   useEffect(() => {
     saveStoredStockColumnSettings(app, session.username, columnSettings);
   }, [app, session.username, columnSettings]);
+
+  useEffect(() => {
+    setSelectedStockIndex((current) => {
+      if (visibleRows.length === 0) {
+        return 0;
+      }
+      return Math.min(current, visibleRows.length - 1);
+    });
+  }, [visibleRows.length, selectedView, searchText]);
+
+  useEffect(() => {
+    if (!detailRow) {
+      return;
+    }
+    const row = detailRow;
+    function handleDetailKey(event: globalThis.KeyboardEvent) {
+      const action = stockDetailKeyAction(event.key);
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      if (action === "close") {
+        setDetailRow(null);
+      } else {
+        setDetailTab(action);
+        if (action === "edit") {
+          setEditingProduct(stockRowToProductEdit(row));
+          setProductCreateOpen(true);
+        }
+      }
+    }
+    window.addEventListener("keydown", handleDetailKey);
+    return () => window.removeEventListener("keydown", handleDetailKey);
+  }, [detailRow]);
 
   function updateDraftTopSalesFilter(key: keyof StockTopSalesFilters, value: string) {
     setDraftTopSalesFilters((current) => ({ ...current, [key]: value }));
@@ -1012,6 +1170,42 @@ export function StockScreen({
     setDraftInventoryView("stock.current");
     setDraftInventoryFilters(defaultStockInventoryFilters);
     setSelectedInventoryFamily("");
+  }
+
+  function openStockDetail(row: StockInventoryRow | null, tab: StockDetailTab = "stock") {
+    if (!row) {
+      return;
+    }
+    setDetailRow(row);
+    setDetailTab(tab);
+    if (tab === "edit") {
+      setEditingProduct(stockRowToProductEdit(row));
+      setProductCreateOpen(true);
+    }
+  }
+
+  function handleStockTableKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (selectedView === "stock.topSales") {
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelectedStockIndex((current) => nextStockSelectedIndex(current, visibleRows.length, event.key));
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      if (stockTableRef.current) {
+        stockTableRef.current.scrollLeft += event.key === "ArrowRight" ? 96 : -96;
+      }
+      return;
+    }
+    const action = stockDetailKeyAction(event.key);
+    if (!action || action === "close") {
+      return;
+    }
+    event.preventDefault();
+    openStockDetail(selectedStockRow, action);
   }
 
   function clearTopSalesFilters() {
@@ -1324,8 +1518,11 @@ export function StockScreen({
     if (columnKey === "warehouse") {
       return <span>{row.warehouseName}</span>;
     }
-    if (columnKey === "stock") {
+    if (columnKey === "localStock") {
       return <b>{row.quantity}</b>;
+    }
+    if (columnKey === "totalStock") {
+      return <b>{row.totalQuantity}</b>;
     }
     if (columnKey === "status") {
       return <em>{t(stockInventoryStatus(row.quantity))}</em>;
@@ -1404,7 +1601,14 @@ export function StockScreen({
               <h2>{selectedViewLabel}</h2>
               <span>{selectedViewSubtitle}</span>
             </div>
-            <button type="button" className="stock-add-product-button" onClick={() => setProductCreateOpen(true)}>
+            <button
+              type="button"
+              className="stock-add-product-button"
+              onClick={() => {
+                setEditingProduct(null);
+                setProductCreateOpen(true);
+              }}
+            >
               {t("product.create.button")}
             </button>
           </header>
@@ -1486,11 +1690,23 @@ export function StockScreen({
                 </button>
                 <button type="button" className="stock-columns-button" onClick={() => setStockColumnsOpen(true)}>{t("stock.columns")}</button>
               </div>
-              <div className="stock-table">
+              <div
+                className="stock-table"
+                ref={stockTableRef}
+                tabIndex={0}
+                onKeyDown={handleStockTableKeyDown}
+                aria-label={t("stock.table.aria")}
+              >
                 {renderStockHeader()}
                 {visibleRows.length === 0 && <div className="stock-empty-state">{stockRows.length === 0 ? t(status) : t("stock.status.noResults")}</div>}
-                {visibleRows.map((row) => (
-                  <article className="stock-row" key={`${row.productId}-${row.warehouseId}`} style={selectedGridStyle}>
+                {visibleRows.map((row, index) => (
+                  <article
+                    className={`stock-row ${index === selectedStockIndex ? "selected" : ""}`}
+                    key={`${row.productId}-${row.warehouseId}`}
+                    style={selectedGridStyle}
+                    onClick={() => setSelectedStockIndex(index)}
+                    onDoubleClick={() => openStockDetail(row, "stock")}
+                  >
                     {selectedColumnSettings.map((column) => (
                       <span className="stock-cell" key={column.key}>
                         {renderInventoryCell(row, column.key)}
@@ -1641,7 +1857,7 @@ export function StockScreen({
               <div className="filter-field filter-wide">
                 <span>{t("stock.filter.inventoryView")}</span>
                 <div className="stock-periods" aria-label={t("stock.filter.inventoryView")}>
-                  {(["stock.current", "stock.low", "stock.empty"] as StockViewKey[]).map((view) => (
+                  {stockViews.filter((view) => view !== "stock.topSales").map((view) => (
                     <button
                       type="button"
                       className={draftInventoryView === view ? "selected" : ""}
@@ -1857,11 +2073,72 @@ export function StockScreen({
         </div>
       )}
 
+      {detailRow && (
+        <div className="filter-overlay stock-detail-overlay" role="dialog" aria-modal="true" aria-labelledby="stock-detail-title">
+          <section className="filter-dialog stock-detail-dialog">
+            <header className="filter-header">
+              <div>
+                <h2 id="stock-detail-title">{detailRow.name}</h2>
+                <span>{detailRow.code}</span>
+              </div>
+              <button type="button" onClick={() => setDetailRow(null)}>{t("common.close")}</button>
+            </header>
+            <div className="stock-detail-tabs" role="tablist">
+              <button type="button" className={detailTab === "stock" ? "selected" : ""} onClick={() => setDetailTab("stock")}>
+                {t("stock.detail.stockTab")}
+              </button>
+              <button type="button" className={detailTab === "sales" ? "selected" : ""} onClick={() => setDetailTab("sales")}>
+                {t("stock.detail.salesTab")}
+              </button>
+              <button
+                type="button"
+                className={detailTab === "edit" ? "selected" : ""}
+                onClick={() => {
+                  setDetailTab("edit");
+                  setEditingProduct(stockRowToProductEdit(detailRow));
+                  setProductCreateOpen(true);
+                }}
+              >
+                {t("stock.detail.editTab")}
+              </button>
+            </div>
+            {detailTab === "stock" && (
+              <div className="stock-detail-table">
+                <div className="stock-detail-row header">
+                  <span>{t("stock.column.warehouse")}</span>
+                  <span>{t("stock.column.localStock")}</span>
+                </div>
+                {detailStockRows.map((row) => (
+                  <div className="stock-detail-row" key={`${row.productId}-${row.warehouseId}`}>
+                    <span>{row.warehouseName}</span>
+                    <strong>{row.quantity}</strong>
+                  </div>
+                ))}
+                <div className="stock-detail-row total">
+                  <span>{t("stock.column.totalStock")}</span>
+                  <strong>{detailRow.totalQuantity}</strong>
+                </div>
+              </div>
+            )}
+            {detailTab === "sales" && (
+              <div className="stock-empty-state">{t("stock.detail.salesEmpty")}</div>
+            )}
+            {detailTab === "edit" && (
+              <div className="stock-empty-state">{t("stock.detail.editHint")}</div>
+            )}
+          </section>
+        </div>
+      )}
+
       <ProductCreateDialog
         open={productCreateOpen}
         locale={locale}
         token={session.accessToken}
-        onClose={() => setProductCreateOpen(false)}
+        editProduct={editingProduct}
+        onClose={() => {
+          setProductCreateOpen(false);
+          setEditingProduct(null);
+        }}
         onCreated={() => {
           setSelectedView((current) => stockViewAfterProductCreated(current));
           setStockRefreshCounter((current) => current + 1);

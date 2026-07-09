@@ -19,6 +19,10 @@ import {
   loadStockSubfamilies,
   loadStockInventoryRows,
   stockTopSalesPath,
+  stockViews,
+  stockDetailKeyAction,
+  nextStockSelectedIndex,
+  stockRowToProductEdit,
   StockScreen
 } from "./StockScreen";
 import type { TerminalContext, UserSession } from "../types";
@@ -92,9 +96,24 @@ describe("StockScreen", () => {
         offerFrom: "2026-07-01",
         offerUntil: "2026-07-31",
         warehouseName: "GENERAL",
-        quantity: 12
+        quantity: 12,
+        totalQuantity: 12
       })
     ]);
+  });
+
+  it("uses the new stock sections without the old low and empty views", () => {
+    expect(stockViews).toEqual([
+      "stock.current",
+      "stock.topSales",
+      "stock.offers",
+      "stock.memberPrice",
+      "stock.promotions",
+      "stock.noDiscount",
+      "stock.bulkEdit"
+    ]);
+    expect(stockViews).not.toContain("stock.low");
+    expect(stockViews).not.toContain("stock.empty");
   });
 
   it("keeps backend products with no stock visible in inventory rows", () => {
@@ -201,13 +220,13 @@ describe("StockScreen", () => {
     ]);
   });
 
-  it("shows the inventory list after creating a product", () => {
+  it("shows the stock list after creating a product", () => {
     expect(stockViewAfterProductCreated("stock.topSales")).toBe("stock.current");
-    expect(stockViewAfterProductCreated("stock.low")).toBe("stock.current");
-    expect(stockViewAfterProductCreated("stock.empty")).toBe("stock.current");
+    expect(stockViewAfterProductCreated("stock.offers")).toBe("stock.current");
+    expect(stockViewAfterProductCreated("stock.bulkEdit")).toBe("stock.current");
   });
 
-  it("filters inventory rows by selected stock view and search text", () => {
+  it("filters stock rows by selected stock section and search text", () => {
     const rows = [
       {
         productId: "product-1",
@@ -233,7 +252,8 @@ describe("StockScreen", () => {
         offerFrom: "-",
         offerUntil: "-",
         warehouseName: "GENERAL",
-        quantity: 12
+        quantity: 12,
+        totalQuantity: 12
       },
       {
         productId: "product-2",
@@ -259,7 +279,8 @@ describe("StockScreen", () => {
         offerFrom: "-",
         offerUntil: "-",
         warehouseName: "RESERVA",
-        quantity: 3
+        quantity: 3,
+        totalQuantity: 3
       },
       {
         productId: "product-3",
@@ -285,15 +306,124 @@ describe("StockScreen", () => {
         offerFrom: "-",
         offerUntil: "-",
         warehouseName: "GENERAL",
-        quantity: 0
+        quantity: 0,
+        totalQuantity: 0
+      },
+      {
+        productId: "product-4",
+        warehouseId: "warehouse-1",
+        code: "D004",
+        barcode: "-",
+        name: "Articulo oferta",
+        purchasePrice: "1.00",
+        salePrice: "2.00",
+        memberPrice: "-",
+        wholesalePrice: "-",
+        offerPrice: "1.50",
+        productType: "UNIT",
+        discountType: "OFFER_DISCOUNT",
+        familyId: "family-4",
+        familyName: "Ofertas",
+        subfamilyId: "-",
+        subfamilyName: "-",
+        taxId: "tax-1",
+        taxName: "7%",
+        taxesIncluded: "common.yes",
+        offerActive: "common.yes",
+        offerFrom: "2026-07-01",
+        offerUntil: "-",
+        warehouseName: "GENERAL",
+        quantity: 6,
+        totalQuantity: 6
       }
     ];
 
-    expect(filterStockInventoryRows(rows, "stock.low", "")).toHaveLength(1);
-    expect(filterStockInventoryRows(rows, "stock.empty", "")).toHaveLength(1);
     expect(filterStockInventoryRows(rows, "stock.current", "reserva")).toEqual([
       expect.objectContaining({ code: "B002" })
     ]);
+    expect(filterStockInventoryRows(rows, "stock.offers", "")).toEqual([
+      expect.objectContaining({ code: "D004" })
+    ]);
+    expect(filterStockInventoryRows(rows, "stock.memberPrice", "")).toEqual([]);
+    expect(filterStockInventoryRows(rows, "stock.bulkEdit", "")).toEqual([]);
+  });
+
+  it("calculates product total stock across warehouses", () => {
+    const rows = buildStockInventoryRows(
+      [{ id: "product-1", code: "A001", name: "Cafe", salePrice: "3.95", productType: "UNIT", discountType: "NORMAL" }],
+      [
+        { id: "warehouse-1", name: "GENERAL", defaultWarehouse: true },
+        { id: "warehouse-2", name: "RESERVA" }
+      ],
+      [
+        { productId: "product-1", warehouseId: "warehouse-1", quantity: 8 },
+        { productId: "product-1", warehouseId: "warehouse-2", quantity: 5 }
+      ]
+    );
+
+    expect(rows).toEqual([
+      expect.objectContaining({ warehouseName: "GENERAL", quantity: 8, totalQuantity: 13 }),
+      expect.objectContaining({ warehouseName: "RESERVA", quantity: 5, totalQuantity: 13 })
+    ]);
+  });
+
+  it("maps stock list keyboard shortcuts to detail tabs", () => {
+    expect(stockDetailKeyAction("F5")).toBe("stock");
+    expect(stockDetailKeyAction("F6")).toBe("sales");
+    expect(stockDetailKeyAction("F7")).toBe("edit");
+    expect(stockDetailKeyAction("Enter")).toBe("stock");
+    expect(stockDetailKeyAction("Escape")).toBe("close");
+    expect(stockDetailKeyAction("F8")).toBeNull();
+  });
+
+  it("builds an edit product form from the selected stock row", () => {
+    expect(stockRowToProductEdit({
+      productId: "product-1",
+      warehouseId: "warehouse-1",
+      code: "A001",
+      barcode: "8430000000011",
+      name: "Cafe molido",
+      description: "Tueste natural",
+      comments: "Preferente",
+      purchasePrice: "4.20",
+      salePrice: "6.50",
+      memberPrice: "6.00",
+      wholesalePrice: "5.30",
+      offerPrice: "5.95",
+      offerDiscountPercent: "10",
+      productType: "UNIT",
+      discountType: "OFFER_DISCOUNT",
+      familyId: "family-1",
+      familyName: "Bebidas",
+      subfamilyId: "subfamily-1",
+      subfamilyName: "Cafe",
+      taxId: "tax-1",
+      taxName: "7%",
+      taxesIncluded: "common.yes",
+      offerActive: "common.yes",
+      offerFrom: "2026-07-01",
+      offerUntil: "2026-07-31",
+      warehouseName: "GENERAL",
+      quantity: 12,
+      totalQuantity: 18
+    })).toEqual(expect.objectContaining({
+      id: "product-1",
+      form: expect.objectContaining({
+        code: "A001",
+        name: "Cafe molido",
+        priceUseMode: "OFFER_DISCOUNT",
+        discountType: "DISCOUNT_PRICE",
+        offerDiscountPercent: "10"
+      })
+    }));
+  });
+
+  it("moves the selected stock row with arrow keys", () => {
+    expect(nextStockSelectedIndex(0, 3, "ArrowDown")).toBe(1);
+    expect(nextStockSelectedIndex(2, 3, "ArrowDown")).toBe(2);
+    expect(nextStockSelectedIndex(2, 3, "ArrowUp")).toBe(1);
+    expect(nextStockSelectedIndex(0, 3, "ArrowUp")).toBe(0);
+    expect(nextStockSelectedIndex(0, 0, "ArrowDown")).toBe(-1);
   });
 
   it("filters inventory rows by product attributes selected in the inventory dialog", () => {
@@ -322,7 +452,8 @@ describe("StockScreen", () => {
         offerFrom: "2026-07-01",
         offerUntil: "2026-07-31",
         warehouseName: "GENERAL",
-        quantity: 12
+        quantity: 12,
+        totalQuantity: 12
       },
       {
         productId: "product-2",
@@ -348,7 +479,8 @@ describe("StockScreen", () => {
         offerFrom: "-",
         offerUntil: "-",
         warehouseName: "RESERVA",
-        quantity: 3
+        quantity: 3,
+        totalQuantity: 3
       }
     ];
 
@@ -554,25 +686,26 @@ describe("StockScreen", () => {
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
-    expect(html).toContain("INVENTARIO");
+    expect(html).toContain("STOCK");
     expect(html).toContain("Top ventas");
     expect(html).toContain("Añadir producto");
-    expect(html).toContain("Semana");
     expect(html).toContain("Filtrar");
-    expect(html).toContain("Unidades vendidas");
-    expect(html).toContain("Importe");
-    expect(html).toContain("Inventario");
-    expect(html).toContain("Bajo minimo");
-    expect(html).toContain("Sin stock");
+    expect(html).toContain("Stock local");
+    expect(html).toContain("Stock total");
+    expect(html).toContain("Stock");
+    expect(html).toContain("Productos con oferta");
+    expect(html).toContain("Productos con precio socio");
+    expect(html).toContain("Productos con promocion");
+    expect(html).toContain("Productos prohibidos a descuento");
+    expect(html).toContain("Edicion masiva de productos");
     expect(html).toContain("Configuracion stock");
     expect(html).toContain("Codigo");
     expect(html).toContain("Codigo barra");
     expect(html).toContain("Nombre");
     expect(html).toContain("Familia");
     expect(html).toContain("Subfamilia");
-    expect(html).toContain("Proveedor");
     expect(html).toContain("Almacen");
-    expect(html).toContain("Sin ventas en el periodo");
+    expect(html).toContain("Sin datos de stock");
     expect(html).not.toContain("Movimientos");
     expect(html).not.toContain("Entrada stock");
     expect(html).not.toContain("Cafe molido");
@@ -583,7 +716,7 @@ describe("StockScreen", () => {
   it("uses an inventory filter dialog label outside top sales", () => {
     expect(stockFilterButtonLabelKey("stock.topSales")).toBe("stock.filter.title");
     expect(stockFilterButtonLabelKey("stock.current")).toBe("stock.filter.inventoryTitle");
-    expect(stockFilterButtonLabelKey("stock.low")).toBe("stock.filter.inventoryTitle");
-    expect(stockFilterButtonLabelKey("stock.empty")).toBe("stock.filter.inventoryTitle");
+    expect(stockFilterButtonLabelKey("stock.offers")).toBe("stock.filter.inventoryTitle");
+    expect(stockFilterButtonLabelKey("stock.bulkEdit")).toBe("stock.filter.inventoryTitle");
   });
 });
