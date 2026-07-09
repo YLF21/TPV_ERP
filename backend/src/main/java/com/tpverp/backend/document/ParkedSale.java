@@ -106,9 +106,12 @@ public class ParkedSale {
     }
 
     private static DocumentLineCommand line(Map<?, ?> value) {
+        var type = value.get("tipoLinea") == null
+                ? DocumentLineType.PRODUCT
+                : DocumentLineType.valueOf((String) value.get("tipoLinea"));
         return new DocumentLineCommand(
                 uuid(value.get("productoId")),
-                ((Number) value.get("cantidad")).intValue(),
+                decimal(value.get("cantidad")),
                 (String) value.get("codigo"),
                 (String) value.get("nombre"),
                 (String) value.get("tarifa"),
@@ -116,7 +119,11 @@ public class ParkedSale {
                 decimal(value.get("descuento")),
                 (Boolean) value.get("impuestosIncluidos"),
                 (String) value.get("regimenImpuesto"),
-                decimal(value.get("porcentajeImpuesto")));
+                decimal(value.get("porcentajeImpuesto")),
+                type,
+                uuid(value.get("promocionId")),
+                uuid(value.get("promocionVersionId")),
+                uuid(value.get("cuponPromocionalId")));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -132,7 +139,13 @@ public class ParkedSale {
 
     private static Map<String, Object> snapshot(DocumentLineCommand line) {
         var value = new LinkedHashMap<String, Object>();
-        value.put("productoId", line.productoId().toString());
+        value.put("productoId", string(line.productoId()));
+        value.put("tipoLinea", line.lineType() == null
+                ? DocumentLineType.PRODUCT.name()
+                : line.lineType().name());
+        value.put("promocionId", string(line.promotionId()));
+        value.put("promocionVersionId", string(line.promotionVersionId()));
+        value.put("cuponPromocionalId", string(line.promotionalCouponId()));
         value.put("cantidad", line.cantidad());
         value.put("codigo", line.codigo());
         value.put("nombre", line.nombre());

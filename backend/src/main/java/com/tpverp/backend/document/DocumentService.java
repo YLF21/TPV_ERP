@@ -451,12 +451,20 @@ public class DocumentService {
                         || command.tipo() == CommercialDocumentType.TICKET
                         || DELIVERY_NOTES.contains(command.tipo()));
         for (var line : command.lineas()) {
+            if (!isProductLine(line)) {
+                document.addLine(line.toEntity(document));
+                continue;
+            }
             var product = productForLine(line);
             validateLineQuantity(line, product);
             var pricedLine = memberLoyalty.applyLineBenefit(command.clienteId(), line, product);
             document.addLine(pricedLine.toEntity(document));
         }
         return document;
+    }
+
+    private static boolean isProductLine(DocumentLineCommand line) {
+        return line.lineType() == null || line.lineType() == DocumentLineType.PRODUCT;
     }
 
     private Product productForLine(DocumentLineCommand line) {

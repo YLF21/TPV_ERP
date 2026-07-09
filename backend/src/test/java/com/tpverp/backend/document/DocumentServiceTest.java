@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.DiscountType;
@@ -338,6 +339,31 @@ class DocumentServiceTest {
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
         verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+    }
+
+    @Test
+    void ticketCreationAddsPromotionLineWithoutProductLookupOrMemberBenefit() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var productId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "AGUA", "Agua", new BigDecimal("3.00")),
+                        promotionCommand(promotionId, null, new BigDecimal("-1.00")))),
+                List.of(new PaymentCommand(cash.getId(), new BigDecimal("2.00"), true, null, null)),
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("2.00");
+        assertThat(ticket.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PROMOTION);
+        verify(productRepository, times(1)).findById(productId);
+        verify(memberLoyaltyService, times(1)).applyLineBenefit(any(), any(), any());
     }
 
     @Test
@@ -1158,6 +1184,17 @@ class DocumentServiceTest {
         return new DocumentLineCommand(
                 productId, 1, code, name, "VENTA", price,
                 BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+    }
+
+    private DocumentLineCommand promotionCommand(
+            UUID promotionId,
+            UUID couponId,
+            BigDecimal amount) {
+        return new DocumentLineCommand(
+                null, BigDecimal.ONE, "PROMO", "PROMOCION 3x2 Agua", null,
+                amount, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"),
+                couponId == null ? DocumentLineType.PROMOTION : DocumentLineType.PROMOTIONAL_COUPON,
+                promotionId, null, couponId);
     }
 
     private DocumentCommand negativeTicketCommand() {

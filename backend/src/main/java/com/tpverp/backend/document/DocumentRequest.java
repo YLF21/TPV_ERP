@@ -28,7 +28,7 @@ public record DocumentRequest(
     }
 
     public record LineRequest(
-            @NotNull UUID productoId,
+            UUID productoId,
             @NotNull BigDecimal cantidad,
             @NotNull String codigo,
             @NotNull String nombre,
@@ -37,12 +37,21 @@ public record DocumentRequest(
             @NotNull BigDecimal descuento,
             boolean impuestosIncluidos,
             @NotNull String regimenImpuesto,
-            @NotNull BigDecimal porcentajeImpuesto) {
+            @NotNull BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId) {
 
         DocumentLineCommand toCommand() {
+            var resolvedType = lineType == null ? DocumentLineType.PRODUCT : lineType;
+            if (resolvedType == DocumentLineType.PRODUCT && productoId == null) {
+                throw new IllegalArgumentException("productoId es obligatorio");
+            }
             return new DocumentLineCommand(
                     productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
-                    descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto);
+                    descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                    resolvedType, promotionId, promotionVersionId, promotionalCouponId);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -42,6 +43,47 @@ class DocumentPromotionLineTest {
         assertThat(line.getProductoId()).isNull();
         assertThat(line.getPromotionId()).isEqualTo(promotionId);
         assertThat(line.getPromotionalCouponId()).isEqualTo(couponId);
+    }
+
+    @Test
+    void documentRequestConvertsPromotionLineMetadata() {
+        var promotionId = UUID.randomUUID();
+        var versionId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var request = new DocumentRequest(
+                UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 9), null, null, null, BigDecimal.ZERO,
+                false,
+                java.util.List.of(new DocumentRequest.LineRequest(
+                        null, BigDecimal.ONE, "CUPON", "CUPON BIENVENIDA", null,
+                        new BigDecimal("-1.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21.00"), DocumentLineType.PROMOTIONAL_COUPON,
+                        promotionId, versionId, couponId)));
+
+        var line = request.toCommand().lineas().getFirst();
+
+        assertThat(line.productoId()).isNull();
+        assertThat(line.lineType()).isEqualTo(DocumentLineType.PROMOTIONAL_COUPON);
+        assertThat(line.promotionId()).isEqualTo(promotionId);
+        assertThat(line.promotionVersionId()).isEqualTo(versionId);
+        assertThat(line.promotionalCouponId()).isEqualTo(couponId);
+    }
+
+    @Test
+    void documentRequestRejectsProductLineWithoutProductId() {
+        var request = new DocumentRequest(
+                UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 9), null, null, null, BigDecimal.ZERO,
+                false,
+                java.util.List.of(new DocumentRequest.LineRequest(
+                        null, BigDecimal.ONE, "P-1", "Producto", "VENTA",
+                        new BigDecimal("3.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21.00"), DocumentLineType.PRODUCT,
+                        null, null, null)));
+
+        assertThatThrownBy(request::toCommand)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("productoId");
     }
 
     private static CommercialDocument salesDocument() {
