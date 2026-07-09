@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -112,7 +113,8 @@ public class PromotionService {
                 request.startDate(),
                 request.endDate(),
                 request.scope(),
-                request.customerSegment());
+                request.customerSegment(),
+                request.memberCategoryId());
         if (request.type() == PromotionType.BUY_X_PAY_Y) {
             promotion.configureBuyXPayY(request.buyQuantity(), request.payQuantity());
         }
@@ -130,7 +132,9 @@ public class PromotionService {
         return switch (promotion.customerSegment()) {
             case ALL -> true;
             case IDENTIFIED_CUSTOMERS -> request.customerId() != null;
-            case MEMBERS_ONLY, MEMBER_CATEGORY -> request.memberId() != null;
+            case MEMBERS_ONLY -> request.memberId() != null;
+            case MEMBER_CATEGORY -> request.memberId() != null
+                    && Objects.equals(promotion.memberCategoryId(), request.memberCategoryId());
         };
     }
 
@@ -148,6 +152,7 @@ public class PromotionService {
             LocalDate endDate,
             PromotionScope scope,
             PromotionCustomerSegment customerSegment,
+            UUID memberCategoryId,
             BigDecimal buyQuantity,
             BigDecimal payQuantity,
             BigDecimal discountPercent) {
@@ -162,6 +167,7 @@ public class PromotionService {
             LocalDate endDate,
             PromotionScope scope,
             PromotionCustomerSegment customerSegment,
+            UUID memberCategoryId,
             BigDecimal buyQuantity,
             BigDecimal payQuantity,
             BigDecimal discountPercent,
@@ -178,6 +184,7 @@ public class PromotionService {
                     promotion.endDate(),
                     promotion.scope(),
                     promotion.customerSegment(),
+                    promotion.memberCategoryId(),
                     promotion.buyQuantity(),
                     promotion.payQuantity(),
                     promotion.discountPercent(),

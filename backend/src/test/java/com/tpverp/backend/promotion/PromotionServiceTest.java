@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -184,6 +186,7 @@ class PromotionServiceTest {
                 PromotionCustomerSegment.ALL,
                 null,
                 null,
+                null,
                 new BigDecimal("50.00")));
 
         assertThat(view.name()).isEqualTo("Segunda unidad");
@@ -245,6 +248,44 @@ class PromotionServiceTest {
                     assertThat(benefit.name()).isEqualTo("3x2 Agua");
                     assertThat(benefit.taxPercent()).isEqualByComparingTo("7.00");
                 });
+    }
+
+    @Test
+    void previewRequiresMatchingMemberCategoryForCategoryPromotion() {
+        currentCompany();
+        var categoryId = UUID.randomUUID();
+        var otherCategoryId = UUID.randomUUID();
+        var promotion = buyXPayY("3x2 Socio Empleado");
+        promotion.configureManagementFields(
+                LocalDate.of(2026, 7, 1),
+                null,
+                PromotionScope.SALE,
+                PromotionCustomerSegment.MEMBER_CATEGORY,
+                categoryId);
+        promotion.activate();
+        when(promotions.findByEmpresaIdAndEstado(company.getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+
+        var preview = service().preview(new PromotionPreviewRequest(
+                LocalDate.of(2026, 7, 9),
+                null,
+                UUID.randomUUID(),
+                otherCategoryId,
+                List.of(new PromotionPreviewRequest.Line(
+                        1,
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        new BigDecimal("3"),
+                        new BigDecimal("5.00"),
+                        true,
+                        "IVA",
+                        new BigDecimal("7.00"),
+                        false,
+                        true))));
+
+        assertThat(preview.appliedPromotions()).isEmpty();
+        verify(targets, never()).findByPromocionIdIn(any());
     }
 
     private PromotionService service() {

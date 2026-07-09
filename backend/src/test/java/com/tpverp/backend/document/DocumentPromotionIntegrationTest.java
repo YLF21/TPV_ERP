@@ -219,7 +219,7 @@ class DocumentPromotionIntegrationTest {
     void oldDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.minusDays(10), UUID.randomUUID());
         var promotion = purchaseThresholdCoupon();
-        promotion.configureManagementFields(TODAY.minusDays(10), TODAY.minusDays(1), PromotionScope.SALE, null);
+        promotion.configureManagementFields(TODAY.minusDays(10), TODAY.minusDays(1), PromotionScope.SALE, null, null);
         promotion.activate();
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);
@@ -237,7 +237,7 @@ class DocumentPromotionIntegrationTest {
     void futureDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.plusDays(10), UUID.randomUUID());
         var promotion = purchaseThresholdCoupon();
-        promotion.configureManagementFields(TODAY.plusDays(1), null, PromotionScope.SALE, null);
+        promotion.configureManagementFields(TODAY.plusDays(1), null, PromotionScope.SALE, null, null);
         promotion.activate();
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);
@@ -258,7 +258,7 @@ class DocumentPromotionIntegrationTest {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY, documentProductId);
         var product = product(documentProductId, UUID.randomUUID(), null);
         var promotion = purchaseThresholdCoupon();
-        promotion.configureManagementFields(TODAY.minusDays(1), null, PromotionScope.PRODUCT_LIST, null);
+        promotion.configureManagementFields(TODAY.minusDays(1), null, PromotionScope.PRODUCT_LIST, null, null);
         promotion.activate();
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);

@@ -236,12 +236,16 @@ public class Promotion {
             LocalDate startDate,
             LocalDate endDate,
             PromotionScope scope,
-            PromotionCustomerSegment customerSegment) {
+            PromotionCustomerSegment customerSegment,
+            UUID memberCategoryId) {
         requireNotUsed();
         fechaInicio = Objects.requireNonNull(startDate, "startDate");
         fechaFin = endDate;
         ambito = scope == null ? PromotionScope.SALE : scope;
         segmentoCliente = customerSegment == null ? PromotionCustomerSegment.ALL : customerSegment;
+        this.memberCategoryId = segmentoCliente == PromotionCustomerSegment.MEMBER_CATEGORY
+                ? Objects.requireNonNull(memberCategoryId, "memberCategoryId")
+                : null;
         touch();
     }
 
@@ -317,6 +321,9 @@ public class Promotion {
         Objects.requireNonNull(segmentoCliente, "segmentoCliente");
         Objects.requireNonNull(ambito, "ambito");
         Objects.requireNonNull(fechaInicio, "fechaInicio");
+        if (segmentoCliente == PromotionCustomerSegment.MEMBER_CATEGORY) {
+            Objects.requireNonNull(memberCategoryId, "memberCategoryId");
+        }
         if (fechaFin != null && fechaFin.isBefore(fechaInicio)) {
             throw new IllegalStateException("message.promotion.invalid_dates");
         }
