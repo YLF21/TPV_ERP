@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
+import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 
@@ -58,6 +59,7 @@ export function SaleScreen({
             <span>Sin venta iniciada</span>
           </header>
           <div className="sale-ticket-lines sale-empty-state">Sin venta iniciada</div>
+          <PromotionPreviewPanel locale={locale} preview={null} />
           <footer className="sale-total">
             <span>Total</span>
             <strong>0,00</strong>
