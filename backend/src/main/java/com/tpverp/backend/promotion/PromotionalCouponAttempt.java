@@ -76,6 +76,14 @@ public class PromotionalCouponAttempt {
         return tiendaId;
     }
 
+    public UUID userId() {
+        return usuarioId;
+    }
+
+    public UUID terminalId() {
+        return terminalId;
+    }
+
     public CouponRejectReason reason() {
         return motivo;
     }

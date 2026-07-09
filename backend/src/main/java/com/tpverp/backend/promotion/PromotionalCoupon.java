@@ -105,7 +105,7 @@ public class PromotionalCoupon {
         promocionId = Objects.requireNonNull(promotionId, "promotionId");
         documentoGeneradoId = Objects.requireNonNull(generatedDocumentId, "generatedDocumentId");
         clienteId = customerId;
-        memberId = memberId;
+        this.memberId = memberId;
         codigoHash = requiredMax(codeHash, "codigoHash", 128);
         codigoUltimos4 = requiredExactLength(codeLast4, "codigoUltimos4", 4);
         estado = PromotionalCouponStatus.ACTIVE;

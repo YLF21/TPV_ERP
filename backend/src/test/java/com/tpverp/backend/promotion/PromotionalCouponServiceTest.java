@@ -130,6 +130,53 @@ class PromotionalCouponServiceTest {
         assertThat(original.status()).isEqualTo(PromotionalCouponStatus.USED);
     }
 
+    @Test
+    void memberBoundCouponRejectsDifferentMemberAndRecordsAttemptContext() {
+        var creation = amountCreation();
+        var code = "MEMBER-3333";
+        var memberId = UUID.randomUUID();
+        var coupon = PromotionalCoupon.amount(
+                creation.companyId(),
+                creation.generatedStoreId(),
+                creation.promotionId(),
+                creation.generatedDocumentId(),
+                service(code).hashForTest(code),
+                "3333",
+                null,
+                memberId,
+                new BigDecimal("10.00"),
+                null,
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 7, 31),
+                NOW);
+        when(coupons.findByEmpresaIdAndCodigoHash(creation.companyId(), coupon.codeHash()))
+                .thenReturn(Optional.of(coupon));
+
+        var documentId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var result = service("unused").redeem(new PromotionalCouponService.RedemptionCommand(
+                creation.companyId(),
+                UUID.randomUUID(),
+                documentId,
+                userId,
+                terminalId,
+                null,
+                UUID.randomUUID(),
+                null,
+                code,
+                new BigDecimal("10.00")));
+
+        var attempt = ArgumentCaptor.forClass(PromotionalCouponAttempt.class);
+        verify(attempts).save(attempt.capture());
+        assertThat(result.rejectionReason()).isEqualTo(CouponRejectReason.CUSTOMER_MISMATCH);
+        assertThat(attempt.getValue().reason()).isEqualTo(CouponRejectReason.CUSTOMER_MISMATCH);
+        assertThat(attempt.getValue().userId()).isEqualTo(userId);
+        assertThat(attempt.getValue().terminalId()).isEqualTo(terminalId);
+        assertThat(attempt.getValue().documentId()).isEqualTo(documentId);
+        assertThat(coupon.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
+    }
+
     private PromotionalCouponService service(String code) {
         return new PromotionalCouponService(coupons, attempts, () -> code, CLOCK);
     }
