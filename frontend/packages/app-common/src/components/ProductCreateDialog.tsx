@@ -4,6 +4,7 @@ import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import deleteImageIcon from "../assets/product/delete.png";
 
 type ProductCreateDialogProps = {
   open: boolean;
@@ -15,12 +16,14 @@ type ProductCreateDialogProps = {
 
 export type ProductTypeCode = "UNIT" | "SERVICE" | "WEIGHT";
 export type DiscountTypeCode = "NONE" | "NORMAL" | "MEMBER_PRICE" | "DISCOUNT_PRICE";
+export type PriceUseModeCode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
 
 export type ProductCreateFormState = {
   familyId: string;
   subfamilyId: string;
   taxId: string;
   productType: ProductTypeCode;
+  priceUseMode: PriceUseModeCode;
   discountType: DiscountTypeCode;
   name: string;
   description: string;
@@ -44,6 +47,7 @@ export type ProductCreateFieldName =
   | "subfamilyId"
   | "taxId"
   | "productType"
+  | "priceUseMode"
   | "discountType"
   | "name"
   | "description"
@@ -102,8 +106,23 @@ export type SaveProductResult = {
   imageUploadFailed: boolean;
 };
 
+type ProductCreateKeyAction = "close" | "saveContinue" | "saveClose";
+
 const productTypeOptions: ProductTypeCode[] = ["UNIT", "WEIGHT", "SERVICE"];
-export const productDiscountTypeOptions: DiscountTypeCode[] = ["NORMAL", "NONE", "MEMBER_PRICE", "DISCOUNT_PRICE"];
+export const productDiscountTypeOptions: PriceUseModeCode[] = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
+
+export function productCreateKeyAction(key: string): ProductCreateKeyAction | null {
+  if (key === "Escape") {
+    return "close";
+  }
+  if (key === "F8") {
+    return "saveContinue";
+  }
+  if (key === "F9") {
+    return "saveClose";
+  }
+  return null;
+}
 
 export function productImageUploadPath(productId: string) {
   return `/products/${encodeURIComponent(productId)}/image`;
@@ -115,6 +134,7 @@ export function createDefaultProductForm(): ProductCreateFormState {
     subfamilyId: "",
     taxId: "",
     productType: "UNIT",
+    priceUseMode: "NORMAL",
     discountType: "NORMAL",
     name: "",
     description: "",
@@ -135,12 +155,19 @@ export function createDefaultProductForm(): ProductCreateFormState {
 }
 
 export function buildCreateProductRequest(form: ProductCreateFormState) {
+  const noDiscountLocked = isNoDiscountLocked(form);
+  const priceUseMode = noDiscountLocked ? "NORMAL" : normalizePriceUseMode(form);
+  const offerActive = isOfferPriceUseMode(priceUseMode);
+  const offerPrice = priceUseMode === "OFFER_DISCOUNT"
+    ? priceFromOfferDiscount(form.salePrice, form.offerDiscountPercent) || form.offerPrice
+    : form.offerPrice;
   return {
     familyId: form.familyId,
     subfamilyId: emptyToNull(form.subfamilyId),
     taxId: form.taxId,
     productType: form.productType,
-    discountType: form.discountType,
+    priceUseMode,
+    discountType: noDiscountLocked ? "NONE" : discountTypeFromPriceUseMode(priceUseMode),
     name: form.name.trim(),
     description: emptyToNull(form.description),
     comments: emptyToNull(form.comments),
@@ -151,8 +178,9 @@ export function buildCreateProductRequest(form: ProductCreateFormState) {
     salePrice: decimalOrZero(form.salePrice),
     memberPrice: emptyToNull(form.memberPrice),
     wholesalePrice: emptyToNull(form.wholesalePrice),
-    offerPrice: emptyToNull(form.offerPrice),
-    offerActive: form.offerActive,
+    offerPrice: noDiscountLocked ? null : emptyToNull(offerPrice),
+    offerDiscountPercent: noDiscountLocked ? null : emptyToNull(form.offerDiscountPercent),
+    offerActive,
     offerFrom: emptyToNull(form.offerFrom),
     offerUntil: emptyToNull(form.offerUntil)
   };
@@ -168,12 +196,48 @@ function decimalOrZero(value: string) {
   return trimmed.length === 0 ? "0.00" : trimmed;
 }
 
+function normalizePriceUseMode(form: ProductCreateFormState): PriceUseModeCode {
+  if (form.priceUseMode) {
+    return form.priceUseMode;
+  }
+  if (form.discountType === "MEMBER_PRICE") {
+    return "MEMBER_PRICE";
+  }
+  if (form.discountType === "DISCOUNT_PRICE") {
+    return form.offerDiscountPercent.trim() ? "OFFER_DISCOUNT" : "OFFER_PRICE";
+  }
+  return "NORMAL";
+}
+
+function discountTypeFromPriceUseMode(mode: PriceUseModeCode): DiscountTypeCode {
+  if (mode === "MEMBER_PRICE") {
+    return "MEMBER_PRICE";
+  }
+  if (mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT") {
+    return "DISCOUNT_PRICE";
+  }
+  return "NORMAL";
+}
+
+function isOfferPriceUseMode(mode: PriceUseModeCode) {
+  return mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT";
+}
+
+function isNoDiscountLocked(form: ProductCreateFormState) {
+  return form.discountType === "NONE";
+}
+
 function canSubmitProduct(form: ProductCreateFormState) {
   return productCreateValidationErrors(form).length === 0;
 }
 
 export function productCreateValidationErrors(form: ProductCreateFormState) {
   const errors: string[] = [];
+  const priceUseMode = normalizePriceUseMode(form);
+  const offerActive = isOfferPriceUseMode(priceUseMode);
+  const offerPrice = priceUseMode === "OFFER_DISCOUNT"
+    ? priceFromOfferDiscount(form.salePrice, form.offerDiscountPercent) || form.offerPrice
+    : form.offerPrice;
   if (!form.familyId) {
     errors.push("familyId");
   }
@@ -192,13 +256,10 @@ export function productCreateValidationErrors(form: ProductCreateFormState) {
   if (!form.salePrice.trim()) {
     errors.push("salePrice");
   }
-  if (form.discountType === "DISCOUNT_PRICE" && !form.offerActive) {
-    errors.push("offerActive");
-  }
-  if (form.offerActive && !form.offerPrice.trim()) {
+  if (offerActive && !offerPrice.trim()) {
     errors.push("offerPrice");
   }
-  if (form.offerActive && !form.offerFrom) {
+  if (offerActive && !form.offerFrom) {
     errors.push("offerFrom");
   }
   return errors;
@@ -217,8 +278,10 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
   if (fieldName === "productType") {
     return Boolean(form.productType);
   }
-  if (fieldName === "discountType") {
-    return Boolean(form.discountType) && (form.discountType !== "DISCOUNT_PRICE" || form.offerActive);
+  const priceUseMode = normalizePriceUseMode(form);
+  const offerActive = isOfferPriceUseMode(priceUseMode);
+  if (fieldName === "priceUseMode" || fieldName === "discountType") {
+    return Boolean(priceUseMode);
   }
   if (fieldName === "name") {
     return Boolean(form.name.trim());
@@ -233,10 +296,10 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
     return Boolean(form.salePrice.trim());
   }
   if (fieldName === "offerPrice") {
-    return !form.offerActive || Boolean(form.offerPrice.trim());
+    return !offerActive || Boolean(form.offerPrice.trim()) || (priceUseMode === "OFFER_DISCOUNT" && Boolean(priceFromOfferDiscount(form.salePrice, form.offerDiscountPercent)));
   }
   if (fieldName === "offerRange") {
-    return !form.offerActive || Boolean(form.offerFrom);
+    return !offerActive || Boolean(form.offerFrom);
   }
   return true;
 }
@@ -382,17 +445,17 @@ function productTypeLabel(type: ProductTypeCode) {
   return "product.type.unit";
 }
 
-function discountTypeLabel(type: DiscountTypeCode) {
-  if (type === "NONE") {
-    return "product.discount.none";
+function discountTypeLabel(type: PriceUseModeCode) {
+  if (type === "NORMAL") {
+    return "product.discount.salePrice";
   }
   if (type === "MEMBER_PRICE") {
     return "product.discount.memberPrice";
   }
-  if (type === "DISCOUNT_PRICE") {
+  if (type === "OFFER_PRICE") {
     return "product.discount.offerPrice";
   }
-  return "product.discount.normal";
+  return "product.discount.offerDiscount";
 }
 
 export function ProductCreateDialog({
@@ -421,7 +484,27 @@ export function ProductCreateDialog({
   const selectedFamily = useMemo(() => families.find((family) => family.id === form.familyId), [families, form.familyId]);
   const selectedSubfamily = useMemo(() => subfamilies.find((subfamily) => subfamily.id === form.subfamilyId), [subfamilies, form.subfamilyId]);
   const selectedTax = useMemo(() => taxes.find((tax) => tax.id === form.taxId), [taxes, form.taxId]);
+  const selectedPriceUseMode = normalizePriceUseMode(form);
+  const offerActive = isOfferPriceUseMode(selectedPriceUseMode);
   const calendarTitle = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { month: "long", year: "numeric" }).format(calendarMonth);
+
+  function resetDialogState() {
+    setForm(createDefaultProductForm());
+    setStatus("");
+    setSaving(false);
+    setOpenDropdown("");
+    setFamilyPickerOpen(false);
+    setSelectedProductFamily({ familyId: "", subfamilyId: "" });
+    setOfferPickerOpen(false);
+    setOfferRangeStart(null);
+    setCalendarMonth(startOfMonth(new Date()));
+    changeImage(null);
+  }
+
+  function closeProductDialog() {
+    resetDialogState();
+    onClose();
+  }
 
   useEffect(() => {
     if (!open || !token) {
@@ -467,6 +550,28 @@ export function ProductCreateDialog({
     };
   }, [open, token, locale]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleProductShortcut(event: globalThis.KeyboardEvent) {
+      const action = productCreateKeyAction(event.key);
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      if (action === "close") {
+        closeProductDialog();
+        return;
+      }
+      void submitProduct(action === "saveClose");
+    }
+
+    window.addEventListener("keydown", handleProductShortcut);
+    return () => window.removeEventListener("keydown", handleProductShortcut);
+  }, [open, form, token, imageFile, saving]);
+
   if (!open) {
     return null;
   }
@@ -475,11 +580,35 @@ export function ProductCreateDialog({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function updatePriceUseMode(mode: PriceUseModeCode) {
+    setForm((current) => ({
+      ...current,
+      priceUseMode: mode,
+      discountType: discountTypeFromPriceUseMode(mode),
+      offerActive: isOfferPriceUseMode(mode)
+    }));
+  }
+
+  function toggleNoDiscountLock() {
+    setForm((current) => {
+      const locked = !isNoDiscountLocked(current);
+      return {
+        ...current,
+        priceUseMode: "NORMAL",
+        discountType: locked ? "NONE" : "NORMAL",
+        offerActive: false
+      };
+    });
+  }
+
   function updateOfferDiscountPercent(value: string) {
     setForm((current) => {
       const nextOfferPrice = priceFromOfferDiscount(current.salePrice, value);
       return {
         ...current,
+        priceUseMode: "OFFER_DISCOUNT",
+        discountType: "DISCOUNT_PRICE",
+        offerActive: true,
         offerDiscountPercent: value,
         offerPrice: nextOfferPrice || current.offerPrice
       };
@@ -605,8 +734,33 @@ export function ProductCreateDialog({
     );
   }
 
-  async function submitProduct() {
-    if (!token || !canSubmitProduct(form)) {
+  function renderPriceUseOptions() {
+    return (
+      <div className="product-price-use" data-product-field data-product-field-name="priceUseMode">
+        <span>{t("product.field.usePrice")}</span>
+        <div className="product-price-use-options" role="radiogroup" aria-label={t("product.field.usePrice")}>
+          {productDiscountTypeOptions.map((mode) => {
+            const selected = selectedPriceUseMode === mode;
+            return (
+              <button
+                type="button"
+                className={selected ? "selected" : ""}
+                role="radio"
+                aria-checked={selected}
+                key={mode}
+                onClick={() => updatePriceUseMode(mode)}
+              >
+                {t(discountTypeLabel(mode))}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  async function submitProduct(closeAfterSave: boolean) {
+    if (saving || !token || !canSubmitProduct(form)) {
       setStatus(t("product.create.required"));
       return;
     }
@@ -618,14 +772,27 @@ export function ProductCreateDialog({
         token,
         imageFile
       });
-      setForm(createDefaultProductForm());
-      changeImage(null);
       onCreated?.(result.product);
-      onClose();
+      resetDialogState();
+      if (closeAfterSave) {
+        onClose();
+      }
     } catch (error) {
       setStatus(productCreateErrorMessage(error, t("product.create.saveError")));
     } finally {
-      setSaving(false);
+      if (!closeAfterSave) {
+        setSaving(false);
+      }
+    }
+  }
+
+  function removeSelectedImage() {
+    if (!imageFile) {
+      return;
+    }
+    const confirmed = window.confirm(t("product.image.removeConfirm"));
+    if (confirmed) {
+      changeImage(null);
     }
   }
 
@@ -637,7 +804,7 @@ export function ProductCreateDialog({
             <h2 id="product-create-title">{t("product.create.title")}</h2>
             <span>{selectedFamily?.name ?? t("product.create.subtitle")}</span>
           </div>
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
+          <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
         </header>
 
         <div className="product-create-body">
@@ -700,7 +867,7 @@ export function ProductCreateDialog({
                 <span>{t("product.field.taxesIncluded")}</span>
               </label>
             </div>
-            <div className="product-create-row product-create-row-three">
+            <div className="product-create-row product-create-row-prices">
               <label>
                 <span>{t("stock.column.purchasePrice")}</span>
                 <input data-product-field data-product-field-name="purchasePrice" required inputMode="decimal" value={form.purchasePrice} onChange={(event) => updateField("purchasePrice", event.target.value)} />
@@ -713,25 +880,13 @@ export function ProductCreateDialog({
                 <span>{t("stock.column.memberPrice")}</span>
                 <input data-product-field data-product-field-name="memberPrice" inputMode="decimal" value={form.memberPrice} onChange={(event) => updateField("memberPrice", event.target.value)} />
               </label>
-            </div>
-            <div className="product-create-row product-create-row-two">
               <label>
                 <span>{t("stock.column.wholesalePrice")}</span>
                 <input data-product-field data-product-field-name="wholesalePrice" inputMode="decimal" value={form.wholesalePrice} onChange={(event) => updateField("wholesalePrice", event.target.value)} />
               </label>
-              {renderDropdown(
-                "discount",
-                t("stock.column.discount"),
-                form.discountType,
-                productDiscountTypeOptions.map((type) => ({ value: type, label: t(discountTypeLabel(type)) })),
-                (value) => updateField("discountType", value as DiscountTypeCode)
-              )}
             </div>
-            <div className="product-create-row product-create-row-offer">
-              <label className="product-create-check">
-                <input data-product-field data-product-field-name="offerActive" type="checkbox" checked={form.offerActive} onChange={(event) => updateField("offerActive", event.target.checked)} />
-                <span>{t("product.field.offerActive")}</span>
-              </label>
+            <div className="product-create-offer-area">
+              {renderPriceUseOptions()}
               <label>
                 <span>{t("stock.column.offerPrice")}</span>
                 <input data-product-field data-product-field-name="offerPrice" inputMode="decimal" value={form.offerPrice} onChange={(event) => updateField("offerPrice", event.target.value)} />
@@ -779,6 +934,21 @@ export function ProductCreateDialog({
                   </div>
                 )}
               </div>
+              <div className={`product-offer-active-indicator ${offerActive ? "active" : ""}`}>
+                <span>{t("product.field.offerActive")}</span>
+              </div>
+            </div>
+            <div className={`product-no-discount-lock ${isNoDiscountLocked(form) ? "active" : ""}`}>
+              <button
+                type="button"
+                className={isNoDiscountLocked(form) ? "active" : ""}
+                data-product-field
+                data-product-field-name="discountType"
+                onClick={toggleNoDiscountLock}
+              >
+                {t("product.noDiscountLock.button")}
+              </button>
+              <span>{t("product.noDiscountLock.message")}</span>
             </div>
             <label className="product-create-full">
               <span>{t("product.field.comments")}</span>
@@ -789,18 +959,33 @@ export function ProductCreateDialog({
             <div className="product-image-preview">
               {imagePreview ? <img alt="" src={imagePreview} /> : <span>{t("product.image.empty")}</span>}
             </div>
-            <label className="product-file-button">
-              <span>{t("product.image.browse")}</span>
-              <input type="file" accept="image/*" onChange={(event) => changeImage(event.target.files?.[0] ?? null)} />
-            </label>
+            <div className="product-image-actions">
+              <label className="product-file-button">
+                <span>{t("product.image.browse")}</span>
+                <input type="file" accept="image/*" onChange={(event) => changeImage(event.target.files?.[0] ?? null)} />
+              </label>
+              <button
+                type="button"
+                className="product-image-delete-button"
+                disabled={!imageFile}
+                aria-label={t("product.image.remove")}
+                onClick={removeSelectedImage}
+              >
+                <img alt="" src={deleteImageIcon} />
+                <span>{t("product.image.remove")}</span>
+              </button>
+            </div>
           </aside>
         </div>
 
         {status && <p className="product-create-status">{status}</p>}
         <footer className="filter-actions">
-          <button type="button" onClick={onClose}>{t("common.close")}</button>
-          <button type="button" disabled={saving || !canSubmitProduct(form)} onClick={submitProduct}>
-            {saving ? t("product.create.saving") : t("product.create.save")}
+          <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
+          <button type="button" disabled={saving || !canSubmitProduct(form)} onClick={() => void submitProduct(false)}>
+            {saving ? t("product.create.saving") : t("product.create.saveContinue")}
+          </button>
+          <button type="button" disabled={saving || !canSubmitProduct(form)} onClick={() => void submitProduct(true)}>
+            {saving ? t("product.create.saving") : t("product.create.saveClose")}
           </button>
         </footer>
       </section>

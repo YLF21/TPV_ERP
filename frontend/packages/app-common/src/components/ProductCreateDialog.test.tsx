@@ -5,6 +5,7 @@ import {
   canLeaveProductField,
   createDefaultProductForm,
   nextProductFieldIndex,
+  productCreateKeyAction,
   productCreateErrorMessage,
   productDiscountTypeOptions,
   productCreateValidationErrors,
@@ -22,6 +23,7 @@ describe("ProductCreateDialog", () => {
       subfamilyId: "subfamily-1",
       taxId: "tax-1",
       productType: "UNIT",
+      priceUseMode: "NORMAL",
       discountType: "NORMAL",
       name: " Cafe molido ",
       description: "Paquete 250g",
@@ -35,7 +37,7 @@ describe("ProductCreateDialog", () => {
       wholesalePrice: "3.40",
       offerPrice: "3.20",
       offerDiscountPercent: "10",
-      offerActive: true,
+      offerActive: false,
       offerFrom: "2026-07-01",
       offerUntil: "2026-07-31"
     };
@@ -45,6 +47,7 @@ describe("ProductCreateDialog", () => {
       subfamilyId: "subfamily-1",
       taxId: "tax-1",
       productType: "UNIT",
+      priceUseMode: "NORMAL",
       discountType: "NORMAL",
       name: "Cafe molido",
       description: "Paquete 250g",
@@ -57,7 +60,8 @@ describe("ProductCreateDialog", () => {
       memberPrice: "3.70",
       wholesalePrice: "3.40",
       offerPrice: "3.20",
-      offerActive: true,
+      offerDiscountPercent: "10",
+      offerActive: false,
       offerFrom: "2026-07-01",
       offerUntil: "2026-07-31"
     });
@@ -69,6 +73,13 @@ describe("ProductCreateDialog", () => {
     expect(nextProductFieldIndex(0, 4, true)).toBe(3);
     expect(nextProductFieldIndex(2, 4, true)).toBe(1);
     expect(nextProductFieldIndex(0, 0, false)).toBe(-1);
+  });
+
+  it("maps product dialog keyboard shortcuts to actions", () => {
+    expect(productCreateKeyAction("Escape")).toBe("close");
+    expect(productCreateKeyAction("F8")).toBe("saveContinue");
+    expect(productCreateKeyAction("F9")).toBe("saveClose");
+    expect(productCreateKeyAction("Enter")).toBeNull();
   });
 
   it("requires the fields that the backend cannot store as null", () => {
@@ -91,7 +102,7 @@ describe("ProductCreateDialog", () => {
   });
 
   it("does not allow advancing from an empty required product field", () => {
-    const form = {
+    const form: ProductCreateFormState = {
       ...createDefaultProductForm(),
       familyId: "family-1",
       taxId: "tax-1",
@@ -107,13 +118,13 @@ describe("ProductCreateDialog", () => {
   });
 
   it("does not allow advancing from offer fields when an active offer is incomplete", () => {
-    const form = {
+    const form: ProductCreateFormState = {
       ...createDefaultProductForm(),
       familyId: "family-1",
       taxId: "tax-1",
       name: "Cafe",
       code: "A001",
-      offerActive: true,
+      priceUseMode: "OFFER_PRICE",
       offerPrice: "",
       offerFrom: ""
     };
@@ -130,6 +141,7 @@ describe("ProductCreateDialog", () => {
       subfamilyId: "subfamily-1",
       taxId: "tax-1",
       productType: "WEIGHT",
+      priceUseMode: "OFFER_PRICE",
       discountType: "DISCOUNT_PRICE",
       name: "Cafe",
       description: "Descripcion",
@@ -142,7 +154,6 @@ describe("ProductCreateDialog", () => {
       memberPrice: "2.10",
       wholesalePrice: "1.90",
       offerPrice: "1.80",
-      offerActive: true,
       offerFrom: "2026-07-01",
       offerUntil: ""
     });
@@ -152,6 +163,7 @@ describe("ProductCreateDialog", () => {
       "subfamilyId",
       "taxId",
       "productType",
+      "priceUseMode",
       "discountType",
       "name",
       "description",
@@ -164,12 +176,14 @@ describe("ProductCreateDialog", () => {
       "memberPrice",
       "wholesalePrice",
       "offerPrice",
+      "offerDiscountPercent",
       "offerActive",
       "offerFrom",
       "offerUntil"
     ]);
     expect(request.offerUntil).toBeNull();
-    expect(JSON.stringify(request)).not.toContain("offerDiscountPercent");
+    expect(request.priceUseMode).toBe("OFFER_PRICE");
+    expect(request.offerDiscountPercent).toBeNull();
   });
 
   it("requires offer price and start date when the offer is active", () => {
@@ -179,21 +193,59 @@ describe("ProductCreateDialog", () => {
       taxId: "tax-1",
       name: "Cafe",
       code: "A001",
-      offerActive: true
+      priceUseMode: "OFFER_PRICE"
     })).toEqual(["offerPrice", "offerFrom"]);
   });
 
-  it("requires an active offer when discount type is offer price", () => {
+  it("derives active offer from offer price modes", () => {
     expect(productCreateValidationErrors({
       ...createDefaultProductForm(),
       familyId: "family-1",
       taxId: "tax-1",
       name: "Cafe",
       code: "A001",
+      priceUseMode: "OFFER_PRICE",
       discountType: "DISCOUNT_PRICE",
       offerPrice: "2.50",
       offerFrom: "2026-07-01"
-    })).toEqual(["offerActive"]);
+    })).toEqual([]);
+
+    expect(buildCreateProductRequest({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Cafe",
+      code: "A001",
+      priceUseMode: "OFFER_DISCOUNT",
+      discountType: "NORMAL",
+      salePrice: "10.00",
+      offerDiscountPercent: "15",
+      offerFrom: "2026-07-01"
+    })).toMatchObject({
+      priceUseMode: "OFFER_DISCOUNT",
+      discountType: "DISCOUNT_PRICE",
+      offerPrice: "8.50",
+      offerDiscountPercent: "15",
+      offerActive: true
+    });
+  });
+
+  it("sends no-discount lock as DiscountType none with sale price mode", () => {
+    expect(buildCreateProductRequest({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Cafe",
+      code: "A001",
+      priceUseMode: "OFFER_PRICE",
+      discountType: "NONE",
+      offerPrice: "8.50",
+      offerFrom: "2026-07-01"
+    })).toMatchObject({
+      priceUseMode: "NORMAL",
+      discountType: "NONE",
+      offerActive: false
+    });
   });
 
   it("renders the reorganized product form with image panel", () => {
@@ -215,12 +267,23 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Impuesto");
     expect(html).toContain("Oferta desde y hasta");
     expect(html).toContain("Descuento oferta%");
+    expect(html).toContain("Usar precio");
+    expect(html).toContain("Precio venta");
+    expect(html).toContain("No aplicar descuento");
+    expect(html).toContain("No aplicar descuento activado, no se aplicara ningun tipo de descuento, el vendedor tampoco podra aplicarlo manualmente");
+    expect(html).toContain("Precio socio");
+    expect(html).toContain("Precio oferta");
+    expect(html).toContain("Descuento oferta");
     expect(html).toContain("required");
     expect(html).toContain("Examinar archivo");
+    expect(html).toContain("Eliminar imagen");
+    expect(html).toContain("Registrar producto y continuar F8");
+    expect(html).toContain("Registrar producto y cerrar F9");
     expect(html).toContain("Impuestos incluidos en el precio");
-    expect(html.indexOf("Oferta activa")).toBeLessThan(html.indexOf("Precio oferta"));
+    expect(html.indexOf("Usar precio")).toBeLessThan(html.indexOf("Precio oferta"));
     expect(html.indexOf("Precio oferta")).toBeLessThan(html.indexOf("Descuento oferta%"));
     expect(html.indexOf("Descuento oferta%")).toBeLessThan(html.indexOf("Oferta desde y hasta"));
+    expect(html.indexOf("Oferta desde y hasta")).toBeLessThan(html.indexOf("Oferta activa"));
     expect(html).not.toContain("<select");
   });
 
@@ -239,12 +302,18 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Member price");
     expect(html).toContain("Wholesale price");
     expect(html).toContain("Offer price");
-    expect(html).toContain("Discount");
+    expect(html).toContain("Use price");
+    expect(html).toContain("Sale price");
+    expect(html).toContain("Do not apply discount");
+    expect(html).toContain("Do not apply discount enabled, no discount of any kind will be applied, and the seller will not be able to apply it manually");
     expect(html).toContain("Offer discount%");
+    expect(html).toContain("Register product and continue F8");
+    expect(html).toContain("Register product and close F9");
   });
 
-  it("does not expose the deprecated member discount option", () => {
-    expect(productDiscountTypeOptions).toEqual(["NORMAL", "NONE", "MEMBER_PRICE", "DISCOUNT_PRICE"]);
+  it("does not expose the deprecated none or member discount options", () => {
+    expect(productDiscountTypeOptions).toEqual(["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"]);
+    expect(productDiscountTypeOptions).not.toContain("NONE");
     expect(productDiscountTypeOptions).not.toContain("MEMBER_DISCOUNT");
   });
 

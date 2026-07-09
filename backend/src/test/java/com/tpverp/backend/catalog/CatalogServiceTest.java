@@ -152,13 +152,59 @@ class CatalogServiceTest {
     }
 
     @Test
+    void createsProductWithPersistedPriceUseModeAndOfferDiscountPercent() {
+        var base = productRequest("OFFERDISC", null);
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.DISCOUNT_PRICE,
+                PriceUseMode.OFFER_DISCOUNT,
+                "Producto", null, null, BigDecimal.ZERO, true, "OFFERDISC", null,
+                new BigDecimal("10.00"), null, null, new BigDecimal("8.50"),
+                new BigDecimal("15.00"),
+                true, java.time.LocalDate.of(2026, 7, 1), java.time.LocalDate.of(2026, 7, 31));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var product = service.createProduct(request);
+
+        assertThat(product.getPriceUseMode()).isEqualTo(PriceUseMode.OFFER_DISCOUNT);
+        assertThat(product.getOfferDiscountPercent()).isEqualByComparingTo("15.00");
+        assertThat(product.getOfferPrice()).isEqualByComparingTo("8.50");
+        assertThat(product.isOfferActive()).isTrue();
+        assertThat(product.getOfferFrom()).isEqualTo(java.time.LocalDate.of(2026, 7, 1));
+        assertThat(product.getOfferUntil()).isEqualTo(java.time.LocalDate.of(2026, 7, 31));
+    }
+
+    @Test
+    void createsProductWithNoDiscountLockAndSalePriceMode() {
+        var base = productRequest("NODISC", null);
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.NONE,
+                PriceUseMode.NORMAL,
+                "Producto", null, null, BigDecimal.ZERO, true, "NODISC", null,
+                new BigDecimal("10.00"), null, null, null,
+                null, false, null, null);
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var product = service.createProduct(request);
+
+        assertThat(product.getPriceUseMode()).isEqualTo(PriceUseMode.NORMAL);
+        assertThat(product.getDiscountType()).isEqualTo(DiscountType.NONE);
+    }
+
+    @Test
     void discountPriceRequiresActiveOfferData() {
         var base = productRequest("ABC", null);
         var request = new CatalogService.ProductRequest(
                 base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.DISCOUNT_PRICE,
+                PriceUseMode.OFFER_PRICE,
                 "Producto", null, null, BigDecimal.ZERO, true, "ABC", null,
                 new BigDecimal("2.50"), null, null, null,
-                false, null, null);
+                null, false, null, null);
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
@@ -183,9 +229,10 @@ class CatalogServiceTest {
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
         var changed = new CatalogService.ProductRequest(
                 initial.familyId(), null, initial.taxId(), ProductType.UNIT, DiscountType.NORMAL,
+                PriceUseMode.NORMAL,
                 "Producto", null, null, new BigDecimal("1.00"), true, "ABC", null,
                 new BigDecimal("3.00"), null, null, null,
-                false, null, null);
+                null, false, null, null);
 
         service.updateProduct(product.getId(), changed);
 
@@ -238,8 +285,9 @@ class CatalogServiceTest {
     private CatalogService.ProductRequest productRequest(String code, String barcode) {
         return new CatalogService.ProductRequest(
                 UUID.randomUUID(), null, UUID.randomUUID(), ProductType.UNIT, DiscountType.NORMAL,
+                PriceUseMode.OFFER_PRICE,
                 "Producto", null, null, BigDecimal.ZERO, true, code, barcode,
                 new BigDecimal("2.50"), null, null, new BigDecimal("1.50"),
-                true, java.time.LocalDate.of(2026, 6, 1), null);
+                null, true, java.time.LocalDate.of(2026, 6, 1), null);
     }
 }

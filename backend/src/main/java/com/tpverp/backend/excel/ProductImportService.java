@@ -9,6 +9,7 @@ import com.tpverp.backend.catalog.ProductIdentifier;
 import com.tpverp.backend.catalog.ProductIdentifierRepository;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
+import com.tpverp.backend.catalog.PriceUseMode;
 import com.tpverp.backend.catalog.StoreTax;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.document.CommercialDocument;
@@ -250,6 +251,7 @@ public class ProductImportService {
                 product.getTaxId(),
                 product.getProductType(),
                 product.getDiscountType(),
+                product.getPriceUseMode(),
                 name,
                 description,
                 product.getComments(),
@@ -261,6 +263,7 @@ public class ProductImportService {
                 memberPrice,
                 wholesalePrice,
                 product.getOfferPrice(),
+                product.getOfferDiscountPercent(),
                 product.isOfferActive(),
                 product.getOfferFrom(),
                 product.getOfferUntil());
@@ -281,6 +284,7 @@ public class ProductImportService {
                 tax.getId(),
                 ProductType.UNIT,
                 DiscountType.NORMAL,
+                PriceUseMode.NORMAL,
                 ExcelCellReader.text(row, mapping.nombre()),
                 ExcelCellReader.text(row, mapping.descripcion()),
                 null,
@@ -291,6 +295,7 @@ public class ProductImportService {
                 salePrice == null ? BigDecimal.ZERO : salePrice,
                 money(row, mapping.precioMiembro()),
                 money(row, mapping.precioMayorista()),
+                null,
                 null,
                 false,
                 null,

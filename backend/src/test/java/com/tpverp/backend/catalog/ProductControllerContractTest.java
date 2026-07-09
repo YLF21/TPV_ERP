@@ -55,7 +55,9 @@ class ProductControllerContractTest {
                 true);
         product.replaceIdentifier(IdentifierType.CODIGO, "A001");
         product.setPrice(PriceTier.VENTA, new BigDecimal("2.40"));
-        product.configureOffer(false, null, null);
+        product.configurePriceUse(PriceUseMode.OFFER_DISCOUNT, new BigDecimal("10.00"));
+        product.setPrice(PriceTier.OFERTA, new BigDecimal("2.16"));
+        product.configureOffer(true, LocalDate.of(2026, 7, 1), null);
 
         when(service.createProduct(any(CatalogService.ProductRequest.class))).thenReturn(product);
 
@@ -69,6 +71,7 @@ class ProductControllerContractTest {
                                   "taxId": "%s",
                                   "productType": "UNIT",
                                   "discountType": "NORMAL",
+                                  "priceUseMode": "OFFER_DISCOUNT",
                                   "name": "Cafe",
                                   "description": "Descripcion",
                                   "comments": "Comentario",
@@ -76,13 +79,18 @@ class ProductControllerContractTest {
                                   "taxesIncluded": true,
                                   "code": "A001",
                                   "salePrice": 2.40,
-                                  "offerActive": false
+                                  "offerPrice": 2.16,
+                                  "offerDiscountPercent": 10.00,
+                                  "offerActive": false,
+                                  "offerFrom": "2026-07-01"
                                 }
                                 """.formatted(FAMILY_ID, TAX_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId().toString()))
                 .andExpect(jsonPath("$.code").value("A001"))
-                .andExpect(jsonPath("$.salePrice").value(2.40));
+                .andExpect(jsonPath("$.salePrice").value(2.40))
+                .andExpect(jsonPath("$.priceUseMode").value("OFFER_DISCOUNT"))
+                .andExpect(jsonPath("$.offerDiscountPercent").value(10.00));
     }
 
     @Test

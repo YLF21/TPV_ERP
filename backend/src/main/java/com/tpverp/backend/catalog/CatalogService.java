@@ -7,6 +7,7 @@ import com.tpverp.backend.organization.Store;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -302,15 +303,68 @@ public class CatalogService {
         product.setPrice(PriceTier.VENTA, request.salePrice());
         product.setPrice(PriceTier.MEMBER, request.memberPrice());
         product.setPrice(PriceTier.MAYORISTA, request.wholesalePrice());
-        product.setPrice(PriceTier.OFERTA, request.offerPrice());
-        product.configureOffer(request.offerActive(), request.offerFrom(), request.offerUntil());
+        product.setPrice(PriceTier.OFERTA, offerPrice(request));
+        product.configurePriceUse(request.priceUseMode(), request.offerDiscountPercent());
+        product.configureOffer(offerActive(request), request.offerFrom(), request.offerUntil());
     }
 
     private static void validateDiscountType(ProductRequest request) {
-        if (request.discountType() == DiscountType.DISCOUNT_PRICE
-                && (!request.offerActive() || request.offerPrice() == null || request.offerFrom() == null)) {
+        if (isOfferPriceUseMode(request.priceUseMode())
+                && (offerPrice(request) == null || request.offerFrom() == null)) {
             throw new IllegalArgumentException("message.product.discount_price_requires_offer");
         }
+        if (request.priceUseMode() == PriceUseMode.OFFER_DISCOUNT && request.offerDiscountPercent() == null) {
+            throw new IllegalArgumentException("message.product.offer_discount_requires_percent");
+        }
+    }
+
+    private static boolean offerActive(ProductRequest request) {
+        return isOfferPriceUseMode(request.priceUseMode()) || request.offerActive();
+    }
+
+    private static boolean isOfferPriceUseMode(PriceUseMode mode) {
+        return mode == PriceUseMode.OFFER_PRICE || mode == PriceUseMode.OFFER_DISCOUNT;
+    }
+
+    private static BigDecimal offerPrice(ProductRequest request) {
+        if (request.priceUseMode() == PriceUseMode.OFFER_DISCOUNT
+                && request.offerPrice() == null
+                && request.salePrice() != null
+                && request.offerDiscountPercent() != null) {
+            return request.salePrice()
+                    .subtract(request.salePrice().multiply(request.offerDiscountPercent())
+                            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP))
+                    .max(BigDecimal.ZERO)
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+        return request.offerPrice();
+    }
+
+    private static DiscountType discountTypeFromPriceUseMode(PriceUseMode mode) {
+        return discountTypeFromPriceUseMode(mode, null);
+    }
+
+    private static DiscountType discountTypeFromPriceUseMode(PriceUseMode mode, DiscountType requestedDiscountType) {
+        if (mode == PriceUseMode.NORMAL && requestedDiscountType == DiscountType.NONE) {
+            return DiscountType.NONE;
+        }
+        if (mode == PriceUseMode.MEMBER_PRICE) {
+            return DiscountType.MEMBER_PRICE;
+        }
+        if (isOfferPriceUseMode(mode)) {
+            return DiscountType.DISCOUNT_PRICE;
+        }
+        return DiscountType.NORMAL;
+    }
+
+    private static PriceUseMode priceUseModeFromDiscountType(DiscountType discountType) {
+        if (discountType == DiscountType.MEMBER_PRICE) {
+            return PriceUseMode.MEMBER_PRICE;
+        }
+        if (discountType == DiscountType.DISCOUNT_PRICE) {
+            return PriceUseMode.OFFER_PRICE;
+        }
+        return PriceUseMode.NORMAL;
     }
 
     private void recordInitialPrices(Product product) {
@@ -471,6 +525,7 @@ public class CatalogService {
             @NotNull UUID taxId,
             @NotNull ProductType productType,
             @NotNull DiscountType discountType,
+            PriceUseMode priceUseMode,
             @NotBlank String name,
             String description,
             String comments,
@@ -482,11 +537,14 @@ public class CatalogService {
             BigDecimal memberPrice,
             BigDecimal wholesalePrice,
             BigDecimal offerPrice,
+            BigDecimal offerDiscountPercent,
             boolean offerActive,
             LocalDate offerFrom,
             LocalDate offerUntil) {
 
         public ProductRequest {
+            priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
+            discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
         }
     }
 

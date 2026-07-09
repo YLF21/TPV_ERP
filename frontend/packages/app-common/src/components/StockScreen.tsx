@@ -40,6 +40,7 @@ type ProductView = {
   wholesalePrice?: number | string | null;
   offerPrice?: number | string | null;
   productType?: string | null;
+  priceUseMode?: string | null;
   discountType?: string | null;
   familyId?: string | null;
   subfamilyId?: string | null;
@@ -158,7 +159,7 @@ const stockTopSalesPeriods: StockTopSalesQuickPeriod[] = ["day", "week", "month"
 const stockColumnMinWidth = 72;
 const stockColumnMaxWidth = 420;
 const stockProductTypeOptions = ["UNIT", "WEIGHT", "SERVICE"];
-const stockDiscountTypeOptions = ["NORMAL", "NONE", "MEMBER_PRICE", "DISCOUNT_PRICE"];
+const stockDiscountTypeOptions = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
 const defaultStockInventoryFilters: StockInventoryFilters = {
   type: "",
   discount: "",
@@ -388,7 +389,7 @@ export function buildStockInventoryRows(
       wholesalePrice: valueText(product?.wholesalePrice),
       offerPrice: valueText(product?.offerPrice),
       productType: valueText(product?.productType),
-      discountType: valueText(product?.discountType),
+      discountType: valueText(product?.priceUseMode ?? product?.discountType),
       familyId: valueText(product?.familyId),
       familyName: valueText(family?.name ?? product?.familyId),
       subfamilyId: valueText(product?.subfamilyId),
@@ -485,16 +486,16 @@ function stockProductTypeLabel(type: string) {
 }
 
 function stockDiscountTypeLabel(type: string) {
-  if (type === "NONE") {
+  if (type === "NORMAL" || type === "NONE") {
     return "product.discount.none";
   }
   if (type === "MEMBER_PRICE") {
     return "product.discount.memberPrice";
   }
-  if (type === "DISCOUNT_PRICE") {
+  if (type === "DISCOUNT_PRICE" || type === "OFFER_PRICE") {
     return "product.discount.offerPrice";
   }
-  return "product.discount.normal";
+  return "product.discount.offerDiscount";
 }
 
 export function filterStockInventoryRows(
@@ -1660,7 +1661,7 @@ export function StockScreen({
               )}
               {renderInventoryFilterDropdown(
                 "discount",
-                t("stock.column.discount"),
+                t("product.field.usePrice"),
                 draftInventoryFilters.discount,
                 stockDiscountTypeOptions.map((type) => ({ value: type, label: t(stockDiscountTypeLabel(type)) }))
               )}

@@ -44,6 +44,10 @@ public class Product {
     @Column(name = "discount_type", nullable = false, length = 32)
     private DiscountType discountType = DiscountType.NORMAL;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "price_use_mode", nullable = false, length = 32)
+    private PriceUseMode priceUseMode = PriceUseMode.NORMAL;
+
     @Column(nullable = false)
     private String nombre;
 
@@ -67,6 +71,9 @@ public class Product {
 
     @Column(name = "oferta_hasta")
     private LocalDate offerUntil;
+
+    @Column(name = "oferta_descuento_porcentaje", precision = 5, scale = 2)
+    private BigDecimal offerDiscountPercent;
 
     @Column(name = "imagen_id")
     private String imageId;
@@ -193,6 +200,10 @@ public class Product {
         return discountType;
     }
 
+    public PriceUseMode getPriceUseMode() {
+        return priceUseMode;
+    }
+
     public String getDescription() {
         return descripcion;
     }
@@ -215,6 +226,10 @@ public class Product {
 
     public LocalDate getOfferUntil() {
         return offerUntil;
+    }
+
+    public BigDecimal getOfferDiscountPercent() {
+        return offerDiscountPercent;
     }
 
     public UUID getImageId() {
@@ -337,6 +352,15 @@ public class Product {
         offerActive = active;
         offerFrom = from;
         offerUntil = until;
+    }
+
+    public void configurePriceUse(PriceUseMode mode, BigDecimal discountPercent) {
+        priceUseMode = Objects.requireNonNull(mode, "priceUseMode");
+        if (discountPercent != null && (discountPercent.signum() < 0
+                || discountPercent.compareTo(new BigDecimal("100")) > 0)) {
+            throw new IllegalArgumentException("El descuento de oferta debe estar entre 0 y 100");
+        }
+        offerDiscountPercent = discountPercent;
     }
 
     private static BigDecimal nonNegative(BigDecimal value, String field) {
