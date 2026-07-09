@@ -26,6 +26,8 @@ class PromotionServiceTest {
     @Mock
     private PromotionRepository promotions;
     @Mock
+    private PromotionTargetRepository targets;
+    @Mock
     private CurrentOrganization organization;
 
     private final Company company = new Company("B12345678", "Demo SL", Map.of(
@@ -209,8 +211,44 @@ class PromotionServiceTest {
                 .containsExactly("3x2 Agua");
     }
 
+    @Test
+    void previewEvaluatesActiveSalePromotionsForCurrentCompany() {
+        currentCompany();
+        var promotion = buyXPayY("3x2 Agua");
+        promotion.activate();
+        when(promotions.findByEmpresaIdAndEstado(company.getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(targets.findByPromocionIdIn(List.of(promotion.id()))).thenReturn(List.of());
+
+        var preview = service().preview(new PromotionPreviewRequest(
+                LocalDate.of(2026, 7, 9),
+                null,
+                null,
+                null,
+                List.of(new PromotionPreviewRequest.Line(
+                        1,
+                        java.util.UUID.randomUUID(),
+                        null,
+                        null,
+                        new BigDecimal("3"),
+                        new BigDecimal("5.00"),
+                        true,
+                        "IVA",
+                        new BigDecimal("7.00"),
+                        false,
+                        true))));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("5.00");
+        assertThat(preview.appliedPromotions()).singleElement()
+                .satisfies(benefit -> {
+                    assertThat(benefit.promotionId()).isEqualTo(promotion.id());
+                    assertThat(benefit.name()).isEqualTo("3x2 Agua");
+                    assertThat(benefit.taxPercent()).isEqualByComparingTo("7.00");
+                });
+    }
+
     private PromotionService service() {
-        return new PromotionService(promotions, organization);
+        return new PromotionService(promotions, targets, new PromotionEngine(), organization);
     }
 
     private void currentCompany() {

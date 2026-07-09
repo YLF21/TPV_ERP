@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 class PromotionControllerContractTest {
 
     private static final String PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
+    private static final String SALES_PERMISSION =
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')";
 
     @Test
     void exposesPromotionManagementApiWithSalesManagementPermission() throws Exception {
@@ -29,6 +31,11 @@ class PromotionControllerContractTest {
         assertPost("activate", "/{id}/activate");
         assertPost("deactivate", "/{id}/deactivate");
         assertDelete("delete", "/{id}");
+    }
+
+    @Test
+    void exposesSalePreviewApiWithSalesPermission() throws Exception {
+        assertPost("preview", "/preview", SALES_PERMISSION);
     }
 
     @Test
@@ -46,8 +53,12 @@ class PromotionControllerContractTest {
     }
 
     private void assertPost(String methodName, String path) throws Exception {
+        assertPost(methodName, path, PERMISSION);
+    }
+
+    private void assertPost(String methodName, String path, String permission) throws Exception {
         var method = method(methodName);
-        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
+        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(permission);
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
     }
 

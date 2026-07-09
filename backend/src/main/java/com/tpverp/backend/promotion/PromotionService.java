@@ -14,10 +14,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class PromotionService {
 
     private final PromotionRepository promotions;
+    private final PromotionTargetRepository targets;
+    private final PromotionEngine engine;
     private final CurrentOrganization organization;
 
-    public PromotionService(PromotionRepository promotions, CurrentOrganization organization) {
+    public PromotionService(
+            PromotionRepository promotions,
+            PromotionTargetRepository targets,
+            PromotionEngine engine,
+            CurrentOrganization organization) {
         this.promotions = promotions;
+        this.targets = targets;
+        this.engine = engine;
         this.organization = organization;
     }
 
@@ -26,6 +34,27 @@ public class PromotionService {
         return promotions.findByEmpresaIdOrderByNombreAsc(companyId()).stream()
                 .map(PromotionView::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PromotionPreview preview(PromotionPreviewRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        var saleDate = request.saleDate() == null ? LocalDate.now() : request.saleDate();
+        var activePromotions = promotions.findByEmpresaIdAndEstado(companyId(), PromotionStatus.ACTIVE).stream()
+                .filter(promotion -> promotion.scope() == PromotionScope.SALE)
+                .filter(promotion -> !promotion.startDate().isAfter(saleDate))
+                .filter(promotion -> promotion.endDate() == null || !promotion.endDate().isBefore(saleDate))
+                .filter(promotion -> matchesCustomerSegment(promotion, request))
+                .toList();
+        var promotionTargets = activePromotions.isEmpty()
+                ? List.<PromotionTarget>of()
+                : targets.findByPromocionIdIn(activePromotions.stream().map(Promotion::id).toList());
+        var lines = request.lines().stream()
+                .map(PromotionPreviewRequest.Line::toEvaluationLine)
+                .toList();
+        return engine.preview(new PromotionEvaluationRequest(lines, activePromotions, promotionTargets));
     }
 
     @Transactional
@@ -95,6 +124,14 @@ public class PromotionService {
     private Promotion promotion(UUID id) {
         return promotions.findByIdAndEmpresaId(id, companyId())
                 .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
+    }
+
+    private boolean matchesCustomerSegment(Promotion promotion, PromotionPreviewRequest request) {
+        return switch (promotion.customerSegment()) {
+            case ALL -> true;
+            case IDENTIFIED_CUSTOMERS -> request.customerId() != null;
+            case MEMBERS_ONLY, MEMBER_CATEGORY -> request.memberId() != null;
+        };
     }
 
     private UUID companyId() {

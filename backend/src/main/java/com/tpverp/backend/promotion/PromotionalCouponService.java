@@ -10,7 +10,9 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -90,8 +92,43 @@ public class PromotionalCouponService {
         return RedemptionResult.accepted(command.documentId(), redeemed, replacement.map(result -> result));
     }
 
+    @Transactional(readOnly = true)
+    public List<CouponView> list(UUID companyId, PromotionalCouponStatus status, String codeLast4) {
+        Objects.requireNonNull(companyId, "companyId");
+        var normalizedLast4 = codeLast4 == null || codeLast4.isBlank() ? null : last4(codeLast4);
+        var source = status == null
+                ? coupons.findByEmpresaId(companyId)
+                : coupons.findByEmpresaIdAndEstado(companyId, status);
+        return source.stream()
+                .filter(coupon -> normalizedLast4 == null || coupon.codeLast4().equals(normalizedLast4))
+                .sorted(Comparator.comparing(PromotionalCoupon::validUntil)
+                        .thenComparing(PromotionalCoupon::codeLast4))
+                .map(CouponView::from)
+                .toList();
+    }
+
+    @Transactional
+    public CouponView cancel(AdminActionCommand command) {
+        var coupon = coupon(command);
+        coupon.cancel(command.userId(), command.reason(), now());
+        return CouponView.from(coupon);
+    }
+
+    @Transactional
+    public CouponView reactivate(AdminActionCommand command) {
+        var coupon = coupon(command);
+        coupon.reactivate(command.userId(), command.reason(), currentDate(), now());
+        return CouponView.from(coupon);
+    }
+
     String hashForTest(String code) {
         return hash(code);
+    }
+
+    private PromotionalCoupon coupon(AdminActionCommand command) {
+        validateAdminAction(command);
+        return coupons.findByIdAndEmpresaId(command.couponId(), command.companyId())
+                .orElseThrow(() -> new IllegalArgumentException("message.coupon.not_found"));
     }
 
     private PromotionalCoupon createCoupon(CreationCommand command, String code, Instant createdAt) {
@@ -266,6 +303,16 @@ public class PromotionalCouponService {
         }
     }
 
+    private void validateAdminAction(AdminActionCommand command) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(command.companyId(), "companyId");
+        Objects.requireNonNull(command.couponId(), "couponId");
+        Objects.requireNonNull(command.userId(), "userId");
+        if (command.reason() == null || command.reason().isBlank()) {
+            throw new IllegalArgumentException("reason is required");
+        }
+    }
+
     private LocalDate toLocalDate(Instant instant) {
         return Objects.requireNonNull(instant, "instant").atZone(clock.getZone()).toLocalDate();
     }
@@ -349,6 +396,54 @@ public class PromotionalCouponService {
             UUID memberCategoryId,
             String code,
             BigDecimal pendingDocumentAmount) {
+    }
+
+    public record AdminActionCommand(
+            UUID companyId,
+            UUID couponId,
+            UUID userId,
+            String reason) {
+    }
+
+    public record CouponView(
+            UUID id,
+            String codeLast4,
+            PromotionalCouponStatus status,
+            LocalDate validFrom,
+            LocalDate validUntil,
+            UUID promotionId,
+            UUID generatedStoreId,
+            UUID redeemedStoreId,
+            UUID generatedDocumentId,
+            UUID redeemedDocumentId,
+            UUID customerId,
+            UUID memberId,
+            PromotionalCouponBenefitType benefitType,
+            BigDecimal amount,
+            BigDecimal percent,
+            BigDecimal maximumDiscount,
+            BigDecimal minimumAmount) {
+
+        static CouponView from(PromotionalCoupon coupon) {
+            return new CouponView(
+                    coupon.id(),
+                    coupon.codeLast4(),
+                    coupon.status(),
+                    coupon.validFrom(),
+                    coupon.validUntil(),
+                    coupon.promotionId(),
+                    coupon.generatedStoreId(),
+                    coupon.redeemedStoreId(),
+                    coupon.generatedDocumentId(),
+                    coupon.redeemedDocumentId(),
+                    coupon.customerId(),
+                    coupon.memberId(),
+                    coupon.benefitType(),
+                    coupon.amount(),
+                    coupon.percent(),
+                    coupon.maximumDiscount(),
+                    coupon.minimumAmount());
+        }
     }
 
     public record RedemptionResult(

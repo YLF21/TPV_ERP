@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -175,6 +176,61 @@ class PromotionalCouponServiceTest {
         assertThat(attempt.getValue().terminalId()).isEqualTo(terminalId);
         assertThat(attempt.getValue().documentId()).isEqualTo(documentId);
         assertThat(coupon.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
+    }
+
+    @Test
+    void listReturnsCouponViewsWithoutStoredHashOrPlaintextCode() {
+        var creation = amountCreation();
+        var coupon = PromotionalCoupon.amount(
+                creation.companyId(),
+                creation.generatedStoreId(),
+                creation.promotionId(),
+                creation.generatedDocumentId(),
+                service("LIST-4444").hashForTest("LIST-4444"),
+                "4444",
+                new BigDecimal("10.00"),
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 7, 31));
+        when(coupons.findByEmpresaId(creation.companyId())).thenReturn(List.of(coupon));
+
+        var views = service("unused").list(creation.companyId(), null, "4444");
+
+        assertThat(views).singleElement()
+                .satisfies(view -> {
+                    assertThat(view.id()).isEqualTo(coupon.id());
+                    assertThat(view.codeLast4()).isEqualTo("4444");
+                    assertThat(view.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
+                    assertThat(view.amount()).isEqualByComparingTo("10.00");
+                });
+        assertThat(PromotionalCouponService.CouponView.class.getRecordComponents())
+                .extracting(component -> component.getName().toLowerCase())
+                .noneMatch(name -> name.contains("hash") || name.equals("code") || name.contains("plaintext"));
+    }
+
+    @Test
+    void cancelAndReactivateUseDomainRules() {
+        var creation = amountCreation();
+        var coupon = PromotionalCoupon.amount(
+                creation.companyId(),
+                creation.generatedStoreId(),
+                creation.promotionId(),
+                creation.generatedDocumentId(),
+                service("ADMIN-5555").hashForTest("ADMIN-5555"),
+                "5555",
+                new BigDecimal("10.00"),
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 7, 31));
+        var userId = UUID.randomUUID();
+        when(coupons.findByIdAndEmpresaId(coupon.id(), creation.companyId()))
+                .thenReturn(Optional.of(coupon));
+
+        var cancelled = service("unused").cancel(new PromotionalCouponService.AdminActionCommand(
+                creation.companyId(), coupon.id(), userId, "Error de emision"));
+        var reactivated = service("unused").reactivate(new PromotionalCouponService.AdminActionCommand(
+                creation.companyId(), coupon.id(), userId, "Cliente recupera cupon"));
+
+        assertThat(cancelled.status()).isEqualTo(PromotionalCouponStatus.CANCELLED);
+        assertThat(reactivated.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
     }
 
     private PromotionalCouponService service(String code) {

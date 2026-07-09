@@ -38,6 +38,12 @@ public class PromotionController {
         return promotions.create(request);
     }
 
+    @PostMapping("/preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    public PromotionPreview preview(@Valid @RequestBody PromotionPreviewRequest request) {
+        return promotions.preview(request);
+    }
+
     @PostMapping("/{id}/duplicate")
     @PreAuthorize(PERMISSION)
     public PromotionService.PromotionView duplicate(@PathVariable UUID id) {
