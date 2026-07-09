@@ -11,13 +11,35 @@ alter table documento_linea
 alter table documento_linea
     add constraint ck_documento_linea_tipo_linea
         check (tipo_linea in ('PRODUCT', 'PROMOTION', 'PROMOTIONAL_COUPON')),
-    add constraint ck_documento_linea_producto_por_tipo
+    add constraint ck_documento_linea_product_integrity
         check (
-            (tipo_linea = 'PRODUCT' and producto_id is not null)
-            or (tipo_linea in ('PROMOTION', 'PROMOTIONAL_COUPON') and producto_id is null)
+            tipo_linea <> 'PRODUCT'
+            or (
+                producto_id is not null
+                and promocion_id is null
+                and promocion_version_id is null
+                and cupon_promocional_id is null
+            )
         ),
-    add constraint ck_documento_linea_especial_no_positiva
-        check (tipo_linea = 'PRODUCT' or total <= 0),
+    add constraint ck_documento_linea_promotion_integrity
+        check (
+            tipo_linea <> 'PROMOTION'
+            or (
+                producto_id is null
+                and promocion_id is not null
+                and cupon_promocional_id is null
+                and total <= 0
+            )
+        ),
+    add constraint ck_documento_linea_coupon_integrity
+        check (
+            tipo_linea <> 'PROMOTIONAL_COUPON'
+            or (
+                producto_id is null
+                and cupon_promocional_id is not null
+                and total <= 0
+            )
+        ),
     add constraint ck_documento_linea_metadata_promocion
         check (metadata_promocion is null or jsonb_typeof(metadata_promocion) = 'object');
 
@@ -238,3 +260,9 @@ create index ix_cupon_documento_generado
     on cupon_promocional(documento_generado_id);
 create index ix_cupon_documento_canjeado
     on cupon_promocional(documento_canjeado_id);
+create index ix_documento_linea_promocion
+    on documento_linea(promocion_id);
+create index ix_documento_linea_promocion_version
+    on documento_linea(promocion_version_id);
+create index ix_documento_linea_cupon_promocional
+    on documento_linea(cupon_promocional_id);
