@@ -25,6 +25,7 @@ import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.promotion.Promotion;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.PromotionRepository;
+import com.tpverp.backend.promotion.PromotionScope;
 import com.tpverp.backend.promotion.PromotionStatus;
 import com.tpverp.backend.promotion.PromotionTarget;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
@@ -215,6 +216,68 @@ class DocumentPromotionIntegrationTest {
     }
 
     @Test
+    void oldDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.minusDays(10), UUID.randomUUID());
+        var promotion = purchaseThresholdCoupon();
+        promotion.configureManagementFields(TODAY.minusDays(10), TODAY.minusDays(1), PromotionScope.SALE, null);
+        promotion.activate();
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+
+        service.confirm(document.getId(), authentication());
+
+        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
+    void futureDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.plusDays(10), UUID.randomUUID());
+        var promotion = purchaseThresholdCoupon();
+        promotion.configureManagementFields(TODAY.plusDays(1), null, PromotionScope.SALE, null);
+        promotion.activate();
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+
+        service.confirm(document.getId(), authentication());
+
+        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
+    void targetedCouponPromotionIsNotGeneratedForUnrelatedProduct() {
+        var documentProductId = UUID.randomUUID();
+        var targetProductId = UUID.randomUUID();
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY, documentProductId);
+        var product = product(documentProductId, UUID.randomUUID(), null);
+        var promotion = purchaseThresholdCoupon();
+        promotion.configureManagementFields(TODAY.minusDays(1), null, PromotionScope.PRODUCT_LIST, null);
+        promotion.activate();
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(documentProductId)))
+                .thenReturn(List.of(product));
+        when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id())))
+                .thenReturn(List.of(new PromotionTarget(
+                        promotion.id(), PromotionTargetType.PRODUCT, targetProductId)));
+
+        service.confirm(document.getId(), authentication());
+
+        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
     void confirmedPurchaseDocumentDoesNotGenerateCoupons() {
         var supplier = new Supplier(
                 store.getEmpresa(), "Proveedor", null, DocumentType.CIF, "B00000001",
@@ -263,7 +326,11 @@ class DocumentPromotionIntegrationTest {
     }
 
     private CommercialDocument draft(CommercialDocumentType type) {
-        var command = command(type, List.of(line(UUID.randomUUID(), "1", "10.00")));
+        return draft(type, TODAY, UUID.randomUUID());
+    }
+
+    private CommercialDocument draft(CommercialDocumentType type, LocalDate date, UUID productId) {
+        var command = command(type, date, List.of(line(productId, "1", "10.00")));
         var document = new CommercialDocument(
                 store.getId(), command.almacenId(), type, command.fecha(),
                 user.getId(), command.descuentoGlobal());
@@ -272,10 +339,14 @@ class DocumentPromotionIntegrationTest {
     }
 
     private DocumentCommand command(CommercialDocumentType type, List<DocumentLineCommand> lines) {
+        return command(type, TODAY, lines);
+    }
+
+    private DocumentCommand command(CommercialDocumentType type, LocalDate date, List<DocumentLineCommand> lines) {
         return new DocumentCommand(
                 UUID.randomUUID(),
                 type,
-                TODAY,
+                date,
                 null,
                 null,
                 null,

@@ -33,6 +33,7 @@ import com.tpverp.backend.promotion.PromotionScope;
 import com.tpverp.backend.promotion.PromotionStatus;
 import com.tpverp.backend.promotion.PromotionTarget;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
+import com.tpverp.backend.promotion.PromotionTargetType;
 import com.tpverp.backend.promotion.PromotionType;
 import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionalCouponService;
@@ -313,7 +314,13 @@ public class DocumentService {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
             return;
         }
-        activePromotions(document).stream()
+        var couponPromotions = activePromotions(document).stream()
+                .filter(DocumentService::isCouponPromotion)
+                .toList();
+        var targets = promotionTargets(couponPromotions);
+        var evaluationLines = targets.isEmpty() ? List.<PromotionEvaluationLine>of() : promotionEvaluationLines(document);
+        couponPromotions.stream()
+                .filter(promotion -> matchesAnyEligibleLine(promotion, evaluationLines, targets))
                 .map(promotion -> couponCommand(document, promotion))
                 .flatMap(Optional::stream)
                 .forEach(promotionalCoupons::generateAfterTicketConfirmation);
@@ -322,8 +329,7 @@ public class DocumentService {
     private Optional<PromotionalCouponService.CreationCommand> couponCommand(
             CommercialDocument document,
             Promotion promotion) {
-        if (!promotion.generatesCoupon()
-                && promotion.type() != PromotionType.PURCHASE_THRESHOLD_COUPON) {
+        if (!isCouponPromotion(promotion)) {
             return Optional.empty();
         }
         var minimum = promotion.couponMinimumAmount();
@@ -392,12 +398,51 @@ public class DocumentService {
     }
 
     private List<Promotion> activePromotions(CommercialDocument document) {
+        var currentDate = LocalDate.now(clock);
         return promotions.findByEmpresaIdAndEstado(
                         organization.currentCompany().getId(), PromotionStatus.ACTIVE).stream()
-                .filter(promotion -> appliesOnDate(promotion, document.getFecha()))
+                .filter(promotion -> appliesOnDate(promotion, currentDate))
                 .filter(promotion -> promotion.customerSegment() == PromotionCustomerSegment.ALL
                         || document.getClienteId() != null)
                 .toList();
+    }
+
+    private List<PromotionEvaluationLine> promotionEvaluationLines(CommercialDocument document) {
+        var productLines = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> line.getCantidad().signum() > 0)
+                .filter(line -> line.getCantidad().stripTrailingZeros().scale() <= 0)
+                .toList();
+        if (productLines.isEmpty()) {
+            return List.of();
+        }
+        var productsById = productMap(document, productLines);
+        return productLines.stream()
+                .map(line -> evaluationLine(line, productsById.get(line.getProductoId())))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private static boolean matchesAnyEligibleLine(
+            Promotion promotion,
+            List<PromotionEvaluationLine> lines,
+            List<PromotionTarget> targets) {
+        var promotionTargets = targets.stream()
+                .filter(target -> target.promotionId().equals(promotion.id()))
+                .toList();
+        if (promotionTargets.isEmpty()) {
+            return true;
+        }
+        return lines.stream()
+                .filter(PromotionEvaluationLine::discountable)
+                .filter(line -> !line.manualDiscount())
+                .anyMatch(line -> promotionTargets.stream().anyMatch(target ->
+                        (target.type() == PromotionTargetType.PRODUCT
+                                && target.targetId().equals(line.productId()))
+                                || (target.type() == PromotionTargetType.FAMILY
+                                && target.targetId().equals(line.familyId()))
+                                || (target.type() == PromotionTargetType.SUBFAMILY
+                                && target.targetId().equals(line.subfamilyId()))));
     }
 
     private static boolean appliesOnDate(Promotion promotion, LocalDate date) {
@@ -412,6 +457,11 @@ public class DocumentService {
                 || promotion.scope() == PromotionScope.SUBFAMILY)
                 && (promotion.type() == PromotionType.BUY_X_PAY_Y
                 || promotion.type() == PromotionType.SECOND_UNIT_PERCENT);
+    }
+
+    private static boolean isCouponPromotion(Promotion promotion) {
+        return promotion.generatesCoupon()
+                || promotion.type() == PromotionType.PURCHASE_THRESHOLD_COUPON;
     }
 
     private void enqueueConfirmedDocument(CommercialDocument document, UUID terminalId) {
