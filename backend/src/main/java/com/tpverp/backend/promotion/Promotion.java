@@ -122,6 +122,22 @@ public class Promotion {
         return nombre;
     }
 
+    public PromotionType type() {
+        return tipo;
+    }
+
+    public BigDecimal buyQuantity() {
+        return compraCantidad;
+    }
+
+    public BigDecimal payQuantity() {
+        return pagaCantidad;
+    }
+
+    public BigDecimal discountPercent() {
+        return descuentoPorcentaje;
+    }
+
     public PromotionStatus status() {
         return estado;
     }
@@ -149,6 +165,22 @@ public class Promotion {
     public void rename(String name) {
         requireNotUsed();
         nombre = requiredMax(name, "nombre", 160);
+        touch();
+    }
+
+    public void configureBuyXPayY(BigDecimal buyQuantity, BigDecimal payQuantity) {
+        requireNotUsed();
+        compraCantidad = positiveQuantity(buyQuantity, "compraCantidad");
+        pagaCantidad = positiveQuantity(payQuantity, "pagaCantidad");
+        if (pagaCantidad.compareTo(compraCantidad) >= 0) {
+            throw new IllegalArgumentException("pagaCantidad debe ser menor que compraCantidad");
+        }
+        touch();
+    }
+
+    public void configureSecondUnitPercent(BigDecimal percent) {
+        requireNotUsed();
+        descuentoPorcentaje = validPercentage(percent, "descuentoPorcentaje");
         touch();
     }
 
@@ -182,5 +214,21 @@ public class Promotion {
             throw new IllegalArgumentException(field + " no puede superar " + maxLength + " caracteres");
         }
         return normalized;
+    }
+
+    private static BigDecimal positiveQuantity(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        if (value.signum() <= 0 || value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException(field + " debe ser positivo");
+        }
+        return value.setScale(3, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal validPercentage(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException(field + " debe estar entre 0 y 100");
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 }
