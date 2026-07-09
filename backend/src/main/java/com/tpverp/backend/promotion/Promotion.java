@@ -202,7 +202,9 @@ public class Promotion {
             }
         }
         if (tipo == PromotionType.SECOND_UNIT_PERCENT
-                && (descuentoPorcentaje == null || descuentoPorcentaje.signum() <= 0)) {
+                && (descuentoPorcentaje == null
+                || descuentoPorcentaje.signum() <= 0
+                || descuentoPorcentaje.compareTo(new BigDecimal("100")) > 0)) {
             throw new IllegalStateException("descuentoPorcentaje es obligatorio");
         }
     }

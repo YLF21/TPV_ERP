@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class PromotionDomainTest {
 
@@ -134,6 +135,20 @@ class PromotionDomainTest {
                 "Segunda unidad",
                 PromotionType.SECOND_UNIT_PERCENT,
                 LocalDate.now());
+
+        assertThatThrownBy(promotion::activate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("descuentoPorcentaje");
+    }
+
+    @Test
+    void secondUnitPercentPromotionRejectsPercentAboveOneHundredBeforeActivation() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(),
+                "Segunda unidad",
+                PromotionType.SECOND_UNIT_PERCENT,
+                LocalDate.now());
+        ReflectionTestUtils.setField(promotion, "descuentoPorcentaje", new BigDecimal("101.00"));
 
         assertThatThrownBy(promotion::activate)
                 .isInstanceOf(IllegalStateException.class)

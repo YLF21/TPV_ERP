@@ -160,6 +160,80 @@ class PromotionEngineTest {
     }
 
     @Test
+    void completeCandidateGenerationAllowsNonGreedyPairingToWin() {
+        var familyId = UUID.randomUUID();
+        var productB = UUID.randomUUID();
+        var familyPromo = secondUnitPercent("Familia", new BigDecimal("100.00"));
+        var productPromo = buyXPayY("2x1 Producto B", 2, 1);
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(
+                        line(1, UUID.randomUUID(), familyId, null, "1", "10.00", "IVA"),
+                        line(2, productB, familyId, null, "1", "5.00", "IVA"),
+                        line(3, UUID.randomUUID(), familyId, null, "1", "1.00", "IVA"),
+                        line(4, productB, null, null, "1", "5.00", "IVA")),
+                List.of(familyPromo, productPromo),
+                List.of(
+                        new PromotionTarget(familyPromo.id(), PromotionTargetType.FAMILY, familyId),
+                        productTarget(productPromo, productB))));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("6.00");
+        assertThat(preview.appliedPromotions())
+                .extracting(PromotionBenefit::promotionId)
+                .containsExactlyInAnyOrder(familyPromo.id(), productPromo.id());
+    }
+
+    @Test
+    void completeCandidateGenerationAllowsNonGreedyBuyXPayYPackToWin() {
+        var familyId = UUID.randomUUID();
+        var productB = UUID.randomUUID();
+        var familyPromo = buyXPayY("3x2 Familia", 3, 2);
+        var productPromo = buyXPayY("2x1 Producto B", 2, 1);
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(
+                        line(1, UUID.randomUUID(), familyId, null, "1", "10.00", "IVA"),
+                        line(2, productB, familyId, null, "1", "9.00", "IVA"),
+                        line(3, UUID.randomUUID(), familyId, null, "1", "1.00", "IVA"),
+                        line(4, productB, null, null, "1", "9.00", "IVA"),
+                        line(5, UUID.randomUUID(), familyId, null, "1", "1.00", "IVA")),
+                List.of(familyPromo, productPromo),
+                List.of(
+                        new PromotionTarget(familyPromo.id(), PromotionTargetType.FAMILY, familyId),
+                        productTarget(productPromo, productB))));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("10.00");
+        assertThat(preview.appliedPromotions())
+                .extracting(PromotionBenefit::promotionId)
+                .containsExactlyInAnyOrder(familyPromo.id(), productPromo.id());
+    }
+
+    @Test
+    void evaluationRequestRejectsNullElements() {
+        var productId = UUID.randomUUID();
+        var promotion = buyXPayY("3x2 Agua", 3, 2);
+
+        assertThatThrownBy(() -> new PromotionEvaluationRequest(
+                java.util.Arrays.asList(line(1, productId, "1.00"), null),
+                List.of(promotion),
+                List.of(productTarget(promotion, productId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lines");
+        assertThatThrownBy(() -> new PromotionEvaluationRequest(
+                List.of(line(1, productId, "1.00")),
+                java.util.Arrays.asList(promotion, null),
+                List.of(productTarget(promotion, productId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("promotions");
+        assertThatThrownBy(() -> new PromotionEvaluationRequest(
+                List.of(line(1, productId, "1.00")),
+                List.of(promotion),
+                java.util.Arrays.asList(productTarget(promotion, productId), null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("targets");
+    }
+
+    @Test
     void evaluationLineRejectsUnsupportedAmountsForThisEngineVersion() {
         var productId = UUID.randomUUID();
 

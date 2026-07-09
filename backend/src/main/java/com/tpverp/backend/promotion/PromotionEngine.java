@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 public class PromotionEngine {
 
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+    private static final int MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP = 18;
 
     public PromotionPreview preview(PromotionEvaluationRequest request) {
         var candidates = new ArrayList<Candidate>();
@@ -89,7 +90,14 @@ public class PromotionEngine {
         if (buy <= 0 || pay < 0 || pay >= buy || units.size() < buy) {
             return List.of();
         }
+        if (units.size() <= MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP) {
+            var combinations = new ArrayList<Candidate>();
+            collectBuyXPayYCombinations(promotion, units, buy, pay, 0, new ArrayList<>(), combinations);
+            return combinations;
+        }
 
+        // Above the first-version exact cap, keep deterministic greedy generation to avoid
+        // combinatorial explosion while still producing stable cashier previews.
         var sorted = units.stream()
                 .sorted(Comparator.comparing(Unit::price).reversed())
                 .toList();
@@ -110,7 +118,18 @@ public class PromotionEngine {
         if (promotion.discountPercent() == null || promotion.discountPercent().signum() <= 0 || units.size() < 2) {
             return List.of();
         }
+        if (units.size() <= MAX_EXACT_UNITS_PER_PROMOTION_TAX_GROUP) {
+            var result = new ArrayList<Candidate>();
+            for (var first = 0; first < units.size() - 1; first++) {
+                for (var second = first + 1; second < units.size(); second++) {
+                    result.add(secondUnitPercentCandidate(promotion, List.of(units.get(first), units.get(second))));
+                }
+            }
+            return result;
+        }
 
+        // Above the first-version exact cap, keep deterministic greedy generation to avoid
+        // combinatorial explosion while still producing stable cashier previews.
         var sorted = units.stream()
                 .sorted(Comparator.comparing(Unit::price).reversed())
                 .toList();
@@ -122,6 +141,37 @@ public class PromotionEngine {
             result.add(benefit(promotion, pair, discount));
         }
         return result;
+    }
+
+    private static void collectBuyXPayYCombinations(
+            Promotion promotion,
+            List<Unit> units,
+            int buy,
+            int pay,
+            int start,
+            List<Unit> selected,
+            List<Candidate> result) {
+        if (selected.size() == buy) {
+            var discounted = selected.stream()
+                    .sorted(Comparator.comparing(Unit::price))
+                    .limit(buy - pay)
+                    .map(Unit::price)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            result.add(benefit(promotion, selected, discounted));
+            return;
+        }
+        var needed = buy - selected.size();
+        for (var index = start; index <= units.size() - needed; index++) {
+            selected.add(units.get(index));
+            collectBuyXPayYCombinations(promotion, units, buy, pay, index + 1, selected, result);
+            selected.removeLast();
+        }
+    }
+
+    private static Candidate secondUnitPercentCandidate(Promotion promotion, List<Unit> pair) {
+        var cheaper = pair.stream().min(Comparator.comparing(Unit::price)).orElseThrow();
+        var discount = cheaper.price().multiply(promotion.discountPercent()).divide(HUNDRED, 6, RoundingMode.HALF_UP);
+        return benefit(promotion, pair, discount);
     }
 
     private static Candidate benefit(Promotion promotion, List<Unit> units, BigDecimal amount) {
