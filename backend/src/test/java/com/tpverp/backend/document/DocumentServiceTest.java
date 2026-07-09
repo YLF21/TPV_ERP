@@ -1004,6 +1004,30 @@ class DocumentServiceTest {
     }
 
     @Test
+    void confirmedPurchaseDeliveryNoteIgnoresPromotionLinesWhenRecordingSupplierProducts() {
+        var supplier = supplier(true);
+        var productId = UUID.randomUUID();
+        var note = purchaseDraft(
+                CommercialDocumentType.ALBARAN_COMPRA,
+                supplier,
+                true,
+                List.of(
+                        line(productId, "P-1", "Producto", new BigDecimal("10.00")),
+                        promotionCommand(UUID.randomUUID(), null, new BigDecimal("-1.00"))));
+        preparePurchaseConfirmation(note, supplier, true);
+
+        service.confirm(note.getId(), authentication());
+
+        @SuppressWarnings("unchecked")
+        var products = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(purchaseRecorder).record(
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(note.getFecha()),
+                products.capture());
+        assertThat(products.getValue()).containsExactly(productId);
+    }
+
+    @Test
     void confirmedImportedPurchaseRecordsSupplierReferencesAndClearsMetadata() {
         var supplier = supplier(true);
         var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
@@ -1112,7 +1136,19 @@ class DocumentServiceTest {
 
     private CommercialDocument purchaseDraft(
             CommercialDocumentType type, Supplier supplier, boolean stockOrigin) {
-        var document = draft(type);
+        return purchaseDraft(type, supplier, stockOrigin, lines());
+    }
+
+    private CommercialDocument purchaseDraft(
+            CommercialDocumentType type,
+            Supplier supplier,
+            boolean stockOrigin,
+            List<DocumentLineCommand> lines) {
+        var command = command(type, lines);
+        var document = new CommercialDocument(
+                store.getId(), command.almacenId(), type, command.fecha(),
+                user.getId(), command.descuentoGlobal());
+        command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         document.setParties(null, supplier.getId(), null);
         document.setStockOrigin(stockOrigin);
         return document;

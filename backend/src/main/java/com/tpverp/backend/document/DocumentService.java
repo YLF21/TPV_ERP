@@ -151,6 +151,7 @@ public class DocumentService {
                     document.getProveedorId(),
                     document.getFecha(),
                     document.getLineas().stream()
+                            .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                             .map(DocumentLine::getProductoId)
                             .distinct()
                             .toList());
