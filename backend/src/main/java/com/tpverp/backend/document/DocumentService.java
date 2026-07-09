@@ -242,7 +242,10 @@ public class DocumentService {
 
     private static Map<String, Object> linePayload(DocumentLine line) {
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("productoId", line.getProductoId().toString());
+        payload.put("productoId", nullableUuid(line.getProductoId()));
+        payload.put("tipoLinea", line.getLineType().name());
+        payload.put("promocionId", nullableUuid(line.getPromotionId()));
+        payload.put("cuponPromocionalId", nullableUuid(line.getPromotionalCouponId()));
         payload.put("posicion", line.getPosicion());
         payload.put("codigo", line.getCodigo());
         payload.put("nombre", line.getNombre());
@@ -479,11 +482,7 @@ public class DocumentService {
         invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
         invoice.setNumTicket(ticket.getNumero());
         ticket.getLineas().stream()
-                .map(line -> new DocumentLineCommand(
-                        line.getProductoId(), line.getCantidad(), line.getCodigo(),
-                        line.getNombre(), line.getTarifa(), line.getPrecioUnitario(),
-                        line.getDescuento(), line.isImpuestosIncluidos(),
-                        line.getRegimenImpuesto(), line.getPorcentajeImpuesto()))
+                .map(DocumentLineCommand::from)
                 .forEach(line -> invoice.addLine(line.toEntity(invoice)));
         invoice.setStockOrigin(false);
         return invoice;
@@ -640,6 +639,7 @@ public class DocumentService {
 
     private BigDecimal eligibleDocumentTotal(CommercialDocument document) {
         var ids = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                 .map(DocumentLine::getProductoId)
                 .distinct()
                 .toList();

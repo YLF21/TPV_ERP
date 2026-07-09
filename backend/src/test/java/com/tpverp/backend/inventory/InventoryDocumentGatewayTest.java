@@ -13,6 +13,7 @@ import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.document.DocumentLineCommand;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -106,6 +107,24 @@ class InventoryDocumentGatewayTest {
 
         verify(stockRepository, never()).save(any());
         verify(movementRepository, never()).save(any());
+    }
+
+    @Test
+    void promotionLineDoesNotMoveStock() {
+        var document = confirmed(CommercialDocumentType.TICKET, 1);
+        document.addLine(DocumentLine.promotion(
+                document, 2, "PROMOCION 3x2 Agua", new BigDecimal("-1.00"),
+                true, "IVA", new BigDecimal("21.00"), UUID.randomUUID(), null));
+        var productLine = document.getLineas().getFirst();
+        var stock = new StockLevel(productLine.getProductoId(), document.getAlmacenId());
+        when(stockRepository.findByProductIdAndWarehouseId(
+                productLine.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
+        when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
+
+        assertThat(gateway.confirm(document)).isTrue();
+
+        assertThat(stock.getQuantity()).isEqualByComparingTo("-1.000");
+        verify(movementRepository).save(any(StockMovement.class));
     }
 
     @Test

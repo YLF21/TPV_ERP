@@ -82,7 +82,10 @@ public class FiscalSnapshotFactory {
 
     private static Map<String, Object> line(DocumentLine line) {
         var value = new LinkedHashMap<String, Object>();
-        value.put("productoId", line.getProductoId().toString());
+        value.put("productoId", id(line.getProductoId()));
+        value.put("tipoLinea", line.getLineType().name());
+        value.put("promocionId", id(line.getPromotionId()));
+        value.put("cuponPromocionalId", id(line.getPromotionalCouponId()));
         value.put("posicion", line.getPosicion());
         value.put("cantidad", line.getCantidad());
         value.put("codigo", line.getCodigo());
