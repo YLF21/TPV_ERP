@@ -51,10 +51,32 @@ class PromotionServiceTest {
         assertThat(saved.getValue().versionOrigenId()).isEqualTo(original.id());
         assertThat(saved.getValue().status()).isEqualTo(PromotionStatus.DRAFT);
         when(promotions.findByIdAndEmpresaId(duplicate.id(), company.getId())).thenReturn(Optional.of(saved.getValue()));
+        when(promotions.findActiveLineageForUpdate(company.getId(), original.id())).thenReturn(List.of(original));
 
         service().activate(duplicate.id());
 
         assertThat(original.status()).isEqualTo(PromotionStatus.INACTIVE);
+    }
+
+    @Test
+    void activatingSiblingVersionDeactivatesPreviouslyActiveSiblingAndOriginal() {
+        currentCompany();
+        var original = buyXPayY("3x2 Agua");
+        original.activate();
+        original.markUsed();
+        var duplicateA = original.duplicateDraft();
+        var duplicateB = original.duplicateDraft();
+        when(promotions.findByIdAndEmpresaId(duplicateA.id(), company.getId())).thenReturn(Optional.of(duplicateA));
+        when(promotions.findByIdAndEmpresaId(duplicateB.id(), company.getId())).thenReturn(Optional.of(duplicateB));
+        when(promotions.findActiveLineageForUpdate(company.getId(), original.id()))
+                .thenReturn(List.of(original), List.of(original, duplicateA));
+
+        service().activate(duplicateA.id());
+        service().activate(duplicateB.id());
+
+        assertThat(original.status()).isEqualTo(PromotionStatus.INACTIVE);
+        assertThat(duplicateA.status()).isEqualTo(PromotionStatus.INACTIVE);
+        assertThat(duplicateB.status()).isEqualTo(PromotionStatus.ACTIVE);
     }
 
     @Test
@@ -112,6 +134,13 @@ class PromotionServiceTest {
         assertThat(view.type()).isEqualTo(PromotionType.SECOND_UNIT_PERCENT);
         assertThat(view.discountPercent()).isEqualByComparingTo("50.00");
         assertThat(view.status()).isEqualTo(PromotionStatus.DRAFT);
+    }
+
+    @Test
+    void createRejectsNullRequestCleanly() {
+        assertThatThrownBy(() -> service().create(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("request");
     }
 
     @Test

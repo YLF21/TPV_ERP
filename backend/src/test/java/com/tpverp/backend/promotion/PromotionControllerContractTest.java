@@ -2,14 +2,17 @@ package com.tpverp.backend.promotion;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.validation.Valid;
 import java.lang.reflect.Method;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 class PromotionControllerContractTest {
 
@@ -28,6 +31,14 @@ class PromotionControllerContractTest {
         assertDelete("delete", "/{id}");
     }
 
+    @Test
+    void createValidatesRequestBody() {
+        var requestParameter = method("create").getParameters()[0];
+
+        assertThat(requestParameter.getAnnotation(RequestBody.class)).isNotNull();
+        assertThat(requestParameter.getAnnotation(Valid.class)).isNotNull();
+    }
+
     private void assertGet(String methodName) throws Exception {
         var method = method(methodName);
         assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
@@ -44,6 +55,7 @@ class PromotionControllerContractTest {
         var method = method(methodName);
         assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
         assertThat(method.getAnnotation(DeleteMapping.class).value()).containsExactly(path);
+        assertThat(method.getAnnotation(ResponseStatus.class).value()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     private Method method(String name) {

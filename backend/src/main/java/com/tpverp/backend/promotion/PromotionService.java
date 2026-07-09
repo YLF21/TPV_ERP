@@ -1,6 +1,8 @@
 package com.tpverp.backend.promotion;
 
 import com.tpverp.backend.organization.CurrentOrganization;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -28,6 +30,9 @@ public class PromotionService {
 
     @Transactional
     public PromotionView create(PromotionRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
         var promotion = Promotion.draft(companyId(), request.name(), request.type(), request.startDate());
         applyRequest(promotion, request);
         return PromotionView.from(promotions.save(promotion));
@@ -42,12 +47,11 @@ public class PromotionService {
     @Transactional
     public PromotionView activate(UUID id) {
         var promotion = promotion(id);
+        var rootId = promotion.versionOrigenId() == null ? promotion.id() : promotion.versionOrigenId();
         promotion.activate();
-        if (promotion.versionOrigenId() != null) {
-            promotions.findByIdAndEmpresaId(promotion.versionOrigenId(), companyId())
-                    .filter(origin -> origin.status() == PromotionStatus.ACTIVE)
-                    .ifPresent(Promotion::deactivate);
-        }
+        promotions.findActiveLineageForUpdate(companyId(), rootId).stream()
+                .filter(active -> !active.id().equals(promotion.id()))
+                .forEach(Promotion::deactivate);
         return PromotionView.from(promotion);
     }
 
@@ -94,8 +98,11 @@ public class PromotionService {
     }
 
     public record PromotionRequest(
+            @NotBlank
             String name,
+            @NotNull
             PromotionType type,
+            @NotNull
             LocalDate startDate,
             LocalDate endDate,
             PromotionScope scope,
