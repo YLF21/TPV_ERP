@@ -78,7 +78,36 @@ class ParkedSaleServiceTest {
         verify(repository).delete(parked);
     }
 
+    @Test
+    void parksAndRestoresPromotionLineMetadata() {
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var promotionId = UUID.randomUUID();
+        var promotionVersionId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var command = command(UUID.randomUUID(), List.of(
+                productLine(),
+                new DocumentLineCommand(
+                        null, BigDecimal.ONE, "CUPON", "CUPON BIENVENIDA", null,
+                        new BigDecimal("-1.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21"), DocumentLineType.PROMOTIONAL_COUPON,
+                        promotionId, promotionVersionId, couponId)));
+
+        var parked = service.park(command, "Promo aparcada", auth());
+        var restored = parked.documentCommand().lineas().get(1);
+
+        assertThat(parked.getTotal()).isEqualByComparingTo("9.00");
+        assertThat(restored.productoId()).isNull();
+        assertThat(restored.lineType()).isEqualTo(DocumentLineType.PROMOTIONAL_COUPON);
+        assertThat(restored.promotionId()).isEqualTo(promotionId);
+        assertThat(restored.promotionVersionId()).isEqualTo(promotionVersionId);
+        assertThat(restored.promotionalCouponId()).isEqualTo(couponId);
+    }
+
     private static DocumentCommand command(UUID customerId) {
+        return command(customerId, List.of(productLine()));
+    }
+
+    private static DocumentCommand command(UUID customerId, List<DocumentLineCommand> lines) {
         return new DocumentCommand(
                 UUID.randomUUID(),
                 CommercialDocumentType.TICKET,
@@ -88,10 +117,14 @@ class ParkedSaleServiceTest {
                 null,
                 BigDecimal.ZERO,
                 false,
-                List.of(new DocumentLineCommand(
-                        UUID.randomUUID(), 1, "P-1", "Producto", "VENTA",
-                        new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
-                        new BigDecimal("21"))));
+                lines);
+    }
+
+    private static DocumentLineCommand productLine() {
+        return new DocumentLineCommand(
+                UUID.randomUUID(), 1, "P-1", "Producto", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21"));
     }
 
     private static UsernamePasswordAuthenticationToken auth() {

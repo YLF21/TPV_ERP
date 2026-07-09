@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.times;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.DiscountType;
@@ -28,6 +29,11 @@ import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.promotion.PromotionEngine;
+import com.tpverp.backend.promotion.PromotionRepository;
+import com.tpverp.backend.promotion.PromotionStatus;
+import com.tpverp.backend.promotion.PromotionTargetRepository;
+import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.sync.SyncOperation;
@@ -102,6 +108,12 @@ class DocumentServiceTest {
     private SyncOutboxService syncOutbox;
     @Mock
     private ProductImportLineMetadataRepository importMetadata;
+    @Mock
+    private PromotionRepository promotionRepository;
+    @Mock
+    private PromotionTargetRepository promotionTargetRepository;
+    @Mock
+    private PromotionalCouponService promotionalCoupons;
 
     private DocumentService service;
     private Store store;
@@ -128,6 +140,9 @@ class DocumentServiceTest {
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
+        lenient().when(promotionRepository.findByEmpresaIdAndEstado(any(), any(PromotionStatus.class)))
+                .thenReturn(List.of());
+        lenient().when(promotionTargetRepository.findByPromocionIdIn(any())).thenReturn(List.of());
         lenient().when(memberLoyaltyService.applyLineBenefit(any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         lenient().when(productRepository.findById(any())).thenAnswer(invocation -> {
@@ -167,6 +182,10 @@ class DocumentServiceTest {
                 memberLoyaltyService,
                 syncOutbox,
                 importMetadata,
+                promotionRepository,
+                promotionTargetRepository,
+                new PromotionEngine(),
+                promotionalCoupons,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -338,6 +357,31 @@ class DocumentServiceTest {
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
         verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+    }
+
+    @Test
+    void ticketCreationAddsPromotionLineWithoutProductLookupOrMemberBenefit() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var productId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "AGUA", "Agua", new BigDecimal("3.00")),
+                        promotionCommand(promotionId, null, new BigDecimal("-1.00")))),
+                List.of(new PaymentCommand(cash.getId(), new BigDecimal("2.00"), true, null, null)),
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("2.00");
+        assertThat(ticket.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PROMOTION);
+        verify(productRepository, times(1)).findById(productId);
+        verify(memberLoyaltyService, times(1)).applyLineBenefit(any(), any(), any());
     }
 
     @Test
@@ -978,6 +1022,30 @@ class DocumentServiceTest {
     }
 
     @Test
+    void confirmedPurchaseDeliveryNoteIgnoresPromotionLinesWhenRecordingSupplierProducts() {
+        var supplier = supplier(true);
+        var productId = UUID.randomUUID();
+        var note = purchaseDraft(
+                CommercialDocumentType.ALBARAN_COMPRA,
+                supplier,
+                true,
+                List.of(
+                        line(productId, "P-1", "Producto", new BigDecimal("10.00")),
+                        promotionCommand(UUID.randomUUID(), null, new BigDecimal("-1.00"))));
+        preparePurchaseConfirmation(note, supplier, true);
+
+        service.confirm(note.getId(), authentication());
+
+        @SuppressWarnings("unchecked")
+        var products = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(purchaseRecorder).record(
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.eq(note.getFecha()),
+                products.capture());
+        assertThat(products.getValue()).containsExactly(productId);
+    }
+
+    @Test
     void confirmedImportedPurchaseRecordsSupplierReferencesAndClearsMetadata() {
         var supplier = supplier(true);
         var note = purchaseDraft(CommercialDocumentType.ALBARAN_COMPRA, supplier, true);
@@ -1086,7 +1154,19 @@ class DocumentServiceTest {
 
     private CommercialDocument purchaseDraft(
             CommercialDocumentType type, Supplier supplier, boolean stockOrigin) {
-        var document = draft(type);
+        return purchaseDraft(type, supplier, stockOrigin, lines());
+    }
+
+    private CommercialDocument purchaseDraft(
+            CommercialDocumentType type,
+            Supplier supplier,
+            boolean stockOrigin,
+            List<DocumentLineCommand> lines) {
+        var command = command(type, lines);
+        var document = new CommercialDocument(
+                store.getId(), command.almacenId(), type, command.fecha(),
+                user.getId(), command.descuentoGlobal());
+        command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         document.setParties(null, supplier.getId(), null);
         document.setStockOrigin(stockOrigin);
         return document;
@@ -1158,6 +1238,17 @@ class DocumentServiceTest {
         return new DocumentLineCommand(
                 productId, 1, code, name, "VENTA", price,
                 BigDecimal.ZERO, true, "IVA", new BigDecimal("21"));
+    }
+
+    private DocumentLineCommand promotionCommand(
+            UUID promotionId,
+            UUID couponId,
+            BigDecimal amount) {
+        return new DocumentLineCommand(
+                null, BigDecimal.ONE, "PROMO", "PROMOCION 3x2 Agua", null,
+                amount, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"),
+                couponId == null ? DocumentLineType.PROMOTION : DocumentLineType.PROMOTIONAL_COUPON,
+                promotionId, null, couponId);
     }
 
     private DocumentCommand negativeTicketCommand() {

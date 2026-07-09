@@ -5,6 +5,7 @@ import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.StockDocumentGateway;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -54,6 +55,9 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
             return false;
         }
         for (var line : document.getLineas()) {
+            if (line.getLineType() != DocumentLineType.PRODUCT) {
+                continue;
+            }
             if (isService(line.getProductoId())) {
                 continue;
             }

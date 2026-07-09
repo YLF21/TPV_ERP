@@ -85,10 +85,13 @@ class FiscalSnapshotFactoryTest {
                 .containsExactly(1, 2);
         assertThat(map(lines.getFirst()))
                 .containsKeys(
-                        "productoId", "cantidad", "codigo", "nombre", "tarifa",
-                        "precioUnitario", "descuento", "impuestosIncluidos",
-                        "regimenImpuesto", "porcentajeImpuesto", "base",
-                        "impuesto", "total");
+                        "productoId", "tipoLinea", "promocionId", "cuponPromocionalId",
+                        "cantidad", "codigo", "nombre", "tarifa", "precioUnitario",
+                        "descuento", "impuestosIncluidos", "regimenImpuesto",
+                        "porcentajeImpuesto", "base", "impuesto", "total")
+                .containsEntry("tipoLinea", "PRODUCT")
+                .containsEntry("promocionId", null)
+                .containsEntry("cuponPromocionalId", null);
         assertThat(map(list(snapshot.get("pagos")).getFirst()))
                 .containsEntry("metodoPagoId", cash.getId().toString())
                 .containsEntry("metodoPagoNombre", "EFECTIVO")
@@ -136,6 +139,31 @@ class FiscalSnapshotFactoryTest {
                 FiscalDocumentType.F3, null);
 
         assertThat(snapshot).containsEntry("numTicket", "001-270102-000001");
+    }
+
+    @Test
+    void incluyeMetadatosPromocionalesEnLineasEspeciales() {
+        var promotionId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(DocumentLine.promotion(
+                document, 1, "CUPON BIENVENIDA", new BigDecimal("-1.00"),
+                true, "IVA", new BigDecimal("21.00"), promotionId, couponId));
+        document.confirm(
+                "001-270102-000001", UUID.randomUUID(),
+                Instant.parse("2027-01-02T10:00:00Z"), false);
+
+        var snapshot = new FiscalSnapshotFactory().create(
+                document, "B12345674", FiscalRecordOperation.ALTA,
+                FiscalDocumentType.F2, null);
+
+        assertThat(map(list(snapshot.get("lineas")).getFirst()))
+                .containsEntry("productoId", null)
+                .containsEntry("tipoLinea", "PROMOTIONAL_COUPON")
+                .containsEntry("promocionId", promotionId.toString())
+                .containsEntry("cuponPromocionalId", couponId.toString());
     }
 
     private static DocumentLine line(CommercialDocument document, int position, String code) {

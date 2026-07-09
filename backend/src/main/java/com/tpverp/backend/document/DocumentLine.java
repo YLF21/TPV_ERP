@@ -2,6 +2,8 @@ package com.tpverp.backend.document;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -24,8 +26,17 @@ public class DocumentLine {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "documento_id", nullable = false)
     private CommercialDocument documento;
-    @Column(name = "producto_id", nullable = false)
+    @Column(name = "producto_id")
     private UUID productoId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_linea", nullable = false, length = 24)
+    private DocumentLineType lineType = DocumentLineType.PRODUCT;
+    @Column(name = "promocion_id")
+    private UUID promotionId;
+    @Column(name = "promocion_version_id")
+    private UUID promotionVersionId;
+    @Column(name = "cupon_promocional_id")
+    private UUID promotionalCouponId;
     @Column(nullable = false)
     private int posicion;
     @Column(nullable = false, precision = 19, scale = 3)
@@ -97,6 +108,7 @@ public class DocumentLine {
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
         this.productoId = Objects.requireNonNull(productoId, "productoId");
+        this.lineType = DocumentLineType.PRODUCT;
         this.posicion = posicion;
         this.cantidad = quantity(cantidad);
         this.codigo = required(codigo, "codigo");
@@ -110,12 +122,98 @@ public class DocumentLine {
         calculateAmounts();
     }
 
+    private DocumentLine(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId) {
+        if (posicion < 1) {
+            throw new IllegalArgumentException("message.document.position_must_be_positive");
+        }
+        if (promotionalCouponId == null && promotionId == null) {
+            throw new IllegalArgumentException("promotionId es obligatorio");
+        }
+        this.id = UUID.randomUUID();
+        this.documento = Objects.requireNonNull(documento, "documento");
+        this.productoId = null;
+        this.lineType = promotionalCouponId == null
+                ? DocumentLineType.PROMOTION
+                : DocumentLineType.PROMOTIONAL_COUPON;
+        this.promotionId = promotionId;
+        this.promotionVersionId = promotionVersionId;
+        this.promotionalCouponId = promotionalCouponId;
+        this.posicion = posicion;
+        this.cantidad = BigDecimal.ONE.setScale(3, Money.ROUNDING);
+        this.codigo = required(description, "description");
+        this.nombre = required(description, "description");
+        this.tarifa = null;
+        this.precioUnitario = Money.euros(amount);
+        this.descuento = Money.validPercentage(BigDecimal.ZERO);
+        this.impuestosIncluidos = impuestosIncluidos;
+        this.regimenImpuesto = taxRegime(regimenImpuesto);
+        this.porcentajeImpuesto = Money.validPercentage(porcentajeImpuesto);
+        calculateAmounts();
+    }
+
+    public static DocumentLine promotion(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID couponId) {
+        return new DocumentLine(
+                documento, posicion, description, amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, promotionId, null, couponId);
+    }
+
+    static DocumentLine special(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID couponId) {
+        return new DocumentLine(
+                documento, posicion, description, amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, promotionId, promotionVersionId, couponId);
+    }
+
     public CommercialDocument getDocumento() {
         return documento;
     }
 
     public UUID getProductoId() {
         return productoId;
+    }
+
+    public DocumentLineType getLineType() {
+        return lineType;
+    }
+
+    public UUID getPromotionId() {
+        return promotionId;
+    }
+
+    public UUID getPromotionVersionId() {
+        return promotionVersionId;
+    }
+
+    public UUID getPromotionalCouponId() {
+        return promotionalCouponId;
     }
 
     public int getPosicion() {
