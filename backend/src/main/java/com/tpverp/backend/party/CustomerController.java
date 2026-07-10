@@ -37,6 +37,15 @@ public class CustomerController {
         return service.list();
     }
 
+    @GetMapping("/sale-options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','VENTA')")
+    public List<SaleCustomerOption> saleOptions() {
+        return service.list().stream()
+                .map(customer -> new SaleCustomerOption(
+                        customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber()))
+                .toList();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
     public CustomerService.CustomerView get(@PathVariable UUID id) {
@@ -130,5 +139,12 @@ public class CustomerController {
     public record BalanceRequest(
             @NotNull BigDecimal amount,
             @NotBlank String reason) {
+    }
+
+    public record SaleCustomerOption(
+            UUID id,
+            String clientId,
+            String fiscalName,
+            String documentNumber) {
     }
 }

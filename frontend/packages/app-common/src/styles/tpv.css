@@ -3560,6 +3560,95 @@ input {
   text-transform: none;
 }
 
+.work-search input:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.sale-search-results {
+  display: grid;
+  gap: 7px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.sale-search-status {
+  margin: 0;
+  border: 1px dashed #cbd7e5;
+  border-radius: 11px;
+  background: #f8fbff;
+  color: #5b6f8c;
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.sale-search-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-color: #efcaca;
+  background: #fff7f7;
+  color: #9b2525;
+}
+
+.sale-search-error button {
+  border: 1px solid #dca9a9;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #9b2525;
+  padding: 7px 10px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.sale-search-result {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #17233b;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sale-search-result:hover,
+.sale-search-result:focus-visible {
+  border-color: #9db8db;
+  background: #eef5ff;
+  outline: 3px solid rgba(36, 78, 134, 0.13);
+}
+
+.sale-search-result span,
+.sale-ticket-line > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sale-search-result strong,
+.sale-search-result small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-search-result small {
+  color: #66758d;
+  font-weight: 750;
+}
+
+.sale-search-result b {
+  color: #244e86;
+  white-space: nowrap;
+}
+
 .sale-ticket {
   grid-column: 1;
   grid-row: 2;
@@ -3597,6 +3686,17 @@ input {
   border-radius: 14px;
   background: #fbfcfe;
   padding: 0 14px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sale-ticket-line:hover,
+.sale-ticket-line:focus-visible,
+.sale-ticket-line.selected {
+  border-color: #6f98ca;
+  background: #eef5ff;
+  outline: 3px solid rgba(36, 78, 134, 0.12);
 }
 
 .sale-ticket-line strong,
@@ -3607,6 +3707,20 @@ input {
   font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sale-ticket-line > div span {
+  font-size: 12px;
+}
+
+.sale-ticket-line > span {
+  display: grid;
+  gap: 2px;
+}
+
+.sale-ticket-line > span small {
+  color: #9b5b16;
+  font-weight: 900;
 }
 
 .sale-ticket-line span,
@@ -3733,6 +3847,130 @@ input {
   color: #17233b;
   cursor: pointer;
   font-weight: 900;
+}
+
+.sale-quick-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.sale-action-overlay {
+  position: fixed;
+  z-index: 170;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 29, 53, 0.48);
+  padding: 24px;
+}
+
+.sale-action-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 20px;
+  box-shadow: 0 24px 70px rgba(12, 29, 53, 0.26);
+}
+
+.sale-action-dialog.wide {
+  width: min(620px, 100%);
+}
+
+.sale-action-dialog header,
+.sale-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sale-action-dialog h2,
+.sale-action-dialog p {
+  margin: 0;
+}
+
+.sale-action-dialog header > button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #d7e0ea;
+  border-radius: 50%;
+  background: #f3f7fb;
+  cursor: pointer;
+  font-weight: 950;
+}
+
+.sale-action-dialog label {
+  display: grid;
+  gap: 7px;
+  color: #5b6f8c;
+  font-weight: 900;
+}
+
+.sale-action-dialog input {
+  min-height: 44px;
+  border: 1px solid #cbd7e5;
+  border-radius: 11px;
+  padding: 0 12px;
+  font: inherit;
+}
+
+.sale-action-buttons {
+  justify-content: flex-end;
+}
+
+.sale-action-buttons button,
+.sale-customer-results button {
+  min-height: 40px;
+  border: 1px solid #cbd7e5;
+  border-radius: 10px;
+  background: #f3f7fb;
+  color: #17233b;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.sale-action-buttons button:last-child {
+  border-color: #244e86;
+  background: #244e86;
+  color: #ffffff;
+}
+
+.sale-action-buttons button.danger {
+  border-color: #b42318;
+  background: #b42318;
+}
+
+.sale-action-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.sale-customer-results {
+  max-height: 330px;
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.sale-customer-results button {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.sale-customer-results button:hover,
+.sale-customer-results button:focus-visible {
+  border-color: #6f98ca;
+  background: #eef5ff;
+  outline: none;
 }
 
 .sale-quick-grid button:hover,
