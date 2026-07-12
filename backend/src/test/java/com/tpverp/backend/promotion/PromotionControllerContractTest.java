@@ -16,7 +16,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 class PromotionControllerContractTest {
 
-    private static final String PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
+    private static final String READ_PERMISSION =
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','STOCK_READ')";
+    private static final String MANAGE_PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
     private static final String SALES_PERMISSION =
             "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')";
 
@@ -48,12 +50,12 @@ class PromotionControllerContractTest {
 
     private void assertGet(String methodName) throws Exception {
         var method = method(methodName);
-        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
+        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(READ_PERMISSION);
         assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
     }
 
     private void assertPost(String methodName, String path) throws Exception {
-        assertPost(methodName, path, PERMISSION);
+        assertPost(methodName, path, MANAGE_PERMISSION);
     }
 
     private void assertPost(String methodName, String path, String permission) throws Exception {
@@ -64,7 +66,7 @@ class PromotionControllerContractTest {
 
     private void assertDelete(String methodName, String path) throws Exception {
         var method = method(methodName);
-        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(PERMISSION);
+        assertThat(method.getAnnotation(PreAuthorize.class).value()).isEqualTo(MANAGE_PERMISSION);
         assertThat(method.getAnnotation(DeleteMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(ResponseStatus.class).value()).isEqualTo(HttpStatus.NO_CONTENT);
     }

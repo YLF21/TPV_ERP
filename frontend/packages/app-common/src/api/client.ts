@@ -9,7 +9,8 @@ type ApiRequestOptions = {
 export class ApiError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly problem?: Record<string, unknown>
   ) {
     super(message);
   }
@@ -27,13 +28,15 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   if (!response.ok) {
     let message = response.statusText || "api_error";
+    let problem: Record<string, unknown> | undefined;
     try {
-      const problem = await response.json() as { detail?: string; code?: string };
-      message = problem.detail || problem.code || message;
+      const body = await response.json() as Record<string, unknown>;
+      problem = body;
+      message = String(body.detail || body.code || message);
     } catch {
       // Keep the HTTP status text when the backend does not return a problem body.
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, problem);
   }
 
   if (response.status === 204) {

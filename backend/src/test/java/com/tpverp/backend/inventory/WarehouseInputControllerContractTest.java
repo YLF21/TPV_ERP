@@ -47,5 +47,15 @@ class WarehouseInputControllerContractTest {
         assertThat(Arrays.stream(update.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(PathVariable.class)))
                 .hasSize(1);
+        assertThat(list.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSE_INPUTS_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(create.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSE_INPUTS_WRITE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(update.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSE_INPUTS_WRITE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(delete.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSE_INPUTS_DELETE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(confirm.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSE_INPUTS_CONFIRM", "GESTION_PRODUCTO", "hasRole('ADMIN')");
     }
 }

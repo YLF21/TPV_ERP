@@ -9,7 +9,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
-import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -32,8 +34,20 @@ public class ProductSupplier {
     @Column(name = "referencia_proveedor", length = 128)
     private String supplierReference;
 
-    @Column(name = "ultima_fecha_entrada")
-    private LocalDate lastEntryDate;
+    @Column(name = "ultimo_proveedor", nullable = false)
+    private boolean lastSupplier;
+
+    @Column(nullable = false)
+    private boolean principal;
+
+    @Column(name = "precio_compra_bruto", precision = 19, scale = 2)
+    private BigDecimal grossPurchasePrice;
+
+    @Column(name = "descuento_compra", precision = 5, scale = 2)
+    private BigDecimal purchaseDiscount;
+
+    @Column(name = "ultima_entrada_en")
+    private Instant lastEntryAt;
 
     @Version
     private long version;
@@ -59,12 +73,26 @@ public class ProductSupplier {
         supplierReference = normalized;
     }
 
-    public void registerEntry(LocalDate date) {
-        Objects.requireNonNull(date, "fechaEntrada");
-        // Conserva la fecha mas reciente aunque se confirme despues un documento antiguo.
-        if (lastEntryDate == null || date.isAfter(lastEntryDate)) {
-            lastEntryDate = date;
+    public void registerEntry(Instant entryAt, BigDecimal grossPrice, BigDecimal discount) {
+        Objects.requireNonNull(entryAt, "entryAt");
+        if (lastEntryAt == null || !entryAt.isBefore(lastEntryAt)) {
+            grossPurchasePrice = nonNegative(grossPrice, "grossPurchasePrice");
+            purchaseDiscount = percentage(discount);
+            lastEntryAt = entryAt;
+            lastSupplier = true;
         }
+    }
+
+    public void clearLastSupplier() {
+        lastSupplier = false;
+    }
+
+    public void makePrincipal() {
+        principal = true;
+    }
+
+    public void clearPrincipal() {
+        principal = false;
     }
 
     public UUID getId() {
@@ -83,7 +111,33 @@ public class ProductSupplier {
         return supplierReference;
     }
 
-    public LocalDate getLastEntryDate() {
-        return lastEntryDate;
+    public boolean isLastSupplier() { return lastSupplier; }
+    public boolean isPrincipal() { return principal; }
+    public BigDecimal getGrossPurchasePrice() { return grossPurchasePrice; }
+    public BigDecimal getPurchaseDiscount() { return purchaseDiscount; }
+    public BigDecimal getNetPurchasePrice() {
+        if (grossPurchasePrice == null) {
+            return null;
+        }
+        BigDecimal discount = purchaseDiscount == null ? BigDecimal.ZERO : purchaseDiscount;
+        return grossPurchasePrice.multiply(BigDecimal.ONE.subtract(discount.movePointLeft(2)))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+    public Instant getLastEntryAt() { return lastEntryAt; }
+
+    private static BigDecimal nonNegative(BigDecimal value, String field) {
+        BigDecimal normalized = Objects.requireNonNull(value, field).setScale(2, RoundingMode.HALF_UP);
+        if (normalized.signum() < 0) {
+            throw new IllegalArgumentException(field + " no puede ser negativo");
+        }
+        return normalized;
+    }
+
+    private static BigDecimal percentage(BigDecimal value) {
+        BigDecimal normalized = Objects.requireNonNull(value, "purchaseDiscount").setScale(2, RoundingMode.HALF_UP);
+        if (normalized.signum() < 0 || normalized.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException("purchaseDiscount debe estar entre 0 y 100");
+        }
+        return normalized;
     }
 }

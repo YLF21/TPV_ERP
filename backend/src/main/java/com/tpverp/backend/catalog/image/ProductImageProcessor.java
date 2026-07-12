@@ -39,6 +39,11 @@ public class ProductImageProcessor {
     }
     // Valida, normaliza y genera las dos variantes WebP de una imagen de producto.
 
+    public void validate(byte[] content) {
+        validateSize(content);
+        decode(content);
+    }
+
     public byte[] export(byte[] storedWebp, ExportFormat format) {
         if (format == null) {
             throw new IllegalArgumentException("El formato de exportacion es obligatorio");

@@ -5,8 +5,9 @@ import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import deleteImageIcon from "../assets/product/delete.png";
+import { enterNavigationIntent } from "./keyboardNavigation";
 
-type ProductCreateDialogProps = {
+export type ProductCreateDialogProps = {
   open: boolean;
   locale: LocaleCode;
   token?: string;
@@ -33,6 +34,7 @@ export type ProductCreateFormState = {
   taxesIncluded: boolean;
   code: string;
   barcode: string;
+  barcode2: string;
   salePrice: string;
   memberPrice: string;
   wholesalePrice: string;
@@ -46,6 +48,12 @@ export type ProductCreateFormState = {
 export type ProductCreateEditProduct = {
   id: string;
   form: Partial<ProductCreateFormState>;
+  initialData?: ProductCreateInitialData;
+};
+
+export type ProductCreateInitialData = {
+  discountType?: DiscountTypeCode | null;
+  purchaseDiscountPercent?: string | number | null;
 };
 
 export type ProductCreateFieldName =
@@ -62,6 +70,7 @@ export type ProductCreateFieldName =
   | "taxesIncluded"
   | "code"
   | "barcode"
+  | "barcode2"
   | "salePrice"
   | "memberPrice"
   | "wholesalePrice"
@@ -88,6 +97,13 @@ type TaxView = {
   defaultTax?: boolean | null;
 };
 
+type ProductIdentifierView = {
+  id: string;
+  code?: string | null;
+  barcode?: string | null;
+  barcode2?: string | null;
+};
+
 type ProductSelectOption = {
   value: string;
   label: string;
@@ -104,6 +120,7 @@ type SaveProductOptions = {
   token: string;
   imageFile: File | null;
   productId?: string;
+  initialData?: ProductCreateInitialData;
   createProduct?: (body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
   updateProduct?: (productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
   uploadImage?: (productId: string, file: File, token: string) => Promise<void>;
@@ -151,6 +168,7 @@ export function createDefaultProductForm(): ProductCreateFormState {
     taxesIncluded: true,
     code: "",
     barcode: "",
+    barcode2: "",
     salePrice: "0.00",
     memberPrice: "",
     wholesalePrice: "",
@@ -163,13 +181,25 @@ export function createDefaultProductForm(): ProductCreateFormState {
 }
 
 export function createProductFormFromEditProduct(product?: ProductCreateEditProduct | null): ProductCreateFormState {
-  return {
+  const form = {
     ...createDefaultProductForm(),
-    ...(product?.form ?? {})
+    ...(product?.form ?? {}),
+    ...(product?.initialData?.discountType ? { discountType: product.initialData.discountType } : {})
   };
+  if (form.discountType === "NONE") {
+    return {
+      ...form,
+      priceUseMode: "NORMAL",
+      offerActive: false
+    };
+  }
+  return form;
 }
 
-export function buildCreateProductRequest(form: ProductCreateFormState) {
+export function buildCreateProductRequest(
+  form: ProductCreateFormState,
+  initialData?: ProductCreateInitialData
+) {
   const noDiscountLocked = isNoDiscountLocked(form);
   const priceUseMode = noDiscountLocked ? "NORMAL" : normalizePriceUseMode(form);
   const offerActive = isOfferPriceUseMode(priceUseMode);
@@ -188,17 +218,30 @@ export function buildCreateProductRequest(form: ProductCreateFormState) {
     comments: emptyToNull(form.comments),
     purchasePrice: decimalOrZero(form.purchasePrice),
     taxesIncluded: form.taxesIncluded,
-    code: form.code.trim(),
+    code: emptyToNull(form.code),
     barcode: emptyToNull(form.barcode),
+    barcode2: emptyToNull(form.barcode2),
     salePrice: decimalOrZero(form.salePrice),
     memberPrice: emptyToNull(form.memberPrice),
     wholesalePrice: emptyToNull(form.wholesalePrice),
     offerPrice: noDiscountLocked ? null : emptyToNull(offerPrice),
     offerDiscountPercent: noDiscountLocked ? null : emptyToNull(form.offerDiscountPercent),
+    purchaseDiscountPercent: preservedNullableDecimal(initialData?.purchaseDiscountPercent),
     offerActive,
     offerFrom: emptyToNull(form.offerFrom),
     offerUntil: emptyToNull(form.offerUntil)
   };
+}
+
+function preservedNullableDecimal(value: string | number | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 function emptyToNull(value: string) {
@@ -242,11 +285,15 @@ function isNoDiscountLocked(form: ProductCreateFormState) {
   return form.discountType === "NONE";
 }
 
-function canSubmitProduct(form: ProductCreateFormState) {
-  return productCreateValidationErrors(form).length === 0;
+function canSubmitProduct(form: ProductCreateFormState, products: ProductIdentifierView[] = [], currentProductId?: string | null) {
+  return productCreateValidationErrors(form, products, currentProductId).length === 0;
 }
 
-export function productCreateValidationErrors(form: ProductCreateFormState) {
+export function productCreateValidationErrors(
+  form: ProductCreateFormState,
+  products: ProductIdentifierView[] = [],
+  currentProductId?: string | null
+) {
   const errors: string[] = [];
   const priceUseMode = normalizePriceUseMode(form);
   const offerActive = isOfferPriceUseMode(priceUseMode);
@@ -262,8 +309,14 @@ export function productCreateValidationErrors(form: ProductCreateFormState) {
   if (!form.name.trim()) {
     errors.push("name");
   }
-  if (!form.code.trim()) {
+  if (!form.code.trim() && !form.barcode.trim()) {
     errors.push("code");
+    errors.push("barcode");
+  }
+  const duplicatedFields = duplicatedProductIdentifierFields(form, products, currentProductId);
+  duplicatedFields.forEach((field) => errors.push(field));
+  if (duplicatedFields.length > 0) {
+    errors.push("identifierDuplicate");
   }
   if (!form.purchasePrice.trim()) {
     errors.push("purchasePrice");
@@ -301,8 +354,8 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
   if (fieldName === "name") {
     return Boolean(form.name.trim());
   }
-  if (fieldName === "code") {
-    return Boolean(form.code.trim());
+  if (fieldName === "code" || fieldName === "barcode") {
+    return Boolean(form.code.trim() || form.barcode.trim());
   }
   if (fieldName === "purchasePrice") {
     return Boolean(form.purchasePrice.trim());
@@ -317,6 +370,65 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
     return !offerActive || Boolean(form.offerFrom);
   }
   return true;
+}
+
+export function canNavigateProductField(
+  form: ProductCreateFormState,
+  fieldName: string | null | undefined,
+  backwards: boolean
+) {
+  const movingBetweenEmptyPrimaryIdentifiers = !form.code.trim() && !form.barcode.trim() && (
+    (fieldName === "barcode" && !backwards)
+    || (fieldName === "code" && backwards)
+  );
+  return movingBetweenEmptyPrimaryIdentifiers || canLeaveProductField(form, fieldName);
+}
+
+function normalizeIdentifier(value: string | null | undefined) {
+  return value?.trim().toLocaleUpperCase() ?? "";
+}
+
+export function duplicatedProductIdentifierFields(
+  form: ProductCreateFormState,
+  products: ProductIdentifierView[],
+  currentProductId?: string | null
+) {
+  const fields: Array<"code" | "barcode" | "barcode2"> = ["code", "barcode", "barcode2"];
+  const duplicated = new Set<"code" | "barcode" | "barcode2">();
+  const currentValues = new Map<string, Array<"code" | "barcode" | "barcode2">>();
+
+  fields.forEach((field) => {
+    const normalized = normalizeIdentifier(form[field]);
+    if (!normalized) {
+      return;
+    }
+    currentValues.set(normalized, [...(currentValues.get(normalized) ?? []), field]);
+  });
+  currentValues.forEach((matchingFields) => {
+    if (matchingFields.length > 1) {
+      matchingFields.forEach((field) => duplicated.add(field));
+    }
+  });
+
+  const existingValues = new Set<string>();
+  products
+    .filter((product) => product.id !== currentProductId)
+    .forEach((product) => {
+      [product.code, product.barcode, product.barcode2].forEach((value) => {
+        const normalized = normalizeIdentifier(value);
+        if (normalized) {
+          existingValues.add(normalized);
+        }
+      });
+    });
+
+  fields.forEach((field) => {
+    if (existingValues.has(normalizeIdentifier(form[field]))) {
+      duplicated.add(field);
+    }
+  });
+
+  return fields.filter((field) => duplicated.has(field));
 }
 
 export function nextProductFieldIndex(currentIndex: number, fieldCount: number, backwards: boolean) {
@@ -433,13 +545,14 @@ export async function saveProductWithOptionalImage({
   token,
   imageFile,
   productId,
+  initialData,
   createProduct = createProductRequest,
   updateProduct = updateProductRequest,
   uploadImage = uploadProductImage
 }: SaveProductOptions): Promise<SaveProductResult> {
   const product = productId
-    ? await updateProduct(productId, buildCreateProductRequest(form), token)
-    : await createProduct(buildCreateProductRequest(form), token);
+    ? await updateProduct(productId, buildCreateProductRequest(form, initialData), token)
+    : await createProduct(buildCreateProductRequest(form, initialData), token);
   if (!imageFile) {
     return { product, imageUploadFailed: false };
   }
@@ -498,8 +611,10 @@ export function ProductCreateDialog({
   const [families, setFamilies] = useState<FamilyView[]>([]);
   const [subfamilies, setSubfamilies] = useState<SubfamilyView[]>([]);
   const [taxes, setTaxes] = useState<TaxView[]>([]);
+  const [products, setProducts] = useState<ProductIdentifierView[]>([]);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [touchedErrors, setTouchedErrors] = useState<string[]>([]);
   const [openDropdown, setOpenDropdown] = useState("");
   const [familyPickerOpen, setFamilyPickerOpen] = useState(false);
   const [selectedProductFamily, setSelectedProductFamily] = useState({ familyId: "", subfamilyId: "" });
@@ -516,10 +631,13 @@ export function ProductCreateDialog({
   const offerActive = isOfferPriceUseMode(selectedPriceUseMode);
   const calendarTitle = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { month: "long", year: "numeric" }).format(calendarMonth);
   const editingProduct = Boolean(editProduct?.id);
+  const validationErrors = productCreateValidationErrors(form, products, editProduct?.id);
+  const invalidFields = new Set(validationErrors);
 
   function resetDialogState() {
     setForm(createProductFormFromEditProduct(editProduct));
     setStatus("");
+    setTouchedErrors([]);
     setSaving(false);
     setOpenDropdown("");
     setFamilyPickerOpen(false);
@@ -533,6 +651,7 @@ export function ProductCreateDialog({
   function closeProductDialog() {
     setForm(createDefaultProductForm());
     setStatus("");
+    setTouchedErrors([]);
     setSaving(false);
     setOpenDropdown("");
     setFamilyPickerOpen(false);
@@ -573,9 +692,10 @@ export function ProductCreateDialog({
     async function loadCatalog() {
       setStatus("");
       try {
-        const [nextFamilies, nextTaxes] = await Promise.all([
+        const [nextFamilies, nextTaxes, nextProducts] = await Promise.all([
           apiRequest<FamilyView[]>("/families", { token }),
-          apiRequest<TaxView[]>("/taxes/selectable", { token })
+          apiRequest<TaxView[]>("/taxes/selectable", { token }),
+          apiRequest<ProductIdentifierView[]>("/products", { token })
         ]);
         const nextSubfamilies = (await Promise.all(nextFamilies.map(async (family) => {
           try {
@@ -590,6 +710,7 @@ export function ProductCreateDialog({
         setFamilies(nextFamilies);
         setSubfamilies(nextSubfamilies);
         setTaxes(nextTaxes);
+        setProducts(nextProducts);
         setForm((current) => ({
           ...current,
           familyId: current.familyId || nextFamilies.find((family) => family.defaultFamily)?.id || nextFamilies[0]?.id || "",
@@ -638,6 +759,15 @@ export function ProductCreateDialog({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function requiredLabel(key: string, required = false) {
+    return `${t(key)}${required ? " *" : ""}`;
+  }
+
+  function fieldClass(fieldName: string, base = "") {
+    const invalid = touchedErrors.includes(fieldName) && invalidFields.has(fieldName);
+    return [base, invalid ? "field-invalid" : ""].filter(Boolean).join(" ");
+  }
+
   function updatePriceUseMode(mode: PriceUseModeCode) {
     setForm((current) => ({
       ...current,
@@ -673,30 +803,73 @@ export function ProductCreateDialog({
     });
   }
 
-  function focusProductField(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) {
+  function productFieldElements() {
+    return Array.from(formRef.current?.querySelectorAll<HTMLElement>("[data-product-field]") ?? [])
+      .filter((field) => productFieldFocusTarget(field));
+  }
+
+  function productFieldFocusTarget(field: HTMLElement) {
+    if (field.matches("input:not(:disabled), textarea:not(:disabled), button:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])")) {
+      return field;
+    }
+    return field.querySelector<HTMLElement>(
+      "[aria-checked='true']:not(:disabled), input:not(:disabled), textarea:not(:disabled), button:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])"
+    );
+  }
+
+  function focusAdjacentProductField(fieldName: string | undefined, backwards: boolean) {
+    const fields = productFieldElements();
+    const currentIndex = fields.findIndex((field) => field.dataset.productFieldName === fieldName);
+    const nextIndex = nextProductFieldIndex(currentIndex, fields.length, backwards);
+    if (nextIndex < 0) {
       return;
     }
+    productFieldFocusTarget(fields[nextIndex])?.focus();
+  }
+
+  function focusAdjacentProductFieldAfterRender(fieldName: string, backwards = false) {
+    window.requestAnimationFrame(() => focusAdjacentProductField(fieldName, backwards));
+  }
+
+  function focusProductField(event: KeyboardEvent<HTMLElement>) {
+    const intent = enterNavigationIntent(event.key, {
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      isComposing: event.nativeEvent.isComposing
+    });
+    if (!intent) return;
+    if (event.defaultPrevented) return;
     const target = event.target as HTMLElement;
     if (target.closest(".filter-popover") || target.closest(".date-popover")) {
       return;
     }
     const fieldName = target.closest<HTMLElement>("[data-product-field-name]")?.dataset.productFieldName;
-    if (!canLeaveProductField(form, fieldName)) {
+    if (target.matches("button")) {
+      if (intent === "previous") {
+        event.preventDefault();
+        focusAdjacentProductField(fieldName, true);
+      }
+      return;
+    }
+    const duplicateInvalid = fieldName === "code" || fieldName === "barcode" || fieldName === "barcode2"
+      ? duplicatedProductIdentifierFields(form, products, editProduct?.id).includes(fieldName)
+      : false;
+    if (!canNavigateProductField(form, fieldName, intent === "previous") || duplicateInvalid) {
       event.preventDefault();
-      setStatus(t("product.create.required"));
+      const nextErrors = productCreateValidationErrors(form, products, editProduct?.id);
+      setTouchedErrors(nextErrors);
+      setStatus(nextErrors.includes("identifierDuplicate") ? t("product.create.duplicateIdentifier") : t("product.create.required"));
       target.focus();
       return;
     }
     setStatus("");
-    const fields = Array.from(formRef.current?.querySelectorAll<HTMLElement>("[data-product-field]:not(:disabled)") ?? []);
-    const currentIndex = fields.findIndex((field) => field === target || field.contains(target));
-    const nextIndex = nextProductFieldIndex(currentIndex, fields.length, event.shiftKey);
-    if (nextIndex < 0) {
-      return;
-    }
     event.preventDefault();
-    fields[nextIndex]?.focus();
+    if (target.matches("input[type='checkbox'], input[type='radio']") && intent === "next") {
+      (target as HTMLInputElement).click();
+    }
+    focusAdjacentProductField(fieldName, intent === "previous");
   }
 
   function selectFamily(familyId: string, subfamilyId = "") {
@@ -711,9 +884,10 @@ export function ProductCreateDialog({
     }));
     setFamilyPickerOpen(false);
     setOpenDropdown("");
+    focusAdjacentProductFieldAfterRender("familyId");
   }
 
-  function selectOfferDate(date: Date) {
+  function selectOfferDate(date: Date, advanceAfterSelection = false) {
     const selected = toIsoDate(date);
     setCalendarMonth(startOfMonth(date));
     if (!offerRangeStart) {
@@ -725,12 +899,18 @@ export function ProductCreateDialog({
     setForm((current) => ({ ...current, offerFrom: range.dateFrom, offerUntil: range.dateTo }));
     setOfferRangeStart(null);
     setOfferPickerOpen(false);
+    if (advanceAfterSelection) {
+      focusAdjacentProductFieldAfterRender("offerRange");
+    }
   }
 
-  function clearOfferEndDate() {
+  function clearOfferEndDate(advanceAfterSelection = false) {
     setForm((current) => ({ ...current, offerUntil: "" }));
     setOfferRangeStart(null);
     setOfferPickerOpen(false);
+    if (advanceAfterSelection) {
+      focusAdjacentProductFieldAfterRender("offerRange");
+    }
   }
 
   function changeImage(file: File | null) {
@@ -755,7 +935,7 @@ export function ProductCreateDialog({
     const fieldName = name === "type" ? "productType" : name === "tax" ? "taxId" : name === "discount" ? "discountType" : name;
     const selectedLabel = options.find((option) => option.value === value)?.label ?? placeholder;
     return (
-      <div className={`filter-field product-dropdown-field ${isOpen ? "open" : ""}`}>
+      <div className={`filter-field product-dropdown-field ${isOpen ? "open" : ""} ${fieldClass(fieldName)}`}>
         <span>{label}</span>
         <button
           type="button"
@@ -782,6 +962,20 @@ export function ProductCreateDialog({
                   onChange(option.value);
                   setOpenDropdown("");
                 }}
+                onKeyDown={(event) => {
+                  const intent = enterNavigationIntent(event.key, {
+                    shiftKey: event.shiftKey,
+                    altKey: event.altKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    isComposing: event.nativeEvent.isComposing
+                  });
+                  if (!intent) return;
+                  event.preventDefault();
+                  setOpenDropdown("");
+                  if (intent === "next") onChange(option.value);
+                  focusAdjacentProductFieldAfterRender(fieldName, intent === "previous");
+                }}
               >
                 {option.label}
               </button>
@@ -807,6 +1001,19 @@ export function ProductCreateDialog({
                 aria-checked={selected}
                 key={mode}
                 onClick={() => updatePriceUseMode(mode)}
+                onKeyDown={(event) => {
+                  const intent = enterNavigationIntent(event.key, {
+                    shiftKey: event.shiftKey,
+                    altKey: event.altKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    isComposing: event.nativeEvent.isComposing
+                  });
+                  if (!intent) return;
+                  event.preventDefault();
+                  if (intent === "next") updatePriceUseMode(mode);
+                  focusAdjacentProductFieldAfterRender("priceUseMode", intent === "previous");
+                }}
               >
                 {t(discountTypeLabel(mode))}
               </button>
@@ -818,8 +1025,10 @@ export function ProductCreateDialog({
   }
 
   async function submitProduct(closeAfterSave: boolean) {
-    if (saving || !token || !canSubmitProduct(form)) {
-      setStatus(t("product.create.required"));
+    const nextErrors = productCreateValidationErrors(form, products, editProduct?.id);
+    if (saving || !token || nextErrors.length > 0) {
+      setTouchedErrors(nextErrors);
+      setStatus(nextErrors.includes("identifierDuplicate") ? t("product.create.duplicateIdentifier") : t("product.create.required"));
       return;
     }
     setSaving(true);
@@ -829,7 +1038,8 @@ export function ProductCreateDialog({
         form,
         token,
         imageFile,
-        productId: editProduct?.id
+        productId: editProduct?.id,
+        initialData: editProduct?.initialData
       });
       onCreated?.(result.product);
       resetDialogState();
@@ -866,26 +1076,26 @@ export function ProductCreateDialog({
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
         </header>
 
-        <div className="product-create-body">
-          <div className="product-create-form" ref={formRef} onKeyDown={focusProductField}>
+        <div className="product-create-body" ref={formRef} onKeyDown={focusProductField}>
+          <div className="product-create-form">
             <div className="product-create-row product-create-row-two">
-              <label>
-                <span>{t("stock.column.code")}</span>
-                <input data-product-field data-product-field-name="code" required value={form.code} onChange={(event) => updateField("code", event.target.value)} autoFocus />
+              <label className={fieldClass("barcode")}>
+                <span>{requiredLabel("stock.column.barcode", true)}</span>
+                <input data-product-field data-product-field-name="barcode" value={form.barcode} onChange={(event) => updateField("barcode", event.target.value)} autoFocus />
               </label>
-              <label>
-                <span>{t("stock.column.barcode")}</span>
-                <input data-product-field data-product-field-name="barcode" value={form.barcode} onChange={(event) => updateField("barcode", event.target.value)} />
+              <label className={fieldClass("code")}>
+                <span>{requiredLabel("stock.column.code", true)}</span>
+                <input data-product-field data-product-field-name="code" value={form.code} onChange={(event) => updateField("code", event.target.value)} />
               </label>
             </div>
             <div className="product-create-row product-create-row-name-type">
-              <label>
-                <span>{t("product.field.name")}</span>
+              <label className={fieldClass("name")}>
+                <span>{requiredLabel("product.field.name", true)}</span>
                 <input data-product-field data-product-field-name="name" required value={form.name} onChange={(event) => updateField("name", event.target.value)} />
               </label>
               {renderDropdown(
                 "type",
-                t("stock.column.type"),
+                requiredLabel("stock.column.type", true),
                 form.productType,
                 productTypeOptions.map((type) => ({ value: type, label: t(productTypeLabel(type)) })),
                 (value) => updateField("productType", value as ProductTypeCode)
@@ -896,8 +1106,8 @@ export function ProductCreateDialog({
               <textarea data-product-field data-product-field-name="description" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
             </label>
             <div className="product-create-row product-create-row-family-tax">
-              <div className={`filter-field product-family-field ${familyPickerOpen ? "open" : ""}`}>
-                <span>{t("stock.column.family")}</span>
+              <div className={`filter-field product-family-field ${familyPickerOpen ? "open" : ""} ${fieldClass("familyId")}`}>
+                <span>{requiredLabel("stock.column.family", true)}</span>
                 <button
                   type="button"
                   className="filter-select-button"
@@ -916,7 +1126,7 @@ export function ProductCreateDialog({
               </div>
               {renderDropdown(
                 "tax",
-                t("stock.column.tax"),
+                requiredLabel("stock.column.tax", true),
                 form.taxId,
                 taxes.map((tax) => ({ value: tax.id, label: taxLabel(tax) })),
                 (value) => updateField("taxId", value)
@@ -927,12 +1137,12 @@ export function ProductCreateDialog({
               </label>
             </div>
             <div className="product-create-row product-create-row-prices">
-              <label>
-                <span>{t("stock.column.purchasePrice")}</span>
+              <label className={fieldClass("purchasePrice")}>
+                <span>{requiredLabel("stock.column.purchasePrice", true)}</span>
                 <input data-product-field data-product-field-name="purchasePrice" required inputMode="decimal" value={form.purchasePrice} onChange={(event) => updateField("purchasePrice", event.target.value)} />
               </label>
-              <label>
-                <span>{t("stock.column.salePrice")}</span>
+              <label className={fieldClass("salePrice")}>
+                <span>{requiredLabel("stock.column.salePrice", true)}</span>
                 <input data-product-field data-product-field-name="salePrice" required inputMode="decimal" value={form.salePrice} onChange={(event) => updateField("salePrice", event.target.value)} />
               </label>
               <label>
@@ -946,7 +1156,7 @@ export function ProductCreateDialog({
             </div>
             <div className="product-create-offer-area">
               {renderPriceUseOptions()}
-              <label>
+              <label className={fieldClass("offerPrice")}>
                 <span>{t("stock.column.offerPrice")}</span>
                 <input data-product-field data-product-field-name="offerPrice" inputMode="decimal" value={form.offerPrice} onChange={(event) => updateField("offerPrice", event.target.value)} />
               </label>
@@ -955,7 +1165,7 @@ export function ProductCreateDialog({
                 <input data-product-field data-product-field-name="offerDiscountPercent" inputMode="decimal" value={form.offerDiscountPercent} onChange={(event) => updateOfferDiscountPercent(event.target.value)} />
               </label>
               <div className={`filter-field product-offer-range ${offerPickerOpen ? "open" : ""}`}>
-                <span>{t("product.field.offerRange")}</span>
+                <span>{requiredLabel("product.field.offerRange", offerActive)}</span>
                 <div className="date-range-control">
                   <input type="text" value={formatOfferRange(form.offerFrom, form.offerUntil)} readOnly placeholder="01/07/2026-31/07/2026" />
                   <button type="button" data-product-field data-product-field-name="offerRange" aria-expanded={offerPickerOpen} aria-label={t("salesReport.filter.openCalendar")} onClick={() => setOfferPickerOpen((current) => !current)}>
@@ -982,12 +1192,49 @@ export function ProductCreateDialog({
                           ].filter(Boolean).join(" ")}
                           key={toIsoDate(day)}
                           onClick={() => selectOfferDate(day)}
+                          onKeyDown={(event) => {
+                            const intent = enterNavigationIntent(event.key, {
+                              shiftKey: event.shiftKey,
+                              altKey: event.altKey,
+                              ctrlKey: event.ctrlKey,
+                              metaKey: event.metaKey,
+                              isComposing: event.nativeEvent.isComposing
+                            });
+                            if (!intent) return;
+                            event.preventDefault();
+                            if (intent === "next") {
+                              selectOfferDate(day, true);
+                            } else {
+                              setOfferPickerOpen(false);
+                              focusAdjacentProductFieldAfterRender("offerRange", true);
+                            }
+                          }}
                         >
                           {day.getDate()}
                         </button>
                       ) : <span className="date-day empty" key={`empty-${index}`} />)}
                     </div>
-                    <button type="button" className="date-no-end-button" onClick={clearOfferEndDate}>
+                    <button
+                      type="button"
+                      className="date-no-end-button"
+                      onClick={() => clearOfferEndDate()}
+                      onKeyDown={(event) => {
+                        const intent = enterNavigationIntent(event.key, {
+                          shiftKey: event.shiftKey,
+                          altKey: event.altKey,
+                          ctrlKey: event.ctrlKey,
+                          metaKey: event.metaKey,
+                          isComposing: event.nativeEvent.isComposing
+                        });
+                        if (!intent) return;
+                        event.preventDefault();
+                        if (intent === "next") clearOfferEndDate(true);
+                        else {
+                          setOfferPickerOpen(false);
+                          focusAdjacentProductFieldAfterRender("offerRange", true);
+                        }
+                      }}
+                    >
                       {t("product.field.noEnd")}
                     </button>
                   </div>
@@ -1004,6 +1251,19 @@ export function ProductCreateDialog({
                 data-product-field
                 data-product-field-name="discountType"
                 onClick={toggleNoDiscountLock}
+                onKeyDown={(event) => {
+                  const intent = enterNavigationIntent(event.key, {
+                    shiftKey: event.shiftKey,
+                    altKey: event.altKey,
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    isComposing: event.nativeEvent.isComposing
+                  });
+                  if (!intent) return;
+                  event.preventDefault();
+                  if (intent === "next") toggleNoDiscountLock();
+                  focusAdjacentProductFieldAfterRender("discountType", intent === "previous");
+                }}
               >
                 {t("product.noDiscountLock.button")}
               </button>
@@ -1034,16 +1294,20 @@ export function ProductCreateDialog({
                 <span>{t("product.image.remove")}</span>
               </button>
             </div>
+            <label className={fieldClass("barcode2", "product-secondary-barcode")}>
+              <span>{t("stock.column.barcode2")}</span>
+              <input data-product-field data-product-field-name="barcode2" value={form.barcode2} onChange={(event) => updateField("barcode2", event.target.value)} />
+            </label>
           </aside>
         </div>
 
         {status && <p className="product-create-status">{status}</p>}
         <footer className="filter-actions">
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
-          <button type="button" disabled={saving || !canSubmitProduct(form)} onClick={() => void submitProduct(false)}>
+          <button type="button" disabled={saving} onClick={() => void submitProduct(false)}>
             {saving ? t("product.create.saving") : t("product.create.saveContinue")}
           </button>
-          <button type="button" disabled={saving || !canSubmitProduct(form)} onClick={() => void submitProduct(true)}>
+          <button type="button" disabled={saving} onClick={() => void submitProduct(true)}>
             {saving ? t("product.create.saving") : t("product.create.saveClose")}
           </button>
         </footer>
@@ -1074,6 +1338,24 @@ export function ProductCreateDialog({
                           setSelectedProductFamily({ familyId: family.id, subfamilyId: "" });
                           setForm((current) => ({ ...current, familyId: family.id, subfamilyId: "" }));
                           setFamilyPickerOpen(false);
+                          focusAdjacentProductFieldAfterRender("familyId");
+                        }}
+                        onKeyDown={(event) => {
+                          const intent = enterNavigationIntent(event.key, {
+                            shiftKey: event.shiftKey,
+                            altKey: event.altKey,
+                            ctrlKey: event.ctrlKey,
+                            metaKey: event.metaKey,
+                            isComposing: event.nativeEvent.isComposing
+                          });
+                          if (!intent) return;
+                          event.preventDefault();
+                          setFamilyPickerOpen(false);
+                          if (intent === "next") {
+                            setSelectedProductFamily({ familyId: family.id, subfamilyId: "" });
+                            setForm((current) => ({ ...current, familyId: family.id, subfamilyId: "" }));
+                          }
+                          focusAdjacentProductFieldAfterRender("familyId", intent === "previous");
                         }}
                       >
                         {family.name}
@@ -1094,6 +1376,24 @@ export function ProductCreateDialog({
                                 setSelectedProductFamily({ familyId: family.id, subfamilyId: subfamily.id });
                                 setForm((current) => ({ ...current, familyId: family.id, subfamilyId: subfamily.id }));
                                 setFamilyPickerOpen(false);
+                                focusAdjacentProductFieldAfterRender("familyId");
+                              }}
+                              onKeyDown={(event) => {
+                                const intent = enterNavigationIntent(event.key, {
+                                  shiftKey: event.shiftKey,
+                                  altKey: event.altKey,
+                                  ctrlKey: event.ctrlKey,
+                                  metaKey: event.metaKey,
+                                  isComposing: event.nativeEvent.isComposing
+                                });
+                                if (!intent) return;
+                                event.preventDefault();
+                                setFamilyPickerOpen(false);
+                                if (intent === "next") {
+                                  setSelectedProductFamily({ familyId: family.id, subfamilyId: subfamily.id });
+                                  setForm((current) => ({ ...current, familyId: family.id, subfamilyId: subfamily.id }));
+                                }
+                                focusAdjacentProductFieldAfterRender("familyId", intent === "previous");
                               }}
                             >
                               {subfamily.name}

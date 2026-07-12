@@ -9,7 +9,9 @@ import {
   moveStockColumn,
   resizeStockColumn,
   sanitizeStockColumnSettings,
+  stockColumnGridTemplate,
   stockColumnStorageKey,
+  stockTableShouldAutoFocus,
   stockViewAfterProductCreated,
   stockTopSalesPeriodLabel,
   stockTopSalesPeriodRange,
@@ -22,7 +24,25 @@ import {
   stockViews,
   stockDetailKeyAction,
   nextStockSelectedIndex,
+  normalizeStockBulkContent,
+  backendDiscountTypeForPriceUse,
   stockRowToProductEdit,
+  stockBulkProductRowIds,
+  setAllStockBulkRowsSelected,
+  stockBulkEditExactProduct,
+  stockBulkShortcutAction,
+  stockBulkFileMenuItems,
+  stockBulkImportMenuItems,
+  stockBulkSelectedActionsByTab,
+  stockBenefitPercent,
+  stockPriceFromBenefit,
+  stockPriceBelowCost,
+  selectStockInventoryRows,
+  userCanCreateWarehouseInput,
+  userCanCreateWarehouseOutput,
+  userCanManageStockProducts,
+  userCanManageWarehouses,
+  userCanReadStock,
   StockScreen
 } from "./StockScreen";
 import type { TerminalContext, UserSession } from "../types";
@@ -44,6 +64,8 @@ describe("StockScreen", () => {
       [
         {
           id: "product-1",
+          version: 4,
+          imageId: "image-1",
           code: "A001",
           barcode: "8430000000011",
           name: "Articulo completo",
@@ -75,6 +97,8 @@ describe("StockScreen", () => {
     expect(rows).toEqual([
       expect.objectContaining({
         productId: "product-1",
+        version: 4,
+        imageId: "image-1",
         code: "A001",
         barcode: "8430000000011",
         name: "Articulo completo",
@@ -102,6 +126,36 @@ describe("StockScreen", () => {
     ]);
   });
 
+  it("resolves a barcode in the code cell and keeps both real identifiers", () => {
+    const rows = buildStockInventoryRows(
+      [{
+        id: "product-1",
+        code: "A001",
+        barcode: "8430000000011",
+        name: "Agua",
+        taxesIncluded: true
+      }],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      []
+    );
+
+    expect(stockBulkEditExactProduct(rows, "8430000000011")).toEqual(expect.objectContaining({
+      code: "A001",
+      barcode: "8430000000011"
+    }));
+  });
+
+  it("calculates benefit over sale price and calculates the inverse price", () => {
+    expect(stockBenefitPercent(50, 100)).toBe(50);
+    expect(stockBenefitPercent(75, 100)).toBe(25);
+    expect(stockBenefitPercent(100, 0)).toBe(0);
+    expect(stockPriceFromBenefit(50, 50)).toBe(100);
+    expect(stockPriceFromBenefit(75, 25)).toBe(100);
+    expect(stockPriceFromBenefit(50, 100)).toBeNull();
+    expect(stockPriceBelowCost(0, 50)).toBe(true);
+    expect(stockPriceBelowCost(50, 50)).toBe(false);
+  });
+
   it("uses the new stock sections without the old low and empty views", () => {
     expect(stockViews).toEqual([
       "stock.current",
@@ -114,6 +168,56 @@ describe("StockScreen", () => {
     ]);
     expect(stockViews).not.toContain("stock.low");
     expect(stockViews).not.toContain("stock.empty");
+  });
+
+  it("groups every import action inside the Archivo import submenu", () => {
+    expect(stockBulkFileMenuItems).toContain("stock.bulkEdit.import");
+    expect(stockBulkFileMenuItems).not.toContain("stock.bulkEdit.importExcel");
+    expect(stockBulkImportMenuItems).toEqual([
+      "stock.bulkEdit.importExcel",
+      "stock.bulkEdit.importSupplier",
+      "stock.bulkEdit.importPurchaseInvoice",
+      "stock.bulkEdit.importPurchaseDeliveryNote",
+      "stock.bulkEdit.importFamilies"
+    ]);
+  });
+
+  it("maps the bulk editor keyboard shortcuts without stealing text editing", () => {
+    expect(stockBulkShortcutAction("s", { ctrlKey: true })).toBe("save");
+    expect(stockBulkShortcutAction("z", { ctrlKey: true })).toBe("undo");
+    expect(stockBulkShortcutAction("a", { ctrlKey: true })).toBe("open");
+    expect(stockBulkShortcutAction("a", { ctrlKey: true, editingText: true })).toBe("open");
+    expect(stockBulkShortcutAction("z", { ctrlKey: true, editingText: true })).toBe("undo");
+    expect(stockBulkShortcutAction("s", { ctrlKey: true, altKey: true })).toBeNull();
+  });
+
+  it("shows only the relevant bulk actions for each edit tab", () => {
+    expect(stockBulkSelectedActionsByTab.main).toEqual(expect.arrayContaining([
+      "supplier",
+      "family",
+      "purchasePrice",
+      "salePrice",
+      "memberPrice",
+      "wholesalePrice",
+      "offerPrice",
+      "offerDiscountPercent",
+      "priceUse",
+      "offerDates",
+      "tax",
+      "taxesIncludedYes",
+      "taxesIncludedNo"
+    ]));
+    expect(stockBulkSelectedActionsByTab.info).toEqual([
+      "family",
+      "tax",
+      "taxesIncludedYes",
+      "taxesIncludedNo"
+    ]);
+    expect(stockBulkSelectedActionsByTab.offer).toContain("activateOffer");
+    expect(stockBulkSelectedActionsByTab.offer).toContain("benefit");
+    expect(stockBulkSelectedActionsByTab.memberPrice).toContain("benefit");
+    expect(stockBulkSelectedActionsByTab.salePrice).not.toContain("offerPrice");
+    expect(stockBulkSelectedActionsByTab.image).toEqual(["supplier"]);
   });
 
   it("keeps backend products with no stock visible in inventory rows", () => {
@@ -348,22 +452,113 @@ describe("StockScreen", () => {
     expect(filterStockInventoryRows(rows, "stock.bulkEdit", "")).toEqual([]);
   });
 
-  it("calculates product total stock across warehouses", () => {
+  it("shows real promotion targets and the backend NONE discount lock", () => {
     const rows = buildStockInventoryRows(
-      [{ id: "product-1", code: "A001", name: "Cafe", salePrice: "3.95", productType: "UNIT", discountType: "NORMAL" }],
+      [{
+        id: "product-1",
+        code: "A001",
+        name: "Cafe",
+        familyId: "family-1",
+        priceUseMode: "NORMAL",
+        discountType: "NONE"
+      }],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      [],
+      {
+        promotions: [{
+          id: "promotion-1",
+          name: "Cafe 2x1",
+          type: "BUY_X_PAY_Y",
+          status: "ACTIVE",
+          startDate: "2026-07-01",
+          endDate: "2026-07-31",
+          scope: "FAMILY",
+          customerSegment: null,
+          memberCategoryId: null,
+          minimumAmount: null,
+          minimumQuantity: null,
+          buyQuantity: "2",
+          payQuantity: "1",
+          buyXPayYMode: "SAME_PRODUCT",
+          discountAmount: null,
+          discountPercent: null,
+          maximumDiscount: null,
+          packPrice: null,
+          targets: [{ type: "FAMILY", targetId: "family-1" }]
+        }]
+      }
+    );
+
+    expect(filterStockInventoryRows(rows, "stock.promotions", "")).toEqual([
+      expect.objectContaining({
+        promotionNames: "Cafe 2x1",
+        promotionTypes: "BUY_X_PAY_Y",
+        promotionStatuses: "ACTIVE"
+      })
+    ]);
+    expect(filterStockInventoryRows(rows, "stock.noDiscount", "")).toEqual([
+      expect.objectContaining({ productId: "product-1", backendDiscountType: "NONE" })
+    ]);
+  });
+
+  it("shows one product row for the local warehouse and supports TOTAL", () => {
+    const products = [
+      { id: "product-1", code: "A001", name: "Cafe", salePrice: "3.95", productType: "UNIT", discountType: "NORMAL" },
+      { id: "product-2", code: "A002", name: "Te", salePrice: "2.95", productType: "UNIT", discountType: "NORMAL" }
+    ];
+    const warehouses = [
+      { id: "warehouse-1", name: "GENERAL", defaultWarehouse: true },
+      { id: "warehouse-2", name: "RESERVA" },
+      { id: "warehouse-3", name: "INACTIVO", active: false }
+    ];
+    const stock = [
+      { productId: "product-1", warehouseId: "warehouse-1", quantity: 8 },
+      { productId: "product-1", warehouseId: "warehouse-2", quantity: 5 }
+    ];
+    const localRows = buildStockInventoryRows(products, warehouses, stock);
+    const allRows = buildStockInventoryRows(
+      products,
+      warehouses,
+      stock,
+      {},
+      { mode: "all" }
+    );
+
+    expect(localRows).toEqual([
+      expect.objectContaining({ productId: "product-1", warehouseName: "GENERAL", quantity: 8, totalQuantity: 13 }),
+      expect.objectContaining({ productId: "product-2", warehouseName: "GENERAL", quantity: 0, totalQuantity: 0 })
+    ]);
+    expect(allRows).toHaveLength(4);
+    expect(allRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productId: "product-1", warehouseName: "RESERVA", quantity: 5 }),
+      expect.objectContaining({ productId: "product-2", warehouseName: "RESERVA", quantity: 0 })
+    ]));
+    expect(allRows.some((row) => row.warehouseName === "INACTIVO")).toBe(false);
+
+    expect(selectStockInventoryRows(allRows, "TOTAL")).toEqual([
+      expect.objectContaining({ productId: "product-1", warehouseId: "TOTAL", quantity: 13, totalQuantity: 13 }),
+      expect.objectContaining({ productId: "product-2", warehouseId: "TOTAL", quantity: 0, totalQuantity: 0 })
+    ]);
+  });
+
+  it("selects a requested warehouse with one row per product including zero", () => {
+    const rows = buildStockInventoryRows(
+      [
+        { id: "product-1", code: "A001", name: "Cafe" },
+        { id: "product-2", code: "A002", name: "Te" }
+      ],
       [
         { id: "warehouse-1", name: "GENERAL", defaultWarehouse: true },
         { id: "warehouse-2", name: "RESERVA" }
       ],
-      [
-        { productId: "product-1", warehouseId: "warehouse-1", quantity: 8 },
-        { productId: "product-1", warehouseId: "warehouse-2", quantity: 5 }
-      ]
+      [{ productId: "product-1", warehouseId: "warehouse-2", quantity: 5 }],
+      {},
+      { warehouseId: "warehouse-2" }
     );
 
     expect(rows).toEqual([
-      expect.objectContaining({ warehouseName: "GENERAL", quantity: 8, totalQuantity: 13 }),
-      expect.objectContaining({ warehouseName: "RESERVA", quantity: 5, totalQuantity: 13 })
+      expect.objectContaining({ productId: "product-1", warehouseName: "RESERVA", quantity: 5 }),
+      expect.objectContaining({ productId: "product-2", warehouseName: "RESERVA", quantity: 0 })
     ]);
   });
 
@@ -374,6 +569,24 @@ describe("StockScreen", () => {
     expect(stockDetailKeyAction("Enter")).toBe("stock");
     expect(stockDetailKeyAction("Escape")).toBe("close");
     expect(stockDetailKeyAction("F8")).toBeNull();
+  });
+
+  it("only enables product management actions such as F7 for product managers or admins", () => {
+    expect(userCanManageStockProducts({ permissions: ["ADMIN"] })).toBe(true);
+    expect(userCanManageStockProducts({ permissions: ["GESTION_PRODUCTO"] })).toBe(true);
+    expect(userCanManageStockProducts({ permissions: ["VENTA"] })).toBe(false);
+  });
+
+  it("uses granular stock and warehouse document permissions with legacy manager fallbacks", () => {
+    expect(userCanReadStock({ permissions: ["STOCK_READ"] })).toBe(true);
+    expect(userCanReadStock({ permissions: ["VENTA"] })).toBe(false);
+    expect(userCanCreateWarehouseInput({ permissions: ["WAREHOUSE_INPUTS_WRITE"] })).toBe(true);
+    expect(userCanCreateWarehouseInput({ permissions: ["WAREHOUSE_INPUTS_READ"] })).toBe(false);
+    expect(userCanCreateWarehouseOutput({ permissions: ["WAREHOUSE_OUTPUTS_EDIT"] })).toBe(true);
+    expect(userCanCreateWarehouseOutput({ permissions: ["WAREHOUSE_OUTPUTS_READ"] })).toBe(false);
+    expect(userCanManageWarehouses({ permissions: ["WAREHOUSES_MANAGE"] })).toBe(true);
+    expect(userCanManageWarehouses({ permissions: ["GESTION_PRODUCTO"] })).toBe(true);
+    expect(userCanReadStock({ permissions: ["ADMIN"] })).toBe(true);
   });
 
   it("builds an edit product form from the selected stock row", () => {
@@ -416,6 +629,52 @@ describe("StockScreen", () => {
         offerDiscountPercent: "10"
       })
     }));
+  });
+
+  it("preserves the no-discount lock and synchronizes bulk price-use contracts", () => {
+    const [row] = buildStockInventoryRows(
+      [{
+        id: "product-1",
+        code: "A001",
+        name: "Cafe",
+        familyId: "family-1",
+        taxId: "tax-1",
+        purchasePrice: "1.00",
+        salePrice: "2.00",
+        priceUseMode: "NORMAL",
+        discountType: "NONE"
+      }],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      []
+    );
+
+    expect(stockRowToProductEdit({ ...row, purchaseDiscountPercent: "12.50" })).toEqual(expect.objectContaining({
+      initialData: {
+        discountType: "NONE",
+        purchaseDiscountPercent: "12.50"
+      },
+      form: expect.objectContaining({ discountType: "NONE" })
+    }));
+    expect(backendDiscountTypeForPriceUse("NORMAL", "NONE")).toBe("NONE");
+    expect(backendDiscountTypeForPriceUse("NORMAL", "DISCOUNT_PRICE")).toBe("NORMAL");
+    expect(backendDiscountTypeForPriceUse("MEMBER_PRICE", "NONE")).toBe("MEMBER_PRICE");
+    expect(backendDiscountTypeForPriceUse("OFFER_PRICE", "NONE")).toBe("DISCOUNT_PRICE");
+
+    const rows = [{
+      id: "row-1",
+      selected: false,
+      query: "A001",
+      product: row,
+      draft: { discountType: "OFFER_PRICE" }
+    }, {
+      id: "row-empty",
+      selected: false,
+      query: "",
+      draft: {}
+    }];
+    expect(normalizeStockBulkContent(rows)[0].draft.backendDiscountType).toBe("DISCOUNT_PRICE");
+    expect(stockBulkProductRowIds(rows)).toEqual(["row-1"]);
+    expect(setAllStockBulkRowsSelected(rows, true).map((value) => value.selected)).toEqual([true, false]);
   });
 
   it("moves the selected stock row with arrow keys", () => {
@@ -564,14 +823,25 @@ describe("StockScreen", () => {
       supplier: "horno",
       search: ""
     })).toEqual([expect.objectContaining({ code: "B002" })]);
+    expect(filterStockTopSalesRows(rows, {
+      family: "",
+      subfamily: "",
+      supplier: "",
+      search: "",
+      warehouse: "warehouse-2"
+    })).toEqual([]);
   });
 
   it("builds the top sales API path from period and date only", () => {
     expect(stockTopSalesPath("week", "2026-07-08")).toBe("/stock/top-sales?period=week&date=2026-07-08");
+    expect(stockTopSalesPath("week", "2026-07-08", "2026-07-08", "warehouse-2"))
+      .toBe("/stock/top-sales?period=week&date=2026-07-08&warehouseId=warehouse-2");
   });
 
   it("builds the top sales API path from custom date range", () => {
     expect(stockTopSalesPath("custom", "2026-02-01", "2026-02-28")).toBe("/stock/top-sales?dateFrom=2026-02-01&dateTo=2026-02-28");
+    expect(stockTopSalesPath("custom", "2026-02-01", "2026-02-28", "warehouse-1"))
+      .toBe("/stock/top-sales?dateFrom=2026-02-01&dateTo=2026-02-28&warehouseId=warehouse-1");
   });
 
   it("builds top sales quick ranges backwards from the current date", () => {
@@ -614,6 +884,36 @@ describe("StockScreen", () => {
     );
     expect(moved["stock.current"]).toEqual(settings["stock.current"]);
     expect(resized["stock.topSales"].find((column) => column.key === "name")?.width).toBe(320);
+  });
+
+  it("builds one stock grid template from the selected column settings", () => {
+    const settings = resizeStockColumn(createDefaultStockColumnSettings(), "stock.topSales", "name", 320);
+    const template = stockColumnGridTemplate(settings["stock.topSales"]);
+
+    expect(template.split(" ")).toHaveLength(settings["stock.topSales"].length);
+    expect(template).toContain("320px");
+    expect(template).toBe(settings["stock.topSales"].map((column) => `${column.width}px`).join(" "));
+  });
+
+  it("auto-focuses the stock table when opening an inventory section without dialogs", () => {
+    expect(stockTableShouldAutoFocus("stock.current", {
+      inventoryFilterOpen: false,
+      productCreateOpen: false,
+      stockColumnsOpen: false,
+      topSalesFilterOpen: false
+    })).toBe(true);
+    expect(stockTableShouldAutoFocus("stock.topSales", {
+      inventoryFilterOpen: false,
+      productCreateOpen: false,
+      stockColumnsOpen: false,
+      topSalesFilterOpen: false
+    })).toBe(false);
+    expect(stockTableShouldAutoFocus("stock.current", {
+      inventoryFilterOpen: true,
+      productCreateOpen: false,
+      stockColumnsOpen: false,
+      topSalesFilterOpen: false
+    })).toBe(false);
   });
 
   it("uses Spanish labels for top sales periods", () => {
@@ -695,16 +995,16 @@ describe("StockScreen", () => {
     expect(html).toContain("Stock");
     expect(html).toContain("Productos con oferta");
     expect(html).toContain("Productos con precio socio");
-    expect(html).toContain("Productos con promocion");
+    expect(html).toContain("Productos con promoción");
     expect(html).toContain("Productos prohibidos a descuento");
-    expect(html).toContain("Edicion masiva de productos");
-    expect(html).toContain("Configuracion stock");
-    expect(html).toContain("Codigo");
-    expect(html).toContain("Codigo barra");
+    expect(html).toContain("Edición masiva de productos");
+    expect(html).toContain("Configuración stock");
+    expect(html).toContain("Código");
+    expect(html).toContain("Código de barras");
     expect(html).toContain("Nombre");
     expect(html).toContain("Familia");
     expect(html).toContain("Subfamilia");
-    expect(html).toContain("Almacen");
+    expect(html).toContain("Almacén");
     expect(html).toContain("Sin datos de stock");
     expect(html).not.toContain("Movimientos");
     expect(html).not.toContain("Entrada stock");

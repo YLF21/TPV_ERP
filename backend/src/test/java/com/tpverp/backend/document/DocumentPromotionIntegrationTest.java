@@ -33,6 +33,8 @@ import com.tpverp.backend.promotion.PromotionTargetType;
 import com.tpverp.backend.promotion.PromotionType;
 import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionalCouponService;
+import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
+import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -106,6 +108,10 @@ class DocumentPromotionIntegrationTest {
     private PromotionTargetRepository promotionTargetRepository;
     @Mock
     private PromotionalCouponService promotionalCoupons;
+    @Mock
+    private AuthoritativePromotionPricing promotionPricing;
+    @Mock
+    private PromotionCatalogGateway promotionCatalog;
 
     private DocumentService service;
     private Store store;
@@ -131,6 +137,23 @@ class DocumentPromotionIntegrationTest {
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
         lenient().when(memberLoyaltyService.applyLineBenefit(any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
+        lenient().when(promotionPricing.customerContext(
+                        any(), org.mockito.ArgumentMatchers.nullable(UUID.class)))
+                .thenReturn(AuthoritativePromotionPricing.CustomerContext.anonymous());
+        lenient().when(promotionPricing.matchesSegment(any(), any())).thenReturn(true);
+        lenient().when(promotionPricing.priceLine(any(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+        lenient().when(promotionCatalog.products(any(), any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> ids = invocation.getArgument(1);
+            return ids.stream().collect(java.util.stream.Collectors.toMap(
+                    id -> id,
+                    id -> productSnapshot(product(id, UUID.randomUUID(), null))));
+        });
+        lenient().when(productRepository.findAllByStoreIdAndIdIn(any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.Collection<UUID> ids = invocation.getArgument(1);
+                    return ids.stream().map(id -> product(id, UUID.randomUUID(), null)).toList();
+                });
         service = new DocumentService(
                 documentRepository,
                 counterRepository,
@@ -155,6 +178,8 @@ class DocumentPromotionIntegrationTest {
                 promotionTargetRepository,
                 new PromotionEngine(),
                 promotionalCoupons,
+                promotionPricing,
+                promotionCatalog,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -164,7 +189,8 @@ class DocumentPromotionIntegrationTest {
         var product = product(productId, UUID.randomUUID(), null);
         var promotion = buyXPayY("3x2 Agua", 3, 2);
         var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
         when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
                 .thenReturn(List.of(product));
         when(promotionRepository.findByEmpresaIdAndEstado(store.getEmpresa().getId(), PromotionStatus.ACTIVE))
@@ -186,6 +212,8 @@ class DocumentPromotionIntegrationTest {
         assertThat(ticket.getLineas()).extracting(DocumentLine::getLineType)
                 .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PROMOTION);
         assertThat(ticket.getLineas().get(1).getTotal()).isEqualByComparingTo("-1.00");
+        assertThat(ticket.getLineas().get(1).getPromotionId()).isEqualTo(promotion.rootVersionId());
+        assertThat(ticket.getLineas().get(1).getPromotionVersionId()).isEqualTo(promotion.id());
         assertThat(ticket.getPagos()).singleElement()
                 .satisfies(payment -> assertThat(payment.getImporte()).isEqualByComparingTo("2.00"));
         verify(stockGateway).confirm(ticket);
@@ -216,7 +244,7 @@ class DocumentPromotionIntegrationTest {
     }
 
     @Test
-    void oldDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
+    void oldDatedDocumentUsesItsOwnDateForPromotionValidity() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.minusDays(10), UUID.randomUUID());
         var promotion = purchaseThresholdCoupon();
         promotion.configureManagementFields(TODAY.minusDays(10), TODAY.minusDays(1), PromotionScope.SALE, null, null);
@@ -230,11 +258,11 @@ class DocumentPromotionIntegrationTest {
 
         service.confirm(document.getId(), authentication());
 
-        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+        verify(promotionalCoupons).generateAfterTicketConfirmation(any());
     }
 
     @Test
-    void futureDatedDocumentDoesNotGenerateCouponFromPromotionInactiveOnCurrentDate() {
+    void futureDatedDocumentUsesItsOwnDateForPromotionValidity() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA, TODAY.plusDays(10), UUID.randomUUID());
         var promotion = purchaseThresholdCoupon();
         promotion.configureManagementFields(TODAY.plusDays(1), null, PromotionScope.SALE, null, null);
@@ -248,7 +276,7 @@ class DocumentPromotionIntegrationTest {
 
         service.confirm(document.getId(), authentication());
 
-        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+        verify(promotionalCoupons).generateAfterTicketConfirmation(any());
     }
 
     @Test
@@ -305,6 +333,14 @@ class DocumentPromotionIntegrationTest {
         lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
         lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
         return product;
+    }
+
+    private PromotionCatalogGateway.ProductSnapshot productSnapshot(Product product) {
+        var snapshot = org.mockito.Mockito.mock(PromotionCatalogGateway.ProductSnapshot.class);
+        lenient().when(snapshot.product()).thenReturn(product);
+        lenient().when(snapshot.authoritativeSnapshot(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        return snapshot;
     }
 
     private Promotion buyXPayY(String name, int buy, int pay) {

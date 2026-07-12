@@ -5,6 +5,7 @@ import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.shared.access.OperationalAccessFilter;
 import com.tpverp.backend.shared.access.OperationalAccessPolicy;
+import jakarta.servlet.DispatcherType;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -39,6 +40,7 @@ class SecurityConfiguration {
 				.csrf(csrf -> csrf.disable())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(authorize -> authorize
+						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class)

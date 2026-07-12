@@ -45,13 +45,12 @@ public record DocumentRequest(
 
         DocumentLineCommand toCommand() {
             var resolvedType = lineType == null ? DocumentLineType.PRODUCT : lineType;
-            if (resolvedType == DocumentLineType.PRODUCT && productoId == null) {
-                throw new IllegalArgumentException("productoId es obligatorio");
-            }
-            return new DocumentLineCommand(
+            var command = new DocumentLineCommand(
                     productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
                     descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
                     resolvedType, promotionId, promotionVersionId, promotionalCouponId);
+            command.requireClientProductLine();
+            return command;
         }
     }
 }

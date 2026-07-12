@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,6 +103,67 @@ class SecurityAdministrationServiceTest {
     }
 
     @Test
+    void usersResolveCompanyWithoutDereferencingDetachedStore() {
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
+        var store = org.mockito.Mockito.mock(Store.class);
+        var company = org.mockito.Mockito.mock(Company.class);
+        var companyId = UUID.randomUUID();
+        when(store.getEmpresa()).thenThrow(new AssertionError("No debe inicializar el proxy de tienda"));
+        when(company.getId()).thenReturn(companyId);
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(users.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of());
+
+        var service = service(organization, users, roles,
+                org.mockito.Mockito.mock(StoreRepository.class),
+                org.mockito.Mockito.mock(JdbcTemplate.class));
+
+        assertThat(service.users()).isEmpty();
+        verify(users).findAllByEmpresaIdOrderByNombre(companyId);
+    }
+
+    @Test
+    void createUserFlushesBeforeGrantingStoreAccess() {
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var stores = org.mockito.Mockito.mock(StoreRepository.class);
+        var jdbc = org.mockito.Mockito.mock(JdbcTemplate.class);
+        var passwordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
+        var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
+        var store = store();
+        var company = store.getEmpresa();
+        var role = new Role(store, "GESTION PRODUCTO");
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(users.findByEmpresaIdAndNombre(company.getId(), "GESTOR E2E")).thenReturn(Optional.empty());
+        when(roles.findByIdAndTiendaId(role.getId(), store.getId())).thenReturn(Optional.of(role));
+        when(passwordEncoder.encode("0000")).thenReturn("hash");
+        when(users.saveAndFlush(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(stores.findByEmpresaId(company.getId())).thenReturn(List.of(store));
+
+        var service = new SecurityAdministrationService(
+                organization, users, roles,
+                org.mockito.Mockito.mock(PermissionRepository.class),
+                org.mockito.Mockito.mock(UserSessionRepository.class),
+                stores, jdbc, passwordEncoder, Clock.systemUTC(),
+                org.mockito.Mockito.mock(AuditService.class),
+                org.mockito.Mockito.mock(BackupKeyStore.class),
+                org.mockito.Mockito.mock(BackupSettingsRepository.class),
+                org.mockito.Mockito.mock(InstallationRepository.class));
+
+        service.createUser("GESTOR E2E", "gestor_e2e", "0000", role.getId());
+
+        var persistenceOrder = inOrder(users, jdbc);
+        persistenceOrder.verify(users).saveAndFlush(any(UserAccount.class));
+        persistenceOrder.verify(jdbc).update(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(UUID.class),
+                org.mockito.ArgumentMatchers.eq(store.getId()));
+    }
+
+    @Test
     void createUserRejectsNonNumericPassword() {
         var store = store();
         var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
@@ -167,12 +229,43 @@ class SecurityAdministrationServiceTest {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
             return ((UserAccount) authentication.getPrincipal()).getTienda();
         });
+        when(organization.currentCompany()).thenAnswer(invocation -> {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            return ((UserAccount) authentication.getPrincipal()).getTienda().getEmpresa();
+        });
+        return service(
+                organization, users, roles,
+                org.mockito.Mockito.mock(StoreRepository.class),
+                org.mockito.Mockito.mock(JdbcTemplate.class),
+                passwordEncoder, backupKeyStore);
+    }
+
+    private static SecurityAdministrationService service(
+            CurrentOrganization organization,
+            UserAccountRepository users,
+            RoleRepository roles,
+            StoreRepository stores,
+            JdbcTemplate jdbc) {
+        return service(
+                organization, users, roles, stores, jdbc,
+                org.mockito.Mockito.mock(PasswordEncoder.class),
+                org.mockito.Mockito.mock(BackupKeyStore.class));
+    }
+
+    private static SecurityAdministrationService service(
+            CurrentOrganization organization,
+            UserAccountRepository users,
+            RoleRepository roles,
+            StoreRepository stores,
+            JdbcTemplate jdbc,
+            PasswordEncoder passwordEncoder,
+            BackupKeyStore backupKeyStore) {
         return new SecurityAdministrationService(
                 organization, users, roles,
                 org.mockito.Mockito.mock(PermissionRepository.class),
                 org.mockito.Mockito.mock(UserSessionRepository.class),
-                org.mockito.Mockito.mock(StoreRepository.class),
-                org.mockito.Mockito.mock(JdbcTemplate.class),
+                stores,
+                jdbc,
                 passwordEncoder,
                 Clock.systemUTC(),
                 org.mockito.Mockito.mock(AuditService.class),

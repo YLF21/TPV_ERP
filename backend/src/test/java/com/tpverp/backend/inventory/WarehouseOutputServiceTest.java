@@ -1,8 +1,11 @@
 package com.tpverp.backend.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.Product;
@@ -37,6 +40,7 @@ class WarehouseOutputServiceTest {
     @Mock private WarehouseOutputRepository outputs;
     @Mock private DocumentCounterRepository counters;
     @Mock private StockLevelRepository stockLevels;
+    @Mock private StockSettingsRepository settings;
     @Mock private StockMovementRepository movements;
     @Mock private CurrentOrganization organization;
     @Mock private ProductRepository products;
@@ -52,7 +56,7 @@ class WarehouseOutputServiceTest {
     @BeforeEach
     void setUp() {
         service = new WarehouseOutputService(
-                outputs, counters, stockLevels, movements, organization, products,
+                outputs, counters, stockLevels, settings, movements, organization, products,
                 warehouses, new StockMovementSyncPublisher(syncOutbox), Clock.fixed(
                         Instant.parse("2026-06-09T10:00:00Z"), ZoneOffset.UTC));
         var address = Map.of(
@@ -132,6 +136,37 @@ class WarehouseOutputServiceTest {
                 () -> service.confirm(output.getId(), authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("message.warehouse.not_available_for_store");
+    }
+
+    @Test
+    void rejectsCumulativeNegativeOutputBeforeNumberingOrAnyMovement() {
+        var output = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(
+                        new WarehouseOutputLineCommand(product.getId(), 2),
+                        new WarehouseOutputLineCommand(product.getId(), 2)));
+        var stock = StockLevel.snapshot(
+                product.getId(), warehouse.getId(), new java.math.BigDecimal("3.000"));
+        var policy = new StockSettings(store.getId(), warehouse.getId());
+        policy.update(warehouse.getId(), false, StockSettings.DEFAULT_MINIMUM_STOCK, true);
+        when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(settings.findById(store.getId())).thenReturn(Optional.of(policy));
+        when(stockLevels.findByProductIdAndWarehouseIdForUpdate(
+                product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
+
+        assertThatThrownBy(() -> service.confirm(output.getId(), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no permite stock negativo");
+
+        assertThat(output.getStatus()).isEqualTo(WarehouseOutputStatus.BORRADOR);
+        assertThat(stock.getQuantity()).isEqualByComparingTo("3.000");
+        verify(counters, never()).save(any());
+        verify(movements, never()).save(any());
+        verify(outputs, never()).save(any());
+        verify(syncOutbox, never()).enqueue(any());
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

@@ -3,11 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SaleScreen,
   addSaleLine,
+  effectiveSaleProductPrice,
   filterSaleCustomers,
   filterSaleProducts,
   removeSaleLine,
   selectedProductAfterRemoval,
   saleLineSubtotal,
+  saleOfferIsCurrent,
+  saleProductBlocksManualDiscount,
   saleTotal,
   selectSaleProduct,
   updateSaleLineDiscount,
@@ -29,7 +32,7 @@ const terminalContext: TerminalContext = {
 };
 
 const products: SaleProduct[] = [
-  { id: "coffee", code: "CAF-001", barcode: "8410000000011", name: "Cafe molido", salePrice: 10 },
+  { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10 },
   { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50" },
   { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75 }
 ];
@@ -79,6 +82,7 @@ describe("SaleScreen", () => {
   it("filters products by internal code or barcode", () => {
     expect(filterSaleProducts(products, "PAN-0").map((product) => product.id)).toEqual(["bread"]);
     expect(filterSaleProducts(products, "0000000011").map((product) => product.id)).toEqual(["coffee"]);
+    expect(filterSaleProducts(products, "alt-cafe").map((product) => product.id)).toEqual(["coffee"]);
   });
 
   it("limits visible search results", () => {
@@ -100,6 +104,7 @@ describe("SaleScreen", () => {
 
     expect(selectSaleProduct(ambiguous, "caf-001")?.id).toBe("coffee");
     expect(selectSaleProduct(products, "8410000000028")?.id).toBe("bread");
+    expect(selectSaleProduct(products, "alt-cafe")?.id).toBe("coffee");
   });
 
   it("selects the only partial match with Enter", () => {
@@ -119,6 +124,35 @@ describe("SaleScreen", () => {
     expect(saleTotal(completed)).toBe(22.5);
   });
 
+  it("displays the configured member or valid offer price and falls back after expiry", () => {
+    expect(effectiveSaleProductPrice({
+      id: "member",
+      salePrice: 10,
+      memberPrice: 8.5,
+      priceUseMode: "MEMBER_PRICE"
+    }, "2026-07-11")).toBe(8.5);
+
+    const offered: SaleProduct = {
+      id: "offer",
+      salePrice: 10,
+      offerPrice: 7.5,
+      priceUseMode: "OFFER_PRICE",
+      offerActive: true,
+      offerFrom: "2026-07-01",
+      offerUntil: "2026-07-31"
+    };
+    expect(saleOfferIsCurrent(offered, "2026-07-11")).toBe(true);
+    expect(effectiveSaleProductPrice(offered, "2026-07-11")).toBe(7.5);
+    expect(effectiveSaleProductPrice(offered, "2026-08-01")).toBe(10);
+    expect(effectiveSaleProductPrice({
+      ...offered,
+      offerPrice: null,
+      offerDiscountPercent: 25,
+      priceUseMode: "OFFER_DISCOUNT"
+    }, "2026-07-11")).toBe(7.5);
+    expect(effectiveSaleProductPrice({ ...offered, offerActive: false }, "2026-07-11")).toBe(10);
+  });
+
   it("updates quantity only with valid integer values", () => {
     const lines = addSaleLine([], products[0]);
 
@@ -136,6 +170,15 @@ describe("SaleScreen", () => {
     expect(saleTotal(discounted)).toBe(15);
     expect(() => updateSaleLineDiscount(lines, "coffee", 101)).toThrow("invalid_discount");
     expect(() => updateSaleLineDiscount(lines, "coffee", 12.345)).toThrow("invalid_discount");
+  });
+
+  it("blocks manual discounts when the backend discount type is NONE", () => {
+    const blockedProduct: SaleProduct = { ...products[0], discountType: "NONE" };
+    const lines = addSaleLine([], blockedProduct);
+
+    expect(saleProductBlocksManualDiscount(blockedProduct)).toBe(true);
+    expect(() => updateSaleLineDiscount(lines, "coffee", 10)).toThrow("discount_blocked");
+    expect(updateSaleLineDiscount(lines, "coffee", 0)[0].discountPercent).toBe(0);
   });
 
   it("keeps the next available line selected after removal", () => {

@@ -10,6 +10,10 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.DiscountType;
+import com.tpverp.backend.catalog.StoreTax;
+import com.tpverp.backend.organization.Store;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -31,6 +35,12 @@ class PromotionServiceTest {
     private PromotionTargetRepository targets;
     @Mock
     private CurrentOrganization organization;
+    @Mock
+    private PromotionCatalogGateway catalog;
+    @Mock
+    private AuthoritativePromotionPricing pricing;
+    @Mock
+    private Store store;
 
     private final Company company = new Company("B12345678", "Demo SL", Map.of(
             "linea1", "Calle A",
@@ -196,6 +206,58 @@ class PromotionServiceTest {
     }
 
     @Test
+    void createPersistsTargetsForTargetedScope() {
+        currentCompany();
+        when(promotions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var productId = UUID.randomUUID();
+
+        var view = service().create(new PromotionService.PromotionRequest(
+                "Segunda unidad producto",
+                PromotionType.SECOND_UNIT_PERCENT,
+                LocalDate.of(2026, 7, 1),
+                null,
+                PromotionScope.PRODUCT_LIST,
+                PromotionCustomerSegment.ALL,
+                null,
+                null,
+                null,
+                new BigDecimal("50.00"),
+                List.of(new PromotionService.PromotionTargetRequest(
+                        PromotionTargetType.PRODUCT, productId))));
+
+        @SuppressWarnings("unchecked")
+        var savedTargets = ArgumentCaptor.forClass(List.class);
+        verify(targets).saveAll(savedTargets.capture());
+        assertThat((List<PromotionTarget>) savedTargets.getValue())
+                .singleElement()
+                .satisfies(target -> {
+                    assertThat(target.promotionId()).isEqualTo(view.id());
+                    assertThat(target.type()).isEqualTo(PromotionTargetType.PRODUCT);
+                    assertThat(target.targetId()).isEqualTo(productId);
+                });
+        assertThat(view.targets()).containsExactly(new PromotionService.PromotionTargetRequest(
+                PromotionTargetType.PRODUCT, productId));
+    }
+
+    @Test
+    void createRejectsTargetedScopeWithoutTargets() {
+        assertThatThrownBy(() -> service().create(new PromotionService.PromotionRequest(
+                "Familia vacia",
+                PromotionType.SECOND_UNIT_PERCENT,
+                LocalDate.of(2026, 7, 1),
+                null,
+                PromotionScope.FAMILY,
+                PromotionCustomerSegment.ALL,
+                null,
+                null,
+                null,
+                new BigDecimal("50.00"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("target");
+        verify(promotions, never()).save(any());
+    }
+
+    @Test
     void createRejectsNullRequestCleanly() {
         assertThatThrownBy(() -> service().create(null))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -217,6 +279,7 @@ class PromotionServiceTest {
     @Test
     void previewEvaluatesActiveSalePromotionsForCurrentCompany() {
         currentCompany();
+        previewPricing(true);
         var promotion = buyXPayY("3x2 Agua");
         promotion.activate();
         when(promotions.findByEmpresaIdAndEstado(company.getId(), PromotionStatus.ACTIVE))
@@ -253,6 +316,7 @@ class PromotionServiceTest {
     @Test
     void previewRequiresMatchingMemberCategoryForCategoryPromotion() {
         currentCompany();
+        previewPricing(false);
         var categoryId = UUID.randomUUID();
         var otherCategoryId = UUID.randomUUID();
         var promotion = buyXPayY("3x2 Socio Empleado");
@@ -289,11 +353,41 @@ class PromotionServiceTest {
     }
 
     private PromotionService service() {
-        return new PromotionService(promotions, targets, new PromotionEngine(), organization);
+        return new PromotionService(
+                promotions, targets, new PromotionEngine(), organization, catalog, pricing);
+    }
+
+    private void previewPricing(boolean matchesSegment) {
+        var storeId = UUID.randomUUID();
+        org.mockito.Mockito.lenient().when(organization.currentStore()).thenReturn(store);
+        org.mockito.Mockito.lenient().when(store.getId()).thenReturn(storeId);
+        org.mockito.Mockito.lenient().when(catalog.products(any(), any())).thenAnswer(invocation -> {
+            java.util.Collection<UUID> ids = invocation.getArgument(1);
+            return ids.stream().collect(java.util.stream.Collectors.toMap(id -> id, id -> {
+                var product = org.mockito.Mockito.mock(Product.class);
+                var tax = org.mockito.Mockito.mock(StoreTax.class);
+                var snapshot = org.mockito.Mockito.mock(PromotionCatalogGateway.ProductSnapshot.class);
+                org.mockito.Mockito.lenient().when(product.getId()).thenReturn(id);
+                org.mockito.Mockito.lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+                org.mockito.Mockito.lenient().when(product.isTaxesIncluded()).thenReturn(true);
+                org.mockito.Mockito.lenient().when(tax.getPercentage()).thenReturn(new BigDecimal("7.00"));
+                org.mockito.Mockito.lenient().when(snapshot.product()).thenReturn(product);
+                org.mockito.Mockito.lenient().when(snapshot.tax()).thenReturn(tax);
+                return snapshot;
+            }));
+        });
+        var customer = new AuthoritativePromotionPricing.CustomerContext(
+                null, matchesSegment ? UUID.randomUUID() : null, null);
+        org.mockito.Mockito.lenient().when(pricing.customerContext(any(), any())).thenReturn(customer);
+        org.mockito.Mockito.lenient().when(pricing.matchesSegment(any(), any())).thenReturn(matchesSegment);
+        org.mockito.Mockito.lenient().when(pricing.basePrice(any(), any(), any()))
+                .thenReturn(new BigDecimal("5.00"));
     }
 
     private void currentCompany() {
         when(organization.currentCompany()).thenReturn(company);
+        org.mockito.Mockito.lenient().when(organization.currentStore()).thenReturn(store);
+        org.mockito.Mockito.lenient().when(store.getId()).thenReturn(UUID.randomUUID());
     }
 
     private Promotion buyXPayY(String name) {

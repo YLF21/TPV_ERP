@@ -1,7 +1,10 @@
 package com.tpverp.backend.inventory;
 
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_INPUTS_CONFIRM;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_INPUTS_DELETE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_INPUTS_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_INPUTS_WRITE;
 
 import jakarta.validation.Valid;
 import java.util.List;
@@ -30,14 +33,14 @@ public class WarehouseInputController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_READ + "','" + GESTION_PRODUCTO + "')")
     public List<WarehouseInput> list() {
         return service.list();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public WarehouseInput create(
             @Valid @RequestBody WarehouseInputCommand command,
             Authentication authentication) {
@@ -45,7 +48,7 @@ public class WarehouseInputController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public WarehouseInput update(
             @PathVariable UUID id,
             @Valid @RequestBody WarehouseInputCommand command) {
@@ -54,13 +57,13 @@ public class WarehouseInputController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_DELETE + "','" + GESTION_PRODUCTO + "')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
     public WarehouseInput confirm(
             @PathVariable UUID id,
             Authentication authentication) {

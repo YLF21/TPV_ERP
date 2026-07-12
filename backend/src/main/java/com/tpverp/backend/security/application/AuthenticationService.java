@@ -11,8 +11,10 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -128,9 +130,11 @@ public class AuthenticationService {
 				Instant.now(clock)));
 		return new LoginResult(
 				token,
+				current.getUsuario().getId(),
 				current.getUsuario().getNombre(),
 				current.getUsuario().getRol().getNombre(),
-				current.getUsuario().mustChangePassword());
+				current.getUsuario().mustChangePassword(),
+				permissions(current.getUsuario()));
 	}
 
 	public String hash(String token) {
@@ -160,7 +164,24 @@ public class AuthenticationService {
 			com.tpverp.backend.terminal.Terminal terminal) {
 		var token = newToken();
 		sesionRepository.save(new UserSession(user, terminal, hash(token), Instant.now(clock)));
-		return new LoginResult(token, user.getNombre(), user.getRol().getNombre(), user.mustChangePassword());
+		return new LoginResult(
+				token,
+				user.getId(),
+				user.getNombre(),
+				user.getRol().getNombre(),
+				user.mustChangePassword(),
+				permissions(user));
+	}
+
+	private static Set<String> permissions(com.tpverp.backend.security.domain.UserAccount user) {
+		var codes = new LinkedHashSet<String>();
+		user.getRol().getPermisos().stream()
+				.map(value -> value.getPermiso().getCodigo())
+				.forEach(codes::add);
+		if (user.getRol().isProtegido()) {
+			codes.add("ADMIN");
+		}
+		return Set.copyOf(codes);
 	}
 
 	private String normalize(String value) {

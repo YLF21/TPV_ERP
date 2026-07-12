@@ -19,6 +19,26 @@ type PromotionListScreenProps = {
 
 type PromotionAction = "duplicate" | "activate" | "deactivate" | "delete";
 
+export function promotionActionRequest(action: PromotionAction, promotionId: string) {
+  const basePath = `/promotions/${encodeURIComponent(promotionId)}`;
+  return action === "delete"
+    ? { path: basePath, method: "DELETE" as const }
+    : { path: `${basePath}/${action}`, method: "POST" as const };
+}
+
+export function promotionActionDisabled(action: PromotionAction, promotion: PromotionView) {
+  if (action === "activate") {
+    return promotion.status === "ACTIVE";
+  }
+  if (action === "deactivate") {
+    return promotion.status !== "ACTIVE";
+  }
+  if (action === "delete") {
+    return promotion.status === "ACTIVE" || promotion.used === true;
+  }
+  return false;
+}
+
 export function PromotionListScreen({
   app,
   locale,
@@ -33,6 +53,7 @@ export function PromotionListScreen({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
   const token = session.accessToken;
 
   const selectedPromotion = useMemo(
@@ -46,7 +67,9 @@ export function PromotionListScreen({
       const rows = await apiRequest<PromotionView[]>("/promotions", { token });
       setPromotions(rows);
       setStatus(rows.length === 0 ? t("promotion.list.empty") : t("promotion.status.loaded"));
-      setSelectedId((current) => current ?? rows[0]?.id ?? null);
+      setSelectedId((current) => rows.some((promotion) => promotion.id === current)
+        ? current
+        : rows[0]?.id ?? null);
     } catch {
       setStatus(t("promotion.status.loadError"));
     } finally {
@@ -60,15 +83,18 @@ export function PromotionListScreen({
   }, [token, locale]);
 
   async function runAction(action: PromotionAction, promotion: PromotionView) {
+    if (promotionActionDisabled(action, promotion)) {
+      return;
+    }
+    const request = promotionActionRequest(action, promotion.id);
     try {
-      if (action === "delete") {
-        await apiRequest<void>(`/promotions/${encodeURIComponent(promotion.id)}`, { token, method: "DELETE" });
-      } else {
-        await apiRequest<PromotionView>(`/promotions/${encodeURIComponent(promotion.id)}/${action}`, { token, method: "POST" });
-      }
+      setPendingAction(`${promotion.id}:${action}`);
+      await apiRequest<void | PromotionView>(request.path, { token, method: request.method });
       await loadPromotions();
     } catch {
       setStatus(t(`promotion.status.${action}Error`));
+    } finally {
+      setPendingAction("");
     }
   }
 
@@ -125,10 +151,16 @@ export function PromotionListScreen({
                 <span>{promotionDateRange(promotion)}</span>
                 <span>{t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`)}</span>
                 <span className="promotion-row-actions">
-                  <button type="button" onClick={() => void runAction("duplicate", promotion)}>{t("promotion.action.duplicate")}</button>
-                  <button type="button" onClick={() => void runAction("activate", promotion)}>{t("promotion.action.activate")}</button>
-                  <button type="button" onClick={() => void runAction("deactivate", promotion)}>{t("promotion.action.deactivate")}</button>
-                  <button type="button" onClick={() => void runAction("delete", promotion)}>{t("promotion.action.delete")}</button>
+                  {(["duplicate", "activate", "deactivate", "delete"] as const).map((action) => (
+                    <button
+                      type="button"
+                      key={action}
+                      disabled={pendingAction !== "" || promotionActionDisabled(action, promotion)}
+                      onClick={() => void runAction(action, promotion)}
+                    >
+                      {t(`promotion.action.${action}`)}
+                    </button>
+                  ))}
                 </span>
               </div>
             ))}
@@ -153,6 +185,10 @@ export function PromotionListScreen({
               <strong>{t("promotion.list.selected")}</strong>
               <span>{selectedPromotion.name}</span>
               <span>{t(`promotion.status.${selectedPromotion.status}`)}</span>
+              <span>
+                {t(`promotion.scope.${selectedPromotion.scope ?? "SALE"}`)}
+                {selectedPromotion.targets?.length ? ` (${selectedPromotion.targets.length})` : ""}
+              </span>
             </aside>
           )}
         </section>
@@ -163,6 +199,6 @@ export function PromotionListScreen({
   );
 }
 
-function promotionDateRange(promotion: PromotionView) {
+export function promotionDateRange(promotion: PromotionView) {
   return promotion.endDate ? `${promotion.startDate} - ${promotion.endDate}` : promotion.startDate;
 }

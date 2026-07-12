@@ -1,0 +1,135 @@
+.erp-select {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  color: #17233b;
+  font: inherit;
+}
+
+.erp-select > .erp-select__trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #d7e0ea;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17233b;
+  padding: 0 9px;
+  font: inherit;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.erp-select--compact > .erp-select__trigger {
+  min-height: 36px;
+}
+
+.erp-select > .erp-select__trigger:hover,
+.erp-select > .erp-select__trigger:focus-visible,
+.erp-select--open > .erp-select__trigger {
+  border-color: #244e86;
+  background: #ffffff;
+  color: #17233b;
+  box-shadow: 0 0 0 3px rgba(36, 78, 134, 0.14);
+  outline: none;
+}
+
+.erp-select > .erp-select__trigger:disabled,
+.erp-select > .erp-select__trigger:disabled:hover {
+  border-color: #d7e0ea;
+  background: #f2f5f8;
+  color: #7a879a;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.erp-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.erp-select__arrow {
+  width: 7px;
+  height: 7px;
+  justify-self: center;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.erp-select--open .erp-select__arrow {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.erp-select__popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: 240px;
+  display: grid;
+  gap: 3px;
+  overflow: auto;
+  border: 1px solid #b8c8dc;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 5px;
+  box-shadow: 0 14px 30px rgba(31, 55, 86, 0.2);
+  box-sizing: border-box;
+}
+
+.erp-select__popover > .erp-select__option {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #17233b;
+  padding: 7px 10px;
+  font: inherit;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.erp-select__popover > .erp-select__option:hover,
+.erp-select__popover > .erp-select__option:focus-visible,
+.erp-select__popover > .erp-select__option[data-active="true"] {
+  background: #eaf2fb;
+  color: #173f73;
+  outline: none;
+}
+
+.erp-select__popover > .erp-select__option[aria-selected="true"] {
+  background: #e8f8ee;
+  color: #17613a;
+}
+
+.erp-select__popover > .erp-select__option:disabled {
+  background: #ffffff;
+  color: #8a96a8;
+  cursor: not-allowed;
+  opacity: 0.66;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .erp-select__arrow {
+    transition: none;
+  }
+}

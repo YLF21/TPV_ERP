@@ -1,18 +1,33 @@
-import { StrictMode, useState } from "react";
+import { lazy, StrictMode, Suspense, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  SalesReportScreen,
-  HardwareSettingsScreen,
-  LoginScreen,
-  SaleScreen,
-  SettingsScreen,
-  SessionHomeScreen,
-  StockScreen,
-  devTerminalContext,
-  hasPermission,
-  type LocaleCode,
-  type UserSession
-} from "@tpverp/app-common";
+import { devTerminalContext } from "../../../packages/app-common/src/api/runtime";
+import { hasPermission } from "../../../packages/app-common/src/auth/auth";
+import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
+import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
+import "../../../packages/app-common/src/styles/tpv.css";
+import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+
+const SalesReportScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
+    default: SalesReportScreen
+  }))
+);
+const HardwareSettingsScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/HardwareSettingsScreen").then(({ HardwareSettingsScreen }) => ({
+    default: HardwareSettingsScreen
+  }))
+);
+const SaleScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/SaleScreen").then(({ SaleScreen }) => ({ default: SaleScreen }))
+);
+const SettingsScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/SettingsScreen").then(({ SettingsScreen }) => ({
+    default: SettingsScreen
+  }))
+);
+const StockScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({ default: StockScreen }))
+);
 
 function App() {
   const [locale, setLocale] = useState<LocaleCode>("es");
@@ -127,6 +142,8 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={null}>
+      <App />
+    </Suspense>
   </StrictMode>
 );

@@ -12,9 +12,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -243,8 +247,7 @@ public class CatalogService {
     @Transactional
     public Product createProduct(ProductRequest request) {
         UUID storeId = currentStore().getId();
-        validateReferences(request, storeId);
-        validateIdentifiers(storeId, null, request.code(), request.barcode());
+        validateProductRequest(null, storeId, request);
         Product product = new Product(
                 storeId, request.familyId(), request.subfamilyId(), request.taxId(),
                 request.productType(), request.discountType(), request.name(), request.description(),
@@ -258,8 +261,7 @@ public class CatalogService {
     @Transactional
     public Product updateProduct(UUID productId, ProductRequest request) {
         Product product = product(productId);
-        validateReferences(request, product.getStoreId());
-        validateIdentifiers(product.getStoreId(), productId, request.code(), request.barcode());
+        validateProductRequest(productId, product.getStoreId(), request);
         PriceSnapshot before = PriceSnapshot.from(product);
         product.update(
                 request.familyId(), request.subfamilyId(), request.taxId(), request.productType(),
@@ -268,6 +270,12 @@ public class CatalogService {
         applyProductData(product, request);
         recordChangedPrices(product, before);
         return product;
+    }
+
+    @Transactional(readOnly = true)
+    public void validateProductUpdate(UUID productId, ProductRequest request) {
+        Product product = product(productId);
+        validateProductRequest(productId, product.getStoreId(), request);
     }
 
     @Transactional
@@ -294,18 +302,56 @@ public class CatalogService {
 
     private void applyProductData(Product product, ProductRequest request) {
         validateDiscountType(request);
-        product.replaceIdentifier(IdentifierType.CODIGO, request.code());
+        if (request.code() != null && !request.code().isBlank()) {
+            product.replaceIdentifier(IdentifierType.CODIGO, request.code());
+        } else {
+            product.removeIdentifier(IdentifierType.CODIGO);
+        }
         if (request.barcode() != null && !request.barcode().isBlank()) {
             product.replaceIdentifier(IdentifierType.CODIGO_BARRAS, request.barcode());
         } else {
             product.removeIdentifier(IdentifierType.CODIGO_BARRAS);
+        }
+        if (request.barcode2() != null && !request.barcode2().isBlank()) {
+            product.replaceIdentifier(IdentifierType.CODIGO_BARRAS_2, request.barcode2());
+        } else {
+            product.removeIdentifier(IdentifierType.CODIGO_BARRAS_2);
         }
         product.setPrice(PriceTier.VENTA, request.salePrice());
         product.setPrice(PriceTier.MEMBER, request.memberPrice());
         product.setPrice(PriceTier.MAYORISTA, request.wholesalePrice());
         product.setPrice(PriceTier.OFERTA, offerPrice(request));
         product.configurePriceUse(request.priceUseMode(), request.offerDiscountPercent());
+        product.configurePurchaseDiscount(request.purchaseDiscountPercent());
         product.configureOffer(offerActive(request), request.offerFrom(), request.offerUntil());
+    }
+
+    private void validateProductRequest(UUID productId, UUID storeId, ProductRequest request) {
+        Objects.requireNonNull(request, "product");
+        validateReferences(request, storeId);
+        validateRequiredProductIdentifier(request);
+        validateIdentifiers(storeId, productId, request.code(), request.barcode(), request.barcode2());
+        Product candidate = new Product(
+                storeId,
+                request.familyId(),
+                request.subfamilyId(),
+                request.taxId(),
+                request.productType(),
+                request.discountType(),
+                request.name(),
+                request.description(),
+                request.comments(),
+                request.purchasePrice(),
+                request.taxesIncluded());
+        applyProductData(candidate, request);
+    }
+
+    private static void validateRequiredProductIdentifier(ProductRequest request) {
+        boolean hasCode = request.code() != null && !request.code().isBlank();
+        boolean hasBarcode = request.barcode() != null && !request.barcode().isBlank();
+        if (!hasCode && !hasBarcode) {
+            throw new IllegalArgumentException("message.product.code_or_barcode_required");
+        }
     }
 
     private static void validateDiscountType(ProductRequest request) {
@@ -454,11 +500,15 @@ public class CatalogService {
     }
 
     private void validateIdentifiers(UUID storeId, UUID productId, String... values) {
+        var currentValues = new java.util.HashSet<String>();
         for (String value : values) {
             if (value == null || value.isBlank()) {
                 continue;
             }
             String normalized = value.trim().toUpperCase(Locale.ROOT);
+            if (!currentValues.add(normalized)) {
+                throw new IllegalArgumentException("El identificador ya esta asignado a otro producto");
+            }
             boolean collision = productId == null
                     ? identifierRepository.findByStoreIdAndValor(storeId, normalized).isPresent()
                     : identifierRepository.existsByStoreIdAndValorAndProductIdNot(storeId, normalized, productId);
@@ -512,11 +562,63 @@ public class CatalogService {
     private static Product initializeProductForApi(Product product) {
         product.getCode();
         product.getBarcode();
+        product.getBarcode2();
         product.getSalePrice();
         product.getMemberPrice();
         product.getWholesalePrice();
         product.getOfferPrice();
         return product;
+    }
+
+    @Transactional
+    public List<Product> updateProducts(List<BulkProductUpdate> updates) {
+        if (updates == null || updates.isEmpty()) {
+            throw new IllegalArgumentException("La lista de productos esta vacia");
+        }
+        if (updates.size() > 5_000) {
+            throw new IllegalArgumentException("La lista de productos no puede superar 5000 filas");
+        }
+        Set<UUID> productIds = new HashSet<>();
+        for (int index = 0; index < updates.size(); index++) {
+            BulkProductUpdate update = updates.get(index);
+            if (update == null || update.productId() == null || update.expectedVersion() == null
+                    || update.product() == null) {
+                throw new IllegalArgumentException("updates[" + index + "] no es valido");
+            }
+            if (!productIds.add(update.productId())) {
+                throw new IllegalArgumentException(
+                        "updates contiene el producto duplicado " + update.productId());
+            }
+        }
+
+        UUID storeId = currentStore().getId();
+        Map<UUID, Product> currentProducts = new HashMap<>();
+        productRepository.findAllByStoreIdAndIdIn(storeId, productIds)
+                .forEach(product -> currentProducts.put(product.getId(), product));
+        if (currentProducts.size() != productIds.size()) {
+            throw new IllegalArgumentException("Producto no encontrado");
+        }
+        for (BulkProductUpdate update : updates) {
+            Product current = currentProducts.get(update.productId());
+            if (current.getVersion() != update.expectedVersion()) {
+                throw staleProductVersion(
+                        update.productId(), update.expectedVersion(), current.getVersion());
+            }
+        }
+
+        List<Product> changed = new ArrayList<>(updates.size());
+        for (BulkProductUpdate update : updates) {
+            changed.add(updateProduct(update.productId(), update.product()));
+        }
+        return List.copyOf(changed);
+    }
+
+    private static IllegalStateException staleProductVersion(
+            UUID productId, long expectedVersion, long currentVersion) {
+        return new IllegalStateException(
+                "Conflicto de version en el producto " + productId
+                        + ": se esperaba " + expectedVersion
+                        + " y tiene version " + currentVersion);
     }
 
     public record ProductRequest(
@@ -531,13 +633,15 @@ public class CatalogService {
             String comments,
             @NotNull BigDecimal purchasePrice,
             boolean taxesIncluded,
-            @NotBlank String code,
+            String code,
             String barcode,
+            String barcode2,
             @NotNull BigDecimal salePrice,
             BigDecimal memberPrice,
             BigDecimal wholesalePrice,
             BigDecimal offerPrice,
             BigDecimal offerDiscountPercent,
+            BigDecimal purchaseDiscountPercent,
             boolean offerActive,
             LocalDate offerFrom,
             LocalDate offerUntil) {
@@ -546,6 +650,12 @@ public class CatalogService {
             priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
             discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
         }
+    }
+
+    public record BulkProductUpdate(
+            @NotNull UUID productId,
+            @NotNull Long expectedVersion,
+            @NotNull @jakarta.validation.Valid ProductRequest product) {
     }
 
     private record PriceSnapshot(

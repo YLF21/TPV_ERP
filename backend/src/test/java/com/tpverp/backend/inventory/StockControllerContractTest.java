@@ -4,10 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -35,7 +39,7 @@ class StockControllerContractTest {
     @Test
     void exposesTopSalesEndpoint() throws NoSuchMethodException {
         var method = StockController.class.getDeclaredMethod(
-                "topSales", String.class, LocalDate.class, LocalDate.class, LocalDate.class);
+                "topSales", String.class, LocalDate.class, LocalDate.class, LocalDate.class, UUID.class);
 
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/top-sales");
@@ -43,6 +47,55 @@ class StockControllerContractTest {
                 .contains("hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
-                .hasSize(4);
+                .hasSize(5);
+    }
+
+    @Test
+    void exposesProductSalesHistoryWithOptionalDateRange() throws NoSuchMethodException {
+        var method = StockController.class.getDeclaredMethod(
+                "salesHistory", UUID.class, LocalDate.class, LocalDate.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/products/{productId}/sales-history");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(Arrays.stream(method.getParameters())
+                .filter(parameter -> parameter.isAnnotationPresent(PathVariable.class)))
+                .hasSize(1);
+        assertThat(Arrays.stream(method.getParameters())
+                .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
+                .hasSize(2);
+    }
+
+    @Test
+    void exposesSettingsAndMinimumEndpointsWithSeparatedPermissions() throws NoSuchMethodException {
+        var getSettings = StockController.class.getDeclaredMethod("settings");
+        var putSettings = StockController.class.getDeclaredMethod(
+                "updateSettings", StockSettingsCommand.class);
+        var getMinimum = StockController.class.getDeclaredMethod(
+                "minimum", UUID.class, UUID.class);
+        var putMinimum = StockController.class.getDeclaredMethod(
+                "updateMinimum", UUID.class, UUID.class, StockMinimumCommand.class);
+        var deleteMinimum = StockController.class.getDeclaredMethod(
+                "deleteMinimum", UUID.class, UUID.class);
+
+        assertThat(getSettings.getAnnotation(GetMapping.class).value())
+                .containsExactly("/settings");
+        assertThat(getSettings.getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(putSettings.getAnnotation(PutMapping.class).value())
+                .containsExactly("/settings");
+        assertThat(putSettings.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSES_MANAGE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(getMinimum.getAnnotation(GetMapping.class).value())
+                .containsExactly("/minimums/{productId}/{warehouseId}");
+        assertThat(putMinimum.getAnnotation(PutMapping.class).value())
+                .containsExactly("/minimums/{productId}/{warehouseId}");
+        assertThat(deleteMinimum.getAnnotation(DeleteMapping.class).value())
+                .containsExactly("/minimums/{productId}/{warehouseId}");
+        assertThat(putMinimum.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSES_MANAGE");
+        assertThat(deleteMinimum.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSES_MANAGE");
     }
 }

@@ -251,10 +251,11 @@ public class DevSampleDataSeeder {
                 """, SUPPLIER, COMPANY);
         jdbc.update("""
                 insert into producto_proveedor
-                    (id, producto_id, proveedor_id, referencia_proveedor, ultima_fecha_entrada)
-                values (?, ?, ?, 'PROV-DEV-CAFE', ?)
+                    (id, producto_id, proveedor_id, referencia_proveedor, ultimo_proveedor,
+                     precio_compra_bruto, descuento_compra, ultima_entrada_en)
+                values (?, ?, ?, 'PROV-DEV-CAFE', true, 3.50, 0.00, ?)
                 on conflict (producto_id, proveedor_id) do nothing
-                """, id("product-supplier"), PRODUCT_A, SUPPLIER, TODAY);
+                """, id("product-supplier"), PRODUCT_A, SUPPLIER, ts(NOW));
     }
 
     private void seedDocuments() {

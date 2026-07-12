@@ -64,7 +64,7 @@ public class ApiExceptionHandler {
         return problem(
                 HttpStatus.BAD_REQUEST,
                 SystemErrorCode.VALIDATION_ERROR.name(),
-                messages.legacy(exception.getMessage(), language).orElse(exception.getMessage()),
+                localizedExceptionDetail(exception.getMessage(), SystemErrorCode.VALIDATION_ERROR, language),
                 language);
     }
 
@@ -76,8 +76,16 @@ public class ApiExceptionHandler {
         return problem(
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
-                messages.legacy(exception.getMessage(), language).orElse(exception.getMessage()),
+                localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language);
+    }
+
+    private String localizedExceptionDetail(
+            String detail,
+            SystemErrorCode fallbackCode,
+            SupportedLanguage language) {
+        return messages.legacy(detail, language).orElseGet(() ->
+                language == SupportedLanguage.ES ? detail : messages.system(fallbackCode, language));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

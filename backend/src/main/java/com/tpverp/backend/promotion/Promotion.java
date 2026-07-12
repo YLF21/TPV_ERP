@@ -53,6 +53,9 @@ public class Promotion {
     private BigDecimal compraCantidad;
     @Column(name = "paga_cantidad", precision = 19, scale = 3)
     private BigDecimal pagaCantidad;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "modo_agrupacion_compra", nullable = false, length = 24)
+    private BuyXPayYMode buyXPayYMode;
     @Column(name = "descuento_importe", precision = 19, scale = 2)
     private BigDecimal descuentoImporte;
     @Column(name = "descuento_porcentaje", precision = 5, scale = 2)
@@ -101,6 +104,7 @@ public class Promotion {
         estado = PromotionStatus.DRAFT;
         segmentoCliente = PromotionCustomerSegment.ALL;
         ambito = PromotionScope.SALE;
+        buyXPayYMode = BuyXPayYMode.MIXED_TARGETS;
         fechaInicio = Objects.requireNonNull(startDate, "startDate");
         creadoEn = Instant.now();
         actualizadoEn = creadoEn;
@@ -158,8 +162,32 @@ public class Promotion {
         return pagaCantidad;
     }
 
+    public BuyXPayYMode buyXPayYMode() {
+        return buyXPayYMode;
+    }
+
+    public BigDecimal minimumAmount() {
+        return minimoImporte;
+    }
+
+    public BigDecimal minimumQuantity() {
+        return minimoCantidad;
+    }
+
+    public BigDecimal discountAmount() {
+        return descuentoImporte;
+    }
+
     public BigDecimal discountPercent() {
         return descuentoPorcentaje;
+    }
+
+    public BigDecimal maximumDiscount() {
+        return descuentoMaximo;
+    }
+
+    public BigDecimal packPrice() {
+        return precioLote;
     }
 
     public UUID memberCategoryId() {
@@ -261,6 +289,7 @@ public class Promotion {
         duplicate.minimoCantidad = minimoCantidad;
         duplicate.compraCantidad = compraCantidad;
         duplicate.pagaCantidad = pagaCantidad;
+        duplicate.buyXPayYMode = buyXPayYMode;
         duplicate.descuentoImporte = descuentoImporte;
         duplicate.descuentoPorcentaje = descuentoPorcentaje;
         duplicate.descuentoMaximo = descuentoMaximo;
@@ -279,18 +308,79 @@ public class Promotion {
     }
 
     public void configureBuyXPayY(BigDecimal buyQuantity, BigDecimal payQuantity) {
+        configureBuyXPayY(buyQuantity, payQuantity, BuyXPayYMode.MIXED_TARGETS);
+    }
+
+    public void configureBuyXPayY(
+            BigDecimal buyQuantity,
+            BigDecimal payQuantity,
+            BuyXPayYMode mode) {
         requireNotUsed();
         compraCantidad = positiveQuantity(buyQuantity, "compraCantidad");
-        pagaCantidad = positiveQuantity(payQuantity, "pagaCantidad");
+        pagaCantidad = nonNegativeQuantity(payQuantity, "pagaCantidad");
         if (pagaCantidad.compareTo(compraCantidad) >= 0) {
             throw new IllegalArgumentException("pagaCantidad debe ser menor que compraCantidad");
         }
+        buyXPayYMode = mode == null ? BuyXPayYMode.MIXED_TARGETS : mode;
         touch();
     }
 
     public void configureSecondUnitPercent(BigDecimal percent) {
         requireNotUsed();
-        descuentoPorcentaje = validPercentage(percent, "descuentoPorcentaje");
+        descuentoPorcentaje = positivePercentage(percent, "descuentoPorcentaje");
+        touch();
+    }
+
+    public void configurePurchaseThresholdDiscount(
+            BigDecimal minimumAmount,
+            BigDecimal discountAmount,
+            BigDecimal discountPercent,
+            BigDecimal maximumDiscount) {
+        requireNotUsed();
+        minimoImporte = nonNegativeAmount(minimumAmount, "minimoImporte");
+        configureDiscount(discountAmount, discountPercent, maximumDiscount);
+        touch();
+    }
+
+    public void configureFixedPackPrice(BigDecimal quantity, BigDecimal packPrice) {
+        requireNotUsed();
+        compraCantidad = positiveWholeQuantity(quantity, "compraCantidad");
+        precioLote = positiveAmount(packPrice, "precioLote");
+        touch();
+    }
+
+    public void configureQuantityDiscount(
+            BigDecimal minimumQuantity,
+            BigDecimal discountAmount,
+            BigDecimal discountPercent,
+            BigDecimal maximumDiscount) {
+        requireNotUsed();
+        minimoCantidad = positiveQuantity(minimumQuantity, "minimoCantidad");
+        configureDiscount(discountAmount, discountPercent, maximumDiscount);
+        touch();
+    }
+
+    public void configurePurchaseThresholdCoupon(
+            BigDecimal purchaseMinimumAmount,
+            BigDecimal amount,
+            BigDecimal percent,
+            BigDecimal maximumDiscount,
+            BigDecimal redemptionMinimumAmount,
+            LocalDate validFromDate,
+            Integer validFromDays,
+            LocalDate validUntilDate,
+            Integer validDays) {
+        requireNotUsed();
+        minimoImporte = nonNegativeAmount(purchaseMinimumAmount, "minimoImporte");
+        requireExactlyOne(amount, percent, "cuponImporte", "cuponPorcentaje");
+        generaCupon = true;
+        cuponImporte = amount == null ? null : positiveAmount(amount, "cuponImporte");
+        cuponPorcentaje = percent == null ? null : positivePercentage(percent, "cuponPorcentaje");
+        cuponDescuentoMaximo = maximumDiscount == null
+                ? null : positiveAmount(maximumDiscount, "cuponDescuentoMaximo");
+        cuponMinimoImporte = redemptionMinimumAmount == null
+                ? null : nonNegativeAmount(redemptionMinimumAmount, "cuponMinimoImporte");
+        configureCouponValidity(validFromDate, validFromDays, validUntilDate, validDays);
         touch();
     }
 
@@ -300,19 +390,16 @@ public class Promotion {
             LocalDate validFrom,
             LocalDate validUntil) {
         requireNotUsed();
-        generaCupon = true;
-        cuponImporte = positiveAmount(amount, "cuponImporte");
-        cuponPorcentaje = null;
-        cuponDescuentoMaximo = null;
-        cuponMinimoImporte = minimumAmount == null ? null : nonNegativeAmount(minimumAmount, "cuponMinimoImporte");
-        cuponValidoDesdeFecha = Objects.requireNonNull(validFrom, "validFrom");
-        cuponValidoHastaFecha = Objects.requireNonNull(validUntil, "validUntil");
-        cuponValidoDesdeDias = null;
-        cuponValidoDias = null;
-        if (validUntil.isBefore(validFrom)) {
-            throw new IllegalArgumentException("message.coupon.invalid_dates");
-        }
-        touch();
+        configurePurchaseThresholdCoupon(
+                minimumAmount,
+                amount,
+                null,
+                null,
+                minimumAmount,
+                validFrom,
+                null,
+                validUntil,
+                null);
     }
 
     private void requireComplete() {
@@ -327,20 +414,99 @@ public class Promotion {
         if (fechaFin != null && fechaFin.isBefore(fechaInicio)) {
             throw new IllegalStateException("message.promotion.invalid_dates");
         }
-        if (tipo == PromotionType.BUY_X_PAY_Y) {
-            if (compraCantidad == null || pagaCantidad == null
-                    || compraCantidad.signum() <= 0
-                    || pagaCantidad.signum() <= 0
-                    || pagaCantidad.compareTo(compraCantidad) >= 0) {
-                throw new IllegalStateException("compraCantidad y pagaCantidad son obligatorias");
+        switch (tipo) {
+            case PURCHASE_THRESHOLD_COUPON -> requirePurchaseThresholdCoupon();
+            case PURCHASE_THRESHOLD_DISCOUNT -> {
+                requireMinimumAmount();
+                requireDiscount();
+            }
+            case BUY_X_PAY_Y -> requireBuyXPayY();
+            case SECOND_UNIT_PERCENT -> requirePositivePercent();
+            case FIXED_PACK_PRICE -> {
+                requireWholeQuantity(compraCantidad, "compraCantidad");
+                requirePositive(precioLote, "precioLote");
+            }
+            case QUANTITY_DISCOUNT -> {
+                requirePositive(minimoCantidad, "minimoCantidad");
+                requireDiscount();
             }
         }
-        if (tipo == PromotionType.SECOND_UNIT_PERCENT
-                && (descuentoPorcentaje == null
-                || descuentoPorcentaje.signum() <= 0
-                || descuentoPorcentaje.compareTo(new BigDecimal("100")) > 0)) {
+    }
+
+    private void requirePurchaseThresholdCoupon() {
+        requireMinimumAmount();
+        if (!generaCupon) {
+            throw new IllegalStateException("generaCupon es obligatorio");
+        }
+        requireExactlyOne(cuponImporte, cuponPorcentaje, "cuponImporte", "cuponPorcentaje");
+        if (cuponValidoHastaFecha == null && cuponValidoDias == null) {
+            throw new IllegalStateException("la validez final del cupon es obligatoria");
+        }
+    }
+
+    private void requireBuyXPayY() {
+        requireWholeQuantity(compraCantidad, "compraCantidad");
+        if (pagaCantidad == null || pagaCantidad.signum() < 0
+                || pagaCantidad.stripTrailingZeros().scale() > 0
+                || pagaCantidad.compareTo(compraCantidad) >= 0) {
+            throw new IllegalStateException("compraCantidad y pagaCantidad son obligatorias");
+        }
+        Objects.requireNonNull(buyXPayYMode, "buyXPayYMode");
+    }
+
+    private void requireMinimumAmount() {
+        if (minimoImporte == null || minimoImporte.signum() < 0) {
+            throw new IllegalStateException("minimoImporte es obligatorio");
+        }
+    }
+
+    private void requirePositivePercent() {
+        if (descuentoPorcentaje == null || descuentoPorcentaje.signum() <= 0
+                || descuentoPorcentaje.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalStateException("descuentoPorcentaje es obligatorio");
         }
+    }
+
+    private void requireDiscount() {
+        requireExactlyOne(descuentoImporte, descuentoPorcentaje,
+                "descuentoImporte", "descuentoPorcentaje");
+    }
+
+    private void configureDiscount(
+            BigDecimal amount,
+            BigDecimal percent,
+            BigDecimal maximumDiscount) {
+        requireExactlyOne(amount, percent, "descuentoImporte", "descuentoPorcentaje");
+        descuentoImporte = amount == null ? null : positiveAmount(amount, "descuentoImporte");
+        descuentoPorcentaje = percent == null ? null : positivePercentage(percent, "descuentoPorcentaje");
+        descuentoMaximo = maximumDiscount == null
+                ? null : positiveAmount(maximumDiscount, "descuentoMaximo");
+    }
+
+    private void configureCouponValidity(
+            LocalDate validFromDate,
+            Integer validFromDays,
+            LocalDate validUntilDate,
+            Integer validDays) {
+        if (validFromDate != null && validFromDays != null) {
+            throw new IllegalArgumentException("solo se permite un inicio de validez del cupon");
+        }
+        if (validUntilDate != null && validDays != null) {
+            throw new IllegalArgumentException("solo se permite un fin de validez del cupon");
+        }
+        if (validFromDays != null && validFromDays < 0) {
+            throw new IllegalArgumentException("cuponValidoDesdeDias no puede ser negativo");
+        }
+        if (validDays != null && validDays <= 0) {
+            throw new IllegalArgumentException("cuponValidoDias debe ser positivo");
+        }
+        if (validUntilDate != null && validFromDate != null && validUntilDate.isBefore(validFromDate)) {
+            throw new IllegalArgumentException("message.coupon.invalid_dates");
+        }
+        cuponValidoDesdeFecha = validFromDate;
+        cuponValidoDesdeDias = validFromDays;
+        cuponValidoHastaFecha = validUntilDate;
+        cuponValidoDias = validDays;
     }
 
     private void requireNotUsed() {
@@ -372,12 +538,36 @@ public class Promotion {
         return value.setScale(3, java.math.RoundingMode.HALF_UP);
     }
 
+    private static BigDecimal positiveWholeQuantity(BigDecimal value, String field) {
+        var quantity = positiveQuantity(value, field);
+        if (quantity.stripTrailingZeros().scale() > 0) {
+            throw new IllegalArgumentException(field + " debe ser un entero positivo");
+        }
+        return quantity;
+    }
+
+    private static BigDecimal nonNegativeQuantity(BigDecimal value, String field) {
+        Objects.requireNonNull(value, field);
+        if (value.signum() < 0 || value.stripTrailingZeros().scale() > 3) {
+            throw new IllegalArgumentException(field + " no puede ser negativo");
+        }
+        return value.setScale(3, java.math.RoundingMode.HALF_UP);
+    }
+
     private static BigDecimal validPercentage(BigDecimal value, String field) {
         Objects.requireNonNull(value, field);
         if (value.signum() < 0 || value.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException(field + " debe estar entre 0 y 100");
         }
         return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal positivePercentage(BigDecimal value, String field) {
+        var percentage = validPercentage(value, field);
+        if (percentage.signum() <= 0) {
+            throw new IllegalArgumentException(field + " debe ser positivo");
+        }
+        return percentage;
     }
 
     private static BigDecimal positiveAmount(BigDecimal value, String field) {
@@ -394,5 +584,29 @@ public class Promotion {
             throw new IllegalArgumentException(field + " no puede ser negativo");
         }
         return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static void requireExactlyOne(
+            Object first,
+            Object second,
+            String firstField,
+            String secondField) {
+        if ((first == null) == (second == null)) {
+            throw new IllegalArgumentException(
+                    "se debe indicar exactamente uno entre " + firstField + " y " + secondField);
+        }
+    }
+
+    private static void requirePositive(BigDecimal value, String field) {
+        if (value == null || value.signum() <= 0) {
+            throw new IllegalStateException(field + " es obligatorio");
+        }
+    }
+
+    private static void requireWholeQuantity(BigDecimal value, String field) {
+        requirePositive(value, field);
+        if (value.stripTrailingZeros().scale() > 0) {
+            throw new IllegalStateException(field + " debe ser un entero positivo");
+        }
     }
 }

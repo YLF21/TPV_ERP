@@ -18,7 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/promotions")
 public class PromotionController {
 
-    private static final String PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
+    private static final String READ_PERMISSION =
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','STOCK_READ')";
+    private static final String MANAGE_PERMISSION =
+            "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
 
     private final PromotionService promotions;
 
@@ -27,13 +30,13 @@ public class PromotionController {
     }
 
     @GetMapping
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(READ_PERMISSION)
     public List<PromotionService.PromotionView> list() {
         return promotions.list();
     }
 
     @PostMapping("")
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(MANAGE_PERMISSION)
     public PromotionService.PromotionView create(@Valid @RequestBody PromotionService.PromotionRequest request) {
         return promotions.create(request);
     }
@@ -45,25 +48,25 @@ public class PromotionController {
     }
 
     @PostMapping("/{id}/duplicate")
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(MANAGE_PERMISSION)
     public PromotionService.PromotionView duplicate(@PathVariable UUID id) {
         return promotions.duplicate(id);
     }
 
     @PostMapping("/{id}/activate")
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(MANAGE_PERMISSION)
     public PromotionService.PromotionView activate(@PathVariable UUID id) {
         return promotions.activate(id);
     }
 
     @PostMapping("/{id}/deactivate")
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(MANAGE_PERMISSION)
     public PromotionService.PromotionView deactivate(@PathVariable UUID id) {
         return promotions.deactivate(id);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize(PERMISSION)
+    @PreAuthorize(MANAGE_PERMISSION)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         promotions.delete(id);

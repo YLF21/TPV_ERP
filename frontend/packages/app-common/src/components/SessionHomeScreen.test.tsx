@@ -124,7 +124,7 @@ describe("SessionHomeScreen", () => {
       onLocaleChange: vi.fn(),
       onOpenStock
     });
-    const stockButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "INVENTARIO");
+    const stockButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "STOCK");
 
     expect(stockButton?.props.onClick).toBe(onOpenStock);
   });

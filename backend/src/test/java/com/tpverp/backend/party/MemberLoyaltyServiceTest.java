@@ -77,17 +77,14 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
-    void appliesEmployeeManualCategoryDiscountToMemberDiscountProducts() {
+    void appliesMemberPriceAsTheOnlyMemberSpecificProductBenefit() {
         var company = PartyTestData.company();
-        var store = PartyTestData.store(company);
         var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
-        var employee = new MemberCategory(
-                company, "Empleado", "EMPLEADO", 0, new BigDecimal("15.00"), true, true, 9000);
-        member.setCategory(employee, true);
         var product = org.mockito.Mockito.mock(Product.class);
-        when(product.getDiscountType()).thenReturn(DiscountType.MEMBER_DISCOUNT);
+        when(product.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
+        when(product.getMemberPrice()).thenReturn(new BigDecimal("80.00"));
         when(context.currentCompany()).thenReturn(company);
         when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
                 .thenReturn(Optional.of(member));
@@ -98,7 +95,8 @@ class MemberLoyaltyServiceTest {
         var priced = service().applyLineBenefit(customer.getId(), line, product);
 
         assertThat(priced.tarifa()).isEqualTo("MEMBER");
-        assertThat(priced.descuento()).isEqualByComparingTo("15.00");
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("80.00");
+        assertThat(priced.descuento()).isEqualByComparingTo("0.00");
     }
 
     @Test

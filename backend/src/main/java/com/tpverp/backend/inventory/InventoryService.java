@@ -21,10 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class InventoryService {
 
+    private static final String NEGATIVE_STOCK_ERROR =
+            "Stock insuficiente: la configuracion de la tienda no permite stock negativo";
+
     private final CurrentOrganization organization;
     private final ProductRepository productRepository;
     private final WarehouseRepository warehouseRepository;
     private final StockLevelRepository stockRepository;
+    private final StockSettingsRepository settingsRepository;
     private final StockMovementRepository movementRepository;
     private final StockMovementSyncPublisher syncPublisher;
     private final Clock clock;
@@ -34,6 +38,7 @@ public class InventoryService {
             ProductRepository productRepository,
             WarehouseRepository warehouseRepository,
             StockLevelRepository stockRepository,
+            StockSettingsRepository settingsRepository,
             StockMovementRepository movementRepository,
             StockMovementSyncPublisher syncPublisher,
             Clock clock) {
@@ -41,6 +46,7 @@ public class InventoryService {
         this.productRepository = productRepository;
         this.warehouseRepository = warehouseRepository;
         this.stockRepository = stockRepository;
+        this.settingsRepository = settingsRepository;
         this.movementRepository = movementRepository;
         this.syncPublisher = syncPublisher;
         this.clock = clock;
@@ -98,12 +104,14 @@ public class InventoryService {
             throw new IllegalArgumentException("El ajuste necesita un motivo");
         }
         UUID storeId = currentStore().getId();
-        validateStockQuantity(product(productId, storeId), quantity);
+        var delta = scale(quantity);
+        validateStockQuantity(product(productId, storeId), delta);
         warehouse(warehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
-        StockLevel stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId)
-                .orElseGet(() -> new StockLevel(productId, warehouseId));
-        stock.apply(quantity);
+        boolean allowNegativeStock = allowsNegativeStock(storeId);
+        StockLevel stock = stockLevel(productId, warehouseId, !allowNegativeStock);
+        requireAllowedBalance(stock, delta, allowNegativeStock);
+        stock.apply(delta);
         stockRepository.save(stock);
         var movement = movementRepository.save(StockMovement.adjustment(
                 productId, warehouseId, user.getId(), quantity, reason, Instant.now(clock)));
@@ -132,14 +140,17 @@ public class InventoryService {
             throw new IllegalArgumentException("Los almacenes de origen y destino deben ser distintos");
         }
         UUID storeId = currentStore().getId();
-        validateStockQuantity(product(productId, storeId), quantity);
+        var transferQuantity = positive(quantity);
+        validateStockQuantity(product(productId, storeId), transferQuantity);
         warehouse(sourceWarehouseId, storeId);
         warehouse(targetWarehouseId, storeId);
         UserAccount user = organization.currentUser(authentication);
-        StockLevel source = stockLevel(productId, sourceWarehouseId);
+        boolean allowNegativeStock = allowsNegativeStock(storeId);
+        StockLevel source = stockLevel(productId, sourceWarehouseId, !allowNegativeStock);
+        requireAllowedBalance(source, transferQuantity.negate(), allowNegativeStock);
         StockLevel target = stockLevel(productId, targetWarehouseId);
-        source.apply(positive(quantity).negate());
-        target.apply(quantity);
+        source.apply(transferQuantity.negate());
+        target.apply(transferQuantity);
         stockRepository.save(source);
         stockRepository.save(target);
 
@@ -159,8 +170,28 @@ public class InventoryService {
     }
 
     private StockLevel stockLevel(UUID productId, UUID warehouseId) {
-        return stockRepository.findByProductIdAndWarehouseId(productId, warehouseId)
+        return stockLevel(productId, warehouseId, false);
+    }
+
+    private StockLevel stockLevel(UUID productId, UUID warehouseId, boolean forUpdate) {
+        var stock = forUpdate
+                ? stockRepository.findByProductIdAndWarehouseIdForUpdate(productId, warehouseId)
+                : stockRepository.findByProductIdAndWarehouseId(productId, warehouseId);
+        return stock
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
+    }
+
+    private boolean allowsNegativeStock(UUID storeId) {
+        return settingsRepository.findById(storeId)
+                .map(StockSettings::isAllowNegativeStock)
+                .orElse(true);
+    }
+
+    private static void requireAllowedBalance(
+            StockLevel stock, BigDecimal delta, boolean allowNegativeStock) {
+        if (!allowNegativeStock && stock.getQuantity().add(delta).signum() < 0) {
+            throw new IllegalStateException(NEGATIVE_STOCK_ERROR);
+        }
     }
 
     private Product product(UUID id, UUID storeId) {

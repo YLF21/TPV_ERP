@@ -1,6 +1,7 @@
 package com.tpverp.backend.catalog;
 
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.TAXES_MANAGE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
@@ -33,13 +34,13 @@ public class TaxController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('PRODUCTS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_READ','" + STOCK_READ + "')")
     public List<StoreTax> list() {
         return service.taxes();
     }
 
     @GetMapping("/selectable")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_WRITE','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRODUCTS_WRITE','" + GESTION_PRODUCTO + "','" + STOCK_READ + "','" + VENTA + "')")
     public List<StoreTax> selectable() {
         return service.selectableTaxes();
     }

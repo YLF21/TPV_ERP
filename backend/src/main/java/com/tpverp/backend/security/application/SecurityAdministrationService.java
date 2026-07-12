@@ -84,14 +84,15 @@ public class SecurityAdministrationService {
         Store store = currentStore();
         String normalized = normalize(name);
         requireNumericPassword(password);
-        if (usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), normalized).isPresent()) {
+        if (usuarioRepository.findByEmpresaIdAndNombre(
+                organization.currentCompany().getId(), normalized).isPresent()) {
             throw new IllegalArgumentException("Ya existe ese usuario");
         }
         Role role = role(roleId);
         requireAssignable(role);
         UserAccount user = new UserAccount(store, normalized, passwordEncoder.encode(password), role);
         user.cambiarUserName(userName);
-        user = usuarioRepository.save(user);
+        user = usuarioRepository.saveAndFlush(user);
         grantStoreAccess(user.getId(), Set.of(store.getId()), false);
         auditService.record(
                 "USER_CREATED", AuditResult.EXITO, Map.of("userId", user.getId()));
@@ -160,7 +161,7 @@ public class SecurityAdministrationService {
 
     @Transactional(readOnly = true)
     public List<UserItem> users() {
-        return usuarioRepository.findAllByEmpresaIdOrderByNombre(currentStore().getEmpresa().getId())
+        return usuarioRepository.findAllByEmpresaIdOrderByNombre(organization.currentCompany().getId())
                 .stream().map(UserItem::from).toList();
     }
 
@@ -227,7 +228,7 @@ public class SecurityAdministrationService {
     }
 
     private UserAccount user(UUID id) {
-        return usuarioRepository.findByIdAndEmpresaId(id, currentStore().getEmpresa().getId())
+        return usuarioRepository.findByIdAndEmpresaId(id, organization.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.security.user_not_found"));
     }
 
@@ -235,7 +236,7 @@ public class SecurityAdministrationService {
         if (storeIds == null || storeIds.isEmpty()) {
             throw new IllegalArgumentException("message.security.store_access_required");
         }
-        var companyId = currentStore().getEmpresa().getId();
+        var companyId = organization.currentCompany().getId();
         var allowed = storeRepository.findByEmpresaId(companyId).stream()
                 .map(Store::getId)
                 .collect(Collectors.toSet());

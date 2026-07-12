@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { lazy, StrictMode, Suspense, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AppFrame,
@@ -11,7 +11,13 @@ import {
 } from "@tpverp/app-common";
 import "./gestion.css";
 
-type GestionModule = "dashboard" | "promotions";
+const StockScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
+    default: StockScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "promotions" | "stock";
 
 function App() {
   const [locale, setLocale] = useState<LocaleCode>("es");
@@ -44,14 +50,40 @@ function App() {
     );
   }
 
+  if (module === "stock") {
+    return (
+      <StockScreen
+        app="gestion"
+        locale={locale}
+        session={session}
+        terminalContext={devTerminalContext}
+        onBack={() => setModule("dashboard")}
+        onLogout={() => setSession(null)}
+        onLocaleChange={setLocale}
+      />
+    );
+  }
+
   return (
     <AppFrame titleKey="gestion.title" locale={locale} session={session} onLogout={() => setSession(null)}>
-      <GestionScreen locale={locale} onOpenPromotions={() => setModule("promotions")} />
+      <GestionScreen
+        locale={locale}
+        onOpenPromotions={() => setModule("promotions")}
+        onOpenStock={() => setModule("stock")}
+      />
     </AppFrame>
   );
 }
 
-function GestionScreen({ locale, onOpenPromotions }: { locale: LocaleCode; onOpenPromotions: () => void }) {
+function GestionScreen({
+  locale,
+  onOpenPromotions,
+  onOpenStock
+}: {
+  locale: LocaleCode;
+  onOpenPromotions: () => void;
+  onOpenStock: () => void;
+}) {
   const t = createTranslator(locale);
   const modules = [
     "gestion.sales",
@@ -68,7 +100,13 @@ function GestionScreen({ locale, onOpenPromotions }: { locale: LocaleCode; onOpe
         <h1>{t("gestion.title")}</h1>
         <p>{t("gestion.subtitle")}</p>
         {modules.map((moduleKey) => (
-          <button key={moduleKey}>{t(moduleKey)}</button>
+          <button
+            key={moduleKey}
+            type="button"
+            onClick={moduleKey === "gestion.stock" ? onOpenStock : undefined}
+          >
+            {t(moduleKey)}
+          </button>
         ))}
         <button type="button" onClick={onOpenPromotions}>{t("promotion.list.heading")}</button>
       </aside>
@@ -97,6 +135,8 @@ function GestionScreen({ locale, onOpenPromotions }: { locale: LocaleCode; onOpe
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Suspense fallback={null}>
+      <App />
+    </Suspense>
   </StrictMode>
 );

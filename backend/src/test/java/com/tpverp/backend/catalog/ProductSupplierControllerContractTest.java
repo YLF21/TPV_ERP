@@ -19,7 +19,6 @@ import com.tpverp.backend.party.DocumentType;
 import jakarta.validation.constraints.NotNull;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -93,18 +92,18 @@ class ProductSupplierControllerContractTest {
                 ProductSupplierController.ReferenceRequest.class.getRecordComponents();
 
         assertThat(linkComponents).extracting(component -> component.getName())
-                .containsExactly("supplierId", "supplierReference");
+                .containsExactly("supplierId", "supplierReference", "principal");
         assertThat(linkComponents[0].getAccessor().isAnnotationPresent(NotNull.class)).isTrue();
         assertThat(referenceComponents).extracting(component -> component.getName())
-                .containsExactly("supplierReference");
+                .containsExactly("supplierReference", "principal");
     }
 
     @Test
     void bindsAndDelegatesReadAndWriteRequests() throws Exception {
         ProductSupplierView view = view();
         when(service.list(PRODUCT_ID)).thenReturn(List.of(view));
-        when(service.link(PRODUCT_ID, SUPPLIER_ID, "REF-POST")).thenReturn(view);
-        when(service.updateReference(PRODUCT_ID, SUPPLIER_ID, "REF-PUT")).thenReturn(view);
+        when(service.link(PRODUCT_ID, SUPPLIER_ID, "REF-POST", true)).thenReturn(view);
+        when(service.update(PRODUCT_ID, SUPPLIER_ID, "REF-PUT", false)).thenReturn(view);
 
         mvc.perform(get(path()).with(user("reader").authorities(
                         () -> PRODUCTS_READ, () -> PRODUCTS_WRITE)))
@@ -114,7 +113,7 @@ class ProductSupplierControllerContractTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"supplierId":"%s","supplierReference":"REF-POST"}
+                                {"supplierId":"%s","supplierReference":"REF-POST","principal":true}
                                 """.formatted(SUPPLIER_ID)))
                 .andExpect(status().isOk());
         mvc.perform(put(path() + "/" + SUPPLIER_ID)
@@ -122,13 +121,13 @@ class ProductSupplierControllerContractTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"supplierReference":"REF-PUT"}
+                                {"supplierReference":"REF-PUT","principal":false}
                                 """))
                 .andExpect(status().isOk());
 
         verify(service).list(PRODUCT_ID);
-        verify(service).link(PRODUCT_ID, SUPPLIER_ID, "REF-POST");
-        verify(service).updateReference(PRODUCT_ID, SUPPLIER_ID, "REF-PUT");
+        verify(service).link(PRODUCT_ID, SUPPLIER_ID, "REF-POST", true);
+        verify(service).update(PRODUCT_ID, SUPPLIER_ID, "REF-PUT", false);
     }
 
     @Test
@@ -173,7 +172,7 @@ class ProductSupplierControllerContractTest {
 
     @Test
     void reportsDuplicateLinksAsConflict() throws Exception {
-        when(service.link(PRODUCT_ID, SUPPLIER_ID, null))
+        when(service.link(PRODUCT_ID, SUPPLIER_ID, null, null))
                 .thenThrow(new IllegalStateException("El proveedor ya esta vinculado al producto"));
         doThrow(new DataIntegrityViolationException("duplicate"))
                 .when(service).unlink(PRODUCT_ID, SUPPLIER_ID);
@@ -228,7 +227,12 @@ class ProductSupplierControllerContractTest {
                 "B00000001",
                 true,
                 "REF",
-                LocalDate.of(2026, 6, 10));
+                true,
+                true,
+                new java.math.BigDecimal("10.00"),
+                new java.math.BigDecimal("5.00"),
+                new java.math.BigDecimal("9.50"),
+                java.time.Instant.parse("2026-06-10T10:15:30Z"));
     }
 
     @EnableMethodSecurity

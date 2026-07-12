@@ -29,7 +29,10 @@ public class CurrentOrganization {
     }
 
     public Company currentCompany() {
-        return currentStore().getEmpresa();
+        Store current = currentStore();
+        return stores.findWithCompanyById(current.getId())
+                .map(Store::getEmpresa)
+                .orElseGet(current::getEmpresa);
     }
 
     public UserAccount currentUser(Authentication authentication) {

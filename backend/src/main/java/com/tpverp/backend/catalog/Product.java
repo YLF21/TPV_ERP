@@ -60,6 +60,9 @@ public class Product {
     @Column(name = "precio_compra", nullable = false, precision = 19, scale = 2)
     private BigDecimal purchasePrice;
 
+    @Column(name = "descuento_compra_porcentaje", precision = 5, scale = 2)
+    private BigDecimal purchaseDiscountPercent;
+
     @Column(name = "impuestos_incluidos", nullable = false)
     private boolean taxesIncluded;
 
@@ -148,6 +151,10 @@ public class Product {
         return storeId;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     public String getName() {
         return nombre;
     }
@@ -162,6 +169,10 @@ public class Product {
 
     public String getBarcode() {
         return identifier(IdentifierType.CODIGO_BARRAS);
+    }
+
+    public String getBarcode2() {
+        return identifier(IdentifierType.CODIGO_BARRAS_2);
     }
 
     public BigDecimal getSalePrice() {
@@ -214,6 +225,10 @@ public class Product {
 
     public BigDecimal getPurchasePrice() {
         return purchasePrice;
+    }
+
+    public BigDecimal getPurchaseDiscountPercent() {
+        return purchaseDiscountPercent;
     }
 
     public boolean isTaxesIncluded() {
@@ -361,6 +376,14 @@ public class Product {
             throw new IllegalArgumentException("El descuento de oferta debe estar entre 0 y 100");
         }
         offerDiscountPercent = discountPercent;
+    }
+
+    public void configurePurchaseDiscount(BigDecimal discountPercent) {
+        if (discountPercent != null && (discountPercent.signum() < 0
+                || discountPercent.compareTo(new BigDecimal("100")) > 0)) {
+            throw new IllegalArgumentException("El descuento de compra debe estar entre 0 y 100");
+        }
+        purchaseDiscountPercent = discountPercent;
     }
 
     private static BigDecimal nonNegative(BigDecimal value, String field) {

@@ -8,9 +8,12 @@ import com.tpverp.backend.document.DocumentCounter;
 import com.tpverp.backend.document.DocumentCounterRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.SupplierRepository;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -19,9 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WarehouseInputService {
 
+    private static final String NEGATIVE_STOCK_ERROR =
+            "Stock insuficiente: la configuracion de la tienda no permite stock negativo";
+
     private final WarehouseInputRepository inputs;
     private final DocumentCounterRepository counters;
     private final StockLevelRepository stockLevels;
+    private final StockSettingsRepository settings;
     private final StockMovementRepository movements;
     private final CurrentOrganization organization;
     private final ProductRepository products;
@@ -34,6 +41,7 @@ public class WarehouseInputService {
             WarehouseInputRepository inputs,
             DocumentCounterRepository counters,
             StockLevelRepository stockLevels,
+            StockSettingsRepository settings,
             StockMovementRepository movements,
             CurrentOrganization organization,
             ProductRepository products,
@@ -44,6 +52,7 @@ public class WarehouseInputService {
         this.inputs = inputs;
         this.counters = counters;
         this.stockLevels = stockLevels;
+        this.settings = settings;
         this.movements = movements;
         this.organization = organization;
         this.products = products;
@@ -99,6 +108,7 @@ public class WarehouseInputService {
         if (movements.existsByWarehouseInputId(input.getId())) {
             throw new IllegalStateException("La entrada ya tiene movimientos de stock");
         }
+        var confirmationStocks = stocksForConfirmation(input);
         var counter = counters.findByTiendaIdAndTipoAndPeriodo(
                         input.getStoreId(), "ENT", Integer.toString(input.getDate().getYear()))
                 .orElseGet(() -> DocumentCounter.entradaAlmacen(
@@ -109,15 +119,13 @@ public class WarehouseInputService {
                 Instant.now(clock));
         counters.save(counter);
         for (var line : input.getLines()) {
-            applyLine(input, line, user.getId());
+            applyLine(input, line, user.getId(), confirmationStocks.get(line.getProductId()));
         }
         return inputs.save(input);
     }
 
-    private void applyLine(WarehouseInput input, WarehouseInputLine line, UUID userId) {
-        var stock = stockLevels.findByProductIdAndWarehouseId(
-                        line.getProductId(), input.getWarehouseId())
-                .orElseGet(() -> new StockLevel(line.getProductId(), input.getWarehouseId()));
+    private void applyLine(
+            WarehouseInput input, WarehouseInputLine line, UUID userId, StockLevel stock) {
         stock.apply(line.getQuantity());
         stockLevels.save(stock);
         var movement = movements.save(StockMovement.warehouseInput(
@@ -128,6 +136,30 @@ public class WarehouseInputService {
                 line.getQuantity(),
                 Instant.now(clock)));
         syncPublisher.enqueue(organization.currentCompany().getId(), input.getStoreId(), movement);
+    }
+
+    private Map<UUID, StockLevel> stocksForConfirmation(WarehouseInput input) {
+        var deltas = new LinkedHashMap<UUID, BigDecimal>();
+        input.getLines().forEach(line -> deltas.merge(
+                line.getProductId(), BigDecimal.valueOf(line.getQuantity()), BigDecimal::add));
+        boolean allowNegativeStock = settings.findById(input.getStoreId())
+                .map(StockSettings::isAllowNegativeStock)
+                .orElse(true);
+        var result = new LinkedHashMap<UUID, StockLevel>();
+        deltas.forEach((productId, delta) -> {
+            var found = allowNegativeStock
+                    ? stockLevels.findByProductIdAndWarehouseId(
+                            productId, input.getWarehouseId())
+                    : stockLevels.findByProductIdAndWarehouseIdForUpdate(
+                            productId, input.getWarehouseId());
+            var stock = found.orElseGet(() -> new StockLevel(
+                    productId, input.getWarehouseId()));
+            if (!allowNegativeStock && stock.getQuantity().add(delta).signum() < 0) {
+                throw new IllegalStateException(NEGATIVE_STOCK_ERROR);
+            }
+            result.put(productId, stock);
+        });
+        return result;
     }
 
     private void validate(WarehouseInputCommand command, UUID storeId) {

@@ -8,7 +8,7 @@ import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
@@ -50,13 +50,39 @@ class ProductSupplierTest {
     }
 
     @Test
-    void lastEntryDateNeverMovesBackwards() {
+    void keepsLatestEntryWithGrossDiscountAndCalculatedNetPrice() {
         var link = new ProductSupplier(product, supplier, null);
 
-        link.registerEntry(LocalDate.of(2026, 6, 9));
-        link.registerEntry(LocalDate.of(2026, 5, 1));
+        link.registerEntry(
+                Instant.parse("2026-06-09T10:15:30Z"),
+                new BigDecimal("10.00"),
+                new BigDecimal("15.00"));
+        link.registerEntry(
+                Instant.parse("2026-05-01T08:00:00Z"),
+                new BigDecimal("8.00"),
+                BigDecimal.ZERO);
 
-        assertThat(link.getLastEntryDate()).isEqualTo(LocalDate.of(2026, 6, 9));
+        assertThat(link.isLastSupplier()).isTrue();
+        assertThat(link.getLastEntryAt()).isEqualTo(Instant.parse("2026-06-09T10:15:30Z"));
+        assertThat(link.getGrossPurchasePrice()).isEqualByComparingTo("10.00");
+        assertThat(link.getPurchaseDiscount()).isEqualByComparingTo("15.00");
+        assertThat(link.getNetPurchasePrice()).isEqualByComparingTo("8.50");
+    }
+
+    @Test
+    void principalIsManualAndNetPriceIsNotPersisted() {
+        var link = new ProductSupplier(product, supplier, null);
+        link.makePrincipal();
+
+        link.registerEntry(
+                Instant.parse("2026-06-09T10:15:30Z"),
+                new BigDecimal("10.00"),
+                new BigDecimal("15.00"));
+
+        assertThat(link.isPrincipal()).isTrue();
+        assertThat(Arrays.stream(ProductSupplier.class.getDeclaredFields())
+                .map(java.lang.reflect.Field::getName))
+                .doesNotContain("netPurchasePrice");
     }
 
     @Test
