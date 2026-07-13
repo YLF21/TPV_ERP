@@ -941,7 +941,7 @@ export class MessagesZh {
     "payment.split.query": "查询状态", "payment.split.manage": "管理操作", "payment.split.compensationRequired": "需要补偿：不允许新的扣款。",
     "payment.split.status.APPROVED": "已批准", "payment.split.status.DECLINED": "已拒绝", "payment.split.status.TIMEOUT": "结果不确定",
     "payment.split.status.PENDING": "处理中", "payment.split.status.SENT": "已发送", "payment.split.status.REVIEW_REQUIRED": "需要复核", "payment.split.status.READY": "已准备", "payment.split.status.ERROR": "错误", "payment.split.status.CANCELLED": "已取消",
-    "payment.split.start": "开始分拆支付", "payment.split.cancelSession": "取消支付会话",
+    "payment.split.start": "开始分拆支付", "payment.split.finalize": "完成销售", "payment.split.cancelSession": "取消支付会话", "payment.split.error.finalize": "无法完成销售，您可以重试。",
     "payment.split.compensationGuidance": "需要补偿：已批准的支付仍然可见。在“管理操作”中撤销或退款，并记录现金或手动刷卡的管理解决方案。不要发起新扣款。",
     "payment.split.acknowledge": "记录管理解决方案", "payment.split.compensationDialogTitle": "管理解决方案", "payment.split.compensationNote": "解决说明", "payment.split.reservedTicket": "付款中的预留销售", "payment.split.reservedTicketGuidance": "该票据已由活动付款会话预留。请先解决或取消付款，再继续编辑。",
     "payment.split.authorizationTitle.VOID": "授权撤销", "payment.split.authorizationTitle.REFUND": "授权退款", "payment.split.authorizationPassword": "授权密码",
