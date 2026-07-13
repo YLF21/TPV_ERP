@@ -293,7 +293,7 @@ public class DocumentService {
         requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
-        addFrozenApprovedCardPayment(ticket, payments, snapshot.paymentMethodId(), terminalId);
+        addFrozenApprovedCardPayment(ticket, payments, terminalId);
         documents.saveAndFlush(ticket);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
@@ -350,17 +350,16 @@ public class DocumentService {
     }
 
     private void addFrozenApprovedCardPayment(
-            CommercialDocument ticket,List<PaymentCommand> payments,UUID paymentMethodId,UUID terminalId) {
+            CommercialDocument ticket,List<PaymentCommand> payments,UUID terminalId) {
         if (payments.size()!=1) throw new IllegalArgumentException("se requiere un unico pago de tarjeta aprobado");
         var command=payments.getFirst();
-        if (!paymentMethodId.equals(command.metodoPagoId())
-                || command.cardMode()!=PaymentCardMode.INTEGRATED
+        if (command.cardMode()!=PaymentCardMode.INTEGRATED
                 || command.paymentTerminalProvider()==null
                 || command.paymentTerminalStatus()!=PaymentTerminalOperationStatus.APPROVED
                 || !terminalId.equals(command.paymentTerminalId())) {
             throw new IllegalArgumentException("metadatos del pago autorizado invalidos");
         }
-        var method=paymentMethods.findById(paymentMethodId)
+        var method=paymentMethods.findById(command.metodoPagoId())
                 .filter(value->value.getEmpresaId().equals(organization.currentCompany().getId()))
                 .orElseThrow(()->new IllegalStateException("El metodo TARJETA autorizado ya no existe"));
         ticket.addPayment(new DocumentPayment(ticket,method,1,command.importe(),true,null,null,null,

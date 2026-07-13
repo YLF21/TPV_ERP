@@ -396,7 +396,7 @@ class DocumentServiceTest {
         when(stockGateway.confirm(any())).thenReturn(false);
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var frozen = new ApprovedCardTicketSnapshot(
-                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, card.getId(),
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, UUID.randomUUID(),
                 BigDecimal.ZERO, new BigDecimal("8.26"), new BigDecimal("1.74"),
                 new BigDecimal("10.00"), List.of(new DocumentLineCommand(
                         UUID.randomUUID(), BigDecimal.ONE, "P-OLD", "Precio autorizado",
