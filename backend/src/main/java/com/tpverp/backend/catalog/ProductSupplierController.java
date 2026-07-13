@@ -41,7 +41,11 @@ public class ProductSupplierController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_WRITE + "','" + GESTION_PRODUCTO + "')")
     public ProductSupplierView link(
             @PathVariable UUID productId, @Valid @RequestBody LinkRequest request) {
-        return service.link(productId, request.supplierId(), request.supplierReference());
+        return service.link(
+                productId,
+                request.supplierId(),
+                request.supplierReference(),
+                request.principal());
     }
 
     @PutMapping("/{supplierId}")
@@ -50,7 +54,8 @@ public class ProductSupplierController {
             @PathVariable UUID productId,
             @PathVariable UUID supplierId,
             @Valid @RequestBody ReferenceRequest request) {
-        return service.updateReference(productId, supplierId, request.supplierReference());
+        return service.update(
+                productId, supplierId, request.supplierReference(), request.principal());
     }
 
     @DeleteMapping("/{supplierId}")
@@ -63,9 +68,12 @@ public class ProductSupplierController {
 
     public record LinkRequest(
             @NotNull UUID supplierId,
-            @Size(max = 128) String supplierReference) {
+            @Size(max = 128) String supplierReference,
+            Boolean principal) {
     }
 
-    public record ReferenceRequest(@Size(max = 128) String supplierReference) {
+    public record ReferenceRequest(
+            @Size(max = 128) String supplierReference,
+            Boolean principal) {
     }
 }

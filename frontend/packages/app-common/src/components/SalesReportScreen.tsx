@@ -1929,6 +1929,15 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         warehouses={warehouseMasterOptions}
         customers={warehouseCustomers}
         suppliers={warehouseSuppliers}
+        canConfirm={
+          session.permissions.includes("ADMIN")
+          || session.permissions.includes("GESTION_PRODUCTO")
+          || session.permissions.includes(
+            warehouseDocumentMode === "input"
+              ? "WAREHOUSE_INPUTS_CONFIRM"
+              : "WAREHOUSE_OUTPUTS_CONFIRM"
+          )
+        }
         onClose={() => setWarehouseDocumentOpen(false)}
         onConfirmed={() => {
           setWarehouseDocumentOpen(false);

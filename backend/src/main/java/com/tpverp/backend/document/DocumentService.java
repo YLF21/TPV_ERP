@@ -24,6 +24,8 @@ import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.promotion.Promotion;
+import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
+import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.promotion.PromotionCustomerSegment;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.PromotionEvaluationLine;
@@ -89,6 +91,8 @@ public class DocumentService {
     private final PromotionTargetRepository promotionTargets;
     private final PromotionEngine promotionEngine;
     private final PromotionalCouponService promotionalCoupons;
+    private final AuthoritativePromotionPricing promotionPricing;
+    private final PromotionCatalogGateway promotionCatalog;
     private final Clock clock;
 
     public DocumentService(
@@ -115,6 +119,8 @@ public class DocumentService {
             PromotionTargetRepository promotionTargets,
             PromotionEngine promotionEngine,
             PromotionalCouponService promotionalCoupons,
+            AuthoritativePromotionPricing promotionPricing,
+            PromotionCatalogGateway promotionCatalog,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -139,6 +145,8 @@ public class DocumentService {
         this.promotionTargets = promotionTargets;
         this.promotionEngine = promotionEngine;
         this.promotionalCoupons = promotionalCoupons;
+        this.promotionPricing = promotionPricing;
+        this.promotionCatalog = promotionCatalog;
         this.clock = clock;
     }
 
@@ -161,44 +169,49 @@ public class DocumentService {
         var document = find(id);
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
-        applyDirectPromotions(document);
+        var promotionContext = promotionContext(document);
+        applyDirectPromotions(document, promotionContext);
         // Confirmation resets stockOrigin; this flag must be read first.
         boolean recordsPurchase = document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
                 || (document.getTipo() == CommercialDocumentType.FACTURA_COMPRA
                 && document.isOrigenStock());
         var requiresStock = requiresStock(document) || document.isOrigenStock();
-        document.confirm(nextNumber(document), userId, Instant.now(clock), false);
+        Instant confirmedAt = Instant.now(clock);
+        document.confirm(nextNumber(document), userId, confirmedAt, false);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
         if (recordsPurchase) {
-            recordPurchase(document);
+            recordPurchase(document, confirmedAt);
         }
         var saved = documents.save(document);
-        generatePromotionalCoupons(saved);
+        generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, null);
         return saved;
     }
 
-    private void recordPurchase(CommercialDocument document) {
+    private void recordPurchase(CommercialDocument document, Instant confirmedAt) {
         var metadata = importMetadata.findByDocumentId(document.getId());
-        if (metadata.isEmpty()) {
-            purchaseRecorder.record(
-                    document.getProveedorId(),
-                    document.getFecha(),
-                    document.getLineas().stream()
-                            .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
-                            .map(DocumentLine::getProductoId)
-                            .distinct()
-                            .toList());
-            return;
-        }
         var references = new LinkedHashMap<UUID, String>();
         for (var value : metadata) {
             references.putIfAbsent(value.productId(), value.supplierReference());
         }
-        purchaseRecorder.recordWithReferences(
-                document.getProveedorId(), document.getFecha(), references);
-        importMetadata.deleteByDocumentId(document.getId());
+        var lastLineByProduct = new LinkedHashMap<UUID, ConfirmedPurchaseRecorder.PurchaseLine>();
+        for (DocumentLine line : document.getLineas()) {
+            if (line.getLineType() == DocumentLineType.PRODUCT) {
+                lastLineByProduct.put(line.getProductoId(), new ConfirmedPurchaseRecorder.PurchaseLine(
+                        line.getProductoId(),
+                        references.get(line.getProductoId()),
+                        line.getPrecioUnitario(),
+                        line.getDescuento()));
+            }
+        }
+        purchaseRecorder.record(
+                document.getProveedorId(),
+                confirmedAt,
+                List.copyOf(lastLineByProduct.values()));
+        if (!metadata.isEmpty()) {
+            importMetadata.deleteByDocumentId(document.getId());
+        }
     }
 
     // Creates and confirms the ticket in one transaction.
@@ -210,7 +223,7 @@ public class DocumentService {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
         var ticket = createDraft(command, authentication);
-        applyDirectPromotions(ticket);
+        applyDirectPromotions(ticket, promotionContext(ticket));
         return ticket;
     }
 
@@ -224,7 +237,8 @@ public class DocumentService {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
         var ticket = createDraft(command, authentication);
-        applyDirectPromotions(ticket);
+        var promotionContext = promotionContext(ticket);
+        applyDirectPromotions(ticket, promotionContext);
         if (ticket.getTotal().signum() >= 0) {
             requirePaymentsPresent(payments);
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
@@ -248,7 +262,7 @@ public class DocumentService {
         if (saved.getTotal().signum() < 0) {
             vouchers.issueFromNegativeTicket(saved);
         }
-        generatePromotionalCoupons(saved);
+        generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
@@ -286,7 +300,6 @@ public class DocumentService {
         cashPayments.recordDocumentPayments(terminalId, saved);
         memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
                 saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
-        generatePromotionalCoupons(saved);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
@@ -355,38 +368,65 @@ public class DocumentService {
                 command.paymentTerminalStatus(),command.cardAuthorizationCode(),terminalId));
     }
 
-    private void applyDirectPromotions(CommercialDocument document) {
+    private PromotionContext promotionContext(CommercialDocument document) {
+        if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
+            return PromotionContext.empty();
+        }
+        var customer = promotionPricing.customerContext(
+                organization.currentCompany().getId(), document.getClienteId());
+        var active = activePromotions(document, customer);
+        if (active.isEmpty()) {
+            return new PromotionContext(List.of(), List.of(), List.of(), customer);
+        }
+        return new PromotionContext(
+                active,
+                promotionTargets(active),
+                promotionEvaluationLines(document),
+                customer);
+    }
+
+    private void applyDirectPromotions(
+            CommercialDocument document,
+            PromotionContext context) {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
             return;
         }
-        var active = activePromotions(document).stream()
+        if (document.getLineas().stream()
+                .anyMatch(line -> line.getLineType() != DocumentLineType.PRODUCT)) {
+            throw new IllegalArgumentException(
+                    "El documento contiene lineas automaticas no generadas por esta confirmacion");
+        }
+        var active = context.promotions().stream()
                 .filter(DocumentService::isDirectLinePromotion)
                 .toList();
-        if (active.isEmpty()) {
-            return;
-        }
-        var productLines = document.getLineas().stream()
-                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
-                .filter(line -> line.getCantidad().signum() > 0)
-                .filter(line -> line.getCantidad().stripTrailingZeros().scale() <= 0)
-                .toList();
-        if (productLines.isEmpty()) {
-            return;
-        }
-        var productsById = productMap(document, productLines);
-        var evaluationLines = productLines.stream()
-                .map(line -> evaluationLine(line, productsById.get(line.getProductoId())))
-                .flatMap(Optional::stream)
-                .toList();
-        if (evaluationLines.isEmpty()) {
+        if (active.isEmpty() || context.lines().isEmpty()) {
             return;
         }
         var preview = promotionEngine.preview(new PromotionEvaluationRequest(
-                evaluationLines,
+                context.lines(),
                 active,
-                promotionTargets(active)));
-        promotionEngine.promotionLines(document, preview)
-                .forEach(document::addLine);
+                context.targets()));
+        var position = document.getLineas().stream()
+                .mapToInt(DocumentLine::getPosicion)
+                .max()
+                .orElse(0) + 1;
+        for (var benefit : preview.appliedPromotions()) {
+            document.addLine(DocumentLine.special(
+                    document,
+                    position++,
+                    "PROMOCION " + benefit.name(),
+                    benefit.amount().negate(),
+                    benefit.taxIncluded(),
+                    benefit.taxRegime(),
+                    benefit.taxPercent(),
+                    benefit.promotionId(),
+                    benefit.promotionVersionId(),
+                    null));
+            active.stream()
+                    .filter(promotion -> promotion.id().equals(benefit.promotionVersionId()))
+                    .findFirst()
+                    .ifPresent(Promotion::markUsed);
+        }
     }
 
     private List<PromotionTarget> promotionTargets(List<Promotion> active) {
@@ -408,11 +448,17 @@ public class DocumentService {
         return result;
     }
 
-    private static Optional<PromotionEvaluationLine> evaluationLine(DocumentLine line, Product product) {
+    private static PromotionEvaluationLine evaluationLine(
+            CommercialDocument document,
+            DocumentLine line,
+            Product product) {
         if (product == null) {
-            return Optional.empty();
+            throw new IllegalStateException("Producto de linea no encontrado en la tienda");
         }
-        return Optional.of(new PromotionEvaluationLine(
+        var globalFactor = BigDecimal.ONE.subtract(document.getDescuentoGlobal().movePointLeft(2));
+        var payableUnitAmount = line.getTotal().multiply(globalFactor)
+                .divide(line.getCantidad(), 6, Money.ROUNDING);
+        return new PromotionEvaluationLine(
                 line.getPosicion(),
                 line.getProductoId(),
                 product.getFamilyId(),
@@ -422,34 +468,38 @@ public class DocumentService {
                 line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(),
                 line.getPorcentajeImpuesto(),
-                line.getDescuento().signum() > 0,
-                product.getDiscountType() != DiscountType.NONE));
+                line.getDescuento().signum() > 0 || document.getDescuentoGlobal().signum() > 0,
+                product.getDiscountType() != DiscountType.NONE,
+                payableUnitAmount);
     }
 
-    private void generatePromotionalCoupons(CommercialDocument document) {
+    private void generatePromotionalCoupons(
+            CommercialDocument document,
+            PromotionContext context) {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
             return;
         }
-        var couponPromotions = activePromotions(document).stream()
+        var couponPromotions = context.promotions().stream()
                 .filter(DocumentService::isCouponPromotion)
                 .toList();
-        var targets = promotionTargets(couponPromotions);
-        var evaluationLines = targets.isEmpty() ? List.<PromotionEvaluationLine>of() : promotionEvaluationLines(document);
         couponPromotions.stream()
-                .filter(promotion -> matchesAnyEligibleLine(promotion, evaluationLines, targets))
-                .map(promotion -> couponCommand(document, promotion))
+                .filter(promotion -> matchesAnyEligibleLine(
+                        promotion, context.lines(), context.targets()))
+                .map(promotion -> couponCommand(document, promotion, context))
                 .flatMap(Optional::stream)
                 .forEach(promotionalCoupons::generateAfterTicketConfirmation);
     }
 
     private Optional<PromotionalCouponService.CreationCommand> couponCommand(
             CommercialDocument document,
-            Promotion promotion) {
+            Promotion promotion,
+            PromotionContext context) {
         if (!isCouponPromotion(promotion)) {
             return Optional.empty();
         }
-        var minimum = promotion.couponMinimumAmount();
-        if (minimum != null && document.getTotal().compareTo(minimum) < 0) {
+        var minimum = promotion.minimumAmount();
+        var finalPayable = document.getTotal().max(BigDecimal.ZERO);
+        if (minimum != null && finalPayable.compareTo(minimum) < 0) {
             return Optional.empty();
         }
         var benefitType = couponBenefitType(promotion);
@@ -461,13 +511,14 @@ public class DocumentService {
         if (validUntil == null || validUntil.isBefore(validFrom)) {
             return Optional.empty();
         }
+        promotion.markUsed();
         return Optional.of(new PromotionalCouponService.CreationCommand(
                 organization.currentCompany().getId(),
                 document.getTiendaId(),
                 promotion.id(),
                 document.getId(),
                 document.getClienteId(),
-                null,
+                context.customer().memberId(),
                 promotion.customerSegment(),
                 promotion.memberCategoryId(),
                 benefitType.get(),
@@ -513,13 +564,14 @@ public class DocumentService {
         return date.atStartOfDay(clock.getZone()).toInstant();
     }
 
-    private List<Promotion> activePromotions(CommercialDocument document) {
-        var currentDate = LocalDate.now(clock);
+    private List<Promotion> activePromotions(
+            CommercialDocument document,
+            AuthoritativePromotionPricing.CustomerContext customer) {
+        var documentDate = document.getFecha();
         return promotions.findByEmpresaIdAndEstado(
                         organization.currentCompany().getId(), PromotionStatus.ACTIVE).stream()
-                .filter(promotion -> appliesOnDate(promotion, currentDate))
-                .filter(promotion -> promotion.customerSegment() == PromotionCustomerSegment.ALL
-                        || document.getClienteId() != null)
+                .filter(promotion -> appliesOnDate(promotion, documentDate))
+                .filter(promotion -> promotionPricing.matchesSegment(promotion, customer))
                 .toList();
     }
 
@@ -527,15 +579,13 @@ public class DocumentService {
         var productLines = document.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                 .filter(line -> line.getCantidad().signum() > 0)
-                .filter(line -> line.getCantidad().stripTrailingZeros().scale() <= 0)
                 .toList();
         if (productLines.isEmpty()) {
             return List.of();
         }
         var productsById = productMap(document, productLines);
         return productLines.stream()
-                .map(line -> evaluationLine(line, productsById.get(line.getProductoId())))
-                .flatMap(Optional::stream)
+                .map(line -> evaluationLine(document, line, productsById.get(line.getProductoId())))
                 .toList();
     }
 
@@ -547,7 +597,8 @@ public class DocumentService {
                 .filter(target -> target.promotionId().equals(promotion.id()))
                 .toList();
         if (promotionTargets.isEmpty()) {
-            return true;
+            return promotion.scope() == PromotionScope.SALE
+                    && lines.stream().anyMatch(line -> line.discountable() && !line.manualDiscount());
         }
         return lines.stream()
                 .filter(PromotionEvaluationLine::discountable)
@@ -571,13 +622,25 @@ public class DocumentService {
                 || promotion.scope() == PromotionScope.PRODUCT_LIST
                 || promotion.scope() == PromotionScope.FAMILY
                 || promotion.scope() == PromotionScope.SUBFAMILY)
-                && (promotion.type() == PromotionType.BUY_X_PAY_Y
-                || promotion.type() == PromotionType.SECOND_UNIT_PERCENT);
+                && promotion.type() != PromotionType.PURCHASE_THRESHOLD_COUPON;
     }
 
     private static boolean isCouponPromotion(Promotion promotion) {
         return promotion.generatesCoupon()
                 || promotion.type() == PromotionType.PURCHASE_THRESHOLD_COUPON;
+    }
+
+    private record PromotionContext(
+            List<Promotion> promotions,
+            List<PromotionTarget> targets,
+            List<PromotionEvaluationLine> lines,
+            AuthoritativePromotionPricing.CustomerContext customer) {
+
+        private static PromotionContext empty() {
+            return new PromotionContext(
+                    List.of(), List.of(), List.of(),
+                    AuthoritativePromotionPricing.CustomerContext.anonymous());
+        }
     }
 
     private void enqueueConfirmedDocument(CommercialDocument document, UUID terminalId) {
@@ -787,8 +850,11 @@ public class DocumentService {
             throw new IllegalStateException(
                     "el documento con registro fiscal es inmutable");
         }
+        var authoritativeLines = authoritativeClientLines(
+                document.getTiendaId(), document.getFecha(), document.getTipo(),
+                customerId, globalDiscount, lines);
         document.adminReplace(
-                globalDiscount, customerId, supplierId, List.copyOf(lines));
+                globalDiscount, customerId, supplierId, authoritativeLines);
         return documents.save(document);
     }
 
@@ -820,6 +886,9 @@ public class DocumentService {
         }
         var store = organization.currentStore();
         var user = organization.currentUser(authentication);
+        var authoritativeLines = authoritativeClientLines(
+                store.getId(), command.fecha(), command.tipo(), command.clienteId(),
+                command.descuentoGlobal(), command.lineas());
         var document = new CommercialDocument(
                 store.getId(), command.almacenId(), command.tipo(), command.fecha(),
                 user.getId(), command.descuentoGlobal());
@@ -829,27 +898,47 @@ public class DocumentService {
                 command.directo()
                         || command.tipo() == CommercialDocumentType.TICKET
                         || DELIVERY_NOTES.contains(command.tipo()));
-        for (var line : command.lineas()) {
-            if (!isProductLine(line)) {
-                document.addLine(line.toEntity(document));
-                continue;
-            }
-            var product = productForLine(line);
-            validateLineQuantity(line, product);
-            var pricedLine = memberLoyalty.applyLineBenefit(command.clienteId(), line, product);
-            document.addLine(pricedLine.toEntity(document));
+        for (var line : authoritativeLines) {
+            document.addLine(line.toEntity(document));
         }
         return document;
     }
 
-    private static boolean isProductLine(DocumentLineCommand line) {
-        return line.lineType() == null || line.lineType() == DocumentLineType.PRODUCT;
-    }
-
-    private Product productForLine(DocumentLineCommand line) {
-        return products.findById(line.productoId())
-                .filter(value -> value.getStoreId().equals(organization.currentStore().getId()))
-                .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
+    private List<DocumentLineCommand> authoritativeClientLines(
+            UUID storeId,
+            LocalDate documentDate,
+            CommercialDocumentType documentType,
+            UUID customerId,
+            BigDecimal globalDiscount,
+            List<DocumentLineCommand> lines) {
+        Objects.requireNonNull(globalDiscount, "descuentoGlobal");
+        var values = List.copyOf(lines == null ? List.of() : lines);
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("message.document.lines_required");
+        }
+        values.forEach(DocumentLineCommand::requireClientProductLine);
+        var snapshots = promotionCatalog.products(
+                storeId, values.stream().map(DocumentLineCommand::productoId).toList());
+        var salesDocument = PROMOTION_SALES_DOCUMENTS.contains(documentType);
+        var customer = salesDocument
+                ? promotionPricing.customerContext(
+                organization.currentCompany().getId(), customerId)
+                : AuthoritativePromotionPricing.CustomerContext.anonymous();
+        if (salesDocument && globalDiscount.signum() > 0
+                && snapshots.values().stream()
+                .anyMatch(snapshot -> snapshot.product().getDiscountType() == DiscountType.NONE)) {
+            throw new IllegalArgumentException(
+                    "DiscountType.NONE no admite descuento global manual");
+        }
+        return values.stream().map(line -> {
+            var snapshot = snapshots.get(line.productoId());
+            validateLineQuantity(line, snapshot.product());
+            var priced = salesDocument
+                    ? promotionPricing.priceLine(
+                    snapshot.product(), documentDate, customer, line)
+                    : line;
+            return snapshot.authoritativeSnapshot(priced);
+        }).toList();
     }
 
     private void validateLineQuantity(DocumentLineCommand line, Product product) {

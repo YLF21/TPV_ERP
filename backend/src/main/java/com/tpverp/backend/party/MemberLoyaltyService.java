@@ -213,7 +213,11 @@ public class MemberLoyaltyService {
     @Transactional(readOnly = true)
     public DocumentLineCommand applyLineBenefit(
             UUID customerId, DocumentLineCommand line, Product product) {
-        if (customerId == null || product.getDiscountType() == DiscountType.NONE) {
+        if (customerId == null || product.getDiscountType() != DiscountType.MEMBER_PRICE) {
+            return line;
+        }
+        var memberPrice = product.getMemberPrice();
+        if (memberPrice == null) {
             return line;
         }
         var member = members.findByCustomerIdAndCompanyId(customerId, context.currentCompany().getId())
@@ -222,18 +226,9 @@ public class MemberLoyaltyService {
         if (member == null) {
             return line;
         }
-        if (product.getDiscountType() == DiscountType.MEMBER_PRICE && product.getMemberPrice() != null) {
-            return line.withPrice(product.getMemberPrice(), "MEMBER");
-        }
-        if (product.getDiscountType() == DiscountType.MEMBER_DISCOUNT
-                && member.getMemberCategory() != null
-                && member.getMemberCategory().isDiscountEnabled()) {
-            var discount = line.descuento().max(member.getMemberCategory().getDiscountPercent());
-            return line.withDiscount(discount, "MEMBER");
-        }
-        return line;
+        return line.withPrice(memberPrice, "MEMBER");
     }
-    // Applies only explicit member-benefit product modes; NORMAL keeps the operator price.
+    // MEMBER_PRICE is the sole member-specific product mode; category discounts do not alter lines.
 
     @Transactional
     public MemberView setCategory(UUID memberId, UUID categoryId, boolean lockAutomatic, String reason) {

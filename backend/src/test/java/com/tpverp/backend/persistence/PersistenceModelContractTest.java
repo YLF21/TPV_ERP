@@ -15,6 +15,8 @@ import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalType;
 import jakarta.persistence.Version;
 import jakarta.persistence.Entity;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.OneToMany;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
@@ -82,6 +84,15 @@ class PersistenceModelContractTest {
     void rolPermisoEsEntidadConRepositorioPropio() {
         assertThat(RolePermission.class.isAnnotationPresent(Entity.class)).isTrue();
         assertThat(RolePermissionRepository.class.isInterface()).isTrue();
+    }
+
+    @Test
+    void rolPersisteYEliminaSusPermisosComoParteDelAgregado() throws Exception {
+        OneToMany relation = Role.class.getDeclaredField("permisos").getAnnotation(OneToMany.class);
+
+        assertThat(relation).isNotNull();
+        assertThat(relation.orphanRemoval()).isTrue();
+        assertThat(relation.cascade()).contains(CascadeType.ALL);
     }
 
     private Store tienda() {

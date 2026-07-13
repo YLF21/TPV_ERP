@@ -53,6 +53,7 @@ class AuthenticationServiceTest {
 
 		assertThat(result.accessToken()).isNotBlank();
 		assertThat(result.userName()).isEqualTo("ADMIN");
+		assertThat(result.permissions()).contains("ADMIN");
 		assertThat(result.mustChangePassword()).isFalse();
 		var session = ArgumentCaptor.forClass(UserSession.class);
 		verify(sesionRepository).save(session.capture());

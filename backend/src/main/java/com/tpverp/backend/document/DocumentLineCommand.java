@@ -64,6 +64,20 @@ public record DocumentLineCommand(
                 promotionId, promotionVersionId, promotionalCouponId);
     }
 
+    public void requireClientProductLine() {
+        var resolvedType = lineType == null ? DocumentLineType.PRODUCT : lineType;
+        if (resolvedType != DocumentLineType.PRODUCT
+                || promotionId != null
+                || promotionVersionId != null
+                || promotionalCouponId != null) {
+            throw new IllegalArgumentException(
+                    "Las lineas de promocion y cupon solo puede generarlas el backend");
+        }
+        if (productoId == null) {
+            throw new IllegalArgumentException("productoId es obligatorio");
+        }
+    }
+
     static DocumentLineCommand from(DocumentLine line) {
         return new DocumentLineCommand(
                 line.getProductoId(), line.getCantidad(), line.getCodigo(),

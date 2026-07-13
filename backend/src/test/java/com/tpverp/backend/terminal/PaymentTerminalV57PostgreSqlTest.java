@@ -10,17 +10,17 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
-class PaymentTerminalV46PostgreSqlTest {
+class PaymentTerminalV57PostgreSqlTest {
     @Test
-    void upgradesV45DataWithSemanticLegacyConfigurationAndAppendOnlyEvent() throws Exception {
+    void upgradesV56DataWithSemanticLegacyConfigurationAndAppendOnlyEvent() throws Exception {
         var url = System.getenv().getOrDefault("TPV_ERP_TEST_DB_URL", "jdbc:postgresql://localhost:5432/tpv_erp_test");
         var user = System.getenv().getOrDefault("TPV_ERP_TEST_DB_USER", "postgres");
         var password = System.getenv().getOrDefault("TPV_ERP_TEST_DB_PASSWORD", "admin");
         assumeTrue(canConnect(url, user, password), "PostgreSQL de pruebas no disponible");
-        var schema = "tpv_v46_" + UUID.randomUUID().toString().replace("-", "");
+        var schema = "tpv_v57_" + UUID.randomUUID().toString().replace("-", "");
         try {
             Flyway.configure().dataSource(url, user, password).schemas(schema).defaultSchema(schema)
-                    .createSchemas(true).target("45").load().migrate();
+                    .createSchemas(true).target("56").load().migrate();
             var checkout = UUID.randomUUID();
             try (var connection = DriverManager.getConnection(url, user, password);
                     var statement = connection.createStatement()) {

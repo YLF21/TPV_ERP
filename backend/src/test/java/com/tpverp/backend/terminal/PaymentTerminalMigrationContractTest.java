@@ -9,8 +9,8 @@ import org.junit.jupiter.api.Test;
 class PaymentTerminalMigrationContractTest {
 
     @Test
-    void migrationDefinesRecoverableOperationLedgerAndV45Backfill() throws Exception {
-        var sql = Files.readString(Path.of("src/main/resources/db/migration/V46__payment_terminal_operations.sql"));
+    void migrationDefinesRecoverableOperationLedgerAndV56Backfill() throws Exception {
+        var sql = Files.readString(Path.of("src/main/resources/db/migration/V57__payment_terminal_operations.sql"));
 
         assertThat(sql).contains(
                 "CREATE TABLE payment_terminal_operation",

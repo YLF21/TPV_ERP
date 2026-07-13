@@ -6,10 +6,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class PaymentTerminalV47MigrationContractTest {
+class PaymentTerminalV58MigrationContractTest {
     @Test
     void persistsSanitizedReceiptsAndAppendOnlyReconciliationEvidence() throws Exception {
-        var sql = Files.readString(Path.of("src/main/resources/db/migration/V47__payment_terminal_receipts_reconciliation.sql"));
+        var sql = Files.readString(Path.of("src/main/resources/db/migration/V58__payment_terminal_receipts_reconciliation.sql"));
 
         assertThat(sql).contains("CREATE TABLE payment_terminal_receipt",
                 "CREATE TABLE payment_terminal_reconciliation_batch",

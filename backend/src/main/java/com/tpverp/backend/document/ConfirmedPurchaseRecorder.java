@@ -1,17 +1,19 @@
 package com.tpverp.backend.document;
 
-import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Collection;
-import java.util.Map;
 import java.util.UUID;
 
 @FunctionalInterface
 public interface ConfirmedPurchaseRecorder {
 
-    void record(UUID supplierId, LocalDate date, Collection<UUID> productIds);
+    void record(UUID supplierId, Instant entryAt, Collection<PurchaseLine> lines);
 
-    default void recordWithReferences(
-            UUID supplierId, LocalDate date, Map<UUID, String> referencesByProductId) {
-        record(supplierId, date, referencesByProductId.keySet());
+    record PurchaseLine(
+            UUID productId,
+            String supplierReference,
+            BigDecimal grossPurchasePrice,
+            BigDecimal purchaseDiscount) {
     }
 }

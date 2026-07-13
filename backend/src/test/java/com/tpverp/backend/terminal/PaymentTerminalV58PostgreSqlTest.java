@@ -10,13 +10,13 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
-class PaymentTerminalV47PostgreSqlTest {
+class PaymentTerminalV58PostgreSqlTest {
     @Test
     void migratesAndProtectsReconciliationEventsAsAppendOnly() throws Exception {
         var url=System.getenv().getOrDefault("TPV_ERP_TEST_DB_URL","jdbc:postgresql://localhost:5432/tpv_erp_test");
         var user=System.getenv().getOrDefault("TPV_ERP_TEST_DB_USER","postgres");
         var password=System.getenv().getOrDefault("TPV_ERP_TEST_DB_PASSWORD","admin");
-        assumeTrue(canConnect(url,user,password));var schema="tpv_v47_"+UUID.randomUUID().toString().replace("-","");
+        assumeTrue(canConnect(url,user,password));var schema="tpv_v58_"+UUID.randomUUID().toString().replace("-","");
         try {Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).createSchemas(true).load().migrate();
             try(var connection=DriverManager.getConnection(url,user,password);var statement=connection.createStatement()){
                 var company=UUID.randomUUID();var store=UUID.randomUUID();var terminal=UUID.randomUUID();var batch=UUID.randomUUID();var event=UUID.randomUUID();

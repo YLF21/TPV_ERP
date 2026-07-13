@@ -10,13 +10,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.document.ConfirmedPurchaseRecorder.PurchaseLine;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.DocumentType;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,6 +66,23 @@ class ProductSupplierServiceTest {
 
         assertThat(result.supplierReference()).isEqualTo("REF");
         assertThat(result.supplierId()).isEqualTo(supplier.getId());
+    }
+
+    @Test
+    void manualLinkCanSelectThePrincipalSupplier() {
+        currentStoreAndCompany();
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.empty());
+        when(links.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        var result = service.link(product.getId(), supplier.getId(), null, true);
+
+        assertThat(result.principal()).isTrue();
+        verify(links).lockProduct(product.getId());
+        verify(links).clearPrincipal(product.getId(), supplier.getId());
     }
 
     @Test
@@ -165,6 +183,95 @@ class ProductSupplierServiceTest {
     }
 
     @Test
+    void listsAllProductSupplierDataForTheCurrentStore() {
+        Supplier linkedSupplier = new Supplier(
+                company,
+                "Proveedor Fiscal",
+                "Proveedor Tienda",
+                DocumentType.CIF,
+                "B00000042",
+                null,
+                null,
+                null,
+                null);
+        linkedSupplier.assignCode("00000042");
+        ProductSupplier link = new ProductSupplier(product, linkedSupplier, " ref-42 ");
+        link.makePrincipal();
+        Instant lastEntryAt = Instant.parse("2026-07-11T10:15:30Z");
+        link.registerEntry(
+                lastEntryAt,
+                new BigDecimal("100.00"),
+                new BigDecimal("12.50"));
+        currentStore();
+        when(links.findForStore(store.getId())).thenReturn(List.of(link));
+
+        assertThat(service.listForCurrentStore())
+                .singleElement()
+                .satisfies(view -> {
+                    assertThat(view.productId()).isEqualTo(product.getId());
+                    assertThat(view.supplierId()).isEqualTo(linkedSupplier.getId());
+                    assertThat(view.supplierCode()).isEqualTo("00000042");
+                    assertThat(view.legalName()).isEqualTo("Proveedor Fiscal");
+                    assertThat(view.tradeName()).isEqualTo("Proveedor Tienda");
+                    assertThat(view.documentNumber()).isEqualTo("B00000042");
+                    assertThat(view.active()).isTrue();
+                    assertThat(view.supplierReference()).isEqualTo("REF-42");
+                    assertThat(view.principal()).isTrue();
+                    assertThat(view.lastSupplier()).isTrue();
+                    assertThat(view.grossPurchasePrice()).isEqualByComparingTo("100.00");
+                    assertThat(view.purchaseDiscount()).isEqualByComparingTo("12.50");
+                    assertThat(view.netPurchasePrice()).isEqualByComparingTo("87.50");
+                    assertThat(view.lastEntryAt()).isEqualTo(lastEntryAt);
+                });
+
+        verify(links).findForStore(store.getId());
+    }
+
+    @Test
+    void listsEveryProductLinkedToSupplierRegardlessOfLastSupplierFlag() {
+        Product secondProduct = product(store.getId());
+        ProductSupplier previousLink = new ProductSupplier(product, supplier, "REF-OLD");
+        ProductSupplier latestLink = new ProductSupplier(secondProduct, supplier, "REF-NEW");
+        latestLink.registerEntry(
+                Instant.parse("2026-07-11T10:00:00Z"),
+                new BigDecimal("12.00"),
+                new BigDecimal("10.00"));
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(links.findForSupplier(supplier.getId(), company.getId(), store.getId()))
+                .thenReturn(List.of(previousLink, latestLink));
+
+        assertThat(service.listSupplierProducts(supplier.getId()))
+                .extracting(ProductSupplierService.SupplierProductView::productId)
+                .containsExactly(product.getId(), secondProduct.getId());
+        assertThat(service.listSupplierProducts(supplier.getId()))
+                .extracting(ProductSupplierService.SupplierProductView::lastSupplier)
+                .containsExactly(false, true);
+    }
+
+    @Test
+    void linksOnlyMissingProductsWhenAssigningSupplierInBulk() {
+        Product secondProduct = product(store.getId());
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdIn(eq(store.getId()), any()))
+                .thenReturn(List.of(product, secondProduct));
+        when(links.findLinkedProductIds(eq(supplier.getId()), any()))
+                .thenReturn(List.of(product.getId()));
+
+        int created = service.linkProducts(
+                supplier.getId(), List.of(product.getId(), secondProduct.getId(), product.getId()));
+
+        assertThat(created).isEqualTo(1);
+        verify(links).saveAll(org.mockito.ArgumentMatchers.argThat(values -> {
+            var saved = (List<ProductSupplier>) values;
+            return saved.size() == 1 && saved.getFirst().getProductId().equals(secondProduct.getId());
+        }));
+    }
+
+    @Test
     void confirmedPurchaseCreatesMissingLinkWithNullReference() {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
@@ -172,15 +279,20 @@ class ProductSupplierServiceTest {
         when(products.findAllByStoreIdAndIdIn(
                 eq(store.getId()), any())).thenReturn(List.of(product));
 
-        service.record(
-                supplier.getId(),
-                LocalDate.of(2026, 6, 9),
-                List.of(product.getId()));
+        Instant entryAt = Instant.parse("2026-06-09T10:15:30Z");
+        service.record(supplier.getId(), entryAt, List.of(
+                line(product, null, "2.50", "5.00")));
 
+        verify(links).clearLastSupplier(product.getId(), supplier.getId());
         verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
         verify(links, never()).findByProduct_IdAndSupplier_Id(any(), any());
         verify(links, never()).save(any());
     }
@@ -193,16 +305,43 @@ class ProductSupplierServiceTest {
         when(products.findAllByStoreIdAndIdIn(
                 eq(store.getId()), any())).thenReturn(List.of(product));
 
-        service.recordWithReferences(
-                supplier.getId(),
-                LocalDate.of(2026, 6, 9),
-                Map.of(product.getId(), "REF-1"));
+        Instant entryAt = Instant.parse("2026-06-09T10:15:30Z");
+        service.record(supplier.getId(), entryAt, List.of(
+                line(product, " ref-1 ", "2.50", "5.00")));
 
-        verify(links).upsertPurchaseWithReference(
+        verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.eq("REF-1"),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
+    }
+
+    @Test
+    void confirmedPurchaseDoesNotReplaceAnExistingPrincipalSupplier() {
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdIn(eq(store.getId()), any()))
+                .thenReturn(List.of(product));
+        when(links.existsByProduct_IdAndPrincipalTrue(product.getId())).thenReturn(true);
+
+        Instant entryAt = Instant.parse("2026-06-09T10:15:30Z");
+        service.record(supplier.getId(), entryAt, List.of(
+                line(product, null, "2.50", "5.00")));
+
+        verify(links).upsertPurchase(
+                any(), org.mockito.ArgumentMatchers.eq(product.getId()),
+                org.mockito.ArgumentMatchers.eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
     }
 
 
@@ -214,15 +353,42 @@ class ProductSupplierServiceTest {
         when(products.findAllByStoreIdAndIdIn(
                 eq(store.getId()), any())).thenReturn(List.of(product));
 
-        service.record(
-                supplier.getId(),
-                LocalDate.of(2026, 5, 1),
-                List.of(product.getId()));
+        Instant entryAt = Instant.parse("2026-05-01T08:00:00Z");
+        service.record(supplier.getId(), entryAt, List.of(
+                line(product, null, "2.50", "0.00")));
 
         verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 5, 1)));
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("0.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
+    }
+
+    @Test
+    void olderPurchaseDoesNotDisplaceTheLastSupplier() {
+        currentStoreAndCompany();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
+                .thenReturn(Optional.of(supplier));
+        when(products.findAllByStoreIdAndIdIn(eq(store.getId()), any()))
+                .thenReturn(List.of(product));
+        when(links.findLatestEntryAtForProduct(product.getId()))
+                .thenReturn(Instant.parse("2026-06-09T10:15:30Z"));
+        Instant oldEntry = Instant.parse("2026-05-01T08:00:00Z");
+
+        service.record(supplier.getId(), oldEntry, List.of(
+                line(product, null, "2.50", "0.00")));
+
+        verify(links, never()).clearLastSupplier(product.getId(), supplier.getId());
+        verify(links).upsertPurchase(
+                any(), eq(product.getId()), eq(supplier.getId()),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
+                eq(new BigDecimal("2.50")), eq(new BigDecimal("0.00")), eq(oldEntry));
     }
 
     @Test
@@ -234,10 +400,11 @@ class ProductSupplierServiceTest {
         when(products.findAllByStoreIdAndIdIn(
                 eq(store.getId()), any())).thenReturn(List.of(product, secondProduct));
 
-        service.record(
-                supplier.getId(),
-                LocalDate.of(2026, 6, 9),
-                List.of(product.getId(), secondProduct.getId(), product.getId()));
+        Instant entryAt = Instant.parse("2026-06-09T10:15:30Z");
+        service.record(supplier.getId(), entryAt, List.of(
+                line(product, null, "2.00", "0.00"),
+                line(secondProduct, null, "3.00", "5.00"),
+                line(product, null, "2.50", "10.00")));
 
         verify(products, times(1)).findAllByStoreIdAndIdIn(
                 eq(store.getId()), any());
@@ -245,11 +412,21 @@ class ProductSupplierServiceTest {
         verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("10.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
         verify(links).upsertPurchase(
                 any(), org.mockito.ArgumentMatchers.eq(secondProduct.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 6, 9)));
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("3.00")),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
+                org.mockito.ArgumentMatchers.eq(entryAt));
     }
 
     @Test
@@ -261,13 +438,15 @@ class ProductSupplierServiceTest {
 
         assertThatThrownBy(() -> service.record(
                 supplier.getId(),
-                LocalDate.of(2026, 6, 9),
-                List.of(product.getId())))
+                Instant.parse("2026-06-09T10:15:30Z"),
+                List.of(line(product, null, "2.50", "0.00"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("inactivo");
 
         verify(products, never()).findById(any());
-        verify(links, never()).upsertPurchase(any(), any(), any(), any());
+        verify(links, never()).upsertPurchase(
+                any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any());
         verify(links, never()).save(any());
     }
 
@@ -282,12 +461,16 @@ class ProductSupplierServiceTest {
 
         assertThatThrownBy(() -> service.record(
                 supplier.getId(),
-                LocalDate.of(2026, 6, 9),
-                List.of(product.getId(), missing.getId())))
+                Instant.parse("2026-06-09T10:15:30Z"),
+                List.of(
+                        line(product, null, "2.50", "0.00"),
+                        line(missing, null, "3.00", "0.00"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Producto no encontrado");
 
-        verify(links, never()).upsertPurchase(any(), any(), any(), any());
+        verify(links, never()).upsertPurchase(
+                any(), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any());
     }
 
     private void currentStoreAndCompany() {
@@ -302,6 +485,11 @@ class ProductSupplierServiceTest {
     private Product product(UUID storeId) {
         return new Product(storeId, UUID.randomUUID(), null, UUID.randomUUID(),
                 "Producto", null, BigDecimal.ZERO, true);
+    }
+
+    private PurchaseLine line(Product product, String reference, String grossPrice, String discount) {
+        return new PurchaseLine(
+                product.getId(), reference, new BigDecimal(grossPrice), new BigDecimal(discount));
     }
 
     private Supplier supplier(String documentNumber, String legalName) {

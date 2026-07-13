@@ -9,14 +9,14 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
-class PaymentTerminalV48PostgreSqlTest {
-    @Test void upgradesV47AndEnforcesOneActiveVersionPerOpaqueReference() throws Exception {
+class PaymentTerminalV59PostgreSqlTest {
+    @Test void upgradesV58AndEnforcesOneActiveVersionPerOpaqueReference() throws Exception {
         var url=System.getenv().getOrDefault("TPV_ERP_TEST_DB_URL","jdbc:postgresql://localhost:5432/tpv_erp_test");
         var user=System.getenv().getOrDefault("TPV_ERP_TEST_DB_USER","tpv_erp_test");
         var password=System.getenv().getOrDefault("TPV_ERP_TEST_DB_PASSWORD","admin");
-        assumeTrue(canConnect(url,user,password)); var schema="tpv_v48_"+UUID.randomUUID().toString().replace("-","");
+        assumeTrue(canConnect(url,user,password)); var schema="tpv_v59_"+UUID.randomUUID().toString().replace("-","");
         try {
-            var base=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).createSchemas(true).target("47").load();base.migrate();
+            var base=Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).createSchemas(true).target("58").load();base.migrate();
             var company=UUID.randomUUID();var store=UUID.randomUUID();var terminal=UUID.randomUUID();var legacyConfiguration=UUID.randomUUID();var address="{\"linea1\":\"a\",\"ciudad\":\"c\",\"codigoPostal\":\"1\",\"provincia\":\"p\",\"pais\":\"ES\"}";
             try(var c=DriverManager.getConnection(url,user,password);var s=c.createStatement()){
                 s.executeUpdate("insert into "+schema+".empresa(id,tax_id,razon_social,domicilio_fiscal) values ('"+company+"','B1','C','"+address+"')");

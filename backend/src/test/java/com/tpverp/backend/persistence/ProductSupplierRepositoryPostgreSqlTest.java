@@ -8,7 +8,7 @@ import com.tpverp.backend.party.SupplierRepository;
 import jakarta.persistence.EntityManagerFactory;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -97,10 +97,11 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 where producto_id = ? and proveedor_id = ?
                 """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
 
+        Instant juneEntry = Instant.parse("2026-06-09T10:00:00Z");
         productSuppliers.upsertPurchase(
                 UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
-                LocalDate.of(2026, 6, 9));
-        assertLink(ids, null, LocalDate.of(2026, 6, 9), 0L);
+                null, new java.math.BigDecimal("10.00"), new java.math.BigDecimal("10.00"), juneEntry);
+        assertLink(ids, null, juneEntry, "10.00", "10.00", "9.00", 0L);
 
         jdbc.update("""
                 update %s.producto_proveedor
@@ -110,13 +111,15 @@ class ProductSupplierRepositoryPostgreSqlTest {
 
         productSuppliers.upsertPurchase(
                 UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
-                LocalDate.of(2026, 5, 1));
-        assertLink(ids, "REF-EXISTENTE", LocalDate.of(2026, 6, 9), 1L);
+                null, new java.math.BigDecimal("8.00"), java.math.BigDecimal.ZERO,
+                Instant.parse("2026-05-01T08:00:00Z"));
+        assertLink(ids, "REF-EXISTENTE", juneEntry, "10.00", "10.00", "9.00", 1L);
 
+        Instant julyEntry = Instant.parse("2026-07-01T12:00:00Z");
         productSuppliers.upsertPurchase(
                 UUID.randomUUID(), ids.productId(), ids.firstSupplierId(),
-                LocalDate.of(2026, 7, 1));
-        assertLink(ids, "REF-EXISTENTE", LocalDate.of(2026, 7, 1), 2L);
+                null, new java.math.BigDecimal("12.00"), new java.math.BigDecimal("25.00"), julyEntry);
+        assertLink(ids, "REF-EXISTENTE", julyEntry, "12.00", "25.00", "9.00", 2L);
     }
 
     @Test
@@ -133,10 +136,10 @@ class ProductSupplierRepositoryPostgreSqlTest {
         var releaseFirst = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var first = executor.submit(() -> concurrentUpsert(
-                    ids, LocalDate.of(2026, 6, 9), firstWritten, releaseFirst));
+                    ids, Instant.parse("2026-06-09T10:00:00Z"), firstWritten, releaseFirst));
             assertThat(firstWritten.await(5, TimeUnit.SECONDS)).isTrue();
             var second = executor.submit(() -> concurrentUpsert(
-                    ids, LocalDate.of(2026, 7, 1), null, null));
+                    ids, Instant.parse("2026-07-01T12:00:00Z"), null, null));
 
             Thread.sleep(200);
             assertThat(second.isDone()).isFalse();
@@ -145,7 +148,7 @@ class ProductSupplierRepositoryPostgreSqlTest {
             second.get(5, TimeUnit.SECONDS);
         }
 
-        assertLink(ids, null, LocalDate.of(2026, 7, 1), 1L);
+        assertLink(ids, null, Instant.parse("2026-07-01T12:00:00Z"), "10.00", "0.00", "10.00", 1L);
         assertThat(jdbc.queryForObject("""
                 select count(*) from %s.producto_proveedor
                 where producto_id = ? and proveedor_id = ?
@@ -155,7 +158,7 @@ class ProductSupplierRepositoryPostgreSqlTest {
 
     private void concurrentUpsert(
             TestIds ids,
-            LocalDate date,
+            Instant entryAt,
             CountDownLatch written,
             CountDownLatch release) {
         String connectionUrl = URL + (URL.contains("?") ? "&" : "?")
@@ -164,19 +167,33 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 var statement = connection.prepareStatement("""
                         insert into producto_proveedor as current_link (
                             id, producto_id, proveedor_id, referencia_proveedor,
-                            ultima_fecha_entrada, version)
-                        values (?, ?, ?, null, ?, 0)
+                            ultimo_proveedor, precio_compra_bruto, descuento_compra,
+                            ultima_entrada_en, version)
+                        values (?, ?, ?, null, true, 10.00, 0.00, ?, 0)
                         on conflict (producto_id, proveedor_id) do update
-                        set ultima_fecha_entrada = greatest(
-                                current_link.ultima_fecha_entrada,
-                                excluded.ultima_fecha_entrada),
+                        set ultimo_proveedor = true,
+                            precio_compra_bruto = case
+                                when current_link.ultima_entrada_en is null
+                                  or excluded.ultima_entrada_en >= current_link.ultima_entrada_en
+                                then excluded.precio_compra_bruto
+                                else current_link.precio_compra_bruto
+                            end,
+                            descuento_compra = case
+                                when current_link.ultima_entrada_en is null
+                                  or excluded.ultima_entrada_en >= current_link.ultima_entrada_en
+                                then excluded.descuento_compra
+                                else current_link.descuento_compra
+                            end,
+                            ultima_entrada_en = greatest(
+                                current_link.ultima_entrada_en,
+                                excluded.ultima_entrada_en),
                             version = current_link.version + 1
                         """)) {
             connection.setAutoCommit(false);
             statement.setObject(1, UUID.randomUUID());
             statement.setObject(2, ids.productId());
             statement.setObject(3, ids.firstSupplierId());
-            statement.setObject(4, date);
+            statement.setObject(4, entryAt);
             statement.executeUpdate();
             if (written != null) {
                 written.countDown();
@@ -191,15 +208,27 @@ class ProductSupplierRepositoryPostgreSqlTest {
     }
 
     private void assertLink(
-            TestIds ids, String reference, LocalDate lastEntryDate, long version) {
+            TestIds ids,
+            String reference,
+            Instant lastEntryAt,
+            String grossPrice,
+            String discount,
+            String netPrice,
+            long version) {
         Map<String, Object> row = jdbc.queryForMap("""
-                select referencia_proveedor, ultima_fecha_entrada, version
+                select referencia_proveedor, ultima_entrada_en,
+                       precio_compra_bruto, descuento_compra, precio_compra_neto,
+                       ultimo_proveedor, version
                 from %s.producto_proveedor
                 where producto_id = ? and proveedor_id = ?
                 """.formatted(SCHEMA), ids.productId(), ids.firstSupplierId());
         assertThat(row.get("referencia_proveedor")).isEqualTo(reference);
-        assertThat(((java.sql.Date) row.get("ultima_fecha_entrada")).toLocalDate())
-                .isEqualTo(lastEntryDate);
+        assertThat(((java.sql.Timestamp) row.get("ultima_entrada_en")).toInstant())
+                .isEqualTo(lastEntryAt);
+        assertThat((java.math.BigDecimal) row.get("precio_compra_bruto")).isEqualByComparingTo(grossPrice);
+        assertThat((java.math.BigDecimal) row.get("descuento_compra")).isEqualByComparingTo(discount);
+        assertThat((java.math.BigDecimal) row.get("precio_compra_neto")).isEqualByComparingTo(netPrice);
+        assertThat(row.get("ultimo_proveedor")).isEqualTo(true);
         assertThat(row.get("version")).isEqualTo(version);
     }
 

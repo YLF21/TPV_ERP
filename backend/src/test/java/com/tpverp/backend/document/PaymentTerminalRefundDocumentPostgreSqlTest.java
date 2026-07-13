@@ -13,6 +13,8 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
+import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
+import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -81,6 +83,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private CashPaymentRecorder cashPayments;
     @MockitoBean private MemberLoyaltyService memberLoyalty;
     @MockitoBean private PromotionEngine promotionEngine;
+    @MockitoBean private AuthoritativePromotionPricing promotionPricing;
+    @MockitoBean private PromotionCatalogGateway promotionCatalog;
     @MockitoBean private PromotionalCouponService promotionalCoupons;
 
     @DynamicPropertySource

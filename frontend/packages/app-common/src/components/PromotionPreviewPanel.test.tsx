@@ -25,7 +25,7 @@ describe("PromotionPreviewPanel", () => {
     expect(html).toContain("Promociones");
     expect(html).toContain("Segunda unidad 50%");
     expect(html).toContain("2,50");
-    expect(html).toContain("Cupon generado");
+    expect(html).toContain("Cupón generado");
     expect(html).toContain("PROMO-123");
     expect(html).toContain("5,00");
     expect(html).toContain("2026-07-09 - 2026-07-31");

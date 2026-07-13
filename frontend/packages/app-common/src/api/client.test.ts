@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 
 describe("apiRequest", () => {
   afterEach(() => {
@@ -19,5 +19,25 @@ describe("apiRequest", () => {
       method: "POST",
       body: JSON.stringify({ userName: "admin" })
     }));
+  });
+
+  it("keeps structured problem details on API errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "PRODUCT_PRICE_RULE_CONFLICT",
+      detail: "Conflicto",
+      formIndexes: [0, 2]
+    }), {
+      status: 409,
+      headers: { "Content-Type": "application/problem+json" }
+    })));
+
+    await expect(apiRequest("/product-price-rules/1/preview")).rejects.toMatchObject({
+      message: "Conflicto",
+      status: 409,
+      problem: {
+        code: "PRODUCT_PRICE_RULE_CONFLICT",
+        formIndexes: [0, 2]
+      }
+    } satisfies Partial<ApiError>);
   });
 });

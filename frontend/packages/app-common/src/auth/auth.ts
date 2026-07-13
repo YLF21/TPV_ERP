@@ -60,8 +60,10 @@ export function hasPermission(session: UserSession, permission: Permission): boo
 
 type LoginResult = {
   accessToken: string;
+  userId?: string;
   userName: string;
   role: string;
+  permissions?: string[];
 };
 
 export async function authenticateRemote(
@@ -84,11 +86,12 @@ export async function authenticateRemote(
     }
   });
   const session: UserSession = {
+    userId: result.userId,
     username,
     displayName: result.userName,
     role: result.role,
     accessToken: result.accessToken,
-    permissions: permissionsFromRole(result.role)
+    permissions: permissionsFromLogin(result.role, result.permissions)
   };
   if (!canAccessApp(session.permissions, app)) {
     throw new Error("no_access");
@@ -116,6 +119,12 @@ function permissionsFromRole(role: string): Permission[] {
     permissions.push("GESTION_CUENTAS");
   }
   return permissions;
+}
+
+function permissionsFromLogin(role: string, remotePermissions: string[] | undefined): Permission[] {
+  const permissions = new Set<Permission>(permissionsFromRole(role));
+  remotePermissions?.forEach((permission) => permissions.add(permission as Permission));
+  return Array.from(permissions);
 }
 
 function toSession(user: LocalUser): UserSession {

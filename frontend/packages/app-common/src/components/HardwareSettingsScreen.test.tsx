@@ -49,10 +49,27 @@ describe("HardwareSettingsScreen", () => {
     );
 
     expect(html).toContain("Impresora de ticket");
-    expect(html).toContain("Cajon de dinero");
-    expect(html).toContain("Escaner codigo barras");
-    expect(html).toContain("Diagnostico");
-    expect(html).toContain("Abrir cajon al imprimir ticket");
-    expect(html).toContain("Abrir cajon");
+    expect(html).toContain("Cajón de dinero");
+    expect(html).toContain("Escáner código de barras");
+    expect(html).toContain("Diagnóstico");
+    expect(html).toContain("Abrir cajón al imprimir ticket");
+    expect(html).toContain("Abrir cajón");
+  });
+
+  it("uses the shared ERP select instead of native selects", () => {
+    const html = renderToStaticMarkup(
+      <HardwareSettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('class="erp-select__trigger"');
+    expect(html).not.toContain("<select");
   });
 });

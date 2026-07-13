@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 
 import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.inventory.StockMovementRepository;
@@ -47,6 +48,8 @@ class CatalogServiceTest {
     void setUp() {
         lenient().when(store.getId()).thenReturn(storeId);
         lenient().when(organization.currentStore()).thenReturn(store);
+        lenient().when(identifierRepository.findByStoreIdAndValor(any(), any()))
+                .thenReturn(Optional.empty());
         service = new CatalogService(
                 organization, taxRepository, warehouseRepository, familyRepository,
                 subfamilyRepository, productRepository, identifierRepository,
@@ -133,7 +136,7 @@ class CatalogServiceTest {
 
     @Test
     void createsProductWithPricesAndOffer() {
-        var request = productRequest("ABC", "ABC");
+        var request = productRequest("ABC", "EAN");
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
@@ -142,7 +145,7 @@ class CatalogServiceTest {
         var product = service.createProduct(request);
 
         assertThat(product.identifier(IdentifierType.CODIGO)).isEqualTo("ABC");
-        assertThat(product.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("ABC");
+        assertThat(product.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("EAN");
         assertThat(product.price(PriceTier.VENTA)).isEqualByComparingTo("2.50");
         assertThat(product.isOfferActive()).isTrue();
         @SuppressWarnings("unchecked")
@@ -152,14 +155,48 @@ class CatalogServiceTest {
     }
 
     @Test
+    void createsProductWhenBarcodeIsPresentAndCodeIsEmpty() {
+        var request = productRequest(null, "EAN13");
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var product = service.createProduct(request);
+
+        assertThat(product.getCode()).isNull();
+        assertThat(product.getBarcode()).isEqualTo("EAN13");
+    }
+
+    @Test
+    void createsProductWithSecondaryBarcode() {
+        var base = productRequest("ABC", "EAN13");
+        var request = new CatalogService.ProductRequest(
+                base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.NORMAL,
+                PriceUseMode.OFFER_PRICE,
+                "Producto", null, null, BigDecimal.ZERO, true, "ABC", "EAN13", "EAN14",
+                new BigDecimal("2.50"), null, null, new BigDecimal("1.50"),
+                null, new BigDecimal("5.00"), true, java.time.LocalDate.of(2026, 6, 1), null);
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var product = service.createProduct(request);
+
+        assertThat(product.getBarcode2()).isEqualTo("EAN14");
+        assertThat(product.getPurchaseDiscountPercent()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
     void createsProductWithPersistedPriceUseModeAndOfferDiscountPercent() {
         var base = productRequest("OFFERDISC", null);
         var request = new CatalogService.ProductRequest(
                 base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.DISCOUNT_PRICE,
                 PriceUseMode.OFFER_DISCOUNT,
-                "Producto", null, null, BigDecimal.ZERO, true, "OFFERDISC", null,
+                "Producto", null, null, BigDecimal.ZERO, true, "OFFERDISC", null, null,
                 new BigDecimal("10.00"), null, null, new BigDecimal("8.50"),
-                new BigDecimal("15.00"),
+                new BigDecimal("15.00"), null,
                 true, java.time.LocalDate.of(2026, 7, 1), java.time.LocalDate.of(2026, 7, 31));
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
@@ -182,9 +219,9 @@ class CatalogServiceTest {
         var request = new CatalogService.ProductRequest(
                 base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.NONE,
                 PriceUseMode.NORMAL,
-                "Producto", null, null, BigDecimal.ZERO, true, "NODISC", null,
+                "Producto", null, null, BigDecimal.ZERO, true, "NODISC", null, null,
                 new BigDecimal("10.00"), null, null, null,
-                null, false, null, null);
+                null, null, false, null, null);
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
@@ -202,9 +239,9 @@ class CatalogServiceTest {
         var request = new CatalogService.ProductRequest(
                 base.familyId(), null, base.taxId(), ProductType.UNIT, DiscountType.DISCOUNT_PRICE,
                 PriceUseMode.OFFER_PRICE,
-                "Producto", null, null, BigDecimal.ZERO, true, "ABC", null,
+                "Producto", null, null, BigDecimal.ZERO, true, "ABC", null, null,
                 new BigDecimal("2.50"), null, null, null,
-                null, false, null, null);
+                null, null, false, null, null);
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
         when(taxRepository.findById(request.taxId()))
                 .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
@@ -230,9 +267,9 @@ class CatalogServiceTest {
         var changed = new CatalogService.ProductRequest(
                 initial.familyId(), null, initial.taxId(), ProductType.UNIT, DiscountType.NORMAL,
                 PriceUseMode.NORMAL,
-                "Producto", null, null, new BigDecimal("1.00"), true, "ABC", null,
+                "Producto", null, null, new BigDecimal("1.00"), true, "ABC", null, null,
                 new BigDecimal("3.00"), null, null, null,
-                null, false, null, null);
+                null, null, false, null, null);
 
         service.updateProduct(product.getId(), changed);
 
@@ -282,12 +319,31 @@ class CatalogServiceTest {
         verify(warehouseRepository).delete(warehouse);
     }
 
+    @Test
+    void bulkUpdateRejectsEveryStaleVersionBeforeChangingProducts() {
+        CatalogService.ProductRequest request = productRequest("ABC", null);
+        Product product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Original", null, null, BigDecimal.ZERO, true);
+        when(productRepository.findAllByStoreIdAndIdIn(
+                org.mockito.ArgumentMatchers.eq(storeId), any())).thenReturn(List.of(product));
+
+        assertThatThrownBy(() -> service.updateProducts(List.of(
+                new CatalogService.BulkProductUpdate(product.getId(), 1L, request))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Conflicto de version")
+                .hasMessageContaining(product.getId().toString());
+
+        assertThat(product.getName()).isEqualTo("ORIGINAL");
+        verify(familyRepository, never()).findById(any());
+    }
+
     private CatalogService.ProductRequest productRequest(String code, String barcode) {
         return new CatalogService.ProductRequest(
                 UUID.randomUUID(), null, UUID.randomUUID(), ProductType.UNIT, DiscountType.NORMAL,
                 PriceUseMode.OFFER_PRICE,
-                "Producto", null, null, BigDecimal.ZERO, true, code, barcode,
+                "Producto", null, null, BigDecimal.ZERO, true, code, barcode, null,
                 new BigDecimal("2.50"), null, null, new BigDecimal("1.50"),
-                null, true, java.time.LocalDate.of(2026, 6, 1), null);
+                null, null, true, java.time.LocalDate.of(2026, 6, 1), null);
     }
 }

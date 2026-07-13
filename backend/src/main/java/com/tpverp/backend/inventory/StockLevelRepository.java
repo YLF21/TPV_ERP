@@ -1,16 +1,29 @@
 package com.tpverp.backend.inventory;
 
-import java.util.List;
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
 
     Optional<StockLevel> findByProductIdAndWarehouseId(UUID productId, UUID warehouseId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select stock
+            from StockLevel stock
+            where stock.productId = :productId
+              and stock.warehouseId = :warehouseId
+            """)
+    Optional<StockLevel> findByProductIdAndWarehouseIdForUpdate(
+            @Param("productId") UUID productId,
+            @Param("warehouseId") UUID warehouseId);
 
     List<StockLevel> findByWarehouseId(UUID warehouseId);
 

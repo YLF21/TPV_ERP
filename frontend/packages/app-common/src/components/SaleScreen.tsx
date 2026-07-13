@@ -15,9 +15,17 @@ export type SaleProduct = {
   id: string;
   code?: string | null;
   barcode?: string | null;
+  barcode2?: string | null;
   name?: string | null;
   salePrice?: number | string | null;
-  discountType?: string | null;
+  memberPrice?: number | string | null;
+  offerPrice?: number | string | null;
+  offerDiscountPercent?: number | string | null;
+  priceUseMode?: "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT" | string | null;
+  discountType?: "NONE" | "NORMAL" | "MEMBER_PRICE" | "MEMBER_DISCOUNT" | "DISCOUNT_PRICE" | string | null;
+  offerActive?: boolean | null;
+  offerFrom?: string | null;
+  offerUntil?: string | null;
 };
 
 export type SaleLine = {
@@ -48,7 +56,7 @@ export function filterSaleProducts(products: SaleProduct[], query: string, limit
     return [];
   }
   return products
-    .filter((product) => [product.code, product.barcode, product.name]
+    .filter((product) => [product.code, product.barcode, product.barcode2, product.name]
       .some((value) => normalizedSearchValue(value).includes(normalizedQuery)))
     .slice(0, limit);
 }
@@ -58,7 +66,7 @@ export function selectSaleProduct(products: SaleProduct[], query: string) {
   if (!normalizedQuery) {
     return undefined;
   }
-  const exact = products.find((product) => [product.code, product.barcode]
+  const exact = products.find((product) => [product.code, product.barcode, product.barcode2]
     .some((value) => normalizedSearchValue(value) === normalizedQuery));
   if (exact) {
     return exact;
@@ -89,6 +97,10 @@ export function updateSaleLineDiscount(lines: SaleLine[], productId: string, dis
   if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100 || hasMoreThanTwoDecimals) {
     throw new Error("invalid_discount");
   }
+  const line = lines.find((candidate) => candidate.product.id === productId);
+  if (discountPercent > 0 && line && saleProductBlocksManualDiscount(line.product)) {
+    throw new Error("discount_blocked");
+  }
   return lines.map((line) => line.product.id === productId ? { ...line, discountPercent } : line);
 }
 
@@ -105,7 +117,7 @@ export function selectedProductAfterRemoval(lines: SaleLine[], productId: string
 }
 
 export function saleLineSubtotal(line: SaleLine) {
-  return Number(line.product.salePrice ?? 0) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+  return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
 
 export function effectiveSaleLineDiscount(line: SaleLine) {
@@ -244,6 +256,47 @@ export async function runGuardedCashSubmission(
   }
 }
 
+export function saleProductBlocksManualDiscount(product: SaleProduct) {
+  return String(product.discountType ?? "NORMAL").toUpperCase() === "NONE";
+}
+
+export function effectiveSaleProductPrice(product: SaleProduct, currentDate = currentSaleDate()) {
+  const salePrice = salePriceNumber(product.salePrice);
+  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
+  if (mode === "MEMBER_PRICE") {
+    return salePriceNumber(product.memberPrice, salePrice);
+  }
+  if ((mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT") && saleOfferIsCurrent(product, currentDate)) {
+    const explicitOfferPrice = salePriceNumber(product.offerPrice, Number.NaN);
+    if (Number.isFinite(explicitOfferPrice)) return explicitOfferPrice;
+    if (mode === "OFFER_DISCOUNT") {
+      const discount = salePriceNumber(product.offerDiscountPercent);
+      if (discount >= 0 && discount <= 100) return salePrice * (1 - discount / 100);
+    }
+  }
+  return salePrice;
+}
+
+export function saleOfferIsCurrent(product: SaleProduct, currentDate = currentSaleDate()) {
+  if (product.offerActive === false) return false;
+  const from = product.offerFrom?.trim();
+  const until = product.offerUntil?.trim();
+  return (!from || from <= currentDate) && (!until || until >= currentDate);
+}
+
+function currentSaleDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function salePriceNumber(value: unknown, fallback = 0) {
+  if (value === null || value === undefined || String(value).trim() === "") return fallback;
+  const parsed = Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export function filterSaleCustomers(customers: SaleCustomer[], query: string, limit = 20) {
   const normalizedQuery = normalizedSearchValue(query);
   if (!normalizedQuery) {
@@ -356,7 +409,7 @@ export function SaleScreen({
   }
 
   function openDiscountDialog() {
-    if (!selectedLine) return;
+    if (!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)) return;
     setDiscountInput(String(selectedLine.discountPercent));
     setActionError("");
     setActionDialog("discount");
@@ -377,8 +430,10 @@ export function SaleScreen({
     try {
       setLines((current) => updateSaleLineDiscount(current, selectedProductId, Number(discountInput)));
       setActionDialog(null);
-    } catch {
-      setActionError("El descuento debe estar entre 0 y 100");
+    } catch (error) {
+      setActionError(error instanceof Error && error.message === "discount_blocked"
+        ? t("sale.discountBlocked")
+        : "El descuento debe estar entre 0 y 100");
     }
   }
 
@@ -567,7 +622,7 @@ export function SaleScreen({
                     <span>{line.product.code ?? line.product.barcode ?? "Sin codigo"}</span>
                   </div>
                   <span>
-                    {line.quantity} x {formatSaleAmount(line.product.salePrice)}
+                    {line.quantity} x {formatSaleAmount(effectiveSaleProductPrice(line.product))}
                     {effectiveSaleLineDiscount(line) > 0 && (
                       <small>
                         {line.memberDiscountPercent != null
@@ -577,6 +632,7 @@ export function SaleScreen({
                           : ` - ${formatSaleAmount(line.discountPercent)}%`}
                       </small>
                     )}
+                    {saleProductBlocksManualDiscount(line.product) && <small> {t("sale.discountBlockedShort")}</small>}
                   </span>
                   <b>{formatSaleAmount(saleLineSubtotal(line))}</b>
                 </button>
@@ -637,13 +693,20 @@ export function SaleScreen({
                   <strong>{product.name ?? "Producto sin nombre"}</strong>
                   <small>{product.code ?? product.barcode ?? "Sin codigo"}</small>
                 </span>
-                <b>{formatSaleAmount(product.salePrice)}</b>
+                <b>{formatSaleAmount(effectiveSaleProductPrice(product))}</b>
               </button>
             ))}
           </div>
           <div className="sale-quick-grid">
             <button type="button" disabled={!selectedLine} onClick={openQuantityDialog}>Cantidad</button>
-            <button type="button" disabled={!selectedLine} onClick={openDiscountDialog}>Descuento</button>
+            <button
+              type="button"
+              disabled={!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)}
+              title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
+              onClick={openDiscountDialog}
+            >
+              Descuento
+            </button>
             <button type="button" onClick={openCustomerDialog}>Cliente</button>
             <button type="button" disabled={!selectedLine} onClick={() => setActionDialog("remove")}>Anular linea</button>
           </div>

@@ -33,9 +33,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.repository.Query;
 
 class StockTopSalesServiceTest {
 
@@ -65,7 +67,8 @@ class StockTopSalesServiceTest {
                         CommercialDocumentType.TICKET,
                         CommercialDocumentType.ALBARAN_VENTA,
                         CommercialDocumentType.FACTURA_VENTA,
-                        CommercialDocumentType.RECTIFICATIVA_VENTA)))
+                        CommercialDocumentType.RECTIFICATIVA_VENTA),
+                warehouse.getId()))
                 .thenReturn(List.of(sale, previousSale, returnSale));
         when(fixture.products().findAllByStoreIdAndIdIn(
                 fixture.store().getId(),
@@ -79,18 +82,17 @@ class StockTopSalesServiceTest {
                 .thenReturn(List.of(new ProductSupplier(productA, supplier, "SUP-A")));
         when(fixture.productSuppliers().findForProduct(productB.getId(), fixture.store().getId()))
                 .thenReturn(List.of());
-        when(fixture.stocks().sumQuantityByProductId(productA.getId()))
-                .thenReturn(new BigDecimal("14.000"));
-        when(fixture.stocks().sumQuantityByProductId(productB.getId()))
-                .thenReturn(new BigDecimal("2.000"));
-        when(fixture.stocks().findByProductId(productA.getId()))
-                .thenReturn(List.of(new StockLevel(productA.getId(), warehouse.getId())));
-        when(fixture.stocks().findByProductId(productB.getId()))
-                .thenReturn(List.of(new StockLevel(productB.getId(), warehouse.getId())));
-        when(fixture.warehouses().findAllById(List.of(warehouse.getId())))
+        when(fixture.stocks().findByProductIdAndWarehouseId(productA.getId(), warehouse.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(
+                        productA.getId(), warehouse.getId(), new BigDecimal("14.000"))));
+        when(fixture.stocks().findByProductIdAndWarehouseId(productB.getId(), warehouse.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(
+                        productB.getId(), warehouse.getId(), new BigDecimal("2.000"))));
+        when(fixture.warehouses().findAllById(Set.of(warehouse.getId())))
                 .thenReturn(List.of(warehouse));
 
-        var rows = fixture.service().topSales(StockTopSalesPeriod.WEEK, LocalDate.of(2026, 7, 8));
+        var rows = fixture.service().topSales(
+                StockTopSalesPeriod.WEEK, LocalDate.of(2026, 7, 8), warehouse.getId());
 
         assertThat(rows).extracting(StockTopSalesRow::code).containsExactly("A001", "B002");
         assertThat(rows.get(0).soldQuantity()).isEqualByComparingTo("5.000");
@@ -116,6 +118,71 @@ class StockTopSalesServiceTest {
     }
 
     @Test
+    void repositoryExcludesTicketsAndDeliveryNotesAlreadyCoveredByFinalInvoices()
+            throws NoSuchMethodException {
+        var method = CommercialDocumentRepository.class.getDeclaredMethod(
+                "findTopSalesDocuments",
+                UUID.class, LocalDate.class, LocalDate.class, java.util.Collection.class, UUID.class);
+        var query = method.getAnnotation(Query.class).value();
+
+        assertThat(query)
+                .contains("from DocumentRelation relation")
+                .contains("relation.origen.id = document.id")
+                .contains("DocumentRelationType.FACTURA_DE")
+                .contains("relation.documento.estado not in")
+                .contains("DocumentStatus.BORRADOR")
+                .contains("DocumentStatus.ANULADO");
+    }
+
+    @Test
+    void proratesGlobalDiscountAcrossProductsAndPreservesDocumentTotal() {
+        var fixture = fixture();
+        var productA = product(
+                fixture.store().getId(), "A001", null, "Cafe", fixture.family(), null);
+        var productB = product(
+                fixture.store().getId(), "B002", null, "Pan", fixture.family(), null);
+        var warehouse = Warehouse.general(fixture.store().getId());
+        var sale = documentWithGlobalDiscount(
+                fixture.store().getId(), warehouse.getId(), LocalDate.of(2026, 7, 8),
+                new BigDecimal("10.00"),
+                line(productA, 1, "0.05"),
+                line(productB, 1, "0.05"));
+        when(fixture.documents().findTopSalesDocuments(
+                fixture.store().getId(),
+                LocalDate.of(2026, 7, 8),
+                LocalDate.of(2026, 7, 8),
+                Set.of(
+                        CommercialDocumentType.TICKET,
+                        CommercialDocumentType.ALBARAN_VENTA,
+                        CommercialDocumentType.FACTURA_VENTA,
+                        CommercialDocumentType.RECTIFICATIVA_VENTA),
+                warehouse.getId()))
+                .thenReturn(List.of(sale));
+        when(fixture.products().findAllByStoreIdAndIdIn(
+                fixture.store().getId(), Set.of(productA.getId(), productB.getId())))
+                .thenReturn(List.of(productA, productB));
+        when(fixture.families().findAllById(Set.of(fixture.family().getId())))
+                .thenReturn(List.of(fixture.family()));
+        when(fixture.subfamilies().findAllById(Set.of())).thenReturn(List.of());
+        when(fixture.productSuppliers().findForProduct(productA.getId(), fixture.store().getId()))
+                .thenReturn(List.of());
+        when(fixture.productSuppliers().findForProduct(productB.getId(), fixture.store().getId()))
+                .thenReturn(List.of());
+        when(fixture.warehouses().findAllById(Set.of(warehouse.getId())))
+                .thenReturn(List.of(warehouse));
+
+        var rows = fixture.service().topSales(
+                LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8), warehouse.getId());
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.stream()
+                .map(StockTopSalesRow::netAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo(sale.getTotal())
+                .isEqualByComparingTo("0.09");
+    }
+
+    @Test
     void queriesExplicitDateRangeForCustomTopSales() {
         var fixture = fixture();
         var product = product(fixture.store().getId(), "A001", "8430000000011", "Cafe", fixture.family(), null);
@@ -130,7 +197,8 @@ class StockTopSalesServiceTest {
                         CommercialDocumentType.TICKET,
                         CommercialDocumentType.ALBARAN_VENTA,
                         CommercialDocumentType.FACTURA_VENTA,
-                        CommercialDocumentType.RECTIFICATIVA_VENTA)))
+                        CommercialDocumentType.RECTIFICATIVA_VENTA),
+                null))
                 .thenReturn(List.of(sale));
         when(fixture.products().findAllByStoreIdAndIdIn(fixture.store().getId(), Set.of(product.getId())))
                 .thenReturn(List.of(product));
@@ -140,16 +208,67 @@ class StockTopSalesServiceTest {
                 .thenReturn(List.of());
         when(fixture.productSuppliers().findForProduct(product.getId(), fixture.store().getId()))
                 .thenReturn(List.of());
-        when(fixture.stocks().sumQuantityByProductId(product.getId()))
-                .thenReturn(new BigDecimal("5.000"));
-        when(fixture.stocks().findByProductId(product.getId()))
-                .thenReturn(List.of(new StockLevel(product.getId(), warehouse.getId())));
-        when(fixture.warehouses().findAllById(List.of(warehouse.getId())))
+        when(fixture.stocks().findByProductIdAndWarehouseId(product.getId(), warehouse.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(
+                        product.getId(), warehouse.getId(), new BigDecimal("5.000"))));
+        when(fixture.warehouses().findAllById(Set.of(warehouse.getId())))
                 .thenReturn(List.of(warehouse));
 
         var rows = fixture.service().topSales(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28));
 
         assertThat(rows).extracting(StockTopSalesRow::code).containsExactly("A001");
+    }
+
+    @Test
+    void groupsTheSameProductByWarehouseRecordedOnTheSale() {
+        var fixture = fixture();
+        var product = product(
+                fixture.store().getId(), "A001", null, "Cafe", fixture.family(), null);
+        var general = Warehouse.general(fixture.store().getId());
+        var secondary = new Warehouse(fixture.store().getId(), "SECUNDARIO");
+        var generalSale = document(
+                fixture.store().getId(), general.getId(), LocalDate.of(2026, 7, 8),
+                line(product, 2, "3.00"));
+        var secondarySale = document(
+                fixture.store().getId(), secondary.getId(), LocalDate.of(2026, 7, 8),
+                line(product, 3, "3.00"));
+        when(fixture.documents().findTopSalesDocuments(
+                fixture.store().getId(),
+                LocalDate.of(2026, 7, 8),
+                LocalDate.of(2026, 7, 8),
+                Set.of(
+                        CommercialDocumentType.TICKET,
+                        CommercialDocumentType.ALBARAN_VENTA,
+                        CommercialDocumentType.FACTURA_VENTA,
+                        CommercialDocumentType.RECTIFICATIVA_VENTA),
+                null))
+                .thenReturn(List.of(generalSale, secondarySale));
+        when(fixture.products().findAllByStoreIdAndIdIn(
+                fixture.store().getId(), Set.of(product.getId())))
+                .thenReturn(List.of(product));
+        when(fixture.families().findAllById(Set.of(fixture.family().getId())))
+                .thenReturn(List.of(fixture.family()));
+        when(fixture.subfamilies().findAllById(Set.of())).thenReturn(List.of());
+        when(fixture.productSuppliers().findForProduct(product.getId(), fixture.store().getId()))
+                .thenReturn(List.of());
+        when(fixture.stocks().findByProductIdAndWarehouseId(product.getId(), general.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(
+                        product.getId(), general.getId(), new BigDecimal("8.000"))));
+        when(fixture.stocks().findByProductIdAndWarehouseId(product.getId(), secondary.getId()))
+                .thenReturn(Optional.of(StockLevel.snapshot(
+                        product.getId(), secondary.getId(), new BigDecimal("4.000"))));
+        when(fixture.warehouses().findAllById(Set.of(general.getId(), secondary.getId())))
+                .thenReturn(List.of(general, secondary));
+
+        var rows = fixture.service().topSales(
+                LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8));
+
+        assertThat(rows).extracting(StockTopSalesRow::warehouseName)
+                .containsExactly("SECUNDARIO", "GENERAL");
+        assertThat(rows).extracting(StockTopSalesRow::soldQuantity)
+                .containsExactly(new BigDecimal("3.000"), new BigDecimal("2.000"));
+        assertThat(rows).extracting(StockTopSalesRow::currentStock)
+                .containsExactly(new BigDecimal("4.000"), new BigDecimal("8.000"));
     }
 
     private static DocumentLine line(Product product, int quantity, String price) {
@@ -161,8 +280,18 @@ class StockTopSalesServiceTest {
     }
 
     private static CommercialDocument document(UUID storeId, UUID warehouseId, LocalDate date, DocumentLine... lines) {
+        return documentWithGlobalDiscount(
+                storeId, warehouseId, date, BigDecimal.ZERO, lines);
+    }
+
+    private static CommercialDocument documentWithGlobalDiscount(
+            UUID storeId,
+            UUID warehouseId,
+            LocalDate date,
+            BigDecimal globalDiscount,
+            DocumentLine... lines) {
         var document = new CommercialDocument(
-                storeId, warehouseId, CommercialDocumentType.TICKET, date, UUID.randomUUID(), BigDecimal.ZERO);
+                storeId, warehouseId, CommercialDocumentType.TICKET, date, UUID.randomUUID(), globalDiscount);
         var position = 1;
         for (var sourceLine : lines) {
             document.addLine(new DocumentLine(

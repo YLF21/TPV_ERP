@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,6 +41,7 @@ class InventoryServiceTest {
     @Mock private ProductRepository productRepository;
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private StockLevelRepository stockRepository;
+    @Mock private StockSettingsRepository settingsRepository;
     @Mock private StockMovementRepository movementRepository;
     @Mock private SyncOutboxService syncOutbox;
     @Mock private Store store;
@@ -66,7 +68,8 @@ class InventoryServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         service = new InventoryService(
                 organization, productRepository, warehouseRepository,
-                stockRepository, movementRepository, new StockMovementSyncPublisher(syncOutbox),
+                stockRepository, settingsRepository, movementRepository,
+                new StockMovementSyncPublisher(syncOutbox),
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -188,6 +191,62 @@ class InventoryServiceTest {
         assertThat(result.sourceQuantity()).isEqualByComparingTo("-4.000");
         assertThat(result.targetQuantity()).isEqualByComparingTo("4.000");
         verify(movementRepository, times(2)).save(any(StockMovement.class));
+    }
+
+    @Test
+    void negativeAdjustmentIsRejectedWithoutPartialWritesWhenDisabled() {
+        var product = product();
+        var warehouse = new Warehouse(storeId, "GENERAL 2");
+        var stock = StockLevel.snapshot(
+                product.getId(), warehouse.getId(), new BigDecimal("2.000"));
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouseRepository.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(settingsRepository.findById(storeId))
+                .thenReturn(Optional.of(negativeStockDisabled(warehouse.getId())));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
+                product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
+
+        assertThatThrownBy(() -> service.adjust(
+                product.getId(), warehouse.getId(), -3, "ROTURA", authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no permite stock negativo");
+
+        assertThat(stock.getQuantity()).isEqualByComparingTo("2.000");
+        verify(stockRepository, never()).save(any());
+        verify(movementRepository, never()).save(any());
+        verify(syncOutbox, never()).enqueue(any());
+    }
+
+    @Test
+    void transferIsRejectedBeforeEitherWarehouseOrMovementIsChangedWhenDisabled() {
+        var product = product();
+        var source = new Warehouse(storeId, "ORIGEN");
+        var target = new Warehouse(storeId, "DESTINO");
+        var sourceStock = StockLevel.snapshot(
+                product.getId(), source.getId(), new BigDecimal("1.000"));
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(warehouseRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(warehouseRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(settingsRepository.findById(storeId))
+                .thenReturn(Optional.of(negativeStockDisabled(source.getId())));
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
+                product.getId(), source.getId())).thenReturn(Optional.of(sourceStock));
+
+        assertThatThrownBy(() -> service.transfer(
+                product.getId(), source.getId(), target.getId(), 2, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no permite stock negativo");
+
+        assertThat(sourceStock.getQuantity()).isEqualByComparingTo("1.000");
+        verify(stockRepository, never()).save(any());
+        verify(movementRepository, never()).save(any());
+        verify(syncOutbox, never()).enqueue(any());
+    }
+
+    private StockSettings negativeStockDisabled(UUID warehouseId) {
+        var settings = new StockSettings(storeId, warehouseId);
+        settings.update(warehouseId, false, StockSettings.DEFAULT_MINIMUM_STOCK, true);
+        return settings;
     }
 
     private Product product() {

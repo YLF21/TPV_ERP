@@ -46,7 +46,7 @@ class DocumentPromotionLineTest {
     }
 
     @Test
-    void documentRequestConvertsPromotionLineMetadata() {
+    void documentRequestRejectsClientSuppliedCouponLine() {
         var promotionId = UUID.randomUUID();
         var versionId = UUID.randomUUID();
         var couponId = UUID.randomUUID();
@@ -60,13 +60,9 @@ class DocumentPromotionLineTest {
                         new BigDecimal("21.00"), DocumentLineType.PROMOTIONAL_COUPON,
                         promotionId, versionId, couponId)));
 
-        var line = request.toCommand().lineas().getFirst();
-
-        assertThat(line.productoId()).isNull();
-        assertThat(line.lineType()).isEqualTo(DocumentLineType.PROMOTIONAL_COUPON);
-        assertThat(line.promotionId()).isEqualTo(promotionId);
-        assertThat(line.promotionVersionId()).isEqualTo(versionId);
-        assertThat(line.promotionalCouponId()).isEqualTo(couponId);
+        assertThatThrownBy(request::toCommand)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("backend");
     }
 
     @Test
@@ -84,6 +80,23 @@ class DocumentPromotionLineTest {
         assertThatThrownBy(request::toCommand)
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("productoId");
+    }
+
+    @Test
+    void documentRequestRejectsPromotionMetadataHiddenOnProductLine() {
+        var request = new DocumentRequest(
+                UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 9), null, null, null, BigDecimal.ZERO,
+                false,
+                java.util.List.of(new DocumentRequest.LineRequest(
+                        UUID.randomUUID(), BigDecimal.ONE, "P-1", "Producto", "VENTA",
+                        new BigDecimal("3.00"), BigDecimal.ZERO, true, "IVA",
+                        new BigDecimal("21.00"), DocumentLineType.PRODUCT,
+                        UUID.randomUUID(), null, null)));
+
+        assertThatThrownBy(request::toCommand)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("backend");
     }
 
     private static CommercialDocument salesDocument() {

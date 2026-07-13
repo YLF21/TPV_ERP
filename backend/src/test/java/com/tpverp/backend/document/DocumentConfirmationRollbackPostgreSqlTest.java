@@ -256,9 +256,14 @@ class DocumentConfirmationRollbackPostgreSqlTest {
         @Bean
         @Primary
         ConfirmedPurchaseRecorder failingRecorder(ProductSupplierRepository links) {
-            return (supplierId, date, productIds) -> {
-                productIds.forEach(productId -> links.upsertPurchase(
-                        UUID.randomUUID(), productId, supplierId, date));
+            return (supplierId, entryAt, purchaseLines) -> {
+                purchaseLines.forEach(line -> {
+                    links.clearLastSupplier(line.productId(), supplierId);
+                    links.upsertPurchase(
+                            UUID.randomUUID(), line.productId(), supplierId,
+                            line.supplierReference(), line.grossPurchasePrice(),
+                            line.purchaseDiscount(), entryAt);
+                });
                 throw new IllegalStateException("fallo posterior al UPSERT");
             };
         }

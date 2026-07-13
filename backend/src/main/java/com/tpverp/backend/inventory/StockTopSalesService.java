@@ -9,6 +9,7 @@ import com.tpverp.backend.catalog.Subfamily;
 import com.tpverp.backend.catalog.SubfamilyRepository;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
+import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.CommercialDocumentType;
 import com.tpverp.backend.document.DocumentLine;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,33 +71,50 @@ public class StockTopSalesService {
 
     @Transactional(readOnly = true)
     public List<StockTopSalesRow> topSales(StockTopSalesPeriod period, LocalDate date) {
+        return topSales(period, date, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockTopSalesRow> topSales(
+            StockTopSalesPeriod period, LocalDate date, UUID warehouseId) {
         var selectedDate = Objects.requireNonNull(date, "date");
         var selectedPeriod = period == null ? StockTopSalesPeriod.WEEK : period;
-        return topSales(selectedPeriod.startDate(selectedDate), selectedDate);
+        return topSales(selectedPeriod.startDate(selectedDate), selectedDate, warehouseId);
     }
 
     @Transactional(readOnly = true)
     public List<StockTopSalesRow> topSales(LocalDate dateFrom, LocalDate dateTo) {
+        return topSales(dateFrom, dateTo, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockTopSalesRow> topSales(
+            LocalDate dateFrom, LocalDate dateTo, UUID warehouseId) {
         var selectedFrom = Objects.requireNonNull(dateFrom, "dateFrom");
         var selectedTo = Objects.requireNonNull(dateTo, "dateTo");
         var startDate = selectedFrom.isAfter(selectedTo) ? selectedTo : selectedFrom;
         var endDate = selectedFrom.isAfter(selectedTo) ? selectedFrom : selectedTo;
         var store = organization.currentStore();
-        var totals = new HashMap<UUID, Totals>();
+        var totals = new HashMap<ProductWarehouse, Totals>();
         documents.findTopSalesDocuments(
                         store.getId(),
                         startDate,
                         endDate,
-                        SALE_TYPES)
-                .forEach(document -> document.getLineas().forEach(line -> accumulate(totals, line)));
+                        SALE_TYPES,
+                        warehouseId)
+                .forEach(document -> accumulate(totals, document));
 
-        var positiveProductIds = totals.entrySet().stream()
+        var positiveKeys = totals.entrySet().stream()
                 .filter(entry -> entry.getValue().soldQuantity.signum() > 0)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (positiveProductIds.isEmpty()) {
+        if (positiveKeys.isEmpty()) {
             return List.of();
         }
+
+        var positiveProductIds = positiveKeys.stream()
+                .map(ProductWarehouse::productId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
 
         var productsById = products.findAllByStoreIdAndIdIn(store.getId(), positiveProductIds).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
@@ -111,32 +130,83 @@ public class StockTopSalesService {
                 .collect(Collectors.toMap(Family::getId, Family::getName));
         var subfamiliesById = subfamilies.findAllById(subfamilyIds).stream()
                 .collect(Collectors.toMap(Subfamily::getId, Subfamily::getName));
+        var warehouseIds = positiveKeys.stream()
+                .map(ProductWarehouse::warehouseId)
+                .collect(Collectors.toSet());
+        var warehousesById = warehouses.findAllById(warehouseIds).stream()
+                .collect(Collectors.toMap(Warehouse::getId, Warehouse::getName));
 
-        return positiveProductIds.stream()
-                .map(productId -> row(store.getId(), productId, productsById.get(productId), totals.get(productId),
-                        familiesById, subfamiliesById))
+        return positiveKeys.stream()
+                .map(key -> row(store.getId(), key, productsById.get(key.productId()), totals.get(key),
+                        familiesById, subfamiliesById, warehousesById))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(StockTopSalesRow::soldQuantity).reversed()
-                        .thenComparing(StockTopSalesRow::name))
+                        .thenComparing(StockTopSalesRow::name)
+                        .thenComparing(StockTopSalesRow::warehouseName))
                 .toList();
     }
 
-    private void accumulate(Map<UUID, Totals> totals, DocumentLine line) {
-        totals.computeIfAbsent(line.getProductoId(), ignored -> new Totals())
-                .add(line.getCantidad(), line.getTotal());
+    private void accumulate(Map<ProductWarehouse, Totals> totals, CommercialDocument document) {
+        var lines = document.getLineas();
+        var netAmounts = proratedNetAmounts(document, lines);
+        for (int index = 0; index < lines.size(); index++) {
+            DocumentLine line = lines.get(index);
+            if (line.getProductoId() == null) {
+                continue;
+            }
+            var key = new ProductWarehouse(line.getProductoId(), document.getAlmacenId());
+            totals.computeIfAbsent(key, ignored -> new Totals())
+                    .add(line.getCantidad(), netAmounts.get(index));
+        }
+    }
+
+    private static List<BigDecimal> proratedNetAmounts(
+            CommercialDocument document, List<DocumentLine> lines) {
+        var factor = BigDecimal.ONE.subtract(document.getDescuentoGlobal().movePointLeft(2));
+        var rawAmounts = lines.stream()
+                .map(line -> line.getTotal().multiply(factor))
+                .toList();
+        var allocated = rawAmounts.stream()
+                .map(Money::euros)
+                .collect(Collectors.toCollection(ArrayList::new));
+        var allocatedTotal = allocated.stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        int remainingCents = document.getTotal()
+                .subtract(allocatedTotal)
+                .movePointRight(2)
+                .intValueExact();
+        if (remainingCents == 0 || lines.isEmpty()) {
+            return allocated;
+        }
+
+        Comparator<Integer> byRoundingRemainder = Comparator.comparing(
+                index -> rawAmounts.get(index).subtract(allocated.get(index)));
+        if (remainingCents > 0) {
+            byRoundingRemainder = byRoundingRemainder.reversed();
+        }
+        var allocationOrder = IntStream.range(0, lines.size()).boxed()
+                .sorted(byRoundingRemainder.thenComparingInt(Integer::intValue))
+                .toList();
+        var cent = new BigDecimal(remainingCents > 0 ? "0.01" : "-0.01");
+        for (int index = 0; index < Math.abs(remainingCents); index++) {
+            int lineIndex = allocationOrder.get(index % allocationOrder.size());
+            allocated.set(lineIndex, allocated.get(lineIndex).add(cent));
+        }
+        return allocated;
     }
 
     private StockTopSalesRow row(
             UUID storeId,
-            UUID productId,
+            ProductWarehouse key,
             Product product,
             Totals totals,
             Map<UUID, String> familiesById,
-            Map<UUID, String> subfamiliesById) {
+            Map<UUID, String> subfamiliesById,
+            Map<UUID, String> warehousesById) {
         if (product == null) {
             return null;
         }
-        var warehouse = warehouse(productId);
+        var productId = key.productId();
         return new StockTopSalesRow(
                 productId,
                 text(product.getCode()),
@@ -154,29 +224,11 @@ public class StockTopSalesService {
                         .toList(),
                 quantity(totals.soldQuantity),
                 Money.euros(totals.netAmount),
-                quantity(stocks.sumQuantityByProductId(productId)),
-                warehouse.id(),
-                warehouse.name());
-    }
-
-    private WarehouseSummary warehouse(UUID productId) {
-        var stockRows = stocks.findByProductId(productId);
-        var warehouseIds = stockRows.stream()
-                .map(StockLevel::getWarehouseId)
-                .distinct()
-                .toList();
-        if (warehouseIds.isEmpty()) {
-            return new WarehouseSummary(null, "-");
-        }
-        if (warehouseIds.size() > 1) {
-            return new WarehouseSummary(null, "Varios");
-        }
-        var warehouseId = warehouseIds.getFirst();
-        var warehouseName = warehouses.findAllById(List.of(warehouseId)).stream()
-                .findFirst()
-                .map(Warehouse::getName)
-                .orElse("-");
-        return new WarehouseSummary(warehouseId, warehouseName);
+                quantity(stocks.findByProductIdAndWarehouseId(productId, key.warehouseId())
+                        .map(StockLevel::getQuantity)
+                        .orElse(BigDecimal.ZERO)),
+                key.warehouseId(),
+                text(warehousesById.get(key.warehouseId())));
     }
 
     private static BigDecimal quantity(BigDecimal value) {
@@ -197,6 +249,6 @@ public class StockTopSalesService {
         }
     }
 
-    private record WarehouseSummary(UUID id, String name) {
+    private record ProductWarehouse(UUID productId, UUID warehouseId) {
     }
 }

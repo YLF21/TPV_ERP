@@ -230,6 +230,93 @@ class PromotionEngineTest {
     }
 
     @Test
+    void purchaseThresholdDiscountAppliesConfiguredPercentage() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(), "10% desde 10", PromotionType.PURCHASE_THRESHOLD_DISCOUNT,
+                LocalDate.of(2026, 7, 9));
+        promotion.configurePurchaseThresholdDiscount(
+                new BigDecimal("10.00"), null, new BigDecimal("10.00"), null);
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(line(1, UUID.randomUUID(), null, null, "2", "5.00", "IVA")),
+                List.of(promotion)));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void purchaseThresholdUsesFinalTaxIncludedPayableAmount() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(), "10% desde 11", PromotionType.PURCHASE_THRESHOLD_DISCOUNT,
+                LocalDate.of(2026, 7, 9));
+        promotion.configurePurchaseThresholdDiscount(
+                new BigDecimal("11.00"), null, new BigDecimal("10.00"), null);
+        var line = new PromotionEvaluationLine(
+                1, UUID.randomUUID(), null, null, BigDecimal.ONE,
+                new BigDecimal("10.00"), false, "IVA", new BigDecimal("21.00"),
+                false, true);
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(line), List.of(promotion)));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void fixedPackPriceDiscountsDifferenceAgainstPackTotal() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(), "Lote por 5", PromotionType.FIXED_PACK_PRICE,
+                LocalDate.of(2026, 7, 9));
+        promotion.configureFixedPackPrice(new BigDecimal("3"), new BigDecimal("5.00"));
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(
+                        line(1, UUID.randomUUID(), "2.00"),
+                        line(2, UUID.randomUUID(), "2.00"),
+                        line(3, UUID.randomUUID(), "3.00")),
+                List.of(promotion)));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void quantityDiscountSupportsDecimalQuantity() {
+        var promotion = Promotion.draft(
+                UUID.randomUUID(), "Volumen", PromotionType.QUANTITY_DISCOUNT,
+                LocalDate.of(2026, 7, 9));
+        promotion.configureQuantityDiscount(
+                new BigDecimal("2.500"), null, new BigDecimal("20.00"), null);
+
+        var preview = engine.preview(new PromotionEvaluationRequest(
+                List.of(line(1, UUID.randomUUID(), null, null, "2.5", "4.00", "IVA")),
+                List.of(promotion)));
+
+        assertThat(preview.discountTotal()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void buyXPayYSameProductDoesNotMixAndMixedTargetsDiscountsCheapest() {
+        var familyId = UUID.randomUUID();
+        var same = buyXPayY("2x1 mismo", 2, 1);
+        same.configureBuyXPayY(new BigDecimal("2"), BigDecimal.ONE, BuyXPayYMode.SAME_PRODUCT);
+        var mixed = buyXPayY("2x1 mezcla", 2, 1);
+        mixed.configureBuyXPayY(new BigDecimal("2"), BigDecimal.ONE, BuyXPayYMode.MIXED_TARGETS);
+        var lines = List.of(
+                line(1, UUID.randomUUID(), familyId, null, "1", "5.00", "IVA"),
+                line(2, UUID.randomUUID(), familyId, null, "1", "1.00", "IVA"));
+
+        var samePreview = engine.preview(new PromotionEvaluationRequest(
+                lines, List.of(same),
+                List.of(new PromotionTarget(same.id(), PromotionTargetType.FAMILY, familyId))));
+        var mixedPreview = engine.preview(new PromotionEvaluationRequest(
+                lines, List.of(mixed),
+                List.of(new PromotionTarget(mixed.id(), PromotionTargetType.FAMILY, familyId))));
+
+        assertThat(samePreview.discountTotal()).isZero();
+        assertThat(mixedPreview.discountTotal()).isEqualByComparingTo("1.00");
+    }
+
+    @Test
     void evaluationRequestRejectsNullElements() {
         var productId = UUID.randomUUID();
         var promotion = buyXPayY("3x2 Agua", 3, 2);
@@ -255,15 +342,14 @@ class PromotionEngineTest {
     }
 
     @Test
-    void evaluationLineRejectsUnsupportedAmountsForThisEngineVersion() {
+    void evaluationLineRejectsInvalidAmountsAndAcceptsDecimalQuantity() {
         var productId = UUID.randomUUID();
 
         assertThatThrownBy(() -> line(1, productId, null, null, "0", "1.00", "IVA"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("quantity");
-        assertThatThrownBy(() -> line(1, productId, null, null, "1.5", "1.00", "IVA"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("quantity");
+        assertThat(line(1, productId, null, null, "1.5", "1.00", "IVA").quantity())
+                .isEqualByComparingTo("1.5");
         assertThatThrownBy(() -> line(1, productId, null, null, "1", "-1.00", "IVA"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unitPrice");

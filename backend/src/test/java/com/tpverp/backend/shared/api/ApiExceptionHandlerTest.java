@@ -84,6 +84,19 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    void unknownLegacyMessagesNeverLeakSpanishToOtherLanguages() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.invalidArgument(
+                new IllegalArgumentException("forms[0] requiere una condicion de proveedor"),
+                request);
+
+        assertEquals("en", problem.getProperties().get("locale"));
+        assertEquals("The request contains invalid data", problem.getDetail());
+    }
+
+    @Test
     void translatesRequiredFieldValidationMessagesFromReusableParts() throws NoSuchMethodException {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");

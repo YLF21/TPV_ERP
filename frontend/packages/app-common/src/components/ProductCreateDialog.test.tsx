@@ -3,12 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCreateProductRequest,
   canLeaveProductField,
+  canNavigateProductField,
   createDefaultProductForm,
+  createProductFormFromEditProduct,
   nextProductFieldIndex,
   productCreateKeyAction,
   productCreateErrorMessage,
   productDiscountTypeOptions,
   productCreateValidationErrors,
+  duplicatedProductIdentifierFields,
   productImageUploadPath,
   saveProductWithOptionalImage,
   ProductCreateDialog
@@ -32,6 +35,7 @@ describe("ProductCreateDialog", () => {
       taxesIncluded: true,
       code: " A001 ",
       barcode: "8430000000011",
+      barcode2: "8430000000012",
       salePrice: "3.95",
       memberPrice: "3.70",
       wholesalePrice: "3.40",
@@ -56,11 +60,13 @@ describe("ProductCreateDialog", () => {
       taxesIncluded: true,
       code: "A001",
       barcode: "8430000000011",
+      barcode2: "8430000000012",
       salePrice: "3.95",
       memberPrice: "3.70",
       wholesalePrice: "3.40",
       offerPrice: "3.20",
       offerDiscountPercent: "10",
+      purchaseDiscountPercent: null,
       offerActive: false,
       offerFrom: "2026-07-01",
       offerUntil: "2026-07-31"
@@ -87,7 +93,8 @@ describe("ProductCreateDialog", () => {
       "familyId",
       "taxId",
       "name",
-      "code"
+      "code",
+      "barcode"
     ]);
 
     expect(productCreateValidationErrors({
@@ -114,7 +121,16 @@ describe("ProductCreateDialog", () => {
 
     expect(canLeaveProductField(form, "name")).toBe(false);
     expect(canLeaveProductField({ ...form, name: "Cafe" }, "name")).toBe(true);
-    expect(canLeaveProductField({ ...form, name: "Cafe", code: "" }, "code")).toBe(false);
+    expect(canLeaveProductField({ ...form, name: "Cafe", code: "", barcode: "" }, "code")).toBe(false);
+    expect(canLeaveProductField({ ...form, name: "Cafe", code: "", barcode: "843" }, "code")).toBe(true);
+  });
+
+  it("allows moving from the first identifier to the second before requiring one of them", () => {
+    const form = createDefaultProductForm();
+
+    expect(canNavigateProductField(form, "barcode", false)).toBe(true);
+    expect(canNavigateProductField(form, "code", false)).toBe(false);
+    expect(canNavigateProductField(form, "code", true)).toBe(true);
   });
 
   it("does not allow advancing from offer fields when an active offer is incomplete", () => {
@@ -150,6 +166,7 @@ describe("ProductCreateDialog", () => {
       taxesIncluded: false,
       code: "A001",
       barcode: "843",
+      barcode2: "844",
       salePrice: "2.40",
       memberPrice: "2.10",
       wholesalePrice: "1.90",
@@ -172,11 +189,13 @@ describe("ProductCreateDialog", () => {
       "taxesIncluded",
       "code",
       "barcode",
+      "barcode2",
       "salePrice",
       "memberPrice",
       "wholesalePrice",
       "offerPrice",
       "offerDiscountPercent",
+      "purchaseDiscountPercent",
       "offerActive",
       "offerFrom",
       "offerUntil"
@@ -184,6 +203,27 @@ describe("ProductCreateDialog", () => {
     expect(request.offerUntil).toBeNull();
     expect(request.priceUseMode).toBe("OFFER_PRICE");
     expect(request.offerDiscountPercent).toBeNull();
+    expect(request.purchaseDiscountPercent).toBeNull();
+  });
+
+  it("detects duplicated product identifiers before saving", () => {
+    const form = {
+      ...createDefaultProductForm(),
+      code: " A001 ",
+      barcode: "843",
+      barcode2: "844"
+    };
+
+    expect(duplicatedProductIdentifierFields(form, [{ id: "product-2", code: "A001", barcode: null, barcode2: null }])).toEqual(["code"]);
+    expect(duplicatedProductIdentifierFields({ ...form, code: "843" }, [])).toEqual(["code", "barcode"]);
+    expect(productCreateValidationErrors({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Cafe",
+      barcode: "843",
+      code: "A001"
+    }, [{ id: "product-2", code: null, barcode: null, barcode2: "843" }])).toContain("identifierDuplicate");
   });
 
   it("requires offer price and start date when the offer is active", () => {
@@ -248,6 +288,38 @@ describe("ProductCreateDialog", () => {
     });
   });
 
+  it("restores the persisted no-discount lock when editing a product", () => {
+    const initialData = {
+      discountType: "NONE" as const,
+      purchaseDiscountPercent: "12.50"
+    };
+    const form = createProductFormFromEditProduct({
+      id: "product-1",
+      form: {
+        priceUseMode: "OFFER_PRICE",
+        discountType: "NORMAL",
+        offerActive: true,
+        offerPrice: "8.50",
+        offerFrom: "2026-07-01"
+      },
+      initialData
+    });
+
+    expect(form).toMatchObject({
+      priceUseMode: "NORMAL",
+      discountType: "NONE",
+      offerActive: false
+    });
+    expect(buildCreateProductRequest(form, initialData)).toMatchObject({
+      priceUseMode: "NORMAL",
+      discountType: "NONE",
+      purchaseDiscountPercent: "12.50",
+      offerActive: false,
+      offerPrice: null,
+      offerDiscountPercent: null
+    });
+  });
+
   it("renders the reorganized product form with image panel", () => {
     const html = renderToStaticMarkup(
       <ProductCreateDialog
@@ -261,7 +333,8 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain('class="product-create-body"');
     expect(html).toContain('class="product-create-form"');
     expect(html).toContain('class="product-create-media"');
-    expect(html).toContain("Codigo");
+    expect(html).toContain("Código");
+    expect(html).toContain("Código de barras 2");
     expect(html).toContain("Tipo");
     expect(html).toContain("Familia");
     expect(html).toContain("Impuesto");
@@ -270,13 +343,14 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Usar precio");
     expect(html).toContain("Precio venta");
     expect(html).toContain("No aplicar descuento");
-    expect(html).toContain("No aplicar descuento activado, no se aplicara ningun tipo de descuento, el vendedor tampoco podra aplicarlo manualmente");
+    expect(html).toContain("No aplicar descuento activado: no se aplicará ningún tipo de descuento y el vendedor tampoco podrá aplicarlo manualmente");
     expect(html).toContain("Precio socio");
     expect(html).toContain("Precio oferta");
     expect(html).toContain("Descuento oferta");
     expect(html).toContain("required");
     expect(html).toContain("Examinar archivo");
     expect(html).toContain("Eliminar imagen");
+    expect(html.indexOf("data-product-field-name=\"barcode\"")).toBeLessThan(html.indexOf("data-product-field-name=\"code\""));
     expect(html).toContain("Registrar producto y continuar F8");
     expect(html).toContain("Registrar producto y cerrar F9");
     expect(html).toContain("Impuestos incluidos en el precio");
@@ -356,15 +430,24 @@ describe("ProductCreateDialog", () => {
   });
 
   it("updates an existing product when a product id is provided", async () => {
-    const form = {
-      ...createDefaultProductForm(),
-      familyId: "family-1",
-      taxId: "tax-1",
-      name: "Cafe",
-      code: "A001",
-      purchasePrice: "1.20",
-      salePrice: "2.40"
+    const initialData = {
+      discountType: "NONE" as const,
+      purchaseDiscountPercent: "7.25"
     };
+    const form = createProductFormFromEditProduct({
+      id: "product-1",
+      form: {
+        familyId: "family-1",
+        taxId: "tax-1",
+        name: "Cafe",
+        code: "A001",
+        purchasePrice: "1.20",
+        salePrice: "2.40",
+        priceUseMode: "NORMAL",
+        discountType: "NORMAL"
+      },
+      initialData
+    });
     const updatedProduct = { id: "product-1", code: "A001", name: "Cafe" };
     const createProduct = vi.fn();
     const updateProduct = vi.fn().mockResolvedValue(updatedProduct);
@@ -374,6 +457,7 @@ describe("ProductCreateDialog", () => {
       token: "token",
       imageFile: null,
       productId: "product-1",
+      initialData,
       createProduct,
       updateProduct
     })).resolves.toEqual({
@@ -381,6 +465,10 @@ describe("ProductCreateDialog", () => {
       imageUploadFailed: false
     });
     expect(createProduct).not.toHaveBeenCalled();
-    expect(updateProduct).toHaveBeenCalledWith("product-1", buildCreateProductRequest(form), "token");
+    expect(updateProduct).toHaveBeenCalledWith("product-1", buildCreateProductRequest(form, initialData), "token");
+    expect(updateProduct).toHaveBeenCalledWith("product-1", expect.objectContaining({
+      discountType: "NONE",
+      purchaseDiscountPercent: "7.25"
+    }), "token");
   });
 });

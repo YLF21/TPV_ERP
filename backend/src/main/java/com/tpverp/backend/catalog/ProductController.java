@@ -4,6 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.PR
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import jakarta.validation.Valid;
@@ -38,19 +39,19 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + STOCK_READ + "','" + VENTA + "')")
     public List<Product> list() {
         return service.products();
     }
 
     @GetMapping("/{productId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + STOCK_READ + "','" + VENTA + "')")
     public Product get(@PathVariable UUID productId) {
         return service.product(productId);
     }
 
     @GetMapping("/{productId}/price-history")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + STOCK_READ + "','" + VENTA + "')")
     public List<ProductPriceHistory> priceHistory(@PathVariable UUID productId) {
         return service.priceHistory(productId);
     }
@@ -87,7 +88,7 @@ public class ProductController {
     // Receives the original image and delegates conversion/storage to the catalog service.
 
     @GetMapping(path = "/{productId}/image", produces = ProductImageService.CONTENT_TYPE)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','" + GESTION_PRODUCTO + "','" + STOCK_READ + "','" + VENTA + "')")
     public ResponseEntity<byte[]> image(
             @PathVariable UUID productId,
             @RequestParam(defaultValue = "false") boolean thumbnail) {

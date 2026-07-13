@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
+import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import {
@@ -296,27 +297,30 @@ export function HardwareSettingsScreen({
               <h2>{t("hardware.printer")}</h2>
           <label>
             <span>{t("hardware.printerMode")}</span>
-            <select
+            <ErpSelect
+              aria-label={t("hardware.printerMode")}
               value={config.ticketPrinterDriver}
-              onChange={(event) => updateConfig({ ticketPrinterDriver: event.target.value as HardwareConfig["ticketPrinterDriver"] })}
-            >
-              <option value="WINDOWS_DRIVER">{t("hardware.mode.windows")}</option>
-              <option value="ESCPOS_RAW">{t("hardware.mode.escpos")}</option>
-            </select>
+              onChange={(value) => updateConfig({ ticketPrinterDriver: value as HardwareConfig["ticketPrinterDriver"] })}
+              options={[
+                { value: "WINDOWS_DRIVER", label: t("hardware.mode.windows") },
+                { value: "ESCPOS_RAW", label: t("hardware.mode.escpos") }
+              ] satisfies readonly ErpSelectOption[]}
+            />
           </label>
           <label>
             <span>{t("hardware.windowsPrinter")}</span>
-            <select
+            <ErpSelect
+              aria-label={t("hardware.windowsPrinter")}
               value={config.ticketPrinterName}
-              onChange={(event) => updateConfig({ ticketPrinterName: event.target.value })}
-            >
-              <option value="">{t("hardware.selectPrinter")}</option>
-              {printers.map((printer) => (
-                <option key={printer.name} value={printer.name}>
-                  {printer.displayName}{printer.isDefault ? ` · ${t("hardware.defaultPrinter")}` : ""}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => updateConfig({ ticketPrinterName: value })}
+              options={[
+                { value: "", label: t("hardware.selectPrinter") },
+                ...printers.map((printer) => ({
+                  value: printer.name,
+                  label: `${printer.displayName}${printer.isDefault ? ` · ${t("hardware.defaultPrinter")}` : ""}`
+                }))
+              ] satisfies readonly ErpSelectOption[]}
+            />
           </label>
           <div className="hardware-actions">
             <button type="button" onClick={refreshPrinters}>{t("hardware.detectPrinters")}</button>
@@ -330,15 +334,17 @@ export function HardwareSettingsScreen({
               <h2>{t("hardware.cashDrawer")}</h2>
           <label>
             <span>{t("hardware.connectionType")}</span>
-            <select
+            <ErpSelect
+              aria-label={t("hardware.connectionType")}
               value={config.cashDrawerConnection}
-              onChange={(event) => updateConfig({ cashDrawerConnection: event.target.value as HardwareConfig["cashDrawerConnection"] })}
-            >
-              <option value="NONE">{t("hardware.drawer.none")}</option>
-              <option value="PRINTER">{t("hardware.drawer.printer")}</option>
-              <option value="SERIAL">COM</option>
-              <option value="NETWORK">LAN</option>
-            </select>
+              onChange={(value) => updateConfig({ cashDrawerConnection: value as HardwareConfig["cashDrawerConnection"] })}
+              options={[
+                { value: "NONE", label: t("hardware.drawer.none") },
+                { value: "PRINTER", label: t("hardware.drawer.printer") },
+                { value: "SERIAL", label: "COM" },
+                { value: "NETWORK", label: "LAN" }
+              ] satisfies readonly ErpSelectOption[]}
+            />
           </label>
           {config.cashDrawerConnection === "PRINTER" && (
           <div className="hardware-device-summary">
@@ -397,12 +403,14 @@ export function HardwareSettingsScreen({
           </div>
           <label>
             <span>{t("hardware.drawerProfile")}</span>
-            <select
+            <ErpSelect
+              aria-label={t("hardware.drawerProfile")}
               value={config.cashDrawerCommandProfile}
-              onChange={(event) => updateConfig({ cashDrawerCommandProfile: event.target.value as HardwareConfig["cashDrawerCommandProfile"] })}
-            >
-              <option value="ESCPOS_STANDARD">ESC/POS standard</option>
-            </select>
+              onChange={(value) => updateConfig({ cashDrawerCommandProfile: value as HardwareConfig["cashDrawerCommandProfile"] })}
+              options={[
+                { value: "ESCPOS_STANDARD", label: "ESC/POS standard" }
+              ] satisfies readonly ErpSelectOption[]}
+            />
           </label>
           <div className="hardware-actions">
             <button type="button" onClick={openCashDrawer}>{t("hardware.openDrawer")}</button>
@@ -415,9 +423,14 @@ export function HardwareSettingsScreen({
               <h2>{t("hardware.scanner")}</h2>
           <label>
             <span>{t("hardware.scannerMode")}</span>
-            <select value={config.scannerMode} onChange={() => updateConfig({ scannerMode: "KEYBOARD" })}>
-              <option value="KEYBOARD">{t("hardware.mode.keyboard")}</option>
-            </select>
+            <ErpSelect
+              aria-label={t("hardware.scannerMode")}
+              value={config.scannerMode}
+              onChange={() => updateConfig({ scannerMode: "KEYBOARD" })}
+              options={[
+                { value: "KEYBOARD", label: t("hardware.mode.keyboard") }
+              ] satisfies readonly ErpSelectOption[]}
+            />
           </label>
           <label>
             <span>{t("hardware.scannerTest")}</span>
@@ -445,14 +458,16 @@ export function HardwareSettingsScreen({
           <div className="hardware-escpos-grid">
             <label>
               <span>{t("hardware.connectionType")}</span>
-              <select
+              <ErpSelect
+                aria-label={t("hardware.connectionType")}
                 value={config.ticketPrinterConnection}
-                onChange={(event) => updateConfig({ ticketPrinterConnection: event.target.value as HardwareConfig["ticketPrinterConnection"] })}
-              >
-                <option value="WINDOWS_PRINTER">USB / Windows RAW</option>
-                <option value="SERIAL">COM</option>
-                <option value="NETWORK">LAN</option>
-              </select>
+                onChange={(value) => updateConfig({ ticketPrinterConnection: value as HardwareConfig["ticketPrinterConnection"] })}
+                options={[
+                  { value: "WINDOWS_PRINTER", label: "USB / Windows RAW" },
+                  { value: "SERIAL", label: "COM" },
+                  { value: "NETWORK", label: "LAN" }
+                ] satisfies readonly ErpSelectOption[]}
+              />
             </label>
             <label>
               <span>{t("hardware.devicePath")}</span>
@@ -480,14 +495,18 @@ export function HardwareSettingsScreen({
           <div className="hardware-a4-grid">
             <label>
               <span>{t("hardware.a4PrinterName")}</span>
-              <select value={config.a4PrinterName} onChange={(event) => updateConfig({ a4PrinterName: event.target.value })}>
-                <option value="">{t("hardware.selectPrinter")}</option>
-                {printers.map((printer) => (
-                  <option key={printer.name} value={printer.name}>
-                    {printer.displayName}{printer.isDefault ? ` · ${t("hardware.defaultPrinter")}` : ""}
-                  </option>
-                ))}
-              </select>
+              <ErpSelect
+                aria-label={t("hardware.a4PrinterName")}
+                value={config.a4PrinterName}
+                onChange={(value) => updateConfig({ a4PrinterName: value })}
+                options={[
+                  { value: "", label: t("hardware.selectPrinter") },
+                  ...printers.map((printer) => ({
+                    value: printer.name,
+                    label: `${printer.displayName}${printer.isDefault ? ` · ${t("hardware.defaultPrinter")}` : ""}`
+                  }))
+                ] satisfies readonly ErpSelectOption[]}
+              />
             </label>
             <div className="hardware-actions">
               <button type="button" onClick={printA4TestDocument}>{t("hardware.printA4Test")}</button>
@@ -507,43 +526,49 @@ export function HardwareSettingsScreen({
             {config.documentPrintRoutes.map((route) => (
               <div className="hardware-route-row" key={route.documentType}>
                 <strong>{t(`hardware.document.${route.documentType}`)}</strong>
-                <select
+                <ErpSelect
+                  aria-label={t("hardware.route.target")}
                   value={route.printerTarget}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     updateDocumentRoute(route.documentType, {
-                      printerTarget: event.target.value as DocumentPrintRoute["printerTarget"],
-                      paperSize: event.target.value === "A4_PRINTER" ? "A4" : "TICKET_80"
+                      printerTarget: value as DocumentPrintRoute["printerTarget"],
+                      paperSize: value === "A4_PRINTER" ? "A4" : "TICKET_80"
                     })
                   }
-                >
-                  <option value="TICKET_PRINTER">{t("hardware.route.ticketPrinter")}</option>
-                  <option value="A4_PRINTER">{t("hardware.route.a4Printer")}</option>
-                </select>
-                <select
+                  options={[
+                    { value: "TICKET_PRINTER", label: t("hardware.route.ticketPrinter") },
+                    { value: "A4_PRINTER", label: t("hardware.route.a4Printer") }
+                  ] satisfies readonly ErpSelectOption[]}
+                />
+                <ErpSelect
+                  aria-label={t("hardware.route.printer")}
                   value={route.printerName}
-                  onChange={(event) => updateDocumentRoute(route.documentType, { printerName: event.target.value })}
-                >
-                  <option value="">{t("hardware.route.useDefault")}</option>
-                  {printers.map((printer) => (
-                    <option key={printer.name} value={printer.name}>{printer.displayName}</option>
-                  ))}
-                </select>
-                <select
+                  onChange={(value) => updateDocumentRoute(route.documentType, { printerName: value })}
+                  options={[
+                    { value: "", label: t("hardware.route.useDefault") },
+                    ...printers.map((printer) => ({ value: printer.name, label: printer.displayName }))
+                  ] satisfies readonly ErpSelectOption[]}
+                />
+                <ErpSelect
+                  aria-label={t("hardware.route.paper")}
                   value={route.paperSize}
-                  onChange={(event) => updateDocumentRoute(route.documentType, { paperSize: event.target.value as DocumentPrintRoute["paperSize"] })}
-                >
-                  <option value="TICKET_80">Ticket 80</option>
-                  <option value="A4">A4</option>
-                </select>
-                <select
+                  onChange={(value) => updateDocumentRoute(route.documentType, { paperSize: value as DocumentPrintRoute["paperSize"] })}
+                  options={[
+                    { value: "TICKET_80", label: "Ticket 80" },
+                    { value: "A4", label: "A4" }
+                  ] satisfies readonly ErpSelectOption[]}
+                />
+                <ErpSelect
+                  aria-label={t("hardware.route.orientation")}
                   value={route.orientation}
-                  onChange={(event) =>
-                    updateDocumentRoute(route.documentType, { orientation: event.target.value as DocumentPrintRoute["orientation"] })
+                  onChange={(value) =>
+                    updateDocumentRoute(route.documentType, { orientation: value as DocumentPrintRoute["orientation"] })
                   }
-                >
-                  <option value="PORTRAIT">{t("hardware.route.portrait")}</option>
-                  <option value="LANDSCAPE">{t("hardware.route.landscape")}</option>
-                </select>
+                  options={[
+                    { value: "PORTRAIT", label: t("hardware.route.portrait") },
+                    { value: "LANDSCAPE", label: t("hardware.route.landscape") }
+                  ] satisfies readonly ErpSelectOption[]}
+                />
                 <input
                   type="number"
                   min={1}
@@ -587,17 +612,18 @@ export function HardwareSettingsScreen({
             </label>
             <label>
               <span>{t("hardware.customerDisplayScreen")}</span>
-              <select
+              <ErpSelect
+                aria-label={t("hardware.customerDisplayScreen")}
                 value={config.customerDisplayScreenId}
-                onChange={(event) => updateConfig({ customerDisplayScreenId: event.target.value })}
-              >
-                <option value="">{t("hardware.customerDisplayAutoScreen")}</option>
-                {customerDisplays.map((display) => (
-                  <option key={display.id} value={display.id}>
-                    {display.label}{display.primary ? ` · ${t("hardware.primaryScreen")}` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => updateConfig({ customerDisplayScreenId: value })}
+                options={[
+                  { value: "", label: t("hardware.customerDisplayAutoScreen") },
+                  ...customerDisplays.map((display) => ({
+                    value: display.id,
+                    label: `${display.label}${display.primary ? ` · ${t("hardware.primaryScreen")}` : ""}`
+                  }))
+                ] satisfies readonly ErpSelectOption[]}
+              />
             </label>
             <label>
               <span>{t("hardware.customerDisplayIdleLine1")}</span>
