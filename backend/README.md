@@ -56,10 +56,42 @@ OpenAPI y Swagger UI solo se habilitan en el perfil `dev`.
 
 ## Pruebas
 
+Las pruebas de integracion PostgreSQL aceptan cualquiera de estas familias de
+variables. No es necesario definir ambas a la vez:
+
 ```powershell
+$env:TPV_TEST_DB_URL = "jdbc:postgresql://localhost:5432/tpv_erp_test"
+$env:TPV_TEST_DB_USERNAME = "tpv_erp_test"
 $env:TPV_TEST_DB_PASSWORD = "<contrasena-local-de-pruebas>"
+$env:TPV_ERP_TEST_DB_URL = $null
+$env:TPV_ERP_TEST_DB_USER = $null
+$env:TPV_ERP_TEST_DB_PASSWORD = $null
+.\mvnw.cmd test
+```
+
+Compatibilidad con la familia historica:
+
+```powershell
 $env:TPV_ERP_TEST_DB_URL = "jdbc:postgresql://localhost:5432/tpv_erp_test"
 $env:TPV_ERP_TEST_DB_USER = "tpv_erp_test"
 $env:TPV_ERP_TEST_DB_PASSWORD = "<contrasena-local-de-pruebas>"
 .\mvnw.cmd test
 ```
+
+`PaymentPlatformMigrationPostgreSqlTest` valida tanto una instalacion vacia
+como la actualizacion desde V45 hasta la version actual (V60). Cada prueba usa
+un esquema temporal y lo elimina al finalizar.
+
+## Datafonos y simuladores locales
+
+La configuracion se gestiona desde APP GESTION y se consulta dinamicamente por
+terminal. En modo `SIMULATED` estan disponibles Redsys TPV-PC, PAYTEF,
+PAYCOMET y Global Payments. El parametro no sensible `simulatorOutcome`
+permite probar `APPROVED`, `DECLINED`, `TIMEOUT` y `ERROR`; para resolver un
+timeout mediante consulta se puede usar `simulatorQueryOutcome=APPROVED`.
+
+Los simuladores admiten cobro, consulta, anulacion, devolucion, recibo y
+conciliacion sin contactar ningun servicio externo. El modo `LIVE` permanece
+bloqueado con `SDK_NOT_INSTALLED` hasta instalar y certificar el SDK oficial
+del proveedor. No se deben introducir credenciales reales, PAN, PIN o CVV en
+`provider_parameters` ni en archivos versionados.

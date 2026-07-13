@@ -446,12 +446,26 @@ class FiscalChainPostgreSqlTest {
     }
 
     private static void execute(String sql) {
-        try (var connection = DriverManager.getConnection(URL, USER, PASSWORD);
-                var statement = connection.createStatement()) {
-            statement.execute(sql);
-        } catch (SQLException exception) {
-            throw new IllegalStateException("No se pudo preparar PostgreSQL", exception);
+        SQLException lastFailure = null;
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try (var connection = DriverManager.getConnection(URL, USER, PASSWORD);
+                    var statement = connection.createStatement()) {
+                statement.execute(sql);
+                return;
+            } catch (SQLException exception) {
+                lastFailure = exception;
+                if (!"53300".equals(exception.getSQLState()) || attempt == 5) {
+                    break;
+                }
+                try {
+                    Thread.sleep(250L * attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrumpido al esperar una conexión PostgreSQL", interrupted);
+                }
+            }
         }
+        throw new IllegalStateException("No se pudo preparar PostgreSQL", lastFailure);
     }
 
     private static String address() {
