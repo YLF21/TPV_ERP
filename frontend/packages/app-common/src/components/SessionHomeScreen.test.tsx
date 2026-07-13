@@ -103,6 +103,7 @@ describe("SessionHomeScreen", () => {
     );
 
     expect(html).toContain('class="report-user-button"');
+    expect(html).toContain('class="top-date-time"');
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="entry-topbar"');

@@ -131,7 +131,7 @@ export type SaveProductResult = {
   imageUploadFailed: boolean;
 };
 
-type ProductCreateKeyAction = "close" | "saveContinue" | "saveClose";
+type ProductCreateKeyAction = "close" | "save";
 
 const productTypeOptions: ProductTypeCode[] = ["UNIT", "WEIGHT", "SERVICE"];
 export const productDiscountTypeOptions: PriceUseModeCode[] = ["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"];
@@ -140,11 +140,8 @@ export function productCreateKeyAction(key: string): ProductCreateKeyAction | nu
   if (key === "Escape") {
     return "close";
   }
-  if (key === "F8") {
-    return "saveContinue";
-  }
   if (key === "F9") {
-    return "saveClose";
+    return "save";
   }
   return null;
 }
@@ -194,6 +191,18 @@ export function createProductFormFromEditProduct(product?: ProductCreateEditProd
     };
   }
   return form;
+}
+
+export function applyProductRequiredDefaults(
+  form: ProductCreateFormState,
+  families: FamilyView[] = [],
+  taxes: TaxView[] = []
+): ProductCreateFormState {
+  return {
+    ...form,
+    familyId: form.familyId || families.find((family) => family.defaultFamily)?.id || families[0]?.id || "",
+    taxId: form.taxId || taxes.find((tax) => tax.defaultTax)?.id || taxes[0]?.id || ""
+  };
 }
 
 export function buildCreateProductRequest(
@@ -327,9 +336,6 @@ export function productCreateValidationErrors(
   if (offerActive && !offerPrice.trim()) {
     errors.push("offerPrice");
   }
-  if (offerActive && !form.offerFrom) {
-    errors.push("offerFrom");
-  }
   return errors;
 }
 
@@ -367,7 +373,7 @@ export function canLeaveProductField(form: ProductCreateFormState, fieldName: st
     return !offerActive || Boolean(form.offerPrice.trim()) || (priceUseMode === "OFFER_DISCOUNT" && Boolean(priceFromOfferDiscount(form.salePrice, form.offerDiscountPercent)));
   }
   if (fieldName === "offerRange") {
-    return !offerActive || Boolean(form.offerFrom);
+    return true;
   }
   return true;
 }
@@ -406,6 +412,10 @@ export function duplicatedProductIdentifierFields(
   });
   currentValues.forEach((matchingFields) => {
     if (matchingFields.length > 1) {
+      const samePrimaryIdentifier = matchingFields.every((field) => field === "code" || field === "barcode");
+      if (samePrimaryIdentifier) {
+        return;
+      }
       matchingFields.forEach((field) => duplicated.add(field));
     }
   });
@@ -500,6 +510,25 @@ function formatOfferRange(from: string, to: string) {
     return formatShortDate(from || to);
   }
   return `${formatShortDate(from)}-${formatShortDate(to)}`;
+}
+
+function dateRangeDayCount(from: string, to: string) {
+  const start = parseIsoDate(from);
+  const end = parseIsoDate(to || from);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function selectedDaysText(count: number, locale: LocaleCode) {
+  if (locale === "zh") {
+    return `已选择 ${count} 天`;
+  }
+  if (locale === "en") {
+    return `${count} days selected`;
+  }
+  return `${count} días seleccionados`;
 }
 
 async function uploadProductImage(productId: string, file: File, token: string) {
@@ -711,11 +740,7 @@ export function ProductCreateDialog({
         setSubfamilies(nextSubfamilies);
         setTaxes(nextTaxes);
         setProducts(nextProducts);
-        setForm((current) => ({
-          ...current,
-          familyId: current.familyId || nextFamilies.find((family) => family.defaultFamily)?.id || nextFamilies[0]?.id || "",
-          taxId: current.taxId || nextTaxes.find((tax) => tax.defaultTax)?.id || nextTaxes[0]?.id || ""
-        }));
+        setForm((current) => applyProductRequiredDefaults(current, nextFamilies, nextTaxes));
       } catch (error) {
         if (!cancelled) {
           setStatus(productCreateErrorMessage(error, t("product.create.loadError")));
@@ -728,6 +753,13 @@ export function ProductCreateDialog({
       cancelled = true;
     };
   }, [open, token, locale]);
+
+  useEffect(() => {
+    if (!open || familyPickerOpen) {
+      return;
+    }
+    setSelectedProductFamily({ familyId: form.familyId, subfamilyId: form.subfamilyId });
+  }, [open, familyPickerOpen, form.familyId, form.subfamilyId]);
 
   useEffect(() => {
     if (!open) {
@@ -744,7 +776,7 @@ export function ProductCreateDialog({
         closeProductDialog();
         return;
       }
-      void submitProduct(action === "saveClose");
+      void submitProduct(true);
     }
 
     window.addEventListener("keydown", handleProductShortcut);
@@ -817,6 +849,20 @@ export function ProductCreateDialog({
     );
   }
 
+  function focusProductFieldTarget(target: HTMLElement | null | undefined) {
+    if (!target) {
+      return;
+    }
+    target.focus();
+    if (target instanceof HTMLTextAreaElement) {
+      target.select();
+      return;
+    }
+    if (target instanceof HTMLInputElement && !["checkbox", "radio", "file", "button"].includes(target.type)) {
+      target.select();
+    }
+  }
+
   function focusAdjacentProductField(fieldName: string | undefined, backwards: boolean) {
     const fields = productFieldElements();
     const currentIndex = fields.findIndex((field) => field.dataset.productFieldName === fieldName);
@@ -824,11 +870,60 @@ export function ProductCreateDialog({
     if (nextIndex < 0) {
       return;
     }
-    productFieldFocusTarget(fields[nextIndex])?.focus();
+    focusProductFieldTarget(productFieldFocusTarget(fields[nextIndex]));
   }
 
   function focusAdjacentProductFieldAfterRender(fieldName: string, backwards = false) {
     window.requestAnimationFrame(() => focusAdjacentProductField(fieldName, backwards));
+  }
+
+  function focusProductDropdownOption(name: string, selectedValue: string, fromEnd = false) {
+    window.requestAnimationFrame(() => {
+      const options = Array.from(
+        formRef.current?.querySelectorAll<HTMLButtonElement>(`[data-product-dropdown="${name}"] [data-product-option]`) ?? []
+      ).filter((option) => !option.disabled);
+      if (options.length === 0) {
+        return;
+      }
+      const selected = options.find((option) => option.dataset.productOptionValue === selectedValue);
+      const target = selected ?? options[fromEnd ? options.length - 1 : 0];
+      target?.focus();
+    });
+  }
+
+  function focusAdjacentProductDropdownOption(currentOption: HTMLElement, backwards: boolean) {
+    const popover = currentOption.closest<HTMLElement>("[data-product-dropdown]");
+    const options = Array.from(popover?.querySelectorAll<HTMLButtonElement>("[data-product-option]") ?? [])
+      .filter((option) => !option.disabled);
+    const currentIndex = options.findIndex((option) => option === currentOption);
+    const nextIndex = nextProductFieldIndex(currentIndex, options.length, backwards);
+    if (nextIndex >= 0) {
+      options[nextIndex]?.focus();
+    }
+  }
+
+  function offerCalendarDays() {
+    return Array.from(formRef.current?.querySelectorAll<HTMLButtonElement>(".date-range-popover .date-day:not(.empty)") ?? [])
+      .filter((day) => !day.disabled);
+  }
+
+  function focusOfferCalendarDay(fromEnd = false) {
+    window.requestAnimationFrame(() => {
+      const days = offerCalendarDays();
+      const selected = days.find((day) => day.classList.contains("selected"));
+      const target = selected ?? days[fromEnd ? days.length - 1 : 0];
+      target?.focus();
+    });
+  }
+
+  function focusRelativeOfferCalendarDay(currentDay: HTMLElement, offset: number) {
+    const days = offerCalendarDays();
+    const currentIndex = days.findIndex((day) => day === currentDay);
+    if (currentIndex < 0 || days.length === 0) {
+      return;
+    }
+    const nextIndex = Math.min(days.length - 1, Math.max(0, currentIndex + offset));
+    days[nextIndex]?.focus();
   }
 
   function focusProductField(event: KeyboardEvent<HTMLElement>) {
@@ -847,9 +942,9 @@ export function ProductCreateDialog({
     }
     const fieldName = target.closest<HTMLElement>("[data-product-field-name]")?.dataset.productFieldName;
     if (target.matches("button")) {
-      if (intent === "previous") {
+      if (target.hasAttribute("data-product-field")) {
         event.preventDefault();
-        focusAdjacentProductField(fieldName, true);
+        focusAdjacentProductField(fieldName, intent === "previous");
       }
       return;
     }
@@ -898,7 +993,6 @@ export function ProductCreateDialog({
     const range = normalizeDateRange(offerRangeStart, selected);
     setForm((current) => ({ ...current, offerFrom: range.dateFrom, offerUntil: range.dateTo }));
     setOfferRangeStart(null);
-    setOfferPickerOpen(false);
     if (advanceAfterSelection) {
       focusAdjacentProductFieldAfterRender("offerRange");
     }
@@ -943,21 +1037,45 @@ export function ProductCreateDialog({
           data-product-field
           data-product-field-name={fieldName}
           aria-expanded={isOpen}
+          aria-haspopup="listbox"
           onClick={() => {
             setFamilyPickerOpen(false);
             setOpenDropdown((current) => current === name ? "" : name);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+              event.preventDefault();
+              setFamilyPickerOpen(false);
+              setOpenDropdown(name);
+              focusProductDropdownOption(name, value, event.key === "ArrowUp" || event.key === "End");
+              return;
+            }
+            if (event.key === "Escape" && isOpen) {
+              event.preventDefault();
+              setOpenDropdown("");
+              return;
+            }
+            if (event.key === "Enter" && isOpen) {
+              event.preventDefault();
+              setOpenDropdown("");
+              focusAdjacentProductFieldAfterRender(fieldName);
+            }
           }}
         >
           <span>{selectedLabel}</span>
           <span className="filter-control-arrow">v</span>
         </button>
         {isOpen && (
-          <div className="filter-popover product-select-popover">
+          <div className="filter-popover product-select-popover" data-product-dropdown={name} role="listbox">
             {options.map((option) => (
               <button
                 type="button"
                 className={option.value === value ? "selected" : ""}
+                data-product-option
+                data-product-option-value={option.value}
                 key={option.value}
+                role="option"
+                aria-selected={option.value === value}
                 onClick={() => {
                   onChange(option.value);
                   setOpenDropdown("");
@@ -975,6 +1093,26 @@ export function ProductCreateDialog({
                   setOpenDropdown("");
                   if (intent === "next") onChange(option.value);
                   focusAdjacentProductFieldAfterRender(fieldName, intent === "previous");
+                  return;
+                }}
+                onKeyDownCapture={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    focusAdjacentProductDropdownOption(event.currentTarget, event.key === "ArrowUp");
+                    return;
+                  }
+                  if (event.key === "Home" || event.key === "End") {
+                    event.preventDefault();
+                    focusProductDropdownOption(name, "", event.key === "End");
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setOpenDropdown("");
+                    window.requestAnimationFrame(() => {
+                      formRef.current?.querySelector<HTMLElement>(`[data-product-field-name="${fieldName}"]`)?.focus();
+                    });
+                  }
                 }}
               >
                 {option.label}
@@ -1025,17 +1163,20 @@ export function ProductCreateDialog({
   }
 
   async function submitProduct(closeAfterSave: boolean) {
-    const nextErrors = productCreateValidationErrors(form, products, editProduct?.id);
+    const formForSave = applyProductRequiredDefaults(form, families, taxes);
+    const nextErrors = productCreateValidationErrors(formForSave, products, editProduct?.id);
     if (saving || !token || nextErrors.length > 0) {
       setTouchedErrors(nextErrors);
+      setForm(formForSave);
       setStatus(nextErrors.includes("identifierDuplicate") ? t("product.create.duplicateIdentifier") : t("product.create.required"));
       return;
     }
+    setForm(formForSave);
     setSaving(true);
     setStatus("");
     try {
       const result = await saveProductWithOptionalImage({
-        form,
+        form: formForSave,
         token,
         imageFile,
         productId: editProduct?.id,
@@ -1168,13 +1309,48 @@ export function ProductCreateDialog({
                 <span>{requiredLabel("product.field.offerRange", offerActive)}</span>
                 <div className="date-range-control">
                   <input type="text" value={formatOfferRange(form.offerFrom, form.offerUntil)} readOnly placeholder="01/07/2026-31/07/2026" />
-                  <button type="button" data-product-field data-product-field-name="offerRange" aria-expanded={offerPickerOpen} aria-label={t("salesReport.filter.openCalendar")} onClick={() => setOfferPickerOpen((current) => !current)}>
+                  <button
+                    type="button"
+                    data-product-field
+                    data-product-field-name="offerRange"
+                    aria-expanded={offerPickerOpen}
+                    aria-haspopup="dialog"
+                    aria-label={t("salesReport.filter.openCalendar")}
+                    onClick={() => setOfferPickerOpen((current) => !current)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+                        event.preventDefault();
+                        setOfferPickerOpen(true);
+                        focusOfferCalendarDay(event.key === "ArrowUp" || event.key === "End");
+                        return;
+                      }
+                      if (event.key === "Escape" && offerPickerOpen) {
+                        event.preventDefault();
+                        setOfferPickerOpen(false);
+                        return;
+                      }
+                      if (event.key === "Enter" && offerPickerOpen) {
+                        event.preventDefault();
+                        setOfferPickerOpen(false);
+                        focusAdjacentProductFieldAfterRender("offerRange");
+                      }
+                    }}
+                  >
                     <span className="filter-control-arrow">v</span>
                   </button>
                 </div>
                 {offerPickerOpen && (
                   <div className="date-popover date-range-popover">
-                    <p>{offerRangeStart ? t("salesReport.filter.pickDateTo") : t("salesReport.filter.pickDateFrom")}</p>
+                    <div className="date-range-strip">
+                      <div className={`date-range-strip-cell ${offerRangeStart ? "" : "active"}`}>
+                        <span>{t("salesReport.filter.dateFrom")}</span>
+                        <strong>{form.offerFrom ? formatShortDate(form.offerFrom) : "-"}</strong>
+                      </div>
+                      <div className={`date-range-strip-cell ${offerRangeStart ? "active" : ""}`}>
+                        <span>{t("salesReport.filter.dateTo")}</span>
+                        <strong>{form.offerUntil ? formatShortDate(form.offerUntil) : t("product.field.noEnd")}</strong>
+                      </div>
+                    </div>
                     <header className="date-calendar-header">
                       <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>{"<"}</button>
                       <strong>{calendarTitle}</strong>
@@ -1193,6 +1369,28 @@ export function ProductCreateDialog({
                           key={toIsoDate(day)}
                           onClick={() => selectOfferDate(day)}
                           onKeyDown={(event) => {
+                            if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "ArrowUp") {
+                              event.preventDefault();
+                              const offset = event.key === "ArrowRight" ? 1
+                                : event.key === "ArrowLeft" ? -1
+                                  : event.key === "ArrowDown" ? 7
+                                    : -7;
+                              focusRelativeOfferCalendarDay(event.currentTarget, offset);
+                              return;
+                            }
+                            if (event.key === "Home" || event.key === "End") {
+                              event.preventDefault();
+                              focusOfferCalendarDay(event.key === "End");
+                              return;
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setOfferPickerOpen(false);
+                              window.requestAnimationFrame(() => {
+                                formRef.current?.querySelector<HTMLElement>("[data-product-field-name='offerRange']")?.focus();
+                              });
+                              return;
+                            }
                             const intent = enterNavigationIntent(event.key, {
                               shiftKey: event.shiftKey,
                               altKey: event.altKey,
@@ -1214,29 +1412,27 @@ export function ProductCreateDialog({
                         </button>
                       ) : <span className="date-day empty" key={`empty-${index}`} />)}
                     </div>
-                    <button
-                      type="button"
-                      className="date-no-end-button"
-                      onClick={() => clearOfferEndDate()}
-                      onKeyDown={(event) => {
-                        const intent = enterNavigationIntent(event.key, {
-                          shiftKey: event.shiftKey,
-                          altKey: event.altKey,
-                          ctrlKey: event.ctrlKey,
-                          metaKey: event.metaKey,
-                          isComposing: event.nativeEvent.isComposing
-                        });
-                        if (!intent) return;
-                        event.preventDefault();
-                        if (intent === "next") clearOfferEndDate(true);
-                        else {
+                    <footer className="date-range-footer">
+                      <span>{form.offerFrom ? selectedDaysText(dateRangeDayCount(form.offerFrom, form.offerUntil), locale) : t("salesReport.filter.pickDateFrom")}</span>
+                      <div className="date-range-actions">
+                        <button type="button" onClick={() => {
+                          setOfferRangeStart(null);
                           setOfferPickerOpen(false);
-                          focusAdjacentProductFieldAfterRender("offerRange", true);
-                        }
-                      }}
-                    >
-                      {t("product.field.noEnd")}
-                    </button>
+                        }}>
+                          {t("common.cancel")}
+                        </button>
+                        <button type="button" onClick={() => clearOfferEndDate()}>
+                          {t("product.field.noEnd")}
+                        </button>
+                        <button type="button" className="primary" onClick={() => {
+                          setOfferRangeStart(null);
+                          setOfferPickerOpen(false);
+                          focusAdjacentProductFieldAfterRender("offerRange");
+                        }}>
+                          {t("common.apply")}
+                        </button>
+                      </div>
+                    </footer>
                   </div>
                 )}
               </div>
@@ -1304,11 +1500,8 @@ export function ProductCreateDialog({
         {status && <p className="product-create-status">{status}</p>}
         <footer className="filter-actions">
           <button type="button" onClick={closeProductDialog}>{t("common.close")}</button>
-          <button type="button" disabled={saving} onClick={() => void submitProduct(false)}>
-            {saving ? t("product.create.saving") : t("product.create.saveContinue")}
-          </button>
           <button type="button" disabled={saving} onClick={() => void submitProduct(true)}>
-            {saving ? t("product.create.saving") : t("product.create.saveClose")}
+            {saving ? t("product.create.saving") : t("product.create.save")}
           </button>
         </footer>
       </section>

@@ -542,7 +542,7 @@ function LocalImagePreview({ file }: { file: File }) {
 }
 
 function valueText(value: unknown) {
-  return value === null || value === undefined || value === "" ? "-" : String(value);
+  return value === null || value === undefined || value === "" ? "" : String(value);
 }
 
 function decimalNumber(value: unknown) {
@@ -956,6 +956,8 @@ export function buildStockInventoryRows(
   const familiesById = new Map((catalog.families ?? []).map((family) => [family.id, family]));
   const subfamiliesById = new Map((catalog.subfamilies ?? []).map((subfamily) => [subfamily.id, subfamily]));
   const taxesById = new Map((catalog.taxes ?? []).map((tax) => [tax.id, tax]));
+  const defaultFamily = catalog.families?.[0];
+  const defaultTax = catalog.taxes?.[0];
   const activeWarehouses = warehouses.filter((warehouse) => warehouse.active !== false);
   const availableWarehouses = activeWarehouses.length > 0
     ? activeWarehouses
@@ -977,9 +979,9 @@ export function buildStockInventoryRows(
   }, new Map());
 
   function productRow(product: ProductView, warehouseId: string, warehouseName: string, quantity: number): StockInventoryRow {
-    const family = product.familyId ? familiesById.get(product.familyId) : undefined;
+    const family = product.familyId ? familiesById.get(product.familyId) : defaultFamily;
     const subfamily = product.subfamilyId ? subfamiliesById.get(product.subfamilyId) : undefined;
-    const tax = product.taxId ? taxesById.get(product.taxId) : undefined;
+    const tax = product.taxId ? taxesById.get(product.taxId) : defaultTax;
     const promotions = (catalog.promotions ?? []).filter((promotion) => (
       promotion.status === "ACTIVE" && promotionAppliesToProduct(promotion, product)
     ));
@@ -1004,11 +1006,11 @@ export function buildStockInventoryRows(
       productType: valueText(product.productType),
       discountType: valueText(product.priceUseMode ?? product.discountType),
       backendDiscountType: valueText(product.discountType),
-      familyId: valueText(product.familyId),
+      familyId: valueText(product.familyId ?? defaultFamily?.id),
       familyName: valueText(family?.name ?? product.familyId),
       subfamilyId: valueText(product.subfamilyId),
       subfamilyName: valueText(subfamily?.name ?? product.subfamilyId),
-      taxId: valueText(product.taxId),
+      taxId: valueText(product.taxId ?? defaultTax?.id),
       taxName: taxDisplayName(tax) === "-" ? valueText(product.taxId) : taxDisplayName(tax),
       taxesIncluded: product.taxesIncluded === undefined || product.taxesIncluded === null ? "-" : product.taxesIncluded ? "common.yes" : "common.no",
       offerActive: product.offerActive === undefined || product.offerActive === null ? "-" : product.offerActive ? "common.yes" : "common.no",
@@ -1336,6 +1338,25 @@ function formatStockDateRange(dateFrom: string, dateTo: string, locale: LocaleCo
     return from;
   }
   return `${from}-${to}`;
+}
+
+function stockDateRangeDayCount(from: string, to: string) {
+  const start = parseIsoDate(from);
+  const end = parseIsoDate(to || from);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function stockSelectedDaysText(count: number, locale: LocaleCode) {
+  if (locale === "zh") {
+    return `已选择 ${count} 天`;
+  }
+  if (locale === "en") {
+    return `${count} days selected`;
+  }
+  return `${count} días seleccionados`;
 }
 
 function parseStockManualDate(value: string) {
@@ -3628,7 +3649,6 @@ export function StockScreen({
       setTopSalesDateText(formatStockDateRange(range.dateFrom, range.dateTo, locale));
     }
     setTopSalesDateRangeStart(null);
-    setTopSalesDatePickerOpen(false);
   }
 
   function selectTopSalesQuickPeriod(period: StockTopSalesQuickPeriod) {
@@ -4799,11 +4819,16 @@ export function StockScreen({
 
           {editor.kind === "dates" && (
             <div className="bulk-editor-date-panel">
-              <div className="bulk-editor-date-summary">
-                <span>{editor.offerFrom ? formatStockFilterDate(editor.offerFrom, locale) : "-"}</span>
-                <span>{editor.offerUntil ? formatStockFilterDate(editor.offerUntil, locale) : t("product.field.noEnd")}</span>
+              <div className="date-range-strip">
+                <div className={`date-range-strip-cell ${editor.rangeStart ? "" : "active"}`}>
+                  <span>{t("salesReport.filter.dateFrom")}</span>
+                  <strong>{editor.offerFrom ? formatStockFilterDate(editor.offerFrom, locale) : "-"}</strong>
+                </div>
+                <div className={`date-range-strip-cell ${editor.rangeStart ? "active" : ""}`}>
+                  <span>{t("salesReport.filter.dateTo")}</span>
+                  <strong>{editor.offerUntil ? formatStockFilterDate(editor.offerUntil, locale) : t("product.field.noEnd")}</strong>
+                </div>
               </div>
-              <p>{editor.rangeStart ? t("salesReport.filter.pickDateTo") : t("salesReport.filter.pickDateFrom")}</p>
               <header className="date-calendar-header">
                 <button type="button" onClick={() => setBulkEditorDialog({ ...editor, calendarMonth: new Date(editor.calendarMonth.getFullYear(), editor.calendarMonth.getMonth() - 1, 1) })}>{"<"}</button>
                 <strong>{new Intl.DateTimeFormat(calendarLocale, { month: "long", year: "numeric" }).format(editor.calendarMonth)}</strong>
@@ -4849,6 +4874,7 @@ export function StockScreen({
                 })() : <span className="date-day empty" key={`bulk-empty-${index}`} />)}
               </div>
               <div className="bulk-editor-date-actions">
+                <span>{editor.offerFrom ? stockSelectedDaysText(stockDateRangeDayCount(editor.offerFrom, editor.offerUntil), locale) : t("salesReport.filter.pickDateFrom")}</span>
                 <button type="button" onClick={() => setBulkEditorDialog({ ...editor, offerFrom: "", offerUntil: "", rangeStart: null })}>
                   {t("salesReport.filter.clear")}
                 </button>
@@ -5295,6 +5321,20 @@ export function StockScreen({
     return items.length > 0 ? items : [t("stock.bulkEdit.filter.none")];
   }
 
+  function renderFilterSummaryItem(item: string) {
+    const separatorIndex = item.indexOf(": ");
+    if (separatorIndex === -1) {
+      return <span key={item}>{item}</span>;
+    }
+    const label = item.slice(0, separatorIndex + 1);
+    const value = item.slice(separatorIndex + 2);
+    return (
+      <span key={item}>
+        <strong>{label}</strong> {value}
+      </span>
+    );
+  }
+
   function renderBulkEditScreen() {
     const tabs: Array<{ key: StockBulkEditTab; label: string }> = [
       { key: "main", label: "stock.bulkEdit.main" },
@@ -5324,7 +5364,7 @@ export function StockScreen({
           <div className="bulk-edit-actions">{renderBulkLeftActions()}</div>
           <div className="bulk-edit-search-actions">
             <div className="active-filter-summary bulk-active-filter-summary" aria-label={t("stock.filters.summary")}>
-              {activeBulkFilterSummary().map((item) => <span key={item}>{item}</span>)}
+              {activeBulkFilterSummary().map(renderFilterSummaryItem)}
             </div>
             <button type="button" className="stock-filter-button" aria-haspopup="dialog" onClick={() => void openBulkFilterDialog()}>
               <img alt="" className="report-action-icon" src={stockFilterIcon} />
@@ -5491,17 +5531,40 @@ export function StockScreen({
     );
   }
 
+  function activeInventorySummary() {
+    const items: string[] = selectedView === "stock.current" ? [] : [selectedViewLabel];
+    if (inventoryFilters.type) {
+      items.push(`${t("stock.column.type")}: ${t(stockProductTypeLabel(inventoryFilters.type))}`);
+    }
+    if (inventoryFilters.discount) {
+      items.push(`${t("product.field.usePrice")}: ${t(stockDiscountTypeLabel(inventoryFilters.discount))}`);
+    }
+    if (inventoryFilters.family) {
+      const family = inventoryFamilyTree.find((candidate) => candidate.id === inventoryFilters.family);
+      const subfamily = inventoryFamilyTree.flatMap((candidate) => candidate.subfamilies).find((candidate) => candidate.id === inventoryFilters.family);
+      items.push(`${t("stock.column.family")}: ${family?.name ?? subfamily?.name ?? inventoryFilters.family}`);
+    }
+    if (inventoryFilters.tax) {
+      const tax = inventoryTaxOptions.find((candidate) => candidate.value === inventoryFilters.tax);
+      items.push(`${t("stock.column.tax")}: ${tax?.label ?? inventoryFilters.tax}`);
+    }
+    if (inventoryFilters.offerActive) {
+      items.push(`${t("stock.column.offerActive")}: ${t(inventoryFilters.offerActive === "yes" ? "common.yes" : "common.no")}`);
+    }
+    const warehouseLabel = effectiveWarehouseId === "TOTAL"
+      ? t("stock.warehouse.total")
+      : inventoryWarehouseOptions.find((warehouse) => warehouse.value === effectiveWarehouseId)?.label
+        ?? valueText(warehouseCatalog.find((warehouse) => warehouse.id === effectiveWarehouseId)?.name ?? effectiveWarehouseId);
+    items.push(`${t("stock.column.warehouse")}: ${warehouseLabel}`);
+    return items;
+  }
+
   function renderInventoryToolbar() {
     return (
       <div className="stock-toolbar">
         <div className="stock-search-stack">
           <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
-            <span>{selectedViewLabel}</span>
-            <span>
-              {t("stock.column.warehouse")}: {effectiveWarehouseId === "TOTAL"
-                ? t("stock.warehouse.total")
-                : valueText(warehouseCatalog.find((warehouse) => warehouse.id === effectiveWarehouseId)?.name ?? effectiveWarehouseId)}
-            </span>
+            {activeInventorySummary().map(renderFilterSummaryItem)}
           </div>
           <label className="report-search stock-top-sales-search">
             <img alt="" src={stockSearchIcon} />
@@ -5689,9 +5752,7 @@ export function StockScreen({
               <div className="stock-top-sales-toolbar">
                 <div className="stock-search-stack">
                   <div className="active-filter-summary" aria-label={t("stock.filters.summary")}>
-                    {activeTopSalesSummary().map((item) => (
-                      <span key={item}>{item}</span>
-                    ))}
+                    {activeTopSalesSummary().map(renderFilterSummaryItem)}
                   </div>
                   <label className="report-search stock-top-sales-search">
                     <img alt="" src={stockSearchIcon} />
@@ -5837,7 +5898,16 @@ export function StockScreen({
                 </div>
                 {topSalesDatePickerOpen && (
                   <div className="date-popover date-range-popover">
-                    <p>{topSalesDateRangeStart ? t("salesReport.filter.pickDateTo") : t("salesReport.filter.pickDateFrom")}</p>
+                    <div className="date-range-strip">
+                      <div className={`date-range-strip-cell ${topSalesDateRangeStart ? "" : "active"}`}>
+                        <span>{t("salesReport.filter.dateFrom")}</span>
+                        <strong>{draftTopSalesDateFrom ? formatStockFilterDate(draftTopSalesDateFrom, locale) : "-"}</strong>
+                      </div>
+                      <div className={`date-range-strip-cell ${topSalesDateRangeStart ? "active" : ""}`}>
+                        <span>{t("salesReport.filter.dateTo")}</span>
+                        <strong>{draftTopSalesDateTo ? formatStockFilterDate(draftTopSalesDateTo, locale) : "-"}</strong>
+                      </div>
+                    </div>
                     <header className="date-calendar-header">
                       <button type="button" onClick={() => moveCalendarMonth(-1)}>
                         {"<"}
@@ -5872,6 +5942,23 @@ export function StockScreen({
                         )
                       )}
                     </div>
+                    <footer className="date-range-footer">
+                      <span>{draftTopSalesDateFrom ? stockSelectedDaysText(stockDateRangeDayCount(draftTopSalesDateFrom, draftTopSalesDateTo), locale) : t("salesReport.filter.pickDateFrom")}</span>
+                      <div className="date-range-actions">
+                        <button type="button" onClick={() => {
+                          setTopSalesDateRangeStart(null);
+                          setTopSalesDatePickerOpen(false);
+                        }}>
+                          {t("common.cancel")}
+                        </button>
+                        <button type="button" className="primary" onClick={() => {
+                          setTopSalesDateRangeStart(null);
+                          setTopSalesDatePickerOpen(false);
+                        }}>
+                          {t("common.apply")}
+                        </button>
+                      </div>
+                    </footer>
                   </div>
                 )}
               </div>

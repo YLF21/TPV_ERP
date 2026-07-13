@@ -500,13 +500,16 @@ public class CatalogService {
     }
 
     private void validateIdentifiers(UUID storeId, UUID productId, String... values) {
-        var currentValues = new java.util.HashSet<String>();
-        for (String value : values) {
+        var currentValues = new java.util.HashMap<String, Integer>();
+        for (int index = 0; index < values.length; index++) {
+            String value = values[index];
             if (value == null || value.isBlank()) {
                 continue;
             }
             String normalized = value.trim().toUpperCase(Locale.ROOT);
-            if (!currentValues.add(normalized)) {
+            Integer previousIndex = currentValues.putIfAbsent(normalized, index);
+            boolean samePrimaryIdentifier = previousIndex != null && previousIndex <= 1 && index <= 1;
+            if (previousIndex != null && !samePrimaryIdentifier) {
                 throw new IllegalArgumentException("El identificador ya esta asignado a otro producto");
             }
             boolean collision = productId == null

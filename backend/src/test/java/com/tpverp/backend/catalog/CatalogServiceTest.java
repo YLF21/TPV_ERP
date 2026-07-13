@@ -155,6 +155,37 @@ class CatalogServiceTest {
     }
 
     @Test
+    void createsProductWhenCodeAndBarcodeAreTheSameIdentifier() {
+        var request = productRequest("0", "0");
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var product = service.createProduct(request);
+
+        assertThat(product.identifier(IdentifierType.CODIGO)).isEqualTo("0");
+        assertThat(product.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("0");
+    }
+
+    @Test
+    void updatesProductWhenCodeAndBarcodeAreTheSameIdentifier() {
+        var request = productRequest("2", "2");
+        var product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Agua", null, null, BigDecimal.ZERO, true);
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("21"), true)));
+
+        var updated = service.updateProduct(product.getId(), request);
+
+        assertThat(updated.identifier(IdentifierType.CODIGO)).isEqualTo("2");
+        assertThat(updated.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("2");
+    }
+
+    @Test
     void createsProductWhenBarcodeIsPresentAndCodeIsEmpty() {
         var request = productRequest(null, "EAN13");
         when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));

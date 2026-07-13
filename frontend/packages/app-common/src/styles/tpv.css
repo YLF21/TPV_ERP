@@ -7824,3 +7824,3644 @@ input {
     grid-column: auto;
   }
 }
+
+/* APP VENTA Business Classic V2
+   Shared baseline for the current cashier, stock, report and settings screens. */
+:root {
+  --tpv-business-bg: #edf1f6;
+  --tpv-business-bg-strong: #dfe6ef;
+  --tpv-business-panel: #ffffff;
+  --tpv-business-panel-muted: #f6f8fb;
+  --tpv-business-border: #b8c3d1;
+  --tpv-business-border-soft: #d8dee7;
+  --tpv-business-ink: #172033;
+  --tpv-business-muted: #5d6878;
+  --tpv-business-navy: #203456;
+  --tpv-business-navy-strong: #172846;
+  --tpv-business-blue: #1d5f9f;
+  --tpv-business-blue-soft: #e5effa;
+  --tpv-business-danger: #a63a3a;
+  --tpv-business-focus: rgba(29, 95, 159, 0.22);
+  --tpv-business-radius: 4px;
+  --tpv-business-radius-lg: 6px;
+  --tpv-business-shadow: 0 2px 7px rgba(35, 52, 77, 0.12);
+}
+
+body,
+.login-screen,
+.home-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen,
+.work-screen {
+  font-family: "Segoe UI", "Microsoft YaHei UI", "Noto Sans SC", Arial, sans-serif;
+  color: var(--tpv-business-ink);
+}
+
+.login-screen,
+.home-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen,
+.work-screen {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 190px),
+    var(--tpv-business-bg);
+}
+
+.login-screen::before,
+.home-screen::before,
+.report-screen::before,
+.settings-screen::before,
+.hardware-screen::before,
+.work-screen::before {
+  display: none;
+}
+
+.login-panel,
+.home-action,
+.report-nav,
+.report-workspace,
+.report-summary-card,
+.report-chart,
+.report-table-wrap,
+.settings-nav,
+.settings-workspace,
+.settings-card,
+.hardware-nav,
+.hardware-workspace,
+.hardware-section,
+.work-shell,
+.work-panel,
+.stock-nav,
+.stock-table,
+.stock-detail-dialog,
+.stock-family-dialog,
+.stock-columns-dialog,
+.stock-bulk-workspace-manager,
+.filter-dialog,
+.visualization-dialog,
+.warehouse-document-dialog,
+.sale-action-dialog,
+.promotion-toolbar,
+.promotion-summary,
+.promotion-table,
+.promotion-row {
+  border-color: var(--tpv-business-border);
+  border-radius: var(--tpv-business-radius-lg);
+  background: var(--tpv-business-panel);
+  box-shadow: var(--tpv-business-shadow);
+  backdrop-filter: none;
+}
+
+.login-panel,
+.report-workspace,
+.settings-workspace,
+.hardware-workspace,
+.work-shell,
+.stock-nav,
+.stock-table,
+.filter-dialog,
+.visualization-dialog,
+.sale-action-dialog,
+.warehouse-document-dialog {
+  box-shadow: 0 1px 3px rgba(35, 52, 77, 0.12);
+}
+
+.report-topbar,
+.settings-topbar,
+.hardware-topbar,
+.work-topbar,
+.home-topbar,
+.login-brand,
+.work-panel-heading,
+.stock-panel-heading,
+.report-section-header,
+.settings-card header,
+.hardware-section header,
+.filter-dialog header,
+.visualization-dialog header,
+.warehouse-document-dialog header {
+  border-color: var(--tpv-business-border-soft);
+}
+
+.home-action,
+.report-nav button,
+.settings-nav button,
+.hardware-nav button,
+.stock-nav button,
+.sale-quick-grid button,
+.sale-payment-actions button,
+.sale-action-buttons button,
+.stock-filter-button,
+.stock-columns-button,
+.stock-add-product-button,
+.report-toolbar button,
+.report-action-button,
+.filter-actions button,
+.visualization-actions button,
+.warehouse-document-actions button,
+.promotion-row-actions button {
+  border-radius: var(--tpv-business-radius);
+  border: 1px solid var(--tpv-business-border);
+  box-shadow: none;
+  min-height: 32px;
+}
+
+.home-action {
+  min-height: 112px;
+  background: var(--tpv-business-panel);
+  color: var(--tpv-business-ink);
+}
+
+.home-action-sale,
+.report-nav button.active,
+.settings-nav button.active,
+.hardware-nav button.active,
+.stock-nav button.active,
+.stock-filter-button.active,
+.stock-periods button.active,
+.stock-detail-tabs button.active {
+  border-color: var(--tpv-business-navy-strong);
+  background: var(--tpv-business-navy);
+  color: #ffffff;
+}
+
+.login-panel input,
+.report-search,
+.report-search input,
+.filter-grid input,
+.filter-grid select,
+.filter-grid textarea,
+.filter-select-button,
+.date-range-control,
+.date-range-control input,
+.settings-card input,
+.settings-card select,
+.settings-card textarea,
+.hardware-section input,
+.hardware-section select,
+.hardware-section textarea,
+.work-search input,
+.sale-action-dialog input,
+.sale-action-dialog select,
+.sale-action-dialog textarea,
+.stock-search-stack input,
+.stock-top-sales-search,
+.stock-settings-form input,
+.stock-settings-form select,
+.stock-settings-form textarea,
+.warehouse-document-field input,
+.warehouse-document-field select,
+.warehouse-document-field textarea,
+.erp-select,
+.promotion-toolbar input,
+.promotion-toolbar select {
+  border: 1px solid var(--tpv-business-border);
+  border-radius: var(--tpv-business-radius);
+  background: #ffffff;
+  color: var(--tpv-business-ink);
+  box-shadow: none;
+}
+
+.login-panel input,
+.filter-grid input,
+.filter-grid select,
+.filter-select-button,
+.date-range-control,
+.settings-card input,
+.settings-card select,
+.hardware-section input,
+.hardware-section select,
+.work-search input,
+.sale-action-dialog input,
+.stock-search-stack input,
+.warehouse-document-field input,
+.warehouse-document-field select,
+.promotion-toolbar input,
+.promotion-toolbar select {
+  min-height: 32px;
+}
+
+button:focus-visible,
+input:focus,
+select:focus,
+textarea:focus,
+.report-search:focus-within,
+.filter-select-button:focus-visible,
+.date-range-control:focus-within,
+.erp-select:focus-within,
+.stock-row:focus-visible,
+.sale-ticket-line:focus-visible,
+.sale-search-result:focus-visible {
+  outline: 2px solid var(--tpv-business-blue);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px var(--tpv-business-focus);
+}
+
+.report-table th,
+.stock-row-head,
+.stock-detail-row.header,
+.promotion-row-head,
+.bulk-edit-table th,
+.stock-bulk-workspace-table th {
+  background: var(--tpv-business-navy);
+  color: #ffffff;
+  border-color: var(--tpv-business-navy-strong);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.report-table td,
+.stock-cell,
+.stock-detail-row,
+.bulk-edit-table td,
+.stock-bulk-workspace-table td {
+  border-color: var(--tpv-business-border-soft);
+}
+
+.stock-row,
+.stock-detail-row,
+.promotion-row,
+.sale-ticket-line,
+.sale-search-result,
+.bulk-edit-table tr,
+.stock-bulk-workspace-table tr {
+  border-radius: var(--tpv-business-radius);
+}
+
+.stock-row,
+.promotion-row {
+  min-height: 36px;
+}
+
+.stock-row.selected,
+.stock-family-row.selected,
+.sale-ticket-line.selected,
+.promotion-row.selected,
+.report-table tr.selected {
+  border-color: var(--tpv-business-navy-strong);
+  background: var(--tpv-business-navy);
+  color: #ffffff;
+  box-shadow: inset 4px 0 0 var(--tpv-business-blue);
+}
+
+.stock-row.selected *,
+.stock-family-row.selected *,
+.sale-ticket-line.selected *,
+.promotion-row.selected *,
+.report-table tr.selected * {
+  color: inherit;
+}
+
+.sale-total,
+.report-total,
+.report-kpi,
+.stock-empty-state,
+.sale-empty-state {
+  border-radius: var(--tpv-business-radius);
+  border-color: var(--tpv-business-border-soft);
+  background: var(--tpv-business-panel-muted);
+}
+
+.sale-total strong,
+.report-total strong,
+.report-kpi strong {
+  color: var(--tpv-business-navy);
+}
+
+.filter-overlay,
+.visualization-overlay,
+.sale-action-overlay,
+.warehouse-document-overlay {
+  background: rgba(23, 32, 51, 0.34);
+  backdrop-filter: none;
+}
+
+.filter-popover,
+.date-popover,
+.print-menu,
+.language-picker,
+.report-dropdown,
+.settings-dropdown,
+.stock-dropdown,
+.erp-select-menu {
+  border: 1px solid var(--tpv-business-border);
+  border-radius: var(--tpv-business-radius);
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(23, 32, 51, 0.18);
+}
+
+.date-day,
+.date-month-button,
+.date-nav-button,
+.filter-option,
+.erp-select-option {
+  border-radius: var(--tpv-business-radius);
+}
+
+.date-day.selected,
+.date-month-button.selected,
+.filter-option.selected,
+.erp-select-option.selected {
+  background: var(--tpv-business-navy);
+  color: #ffffff;
+}
+
+.date-day.in-range,
+.date-day.range-preview,
+.filter-option:hover,
+.erp-select-option:hover,
+.sale-search-result:hover,
+.stock-row:hover,
+.home-action:hover {
+  background: var(--tpv-business-blue-soft);
+}
+
+.danger,
+button.danger,
+.sale-action-buttons .danger {
+  border-color: var(--tpv-business-danger);
+  color: var(--tpv-business-danger);
+}
+
+/* Business Classic hardening: override older rounded/glass generations. */
+.app-brand-static,
+.login-panel,
+.language-button,
+.shutdown-button,
+.language-picker,
+.language-picker button,
+.shutdown-dialog,
+.shutdown-actions button,
+.home-action,
+.home-action-icon,
+.report-nav,
+.report-workspace,
+.settings-nav,
+.settings-workspace,
+.settings-card,
+.hardware-nav,
+.hardware-workspace,
+.hardware-section,
+.work-shell,
+.work-panel,
+.stock-nav,
+.stock-row,
+.stock-table,
+.stock-filter-button,
+.stock-columns-button,
+.stock-add-product-button,
+.sale-ticket-line,
+.sale-search-result,
+.sale-quick-grid button,
+.sale-payment-actions button,
+.sale-action-dialog,
+.filter-dialog,
+.visualization-dialog,
+.warehouse-document-dialog,
+.promotion-row {
+  border-radius: var(--tpv-business-radius) !important;
+}
+
+.login-panel,
+.language-picker,
+.shutdown-dialog,
+.home-action,
+.report-nav,
+.report-workspace,
+.settings-nav,
+.settings-workspace,
+.settings-card,
+.hardware-nav,
+.hardware-workspace,
+.hardware-section,
+.work-shell,
+.work-panel,
+.stock-nav,
+.stock-table,
+.sale-action-dialog,
+.filter-dialog,
+.visualization-dialog,
+.warehouse-document-dialog {
+  background: var(--tpv-business-panel) !important;
+  border: 1px solid var(--tpv-business-border) !important;
+  box-shadow: 0 1px 3px rgba(23, 32, 51, 0.14) !important;
+  backdrop-filter: none !important;
+}
+
+.entry-topbar {
+  padding: 18px 22px 0;
+}
+
+.app-brand-static {
+  min-width: 150px;
+  min-height: 38px;
+  border-color: var(--tpv-business-border);
+  background: #f7f9fc;
+  box-shadow: none;
+}
+
+.login-store-heading {
+  top: 88px !important;
+  gap: 10px;
+  display: flex !important;
+  visibility: visible !important;
+}
+
+.login-store-heading strong {
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.login-store-heading span {
+  border-radius: var(--tpv-business-radius);
+  background: #f4f7fb;
+  color: var(--tpv-business-muted);
+}
+
+.login-panel {
+  width: min(430px, calc(100vw - 48px));
+  gap: 14px;
+  padding: 22px 24px;
+  margin-top: 58px;
+}
+
+.login-panel label {
+  gap: 6px;
+  color: var(--tpv-business-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.login-panel input {
+  height: 42px !important;
+  border: 1px solid var(--tpv-business-border) !important;
+  border-radius: var(--tpv-business-radius) !important;
+  background: #ffffff !important;
+  color: var(--tpv-business-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.login-panel button {
+  height: 42px;
+  border: 1px solid var(--tpv-business-navy-strong);
+  border-radius: var(--tpv-business-radius) !important;
+  background: var(--tpv-business-navy);
+  box-shadow: none;
+  font-size: 14px;
+}
+
+.language-button,
+.shutdown-button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--tpv-business-border);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(23, 32, 51, 0.12);
+}
+
+.language-button:hover,
+.language-button:focus-visible,
+.shutdown-button:hover,
+.shutdown-button:focus-visible {
+  background: var(--tpv-business-blue-soft);
+}
+
+.home-actions {
+  width: min(1040px, calc(100vw - 96px));
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px;
+}
+
+.home-screen .home-actions {
+  width: min(1040px, calc(100vw - 96px)) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-top: 78px !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+.home-action {
+  min-height: 132px !important;
+  padding: 16px;
+  align-content: center;
+  justify-items: center;
+}
+
+.home-screen .home-action {
+  min-height: 118px !important;
+  gap: 10px !important;
+  padding: 14px 12px !important;
+  font-size: 18px !important;
+  box-shadow: 0 1px 3px rgba(23, 32, 51, 0.14) !important;
+}
+
+.home-action-side {
+  display: contents !important;
+}
+
+.home-action-sale {
+  background: var(--tpv-business-navy) !important;
+  border-color: var(--tpv-business-navy-strong) !important;
+  color: #ffffff !important;
+}
+
+.home-action-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--tpv-business-panel-muted);
+  border: 1px solid var(--tpv-business-border-soft);
+}
+
+.home-screen .home-action-icon,
+.home-screen .home-action-sale .home-action-icon {
+  width: 42px !important;
+  height: 42px !important;
+  object-fit: contain;
+}
+
+.home-action-sale .home-action-icon {
+  background: transparent !important;
+  border-color: transparent !important;
+  filter: grayscale(1) brightness(0) invert(1) !important;
+}
+
+.home-action span {
+  color: inherit !important;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.home-action strong,
+.work-panel-heading h2,
+.stock-panel-heading h2,
+.report-section-header h2,
+.settings-card h2,
+.hardware-section h2 {
+  letter-spacing: 0;
+}
+
+.work-shell,
+.report-workspace,
+.settings-workspace,
+.hardware-workspace {
+  gap: 12px;
+}
+
+.work-panel-heading,
+.stock-panel-heading,
+.report-section-header,
+.settings-card header,
+.hardware-section header {
+  min-height: 42px;
+  padding-block: 10px;
+  background: var(--tpv-business-panel-muted);
+}
+
+.sale-ticket-line,
+.sale-search-result,
+.stock-row,
+.promotion-row {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.stock-row:not(.stock-row-head):hover,
+.sale-ticket-line:not(.selected):hover,
+.sale-search-result:hover,
+.promotion-row:not(.promotion-row-head):hover {
+  border-color: var(--tpv-business-border);
+  background: var(--tpv-business-blue-soft);
+}
+
+.stock-row-head,
+.promotion-row-head {
+  min-height: 34px;
+}
+
+.stock-cell,
+.report-table th,
+.report-table td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sale-total {
+  background: var(--tpv-business-panel-muted) !important;
+  border-top: 1px solid var(--tpv-business-border) !important;
+}
+
+.sale-total span {
+  color: var(--tpv-business-muted) !important;
+}
+
+.sale-total strong {
+  color: var(--tpv-business-navy) !important;
+}
+
+.daily-summary-card,
+.daily-user-summary,
+.report-screen .report-data-panel,
+.report-screen .report-table-wrap,
+.report-screen .report-toolbar,
+.report-screen .report-search,
+.report-screen .report-nav .report-back,
+.settings-nav .report-back,
+.hardware-nav .report-back,
+.stock-nav .report-back {
+  border-radius: var(--tpv-business-radius) !important;
+}
+
+.daily-summary-card {
+  border: 1px solid var(--tpv-business-border-soft) !important;
+  background: var(--tpv-business-panel) !important;
+  box-shadow: none !important;
+}
+
+.daily-payment-line,
+.daily-total-line,
+.daily-pending-line,
+.daily-pending-collection-line,
+.daily-final-total-line,
+.daily-method-total-line {
+  border-radius: 0 !important;
+}
+
+.report-screen .report-toolbar {
+  background: var(--tpv-business-panel-muted) !important;
+  border: 1px solid var(--tpv-business-border-soft) !important;
+  box-shadow: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* APP VENTA Business Classic V3
+   Real implementation pass aligned to the approved V2 mockups. */
+:root {
+  --tpv-v3-bg: #e9eef3;
+  --tpv-v3-surface: #ffffff;
+  --tpv-v3-surface-alt: #f4f7fa;
+  --tpv-v3-line: #aeb9c8;
+  --tpv-v3-line-soft: #d5dde7;
+  --tpv-v3-text: #102033;
+  --tpv-v3-muted: #516175;
+  --tpv-v3-navy: #07254f;
+  --tpv-v3-blue: #2a72b6;
+  --tpv-v3-green: #0d6b33;
+  --tpv-v3-red: #b72d38;
+  --tpv-v3-radius: 3px;
+  --tpv-v3-focus: rgba(42, 114, 182, 0.24);
+}
+
+body,
+.login-screen,
+.home-screen,
+.work-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen {
+  background: var(--tpv-v3-bg) !important;
+  color: var(--tpv-v3-text) !important;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "Noto Sans SC", Arial, sans-serif !important;
+}
+
+.login-screen::before,
+.home-screen::before,
+.work-screen::before,
+.report-screen::before,
+.settings-screen::before,
+.hardware-screen::before {
+  display: none !important;
+}
+
+.login-screen,
+.home-screen {
+  display: block !important;
+  min-height: 100dvh;
+  padding: 37px 12px 28px !important;
+  overflow: hidden;
+}
+
+.entry-topbar {
+  position: fixed !important;
+  inset: 0 0 auto 0 !important;
+  z-index: 20 !important;
+  height: 36px !important;
+  max-width: none !important;
+  min-height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 3px 12px !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: #f8fafc !important;
+}
+
+.app-brand-static {
+  min-width: 102px !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 900 !important;
+}
+
+.login-store-heading,
+.home-screen .login-store-heading {
+  position: fixed !important;
+  top: 0 !important;
+  left: 128px !important;
+  z-index: 21 !important;
+  width: auto !important;
+  max-width: calc(100vw - 520px) !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  transform: none !important;
+  color: var(--tpv-v3-text) !important;
+  text-align: left !important;
+}
+
+.login-store-heading strong,
+.home-screen .login-store-heading strong {
+  color: var(--tpv-v3-text) !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  font-weight: 650 !important;
+}
+
+.login-store-heading span,
+.home-screen .login-store-heading span {
+  min-height: 22px !important;
+  padding: 2px 8px !important;
+  border: 0 !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: transparent !important;
+  color: var(--tpv-v3-muted) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.report-user-button,
+.language-button,
+.shutdown-button {
+  position: fixed !important;
+  top: 3px !important;
+  z-index: 22 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+}
+
+.top-date-time {
+  position: fixed !important;
+  top: 3px !important;
+  left: 50% !important;
+  z-index: 22 !important;
+  min-width: 210px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transform: translateX(-50%) !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+}
+
+.report-user-button {
+  right: 138px !important;
+  width: auto !important;
+  min-width: 118px !important;
+  padding: 0 12px !important;
+}
+
+.language-button {
+  right: 72px !important;
+  width: 56px !important;
+}
+
+.shutdown-button {
+  right: 12px !important;
+  width: 56px !important;
+  color: var(--tpv-v3-red) !important;
+}
+
+.language-button img {
+  width: 19px !important;
+  height: 19px !important;
+}
+
+.language-picker,
+.report-user-menu {
+  position: fixed !important;
+  top: 37px !important;
+  right: 72px !important;
+  z-index: 30 !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: 0 4px 10px rgba(16, 32, 51, 0.16) !important;
+}
+
+.report-user-menu {
+  right: 138px !important;
+}
+
+.login-panel {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  z-index: 5 !important;
+  width: 420px !important;
+  max-width: calc(100vw - 48px) !important;
+  margin: 0 !important;
+  padding: 0 18px 18px !important;
+  transform: translate(-50%, -44%) !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: 0 3px 10px rgba(16, 32, 51, 0.16) !important;
+}
+
+.login-panel-heading {
+  margin: 0 -18px 8px !important;
+  padding: 20px 18px 16px !important;
+  display: grid;
+  gap: 6px;
+  background: var(--tpv-v3-navy);
+  color: #ffffff;
+}
+
+.login-panel-heading strong {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.login-panel-heading span {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.login-panel label {
+  gap: 5px !important;
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+
+.login-panel input,
+.work-search input,
+.report-search input,
+.stock-search-stack input,
+.filter-grid input,
+.filter-grid select,
+.filter-grid textarea,
+.settings-card input,
+.settings-card select,
+.hardware-section input,
+.hardware-section select,
+.sale-action-dialog input,
+.warehouse-document-field input,
+.warehouse-document-field select {
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+}
+
+.login-panel button,
+.stock-add-product-button,
+.report-action-button,
+.report-toolbar button,
+.filter-actions button,
+.visualization-actions button,
+.sale-action-buttons button {
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 1px solid #1f5f9f !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+
+.login-server-status {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #8fc39d;
+  border-radius: var(--tpv-v3-radius);
+  background: #edf8ef;
+  color: var(--tpv-v3-green);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.login-server-status.checking {
+  border-color: #d7e0ea;
+  background: #f8fbff;
+  color: #5b6f8c;
+}
+
+.login-server-status.offline {
+  border-color: rgba(197, 40, 40, 0.28);
+  background: #fff7f7;
+  color: #c52828;
+}
+
+.home-store-panel {
+  position: absolute;
+  top: 48px;
+  left: 12px;
+  right: 12px;
+  z-index: 5;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: var(--tpv-v3-radius);
+  background: var(--tpv-v3-surface);
+  box-shadow: none;
+}
+
+.home-store-panel h1 {
+  margin: 0 0 7px;
+  color: var(--tpv-v3-text);
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.home-store-panel span {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #8fc39d;
+  border-radius: var(--tpv-v3-radius);
+  background: #edf8ef;
+  color: var(--tpv-v3-green);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.home-screen .home-actions,
+.home-actions {
+  position: absolute !important;
+  top: clamp(270px, 42vh, 376px) !important;
+  left: 12px !important;
+  right: 12px !important;
+  z-index: 5 !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  display: grid !important;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr !important;
+  gap: 10px !important;
+}
+
+.home-action-side {
+  display: contents !important;
+}
+
+.home-screen .home-action,
+.home-action {
+  min-height: 260px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  padding: 22px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}
+
+.home-screen .home-action-sale,
+.home-action-sale {
+  background: var(--tpv-v3-blue) !important;
+  border-color: #1f5f9f !important;
+  color: #ffffff !important;
+}
+
+.home-action-icon {
+  display: none !important;
+}
+
+.home-action span {
+  color: inherit !important;
+  font-size: 28px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+}
+
+.home-action small {
+  color: inherit;
+  opacity: 0.86;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 750;
+}
+
+.home-action:hover,
+.home-action:focus-visible {
+  border-color: #1f5f9f !important;
+  background: #f6f9fc !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.home-action-sale:hover,
+.home-action-sale:focus-visible {
+  background: #245f98 !important;
+  color: #ffffff !important;
+}
+
+/* APP VENTA home launcher: reference structure, no operational data. */
+.home-screen {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.08) 260px),
+    #e7edf4 !important;
+}
+
+.home-screen .entry-topbar {
+  position: fixed !important;
+  top: 3px !important;
+  left: 12px !important;
+  z-index: 22 !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-width: calc(100vw - 360px) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.home-screen .home-brand-icon {
+  display: none !important;
+}
+
+.home-screen .app-brand-static {
+  min-width: 118px !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+}
+
+.home-screen .login-store-heading {
+  display: none !important;
+}
+
+.home-screen .report-user-button,
+.home-screen .language-button,
+.home-screen .shutdown-button {
+  top: 3px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 14px !important;
+  font-weight: 900 !important;
+}
+
+.home-screen .report-user-button {
+  right: 138px !important;
+  width: auto !important;
+  min-width: 118px !important;
+  padding: 0 12px !important;
+}
+
+.home-screen .language-button {
+  right: 72px !important;
+  width: 56px !important;
+}
+
+.home-screen .shutdown-button {
+  right: 12px !important;
+  width: 56px !important;
+  color: var(--tpv-v3-red) !important;
+}
+
+.home-screen .language-button img {
+  width: 19px !important;
+  height: 19px !important;
+  filter: none !important;
+}
+
+.home-screen .home-actions {
+  --home-launcher-height: 500px;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  width: min(960px, calc(100vw - 72px)) !important;
+  transform: translate(-50%, -42%) !important;
+  grid-template-columns: 410px 500px !important;
+  align-items: start !important;
+  gap: 34px !important;
+}
+
+.home-screen .home-action {
+  min-height: 0 !important;
+  height: 156px !important;
+  display: grid !important;
+  grid-template-columns: 144px minmax(0, 1fr) !important;
+  align-items: center !important;
+  justify-items: start !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid #b8c7d8 !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(90deg, #eef4fb 0 124px, #ffffff 124px 100%) !important;
+  box-shadow: none !important;
+  color: #000000 !important;
+  text-align: left !important;
+}
+
+.home-screen .home-action-side {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: repeat(3, 1fr) !important;
+  gap: 16px !important;
+  height: var(--home-launcher-height) !important;
+  align-self: start !important;
+}
+
+.home-screen .home-action-sale {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 210px 1fr !important;
+  justify-items: center !important;
+  align-items: center !important;
+  width: 410px !important;
+  height: var(--home-launcher-height) !important;
+  min-height: var(--home-launcher-height) !important;
+  padding: 0 !important;
+  border-color: #062249 !important;
+  background:
+    linear-gradient(180deg, #07254f 0 168px, #2f7dbc 168px 100%) !important;
+  color: #ffffff !important;
+  text-align: center !important;
+}
+
+.home-screen .home-action-icon,
+.home-screen .home-action-sale .home-action-icon {
+  display: block !important;
+  width: 72px !important;
+  height: 72px !important;
+  justify-self: center !important;
+  align-self: center !important;
+  border: 0 !important;
+  background: transparent !important;
+  object-fit: contain;
+  opacity: 1 !important;
+  filter: grayscale(1) brightness(0) !important;
+}
+
+.home-screen .home-action span {
+  color: inherit !important;
+  font-size: 32px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+  letter-spacing: 0 !important;
+}
+
+.home-screen .home-action-sale span {
+  align-self: center !important;
+  justify-self: center !important;
+  color: #ffffff !important;
+  font-size: 82px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+}
+
+.home-screen .home-action-sale .home-action-icon {
+  align-self: center !important;
+  width: 112px !important;
+  height: 112px !important;
+  filter: grayscale(1) brightness(0) invert(1) !important;
+}
+
+@media (max-height: 760px) {
+  .home-screen .home-actions {
+    --home-launcher-height: 460px;
+    transform: translate(-50%, -39%) !important;
+    grid-template-columns: 380px 470px !important;
+  }
+
+  .home-screen .home-action-sale {
+    width: 380px !important;
+  }
+
+  .home-screen .home-action {
+    height: 142px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .home-screen .home-actions {
+    width: min(520px, calc(100vw - 32px)) !important;
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .home-screen .home-action-sale {
+    width: 100% !important;
+  }
+
+  .home-screen .home-action-side {
+    height: auto !important;
+  }
+
+  .home-screen .home-action {
+    width: 100% !important;
+  }
+}
+
+.report-footer-context {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 25 !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 18px !important;
+  padding: 0 12px !important;
+  border-top: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+}
+
+.report-footer-context span:first-child {
+  margin-right: auto;
+  color: var(--tpv-v3-muted);
+}
+
+.work-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen {
+  padding: 48px 12px 40px !important;
+}
+
+.work-topbar,
+.report-topbar,
+.settings-topbar,
+.hardware-topbar {
+  min-height: 38px !important;
+  margin-bottom: 10px !important;
+}
+
+.work-topbar h1,
+.report-topbar h1,
+.settings-topbar h1,
+.hardware-topbar h1 {
+  font-size: 30px !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.work-shell,
+.report-shell,
+.settings-shell,
+.hardware-shell {
+  gap: 12px !important;
+}
+
+.work-panel,
+.report-workspace,
+.settings-workspace,
+.hardware-workspace,
+.stock-nav,
+.report-nav,
+.settings-nav,
+.hardware-nav,
+.filter-dialog,
+.visualization-dialog,
+.sale-action-dialog,
+.warehouse-document-dialog {
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+}
+
+.work-panel-heading,
+.stock-panel-heading,
+.report-section-header,
+.settings-card header,
+.hardware-section header {
+  min-height: 40px !important;
+  padding: 10px 18px !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.work-panel-heading h2,
+.stock-panel-heading h2,
+.report-section-header h2,
+.settings-card h2,
+.hardware-section h2 {
+  font-size: 24px !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.stock-nav button,
+.report-nav button,
+.settings-nav button,
+.hardware-nav button,
+.stock-filter-button,
+.stock-columns-button,
+.sale-quick-grid button,
+.sale-payment-actions button,
+.report-nav .report-back,
+.stock-nav .report-back,
+.settings-nav .report-back,
+.hardware-nav .report-back {
+  min-height: 32px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+}
+
+.stock-nav button.selected,
+.report-nav button.selected,
+.settings-nav button.selected,
+.hardware-nav button.selected,
+.stock-filter-button.active {
+  border-color: #1f5f9f !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+}
+
+.stock-table,
+.report-table-wrap {
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+}
+
+.stock-row-head,
+.report-table th,
+.promotion-row-head {
+  min-height: 34px !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  border-color: var(--tpv-v3-navy) !important;
+  font-size: 12px !important;
+  letter-spacing: 0 !important;
+}
+
+.stock-row,
+.sale-ticket-line,
+.promotion-row {
+  border-radius: 0 !important;
+}
+
+.stock-row.selected,
+.sale-ticket-line.selected,
+.promotion-row.selected {
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  box-shadow: inset 4px 0 0 var(--tpv-v3-blue) !important;
+}
+
+.sale-total {
+  background: var(--tpv-v3-surface-alt) !important;
+  border-top: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+}
+
+.sale-total span,
+.sale-total strong {
+  color: var(--tpv-v3-text) !important;
+}
+
+.sale-total strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-screen .work-shell {
+  display: grid !important;
+  grid-template-columns: 300px minmax(0, 1fr) !important;
+  grid-template-rows: auto minmax(0, 1fr) 36px auto !important;
+  gap: 8px !important;
+  height: calc(100dvh - 106px) !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.sale-screen .work-topbar {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  margin: 0 0 4px !important;
+}
+
+.sale-tools {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto auto auto auto auto !important;
+  align-content: start !important;
+  gap: 7px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.sale-ticket {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  padding: 0 !important;
+}
+
+.sale-tools .sale-total {
+  margin: 0 !important;
+  min-height: 86px !important;
+  display: grid !important;
+  align-content: center !important;
+  gap: 4px !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--tpv-v3-navy) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.sale-tools .sale-total span,
+.sale-tools .sale-total strong {
+  color: #ffffff !important;
+}
+
+.sale-tools .sale-total span {
+  font-size: 13px !important;
+  font-weight: 850 !important;
+}
+
+.sale-tools .sale-total strong {
+  text-align: right;
+  font-size: 38px !important;
+  line-height: 1 !important;
+}
+
+.sale-product-heading {
+  min-height: auto !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 6px !important;
+  margin: 0 10px !important;
+  padding: 10px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.sale-product-heading h2 {
+  font-size: 16px !important;
+}
+
+.sale-product-heading span {
+  font-size: 12px !important;
+}
+
+.sale-product-heading .stock-add-product-button {
+  width: 100% !important;
+}
+
+.sale-screen .work-search {
+  margin: 0 10px !important;
+  padding: 10px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.sale-search-results {
+  margin: 0 10px !important;
+  min-height: 58px !important;
+  max-height: 110px !important;
+  overflow: auto !important;
+}
+
+.sale-quick-grid {
+  margin: 0 10px !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 6px !important;
+}
+
+.sale-quick-grid button,
+.sale-payment-actions button {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  text-align: left !important;
+}
+
+.sale-screen kbd {
+  min-width: 28px !important;
+  padding: 2px 5px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+  color: var(--tpv-v3-muted) !important;
+  font-family: inherit !important;
+  font-size: 10px !important;
+  font-weight: 850 !important;
+  line-height: 1.1 !important;
+  text-align: center !important;
+}
+
+.sale-shortcut-bar {
+  grid-column: 1 / -1 !important;
+  grid-row: 3 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow-x: auto !important;
+  padding: 6px 10px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-muted) !important;
+  white-space: nowrap !important;
+}
+
+.sale-shortcut-bar span {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+}
+
+.sale-shortcut-bar kbd {
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.sale-payment {
+  margin: 0 10px 10px !important;
+  padding: 9px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.sale-payment h2 {
+  margin: 0 0 8px !important;
+  font-size: 16px !important;
+}
+
+.sale-payment-actions {
+  gap: 6px !important;
+}
+
+.sale-screen.touch-mode .work-shell {
+  grid-template-columns: 380px minmax(0, 1fr) !important;
+}
+
+.sale-screen.touch-mode .sale-tools {
+  gap: 9px !important;
+}
+
+.sale-screen.touch-mode .sale-tools .sale-total {
+  min-height: 96px !important;
+}
+
+.sale-screen.touch-mode .sale-tools .sale-total strong {
+  font-size: 42px !important;
+}
+
+.sale-screen.touch-mode .sale-quick-grid button,
+.sale-screen.touch-mode .sale-payment-actions button {
+  height: 54px !important;
+  min-height: 54px !important;
+  padding: 0 12px !important;
+  font-size: 15px !important;
+}
+
+.sale-screen.touch-mode .sale-payment-actions {
+  grid-template-columns: 1fr !important;
+}
+
+.sale-screen.touch-mode .work-search input {
+  min-height: 42px !important;
+  font-size: 16px !important;
+}
+
+.sale-ticket .work-panel-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.sale-ticket-lines {
+  border-top: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.sale-ticket-line {
+  min-height: 34px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.4fr) 180px 120px !important;
+  align-items: center !important;
+  padding: 6px 8px !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface) !important;
+  text-align: left !important;
+}
+
+.sale-ticket-line > span,
+.sale-ticket-line > b {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-empty-state {
+  border-radius: 0 !important;
+}
+
+.promotion-preview-panel {
+  min-height: 64px !important;
+  margin: 8px 16px 10px !important;
+  padding: 10px 12px !important;
+  border-radius: var(--tpv-v3-radius) !important;
+}
+
+.sale-screen .promotion-preview-panel {
+  display: none !important;
+}
+
+button:focus-visible,
+input:focus,
+select:focus,
+textarea:focus,
+.report-search:focus-within,
+.date-range-control:focus-within,
+.erp-select:focus-within {
+  outline: 2px solid var(--tpv-v3-blue) !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 3px var(--tpv-v3-focus) !important;
+}
+
+/* Viewport fit: keep every app screen inside the visible monitor area. */
+.work-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.work-shell,
+.report-shell,
+.settings-shell,
+.hardware-shell {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.sale-screen .work-shell,
+.stock-screen .work-shell {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.sale-ticket,
+.sale-tools,
+.stock-nav,
+.stock-list,
+.report-nav,
+.report-workspace,
+.settings-nav,
+.settings-workspace,
+.hardware-nav,
+.hardware-workspace {
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+.stock-nav,
+.report-nav,
+.settings-nav,
+.hardware-nav {
+  overflow: auto !important;
+}
+
+.stock-list,
+.report-workspace,
+.settings-workspace,
+.hardware-workspace,
+.sale-ticket {
+  overflow: hidden !important;
+}
+
+.stock-table,
+.report-table-wrap,
+.daily-summary-scroll,
+.hardware-panel,
+.settings-panel {
+  min-height: 0 !important;
+  overflow: auto !important;
+}
+
+.report-footer-context {
+  box-sizing: border-box !important;
+  width: auto !important;
+}
+
+.stock-nav,
+.report-nav,
+.settings-nav,
+.hardware-nav {
+  padding-bottom: 14px !important;
+}
+
+.stock-nav {
+  gap: 5px !important;
+  padding: 10px 12px !important;
+}
+
+.stock-nav strong {
+  margin: 4px 6px 5px !important;
+}
+
+.stock-nav .stock-nav-section {
+  margin-top: 8px !important;
+}
+
+.stock-nav button {
+  min-height: 31px !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.stock-nav .report-back,
+.report-nav .report-back,
+.settings-nav .report-back,
+.hardware-nav .report-back {
+  position: static !important;
+  inset: auto !important;
+  margin-top: auto !important;
+  width: 100% !important;
+  min-height: 34px !important;
+}
+
+/* Dense stock tables: maximize visible product rows without changing columns. */
+.stock-row {
+  min-height: 34px !important;
+  gap: 8px !important;
+  padding: 0 8px !important;
+  font-size: 13px !important;
+}
+
+.stock-table {
+  gap: 0 !important;
+}
+
+.stock-table .stock-row {
+  border-radius: 0 !important;
+}
+
+.stock-table .stock-row + .stock-row {
+  border-top: 0 !important;
+}
+
+.stock-row-head {
+  min-height: 30px !important;
+  font-size: 11px !important;
+}
+
+.stock-cell {
+  min-height: 32px !important;
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.stock-bulk-workspace-table th {
+  height: 30px !important;
+  padding: 0 12px !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+}
+
+.stock-bulk-workspace-table td {
+  height: 34px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+
+/* List selection: use the approved blue and keep internal dividers neutral. */
+.stock-row.selected,
+.stock-row.selected:hover,
+.stock-row.selected:focus-visible,
+.promotion-row.selected,
+.promotion-row.selected:hover,
+.report-table tbody tr.selected,
+.report-table tbody tr.selected:hover,
+.report-table tbody tr.selected:focus-visible {
+  background: var(--tpv-v3-blue) !important;
+  border-color: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline-color: rgba(255, 255, 255, 0.8) !important;
+  box-shadow: none !important;
+}
+
+.stock-row.selected *,
+.promotion-row.selected *,
+.report-table tbody tr.selected * {
+  color: inherit !important;
+}
+
+.stock-row.selected > * + *::before,
+.stock-row.selected:hover > * + *::before,
+.stock-row.selected:focus-visible > * + *::before {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+.stock-bulk-workspace-table tbody tr.selected td,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"] td,
+.stock-bulk-workspace-table tbody tr.selected:hover td,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"]:hover td {
+  background: var(--tpv-v3-blue) !important;
+  border-right-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.stock-bulk-workspace-table tbody tr.selected td:first-child,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"] td:first-child,
+.stock-bulk-workspace-table tbody tr.selected:hover td:first-child,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"]:hover td:first-child {
+  box-shadow: none !important;
+}
+
+.stock-bulk-workspace-table tbody tr.selected td *,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"] td *,
+.stock-bulk-workspace-table tbody tr.selected:hover td *,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"]:hover td * {
+  color: inherit !important;
+}
+
+.stock-bulk-workspace-table tbody tr.selected .stock-bulk-workspace-status,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"] .stock-bulk-workspace-status,
+.stock-bulk-workspace-table tbody tr.selected:hover .stock-bulk-workspace-status,
+.stock-bulk-workspace-table tbody tr[aria-selected="true"]:hover .stock-bulk-workspace-status {
+  border-color: rgba(255, 255, 255, 0.45) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Reports V3 cleanup: remove leftover glass/old rounded UI. */
+.report-screen .report-nav,
+.report-screen .report-workspace,
+.report-screen .report-data,
+.report-screen .daily-summary-data,
+.report-screen .daily-summary-scroll,
+.report-screen .daily-summary-card,
+.report-screen .daily-user-summary,
+.report-screen .report-table-wrap,
+.report-screen .report-total-row,
+.report-screen .report-search,
+.report-screen .print-menu,
+.report-screen .filter-popover,
+.report-screen .date-popover,
+.report-screen .visualization-dialog,
+.report-screen .filter-dialog {
+  border-radius: var(--tpv-v3-radius) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.report-screen .report-nav,
+.report-screen .report-workspace,
+.report-screen .report-data,
+.report-screen .daily-summary-data,
+.report-screen .daily-summary-card,
+.report-screen .daily-user-summary,
+.report-screen .report-total-row,
+.report-screen .report-search,
+.report-screen .print-menu,
+.report-screen .filter-popover,
+.report-screen .date-popover {
+  border: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.report-screen .report-nav {
+  gap: 5px !important;
+  padding: 10px 12px 14px !important;
+}
+
+.report-screen .report-nav strong,
+.report-screen .report-nav-section {
+  margin: 7px 4px 4px !important;
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.report-screen .report-nav button,
+.report-screen .report-nav .report-back,
+.report-screen .report-options button,
+.report-screen .print-menu button,
+.report-screen .filter-popover button,
+.report-screen .date-nav-button,
+.report-screen .date-day,
+.report-screen .date-month-button {
+  min-height: 31px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+}
+
+.report-screen .report-nav button:hover,
+.report-screen .report-nav button:focus-visible,
+.report-screen .report-nav button.selected,
+.report-screen .report-options button,
+.report-screen .print-menu button:hover,
+.report-screen .print-menu button:focus-visible,
+.report-screen .filter-popover button:hover,
+.report-screen .filter-popover button:focus-visible,
+.report-screen .filter-popover button.selected,
+.report-screen .date-day.selected,
+.report-screen .date-month-button.selected {
+  border-color: var(--tpv-v3-blue) !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+.report-screen .report-menu-icon,
+.report-screen .report-action-icon {
+  filter: grayscale(1) !important;
+}
+
+.report-screen .report-nav button:hover .report-menu-icon,
+.report-screen .report-nav button:focus-visible .report-menu-icon,
+.report-screen .report-nav button.selected .report-menu-icon,
+.report-screen .report-options button .report-action-icon {
+  filter: grayscale(1) brightness(0) invert(1) !important;
+}
+
+.report-screen .report-workspace {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.report-screen .report-options {
+  min-height: 48px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 6px !important;
+  padding: 10px 14px !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.report-screen .report-heading {
+  gap: 4px !important;
+}
+
+.report-screen .report-options h1 {
+  min-height: 0 !important;
+  margin: 0 !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 24px !important;
+  line-height: 1.1 !important;
+  font-weight: 900 !important;
+}
+
+.report-screen .active-filter-summary,
+.report-screen .active-filter-summary span,
+.report-screen .report-options span {
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+}
+
+.report-screen .active-filter-summary strong {
+  color: var(--tpv-v3-text) !important;
+}
+
+.report-screen .report-data,
+.report-screen .daily-summary-data {
+  min-height: 0 !important;
+  margin: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  border: 0 !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.report-screen .report-data-toolbar {
+  min-height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.report-screen .report-search {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 5px 9px !important;
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.report-screen .report-search input {
+  height: 24px !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.report-screen .report-table-scroll,
+.report-screen .daily-summary-scroll {
+  min-height: 0 !important;
+  overflow: auto !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.report-screen .report-table {
+  border-collapse: collapse !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.report-screen .report-table th {
+  height: 30px !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid var(--tpv-v3-navy) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+  text-transform: uppercase !important;
+}
+
+.report-screen .report-table td {
+  height: 34px !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.report-screen .report-table tbody tr:nth-child(odd),
+.report-screen .report-table tbody tr:nth-child(even) {
+  background: var(--tpv-v3-surface) !important;
+}
+
+.report-screen .report-table tbody tr:hover,
+.report-screen .report-table tbody tr:focus-visible {
+  background: var(--tpv-v3-surface-alt) !important;
+  outline: 1px solid var(--tpv-v3-blue) !important;
+  outline-offset: -1px !important;
+}
+
+.report-screen .report-table tbody tr.selected,
+.report-screen .report-table tbody tr.selected:hover,
+.report-screen .report-table tbody tr.selected:focus-visible {
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+.report-screen .report-total-row {
+  min-height: 38px !important;
+  border: 0 !important;
+  border-top: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+}
+
+.report-screen .report-total-row span,
+.report-screen .report-total-row strong {
+  padding: 7px 10px !important;
+  background: transparent !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.report-screen .daily-summary-layout {
+  gap: 10px !important;
+  padding: 12px !important;
+}
+
+.report-screen .daily-summary-card,
+.report-screen .daily-user-summary {
+  padding: 10px !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.report-screen .daily-payment-line,
+.report-screen .daily-total-line,
+.report-screen .daily-pending-line,
+.report-screen .daily-pending-collection-line,
+.report-screen .daily-final-total-line,
+.report-screen .daily-method-total-line {
+  min-height: 28px !important;
+  padding: 5px 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: transparent !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.report-screen .daily-summary-divider {
+  height: 1px !important;
+  background: var(--tpv-v3-line) !important;
+}
+
+/* Compact app chrome: brand on the top edge, title in the former brand slot. */
+.work-screen,
+.report-screen,
+.settings-screen,
+.hardware-screen {
+  padding: 34px 6px 34px !important;
+}
+
+.work-topbar,
+.report-topbar,
+.settings-topbar,
+.hardware-topbar {
+  min-height: 32px !important;
+  margin-bottom: 4px !important;
+  padding-right: 310px !important;
+  gap: 8px !important;
+}
+
+.work-topbar .report-brand-back,
+.report-topbar .report-brand-back,
+.settings-topbar .report-brand-back,
+.hardware-topbar .report-brand-back {
+  position: fixed !important;
+  top: 4px !important;
+  left: 6px !important;
+  z-index: 35 !important;
+  min-width: 86px !important;
+  height: 25px !important;
+  min-height: 25px !important;
+  padding: 0 10px !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  border-color: var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+}
+
+.work-topbar h1,
+.report-topbar h1,
+.settings-topbar h1,
+.hardware-topbar h1,
+.report-title {
+  margin-left: 0 !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+}
+
+.stock-screen .work-shell,
+.report-shell,
+.settings-shell {
+  grid-template-columns: 190px minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+.stock-screen .work-shell,
+.report-shell,
+.settings-shell,
+.hardware-shell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.hardware-layout {
+  grid-template-columns: 190px minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+
+.stock-nav,
+.report-nav,
+.settings-nav,
+.hardware-nav {
+  width: 190px !important;
+  padding: 8px 6px 10px !important;
+  gap: 4px !important;
+}
+
+.stock-nav strong,
+.report-nav strong,
+.settings-nav strong,
+.hardware-nav strong,
+.stock-nav .stock-nav-section,
+.report-nav .report-nav-section {
+  margin: 5px 4px 3px !important;
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+  font-weight: 900 !important;
+}
+
+.stock-nav button,
+.report-nav button,
+.settings-nav button,
+.hardware-nav button,
+.stock-nav .report-back,
+.report-nav .report-back,
+.settings-nav .report-back,
+.hardware-nav .report-back {
+  min-height: 27px !important;
+  padding: 3px 6px !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+  font-weight: 800 !important;
+}
+
+.report-menu-icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.stock-nav .report-back,
+.report-nav .report-back,
+.settings-nav .report-back,
+.hardware-nav .report-back {
+  margin-top: 8px !important;
+}
+
+.stock-screen .work-shell.bulk-editor-work-shell {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.sale-screen .work-shell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Two-panel full-height layout: title belongs to the sidebar. */
+.stock-screen .work-shell,
+.report-shell,
+.settings-shell {
+  position: relative !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  height: calc(100dvh - 68px) !important;
+}
+
+.stock-screen .work-topbar,
+.report-topbar,
+.settings-topbar {
+  display: contents !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.stock-screen .work-topbar .report-title,
+.report-topbar .report-title,
+.settings-topbar .report-title {
+  position: absolute !important;
+  top: 22px !important;
+  left: 12px !important;
+  z-index: 5 !important;
+  width: 166px !important;
+  margin: 0 !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 18px !important;
+  line-height: 1.05 !important;
+  font-weight: 950 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.stock-screen .stock-nav,
+.report-screen .report-nav,
+.settings-screen .settings-nav {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding-top: 58px !important;
+}
+
+.stock-screen .stock-list,
+.report-screen .report-workspace,
+.settings-screen .settings-workspace {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.hardware-screen .hardware-layout {
+  position: relative !important;
+  height: calc(100dvh - 114px) !important;
+  min-height: 0 !important;
+}
+
+.hardware-screen {
+  position: relative !important;
+}
+
+.hardware-screen .hardware-topbar {
+  display: contents !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+}
+
+.hardware-screen .hardware-topbar h1 {
+  position: absolute !important;
+  top: 56px !important;
+  left: 12px !important;
+  z-index: 5 !important;
+  width: 166px !important;
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.05 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.hardware-screen .hardware-topbar span {
+  display: none !important;
+}
+
+.hardware-screen .hardware-nav {
+  height: 100% !important;
+  padding-top: 58px !important;
+}
+
+/* Flat main layout: remove the two large boxes, keep one divider line. */
+.stock-screen .stock-nav,
+.report-screen .report-nav,
+.settings-screen .settings-nav,
+.hardware-screen .hardware-nav,
+.stock-screen .stock-list,
+.report-screen .report-workspace,
+.settings-screen .settings-workspace,
+.hardware-screen .hardware-workspace {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.stock-screen .stock-nav,
+.report-screen .report-nav,
+.settings-screen .settings-nav,
+.hardware-screen .hardware-nav {
+  border-right: 1px solid var(--tpv-v3-line) !important;
+}
+
+.stock-screen .stock-list,
+.report-screen .report-workspace,
+.settings-screen .settings-workspace,
+.hardware-screen .hardware-workspace {
+  padding-left: 8px !important;
+}
+
+.stock-screen .work-shell,
+.report-shell,
+.settings-shell,
+.hardware-layout {
+  gap: 0 !important;
+}
+
+.report-screen .report-options,
+.report-screen .report-data-toolbar,
+.report-screen .report-total-row,
+.work-panel-heading,
+.stock-panel-heading,
+.hardware-workspace-heading,
+.settings-heading {
+  background: transparent !important;
+}
+
+/* Bulk-edit list standard: flat business UI for all data-list screens. */
+.stock-screen .stock-panel-heading,
+.stock-screen .work-panel-heading,
+.stock-top-sales-toolbar,
+.bulk-edit-toolbar,
+.bulk-edit-heading,
+.promotion-toolbar,
+.promotion-summary,
+.report-screen .report-options,
+.report-screen .report-data-toolbar {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.stock-screen .stock-panel-heading,
+.stock-screen .work-panel-heading,
+.bulk-edit-heading {
+  border: 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+}
+
+.stock-filter-button,
+.stock-columns-button,
+.stock-add-product-button,
+.stock-periods button,
+.stock-search-stack input,
+.stock-top-sales-search,
+.report-search,
+.filter-select-button,
+.erp-select,
+.bulk-edit-tabs button,
+.bulk-edit-actions button,
+.bulk-edit-selected > button,
+.bulk-edit-menu,
+.bulk-edit-menu button,
+.bulk-editor-option-list > button,
+.bulk-editor-date-actions button,
+.stock-bulk-workspace-toolbar button,
+.stock-bulk-workspace-status,
+.promotion-steps button,
+.promotion-row-actions button,
+.promotion-toolbar input,
+.promotion-toolbar select,
+.product-offer-active-indicator,
+.product-offer-range,
+.product-offer-range .date-popover {
+  border-radius: 0 !important;
+}
+
+.stock-table,
+.stock-top-sales-table,
+.stock-bulk-workspace-table-wrap,
+.stock-bulk-workspace-table,
+.bulk-edit-table,
+.promotion-table,
+.report-screen .report-table-scroll,
+.report-screen .report-table-wrap,
+.report-screen .report-table {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.stock-table,
+.stock-top-sales-table,
+.promotion-table,
+.report-screen .report-table-wrap {
+  border: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.stock-row,
+.promotion-row,
+.bulk-edit-row,
+.stock-bulk-workspace-table tbody tr,
+.report-screen .report-table tbody tr {
+  border-radius: 0 !important;
+}
+
+.stock-row-head,
+.promotion-row-head,
+.bulk-edit-head,
+.stock-bulk-workspace-table th,
+.report-screen .report-table th {
+  border-radius: 0 !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.stock-row,
+.promotion-row {
+  min-height: 34px !important;
+}
+
+.stock-row:not(.stock-row-head),
+.promotion-row:not(.promotion-row-head) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.stock-row.selected,
+.stock-row.selected:hover,
+.stock-row.selected:focus-visible,
+.promotion-row.selected,
+.promotion-row.selected:hover,
+.promotion-row.selected:focus-visible,
+.report-screen .report-table tbody tr.selected,
+.report-screen .report-table tbody tr.selected:hover,
+.report-screen .report-table tbody tr.selected:focus-visible {
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+/* Lift list controls and place filter summaries below the search box. */
+.stock-toolbar,
+.stock-top-sales-toolbar {
+  grid-template-columns: minmax(280px, max-content) auto auto minmax(0, 1fr) !important;
+  align-items: start !important;
+  padding: 4px 0 6px !important;
+  gap: 8px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+.stock-search-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  align-items: flex-start !important;
+  width: max-content !important;
+  min-width: 280px !important;
+}
+
+.stock-search-stack .report-search {
+  order: 1 !important;
+  width: 280px !important;
+}
+
+.stock-search-stack .active-filter-summary {
+  order: 2 !important;
+  min-height: 14px !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 5px !important;
+  width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+.stock-search-stack .active-filter-summary span {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1.1 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.stock-search-stack .active-filter-summary strong,
+.bulk-active-filter-summary strong {
+  font-weight: 900 !important;
+}
+
+.bulk-active-filter-summary span {
+  font-weight: 500 !important;
+}
+
+.stock-filter-button,
+.stock-columns-button,
+.stock-add-product-button {
+  min-height: 34px !important;
+  height: 34px !important;
+  margin-top: 0 !important;
+}
+
+.stock-top-sales-search,
+.stock-search-stack input {
+  min-height: 34px !important;
+  height: 34px !important;
+}
+
+.stock-table,
+.stock-top-sales-table,
+.stock-promotion-groups {
+  margin-top: 0 !important;
+}
+
+.stock-table,
+.stock-top-sales-table,
+.stock-promotion-groups,
+.promotion-table {
+  padding: 0 !important;
+}
+
+.stock-row-head {
+  margin-top: 0 !important;
+}
+
+.bulk-edit-toolbar {
+  padding-top: 4px !important;
+  padding-bottom: 6px !important;
+}
+
+.bulk-edit-search-actions {
+  align-items: start !important;
+}
+
+.bulk-edit-search-actions .bulk-active-filter-summary {
+  align-self: end !important;
+  margin-top: 0 !important;
+}
+
+/* Product stock/detail dialogs: align legacy modals with the flat list UI. */
+.stock-detail-overlay,
+.filter-overlay {
+  background: rgba(16, 32, 51, 0.36) !important;
+  backdrop-filter: none !important;
+}
+
+.stock-detail-dialog,
+.product-create-dialog,
+.product-create-dialog.filter-dialog,
+.stock-filter-dialog,
+.stock-family-dialog {
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+}
+
+.stock-detail-dialog {
+  gap: 10px !important;
+  height: calc(100vh - 56px) !important;
+  padding: 20px !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+}
+
+.stock-detail-dialog .filter-header,
+.product-create-dialog .filter-header {
+  min-height: 42px !important;
+  padding: 0 0 10px !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: transparent !important;
+}
+
+.stock-detail-dialog .filter-header h2,
+.product-create-dialog .filter-header h2 {
+  color: var(--tpv-v3-text) !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  font-weight: 950 !important;
+}
+
+.stock-detail-dialog .filter-header span,
+.product-create-dialog .filter-header span {
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+
+.stock-detail-dialog .filter-header button,
+.product-create-dialog .filter-header button,
+.product-create-dialog .filter-actions button,
+.stock-detail-tabs button,
+.stock-sales-history-filters button,
+.stock-sales-history-filter button,
+.stock-history-toolbar button,
+.product-create-media button,
+.product-price-use-options button,
+.product-create-form .filter-select-button,
+.product-create-form .date-range-control,
+.product-offer-active-indicator,
+.product-create-check,
+.date-popover,
+.date-day,
+.date-nav-button,
+.date-month-button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.stock-detail-dialog .filter-header button,
+.product-create-dialog .filter-header button,
+.product-create-dialog .filter-actions button,
+.stock-detail-tabs button,
+.stock-sales-history-filters button,
+.stock-sales-history-filter button,
+.stock-history-toolbar button,
+.product-create-media button,
+.product-price-use-options button {
+  min-height: 34px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.stock-detail-tabs button.selected,
+.stock-detail-tabs button.active,
+.stock-detail-tabs button:hover,
+.stock-detail-tabs button:focus-visible,
+.product-price-use-options button.selected,
+.product-price-use-options button.active,
+.product-price-use-options button:hover,
+.product-price-use-options button:focus-visible,
+.stock-sales-history-filters button:hover,
+.stock-sales-history-filters button:focus-visible,
+.stock-history-toolbar button:hover,
+.stock-history-toolbar button:focus-visible,
+.product-create-dialog .filter-actions button:last-child {
+  border-color: var(--tpv-v3-blue) !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+.stock-detail-table,
+.stock-sales-history-table,
+.stock-history-table-scroll,
+.stock-history-table {
+  gap: 0 !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.stock-detail-row,
+.stock-sales-history-row {
+  min-height: 34px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  border-radius: 0 !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+}
+
+.stock-detail-row.header,
+.stock-sales-history-row.header {
+  min-height: 30px !important;
+  border-bottom: 1px solid var(--tpv-v3-navy) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+}
+
+.stock-detail-row.total {
+  border-color: var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.product-create-dialog {
+  width: min(1080px, calc(100vw - 92px)) !important;
+  max-height: calc(100vh - 72px) !important;
+  gap: 12px !important;
+  padding: 18px !important;
+}
+
+.product-create-form {
+  gap: 10px !important;
+}
+
+.product-create-form label,
+.product-create-form .filter-field,
+.product-price-use {
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.product-create-form input,
+.product-create-form textarea,
+.product-create-form .filter-select-button,
+.product-create-form .date-range-control,
+.product-create-media input,
+.stock-sales-history-filter input,
+.stock-sales-history-filter select,
+.stock-history-toolbar input,
+.stock-history-toolbar select,
+.stock-history-filter-field .erp-select {
+  min-height: 38px !important;
+  border: 1px solid var(--tpv-v3-line-soft) !important;
+  border-radius: 0 !important;
+  background: #f7fafc !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.product-create-form textarea {
+  min-height: 72px !important;
+}
+
+.product-create-media-preview {
+  border: 1px solid var(--tpv-v3-line-soft) !important;
+  border-radius: 0 !important;
+  background: #f7fafc !important;
+  box-shadow: none !important;
+}
+
+.product-create-check,
+.product-offer-active-indicator {
+  border: 1px solid var(--tpv-v3-line-soft) !important;
+  background: #f7fafc !important;
+  color: var(--tpv-v3-muted) !important;
+}
+
+.product-create-check input {
+  accent-color: var(--tpv-v3-blue) !important;
+}
+
+.product-offer-active-indicator.active {
+  border-color: var(--tpv-v3-green) !important;
+  background: #eef9f1 !important;
+  color: var(--tpv-v3-green) !important;
+}
+
+.product-create-status {
+  border-radius: 0 !important;
+  background: var(--tpv-v3-surface-alt) !important;
+}
+
+.stock-sales-history-panel {
+  min-height: 0 !important;
+  height: 100% !important;
+  gap: 8px !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+}
+
+.stock-history-toolbar {
+  gap: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.stock-history-toolbar label,
+.stock-history-filter-field {
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.stock-history-context {
+  min-height: 22px !important;
+  margin: 0 !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.stock-history-table {
+  min-height: 100% !important;
+  border-collapse: collapse !important;
+  border-radius: 0 !important;
+}
+
+.stock-history-table-scroll {
+  min-height: 0 !important;
+  height: 100% !important;
+  border-radius: 0 !important;
+  align-self: stretch !important;
+}
+
+.stock-history-table th {
+  height: 30px !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid var(--tpv-v3-navy) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+}
+
+.stock-history-table td {
+  height: 34px !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-surface) !important;
+  color: var(--tpv-v3-text) !important;
+  font-size: 13px !important;
+}
+
+.product-create-dialog .date-popover,
+.stock-screen .date-popover,
+.date-popover {
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: none !important;
+}
+
+.date-day,
+.date-nav-button,
+.date-month-button {
+  border: 1px solid var(--tpv-v3-line-soft) !important;
+  background: #f7fafc !important;
+  color: var(--tpv-v3-text) !important;
+}
+
+.date-day:hover,
+.date-day:focus-visible,
+.date-day.selected,
+.date-month-button.selected {
+  border-color: var(--tpv-v3-blue) !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+}
+
+/* Business calendar dropdown: APP VENTA standard for date/range pickers. */
+.date-popover.date-range-popover,
+.bulk-editor-date-panel {
+  width: min(620px, calc(100vw - 56px)) !important;
+  min-width: min(420px, calc(100vw - 56px)) !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  color: #000000 !important;
+  overflow: hidden !important;
+}
+
+.product-offer-range .date-popover.date-range-popover {
+  left: 0 !important;
+  right: auto !important;
+  width: min(620px, calc(100vw - 96px)) !important;
+}
+
+.date-range-strip {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: #ffffff !important;
+}
+
+.date-range-strip-cell {
+  min-height: 48px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding: 0 14px !important;
+  border-right: 1px solid var(--tpv-v3-line-soft) !important;
+  color: #000000 !important;
+}
+
+.date-range-strip-cell:last-child {
+  border-right: 0 !important;
+}
+
+.date-range-strip-cell.active {
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.date-range-strip-cell span {
+  color: inherit !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.date-range-strip-cell strong {
+  min-width: 0 !important;
+  color: inherit !important;
+  font-size: 17px !important;
+  font-weight: 900 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.date-calendar-header {
+  min-height: 46px !important;
+  grid-template-columns: 44px minmax(0, 1fr) 44px !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+.date-calendar-header strong {
+  color: #000000 !important;
+  font-size: 18px !important;
+  font-weight: 950 !important;
+  text-transform: capitalize !important;
+}
+
+.date-calendar-header button {
+  width: 44px !important;
+  height: 46px !important;
+  min-height: 46px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+}
+
+.date-calendar-header button:hover,
+.date-calendar-header button:focus-visible {
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.date-calendar-grid {
+  gap: 0 !important;
+  border-bottom: 1px solid var(--tpv-v3-line) !important;
+  background: #ffffff !important;
+}
+
+.date-weekday,
+.date-day {
+  min-height: 34px !important;
+  border: 0 !important;
+  border-right: 1px solid var(--tpv-v3-line-soft) !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.date-weekday:nth-child(7n),
+.date-day:nth-child(7n) {
+  border-right: 0 !important;
+}
+
+.date-weekday {
+  min-height: 30px !important;
+  color: var(--tpv-v3-muted) !important;
+  text-transform: uppercase !important;
+}
+
+.date-day.empty {
+  border-right: 1px solid var(--tpv-v3-line-soft) !important;
+  border-bottom: 1px solid var(--tpv-v3-line-soft) !important;
+  background: #ffffff !important;
+}
+
+.date-day.in-range {
+  background: #eaf4ff !important;
+  color: #000000 !important;
+}
+
+.date-day:hover,
+.date-day:focus-visible {
+  border-color: var(--tpv-v3-line-soft) !important;
+  background: #dcecff !important;
+  color: #000000 !important;
+  outline: 2px solid var(--tpv-v3-blue) !important;
+  outline-offset: -2px !important;
+}
+
+.date-day.selected,
+.date-day.selected:hover,
+.date-day.selected:focus-visible {
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+.date-range-footer,
+.bulk-editor-date-actions {
+  min-height: 54px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 12px !important;
+  border-top: 0 !important;
+  background: #ffffff !important;
+}
+
+.date-range-footer > span,
+.bulk-editor-date-actions > span {
+  min-width: 0 !important;
+  color: #000000 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.date-range-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+
+.date-range-actions button,
+.bulk-editor-date-actions button {
+  min-width: 92px !important;
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.date-range-actions button.primary,
+.bulk-editor-date-actions button:last-child {
+  border-color: var(--tpv-v3-navy) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.date-range-actions button:hover,
+.date-range-actions button:focus-visible,
+.bulk-editor-date-actions button:hover,
+.bulk-editor-date-actions button:focus-visible {
+  border-color: var(--tpv-v3-blue) !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+/* Global dropdown standard: selected navy trigger cell with white chevron. */
+.erp-select > .erp-select__trigger {
+  grid-template-columns: minmax(0, 1fr) 44px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  border: 1px solid var(--tpv-v3-line-soft) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--tpv-v3-text) !important;
+  box-shadow: none !important;
+}
+
+.erp-select__value {
+  padding: 0 10px !important;
+}
+
+.erp-select__arrow {
+  width: 44px !important;
+  height: calc(100% + 2px) !important;
+  display: grid !important;
+  place-items: center !important;
+  position: relative !important;
+  align-self: stretch !important;
+  margin: -1px -1px -1px 0 !important;
+  border-left: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.erp-select__arrow::before,
+.erp-select__arrow::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 13px !important;
+  height: 3px !important;
+  border: 0 !important;
+  border-radius: 1px !important;
+  background: #ffffff !important;
+  transform-origin: center !important;
+}
+
+.erp-select__arrow::before {
+  transform: translate(calc(-50% - 4px), -50%) rotate(45deg) !important;
+}
+
+.erp-select__arrow::after {
+  transform: translate(calc(-50% + 4px), -50%) rotate(-45deg) !important;
+}
+
+.erp-select--open .erp-select__arrow::before {
+  transform: translate(calc(-50% - 4px), -50%) rotate(-45deg) !important;
+}
+
+.erp-select--open .erp-select__arrow::after {
+  transform: translate(calc(-50% + 4px), -50%) rotate(45deg) !important;
+}
+
+.erp-select > .erp-select__trigger:hover,
+.erp-select > .erp-select__trigger:focus-visible,
+.erp-select--open > .erp-select__trigger {
+  border-color: var(--tpv-v3-blue) !important;
+  background: #ffffff !important;
+  color: var(--tpv-v3-text) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.erp-select > .erp-select__trigger:hover .erp-select__arrow,
+.erp-select > .erp-select__trigger:focus-visible .erp-select__arrow,
+.erp-select--open > .erp-select__trigger .erp-select__arrow {
+  background: var(--tpv-v3-blue) !important;
+}
+
+.erp-select__popover,
+.erp-select__popover > .erp-select__option,
+.filter-popover,
+.filter-popover button,
+.product-select-popover,
+.product-select-popover button {
+  border-radius: 0 !important;
+}
+
+.erp-select__popover,
+.filter-popover,
+.product-select-popover {
+  padding: 0 !important;
+  gap: 0 !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  box-shadow: none !important;
+}
+
+.erp-select__popover > .erp-select__option[aria-selected="true"],
+.filter-popover button.selected,
+.product-select-popover button.selected {
+  border-radius: 0 !important;
+  background: var(--tpv-v3-blue) !important;
+  color: #ffffff !important;
+}
+
+.filter-select-button {
+  position: relative !important;
+  grid-template-columns: minmax(0, 1fr) 44px !important;
+  min-height: 38px !important;
+  padding: 0 0 0 10px !important;
+  overflow: hidden !important;
+}
+
+.filter-select-button .filter-control-arrow {
+  width: 44px !important;
+  height: calc(100% + 2px) !important;
+  min-height: 38px !important;
+  display: grid !important;
+  place-items: center !important;
+  position: relative !important;
+  align-self: stretch !important;
+  margin: -1px -1px -1px 8px !important;
+  border-left: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.filter-select-button .filter-control-arrow::before,
+.filter-select-button .filter-control-arrow::after,
+.date-range-control button .filter-control-arrow::before,
+.date-range-control button .filter-control-arrow::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 13px !important;
+  height: 3px !important;
+  border: 0 !important;
+  border-radius: 1px !important;
+  background: #ffffff !important;
+  transform-origin: center !important;
+}
+
+.filter-select-button .filter-control-arrow::before,
+.date-range-control button .filter-control-arrow::before {
+  transform: translate(calc(-50% - 4px), -50%) rotate(45deg) !important;
+}
+
+.filter-select-button .filter-control-arrow::after,
+.date-range-control button .filter-control-arrow::after {
+  transform: translate(calc(-50% + 4px), -50%) rotate(-45deg) !important;
+}
+
+.filter-select-button:hover .filter-control-arrow,
+.filter-select-button:focus-visible .filter-control-arrow,
+.date-range-control button:hover .filter-control-arrow,
+.date-range-control button:focus-visible .filter-control-arrow {
+  background: var(--tpv-v3-blue) !important;
+}
+
+.date-range-control {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 44px !important;
+  width: 100% !important;
+  min-height: 40px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.date-range-control input {
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 40px !important;
+  border: 0 !important;
+  background: #ffffff !important;
+  padding: 0 10px !important;
+  box-sizing: border-box !important;
+}
+
+.date-range-control button {
+  height: calc(100% + 2px) !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  justify-self: end !important;
+  align-self: stretch !important;
+  margin: -1px -1px -1px 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-left: 1px solid var(--tpv-v3-line-soft) !important;
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+}
+
+.date-range-control button .filter-control-arrow {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  place-items: center !important;
+  position: relative !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+/* Dropdown selected style refinement: navy label header + attached field body. */
+.filter-dialog .filter-field > span:first-child,
+.product-create-form .filter-field > span:first-child,
+.product-create-form .product-dropdown-field > span:first-child,
+.product-create-form .product-offer-range > span:first-child,
+.stock-bulk-filter-field > span:first-child,
+.stock-history-filter-field > span:first-child,
+.warehouse-document-field > span:first-child {
+  min-height: 31px !important;
+  display: flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-bottom: 0 !important;
+  background: #ffffff !important;
+  color: var(--tpv-v3-navy) !important;
+  font-size: 12px !important;
+  line-height: 1.1 !important;
+  font-weight: 950 !important;
+}
+
+.filter-dialog .filter-field,
+.product-create-form .filter-field,
+.product-create-form .product-dropdown-field,
+.product-create-form .product-offer-range,
+.stock-bulk-filter-field,
+.stock-history-filter-field,
+.warehouse-document-field {
+  gap: 0 !important;
+}
+
+.filter-dialog .filter-field .erp-select > .erp-select__trigger,
+.product-create-form .filter-field .erp-select > .erp-select__trigger,
+.product-create-form .product-dropdown-field .filter-select-button,
+.stock-bulk-filter-field .erp-select > .erp-select__trigger,
+.stock-history-filter-field .erp-select > .erp-select__trigger,
+.warehouse-document-field .erp-select > .erp-select__trigger,
+.filter-dialog .filter-select-button,
+.product-create-form .filter-select-button,
+.warehouse-document-field .filter-select-button {
+  min-height: 40px !important;
+  border-color: var(--tpv-v3-line) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+}
+
+.erp-select__arrow,
+.filter-select-button .filter-control-arrow,
+.date-range-control button,
+.date-range-control button .filter-control-arrow {
+  border-radius: 0 !important;
+}
+
+.erp-select__arrow {
+  background: var(--tpv-v3-navy) !important;
+}
+
+.product-create-form .filter-select-button .filter-control-arrow,
+.product-create-form .date-range-control button,
+.product-create-form .date-range-control button .filter-control-arrow {
+  background: var(--tpv-v3-navy) !important;
+  border-radius: 0 !important;
+}
+
+/* App-wide attribute labels stay white; navy is only for tables and dropdown triggers. */
+.filter-grid label > span:first-child,
+.filter-dialog .filter-field > span:first-child,
+.product-create-form label > span:first-child,
+.product-create-form .filter-field > span:first-child,
+.settings-card label > span:first-child,
+.hardware-section label > span:first-child,
+.stock-history-toolbar label > span:first-child,
+.stock-history-filter-field > span:first-child,
+.stock-settings-form label > span:first-child,
+.stock-settings-field > span:first-child,
+.stock-bulk-filter-field > span:first-child,
+.stock-bulk-decimal-field > span:first-child,
+.stock-bulk-rule-line > span:first-child,
+.warehouse-document-field > span:first-child,
+.warehouse-document-line-entry label > span:first-child,
+.promotion-form-grid label > span:first-child {
+  min-height: auto !important;
+  padding: 0 0 5px !important;
+  border: 0 !important;
+  background: #ffffff !important;
+  color: var(--tpv-v3-muted) !important;
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+}
+
+/* Data values use black for stronger business-table readability. */
+.stock-cell,
+.stock-cell > *,
+.stock-detail-row:not(.header),
+.stock-detail-row:not(.header) *,
+.stock-sales-history-row:not(.header),
+.stock-sales-history-row:not(.header) *,
+.stock-history-table td,
+.stock-history-table td *,
+.stock-bulk-workspace-table td,
+.stock-bulk-workspace-table td *,
+.bulk-edit-table td,
+.bulk-edit-table td *,
+.report-screen .report-table td,
+.report-screen .report-table td *,
+.promotion-row:not(.promotion-row-head),
+.promotion-row:not(.promotion-row-head) *,
+.daily-summary-card,
+.daily-summary-card *,
+.erp-select__value,
+.filter-select-button,
+.filter-select-button span,
+.date-range-control input,
+.product-create-form input,
+.product-create-form textarea,
+.product-create-check,
+.product-create-check *,
+.product-offer-active-indicator,
+.product-offer-active-indicator *,
+.filter-dialog input,
+.filter-dialog textarea,
+.warehouse-document-field input,
+.warehouse-document-field textarea,
+.settings-card input,
+.settings-card textarea,
+.hardware-section input,
+.hardware-section textarea {
+  color: #000000 !important;
+}
+
+/* Calendar trigger keeps the navy dropdown standard in every screen. */
+.date-range-control button,
+.stock-screen .date-range-control button,
+.report-screen .date-range-control button,
+.product-create-form .date-range-control button {
+  background: var(--tpv-v3-navy) !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+}
+
+.date-range-control button .filter-control-arrow,
+.stock-screen .date-range-control button .filter-control-arrow,
+.report-screen .date-range-control button .filter-control-arrow,
+.product-create-form .date-range-control button .filter-control-arrow {
+  background: var(--tpv-v3-navy) !important;
+  color: transparent !important;
+  border-radius: 0 !important;
+}
+
+.date-range-control button .filter-control-arrow::before,
+.date-range-control button .filter-control-arrow::after,
+.stock-screen .date-range-control button .filter-control-arrow::before,
+.stock-screen .date-range-control button .filter-control-arrow::after,
+.report-screen .date-range-control button .filter-control-arrow::before,
+.report-screen .date-range-control button .filter-control-arrow::after,
+.product-create-form .date-range-control button .filter-control-arrow::before,
+.product-create-form .date-range-control button .filter-control-arrow::after {
+  background: #ffffff !important;
+}

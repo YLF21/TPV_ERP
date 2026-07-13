@@ -4,6 +4,7 @@ import { devTerminalContext } from "../../../packages/app-common/src/api/runtime
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
 import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
+import { readSaleInterfaceTouchMode } from "../../../packages/app-common/src/components/saleInterfacePreferences";
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 
@@ -73,6 +74,7 @@ function App() {
         locale={locale}
         session={session}
         terminalContext={devTerminalContext}
+        touchMode={readSaleInterfaceTouchMode("venta", devTerminalContext)}
         onBack={() => setScreen("home")}
         onLogout={() => setSession(null)}
         onLocaleChange={setLocale}

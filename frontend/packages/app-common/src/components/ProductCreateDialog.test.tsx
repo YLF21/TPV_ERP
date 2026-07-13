@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyProductRequiredDefaults,
   buildCreateProductRequest,
   canLeaveProductField,
   canNavigateProductField,
@@ -83,8 +84,8 @@ describe("ProductCreateDialog", () => {
 
   it("maps product dialog keyboard shortcuts to actions", () => {
     expect(productCreateKeyAction("Escape")).toBe("close");
-    expect(productCreateKeyAction("F8")).toBe("saveContinue");
-    expect(productCreateKeyAction("F9")).toBe("saveClose");
+    expect(productCreateKeyAction("F8")).toBeNull();
+    expect(productCreateKeyAction("F9")).toBe("save");
     expect(productCreateKeyAction("Enter")).toBeNull();
   });
 
@@ -133,7 +134,7 @@ describe("ProductCreateDialog", () => {
     expect(canNavigateProductField(form, "code", true)).toBe(true);
   });
 
-  it("does not allow advancing from offer fields when an active offer is incomplete", () => {
+  it("does not allow advancing from offer price when an active offer has no price", () => {
     const form: ProductCreateFormState = {
       ...createDefaultProductForm(),
       familyId: "family-1",
@@ -146,7 +147,7 @@ describe("ProductCreateDialog", () => {
     };
 
     expect(canLeaveProductField(form, "offerPrice")).toBe(false);
-    expect(canLeaveProductField({ ...form, offerPrice: "2.50" }, "offerRange")).toBe(false);
+    expect(canLeaveProductField({ ...form, offerPrice: "2.50" }, "offerRange")).toBe(true);
     expect(canLeaveProductField({ ...form, offerPrice: "2.50", offerFrom: "2026-07-01" }, "offerRange")).toBe(true);
   });
 
@@ -215,7 +216,31 @@ describe("ProductCreateDialog", () => {
     };
 
     expect(duplicatedProductIdentifierFields(form, [{ id: "product-2", code: "A001", barcode: null, barcode2: null }])).toEqual(["code"]);
-    expect(duplicatedProductIdentifierFields({ ...form, code: "843" }, [])).toEqual(["code", "barcode"]);
+    expect(duplicatedProductIdentifierFields({ ...form, code: "843" }, [])).toEqual([]);
+    expect(duplicatedProductIdentifierFields({ ...form, code: "843", barcode2: "843" }, [])).toEqual(["code", "barcode", "barcode2"]);
+    expect(productCreateValidationErrors({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Articulo",
+      code: "0",
+      barcode: "0",
+      purchasePrice: "0",
+      salePrice: "5"
+    }, [{ id: "product-1", code: "0", barcode: "0", barcode2: null }], "product-1")).not.toContain("identifierDuplicate");
+    expect(buildCreateProductRequest({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "Articulo",
+      code: "2",
+      barcode: "2",
+      purchasePrice: "0",
+      salePrice: "2"
+    })).toMatchObject({
+      code: "2",
+      barcode: "2"
+    });
     expect(productCreateValidationErrors({
       ...createDefaultProductForm(),
       familyId: "family-1",
@@ -234,7 +259,7 @@ describe("ProductCreateDialog", () => {
       name: "Cafe",
       code: "A001",
       priceUseMode: "OFFER_PRICE"
-    })).toEqual(["offerPrice", "offerFrom"]);
+    })).toEqual(["offerPrice"]);
   });
 
   it("derives active offer from offer price modes", () => {
@@ -249,6 +274,38 @@ describe("ProductCreateDialog", () => {
       offerPrice: "2.50",
       offerFrom: "2026-07-01"
     })).toEqual([]);
+
+    expect(productCreateValidationErrors({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "ARTICULO",
+      code: "0",
+      barcode: "",
+      purchasePrice: "0",
+      salePrice: "05",
+      priceUseMode: "OFFER_PRICE",
+      discountType: "DISCOUNT_PRICE",
+      offerPrice: "3",
+      offerFrom: "2026-07-01",
+      offerUntil: "2026-07-31"
+    }, [{ id: "product-1", code: "0", barcode: "", barcode2: null }], "product-1")).toEqual([]);
+
+    expect(productCreateValidationErrors({
+      ...createDefaultProductForm(),
+      familyId: "family-1",
+      taxId: "tax-1",
+      name: "ARTICULO",
+      code: "0",
+      barcode: "",
+      purchasePrice: "0",
+      salePrice: "05",
+      priceUseMode: "OFFER_PRICE",
+      discountType: "DISCOUNT_PRICE",
+      offerPrice: "3",
+      offerFrom: "",
+      offerUntil: ""
+    }, [{ id: "product-1", code: "0", barcode: "", barcode2: null }], "product-1")).toEqual([]);
 
     expect(buildCreateProductRequest({
       ...createDefaultProductForm(),
@@ -320,6 +377,36 @@ describe("ProductCreateDialog", () => {
     });
   });
 
+  it("uses required catalog defaults before validating an edited product", () => {
+    const form = createProductFormFromEditProduct({
+      id: "product-1",
+      form: {
+        familyId: "",
+        taxId: "",
+        name: "ARTICULO",
+        code: "0",
+        barcode: "",
+        purchasePrice: "0",
+        salePrice: "5",
+        priceUseMode: "OFFER_PRICE",
+        offerPrice: "3",
+        offerFrom: "2026-07-01",
+        offerUntil: "2026-07-31"
+      }
+    });
+    const resolved = applyProductRequiredDefaults(
+      form,
+      [{ id: "family-general", name: "GENERAL", defaultFamily: true }],
+      [{ id: "tax-21", percentage: 21, defaultTax: true }]
+    );
+
+    expect(resolved).toMatchObject({
+      familyId: "family-general",
+      taxId: "tax-21"
+    });
+    expect(productCreateValidationErrors(resolved, [], "product-1")).toEqual([]);
+  });
+
   it("renders the reorganized product form with image panel", () => {
     const html = renderToStaticMarkup(
       <ProductCreateDialog
@@ -351,8 +438,9 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Examinar archivo");
     expect(html).toContain("Eliminar imagen");
     expect(html.indexOf("data-product-field-name=\"barcode\"")).toBeLessThan(html.indexOf("data-product-field-name=\"code\""));
-    expect(html).toContain("Registrar producto y continuar F8");
-    expect(html).toContain("Registrar producto y cerrar F9");
+    expect(html).toContain("Guardar F9");
+    expect(html).not.toContain("Registrar producto y continuar F8");
+    expect(html).not.toContain("Registrar producto y cerrar F9");
     expect(html).toContain("Impuestos incluidos en el precio");
     expect(html.indexOf("Usar precio")).toBeLessThan(html.indexOf("Precio oferta"));
     expect(html.indexOf("Precio oferta")).toBeLessThan(html.indexOf("Descuento oferta%"));
@@ -381,8 +469,9 @@ describe("ProductCreateDialog", () => {
     expect(html).toContain("Do not apply discount");
     expect(html).toContain("Do not apply discount enabled, no discount of any kind will be applied, and the seller will not be able to apply it manually");
     expect(html).toContain("Offer discount%");
-    expect(html).toContain("Register product and continue F8");
-    expect(html).toContain("Register product and close F9");
+    expect(html).toContain("Save F9");
+    expect(html).not.toContain("Register product and continue F8");
+    expect(html).not.toContain("Register product and close F9");
   });
 
   it("does not expose the deprecated none or member discount options", () => {

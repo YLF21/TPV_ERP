@@ -313,6 +313,7 @@ type SaleScreenProps = {
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
+  touchMode?: boolean;
   onBack: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
@@ -323,6 +324,7 @@ export function SaleScreen({
   locale,
   session,
   terminalContext,
+  touchMode = false,
   onBack,
   onLocaleChange,
   onLogout
@@ -576,7 +578,7 @@ export function SaleScreen({
   function consultCardPayment() { void submitCardPayment(cardCheckoutId, cardQuoteCents); }
 
   return (
-    <main className="sale-screen work-screen">
+    <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
       <SessionTopControls
         locale={locale}
         session={session}
@@ -602,7 +604,7 @@ export function SaleScreen({
 
         <section className="sale-ticket work-panel" aria-label="Ticket actual">
           <header className="work-panel-heading">
-            <h2>Ticket actual</h2>
+            <h2>Lineas de venta</h2>
             <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
           </header>
           {lines.length === 0 ? (
@@ -640,13 +642,13 @@ export function SaleScreen({
             </div>
           )}
           <PromotionPreviewPanel locale={locale} preview={null} />
+        </section>
+
+        <section className="sale-tools work-panel" aria-label="Busqueda y cobro">
           <footer className="sale-total">
             <span>Total</span>
             <strong>{formatSaleAmount(total)}</strong>
           </footer>
-        </section>
-
-        <section className="sale-tools work-panel" aria-label="Busqueda y cobro">
           <div className="work-panel-heading sale-product-heading">
             <div>
               <h2>Producto</h2>
@@ -657,7 +659,7 @@ export function SaleScreen({
             </button>
           </div>
           <label className="work-search">
-            <span>Buscar producto</span>
+            <span>Buscar producto <kbd>F5</kbd></span>
             <input
               ref={searchInputRef}
               aria-label="Buscar producto"
@@ -698,28 +700,58 @@ export function SaleScreen({
             ))}
           </div>
           <div className="sale-quick-grid">
-            <button type="button" disabled={!selectedLine} onClick={openQuantityDialog}>Cantidad</button>
+            <button type="button" disabled={!selectedLine} onClick={openQuantityDialog}>
+              <span>Cantidad</span>
+              <kbd>F2</kbd>
+            </button>
             <button
               type="button"
               disabled={!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)}
               title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
               onClick={openDiscountDialog}
             >
-              Descuento
+              <span>Descuento</span>
+              <kbd>F7</kbd>
             </button>
-            <button type="button" onClick={openCustomerDialog}>Cliente</button>
-            <button type="button" disabled={!selectedLine} onClick={() => setActionDialog("remove")}>Anular linea</button>
+            <button type="button" onClick={openCustomerDialog}>
+              <span>Cliente</span>
+              <kbd>F6</kbd>
+            </button>
+            <button type="button" disabled={!selectedLine} onClick={() => setActionDialog("remove")}>
+              <span>Anular linea</span>
+              <kbd>Supr</kbd>
+            </button>
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
             <div className="sale-payment-actions">
-              <button type="button" disabled={lines.length === 0 || total <= 0} onClick={() => void openCashDialog()}>Efectivo</button>
-              <button type="button" disabled={lines.length === 0 || total <= 0 || cardOpening || cardSubmitting} onClick={() => void openCardDialog()}>Tarjeta</button>
-              <button type="button">Pendiente cliente</button>
+              <button type="button" disabled={lines.length === 0 || total <= 0} onClick={() => void openCashDialog()}>
+                <span>Efectivo</span>
+                <kbd>F10</kbd>
+              </button>
+              <button type="button" disabled={lines.length === 0 || total <= 0 || cardOpening || cardSubmitting} onClick={() => void openCardDialog()}>
+                <span>Tarjeta</span>
+                <kbd>F11</kbd>
+              </button>
+              <button type="button">
+                <span>Pendiente cliente</span>
+                <kbd>F12</kbd>
+              </button>
             </div>
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
+
+        <nav className="sale-shortcut-bar" aria-label="Atajos de venta">
+          <span><kbd>F5</kbd> Buscar</span>
+          <span><kbd>F2</kbd> Cantidad</span>
+          <span><kbd>F7</kbd> Descuento</span>
+          <span><kbd>F6</kbd> Cliente</span>
+          <span><kbd>Supr</kbd> Anular linea</span>
+          <span><kbd>F10</kbd> Efectivo</span>
+          <span><kbd>F11</kbd> Tarjeta</span>
+          <span><kbd>F12</kbd> Pendiente</span>
+        </nav>
 
         <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
       </section>
