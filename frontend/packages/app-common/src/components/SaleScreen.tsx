@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
@@ -10,6 +10,7 @@ import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
 import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { queryPaymentOperation } from "../sale/paymentOperations";
 
 export type SaleProduct = {
   id: string;
@@ -559,8 +560,13 @@ export function SaleScreen({
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
         }
       } catch (error) {
-        const outcome = cardTransportFailureOutcome(checkoutId, error instanceof Error ? error.message : "No se pudo comunicar con el datafono");
-        setCardStatus(outcome.status); setCardMessage(outcome.message);
+        if (error instanceof ApiError) {
+          setCardStatus("ERROR");
+          setCardMessage(error.message);
+        } else {
+          const outcome = cardTransportFailureOutcome(checkoutId, error instanceof Error ? error.message : "No se pudo comunicar con el datafono");
+          setCardStatus(outcome.status); setCardMessage(outcome.message);
+        }
       }
       finally { setCardSubmitting(false); }
     });
@@ -573,7 +579,24 @@ export function SaleScreen({
     void submitCardPayment(next, cardQuoteCents);
   }
 
-  function consultCardPayment() { void submitCardPayment(cardCheckoutId, cardQuoteCents); }
+  function consultCardPayment() {
+    setCardSubmitting(true);
+    void queryPaymentOperation(cardCheckoutId, session.accessToken)
+      .then((operation) => {
+        const outcome = resolveCardPaymentOutcome({
+          status: operation.status,
+          total: operation.amount,
+          reference: operation.reference,
+          authorization: operation.authorization
+        }, cardQuoteCents);
+        setCardStatus(outcome.status);
+        setCardMessage(outcome.message);
+      })
+      .catch((error) => {
+        setCardMessage(error instanceof Error ? error.message : "No se pudo consultar la operacion");
+      })
+      .finally(() => setCardSubmitting(false));
+  }
 
   return (
     <main className="sale-screen work-screen">

@@ -26,7 +26,9 @@ export type Permission =
   | "WAREHOUSE_OUTPUTS_EDIT"
   | "WAREHOUSE_OUTPUTS_DELETE"
   | "WAREHOUSE_OUTPUTS_CONFIRM"
-  | "ROLES_MANAGE";
+  | "ROLES_MANAGE"
+  | "PAYMENT_TERMINAL_VOID"
+  | "PAYMENT_TERMINAL_REFUND";
 
 export type UserSession = {
   userId?: string;
