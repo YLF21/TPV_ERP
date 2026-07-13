@@ -27,7 +27,7 @@ public record TerminalPaymentConfigurationView(
 
     public record ProviderDescriptor(PaymentTerminalProvider provider, String displayName,
             List<PaymentTerminalMode> supportedModes, boolean liveAvailable, String unavailableReason,
-            List<PaymentTerminalCapability> capabilities, List<ProviderField> fields) {
+            List<PaymentTerminalCapability> capabilities, List<ProviderField> fieldSchemas) {
         private static final List<PaymentTerminalCapability> COMMON_CAPABILITIES = List.of(
                 PaymentTerminalCapability.PAIRING, PaymentTerminalCapability.CONNECTION_TEST,
                 PaymentTerminalCapability.CHARGE, PaymentTerminalCapability.QUERY,
@@ -107,8 +107,7 @@ public record TerminalPaymentConfigurationView(
                     configuration.getLastConnectionStatus(),
                     safeProviderParameters(configuration),
                     opaqueReference(configuration) != null && configuration.getSecretReferenceVersion() != null,
-                    opaqueReference(configuration) == null ? null : configuration.getSecretReferenceVersion(),
-                    configuration.getCardMode() == PaymentCardMode.INTEGRATED ? "NOT_PAIRED" : "NOT_REQUIRED");
+                    opaqueReference(configuration) == null ? null : configuration.getSecretReferenceVersion(), null);
         }
 
         private static String opaqueReference(TerminalPaymentConfiguration configuration) {

@@ -593,6 +593,7 @@ export class MessagesZh {
     "settings.paymentTerminal.enabled": "启用", "settings.paymentTerminal.testMode": "测试模式",
     "settings.paymentTerminal.terminalMode": "环境", "settings.paymentTerminal.simulated": "模拟", "settings.paymentTerminal.live": "LIVE",
     "settings.paymentTerminal.sdkNotInstalled": "SDK 未安装", "settings.paymentTerminal.pairingState": "配对状态", "settings.paymentTerminal.notPaired": "未配对", "settings.paymentTerminal.paired": "已配对",
+    "settings.paymentTerminal.unavailable.SDK_NOT_INSTALLED": "SDK 未安装", "settings.paymentTerminal.pairingUnknown": "未查询", "settings.paymentTerminal.pair": "配对", "settings.paymentTerminal.refreshPairing": "查询配对", "settings.paymentTerminal.pairingError": "无法查询配对状态",
     "settings.paymentTerminal.outcome": "模拟器下一结果",
     "settings.paymentTerminal.outcome.APPROVED": "批准", "settings.paymentTerminal.outcome.DECLINED": "拒绝",
     "settings.paymentTerminal.outcome.TIMEOUT": "超时", "settings.paymentTerminal.outcome.CONNECTION_ERROR": "连接错误",

@@ -593,6 +593,7 @@ export class MessagesEs {
     "settings.paymentTerminal.enabled": "Activado", "settings.paymentTerminal.testMode": "Modo de pruebas",
     "settings.paymentTerminal.terminalMode": "Entorno", "settings.paymentTerminal.simulated": "Simulado", "settings.paymentTerminal.live": "LIVE",
     "settings.paymentTerminal.sdkNotInstalled": "SDK no instalado", "settings.paymentTerminal.pairingState": "Estado de emparejamiento", "settings.paymentTerminal.notPaired": "No emparejado", "settings.paymentTerminal.paired": "Emparejado",
+    "settings.paymentTerminal.unavailable.SDK_NOT_INSTALLED": "SDK no instalado", "settings.paymentTerminal.pairingUnknown": "Sin consultar", "settings.paymentTerminal.pair": "Emparejar", "settings.paymentTerminal.refreshPairing": "Consultar emparejamiento", "settings.paymentTerminal.pairingError": "No se pudo consultar el emparejamiento",
     "settings.paymentTerminal.outcome": "Próximo resultado del simulador",
     "settings.paymentTerminal.outcome.APPROVED": "Aprobado", "settings.paymentTerminal.outcome.DECLINED": "Rechazado",
     "settings.paymentTerminal.outcome.TIMEOUT": "Tiempo de espera agotado", "settings.paymentTerminal.outcome.CONNECTION_ERROR": "Error de conexión",

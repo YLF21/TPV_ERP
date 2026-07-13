@@ -173,6 +173,44 @@ class TerminalPaymentConfigurationServiceTest {
     }
 
     @Test
+    void startsAndQueriesPairingThroughTheConfiguredSimulatorGateway() {
+        var terminal = terminal();
+        var configuration = configuredRedsys(terminal, "APPROVED");
+        var pairingId = java.util.UUID.randomUUID();
+        var detached = CardTerminalConfiguration.from(configuration);
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(detached);
+        when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, true)).thenReturn(true);
+        when(gateway.capabilities()).thenReturn(java.util.Set.of(PaymentTerminalCapability.PAIRING));
+        when(gateway.pair(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PaymentTerminalResult(PaymentTerminalOperationStatus.APPROVED, "PAIRED", "ref", null, "ok"));
+        when(gateway.pairingStatus(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new PaymentTerminalResult(PaymentTerminalOperationStatus.APPROVED, "PAIRED", "ref", null, "ok"));
+
+        assertThat(service().pair(pairingId).code()).isEqualTo("PAIRED");
+        assertThat(service().pairingStatus(pairingId).code()).isEqualTo("PAIRED");
+        var context = ArgumentCaptor.forClass(PaymentTerminalGatewayContext.class);
+        org.mockito.Mockito.verify(gateway).pair(
+                org.mockito.ArgumentMatchers.eq(new PaymentTerminalPairCommand(pairingId)), context.capture());
+        assertThat(context.getValue().mode()).isEqualTo(PaymentTerminalMode.SIMULATED);
+    }
+
+    @Test
+    void livePairingReturnsTypedSdkNotInstalledResult() {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.PAYTEF, "Paytef", true, false, Map.of(), null));
+        var unavailable = new UnavailableLivePaymentTerminalGateway(PaymentTerminalProvider.PAYTEF);
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(CardTerminalConfiguration.from(configuration));
+        var service = new TerminalPaymentConfigurationService(configurations, storeConfigurations, terminals,
+                currentTerminal, List.of(unavailable), gatewayConfigurations, clock, secretStore);
+
+        assertThat(service.pair(java.util.UUID.randomUUID()).code()).isEqualTo("SDK_NOT_INSTALLED");
+    }
+
+    @Test
     void rejectsUnknownSimulatorOutcome() {
         assertThatInvalidConfiguration(PaymentTerminalProvider.REDSYS_TPV_PC, true, "SURPRISE");
     }

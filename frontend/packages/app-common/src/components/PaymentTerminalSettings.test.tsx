@@ -8,6 +8,8 @@ import {
   paymentTerminalRulesError,
   paymentTerminalUpdatePayload,
   savePaymentTerminalConfiguration,
+  startPaymentTerminalPairing,
+  loadPaymentTerminalPairingStatus,
   testPaymentTerminalConnection,
   type PaymentTerminalConfigurationView,
   type SimulatorOutcome
@@ -22,7 +24,7 @@ const configuration: PaymentTerminalConfigurationView = {
     liveAvailable: false,
     unavailableReason: "SDK_NOT_INSTALLED",
     capabilities: ["PAIRING", "CONNECTION_TEST", "CHARGE"],
-    fields: [{ key: "simulatorOutcome", label: "Simulator outcome", type: "SELECT", required: false,
+    fieldSchemas: [{ key: "simulatorOutcome", label: "Simulator outcome", type: "SELECT", required: false,
       modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"] }]
   })),
   rules: {
@@ -30,7 +32,7 @@ const configuration: PaymentTerminalConfigurationView = {
     cardManualReferenceRequired: false,
     integratedCardEnabled: true,
     manualFallbackEnabled: true,
-    allowedPaymentTerminalProviders: ["REDSYS_TPV_PC"]
+    allowedPaymentTerminalProviders: ["REDSYS_TPV_PC", "PAYTEF", "PAYCOMET", "GLOBAL_PAYMENTS"]
   },
   configuration: {
     cardMode: "INTEGRATED",
@@ -98,6 +100,50 @@ describe("PaymentTerminalSettings", () => {
     const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={legacy} />);
     expect(html).toContain("Redsys TPV-PC");
     expect(html).not.toContain('disabled="">Probar conexión');
+  });
+
+  it("renders descriptor modes and generic non-sensitive fields without hardcoding", () => {
+    const live = { ...configuration, providerDescriptors: [{
+      provider: "REDSYS_TPV_PC" as const, displayName: "Redsys TPV-PC", supportedModes: ["LIVE" as const],
+      liveAvailable: true, unavailableReason: null, capabilities: ["PAIRING", "CONNECTION_TEST"],
+      fieldSchemas: [{ key: "ip", label: "IP del datáfono", type: "TEXT" as const, required: true,
+        modes: ["LIVE" as const], options: [] }]
+    }], configuration: { ...configuration.configuration, testMode: false, providerParameters: { ip: "10.0.0.2" } } };
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={live} />);
+    expect(html).toContain("IP del datáfono");
+    expect(html).toContain('required=""');
+    expect(html).toContain('value="10.0.0.2"');
+    expect(html).not.toContain('value="SIMULATED"');
+  });
+
+  it("intersects descriptors with allowed provider rules", () => {
+    const inconsistent = { ...configuration, rules: { ...configuration.rules,
+      allowedPaymentTerminalProviders: ["REDSYS_TPV_PC"] } };
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={inconsistent} />);
+    expect(html).toContain("Redsys TPV-PC");
+    expect(html).not.toContain('value="PAYTEF"');
+  });
+
+  it("starts and queries pairing with the pairing id", async () => {
+    const result = { status: "APPROVED", code: "PAIRED", reference: "ref", message: "ok" };
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(result), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    await startPaymentTerminalPairing("token", "123e4567-e89b-12d3-a456-426614174000");
+    await loadPaymentTerminalPairingStatus("token", "123e4567-e89b-12d3-a456-426614174000");
+    expect(fetchMock.mock.calls[0][0]).toContain("/pairing");
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))).toEqual({ pairingId: "123e4567-e89b-12d3-a456-426614174000" });
+    expect(fetchMock.mock.calls[1][0]).toContain("/pairing/123e4567-e89b-12d3-a456-426614174000");
+    vi.unstubAllGlobals();
+  });
+
+  it("sends only non-sensitive provider parameters in LIVE mode", () => {
+    expect(paymentTerminalUpdatePayload({ cardMode: "INTEGRATED", provider: "REDSYS_TPV_PC",
+      displayName: "Caja", enabled: true, terminalMode: "LIVE", simulatorOutcome: "DECLINED",
+      providerParameters: { ip: "10.0.0.2", simulatorOutcome: "APPROVED", apiKey: "hidden" }, secretInput: "hidden" }))
+      .toEqual({ cardMode: "INTEGRATED", provider: "REDSYS_TPV_PC", displayName: "Caja", enabled: true,
+        testMode: false, providerParameters: { ip: "10.0.0.2" } });
   });
 
   it("loads configuration with the bearer token", async () => {

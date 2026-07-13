@@ -91,3 +91,44 @@ Implementación: `38d5421af08b80b67966d79f9e20a0dc44b2af0c`
 
 El informe se versiona en un commit documental posterior para poder registrar el
 hash inmutable del commit de implementación.
+
+## Corrección de hallazgos posterior
+
+Se eliminaron las limitaciones registradas en la primera entrega:
+
+- Pairing real: `POST /pairing` inicia la operación y `GET /pairing/{pairingId}`
+  consulta el estado usando `CardTerminalGateway.pair` y `pairingStatus`, la
+  configuración efectiva y un `PaymentTerminalGatewayContext`. Los simuladores
+  responden `PAIRED`; LIVE conserva `SDK_NOT_INSTALLED` tipado. No fue necesaria
+  una migración ni persistencia duplicada: el identificador de pairing es el
+  contrato existente y el gateway es la fuente del estado.
+- La UI ofrece acciones separadas de emparejar, consultar pairing y probar
+  conexión, ninguna condicionada por `testMode`.
+- `fieldSchemas` se renderiza genéricamente por `type`, `required`, `label`,
+  `options` y `modes`; incluye `ip` cuando el descriptor/modo lo declara.
+- El payload usa `providerParameters`, elimina campos fuera de modo y cualquier
+  clave con semántica de secreto; nunca envía `secretInput` ni rehidrata secretos.
+- Los modos se generan exclusivamente desde `supportedModes`; el motivo se toma
+  de `unavailableReason` y se localiza.
+- Los descriptores se intersectan defensivamente con
+  `rules.allowedPaymentTerminalProviders`; hay regresión para respuestas
+  backend inconsistentes.
+
+### RED adicional
+
+- Frontend: tres fallos esperados por campo IP ausente, descriptor no intersectado
+  y APIs de pairing inexistentes; regresión adicional confirmó que
+  `simulatorOutcome` contaminaba un payload LIVE.
+- Backend: compilación de tests falló de forma esperada porque aún no existían
+  `pair`, `pairingStatus`, `PairingRequest` ni endpoints.
+
+### GREEN y verificación adicional
+
+- Frontend focal + i18n: 2 archivos, 20 tests, 0 fallos.
+- Backend configuración/controlador/vista/gateways: 72 tests, 0 fallos,
+  `BUILD SUCCESS`.
+- `@tpverp/app-gestion`: TypeScript + Vite, exit 0.
+- `@tpverp/app-venta`: TypeScript + Vite, exit 0.
+
+Commit correctivo: se registra en el handoff final, ya que este informe forma
+parte del mismo commit adicional.
