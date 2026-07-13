@@ -1,9 +1,12 @@
 package com.tpverp.backend.terminal;
 
 import java.time.Clock;
+import java.util.List;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.tpverp.backend.terminal.secrets.PaymentSecretStore;
 
 @Service
 public class TerminalPaymentConfigurationService {
@@ -12,19 +15,33 @@ public class TerminalPaymentConfigurationService {
     private final StorePaymentConfigurationRepository storeConfigurations;
     private final TerminalRepository terminals;
     private final CurrentTerminal currentTerminal;
+    private final List<CardTerminalGateway> gateways;
+    private final CardTerminalConfigurationReader gatewayConfigurations;
     private final Clock clock;
+    private final PaymentSecretStore secretStore;
 
     public TerminalPaymentConfigurationService(
             TerminalPaymentConfigurationRepository configurations,
             StorePaymentConfigurationRepository storeConfigurations,
             TerminalRepository terminals,
             CurrentTerminal currentTerminal,
-            Clock clock) {
+            List<CardTerminalGateway> gateways,
+            CardTerminalConfigurationReader gatewayConfigurations,
+            Clock clock) {this(configurations,storeConfigurations,terminals,currentTerminal,gateways,gatewayConfigurations,clock,null);}
+    @Autowired
+    public TerminalPaymentConfigurationService(
+            TerminalPaymentConfigurationRepository configurations,
+            StorePaymentConfigurationRepository storeConfigurations,
+            TerminalRepository terminals,CurrentTerminal currentTerminal,List<CardTerminalGateway> gateways,
+            CardTerminalConfigurationReader gatewayConfigurations,Clock clock,PaymentSecretStore secretStore) {
         this.configurations = configurations;
         this.storeConfigurations = storeConfigurations;
         this.terminals = terminals;
         this.currentTerminal = currentTerminal;
+        this.gateways = List.copyOf(gateways);
+        this.gatewayConfigurations = gatewayConfigurations;
         this.clock = clock;
+        this.secretStore=secretStore;
     }
 
     @Transactional(readOnly = true)
@@ -38,17 +55,29 @@ public class TerminalPaymentConfigurationService {
         var terminal = currentTerminal();
         var configuration = configurations.findByTerminalId(terminal.getId())
                 .orElseGet(() -> configurations.save(TerminalPaymentConfiguration.manual(terminal)));
+        if(command.secretReference()!=null&&!command.secretReference().isBlank()){
+            if(secretStore==null)throw new IllegalStateException("message.payment_terminal.secret_store_unavailable");
+            var metadata=secretStore.describe(command.secretReference());
+            if(metadata.version()!=command.secretVersion()||!metadata.provider().equals(command.provider().name()))throw new IllegalArgumentException("message.payment_terminal.secret_reference_mismatch");
+        } else if(configuration.getSecretReference()!=null&&configuration.getProvider()==command.provider()&&command.cardMode()==PaymentCardMode.INTEGRATED){
+            if(secretStore==null)throw new IllegalStateException("message.payment_terminal.secret_store_unavailable");
+            var metadata=secretStore.describe(configuration.getSecretReference());
+            if(metadata.version()!=configuration.getSecretReferenceVersion()||!metadata.provider().equals(command.provider().name()))throw new IllegalArgumentException("message.payment_terminal.secret_reference_mismatch");
+        }
         configuration.configure(command);
         return TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), configuration);
     }
 
-    @Transactional
-    public TerminalPaymentConfigurationView recordConnectionTest(ConnectionTestResultCommand command) {
-        var terminal = currentTerminal();
-        var configuration = configurations.findByTerminalId(terminal.getId())
-                .orElseGet(() -> configurations.save(TerminalPaymentConfiguration.manual(terminal)));
-        configuration.recordConnectionTest(command.success(), clock.instant());
-        return TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), configuration);
+    public TerminalPaymentConfigurationView testConnection() {
+        var authentication=SecurityContextHolder.getContext().getAuthentication();
+        var terminalId=currentTerminal.terminalId(authentication);
+        var configuration=gatewayConfigurations.required(terminalId);
+        var gateway = gateways.stream()
+                .filter(candidate -> candidate.supports(configuration.provider(), configuration.testMode()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("message.payment_terminal.gateway_not_available"));
+        var result = gateway.testConnection(configuration);
+        return gatewayConfigurations.recordAndView(terminalId,result.status()==PaymentTerminalOperationStatus.APPROVED);
     }
 
     private Terminal currentTerminal() {

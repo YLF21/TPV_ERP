@@ -35,9 +35,8 @@ public class TerminalPaymentConfigurationController {
 
     @PostMapping("/connection-test")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CONFIGURACION_TERMINAL')")
-    public TerminalPaymentConfigurationView recordConnectionTest(
-            @Valid @RequestBody ConnectionTestRequest request) {
-        return service.recordConnectionTest(new ConnectionTestResultCommand(request.success(), request.message()));
+    public TerminalPaymentConfigurationView testConnection() {
+        return service.testConnection();
     }
 
     public record UpdateRequest(
@@ -47,14 +46,12 @@ public class TerminalPaymentConfigurationController {
             boolean enabled,
             boolean testMode,
             Map<String, String> providerParameters,
-            String secretReference) {
+            String secretReference,
+            Integer secretVersion) {
 
         TerminalPaymentConfigurationCommand toCommand() {
             return new TerminalPaymentConfigurationCommand(
-                    cardMode, provider, displayName, enabled, testMode, providerParameters, secretReference);
+                    cardMode, provider, displayName, enabled, testMode, providerParameters, secretReference,secretVersion);
         }
-    }
-
-    public record ConnectionTestRequest(boolean success, String message) {
     }
 }

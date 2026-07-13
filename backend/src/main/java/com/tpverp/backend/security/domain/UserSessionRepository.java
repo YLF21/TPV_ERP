@@ -11,7 +11,8 @@ public interface UserSessionRepository extends JpaRepository<UserSession, UUID> 
     Optional<UserSession> findByTokenHash(String tokenHash);
 
     @EntityGraph(attributePaths = {
-            "usuario", "usuario.rol", "usuario.rol.permisos", "usuario.rol.permisos.permiso", "terminal"
+            "usuario", "usuario.tienda", "usuario.tienda.empresa",
+            "usuario.rol", "usuario.rol.permisos", "usuario.rol.permisos.permiso", "terminal"
     })
     Optional<UserSession> findByTokenHashAndRevocadaEnIsNull(String tokenHash);
 

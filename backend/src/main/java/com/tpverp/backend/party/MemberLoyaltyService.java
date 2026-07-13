@@ -104,7 +104,7 @@ public class MemberLoyaltyService {
             return;
         }
         var config = settings.findById(context.currentCompany().getId())
-                .orElseGet(() -> settings.save(new MemberSettings(context.currentCompany())));
+                .orElseGet(() -> new MemberSettings(context.currentCompany()));
         var paid = PartyValues.money(paidAmount);
         if (paid.signum() <= 0) {
             return;
@@ -348,7 +348,7 @@ public class MemberLoyaltyService {
 
     private void autoCategory(Member member) {
         var config = settings.findById(context.currentCompany().getId())
-                .orElseGet(() -> settings.save(new MemberSettings(context.currentCompany())));
+                .orElseGet(() -> new MemberSettings(context.currentCompany()));
         if (!config.isCategoryAutoEnabled() || member.isAutoCategoryLocked()) {
             return;
         }

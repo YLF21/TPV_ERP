@@ -41,8 +41,7 @@ public class CustomerController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','VENTA')")
     public List<SaleCustomerOption> saleOptions() {
         return service.list().stream()
-                .map(customer -> new SaleCustomerOption(
-                        customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber()))
+                .map(SaleCustomerOption::from)
                 .toList();
     }
 
@@ -145,6 +144,15 @@ public class CustomerController {
             UUID id,
             String clientId,
             String fiscalName,
-            String documentNumber) {
+            String documentNumber,
+            boolean activeMember,
+            String memberCategoryName,
+            BigDecimal memberDiscountPercent) {
+
+        static SaleCustomerOption from(CustomerService.CustomerView customer) {
+            return new SaleCustomerOption(
+                    customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber(),
+                    customer.isMember(), customer.memberCategoryName(), customer.memberDiscountPercent());
+        }
     }
 }

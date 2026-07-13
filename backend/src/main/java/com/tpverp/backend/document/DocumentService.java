@@ -202,6 +202,19 @@ public class DocumentService {
     }
 
     // Creates and confirms the ticket in one transaction.
+    @Transactional(readOnly = true)
+    public CommercialDocument quoteTicket(
+            DocumentCommand command,
+            Authentication authentication) {
+        if (command.tipo() != CommercialDocumentType.TICKET) {
+            throw new IllegalArgumentException("message.document.invalid_ticket_type");
+        }
+        var ticket = createDraft(command, authentication);
+        applyDirectPromotions(ticket);
+        return ticket;
+    }
+
+    // Creates and confirms the ticket in one transaction.
     @Transactional
     public CommercialDocument createTicket(
             DocumentCommand command,
@@ -225,6 +238,8 @@ public class DocumentService {
         if (ticket.getTotal().signum() >= 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket", terminalId);
         }
+        // Stock movements reference the document, so its row must exist before the gateway inserts them.
+        documents.saveAndFlush(ticket);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
@@ -237,6 +252,107 @@ public class DocumentService {
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
+    }
+
+    /** Confirms an already authorized card sale from its immutable fiscal snapshot. */
+    @Transactional
+    public CommercialDocument createApprovedCardTicketFromSnapshot(
+            ApprovedCardTicketSnapshot snapshot,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        var store = organization.currentStore();
+        if (!store.getId().equals(snapshot.storeId())) {
+            throw new IllegalStateException("La instantanea pertenece a otra tienda");
+        }
+        var ticket = new CommercialDocument(snapshot.storeId(), snapshot.warehouseId(),
+                CommercialDocumentType.TICKET, snapshot.date(),
+                organization.currentUser(authentication).getId(), snapshot.globalDiscount());
+        ticket.setParties(snapshot.customerId(), null, null);
+        snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
+                || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
+                || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
+            throw new IllegalStateException("La instantanea fiscal no cuadra con sus lineas");
+        }
+        requirePaymentsPresent(payments);
+        requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
+        var terminalId = currentTerminal.terminalId(authentication);
+        ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        addFrozenApprovedCardPayment(ticket, payments, snapshot.paymentMethodId(), terminalId);
+        documents.saveAndFlush(ticket);
+        ticket.setStockOrigin(stockGateway.confirm(ticket));
+        var saved = documents.save(ticket);
+        cashPayments.recordDocumentPayments(terminalId, saved);
+        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+                saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
+        generatePromotionalCoupons(saved);
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, terminalId);
+        return saved;
+    }
+
+    /** Creates the fiscal/commercial reversal after the acquirer approved a full card refund. */
+    @Transactional
+    public CommercialDocument createApprovedCardRefund(
+            UUID originalDocumentId, BigDecimal approvedAmount, Authentication authentication) {
+        return createApprovedCardRefund(UUID.randomUUID(), originalDocumentId, approvedAmount, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createApprovedCardRefund(UUID operationId,
+            UUID originalDocumentId, BigDecimal approvedAmount, Authentication authentication) {
+        var replay = documents.findByPaymentTerminalRefundOperationId(Objects.requireNonNull(operationId));
+        if (replay.isPresent()) return replay.orElseThrow();
+        var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
+        if (original.getEstado() == DocumentStatus.BORRADOR || original.getEstado() == DocumentStatus.ANULADO) {
+            throw new IllegalStateException("El documento original no admite devolucion");
+        }
+        if (Money.euros(approvedAmount).compareTo(original.getTotal()) != 0) {
+            throw new IllegalArgumentException(
+                    "La devolucion parcial requiere desglose explicito de lineas y cantidades");
+        }
+        var refund = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
+                CommercialDocumentType.TICKET, LocalDate.now(clock),
+                organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
+        refund.setParties(original.getClienteId(), null, null);
+        refund.identifyPaymentTerminalRefund(operationId);
+        original.getLineas().stream().map(DocumentLineCommand::from).forEach(line ->
+                refund.addLine(new DocumentLineCommand(line.productoId(), line.cantidad().negate(),
+                        line.codigo(), line.nombre(), line.tarifa(), line.precioUnitario(), line.descuento(),
+                        line.impuestosIncluidos(), line.regimenImpuesto(), line.porcentajeImpuesto(),
+                        line.lineType(), line.promotionId(), line.promotionVersionId(), line.promotionalCouponId())
+                        .toEntity(refund)));
+        if (refund.getTotal().compareTo(original.getTotal().negate()) != 0) {
+            throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");
+        }
+        refund.confirm(nextNumber(refund), organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        documents.saveAndFlush(refund);
+        refund.setStockOrigin(stockGateway.confirm(refund));
+        var saved = documents.save(refund);
+        relations.save(new DocumentRelation(saved, original, DocumentRelationType.RECTIFICA));
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, currentTerminal.terminalId(authentication));
+        return saved;
+    }
+
+    private void addFrozenApprovedCardPayment(
+            CommercialDocument ticket,List<PaymentCommand> payments,UUID paymentMethodId,UUID terminalId) {
+        if (payments.size()!=1) throw new IllegalArgumentException("se requiere un unico pago de tarjeta aprobado");
+        var command=payments.getFirst();
+        if (!paymentMethodId.equals(command.metodoPagoId())
+                || command.cardMode()!=PaymentCardMode.INTEGRATED
+                || command.paymentTerminalProvider()!=PaymentTerminalProvider.REDSYS_TPV_PC
+                || command.paymentTerminalStatus()!=PaymentTerminalOperationStatus.APPROVED
+                || !terminalId.equals(command.paymentTerminalId())) {
+            throw new IllegalArgumentException("metadatos del pago autorizado invalidos");
+        }
+        var method=paymentMethods.findById(paymentMethodId)
+                .filter(value->value.getEmpresaId().equals(organization.currentCompany().getId()))
+                .orElseThrow(()->new IllegalStateException("El metodo TARJETA autorizado ya no existe"));
+        ticket.addPayment(new DocumentPayment(ticket,method,1,command.importe(),true,null,null,null,
+                command.reference(),Instant.now(clock),command.cardMode(),command.paymentTerminalProvider(),
+                command.paymentTerminalStatus(),command.cardAuthorizationCode(),terminalId));
     }
 
     private void applyDirectPromotions(CommercialDocument document) {

@@ -3,6 +3,7 @@ package com.tpverp.backend.shared.api;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -30,6 +31,11 @@ public class ApiExceptionHandler {
 
     public ApiExceptionHandler(MessageSource messageSource) {
         this.messages = new LocalizedMessages(messageSource);
+    }
+
+    @ExceptionHandler(PaymentTerminalApiException.class)
+    ProblemDetail paymentTerminalProblem(PaymentTerminalApiException exception, HttpServletRequest request) {
+        return problem(exception.status(), exception.code(), exception.getMessage(), language(request));
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)

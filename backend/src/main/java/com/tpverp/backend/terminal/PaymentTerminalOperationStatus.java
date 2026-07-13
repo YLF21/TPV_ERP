@@ -6,6 +6,9 @@ public enum PaymentTerminalOperationStatus {
     APPROVED,
     DECLINED,
     CANCELLED,
+    REFUNDED,
+    PARTIALLY_REFUNDED,
     TIMEOUT,
-    ERROR
+    ERROR,
+    REVIEW_REQUIRED
 }

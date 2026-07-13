@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.document.CommercialDocument;
@@ -74,6 +75,34 @@ class MemberLoyaltyServiceTest {
         assertThat(member.getMemberBalance()).isEqualByComparingTo("2.59");
         verify(lots).save(any(MemberBalanceLot.class));
         verify(syncOutbox, org.mockito.Mockito.times(2)).enqueue(any());
+    }
+
+    @Test
+    void paidSaleUsesDefaultCategorySettingsWithoutPersistingSharedPrimaryKeyEntity() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
+        when(document.getClienteId()).thenReturn(customer.getId());
+        when(document.getId()).thenReturn(UUID.randomUUID());
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(settingsRepository.findById(company.getId())).thenReturn(Optional.empty());
+        when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsDesc(company.getId()))
+                .thenReturn(java.util.List.of());
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().recordPaidSale(document, new BigDecimal("10.00"));
+
+        assertThat(member.getMemberPoints()).isEqualTo(10);
+        verify(settingsRepository, never()).save(any(MemberSettings.class));
     }
 
     @Test

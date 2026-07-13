@@ -3,6 +3,12 @@ import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import {
+  readCashInputMode,
+  persistCashInputModeSelection,
+  type CashInputMode
+} from "../sale/cashInputMode";
+import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
 
 type SettingsSection = "terminal" | "user" | "reports" | "system";
 
@@ -31,6 +37,16 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const t = createTranslator(locale);
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("terminal");
+  const [cashInputMode, setCashInputMode] = useState<CashInputMode>(() => readCashInputMode());
+
+  const handleCashInputModeChange = (value: string) => {
+    const mode = persistCashInputModeSelection(value);
+    if (!mode) {
+      return;
+    }
+
+    setCashInputMode(mode);
+  };
 
   return (
     <main className="settings-screen">
@@ -101,6 +117,20 @@ export function SettingsScreen({
                   </div>
                 </dl>
               </article>
+              <article className="settings-card settings-cash-input-card">
+                <h3>{t("settings.cashInput")}</h3>
+                <p>{t("settings.cashInput.description")}</p>
+                <label htmlFor="cash-input-mode">{t("settings.cashInput")}</label>
+                <select
+                  id="cash-input-mode"
+                  value={cashInputMode}
+                  onChange={(event) => handleCashInputModeChange(event.currentTarget.value)}
+                >
+                  <option value="touch">{t("settings.cashInput.touch")}</option>
+                  <option value="keyboard">{t("settings.cashInput.keyboard")}</option>
+                </select>
+              </article>
+              <PaymentTerminalSettings locale={locale} token={session.accessToken} />
             </div>
           )}
           {selectedSection !== "terminal" && (

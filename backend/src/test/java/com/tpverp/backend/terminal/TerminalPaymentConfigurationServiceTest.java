@@ -8,13 +8,18 @@ import com.tpverp.backend.organization.Store;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.tpverp.backend.terminal.secrets.PaymentSecretStore;
 
 @ExtendWith(MockitoExtension.class)
 class TerminalPaymentConfigurationServiceTest {
@@ -27,6 +32,11 @@ class TerminalPaymentConfigurationServiceTest {
     private TerminalRepository terminals;
     @Mock
     private CurrentTerminal currentTerminal;
+    @Mock
+    private CardTerminalGateway gateway;
+    @Mock
+    private CardTerminalConfigurationReader gatewayConfigurations;
+    @Mock private PaymentSecretStore secretStore;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-04T10:15:30Z"), ZoneOffset.UTC);
 
@@ -61,28 +71,116 @@ class TerminalPaymentConfigurationServiceTest {
                 true,
                 true,
                 Map.of("ip", "192.168.1.50"),
-                "secret:redsys:caja1");
+                null);
 
         var view = service().update(request);
 
         var saved = ArgumentCaptor.forClass(TerminalPaymentConfiguration.class);
         org.mockito.Mockito.verify(configurations).save(saved.capture());
         assertThat(saved.getValue().getTerminal().getId()).isEqualTo(terminal.getId());
-        assertThat(view.configuration().secretConfigured()).isTrue();
+        assertThat(view.configuration().secretConfigured()).isFalse();
     }
 
     @Test
-    void recordsConnectionTestStatusWithoutStoringSensitivePayloads() {
+    void executesConnectionTestWithConfiguredGatewayAndRecordsStatus() {
         var terminal = terminal();
         var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, true, Map.of("simulatorOutcome", "APPROVED"), null));
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        var detached=CardTerminalConfiguration.from(configuration);
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(detached);
+        when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, true)).thenReturn(true);
+        when(gateway.testConnection(detached)).thenReturn(new CardTerminalResult(
+                PaymentTerminalOperationStatus.APPROVED, "SIM-CONNECTION", "SIMAUTH", "OK"));
+        configuration.recordConnectionTest(true,clock.instant());
+        when(gatewayConfigurations.recordAndView(terminal.getId(),true)).thenReturn(TerminalPaymentConfigurationView.from(terminal,new StorePaymentConfiguration(terminal.getTienda()),configuration));
+
+        var view = service().testConnection();
+
+        assertThat(view.configuration().lastConnectionStatus()).isEqualTo("OK");
+        assertThat(view.configuration().lastConnectionTestAt()).isEqualTo(Instant.parse("2026-07-04T10:15:30Z"));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void preservesExistingSecretReferenceWhenPatchDoesNotSupplyANewOne(String omittedSecret) {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, true, Map.of("simulatorOutcome", "APPROVED"), "pts_0123456789abcdef0123456789abcdef",1));
         when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
         when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
         when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.of(configuration));
+        when(secretStore.describe("pts_0123456789abcdef0123456789abcdef")).thenReturn(new PaymentSecretStore.SecretMetadata("pts_0123456789abcdef0123456789abcdef","REDSYS_TPV_PC",1));
 
-        var view = service().recordConnectionTest(new ConnectionTestResultCommand(false, "Timeout con proveedor"));
+        var view = service().update(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys updated",
+                true, true, Map.of("simulatorOutcome", "DECLINED"), omittedSecret));
+
+        assertThat(configuration.getSecretReference()).isEqualTo("pts_0123456789abcdef0123456789abcdef");
+        assertThat(view.configuration().secretConfigured()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"APPROVED", "declined", "Timeout", "connection_error"})
+    void acceptsAndNormalizesSupportedSimulatorOutcomes(String outcome) {
+        var configuration = updateRedsysSimulator(outcome);
+
+        assertThat(configuration.getProviderParameters().get("simulatorOutcome"))
+                .isEqualTo(outcome.toUpperCase(java.util.Locale.ROOT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DECLINED", "TIMEOUT", "CONNECTION_ERROR"})
+    void recordsNonApprovedConnectionResultAsError(String outcome) {
+        var terminal = terminal();
+        var configuration = configuredRedsys(terminal, outcome);
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        var detached=CardTerminalConfiguration.from(configuration);
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(detached);
+        when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, true)).thenReturn(true);
+        when(gateway.testConnection(detached)).thenReturn(new CardTerminalResult(
+                PaymentTerminalOperationStatus.valueOf(
+                        outcome.equals("CONNECTION_ERROR") ? "ERROR" : outcome),
+                "SIM-CONNECTION", null, "Fallo simulado"));
+        configuration.recordConnectionTest(false,clock.instant());
+        when(gatewayConfigurations.recordAndView(terminal.getId(),false)).thenReturn(TerminalPaymentConfigurationView.from(terminal,new StorePaymentConfiguration(terminal.getTienda()),configuration));
+
+        var view = service().testConnection();
 
         assertThat(view.configuration().lastConnectionStatus()).isEqualTo("ERROR");
-        assertThat(view.configuration().lastConnectionTestAt()).isEqualTo(Instant.parse("2026-07-04T10:15:30Z"));
+        assertThat(view.configuration().lastConnectionTestAt()).isEqualTo(clock.instant());
+    }
+
+    @Test
+    void reportsExplicitErrorWhenNoGatewaySupportsConfigurationWithoutRecordingSuccess() {
+        var terminal = terminal();
+        var configuration = configuredRedsys(terminal, "APPROVED");
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        var detached=CardTerminalConfiguration.from(configuration);
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(detached);
+        when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, true)).thenReturn(false);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().testConnection())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.payment_terminal.gateway_not_available");
+        assertThat(configuration.getLastConnectionStatus()).isNull();
+        assertThat(configuration.getLastConnectionTestAt()).isNull();
+    }
+
+    @Test
+    void rejectsUnknownSimulatorOutcome() {
+        assertThatInvalidConfiguration(PaymentTerminalProvider.REDSYS_TPV_PC, true, "SURPRISE");
+    }
+
+    @Test
+    void rejectsSimulatorOutcomeOutsideTestMode() {
+        assertThatInvalidConfiguration(PaymentTerminalProvider.REDSYS_TPV_PC, false, "APPROVED");
+        assertThatInvalidConfiguration(PaymentTerminalProvider.PAYTEF, false, "APPROVED");
     }
 
     @Test
@@ -109,7 +207,45 @@ class TerminalPaymentConfigurationServiceTest {
 
     private TerminalPaymentConfigurationService service() {
         return new TerminalPaymentConfigurationService(
-                configurations, storeConfigurations, terminals, currentTerminal, clock);
+                configurations, storeConfigurations, terminals, currentTerminal, List.of(gateway), gatewayConfigurations, clock,secretStore);
+    }
+
+    private void assertThatInvalidConfiguration(
+            PaymentTerminalProvider provider, boolean testMode, String outcome) {
+        var terminal = terminal();
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.empty());
+        when(configurations.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var request = new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, provider, "Terminal", true, testMode,
+                Map.of("simulatorOutcome", outcome), null);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().update(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.payment_terminal.simulator_outcome_invalid");
+    }
+
+    private TerminalPaymentConfiguration updateRedsysSimulator(String outcome) {
+        var terminal = terminal();
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.empty());
+        when(configurations.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        service().update(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, true, Map.of("simulatorOutcome", outcome), null));
+        var saved = ArgumentCaptor.forClass(TerminalPaymentConfiguration.class);
+        org.mockito.Mockito.verify(configurations).save(saved.capture());
+        return saved.getValue();
+    }
+
+    private TerminalPaymentConfiguration configuredRedsys(Terminal terminal, String outcome) {
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, true, Map.of("simulatorOutcome", outcome), null));
+        return configuration;
     }
 
     private Terminal terminal() {

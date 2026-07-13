@@ -9,5 +9,7 @@ public record TerminalPaymentConfigurationCommand(
         boolean enabled,
         boolean testMode,
         Map<String, String> providerParameters,
-        String secretReference) {
+        String secretReference,
+        Integer secretVersion) {
+    public TerminalPaymentConfigurationCommand(PaymentCardMode cardMode,PaymentTerminalProvider provider,String displayName,boolean enabled,boolean testMode,Map<String,String> providerParameters,String secretReference){this(cardMode,provider,displayName,enabled,testMode,providerParameters,secretReference,null);}
 }

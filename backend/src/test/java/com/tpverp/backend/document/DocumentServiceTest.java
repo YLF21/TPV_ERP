@@ -360,6 +360,57 @@ class DocumentServiceTest {
     }
 
     @Test
+    void approvedCardRefundReplaysDurableDocumentWithoutRepeatingStockOrFiscalEffects() {
+        var operationId=UUID.randomUUID();
+        var existing=new CommercialDocument(store.getId(),UUID.randomUUID(),CommercialDocumentType.TICKET,
+                LocalDate.now(),user.getId(),BigDecimal.ZERO);
+        existing.identifyPaymentTerminalRefund(operationId);
+        when(documentRepository.findByPaymentTerminalRefundOperationId(operationId)).thenReturn(Optional.of(existing));
+
+        assertThat(service.createApprovedCardRefund(operationId,UUID.randomUUID(),BigDecimal.TEN,
+                UsernamePasswordAuthenticationToken.authenticated(user,"x",List.of()))).isSameAs(existing);
+        verify(stockGateway,never()).confirm(any());
+        verify(fiscalIntegration,never()).registerAlta(any(),any(Boolean.class));
+        verify(relationRepository,never()).save(any());
+    }
+
+    @Test
+    void approvedCardSnapshotKeepsAuthorizedFiscalLinesWithoutRepricingLoyaltyOrPromotions() {
+        var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any())).thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var frozen = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, card.getId(),
+                BigDecimal.ZERO, new BigDecimal("8.26"), new BigDecimal("1.74"),
+                new BigDecimal("10.00"), List.of(new DocumentLineCommand(
+                        UUID.randomUUID(), BigDecimal.ONE, "P-OLD", "Precio autorizado",
+                        "SOCIO", new BigDecimal("10.00"), BigDecimal.ZERO,
+                        true, "IVA", new BigDecimal("21"))));
+
+        var ticket = service.createApprovedCardTicketFromSnapshot(
+                frozen, List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "REF", PaymentCardMode.INTEGRATED,
+                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalOperationStatus.APPROVED, "AUTH", terminalId)),
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("10.00");
+        assertThat(ticket.getBaseTotal()).isEqualByComparingTo("8.26");
+        assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo("1.74");
+        assertThat(ticket.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("10.00");
+        assertThat(ticket.getLineas().getFirst().getTarifa()).isEqualTo("SOCIO");
+        verify(productRepository, never()).findById(any());
+        verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
+        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+        verify(promotionRepository).findByEmpresaIdAndEstado(
+                store.getEmpresa().getId(), PromotionStatus.ACTIVE);
+        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
     void ticketCreationAddsPromotionLineWithoutProductLookupOrMemberBenefit() {
         var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
         var productId = UUID.randomUUID();

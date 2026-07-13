@@ -8,10 +8,15 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.ProductSupplierRepository;
 import com.tpverp.backend.inventory.InventoryDocumentGateway;
+import com.tpverp.backend.inventory.StockMovementSyncPublisher;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
+import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.promotion.PromotionEngine;
+import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -73,6 +78,11 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @MockitoBean private VoucherService voucherService;
     @MockitoBean private CurrentTerminal currentTerminal;
     @MockitoBean private CashPaymentRecorder cashPayments;
+    @MockitoBean private StockMovementSyncPublisher stockMovementSyncPublisher;
+    @MockitoBean private MemberLoyaltyService memberLoyaltyService;
+    @MockitoBean private SyncOutboxService syncOutboxService;
+    @MockitoBean private PromotionEngine promotionEngine;
+    @MockitoBean private PromotionalCouponService promotionalCouponService;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -153,8 +163,8 @@ class DocumentConfirmationRollbackPostgreSqlTest {
                 """.formatted(SCHEMA), ids.roleId(), ids.storeId());
         jdbc.update("""
                 insert into %s.usuario (
-                    id, tienda_id, nombre, password_hash, rol_id, protegido)
-                values (?, ?, 'ADMIN', 'hash', ?, true)
+                    id, tienda_id, nombre, user_name, password_hash, rol_id, protegido)
+                values (?, ?, 'ADMIN', 'ADMIN', 'hash', ?, true)
                 """.formatted(SCHEMA), ids.userId(), ids.storeId(), ids.roleId());
         jdbc.update("""
                 insert into %s.impuesto_tienda (id, tienda_id, porcentaje)

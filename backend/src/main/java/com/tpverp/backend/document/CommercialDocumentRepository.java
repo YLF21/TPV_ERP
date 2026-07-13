@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CommercialDocumentRepository extends JpaRepository<CommercialDocument, UUID> {
+    java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndTipoInOrderByFechaDesc(

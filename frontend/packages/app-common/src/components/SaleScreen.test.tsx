@@ -3,9 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SaleScreen,
   addSaleLine,
+  applyMemberDiscounts,
+  cashPaymentErrorTransition,
+  cashPaymentSuccessTransition,
+  finishCashPaymentResult,
+  readCashModeForOpening,
+  runGuardedCashSubmission,
+  resolveCardPaymentOutcome,
+  cardRetryCheckoutId,
+  cardTransportFailureOutcome,
+  buildCardChargeBody,
+  runGuardedCardOpening,
+  effectiveSaleLineDiscount,
   filterSaleCustomers,
   filterSaleProducts,
   removeSaleLine,
+  resolveCashPaymentResult,
   selectedProductAfterRemoval,
   saleLineSubtotal,
   saleTotal,
@@ -33,6 +46,14 @@ const products: SaleProduct[] = [
   { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50" },
   { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75 }
 ];
+
+const memberDiscountProduct: SaleProduct = {
+  id: "member-coffee",
+  code: "MEM-CAFE",
+  name: "Cafe socio",
+  salePrice: 10,
+  discountType: "MEMBER_DISCOUNT"
+};
 
 const customers: SaleCustomer[] = [
   { id: "customer-1", clientId: "C-001", fiscalName: "Cliente Pruebas SL", documentNumber: "B11111111" },
@@ -164,5 +185,163 @@ describe("SaleScreen", () => {
     expect(filterSaleCustomers(customers, "pruebas").map((customer) => customer.id)).toEqual(["customer-1"]);
     expect(filterSaleCustomers(customers, "12345678").map((customer) => customer.id)).toEqual(["customer-2"]);
     expect(filterSaleCustomers(customers, "c-002").map((customer) => customer.id)).toEqual(["customer-2"]);
+  });
+
+  it("applies the bronze member discount only to MEMBER_DISCOUNT products", () => {
+    const lines = addSaleLine(addSaleLine([], memberDiscountProduct), products[0]);
+    const bronze: SaleCustomer = {
+      id: "bronze",
+      fiscalName: "Cliente Bronce",
+      activeMember: true,
+      memberCategoryName: "Bronce",
+      memberDiscountPercent: 5
+    };
+
+    const discounted = applyMemberDiscounts(lines, bronze);
+
+    expect(discounted[0].memberDiscountPercent).toBe(5);
+    expect(effectiveSaleLineDiscount(discounted[0])).toBe(5);
+    expect(discounted[1].memberDiscountPercent).toBe(0);
+  });
+
+  it("preserves a greater manual discount when a member is selected or removed", () => {
+    const manuallyDiscounted = updateSaleLineDiscount(addSaleLine([], memberDiscountProduct), "member-coffee", 8);
+    const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
+
+    const withMember = applyMemberDiscounts(manuallyDiscounted, bronze);
+    const withoutMember = applyMemberDiscounts(withMember, null);
+
+    expect(effectiveSaleLineDiscount(withMember[0])).toBe(8);
+    expect(withMember[0].memberDiscountPercent).toBe(5);
+    expect(effectiveSaleLineDiscount(withoutMember[0])).toBe(8);
+    expect(withoutMember[0].memberDiscountPercent).toBe(0);
+  });
+
+  it("applies member discount to a product added after selecting the customer", () => {
+    const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
+    const added = applyMemberDiscounts(addSaleLine([], memberDiscountProduct), bronze);
+
+    expect(saleTotal(added)).toBe(9.5);
+  });
+
+  it("uses confirmed server amounts in the cash payment result", () => {
+    expect(resolveCashPaymentResult(
+      { number: "T-42", total: "12.34", received: "50.00", change: "7.66" },
+      1230,
+      2000
+    )).toEqual({
+      ticketNumber: "T-42",
+      totalCents: 1234,
+      receivedCents: 2000,
+      changeCents: 766
+    });
+  });
+
+  it("reads the current cash mode on every opening", () => {
+    let value = "touch";
+    const storage = { getItem: vi.fn(() => value) } as unknown as Storage;
+
+    expect(readCashModeForOpening(storage)).toBe("touch");
+    value = "keyboard";
+    expect(readCashModeForOpening(storage)).toBe("keyboard");
+    expect(storage.getItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("transitions a successful payment to a clean sale with a result", () => {
+    const result = { ticketNumber: "T-44", totalCents: 1200, receivedCents: 2000, changeCents: 800 };
+    expect(cashPaymentSuccessTransition(result)).toEqual({
+      cashDialogOpen: false,
+      cashResult: result,
+      lines: [],
+      selectedProductId: null,
+      selectedCustomer: null,
+      query: ""
+    });
+  });
+
+  it("keeps the sale snapshot and dialog on a payment error", () => {
+    const snapshot = { cashDialogOpen: true, lines: [{ id: "line" }], selectedProductId: "coffee" };
+    expect(cashPaymentErrorTransition(snapshot, "Servidor no disponible")).toEqual({
+      ...snapshot,
+      cashError: "Servidor no disponible"
+    });
+  });
+
+  it("finishes the result by clearing it and restoring search focus", () => {
+    const clear = vi.fn();
+    const focus = vi.fn();
+    finishCashPaymentResult(clear, focus);
+    expect(clear).toHaveBeenCalledWith(null);
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("allows only one immediate cash submission until the first settles", async () => {
+    const guard = { current: false };
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const request = vi.fn(() => pending);
+
+    const first = runGuardedCashSubmission(guard, request);
+    const second = runGuardedCashSubmission(guard, request);
+    expect(request).toHaveBeenCalledOnce();
+    expect(await second).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(guard.current).toBe(false);
+  });
+
+  it("falls back safely to the quote and sent cash when optional server amounts are absent", () => {
+    expect(resolveCashPaymentResult(
+      { number: "T-43", change: "7.70" },
+      1230,
+      2000
+    )).toEqual({
+      ticketNumber: "T-43",
+      totalCents: 1230,
+      receivedCents: 2000,
+      changeCents: 770
+    });
+  });
+
+  it("clears the sale only when a card payment is approved", () => {
+    expect(resolveCardPaymentOutcome({ status: "APPROVED", ticketNumber: "T-9", total: "12.34", authorization: "AUTH-1" }, 1200).clearSale).toBe(true);
+    expect(resolveCardPaymentOutcome({ status: "DECLINED", message: "Denegada" }, 1200)).toMatchObject({ clearSale: false, retryable: true });
+  });
+
+  it("does not offer a new checkout after an uncertain timeout", () => {
+    expect(resolveCardPaymentOutcome({ status: "TIMEOUT", message: "Sin respuesta" }, 1200)).toMatchObject({ clearSale: false, retryable: false, uncertain: true });
+    expect(cardRetryCheckoutId("TIMEOUT", () => "new-id")).toBeNull();
+    expect(cardRetryCheckoutId("DECLINED", () => "new-id")).toBe("new-id");
+    expect(cardRetryCheckoutId("ERROR", () => "new-id")).toBe("new-id");
+    expect(cardRetryCheckoutId("CANCELLED", () => "new-id")).toBe("new-id");
+  });
+
+  it("retains the checkout and request body after a transport failure", () => {
+    expect(cardTransportFailureOutcome("checkout-1", "Sin conexión")).toMatchObject({ status: "UNCERTAIN", checkoutId: "checkout-1", uncertain: true });
+    expect(buildCardChargeBody("checkout-1", { customerId: null, lines: [] }, 1234)).toEqual({ checkoutId: "checkout-1", sale: { customerId: null, lines: [] }, quotedTotal: "12.34" });
+  });
+
+  it("guards quote and initial charge as one synchronous card opening", async () => {
+    const guard = { current: false, generation: 0 };
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const quoteAndCharge = vi.fn(async () => pending);
+    const first = runGuardedCardOpening(guard, quoteAndCharge);
+    const second = runGuardedCardOpening(guard, quoteAndCharge);
+    expect(quoteAndCharge).toHaveBeenCalledOnce();
+    expect(await second).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(guard.current).toBe(false);
+  });
+
+  it("releases a failed opening and ignores stale completion tokens", async () => {
+    const guard = { current: false, generation: 0 };
+    await expect(runGuardedCardOpening(guard, async () => { throw new Error("quote failed"); })).rejects.toThrow("quote failed");
+    expect(guard.current).toBe(false);
+    expect(await runGuardedCardOpening(guard, async (opening) => {
+      guard.generation += 1;
+      expect(opening.isCurrent()).toBe(false);
+    })).toBe(true);
   });
 });

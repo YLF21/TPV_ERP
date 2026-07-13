@@ -308,6 +308,8 @@ public class CustomerService {
             CustomerRate rate,
             BigDecimal discount,
             boolean isMember,
+            String memberCategoryName,
+            BigDecimal memberDiscountPercent,
             UUID memberUuid,
             String memberId,
             String numMember,
@@ -322,6 +324,10 @@ public class CustomerService {
 
         static CustomerView from(Customer customer, Member member) {
             boolean activeMember = member != null && member.isActive();
+            var category = activeMember ? member.getMemberCategory() : null;
+            var memberDiscount = category != null && category.isActive() && category.isDiscountEnabled()
+                    ? category.getDiscountPercent()
+                    : BigDecimal.ZERO.setScale(2);
             return new CustomerView(
                     customer.getId(), customer.getClientId(), customer.getFiscalName(),
                     customer.getDocumentType(),
@@ -329,6 +335,7 @@ public class CustomerService {
                     customer.getPhone(), customer.getEmail(), customer.getNotes(),
                     activeMember ? CustomerRate.MEMBER : customer.getRate(),
                     customer.getDiscount(), activeMember,
+                    category == null ? null : category.getName(), memberDiscount,
                     member == null ? null : member.getId(),
                     member == null ? null : member.getMemberId(),
                     member == null ? null : member.getNumMember(),

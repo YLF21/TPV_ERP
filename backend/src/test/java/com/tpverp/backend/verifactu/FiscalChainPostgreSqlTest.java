@@ -279,11 +279,11 @@ class FiscalChainPostgreSqlTest {
                 insert into cliente (
                     id, empresa_id, nombre_fiscal, tipo_documento,
                     numero_documento, direccion, codigo_postal, poblacion,
-                    provincia, pais, tarifa, descuento, member_balance,
+                    provincia, pais, tarifa, descuento,
                     client_id, client_code_store_id)
                 values (?, ?, 'Cliente Original', 'NIF', '12345678Z',
                     'Calle Original', '35001', 'Las Palmas',
-                    'Las Palmas', 'ES', 'VENTA', 0, 0, 'C-001-000001', ?)
+                    'Las Palmas', 'ES', 'VENTA', 0, 'C-001-000001', ?)
                 """, customerId, fixture.companyId(), fixture.storeId());
         jdbc.update(
                 "update documento set cliente_id = ? where id = ?",
@@ -345,13 +345,14 @@ class FiscalChainPostgreSqlTest {
                     id, tienda_id, instalacion_id, referencia, valida_desde,
                     valida_hasta, max_windows, max_pda, tax_id, taxpayer_type,
                     regimen_impuesto, blob_original, hash, format_version,
-                    importada_en, import_result, activa)
+                    importada_en, ultima_validacion_saas, import_result, activa)
                 values (?, ?, ?, 'LIC-FISCAL', ?, ?, 1, 0, 'B12345674',
-                    'SOCIEDAD', 'IGIC', 'blob', 'hash', 3, ?, 'ACEPTADA', true)
+                    'SOCIEDAD', 'IGIC', 'blob', 'hash', 3, ?, ?, 'ACEPTADA', true)
                 """,
                 UUID.randomUUID(), fixture.storeId(), fixture.installationId(),
                 java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
                 java.sql.Timestamp.from(Instant.parse("2030-01-01T00:00:00Z")),
+                java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
                 java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
         jdbc.update("""
                 insert into configuracion_verifactu (
@@ -365,8 +366,8 @@ class FiscalChainPostgreSqlTest {
                 """, fixture.roleId(), fixture.storeId());
         jdbc.update("""
                 insert into usuario (
-                    id, tienda_id, nombre, password_hash, rol_id, protegido)
-                values (?, ?, 'ADMIN', 'hash', ?, true)
+                    id, tienda_id, nombre, user_name, password_hash, rol_id, protegido)
+                values (?, ?, 'ADMIN', 'ADMIN', 'hash', ?, true)
                 """, fixture.userId(), fixture.storeId(), fixture.roleId());
         jdbc.update("""
                 insert into almacen (id, tienda_id, nombre, predeterminado)

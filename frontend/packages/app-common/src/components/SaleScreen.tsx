@@ -3,6 +3,10 @@ import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
+import { CashPaymentDialog } from "./CashPaymentDialog";
+import { CashPaymentResultDialog } from "./CashPaymentResultDialog";
+import { CardPaymentDialog } from "./CardPaymentDialog";
+import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
 import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
@@ -13,12 +17,15 @@ export type SaleProduct = {
   barcode?: string | null;
   name?: string | null;
   salePrice?: number | string | null;
+  discountType?: string | null;
 };
 
 export type SaleLine = {
   product: SaleProduct;
   quantity: number;
+  // Operator-entered discount. Member benefit is kept separately.
   discountPercent: number;
+  memberDiscountPercent?: number;
 };
 
 export type SaleCustomer = {
@@ -26,6 +33,9 @@ export type SaleCustomer = {
   clientId?: string | null;
   fiscalName?: string | null;
   documentNumber?: string | null;
+  activeMember?: boolean;
+  memberCategoryName?: string | null;
+  memberDiscountPercent?: number | string | null;
 };
 
 function normalizedSearchValue(value: string | null | undefined) {
@@ -95,11 +105,143 @@ export function selectedProductAfterRemoval(lines: SaleLine[], productId: string
 }
 
 export function saleLineSubtotal(line: SaleLine) {
-  return Number(line.product.salePrice ?? 0) * line.quantity * (1 - line.discountPercent / 100);
+  return Number(line.product.salePrice ?? 0) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+}
+
+export function effectiveSaleLineDiscount(line: SaleLine) {
+  return Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
+}
+
+export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer | null) {
+  const customerDiscount = customer?.activeMember ? Number(customer.memberDiscountPercent ?? 0) : 0;
+  return lines.map((line) => ({
+    ...line,
+    memberDiscountPercent: line.product.discountType === "MEMBER_DISCOUNT" ? customerDiscount : 0
+  }));
 }
 
 export function saleTotal(lines: SaleLine[]) {
   return lines.reduce((total, line) => total + saleLineSubtotal(line), 0);
+}
+
+type CashPaymentResponse = {
+  number: string;
+  change: number | string;
+  total?: number | string;
+  received?: number | string;
+};
+
+type CashPaymentResult = {
+  ticketNumber: string;
+  totalCents: number;
+  receivedCents?: number;
+  changeCents?: number;
+  method?: string;
+  authorization?: string;
+  reference?: string;
+};
+
+type CardPaymentResponse = { status: string; ticketId?: string | null; ticketNumber?: string | null; total?: number | string; reference?: string | null; authorization?: string | null; message?: string | null };
+type CardPaymentOutcome = { clearSale: boolean; retryable: boolean; uncertain: boolean; status: string; message: string; result?: { ticketNumber: string; totalCents: number; method: string; authorization?: string; reference?: string } };
+
+export function resolveCardPaymentOutcome(response: CardPaymentResponse, quotedTotalCents: number): CardPaymentOutcome {
+  const status = response.status;
+  const approved = status === "APPROVED";
+  const finalFailure = status === "DECLINED" || status === "ERROR" || status === "CANCELLED";
+  return {
+    clearSale: approved,
+    retryable: finalFailure,
+    uncertain: !approved && !finalFailure,
+    status,
+    message: response.message ?? (approved ? "Pago aprobado" : "El pago no se ha completado"),
+    result: approved ? { ticketNumber: response.ticketNumber ?? "-", totalCents: serverAmountCents(response.total, quotedTotalCents), method: "Tarjeta", authorization: response.authorization ?? undefined, reference: response.reference ?? undefined } : undefined
+  };
+}
+
+export function cardRetryCheckoutId(status: string, generate: () => string) {
+  return status === "DECLINED" || status === "ERROR" || status === "CANCELLED" ? generate() : null;
+}
+
+export function cardTransportFailureOutcome(checkoutId: string, message: string) {
+  return { status: "UNCERTAIN", checkoutId, message, uncertain: true, clearSale: false, retryable: false };
+}
+
+export function buildCardChargeBody(checkoutId: string, sale: object, quotedCents: number) {
+  return { checkoutId, sale, quotedTotal: (quotedCents / 100).toFixed(2) };
+}
+
+export async function runGuardedCardOpening(
+  guard: { current: boolean; generation: number },
+  opening: (context: { token: number; isCurrent: () => boolean }) => Promise<unknown>
+) {
+  if (guard.current) return false;
+  guard.current = true;
+  const token = ++guard.generation;
+  try {
+    await opening({ token, isCurrent: () => guard.generation === token });
+    return true;
+  } finally {
+    guard.current = false;
+  }
+}
+
+function serverAmountCents(value: number | string | undefined, fallback: number) {
+  const amount = Number(value);
+  return value == null || !Number.isFinite(amount) ? fallback : Math.round(amount * 100);
+}
+
+export function resolveCashPaymentResult(
+  response: CashPaymentResponse,
+  quotedTotalCents: number,
+  sentReceivedCents: number
+): CashPaymentResult {
+  return {
+    ticketNumber: response.number,
+    totalCents: serverAmountCents(response.total, quotedTotalCents),
+    receivedCents: sentReceivedCents,
+    changeCents: serverAmountCents(response.change, sentReceivedCents - quotedTotalCents)
+  };
+}
+
+export function readCashModeForOpening(storage?: Storage) {
+  return readCashInputMode(storage);
+}
+
+export function cashPaymentSuccessTransition(result: CashPaymentResult) {
+  return {
+    cashDialogOpen: false,
+    cashResult: result,
+    lines: [] as SaleLine[],
+    selectedProductId: null,
+    selectedCustomer: null,
+    query: ""
+  };
+}
+
+export function cashPaymentErrorTransition<T extends object>(snapshot: T, cashError: string) {
+  return { ...snapshot, cashError };
+}
+
+export function finishCashPaymentResult(
+  clearResult: (result: null) => void,
+  focusSearch: () => void
+) {
+  clearResult(null);
+  focusSearch();
+}
+
+export async function runGuardedCashSubmission(
+  guard: { current: boolean },
+  submission: () => Promise<unknown>
+) {
+  if (guard.current) return false;
+  guard.current = true;
+  try {
+    await submission();
+    return true;
+  } finally {
+    guard.current = false;
+  }
 }
 
 export function filterSaleCustomers(customers: SaleCustomer[], query: string, limit = 20) {
@@ -147,10 +289,28 @@ export function SaleScreen({
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
+  const [cashDialogOpen, setCashDialogOpen] = useState(false);
+  const [cashQuoteCents, setCashQuoteCents] = useState(0);
+  const [cashCheckoutId, setCashCheckoutId] = useState("");
+  const [cashSubmitting, setCashSubmitting] = useState(false);
+  const [cashError, setCashError] = useState("");
+  const [cashStatus, setCashStatus] = useState("");
+  const [cashInputMode, setCashInputMode] = useState<CashInputMode>("touch");
+  const [cashResult, setCashResult] = useState<CashPaymentResult | null>(null);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
+  const [cardQuoteCents, setCardQuoteCents] = useState(0);
+  const [cardCheckoutId, setCardCheckoutId] = useState("");
+  const [cardStatus, setCardStatus] = useState("PENDING");
+  const [cardMessage, setCardMessage] = useState("");
+  const [cardSubmitting, setCardSubmitting] = useState(false);
+  const [cardOpening, setCardOpening] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const cashSubmissionRef = useRef(false);
+  const cardSubmissionRef = useRef(false);
+  const cardOpeningRef = useRef({ current: false, generation: 0 });
   const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
@@ -182,7 +342,7 @@ export function SaleScreen({
   }, [catalogReload, session.accessToken]);
 
   function addProduct(product: SaleProduct) {
-    setLines((current) => addSaleLine(current, product));
+    setLines((current) => applyMemberDiscounts(addSaleLine(current, product), selectedCustomer));
     setSelectedProductId(product.id);
     setQuery("");
     searchInputRef.current?.focus();
@@ -251,6 +411,115 @@ export function SaleScreen({
     }
   }
 
+  function cashSaleRequest() {
+    return {
+      customerId: selectedCustomer?.id ?? null,
+      lines: lines.map((line) => ({
+        productId: line.product.id,
+        quantity: line.quantity,
+        discount: line.discountPercent
+      }))
+    };
+  }
+
+  async function openCashDialog() {
+    if (lines.length === 0 || total <= 0) return;
+    setCashError("");
+    setCashStatus("");
+    setCashInputMode(readCashModeForOpening());
+    try {
+      const quote = await apiRequest<{ total: number | string }>("/pos/cash/quote", {
+        token: session.accessToken,
+        body: cashSaleRequest()
+      });
+      setCashQuoteCents(Math.round(Number(quote.total) * 100));
+      setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+      setCashDialogOpen(true);
+    } catch (error) {
+      setCashStatus(error instanceof Error ? error.message : "No se pudo calcular el total de la venta");
+    }
+  }
+
+  async function confirmCashPayment(receivedCents: number) {
+    await runGuardedCashSubmission(cashSubmissionRef, async () => {
+      setCashSubmitting(true);
+      setCashError("");
+      try {
+      const result = await apiRequest<CashPaymentResponse>("/pos/cash", {
+        token: session.accessToken,
+        body: {
+          checkoutId: cashCheckoutId,
+          sale: cashSaleRequest(),
+          received: (receivedCents / 100).toFixed(2),
+          quotedTotal: (cashQuoteCents / 100).toFixed(2)
+        }
+      });
+      const confirmedResult = resolveCashPaymentResult(result, cashQuoteCents, receivedCents);
+      const transition = cashPaymentSuccessTransition(confirmedResult);
+      setCashDialogOpen(transition.cashDialogOpen);
+      setLines(transition.lines);
+      setSelectedProductId(transition.selectedProductId);
+      setSelectedCustomer(transition.selectedCustomer);
+      setCashResult(transition.cashResult);
+      setQuery(transition.query);
+      } catch (error) {
+      const transition = cashPaymentErrorTransition(
+        { cashDialogOpen, lines, selectedProductId, selectedCustomer, query },
+        error instanceof Error ? error.message : "No se pudo registrar el cobro"
+      );
+      setCashError(transition.cashError);
+      } finally {
+        setCashSubmitting(false);
+      }
+    });
+  }
+
+  const newCheckoutId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+  async function openCardDialog() {
+    if (lines.length === 0 || total <= 0) return;
+    await runGuardedCardOpening(cardOpeningRef.current, async (opening) => {
+      setCardOpening(true); setCashStatus("");
+      try {
+        const quote = await apiRequest<{ total: number | string }>("/pos/card/quote", { token: session.accessToken, body: cashSaleRequest() });
+        if (!opening.isCurrent()) return;
+        const cents = Math.round(Number(quote.total) * 100);
+        const checkoutId = newCheckoutId();
+        setCardQuoteCents(cents); setCardCheckoutId(checkoutId); setCardStatus("PENDING"); setCardMessage("Esperando respuesta del datafono..."); setCardDialogOpen(true);
+        await submitCardPayment(checkoutId, cents);
+      } catch (error) {
+        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : "No se pudo calcular el total de la venta");
+      } finally { setCardOpening(false); }
+    });
+  }
+
+  async function submitCardPayment(checkoutId: string, quotedCents: number) {
+    await runGuardedCashSubmission(cardSubmissionRef, async () => {
+      setCardSubmitting(true); setCardStatus("PENDING"); setCardMessage("Esperando respuesta del datafono...");
+      try {
+        const response = await apiRequest<CardPaymentResponse>("/pos/card/charge", { token: session.accessToken, body: buildCardChargeBody(checkoutId, cashSaleRequest(), quotedCents) });
+        const outcome = resolveCardPaymentOutcome(response, quotedCents);
+        setCardStatus(outcome.status); setCardMessage(outcome.message);
+        if (outcome.clearSale && outcome.result) {
+          setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+        }
+      } catch (error) {
+        const outcome = cardTransportFailureOutcome(checkoutId, error instanceof Error ? error.message : "No se pudo comunicar con el datafono");
+        setCardStatus(outcome.status); setCardMessage(outcome.message);
+      }
+      finally { setCardSubmitting(false); }
+    });
+  }
+
+  function retryCardPayment() {
+    const next = cardRetryCheckoutId(cardStatus, newCheckoutId);
+    if (!next) return;
+    setCardCheckoutId(next);
+    void submitCardPayment(next, cardQuoteCents);
+  }
+
+  function consultCardPayment() { void submitCardPayment(cardCheckoutId, cardQuoteCents); }
+
   return (
     <main className="sale-screen work-screen">
       <SessionTopControls
@@ -299,7 +568,15 @@ export function SaleScreen({
                   </div>
                   <span>
                     {line.quantity} x {formatSaleAmount(line.product.salePrice)}
-                    {line.discountPercent > 0 && <small> - {formatSaleAmount(line.discountPercent)}%</small>}
+                    {effectiveSaleLineDiscount(line) > 0 && (
+                      <small>
+                        {line.memberDiscountPercent != null
+                          && line.memberDiscountPercent >= line.discountPercent
+                          && line.memberDiscountPercent > 0
+                          ? ` - Socio ${formatSaleAmount(line.memberDiscountPercent)}%`
+                          : ` - ${formatSaleAmount(line.discountPercent)}%`}
+                      </small>
+                    )}
                   </span>
                   <b>{formatSaleAmount(saleLineSubtotal(line))}</b>
                 </button>
@@ -373,10 +650,11 @@ export function SaleScreen({
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
             <div className="sale-payment-actions">
-              <button type="button">Efectivo</button>
-              <button type="button">Tarjeta</button>
+              <button type="button" disabled={lines.length === 0 || total <= 0} onClick={() => void openCashDialog()}>Efectivo</button>
+              <button type="button" disabled={lines.length === 0 || total <= 0 || cardOpening || cardSubmitting} onClick={() => void openCardDialog()}>Tarjeta</button>
               <button type="button">Pendiente cliente</button>
             </div>
+            {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
 
@@ -389,6 +667,28 @@ export function SaleScreen({
         token={session.accessToken}
         onClose={() => setProductCreateOpen(false)}
       />
+
+      {cashDialogOpen && (
+        <CashPaymentDialog
+          totalCents={cashQuoteCents}
+          initialMode={cashInputMode}
+          submitting={cashSubmitting}
+          error={cashError}
+          onCancel={() => setCashDialogOpen(false)}
+          onConfirm={(receivedCents) => void confirmCashPayment(receivedCents)}
+        />
+      )}
+
+      {cashResult && (
+        <CashPaymentResultDialog
+          {...cashResult}
+          onFinish={() => {
+            finishCashPaymentResult(setCashResult, () => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
+      {cardDialogOpen && <CardPaymentDialog totalCents={cardQuoteCents} status={cardStatus} submitting={cardSubmitting} message={cardMessage} onCancel={() => setCardDialogOpen(false)} onConsult={consultCardPayment} onNewOperation={retryCardPayment} />}
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
@@ -422,9 +722,9 @@ export function SaleScreen({
           {customerError && <p className="sale-action-error">No se pudieron cargar los clientes</p>}
           {!customerLoading && !customerError && (
             <div className="sale-customer-results">
-              <button type="button" onClick={() => { setSelectedCustomer(null); setActionDialog(null); }}>Sin cliente</button>
+              <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>Sin cliente</button>
               {customerResults.map((customer) => (
-                <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setActionDialog(null); }}>
+                <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setLines((current) => applyMemberDiscounts(current, customer)); setActionDialog(null); }}>
                   <strong>{customer.fiscalName ?? "Cliente sin nombre"}</strong>
                   <span>{customer.clientId ?? customer.documentNumber ?? "Sin codigo"}</span>
                 </button>

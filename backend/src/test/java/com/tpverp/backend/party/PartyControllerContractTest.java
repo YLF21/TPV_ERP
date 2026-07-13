@@ -3,6 +3,7 @@ package com.tpverp.backend.party;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +32,15 @@ class PartyControllerContractTest {
                 .contains("SUPPLIERS_READ");
         assertThat(permission(SalesRepresentativeController.class.getMethod("list")))
                 .contains("SUPPLIERS_READ");
+    }
+
+    @Test
+    void saleCustomerOptionExposesOnlyIdentityAndMemberBenefit() {
+        assertThat(Arrays.stream(CustomerController.SaleCustomerOption.class.getRecordComponents())
+                .map(component -> component.getName()))
+                .containsExactly(
+                        "id", "clientId", "fiscalName", "documentNumber",
+                        "activeMember", "memberCategoryName", "memberDiscountPercent");
     }
 
     private String path(Class<?> controller) {

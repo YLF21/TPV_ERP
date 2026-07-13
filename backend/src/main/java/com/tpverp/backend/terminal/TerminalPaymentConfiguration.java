@@ -59,6 +59,9 @@ public class TerminalPaymentConfiguration {
     @Column(name = "secret_reference", length = 255)
     private String secretReference;
 
+    @Column(name = "secret_reference_version")
+    private Integer secretReferenceVersion;
+
     @Version
     private long version;
 
@@ -75,6 +78,7 @@ public class TerminalPaymentConfiguration {
     }
 
     public void configure(TerminalPaymentConfigurationCommand command) {
+        var previousProvider=this.provider;
         this.cardMode = Objects.requireNonNull(command.cardMode(), "cardMode");
         this.provider = Objects.requireNonNull(command.provider(), "provider");
         if (cardMode == PaymentCardMode.MANUAL && provider != PaymentTerminalProvider.NONE) {
@@ -86,8 +90,12 @@ public class TerminalPaymentConfiguration {
         this.displayName = optional(command.displayName());
         this.enabled = command.enabled();
         this.testMode = command.testMode();
-        this.providerParameters = safeProviderParameters(command.providerParameters());
-        this.secretReference = optional(command.secretReference());
+        this.providerParameters = safeProviderParameters(command.providerParameters(), provider, testMode);
+        if (command.secretReference() != null && !command.secretReference().isBlank()) {
+            assignSecretReference(command.secretReference(),Objects.requireNonNull(command.secretVersion(),"secretVersion"));
+        } else if (cardMode != PaymentCardMode.INTEGRATED || provider != previousProvider) {
+            clearSecretReference();
+        }
     }
 
     public void recordConnectionTest(boolean success, Instant when) {
@@ -139,24 +147,45 @@ public class TerminalPaymentConfiguration {
         return secretReference;
     }
 
+    public Integer getSecretReferenceVersion() { return secretReferenceVersion; }
+
+    public void assignSecretReference(String reference, int version) {
+        if (reference == null || !reference.matches("pts_[a-f0-9]{32}") || version < 1) {
+            throw new IllegalArgumentException("message.payment_terminal.secret_reference_invalid");
+        }
+        this.secretReference = reference;
+        this.secretReferenceVersion = version;
+    }
+    public void clearSecretReference(){this.secretReference=null;this.secretReferenceVersion=null;}
+
+    public long getVersion() { return version; }
+
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private static Map<String, String> safeProviderParameters(Map<String, String> parameters) {
+    private static Map<String, String> safeProviderParameters(
+            Map<String, String> parameters, PaymentTerminalProvider provider, boolean testMode) {
         var safe = new LinkedHashMap<String, String>();
         Objects.requireNonNullElse(parameters, Map.<String, String>of()).forEach((key, value) -> {
             var normalized = Objects.requireNonNull(key, "key").trim();
-            var lower = normalized.toLowerCase(java.util.Locale.ROOT);
-            if (lower.contains("password")
-                    || lower.contains("secret")
-                    || lower.contains("token")
-                    || lower.equals("apikey")
-                    || lower.equals("api_key")) {
-                throw new IllegalArgumentException("message.payment_terminal.sensitive_parameter_not_allowed");
-            }
+            if(PaymentTerminalSensitiveData.sensitiveKey(normalized))throw new IllegalArgumentException("message.payment_terminal.sensitive_parameter_not_allowed");
+            if(normalized.equals("simulatorOutcome")&&!testMode)throw new IllegalArgumentException("message.payment_terminal.simulator_outcome_invalid");
+            var allowed=(provider!=PaymentTerminalProvider.NONE&&testMode&&normalized.equals("simulatorOutcome"))
+                    ||(provider==PaymentTerminalProvider.REDSYS_TPV_PC&&normalized.equals("ip"));
+            if(!allowed)throw new IllegalArgumentException("message.payment_terminal.provider_parameter_not_allowed");
             safe.put(normalized, value);
         });
+        var simulatorOutcome = safe.get("simulatorOutcome");
+        if (simulatorOutcome != null) {
+            var validContext = provider != PaymentTerminalProvider.NONE && testMode;
+            var normalizedOutcome = simulatorOutcome.trim().toUpperCase(java.util.Locale.ROOT);
+            if (!validContext || !java.util.Set.of("APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR", "PENDING", "ERROR")
+                    .contains(normalizedOutcome)) {
+                throw new IllegalArgumentException("message.payment_terminal.simulator_outcome_invalid");
+            }
+            safe.put("simulatorOutcome", normalizedOutcome);
+        }
         return safe;
     }
 }

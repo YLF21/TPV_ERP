@@ -46,6 +46,9 @@ class CorePermissionBootstrapTest {
                 "DELIVERY_NOTES_CONFIRM",
                 "TICKETS_CANCEL",
                 "INVOICES_CONFIRM",
-                "INVOICES_PAY");
+                "INVOICES_PAY",
+                "PAYMENT_TERMINAL_VOID",
+                "PAYMENT_TERMINAL_REFUND",
+                "PAYMENT_TERMINAL_SECRETS");
     }
 }

@@ -2,6 +2,7 @@ package com.tpverp.backend.terminal;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record TerminalPaymentConfigurationView(
@@ -44,7 +45,10 @@ public record TerminalPaymentConfigurationView(
             boolean testMode,
             Instant lastConnectionTestAt,
             String lastConnectionStatus,
-            boolean secretConfigured) {
+            Map<String, String> providerParameters,
+            boolean secretConfigured,
+            String secretReference,
+            Integer secretVersion) {
 
         static PaymentConfigurationView from(TerminalPaymentConfiguration configuration) {
             return new PaymentConfigurationView(
@@ -55,7 +59,22 @@ public record TerminalPaymentConfigurationView(
                     configuration.isTestMode(),
                     configuration.getLastConnectionTestAt(),
                     configuration.getLastConnectionStatus(),
-                    configuration.getSecretReference() != null);
+                    safeProviderParameters(configuration),
+                    opaqueReference(configuration) != null && configuration.getSecretReferenceVersion() != null,
+                    opaqueReference(configuration),
+                    opaqueReference(configuration) == null ? null : configuration.getSecretReferenceVersion());
+        }
+
+        private static String opaqueReference(TerminalPaymentConfiguration configuration) {
+            var reference=configuration.getSecretReference();
+            return reference != null && reference.matches("pts_[a-f0-9]{32}") ? reference : null;
+        }
+
+        private static Map<String, String> safeProviderParameters(TerminalPaymentConfiguration configuration) {
+            var simulatorOutcome = configuration.getProviderParameters().get("simulatorOutcome");
+            return simulatorOutcome == null
+                    ? Map.of()
+                    : Map.of("simulatorOutcome", simulatorOutcome);
         }
     }
 }
