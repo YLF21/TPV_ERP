@@ -11,6 +11,7 @@ import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
+import { SalePaymentCheckout } from "./SalePaymentCheckout";
 
 export type SaleProduct = {
   id: string;
@@ -735,11 +736,7 @@ export function SaleScreen({
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <div className="sale-payment-actions">
-              <button type="button" disabled={lines.length === 0 || total <= 0} onClick={() => void openCashDialog()}>Efectivo</button>
-              <button type="button" disabled={lines.length === 0 || total <= 0 || cardOpening || cardSubmitting} onClick={() => void openCardDialog()}>Tarjeta</button>
-              <button type="button">Pendiente cliente</button>
-            </div>
+            <SalePaymentCheckout totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onFinalized={(ticketNumber)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setCashResult({ticketNumber,totalCents:Math.round(total*100)});}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
