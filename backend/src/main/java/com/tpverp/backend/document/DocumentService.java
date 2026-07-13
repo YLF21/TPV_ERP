@@ -355,7 +355,7 @@ public class DocumentService {
         var command=payments.getFirst();
         if (!paymentMethodId.equals(command.metodoPagoId())
                 || command.cardMode()!=PaymentCardMode.INTEGRATED
-                || command.paymentTerminalProvider()!=PaymentTerminalProvider.REDSYS_TPV_PC
+                || command.paymentTerminalProvider()==null
                 || command.paymentTerminalStatus()!=PaymentTerminalOperationStatus.APPROVED
                 || !terminalId.equals(command.paymentTerminalId())) {
             throw new IllegalArgumentException("metadatos del pago autorizado invalidos");

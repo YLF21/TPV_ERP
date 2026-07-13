@@ -407,7 +407,7 @@ class DocumentServiceTest {
                 frozen, List.of(new PaymentCommand(
                         card.getId(), new BigDecimal("10.00"), true, null, null,
                         null, "REF", PaymentCardMode.INTEGRATED,
-                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalProvider.GLOBAL_PAYMENTS,
                         PaymentTerminalOperationStatus.APPROVED, "AUTH", terminalId)),
                 authentication());
 
@@ -416,6 +416,8 @@ class DocumentServiceTest {
         assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo("1.74");
         assertThat(ticket.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("10.00");
         assertThat(ticket.getLineas().getFirst().getTarifa()).isEqualTo("SOCIO");
+        assertThat(ticket.getPagos().getFirst().getPaymentTerminalProvider())
+                .isEqualTo(PaymentTerminalProvider.GLOBAL_PAYMENTS);
         verify(productRepository, never()).findById(any());
         verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
         verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
