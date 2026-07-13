@@ -32,7 +32,7 @@ export function PaymentAllocationPanel({ session, providers, manualCardEnabled, 
     {remaining > 0 && <div>
       <label>Importe <input value={amount} onChange={(event) => setAmount(event.currentTarget.value)} /></label>
       <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "CASH", amountCents })}>Efectivo</button>
-      {manualCardEnabled && <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "MANUAL_CARD", amountCents })}>Tarjeta manual</button>}
+      {manualCardEnabled && <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => { const reference=globalThis.prompt?.("Referencia obligatoria de la tarjeta manual")?.trim(); if(reference)onAdd({ kind: "MANUAL_CARD", amountCents, reference }); }}>Tarjeta manual</button>}
       {providers.map((provider) => <button key={provider} type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "INTEGRATED_CARD", amountCents, provider })}>{provider}</button>)}
     </div>}
   </section>;

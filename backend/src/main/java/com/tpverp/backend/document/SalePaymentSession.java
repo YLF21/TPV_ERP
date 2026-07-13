@@ -14,6 +14,7 @@ public class SalePaymentSession {
  @Column(name="request_hash",nullable=false,length=64) private String requestHash; @JdbcTypeCode(SqlTypes.JSON) @Column(name="document_snapshot",nullable=false,columnDefinition="jsonb") private String snapshot;
  @Column(nullable=false,precision=19,scale=2) private BigDecimal total; @Column(nullable=false,length=3) private String currency="EUR";
  @Enumerated(EnumType.STRING) @Column(nullable=false,length=32) private SalePaymentSessionStatus status; @Column(name="ticket_id") private UUID ticketId; @Column(name="ticket_number",length=32) private String ticketNumber;
+ @Column(name="compensation_note",length=512) private String compensationNote; @Column(name="compensation_resolved_by") private UUID compensationResolvedBy; @Column(name="compensation_resolved_at") private Instant compensationResolvedAt;
  @OneToMany(mappedBy="session",cascade=CascadeType.ALL,orphanRemoval=true) @OrderBy("createdAt asc") private List<SalePaymentAllocation> allocations=new ArrayList<>();
  @Column(name="created_at",nullable=false) private Instant createdAt; @Column(name="updated_at",nullable=false) private Instant updatedAt; @Version private long version;
  protected SalePaymentSession(){}
@@ -24,5 +25,6 @@ public class SalePaymentSession {
  public boolean isCovered(){return approvedTotal().compareTo(total)==0;}
  public void finalizeWith(UUID ticketId,String number){if(!isCovered())throw new IllegalStateException("payment_session_not_covered");if(this.ticketId!=null)return;this.ticketId=ticketId;this.ticketNumber=number;status=SalePaymentSessionStatus.FINALIZED;updatedAt=Instant.now();}
  public void cancel(){if(approvedTotal().signum()>0)status=SalePaymentSessionStatus.COMPENSATION_REQUIRED;else status=SalePaymentSessionStatus.CANCELLED;updatedAt=Instant.now();}
+ public void acknowledgeCompensation(String note,UUID userId){if(status!=SalePaymentSessionStatus.COMPENSATION_REQUIRED)throw new IllegalStateException("compensation_not_required");if(note==null||note.isBlank())throw new IllegalArgumentException("compensation_note_required");compensationNote=note.trim();compensationResolvedBy=Objects.requireNonNull(userId);compensationResolvedAt=Instant.now();status=SalePaymentSessionStatus.CANCELLED;updatedAt=compensationResolvedAt;}
  public UUID getId(){return id;} public UUID getStoreId(){return storeId;} public UUID getTerminalId(){return terminalId;} public UUID getUserId(){return userId;} public String getRequestHash(){return requestHash;} public String getSnapshot(){return snapshot;} public BigDecimal getTotal(){return total;} public String getCurrency(){return currency;} public SalePaymentSessionStatus getStatus(){return status;} public UUID getTicketId(){return ticketId;} public String getTicketNumber(){return ticketNumber;} public List<SalePaymentAllocation> getAllocations(){return List.copyOf(allocations);}
 }

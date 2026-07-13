@@ -359,6 +359,7 @@ export function SaleScreen({
   const [cardMessage, setCardMessage] = useState("");
   const [cardSubmitting, setCardSubmitting] = useState(false);
   const [cardOpening, setCardOpening] = useState(false);
+  const [paymentLocked, setPaymentLocked] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
@@ -688,7 +689,7 @@ export function SaleScreen({
               aria-controls="sale-product-results"
               aria-expanded={query.trim().length > 0}
               autoComplete="off"
-              disabled={catalogLoading || catalogError}
+              disabled={catalogLoading || catalogError || paymentLocked}
               placeholder="Codigo o nombre"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -712,7 +713,7 @@ export function SaleScreen({
               <p className="sale-search-status">No se encontraron productos</p>
             )}
             {!catalogLoading && !catalogError && results.map((product) => (
-              <button className="sale-search-result" type="button" key={product.id} onClick={() => addProduct(product)}>
+              <button className="sale-search-result" type="button" disabled={paymentLocked} key={product.id} onClick={() => addProduct(product)}>
                 <span>
                   <strong>{product.name ?? "Producto sin nombre"}</strong>
                   <small>{product.code ?? product.barcode ?? "Sin codigo"}</small>
@@ -722,21 +723,21 @@ export function SaleScreen({
             ))}
           </div>
           <div className="sale-quick-grid">
-            <button type="button" disabled={!selectedLine} onClick={openQuantityDialog}>Cantidad</button>
+            <button type="button" disabled={!selectedLine || paymentLocked} onClick={openQuantityDialog}>Cantidad</button>
             <button
               type="button"
-              disabled={!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)}
+              disabled={!selectedLine || paymentLocked || saleProductBlocksManualDiscount(selectedLine.product)}
               title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
               onClick={openDiscountDialog}
             >
               Descuento
             </button>
-            <button type="button" onClick={openCustomerDialog}>Cliente</button>
-            <button type="button" disabled={!selectedLine} onClick={() => setActionDialog("remove")}>Anular linea</button>
+            <button type="button" disabled={paymentLocked} onClick={openCustomerDialog}>Cliente</button>
+            <button type="button" disabled={!selectedLine || paymentLocked} onClick={() => setActionDialog("remove")}>Anular linea</button>
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <SalePaymentCheckout totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onFinalized={(ticketNumber)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setCashResult({ticketNumber,totalCents:Math.round(total*100)});}} />
+            <SalePaymentCheckout totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={setPaymentLocked} onFinalized={(ticketNumber,authoritativeTotalCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setCashResult({ticketNumber,totalCents:authoritativeTotalCents});}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>

@@ -24,6 +24,9 @@ class SalePaymentSessionTest {
         assertThatThrownBy(()->session.addAllocation(UUID.randomUUID(),"too-much",SalePaymentAllocationKind.MANUAL_CARD,new BigDecimal("5.00"),null,"MANUAL")).isInstanceOf(IllegalArgumentException.class);
         session.cancel();
         assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COMPENSATION_REQUIRED);
+        assertThatThrownBy(()->session.acknowledgeCompensation(" ",UUID.randomUUID())).hasMessage("compensation_note_required");
+        session.acknowledgeCompensation("Efectivo devuelto y firmado",UUID.randomUUID());
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
     }
 
     @Test void finalizeIsIdempotentAndNeverReplacesTheFirstTicket() {
