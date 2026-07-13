@@ -12,7 +12,7 @@ const session: PaymentSession = {
 
 describe("PaymentAllocationPanel", () => {
   it("shows previous approvals after an intermediate decline and all enabled tender choices", () => {
-    const html = renderToStaticMarkup(<PaymentAllocationPanel session={session} providers={["PAYTEF", "PAYCOMET"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={["PAYTEF", "PAYCOMET"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
     expect(html).toContain("PAYCOMET");
     expect(html).toContain("APROBADO");
     expect(html).toContain("Denegada");
@@ -24,8 +24,26 @@ describe("PaymentAllocationPanel", () => {
 
   it("offers query for timeout without a new charge action on that allocation", () => {
     const timedOut = { ...session, allocations: [{ ...session.allocations[0], status: "TIMEOUT" as const }] };
-    const html = renderToStaticMarkup(<PaymentAllocationPanel session={timedOut} providers={["PAYTEF"]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={timedOut} providers={["PAYTEF"]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
     expect(html).toContain("Consultar estado");
     expect(html).not.toContain("Reintentar cargo");
+  });
+
+  it("renders split-payment controls in the selected locale", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="en" session={session} providers={[]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
+    expect(html).toContain("Split payment");
+    expect(html).toContain("Remaining: 7.00");
+    expect(html).toContain("Cash");
+    expect(html).toContain("Manual card");
+    expect(html).not.toContain("Cobro dividido");
+  });
+
+  it("shows compensation explicitly and offers no new tender", () => {
+    const compensating = { ...session, status: "COMPENSATION_REQUIRED" as const };
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={compensating} providers={["PAYTEF"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
+    expect(html).toContain("Compensación obligatoria");
+    expect(html).not.toContain(">Efectivo<");
+    expect(html).not.toContain(">Tarjeta manual<");
+    expect(html).not.toContain(">PAYTEF</button>");
   });
 });

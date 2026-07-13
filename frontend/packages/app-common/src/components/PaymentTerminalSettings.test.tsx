@@ -25,8 +25,12 @@ const configuration: PaymentTerminalConfigurationView = {
     liveAvailable: false,
     unavailableReason: "SDK_NOT_INSTALLED",
     capabilities: ["PAIRING", "CONNECTION_TEST", "CHARGE"],
-    fieldSchemas: [{ key: "simulatorOutcome", label: "settings.paymentTerminal.outcome", type: "SELECT", required: false,
-      modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"] }]
+    fieldSchemas: [
+      { key: "simulatorOutcome", label: "settings.paymentTerminal.outcome", type: "SELECT", required: false,
+        modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"] },
+      { key: "simulatorQueryOutcome", label: "settings.paymentTerminal.queryOutcome", type: "SELECT", required: false,
+        modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "PENDING", "ERROR"] }
+    ]
   })),
   rules: {
     cardManualEnabled: true,
@@ -63,6 +67,8 @@ describe("PaymentTerminalSettings", () => {
     }
     expect(html).toContain("Probar conexión");
     expect(html).toContain("Guardar configuración");
+    expect(html).toContain("Resultado al consultar tras timeout");
+    expect(html).not.toContain("settings.paymentTerminal.queryOutcome");
   });
 
   it("renders every allowed provider dynamically and disables LIVE with SDK no instalado", () => {
@@ -87,6 +93,20 @@ describe("PaymentTerminalSettings", () => {
     expect(html).not.toContain('disabled="">Probar conexión');
   });
 
+  it("restores the pairing identity from current configuration after reload", () => {
+    const recovered = {
+      ...configuration,
+      configuration: {
+        ...configuration.configuration,
+        pairingId: "123e4567-e89b-12d3-a456-426614174000",
+        pairingStatus: "PAIRED" as const
+      }
+    };
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={recovered} />);
+    expect(html).toContain("Emparejado");
+    expect(html).not.toContain('disabled="">Consultar emparejamiento');
+  });
+
   it("never includes rehydrated secret values in an update payload", () => {
     const payload = paymentTerminalUpdatePayload({
       cardMode: "INTEGRATED", provider: "PAYTEF", displayName: "Caja", enabled: true,
@@ -94,6 +114,17 @@ describe("PaymentTerminalSettings", () => {
     });
     expect(JSON.stringify(payload)).not.toContain("do-not-send");
     expect(payload).not.toHaveProperty("secretReference");
+  });
+
+  it("sends only an opaque secret reference and its matching version", () => {
+    const payload = paymentTerminalUpdatePayload({
+      cardMode: "INTEGRATED", provider: "PAYTEF", displayName: "Caja", enabled: true,
+      terminalMode: "LIVE", simulatorOutcome: "APPROVED", providerParameters: {},
+      secretReference: "pts_0123456789abcdef0123456789abcdef", secretVersion: 3,
+      secretInput: "must-never-leave-the-browser"
+    });
+    expect(payload).toMatchObject({ secretReference: "pts_0123456789abcdef0123456789abcdef", secretVersion: 3 });
+    expect(JSON.stringify(payload)).not.toContain("must-never-leave-the-browser");
   });
 
   it("keeps the legacy rules-only response usable", () => {

@@ -173,12 +173,26 @@ class TerminalPaymentConfigurationServiceTest {
     }
 
     @Test
+    void acceptsAndPublishesTheTimeoutQueryOutcome() {
+        var terminal=terminal();
+        var configuration=TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.PAYTEF,"Paytef",true,true,
+                Map.of("simulatorOutcome","TIMEOUT","simulatorQueryOutcome","approved"),null));
+        var view=TerminalPaymentConfigurationView.from(terminal,new StorePaymentConfiguration(terminal.getTienda()),configuration);
+        assertThat(view.configuration().providerParameters()).containsEntry("simulatorQueryOutcome","APPROVED");
+    }
+
+    @Test
     void startsAndQueriesPairingThroughTheConfiguredSimulatorGateway() {
         var terminal = terminal();
         var configuration = configuredRedsys(terminal, "APPROVED");
         var pairingId = java.util.UUID.randomUUID();
         var detached = CardTerminalConfiguration.from(configuration);
         when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.of(configuration));
+        when(configurations.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation->invocation.getArgument(0));
         when(gatewayConfigurations.required(terminal.getId())).thenReturn(detached);
         when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, true)).thenReturn(true);
         when(gateway.capabilities()).thenReturn(java.util.Set.of(PaymentTerminalCapability.PAIRING));
@@ -189,10 +203,23 @@ class TerminalPaymentConfigurationServiceTest {
 
         assertThat(service().pair(pairingId).code()).isEqualTo("PAIRED");
         assertThat(service().pairingStatus(pairingId).code()).isEqualTo("PAIRED");
+        assertThat(service().current().configuration().pairingStatus()).isEqualTo("PAIRED");
+        org.mockito.Mockito.verify(configurations,org.mockito.Mockito.atLeastOnce()).save(configuration);
         var context = ArgumentCaptor.forClass(PaymentTerminalGatewayContext.class);
         org.mockito.Mockito.verify(gateway).pair(
                 org.mockito.ArgumentMatchers.eq(new PaymentTerminalPairCommand(pairingId)), context.capture());
         assertThat(context.getValue().mode()).isEqualTo(PaymentTerminalMode.SIMULATED);
+    }
+
+    @Test
+    void rejectsPairingStatusForAnIdentityThatWasNeverStarted() {
+        var terminal=terminal();var configuration=configuredRedsys(terminal,"APPROVED");
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.of(configuration));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->service().pairingStatus(java.util.UUID.randomUUID()))
+                .hasMessage("message.payment_terminal.pairing_not_started");
+        org.mockito.Mockito.verify(gateway,org.mockito.Mockito.never()).pairingStatus(
+                org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
     }
 
     @Test

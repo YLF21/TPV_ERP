@@ -38,6 +38,8 @@ export type PaymentTerminalConfigurationView = {
     lastConnectionTestAt: string | null;
     lastConnectionStatus: string | null;
     secretConfigured: boolean;
+    secretVersion?: number | null;
+    pairingId?: string | null;
     pairingStatus?: "NOT_PAIRED" | "PAIRED" | "NOT_REQUIRED";
   };
 };
@@ -52,6 +54,8 @@ export type PaymentTerminalSettingsForm = {
   simulatorOutcome: SimulatorOutcome;
   providerParameters?: Record<string, string>;
   secretInput?: string;
+  secretReference?: string;
+  secretVersion?: number;
 };
 
 const paymentConfigurationPath = "/terminal-configuration/payment";
@@ -97,13 +101,18 @@ export function paymentTerminalUpdatePayload(form: PaymentTerminalSettingsForm) 
     return !["secret", "password", "credential", "token", "apikey", "api_key"].some((part) => normalized.includes(part))
       && (simulated || key !== "simulatorOutcome");
   }));
+  const secretReference = form.secretReference?.trim();
+  const secretVersion = form.secretVersion;
   return {
     cardMode: form.cardMode,
     provider: integrated ? form.provider : "NONE" as PaymentTerminalProvider,
     displayName: form.displayName.trim(),
     enabled: form.enabled,
     testMode: simulated,
-    providerParameters: simulated ? { ...providerParameters, simulatorOutcome: providerParameters.simulatorOutcome ?? form.simulatorOutcome } : providerParameters
+    providerParameters: simulated ? { ...providerParameters, simulatorOutcome: providerParameters.simulatorOutcome ?? form.simulatorOutcome } : providerParameters,
+    ...(integrated && secretReference && Number.isInteger(secretVersion) && secretVersion! > 0
+      ? { secretReference, secretVersion }
+      : {})
   };
 }
 
@@ -165,7 +174,9 @@ function toForm(view: PaymentTerminalConfigurationView): PaymentTerminalSettings
     simulatorOutcome: simulatorOutcomes.includes(outcome as SimulatorOutcome)
       ? outcome as SimulatorOutcome
       : "APPROVED",
-    providerParameters: { ...view.configuration.providerParameters }
+    providerParameters: { ...view.configuration.providerParameters },
+    secretReference: "",
+    secretVersion: view.configuration.secretVersion ?? undefined
   };
 }
 
@@ -184,7 +195,7 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
   const [busy, setBusy] = useState(!initialConfiguration);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
-  const [pairingId, setPairingId] = useState<string | null>(null);
+  const [pairingId, setPairingId] = useState<string | null>(initialConfiguration?.configuration.pairingId ?? null);
   const [pairingStatus, setPairingStatus] = useState<string | null>(initialConfiguration?.configuration.pairingStatus ?? null);
 
   useEffect(() => {
@@ -195,6 +206,8 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
         if (!active) return;
         setConfiguration(view);
         setForm(toForm(view));
+        setPairingId(view.configuration.pairingId ?? null);
+        setPairingStatus(view.configuration.pairingStatus ?? null);
       })
       .catch(() => {
         if (!active) return;
@@ -303,6 +316,11 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
         {integrated && descriptor?.unavailableReason && <p className="payment-terminal-hint">{t(`settings.paymentTerminal.unavailable.${descriptor.unavailableReason}`)}</p>}
         <label>{t("settings.paymentTerminal.displayName")}<input value={form.displayName} disabled={busy} onChange={(e) => update("displayName", e.currentTarget.value)} /></label>
         {integrated && descriptor?.fieldSchemas.filter((field) => field.modes.includes(terminalMode as "SIMULATED" | "LIVE")).map((field) => <label key={field.key}>{fieldLabel(field.label)}{field.type === "SELECT" ? <select value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })}>{field.options.map((option) => <option value={option} key={option}>{t(`settings.paymentTerminal.outcome.${option}`) === `settings.paymentTerminal.outcome.${option}` ? option : t(`settings.paymentTerminal.outcome.${option}`)}</option>)}</select> : <input value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })} />}</label>)}
+        {integrated && terminalMode === "LIVE" && <>
+          <label>{t("settings.paymentTerminal.secretReference")}<input value={form.secretReference ?? ""} disabled={busy} autoComplete="off" onChange={(e) => update("secretReference", e.currentTarget.value)} /></label>
+          <label>{t("settings.paymentTerminal.secretVersion")}<input type="number" min="1" value={form.secretVersion ?? ""} disabled={busy} onChange={(e) => update("secretVersion", e.currentTarget.value ? Number(e.currentTarget.value) : undefined)} /></label>
+          <p className="payment-terminal-hint">{configuration?.configuration.secretConfigured ? t("settings.paymentTerminal.secretConfigured") : t("settings.paymentTerminal.secretNotConfigured")}</p>
+        </>}
         <label className="payment-terminal-check"><input type="checkbox" checked={form.enabled} disabled={busy} onChange={(e) => update("enabled", e.currentTarget.checked)} />{t("settings.paymentTerminal.enabled")}</label>
       </div>
       {integrated && descriptor?.capabilities.includes("PAIRING") && <div className="payment-terminal-pairing"><p>{t("settings.paymentTerminal.pairingState")}: {pairingStatus === "PAIRED" ? t("settings.paymentTerminal.paired") : pairingStatus ?? t("settings.paymentTerminal.pairingUnknown")}</p><button type="button" disabled={busy} onClick={pair}>{t("settings.paymentTerminal.pair")}</button><button type="button" disabled={busy || !pairingId} onClick={refreshPairing}>{t("settings.paymentTerminal.refreshPairing")}</button></div>}

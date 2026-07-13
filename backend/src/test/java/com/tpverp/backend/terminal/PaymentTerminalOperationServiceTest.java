@@ -82,6 +82,7 @@ class PaymentTerminalOperationServiceTest {
         var recovered=service.recover(operationId,UUID.randomUUID());
 
         assertThat(recovered.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);
         verify(paytef).query(any(),any());verify(paytef,never()).charge(any(PaymentTerminalChargeCommand.class),any(PaymentTerminalGatewayContext.class));
     }
 
@@ -127,6 +128,17 @@ class PaymentTerminalOperationServiceTest {
         assertThat(approved.getStatus()).isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
         assertThat(approved.getDocumentRetryCount()).isEqualTo(4);
         assertThat(approved.getProcessingOwner()).isNull();
+    }
+
+    @Test void finalizationRevalidatesTheIntegratedChargeUnderLock() {
+        var approved=operation("a".repeat(64));approved.approve("REF","AUTH",now.plusSeconds(1));
+        approved.recordRefund(new BigDecimal("10.00"),now.plusSeconds(2));
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(approved));
+
+        assertThatThrownBy(()->service.requireFinalizableApprovedCharge(operationId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_operation_not_finalizable");
+        verify(repository).findLockedById(operationId);
     }
 
     private PaymentTerminalOperation operation(String hash){var operation=PaymentTerminalOperation.reserve(operationId,terminal,store,

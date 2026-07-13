@@ -92,6 +92,8 @@ public class TerminalPaymentConfigurationService {
     private PaymentTerminalResult pairing(UUID pairingId, boolean statusOnly) {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         var terminalId = currentTerminal.terminalId(authentication);
+        var persistent=configurations.findByTerminalId(terminalId);
+        if(statusOnly&&(persistent.isEmpty()||!persistent.orElseThrow().matchesPairing(pairingId)))throw new IllegalStateException("message.payment_terminal.pairing_not_started");
         var configuration = gatewayConfigurations.required(terminalId);
         var gateway = gateways.stream()
                 .filter(candidate -> candidate.supports(configuration.provider(), configuration.testMode()))
@@ -102,7 +104,9 @@ public class TerminalPaymentConfigurationService {
         if (!gateway.capabilities().contains(PaymentTerminalCapability.PAIRING)) {
             throw new IllegalStateException("message.payment_terminal.pairing_not_supported");
         }
-        return statusOnly ? gateway.pairingStatus(command, context) : gateway.pair(command, context);
+        var result=statusOnly ? gateway.pairingStatus(command, context) : gateway.pair(command, context);
+        persistent.ifPresent(entity->{entity.recordPairing(pairingId,result);configurations.save(entity);});
+        return result;
     }
 
     private PaymentTerminalGatewayContext gatewayContext(CardTerminalConfiguration configuration, UUID operationId) {

@@ -35,4 +35,29 @@ class SalePaymentSessionTest {
         var first=UUID.randomUUID();session.finalizeWith(first,"T-1");session.finalizeWith(UUID.randomUUID(),"T-2");
         assertThat(session.getTicketId()).isEqualTo(first);assertThat(session.getTicketNumber()).isEqualTo("T-1");
     }
+
+    @Test void cancellingAnUncertainIntegratedPaymentRequiresCompensation() {
+        var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
+        var card=session.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,
+                new BigDecimal("10.00"),"PAYTEF","INTEGRATED");
+        card.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.TIMEOUT,card.getId(),null,null,"incierto");
+
+        session.cancel();
+
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COMPENSATION_REQUIRED);
+    }
+
+    @Test void lateApprovalNeverReactivatesACancelledSession() {
+        var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
+        var card=session.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,
+                new BigDecimal("10.00"),"PAYTEF","INTEGRATED");
+        card.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.DECLINED,card.getId(),null,null,"rechazado");
+        session.cancel();
+
+        card.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.APPROVED,card.getId(),"ref","auth","tarde");
+
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+        assertThat(card.getStatus()).isEqualTo(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.DECLINED);
+    }
+
 }

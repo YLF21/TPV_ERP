@@ -18,7 +18,7 @@ export type PaymentAllocation = {
 export type PaymentSession = {
   id: string;
   totalCents: number;
-  status: "COLLECTING" | "COVERED";
+  status: "COLLECTING" | "COVERED" | "COMPENSATION_REQUIRED";
   allocations: PaymentAllocation[];
 };
 

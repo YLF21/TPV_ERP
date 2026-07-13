@@ -21,6 +21,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "configuracion_pago_terminal")
 public class TerminalPaymentConfiguration {
+    private static final String PAIRING_ID = "_pairingId";
+    private static final String PAIRING_STATUS = "_pairingStatus";
 
     @Id
     private UUID id;
@@ -103,6 +105,16 @@ public class TerminalPaymentConfiguration {
         this.lastConnectionStatus = success ? "OK" : "ERROR";
     }
 
+    public void recordPairing(UUID pairingId, PaymentTerminalResult result) {
+        Objects.requireNonNull(pairingId,"pairingId");Objects.requireNonNull(result,"result");
+        if(cardMode!=PaymentCardMode.INTEGRATED||provider==PaymentTerminalProvider.NONE)throw new IllegalStateException("message.payment_terminal.pairing_not_supported");
+        providerParameters.put(PAIRING_ID,pairingId.toString());
+        providerParameters.put(PAIRING_STATUS,result.code()==null?result.status().name():result.code());
+    }
+    public boolean matchesPairing(UUID pairingId){return pairingId!=null&&pairingId.toString().equals(providerParameters.get(PAIRING_ID));}
+    public UUID getPairingId(){var value=providerParameters.get(PAIRING_ID);return value==null||value.isBlank()?null:UUID.fromString(value);}
+    public String getPairingStatus(){return providerParameters.get(PAIRING_STATUS);}
+
     public UUID getId() {
         return id;
     }
@@ -171,7 +183,7 @@ public class TerminalPaymentConfiguration {
             var normalized = Objects.requireNonNull(key, "key").trim();
             if(PaymentTerminalSensitiveData.sensitiveKey(normalized))throw new IllegalArgumentException("message.payment_terminal.sensitive_parameter_not_allowed");
             if(normalized.equals("simulatorOutcome")&&!testMode)throw new IllegalArgumentException("message.payment_terminal.simulator_outcome_invalid");
-            var allowed=(provider!=PaymentTerminalProvider.NONE&&testMode&&normalized.equals("simulatorOutcome"))
+            var allowed=(provider!=PaymentTerminalProvider.NONE&&testMode&&(normalized.equals("simulatorOutcome")||normalized.equals("simulatorQueryOutcome")))
                     ||(provider==PaymentTerminalProvider.REDSYS_TPV_PC&&normalized.equals("ip"));
             if(!allowed)throw new IllegalArgumentException("message.payment_terminal.provider_parameter_not_allowed");
             safe.put(normalized, value);
@@ -186,6 +198,8 @@ public class TerminalPaymentConfiguration {
             }
             safe.put("simulatorOutcome", normalizedOutcome);
         }
+        var simulatorQueryOutcome=safe.get("simulatorQueryOutcome");
+        if(simulatorQueryOutcome!=null){var normalized=simulatorQueryOutcome.trim().toUpperCase(java.util.Locale.ROOT);if(!testMode||provider==PaymentTerminalProvider.NONE||!java.util.Set.of("APPROVED","DECLINED","TIMEOUT","PENDING","ERROR").contains(normalized))throw new IllegalArgumentException("message.payment_terminal.simulator_query_outcome_invalid");safe.put("simulatorQueryOutcome",normalized);}
         return safe;
     }
 }

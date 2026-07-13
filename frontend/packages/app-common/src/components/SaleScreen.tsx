@@ -122,6 +122,10 @@ export function saleLineSubtotal(line: SaleLine) {
   return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
 
+export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lineCount:number, reservedTotalCents:number|null){
+  return paymentLocked && lineCount===0 && reservedTotalCents!=null ? reservedTotalCents/100 : localTotal;
+}
+
 export function effectiveSaleLineDiscount(line: SaleLine) {
   return Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
 }
@@ -360,6 +364,7 @@ export function SaleScreen({
   const [cardSubmitting, setCardSubmitting] = useState(false);
   const [cardOpening, setCardOpening] = useState(false);
   const [paymentLocked, setPaymentLocked] = useState(false);
+  const [reservedPaymentTotalCents, setReservedPaymentTotalCents] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
@@ -371,6 +376,7 @@ export function SaleScreen({
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
+  const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
 
   useEffect(() => {
     let cancelled = false;
@@ -628,10 +634,10 @@ export function SaleScreen({
         <section className="sale-ticket work-panel" aria-label="Ticket actual">
           <header className="work-panel-heading">
             <h2>Ticket actual</h2>
-            <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
+            <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? paymentLocked ? t("payment.split.reservedTicket") : "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
           </header>
           {lines.length === 0 ? (
-            <div className="sale-ticket-lines sale-empty-state">Sin venta iniciada</div>
+            <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : "Sin venta iniciada"}</div>
           ) : (
             <div className="sale-ticket-lines" aria-label="Lineas del ticket">
               {lines.map((line) => (
@@ -667,7 +673,7 @@ export function SaleScreen({
           <PromotionPreviewPanel locale={locale} preview={null} />
           <footer className="sale-total">
             <span>Total</span>
-            <strong>{formatSaleAmount(total)}</strong>
+            <strong>{formatSaleAmount(displayedTotal)}</strong>
           </footer>
         </section>
 
@@ -737,7 +743,7 @@ export function SaleScreen({
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <SalePaymentCheckout totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={setPaymentLocked} onFinalized={(ticketNumber,authoritativeTotalCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setCashResult({ticketNumber,totalCents:authoritativeTotalCents});}} />
+            <SalePaymentCheckout locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult({ticketNumber,totalCents:authoritativeTotalCents});}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>

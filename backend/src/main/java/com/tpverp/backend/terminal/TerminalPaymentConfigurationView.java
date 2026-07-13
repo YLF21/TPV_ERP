@@ -37,6 +37,9 @@ public record TerminalPaymentConfigurationView(
                 "simulatorOutcome", "settings.paymentTerminal.outcome", "SELECT", false,
                 List.of(PaymentTerminalMode.SIMULATED),
                 List.of("APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"));
+        private static final ProviderField SIMULATOR_QUERY_OUTCOME = new ProviderField(
+                "simulatorQueryOutcome", "settings.paymentTerminal.queryOutcome", "SELECT", false,
+                List.of(PaymentTerminalMode.SIMULATED), List.of("APPROVED","DECLINED","TIMEOUT","PENDING","ERROR"));
 
         static List<ProviderDescriptor> allowed(StorePaymentConfiguration rules) {
             var allowed = java.util.Set.of(rules.getAllowedPaymentTerminalProviders().split(","));
@@ -50,9 +53,9 @@ public record TerminalPaymentConfigurationView(
 
         private static List<ProviderField> fields(PaymentTerminalProvider provider) {
             return provider == PaymentTerminalProvider.REDSYS_TPV_PC
-                    ? List.of(SIMULATOR_OUTCOME, new ProviderField("ip", "settings.paymentTerminal.field.ip", "TEXT", false,
+                    ? List.of(SIMULATOR_OUTCOME,SIMULATOR_QUERY_OUTCOME, new ProviderField("ip", "settings.paymentTerminal.field.ip", "TEXT", false,
                             List.of(PaymentTerminalMode.LIVE), List.of()))
-                    : List.of(SIMULATOR_OUTCOME);
+                    : List.of(SIMULATOR_OUTCOME,SIMULATOR_QUERY_OUTCOME);
         }
 
         private static String displayName(PaymentTerminalProvider provider) {
@@ -94,6 +97,7 @@ public record TerminalPaymentConfigurationView(
             Map<String, String> providerParameters,
             boolean secretConfigured,
             Integer secretVersion,
+            UUID pairingId,
             String pairingStatus) {
 
         static PaymentConfigurationView from(TerminalPaymentConfiguration configuration) {
@@ -107,7 +111,8 @@ public record TerminalPaymentConfigurationView(
                     configuration.getLastConnectionStatus(),
                     safeProviderParameters(configuration),
                     opaqueReference(configuration) != null && configuration.getSecretReferenceVersion() != null,
-                    opaqueReference(configuration) == null ? null : configuration.getSecretReferenceVersion(), null);
+                    opaqueReference(configuration) == null ? null : configuration.getSecretReferenceVersion(),
+                    configuration.getPairingId(), configuration.getPairingStatus());
         }
 
         private static String opaqueReference(TerminalPaymentConfiguration configuration) {
@@ -119,6 +124,7 @@ public record TerminalPaymentConfigurationView(
             var safe = new java.util.LinkedHashMap<String, String>();
             var parameters = configuration.getProviderParameters();
             if (parameters.containsKey("simulatorOutcome")) safe.put("simulatorOutcome", parameters.get("simulatorOutcome"));
+            if (parameters.containsKey("simulatorQueryOutcome")) safe.put("simulatorQueryOutcome", parameters.get("simulatorQueryOutcome"));
             if (configuration.getProvider() == PaymentTerminalProvider.REDSYS_TPV_PC && parameters.containsKey("ip")) {
                 safe.put("ip", parameters.get("ip"));
             }
