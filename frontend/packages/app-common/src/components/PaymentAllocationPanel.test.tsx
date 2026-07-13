@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { PaymentAllocationPanel } from "./PaymentAllocationPanel";
+import { ManualCardReferenceDialog, PaymentAllocationPanel, manualCardDialogState } from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
 
 const session: PaymentSession = {
@@ -45,5 +45,30 @@ describe("PaymentAllocationPanel", () => {
     expect(html).not.toContain(">Efectivo<");
     expect(html).not.toContain(">Tarjeta manual<");
     expect(html).not.toContain(">PAYTEF</button>");
+  });
+
+  it("renders an accessible manual-card reference dialog without using a browser prompt", () => {
+    const source = PaymentAllocationPanel.toString();
+    expect(source).not.toContain("prompt");
+
+    const html = renderToStaticMarkup(<ManualCardReferenceDialog locale="es" reference="" onReferenceChange={vi.fn()} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain("Referencia obligatoria de la tarjeta manual");
+    expect(html).toContain("Confirmar");
+    expect(html).toContain("Cancelar");
+    expect(html).toContain("disabled");
+  });
+
+  it("keeps the manual reference ephemeral and clears it on cancel and submit", () => {
+    expect(manualCardDialogState({ open: false, reference: "" }, { type: "open" })).toEqual({ open: true, reference: "" });
+    expect(manualCardDialogState({ open: true, reference: "  REF-42  " }, { type: "cancel" })).toEqual({ open: false, reference: "" });
+    expect(manualCardDialogState({ open: true, reference: "REF-42" }, { type: "submit" })).toEqual({ open: false, reference: "" });
+  });
+
+  it("uses a middle dot as the allocation separator", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={[]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
+    expect(html).toContain(" · ");
+    expect(html).not.toContain("路");
   });
 });

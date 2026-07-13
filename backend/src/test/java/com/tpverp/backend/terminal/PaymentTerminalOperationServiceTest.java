@@ -103,6 +103,48 @@ class PaymentTerminalOperationServiceTest {
         verify(paytef,never()).query(any(),any());
     }
 
+    @Test void preV61FingerprintRemainsRecoverableOnlyAtTheExactOperationalVersion(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        org.springframework.test.util.ReflectionTestUtils.setField(operation,"legacyConfigurationFingerprint",true);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(repository.findById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                7,"c".repeat(64),Map.of()));
+        when(paytef.capabilities()).thenReturn(Set.of(PaymentTerminalCapability.QUERY));
+        when(paytef.query(any(),any())).thenReturn(new PaymentTerminalResult(
+                PaymentTerminalOperationStatus.APPROVED,"APPROVED","REF","AUTH","ok"));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        verify(paytef).query(any(),any());
+    }
+
+    @Test void financialConfigurationChangeStillInvalidatesAPreV61Operation(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        org.springframework.test.util.ReflectionTestUtils.setField(operation,"legacyConfigurationFingerprint",true);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                8,"c".repeat(64),Map.of()));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
+        verify(paytef,never()).query(any(),any());
+    }
+
+    @Test void newOperationAlwaysRequiresAnExactFingerprintAtTheSameVersion(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                7,"c".repeat(64),Map.of()));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
+        verify(paytef,never()).query(any(),any());
+    }
+
     @Test void boundedBackoffEventuallyRequiresManualReview(){
         var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
         when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));when(configurations.required(terminal)).thenReturn(configuration);

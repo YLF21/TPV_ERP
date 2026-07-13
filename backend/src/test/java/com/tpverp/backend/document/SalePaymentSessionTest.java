@@ -60,4 +60,25 @@ class SalePaymentSessionTest {
         assertThat(card.getStatus()).isEqualTo(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.DECLINED);
     }
 
+    @Test void lateResultNeverReopensCompensationRequiredOrFinalizedSession() {
+        var compensating=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
+        var uncertain=compensating.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,
+                new BigDecimal("10.00"),"PAYTEF","INTEGRATED");
+        uncertain.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.TIMEOUT,uncertain.getId(),null,null,"incierto");
+        compensating.cancel();
+        uncertain.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.APPROVED,uncertain.getId(),"late","auth","tarde");
+        assertThat(compensating.getStatus()).isEqualTo(SalePaymentSessionStatus.COMPENSATION_REQUIRED);
+        assertThat(uncertain.getStatus()).isEqualTo(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.TIMEOUT);
+
+        var finalized=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
+        var approved=finalized.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,
+                new BigDecimal("10.00"),"PAYTEF","INTEGRATED");
+        approved.approve(approved.getId(),"ref","auth");
+        finalized.finalizeWith(UUID.randomUUID(),"T-1");
+        approved.result(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.DECLINED,approved.getId(),null,null,"late");
+        finalized.cancel();
+        assertThat(finalized.getStatus()).isEqualTo(SalePaymentSessionStatus.FINALIZED);
+        assertThat(approved.getStatus()).isEqualTo(com.tpverp.backend.terminal.PaymentTerminalOperationStatus.APPROVED);
+    }
+
 }

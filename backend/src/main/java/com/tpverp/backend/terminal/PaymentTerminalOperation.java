@@ -39,6 +39,7 @@ public class PaymentTerminalOperation {
     @Column(name = "authorization_code", length = 64) private String authorizationCode;
     @Column(name = "configuration_hash", nullable = true, length = 64) private String configurationHash;
     @Column(name = "configuration_version", nullable = false) private long configurationVersion;
+    @Column(name = "legacy_configuration_fingerprint", nullable = false) private boolean legacyConfigurationFingerprint;
     @Column(name = "document_id") private UUID documentId;
     @Column(name = "document_payment_id") private UUID documentPaymentId;
     @Column(name = "processing_owner") private UUID processingOwner;
@@ -282,6 +283,16 @@ public class PaymentTerminalOperation {
     public BigDecimal getRefundedAmount() { return refundedAmount; }
     public String getConfigurationHash() { return configurationHash; }
     public long getConfigurationVersion() { return configurationVersion; }
+    public boolean matchesConfigurationIdentity(CardTerminalConfiguration configuration) {
+        if (provider != configuration.provider()) return false;
+        var strict = configurationVersion == configuration.configurationVersion()
+                && Objects.equals(configurationHash, configuration.configurationHash());
+        var migratedLegacy = legacyConfigurationFingerprint
+                && configurationVersion >= 0
+                && configurationHash != null
+                && configurationVersion == configuration.configurationVersion();
+        return strict || migratedLegacy;
+    }
     public UUID getProcessingOwner() { return processingOwner; }
     public Instant getProcessingLeaseUntil() { return processingLeaseUntil; }
     public int getRetryCount() { return retryCount; }

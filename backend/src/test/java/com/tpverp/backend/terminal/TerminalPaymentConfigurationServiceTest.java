@@ -212,6 +212,26 @@ class TerminalPaymentConfigurationServiceTest {
     }
 
     @Test
+    void patchingTheSameProviderPreservesPairingIdentityAndStatus() {
+        var terminal = terminal();
+        var configuration = configuredRedsys(terminal, "APPROVED");
+        var pairingId = java.util.UUID.randomUUID();
+        configuration.recordPairing(pairingId, new PaymentTerminalResult(
+                PaymentTerminalOperationStatus.APPROVED, "PAIRED", "pair-ref", null, "ok"));
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.of(configuration));
+
+        var view = service().update(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys updated",
+                true, true, Map.of("simulatorOutcome", "DECLINED"), null));
+
+        assertThat(view.configuration().pairingId()).isEqualTo(pairingId);
+        assertThat(view.configuration().pairingStatus()).isEqualTo("PAIRED");
+        assertThat(view.configuration().providerParameters()).doesNotContainKeys("_pairingId", "_pairingStatus");
+    }
+
+    @Test
     void rejectsPairingStatusForAnIdentityThatWasNeverStarted() {
         var terminal=terminal();var configuration=configuredRedsys(terminal,"APPROVED");
         when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());

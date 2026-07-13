@@ -67,6 +67,9 @@ public class TerminalPaymentConfiguration {
     @Version
     private long version;
 
+    @Column(name = "operational_version", nullable = false)
+    private long operationalVersion;
+
     protected TerminalPaymentConfiguration() {
     }
 
@@ -81,6 +84,7 @@ public class TerminalPaymentConfiguration {
 
     public void configure(TerminalPaymentConfigurationCommand command) {
         var previousProvider=this.provider;
+        var pairingMetadata = pairingMetadata();
         this.cardMode = Objects.requireNonNull(command.cardMode(), "cardMode");
         this.provider = Objects.requireNonNull(command.provider(), "provider");
         if (cardMode == PaymentCardMode.MANUAL && provider != PaymentTerminalProvider.NONE) {
@@ -93,11 +97,15 @@ public class TerminalPaymentConfiguration {
         this.enabled = command.enabled();
         this.testMode = command.testMode();
         this.providerParameters = safeProviderParameters(command.providerParameters(), provider, testMode);
+        if (cardMode == PaymentCardMode.INTEGRATED && provider == previousProvider) {
+            this.providerParameters.putAll(pairingMetadata);
+        }
         if (command.secretReference() != null && !command.secretReference().isBlank()) {
             assignSecretReference(command.secretReference(),Objects.requireNonNull(command.secretVersion(),"secretVersion"));
         } else if (cardMode != PaymentCardMode.INTEGRATED || provider != previousProvider) {
             clearSecretReference();
         }
+        operationalVersion++;
     }
 
     public void recordConnectionTest(boolean success, Instant when) {
@@ -155,6 +163,13 @@ public class TerminalPaymentConfiguration {
         return Map.copyOf(providerParameters);
     }
 
+    public Map<String, String> getOperationalProviderParameters() {
+        var operational = new LinkedHashMap<>(providerParameters);
+        operational.remove(PAIRING_ID);
+        operational.remove(PAIRING_STATUS);
+        return Map.copyOf(operational);
+    }
+
     public String getSecretReference() {
         return secretReference;
     }
@@ -171,6 +186,14 @@ public class TerminalPaymentConfiguration {
     public void clearSecretReference(){this.secretReference=null;this.secretReferenceVersion=null;}
 
     public long getVersion() { return version; }
+    public long getOperationalVersion() { return operationalVersion; }
+
+    private Map<String, String> pairingMetadata() {
+        var metadata = new LinkedHashMap<String, String>();
+        if (providerParameters.containsKey(PAIRING_ID)) metadata.put(PAIRING_ID, providerParameters.get(PAIRING_ID));
+        if (providerParameters.containsKey(PAIRING_STATUS)) metadata.put(PAIRING_STATUS, providerParameters.get(PAIRING_STATUS));
+        return metadata;
+    }
 
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();

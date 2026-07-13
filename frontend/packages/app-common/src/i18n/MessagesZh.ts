@@ -937,7 +937,7 @@ export class MessagesZh {
     "promotion.segment.MEMBERS_ONLY": "\u4ec5\u4f1a\u5458",
     "promotion.segment.MEMBER_CATEGORY": "\u4f1a\u5458\u7c7b\u522b",
     "payment.split.title": "分拆支付", "payment.split.remaining": "待付", "payment.split.amount": "金额",
-    "payment.split.cash": "现金", "payment.split.manualCard": "手动刷卡", "payment.split.manualReference": "必填的手动刷卡参考号",
+    "payment.split.cash": "现金", "payment.split.manualCard": "手动刷卡", "payment.split.manualCardDialogTitle": "手动刷卡付款", "payment.split.manualReference": "必填的手动刷卡参考号",
     "payment.split.query": "查询状态", "payment.split.manage": "管理操作", "payment.split.compensationRequired": "需要补偿：不允许新的扣款。",
     "payment.split.status.APPROVED": "已批准", "payment.split.status.DECLINED": "已拒绝", "payment.split.status.TIMEOUT": "结果不确定",
     "payment.split.status.PENDING": "处理中", "payment.split.status.SENT": "已发送", "payment.split.status.REVIEW_REQUIRED": "需要复核", "payment.split.status.READY": "已准备", "payment.split.status.ERROR": "错误", "payment.split.status.CANCELLED": "已取消",

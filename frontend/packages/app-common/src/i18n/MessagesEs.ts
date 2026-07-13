@@ -937,7 +937,7 @@ export class MessagesEs {
     "promotion.segment.MEMBERS_ONLY": "Solo socios",
     "promotion.segment.MEMBER_CATEGORY": "Categoria socio",
     "payment.split.title": "Cobro dividido", "payment.split.remaining": "Pendiente", "payment.split.amount": "Importe",
-    "payment.split.cash": "Efectivo", "payment.split.manualCard": "Tarjeta manual", "payment.split.manualReference": "Referencia obligatoria de la tarjeta manual",
+    "payment.split.cash": "Efectivo", "payment.split.manualCard": "Tarjeta manual", "payment.split.manualCardDialogTitle": "Cobro con tarjeta manual", "payment.split.manualReference": "Referencia obligatoria de la tarjeta manual",
     "payment.split.query": "Consultar estado", "payment.split.manage": "Gestionar operación", "payment.split.compensationRequired": "Compensación obligatoria: no se permiten nuevos cobros.",
     "payment.split.status.APPROVED": "APROBADO", "payment.split.status.DECLINED": "RECHAZADO", "payment.split.status.TIMEOUT": "RESULTADO INCIERTO",
     "payment.split.status.PENDING": "PROCESANDO", "payment.split.status.SENT": "ENVIADO", "payment.split.status.REVIEW_REQUIRED": "REVISIÓN REQUERIDA", "payment.split.status.READY": "PREPARADO", "payment.split.status.ERROR": "ERROR", "payment.split.status.CANCELLED": "CANCELADO",

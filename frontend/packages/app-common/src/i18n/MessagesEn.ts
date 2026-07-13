@@ -937,7 +937,7 @@ export class MessagesEn {
     "promotion.segment.MEMBERS_ONLY": "Members only",
     "promotion.segment.MEMBER_CATEGORY": "Member category",
     "payment.split.title": "Split payment", "payment.split.remaining": "Remaining", "payment.split.amount": "Amount",
-    "payment.split.cash": "Cash", "payment.split.manualCard": "Manual card", "payment.split.manualReference": "Required manual card reference",
+    "payment.split.cash": "Cash", "payment.split.manualCard": "Manual card", "payment.split.manualCardDialogTitle": "Manual card payment", "payment.split.manualReference": "Required manual card reference",
     "payment.split.query": "Check status", "payment.split.manage": "Manage operation", "payment.split.compensationRequired": "Compensation required: no new charges are allowed.",
     "payment.split.status.APPROVED": "APPROVED", "payment.split.status.DECLINED": "DECLINED", "payment.split.status.TIMEOUT": "UNCERTAIN RESULT",
     "payment.split.status.PENDING": "PROCESSING", "payment.split.status.SENT": "SENT", "payment.split.status.REVIEW_REQUIRED": "REVIEW REQUIRED", "payment.split.status.READY": "READY", "payment.split.status.ERROR": "ERROR", "payment.split.status.CANCELLED": "CANCELLED",

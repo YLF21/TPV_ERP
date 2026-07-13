@@ -73,9 +73,7 @@ public class PaymentTerminalOperationService {
     public PaymentTerminalOperation recover(UUID id,UUID owner){
         var claimed=tx(()->claim(id,owner)); if(claimed==null)return operations.findById(id).orElseThrow();
         var configuration=configurations.required(claimed.getTerminalId());
-        if(configuration.provider()!=claimed.getProvider()
-                || configuration.configurationVersion()!=claimed.getConfigurationVersion()
-                || !java.util.Objects.equals(configuration.configurationHash(),claimed.getConfigurationHash())){
+        if(!claimed.matchesConfigurationIdentity(configuration)){
             return tx(()->review(id,"CONFIGURATION_CHANGED","La configuracion del datafono ha cambiado"));
         }
         var gateway=resolve(configuration);
