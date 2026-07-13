@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 
-public final class ProtectedPaymentSecretStore implements PaymentSecretStore {
+public class ProtectedPaymentSecretStore implements PaymentSecretStore {
     private final PaymentSecretReferenceRepository repository;
     private final SecretProtector protector;
     private final Clock clock;
