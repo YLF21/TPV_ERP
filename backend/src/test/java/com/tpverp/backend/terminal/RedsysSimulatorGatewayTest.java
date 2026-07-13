@@ -98,7 +98,7 @@ class RedsysSimulatorGatewayTest {
 
         assertThat(gateway.charge(request(disabled, true), disabled).message()).contains("desactivada");
         assertThat(gateway.charge(request(manual, true), manual).message()).contains("integrado");
-        assertThat(gateway.charge(request(otherProvider, true), otherProvider).message()).contains("proveedor");
+        assertThat(gateway.charge(request(otherProvider, true), otherProvider).message()).containsIgnoringCase("proveedor");
         assertThat(gateway.charge(mismatched, valid).message()).contains("terminal");
     }
 

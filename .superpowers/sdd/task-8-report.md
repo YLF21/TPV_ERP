@@ -126,3 +126,27 @@ the worker did not claim a visual interaction result. The local processes were
 left running for the main task, whose in-app browser can perform the final UI
 walkthrough. The HTTP smoke and all provider contract tests remained entirely
 local and simulated.
+
+## Browser acceptance evidence (2026-07-13)
+
+- Configured `GLOBAL_PAYMENTS` in `SIMULATED` mode from the frontend; pairing persisted across reload and its status query returned paired.
+- Exercised timeout -> `Consultar estado` -> `APPROVED`, with zero remaining and a simulator authorization/reference.
+- Finalized real local ticket `001-260713-00001`, total `12,10` EUR, through the document pipeline. The completed checkout closes and the empty sale returns to its initial disabled-payment state.
+- Walkthrough defects corrected: premature operation FK linkage, oversized request hash, non-idempotent approved query, legacy recovery degrading split operations to review, hard-coded Redsys validation, snapshot placeholder/method mismatch, missing finalize retry after reload, stale completed checkout UI, missing translations, and stale alerts.
+- One failed browser-only session was removed surgically: session `cb5d5e1c-7b97-4d4d-82b6-5ad404450347`, its single allocation, operation `ea7bca94-29a1-417b-8c9b-fc3ee58b6665`, and that operation's events. The transaction first rejected document/payment links and child void/refund operations; no unrelated data was modified.
+
+## Final verification commands
+
+```powershell
+$env:TPV_ERP_TEST_DB_URL='jdbc:postgresql://localhost:5432/tpv_erp_dev'
+$env:TPV_ERP_TEST_DB_USER='tpv_erp_test'
+$env:TPV_ERP_TEST_DB_PASSWORD='admin'
+$env:TPV_TEST_DB_URL='jdbc:postgresql://localhost:5432/tpv_erp_test'
+$env:TPV_TEST_DB_USERNAME='tpv_erp_test'
+$env:TPV_TEST_DB_PASSWORD='admin'
+mvn.cmd test
+
+npm.cmd test
+npm.cmd run build --workspace @tpverp/app-venta
+npm.cmd run build --workspace @tpverp/app-gestion
+```
