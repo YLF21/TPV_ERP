@@ -591,6 +591,8 @@ export class MessagesEn {
     "settings.paymentTerminal.provider": "Provider", "settings.paymentTerminal.displayName": "Display name",
     "settings.paymentTerminal.none": "None",
     "settings.paymentTerminal.enabled": "Enabled", "settings.paymentTerminal.testMode": "Test mode",
+    "settings.paymentTerminal.terminalMode": "Environment", "settings.paymentTerminal.simulated": "Simulated", "settings.paymentTerminal.live": "LIVE",
+    "settings.paymentTerminal.sdkNotInstalled": "SDK not installed", "settings.paymentTerminal.pairingState": "Pairing state", "settings.paymentTerminal.notPaired": "Not paired", "settings.paymentTerminal.paired": "Paired",
     "settings.paymentTerminal.outcome": "Next simulator result",
     "settings.paymentTerminal.outcome.APPROVED": "Approved", "settings.paymentTerminal.outcome.DECLINED": "Declined",
     "settings.paymentTerminal.outcome.TIMEOUT": "Timeout", "settings.paymentTerminal.outcome.CONNECTION_ERROR": "Connection error",

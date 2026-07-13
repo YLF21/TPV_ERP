@@ -6,9 +6,21 @@ import type { LocaleCode } from "../types";
 export type SimulatorOutcome = "APPROVED" | "DECLINED" | "TIMEOUT" | "CONNECTION_ERROR";
 type PaymentCardMode = "MANUAL" | "INTEGRATED";
 type PaymentTerminalProvider = "NONE" | "REDSYS_TPV_PC" | "PAYTEF" | "PAYCOMET" | "GLOBAL_PAYMENTS";
+type PaymentTerminalMode = "MANUAL" | "SIMULATED" | "LIVE";
+type ProviderDescriptor = {
+  provider: Exclude<PaymentTerminalProvider, "NONE">;
+  displayName: string;
+  supportedModes: Exclude<PaymentTerminalMode, "MANUAL">[];
+  liveAvailable: boolean;
+  unavailableReason: "SDK_NOT_INSTALLED" | null;
+  capabilities: string[];
+  fields: Array<{ key: string; label: string; type: "TEXT" | "SELECT"; required: boolean;
+    modes: Exclude<PaymentTerminalMode, "MANUAL">[]; options: string[] }>;
+};
 
 export type PaymentTerminalConfigurationView = {
   terminalId: string;
+  providerDescriptors?: ProviderDescriptor[];
   rules: {
     cardManualEnabled: boolean;
     cardManualReferenceRequired: boolean;
@@ -26,6 +38,7 @@ export type PaymentTerminalConfigurationView = {
     lastConnectionTestAt: string | null;
     lastConnectionStatus: string | null;
     secretConfigured: boolean;
+    pairingStatus?: "NOT_PAIRED" | "PAIRED" | "NOT_REQUIRED";
   };
 };
 
@@ -34,12 +47,27 @@ export type PaymentTerminalSettingsForm = {
   provider: PaymentTerminalProvider;
   displayName: string;
   enabled: boolean;
-  testMode: boolean;
+  testMode?: boolean;
+  terminalMode?: PaymentTerminalMode;
   simulatorOutcome: SimulatorOutcome;
+  providerParameters?: Record<string, string>;
+  secretInput?: string;
 };
 
 const paymentConfigurationPath = "/terminal-configuration/payment";
 const simulatorOutcomes: SimulatorOutcome[] = ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"];
+const providerNames: Record<Exclude<PaymentTerminalProvider, "NONE">, string> = {
+  REDSYS_TPV_PC: "Redsys TPV-PC", PAYTEF: "PAYTEF", PAYCOMET: "PAYCOMET", GLOBAL_PAYMENTS: "Global Payments"
+};
+
+function descriptors(view: PaymentTerminalConfigurationView): ProviderDescriptor[] {
+  if (view.providerDescriptors?.length) return view.providerDescriptors;
+  return view.rules.allowedPaymentTerminalProviders.filter((provider): provider is Exclude<PaymentTerminalProvider, "NONE"> => provider in providerNames)
+    .map((provider) => ({ provider, displayName: providerNames[provider], supportedModes: ["SIMULATED", "LIVE"],
+      liveAvailable: false, unavailableReason: "SDK_NOT_INSTALLED", capabilities: ["CONNECTION_TEST"],
+      fields: [{ key: "simulatorOutcome", label: "simulatorOutcome", type: "SELECT", required: false,
+        modes: ["SIMULATED"], options: simulatorOutcomes }] }));
+}
 
 export function loadPaymentTerminalConfiguration(token?: string) {
   return apiRequest<PaymentTerminalConfigurationView>(paymentConfigurationPath, { method: "GET", token });
@@ -55,13 +83,14 @@ export function savePaymentTerminalConfiguration(token: string | undefined, form
 
 export function paymentTerminalUpdatePayload(form: PaymentTerminalSettingsForm) {
   const integrated = form.cardMode === "INTEGRATED";
+  const simulated = integrated && (form.terminalMode ? form.terminalMode === "SIMULATED" : !!form.testMode);
   return {
     cardMode: form.cardMode,
     provider: integrated ? form.provider : "NONE" as PaymentTerminalProvider,
     displayName: form.displayName.trim(),
     enabled: form.enabled,
-    testMode: integrated && form.testMode,
-    providerParameters: integrated && form.testMode ? { simulatorOutcome: form.simulatorOutcome } : {}
+    testMode: simulated,
+    providerParameters: simulated ? { ...form.providerParameters, simulatorOutcome: form.simulatorOutcome } : { ...form.providerParameters }
   };
 }
 
@@ -71,10 +100,10 @@ export function changePaymentCardMode(
   allowedProviders: string[]
 ): PaymentTerminalSettingsForm {
   if (mode === "MANUAL") {
-    return { ...form, cardMode: mode, provider: "NONE", testMode: false };
+    return { ...form, cardMode: mode, provider: "NONE", testMode: false, terminalMode: "MANUAL" };
   }
   const provider = allowedProviders.includes("REDSYS_TPV_PC") ? "REDSYS_TPV_PC" : "NONE";
-  return { ...form, cardMode: mode, provider };
+  return { ...form, cardMode: mode, provider, terminalMode: "SIMULATED", testMode: true };
 }
 
 export function paymentTerminalRulesError(
@@ -106,6 +135,7 @@ function toForm(view: PaymentTerminalConfigurationView): PaymentTerminalSettings
     displayName: view.configuration.displayName ?? "",
     enabled: view.configuration.enabled,
     testMode: view.configuration.testMode,
+    terminalMode: view.configuration.cardMode === "MANUAL" ? "MANUAL" : view.configuration.testMode ? "SIMULATED" : "LIVE",
     simulatorOutcome: simulatorOutcomes.includes(outcome as SimulatorOutcome)
       ? outcome as SimulatorOutcome
       : "APPROVED"
@@ -193,6 +223,10 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
 
   const rulesError = paymentTerminalRulesError(form, configuration!.rules);
   const integrated = form.cardMode === "INTEGRATED";
+  const terminalMode = form.terminalMode ?? (form.testMode ? "SIMULATED" : "LIVE");
+  const availableDescriptors = descriptors(configuration!);
+  const descriptor = availableDescriptors.find((item) => item.provider === form.provider);
+  const connectionTestAvailable = !!descriptor?.capabilities.includes("CONNECTION_TEST");
   const changeMode = (mode: PaymentCardMode) => {
     setForm((current) => current ? changePaymentCardMode(current, mode, configuration!.rules.allowedPaymentTerminalProviders) : current);
     setMessage(null);
@@ -204,16 +238,18 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
       <p>{t("settings.paymentTerminal.description")}</p>
       <div className="payment-terminal-form">
         <label>{t("settings.paymentTerminal.mode")}<select value={form.cardMode} disabled={busy} onChange={(e) => changeMode(e.currentTarget.value as PaymentCardMode)}><option value="MANUAL" disabled={!configuration!.rules.cardManualEnabled}>{t("settings.paymentTerminal.manual")}</option><option value="INTEGRATED" disabled={!configuration!.rules.integratedCardEnabled}>{t("settings.paymentTerminal.integrated")}</option></select></label>
-        <label>{t("settings.paymentTerminal.provider")}<select value={form.provider} disabled={busy || !integrated} onChange={(e) => update("provider", e.currentTarget.value as PaymentTerminalProvider)}><option value="NONE">{t("settings.paymentTerminal.none")}</option>{configuration!.rules.allowedPaymentTerminalProviders.includes("REDSYS_TPV_PC") && <option value="REDSYS_TPV_PC">Redsys TPV-PC</option>}</select></label>
+        <label>{t("settings.paymentTerminal.provider")}<select value={form.provider} disabled={busy || !integrated} onChange={(e) => update("provider", e.currentTarget.value as PaymentTerminalProvider)}><option value="NONE">{t("settings.paymentTerminal.none")}</option>{availableDescriptors.map((item) => <option value={item.provider} key={item.provider}>{item.displayName}</option>)}</select></label>
+        {integrated && <label>{t("settings.paymentTerminal.terminalMode")}<select value={terminalMode} disabled={busy} onChange={(e) => { const mode = e.currentTarget.value as PaymentTerminalMode; update("terminalMode", mode); update("testMode", mode === "SIMULATED"); }}><option value="SIMULATED">{t("settings.paymentTerminal.simulated")}</option><option value="LIVE" disabled={!descriptor?.liveAvailable}>{t("settings.paymentTerminal.live")}</option></select></label>}
+        {integrated && descriptor && !descriptor.liveAvailable && <p className="payment-terminal-hint">{t("settings.paymentTerminal.sdkNotInstalled")}</p>}
         <label>{t("settings.paymentTerminal.displayName")}<input value={form.displayName} disabled={busy} onChange={(e) => update("displayName", e.currentTarget.value)} /></label>
-        {integrated && <label>{t("settings.paymentTerminal.outcome")}<select value={form.simulatorOutcome} disabled={busy || !form.testMode} onChange={(e) => update("simulatorOutcome", e.currentTarget.value as SimulatorOutcome)}>{simulatorOutcomes.map((outcome) => <option value={outcome} key={outcome}>{t(`settings.paymentTerminal.outcome.${outcome}`)}</option>)}</select></label>}
+        {integrated && terminalMode === "SIMULATED" && descriptor?.fields.some((field) => field.key === "simulatorOutcome") && <label>{t("settings.paymentTerminal.outcome")}<select value={form.simulatorOutcome} disabled={busy} onChange={(e) => update("simulatorOutcome", e.currentTarget.value as SimulatorOutcome)}>{simulatorOutcomes.map((outcome) => <option value={outcome} key={outcome}>{t(`settings.paymentTerminal.outcome.${outcome}`)}</option>)}</select></label>}
         <label className="payment-terminal-check"><input type="checkbox" checked={form.enabled} disabled={busy} onChange={(e) => update("enabled", e.currentTarget.checked)} />{t("settings.paymentTerminal.enabled")}</label>
-        {integrated && <label className="payment-terminal-check"><input type="checkbox" checked={form.testMode} disabled={busy} onChange={(e) => update("testMode", e.currentTarget.checked)} />{t("settings.paymentTerminal.testMode")}</label>}
       </div>
+      {integrated && descriptor?.capabilities.includes("PAIRING") && <p className="payment-terminal-pairing">{t("settings.paymentTerminal.pairingState")}: {t(configuration?.configuration.pairingStatus === "PAIRED" ? "settings.paymentTerminal.paired" : "settings.paymentTerminal.notPaired")}</p>}
       {rulesError && <p role="alert" className="payment-terminal-error">{t(`settings.paymentTerminal.rules.${rulesError}`)}</p>}
       {configuration?.configuration.lastConnectionStatus && <p className="payment-terminal-last-test">{t("settings.paymentTerminal.lastTest")}: {configuration.configuration.lastConnectionStatus}</p>}
       {message && <p role={isError ? "alert" : "status"} className={isError ? "payment-terminal-error" : "payment-terminal-success"}>{message}</p>}
-      <div className="payment-terminal-actions"><button type="button" disabled={busy || !!rulesError} onClick={save}>{busy ? t("settings.paymentTerminal.working") : t("settings.paymentTerminal.save")}</button><button type="button" className="secondary" disabled={busy || !!rulesError || !integrated || !form.enabled || !form.testMode} onClick={testConnection}>{t("settings.paymentTerminal.test")}</button></div>
+      <div className="payment-terminal-actions"><button type="button" disabled={busy || !!rulesError} onClick={save}>{busy ? t("settings.paymentTerminal.working") : t("settings.paymentTerminal.save")}</button><button type="button" className="secondary" disabled={busy || !!rulesError || !integrated || !form.enabled || !connectionTestAvailable} onClick={testConnection}>{t("settings.paymentTerminal.test")}</button></div>
     </article>
   );
 }

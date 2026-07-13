@@ -15,6 +15,16 @@ import {
 
 const configuration: PaymentTerminalConfigurationView = {
   terminalId: "terminal-1",
+  providerDescriptors: ["REDSYS_TPV_PC", "PAYTEF", "PAYCOMET", "GLOBAL_PAYMENTS"].map((provider) => ({
+    provider: provider as Exclude<PaymentTerminalConfigurationView["configuration"]["provider"], "NONE">,
+    displayName: provider === "REDSYS_TPV_PC" ? "Redsys TPV-PC" : provider,
+    supportedModes: ["SIMULATED", "LIVE"],
+    liveAvailable: false,
+    unavailableReason: "SDK_NOT_INSTALLED",
+    capabilities: ["PAIRING", "CONNECTION_TEST", "CHARGE"],
+    fields: [{ key: "simulatorOutcome", label: "Simulator outcome", type: "SELECT", required: false,
+      modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"] }]
+  })),
   rules: {
     cardManualEnabled: true,
     cardManualReferenceRequired: false,
@@ -50,6 +60,44 @@ describe("PaymentTerminalSettings", () => {
     }
     expect(html).toContain("Probar conexión");
     expect(html).toContain("Guardar configuración");
+  });
+
+  it("renders every allowed provider dynamically and disables LIVE with SDK no instalado", () => {
+    const html = renderToStaticMarkup(
+      <PaymentTerminalSettings locale="es" initialConfiguration={configuration} />
+    );
+    for (const label of ["Redsys TPV-PC", "PAYTEF", "PAYCOMET", "GLOBAL_PAYMENTS"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('value="LIVE" disabled=""');
+    expect(html).toContain("SDK no instalado");
+  });
+
+  it("shows simulator fields for every provider and keeps pairing and connection testing independent", () => {
+    const paytef = { ...configuration,
+      rules: { ...configuration.rules, allowedPaymentTerminalProviders: ["REDSYS_TPV_PC", "PAYTEF", "PAYCOMET", "GLOBAL_PAYMENTS"] },
+      configuration: { ...configuration.configuration, provider: "PAYTEF" as const } };
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={paytef} />);
+    expect(html).toContain("Próximo resultado del simulador");
+    expect(html).toContain("Estado de emparejamiento");
+    expect(html).toContain("Probar conexión");
+    expect(html).not.toContain('disabled="">Probar conexión');
+  });
+
+  it("never includes rehydrated secret values in an update payload", () => {
+    const payload = paymentTerminalUpdatePayload({
+      cardMode: "INTEGRATED", provider: "PAYTEF", displayName: "Caja", enabled: true,
+      terminalMode: "SIMULATED", simulatorOutcome: "APPROVED", providerParameters: {}, secretInput: "do-not-send"
+    });
+    expect(JSON.stringify(payload)).not.toContain("do-not-send");
+    expect(payload).not.toHaveProperty("secretReference");
+  });
+
+  it("keeps the legacy rules-only response usable", () => {
+    const { providerDescriptors: _descriptors, ...legacy } = configuration;
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={legacy} />);
+    expect(html).toContain("Redsys TPV-PC");
+    expect(html).not.toContain('disabled="">Probar conexión');
   });
 
   it("loads configuration with the bearer token", async () => {

@@ -30,7 +30,7 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(json.at("/configuration/providerParameters/simulatorOutcome").asText())
                 .isEqualTo("APPROVED");
         assertThat(json.at("/configuration/providerParameters/ip").isMissingNode()).isTrue();
-        assertThat(json.toString()).contains("pts_0123456789abcdef0123456789abcdef").doesNotContain("192.168.1.50");
+        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef", "192.168.1.50");
     }
 
     @Test
@@ -45,6 +45,28 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(TerminalPaymentConfigurationView.from(
                 terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration)
                 .configuration().lastConnectionStatus()).isEqualTo("ERROR");
+    }
+
+    @Test
+    void exposesFourSafeProviderDescriptorsAndNeverRehydratesSecretReferences() throws Exception {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.PAYTEF, "Paytef",
+                true, true, Map.of("simulatorOutcome", "APPROVED"),
+                "pts_0123456789abcdef0123456789abcdef", 1));
+
+        var json = mapper.valueToTree(TerminalPaymentConfigurationView.from(
+                terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration));
+
+        assertThat(json.at("/providerDescriptors").size()).isEqualTo(4);
+        assertThat(json.at("/providerDescriptors/0/capabilities").isArray()).isTrue();
+        assertThat(json.at("/providerDescriptors/0/supportedModes").toString()).contains("SIMULATED", "LIVE");
+        assertThat(json.at("/providerDescriptors/0/liveAvailable").asBoolean()).isFalse();
+        assertThat(json.at("/providerDescriptors/0/unavailableReason").asText()).isEqualTo("SDK_NOT_INSTALLED");
+        assertThat(json.at("/providerDescriptors/0/fields/0/key").asText()).isEqualTo("simulatorOutcome");
+        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef");
+        assertThat(json.at("/configuration/secretConfigured").asBoolean()).isTrue();
     }
 
     private Terminal terminal() {
