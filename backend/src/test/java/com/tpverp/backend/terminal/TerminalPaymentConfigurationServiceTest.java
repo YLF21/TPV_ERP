@@ -211,6 +211,22 @@ class TerminalPaymentConfigurationServiceTest {
     }
 
     @Test
+    void rejectsLivePairingWhenGatewayDoesNotAdvertisePairingCapability() {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.PAYTEF, "Paytef", true, false, Map.of(), null));
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(gatewayConfigurations.required(terminal.getId())).thenReturn(CardTerminalConfiguration.from(configuration));
+        when(gateway.supports(PaymentTerminalProvider.PAYTEF, false)).thenReturn(true);
+        when(gateway.capabilities()).thenReturn(java.util.Set.of());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().pair(java.util.UUID.randomUUID()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.payment_terminal.pairing_not_supported");
+    }
+
+    @Test
     void rejectsUnknownSimulatorOutcome() {
         assertThatInvalidConfiguration(PaymentTerminalProvider.REDSYS_TPV_PC, true, "SURPRISE");
     }

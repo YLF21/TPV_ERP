@@ -29,8 +29,8 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(json.at("/rules/allowedPaymentTerminalProviders").isArray()).isTrue();
         assertThat(json.at("/configuration/providerParameters/simulatorOutcome").asText())
                 .isEqualTo("APPROVED");
-        assertThat(json.at("/configuration/providerParameters/ip").isMissingNode()).isTrue();
-        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef", "192.168.1.50");
+        assertThat(json.at("/configuration/providerParameters/ip").asText()).isEqualTo("192.168.1.50");
+        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef");
     }
 
     @Test
@@ -67,6 +67,20 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(json.at("/providerDescriptors/0/fieldSchemas/0/key").asText()).isEqualTo("simulatorOutcome");
         assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef");
         assertThat(json.at("/configuration/secretConfigured").asBoolean()).isTrue();
+    }
+
+    @Test
+    void rehydratesAllowedNonSensitiveIpParameterInTheConfigurationView() {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, false, Map.of("ip", "10.0.0.25"), null));
+
+        var view = TerminalPaymentConfigurationView.from(
+                terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration);
+
+        assertThat(view.configuration().providerParameters()).containsExactlyEntriesOf(Map.of("ip", "10.0.0.25"));
     }
 
     private Terminal terminal() {

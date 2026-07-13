@@ -10,6 +10,7 @@ import {
   savePaymentTerminalConfiguration,
   startPaymentTerminalPairing,
   loadPaymentTerminalPairingStatus,
+  normalizeTerminalMode,
   testPaymentTerminalConnection,
   type PaymentTerminalConfigurationView,
   type SimulatorOutcome
@@ -24,7 +25,7 @@ const configuration: PaymentTerminalConfigurationView = {
     liveAvailable: false,
     unavailableReason: "SDK_NOT_INSTALLED",
     capabilities: ["PAIRING", "CONNECTION_TEST", "CHARGE"],
-    fieldSchemas: [{ key: "simulatorOutcome", label: "Simulator outcome", type: "SELECT", required: false,
+    fieldSchemas: [{ key: "simulatorOutcome", label: "settings.paymentTerminal.outcome", type: "SELECT", required: false,
       modes: ["SIMULATED"], options: ["APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"] }]
   })),
   rules: {
@@ -144,6 +145,21 @@ describe("PaymentTerminalSettings", () => {
       providerParameters: { ip: "10.0.0.2", simulatorOutcome: "APPROVED", apiKey: "hidden" }, secretInput: "hidden" }))
       .toEqual({ cardMode: "INTEGRATED", provider: "REDSYS_TPV_PC", displayName: "Caja", enabled: true,
         testMode: false, providerParameters: { ip: "10.0.0.2" } });
+  });
+
+  it("renders simulatorOutcome through the generic SELECT field renderer", () => {
+    const generic = { ...configuration, providerDescriptors: [{ ...configuration.providerDescriptors![0],
+      fieldSchemas: [{ key: "simulatorOutcome", label: "Resultado configurable", type: "SELECT" as const,
+        required: true, modes: ["SIMULATED" as const], options: ["APPROVED", "DECLINED"] }] }] };
+    const html = renderToStaticMarkup(<PaymentTerminalSettings locale="es" initialConfiguration={generic} />);
+    expect(html).toContain("Resultado configurable");
+    expect(html).toContain('required=""');
+    expect(html).toContain('value="DECLINED" selected=""');
+  });
+
+  it("normalizes an unsupported current mode to the descriptor first supported mode", () => {
+    const descriptor = { ...configuration.providerDescriptors![0], supportedModes: ["LIVE" as const], liveAvailable: true };
+    expect(normalizeTerminalMode("SIMULATED", descriptor)).toBe("LIVE");
   });
 
   it("loads configuration with the bearer token", async () => {

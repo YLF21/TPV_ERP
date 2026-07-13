@@ -34,7 +34,7 @@ public record TerminalPaymentConfigurationView(
                 PaymentTerminalCapability.VOID, PaymentTerminalCapability.REFUND,
                 PaymentTerminalCapability.RECEIPT, PaymentTerminalCapability.RECONCILIATION);
         private static final ProviderField SIMULATOR_OUTCOME = new ProviderField(
-                "simulatorOutcome", "simulatorOutcome", "SELECT", false,
+                "simulatorOutcome", "settings.paymentTerminal.outcome", "SELECT", false,
                 List.of(PaymentTerminalMode.SIMULATED),
                 List.of("APPROVED", "DECLINED", "TIMEOUT", "CONNECTION_ERROR"));
 
@@ -50,7 +50,7 @@ public record TerminalPaymentConfigurationView(
 
         private static List<ProviderField> fields(PaymentTerminalProvider provider) {
             return provider == PaymentTerminalProvider.REDSYS_TPV_PC
-                    ? List.of(SIMULATOR_OUTCOME, new ProviderField("ip", "ip", "TEXT", false,
+                    ? List.of(SIMULATOR_OUTCOME, new ProviderField("ip", "settings.paymentTerminal.field.ip", "TEXT", false,
                             List.of(PaymentTerminalMode.LIVE), List.of()))
                     : List.of(SIMULATOR_OUTCOME);
         }
@@ -116,10 +116,13 @@ public record TerminalPaymentConfigurationView(
         }
 
         private static Map<String, String> safeProviderParameters(TerminalPaymentConfiguration configuration) {
-            var simulatorOutcome = configuration.getProviderParameters().get("simulatorOutcome");
-            return simulatorOutcome == null
-                    ? Map.of()
-                    : Map.of("simulatorOutcome", simulatorOutcome);
+            var safe = new java.util.LinkedHashMap<String, String>();
+            var parameters = configuration.getProviderParameters();
+            if (parameters.containsKey("simulatorOutcome")) safe.put("simulatorOutcome", parameters.get("simulatorOutcome"));
+            if (configuration.getProvider() == PaymentTerminalProvider.REDSYS_TPV_PC && parameters.containsKey("ip")) {
+                safe.put("ip", parameters.get("ip"));
+            }
+            return Map.copyOf(safe);
         }
     }
 }

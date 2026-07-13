@@ -99,7 +99,7 @@ public class TerminalPaymentConfigurationService {
                 .orElseThrow(() -> new IllegalStateException("message.payment_terminal.gateway_not_available"));
         var command = new PaymentTerminalPairCommand(pairingId);
         var context = gatewayContext(configuration, pairingId);
-        if (!gateway.capabilities().contains(PaymentTerminalCapability.PAIRING) && configuration.testMode()) {
+        if (!gateway.capabilities().contains(PaymentTerminalCapability.PAIRING)) {
             throw new IllegalStateException("message.payment_terminal.pairing_not_supported");
         }
         return statusOnly ? gateway.pairingStatus(command, context) : gateway.pair(command, context);

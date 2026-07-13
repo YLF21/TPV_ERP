@@ -106,7 +106,7 @@ class PaymentTerminalGatewayContractTest {
                 .containsExactly(PaymentTerminalOperationStatus.ERROR,"SDK_NOT_INSTALLED");
         assertThat(gateway.supports(provider,false)).isTrue();
         assertThat(gateway.supports(provider,true)).isFalse();
-        assertThat(gateway.capabilities()).isEmpty();
+        assertThat(gateway.capabilities()).contains(PaymentTerminalCapability.PAIRING);
     }
 
     @Test

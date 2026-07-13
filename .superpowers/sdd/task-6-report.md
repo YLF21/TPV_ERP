@@ -132,3 +132,35 @@ Se eliminaron las limitaciones registradas en la primera entrega:
 
 Commit correctivo: se registra en el handoff final, ya que este informe forma
 parte del mismo commit adicional.
+
+## Cierre de hallazgos restantes
+
+- La vista rehidrata todos los parámetros permitidos explícitamente por
+  `fieldSchemas`: `simulatorOutcome` e `ip` para Redsys. El test roundtrip de
+  entidad/configuración/vista comprueba `ip`; referencias y claves con semántica
+  de secreto siguen ausentes.
+- Se eliminó la rama visual especial de `simulatorOutcome`. El único renderer de
+  campos decide por `type` (`TEXT`/`SELECT`) y respeta `label` literal o clave
+  i18n, `required`, `options` y `modes` para cualquier schema.
+- `normalizeTerminalMode` se aplica al cargar y cambiar proveedor. Si el modo
+  actual no pertenece a `supportedModes`, usa el primero declarado y sincroniza
+  el booleano wire-compatible `testMode`; el payload elimina parámetros
+  incompatibles.
+- Pairing aplica `PAIRING` capability en SIMULATED y LIVE. Los stubs LIVE anuncian
+  esa capability porque soportan el contrato devolviendo el resultado tipado
+  `SDK_NOT_INSTALLED`; un gateway LIVE que no la anuncie es rechazado antes de
+  invocarlo.
+
+### RED final
+
+- Frontend: label hardcodeado para outcome y helper de normalización inexistente.
+- Backend: `ip` ausente de la vista, pairing LIVE sin capability no rechazado y
+  stub LIVE sin capability declarada.
+
+### Verificación final
+
+- Frontend focal + i18n: 22 tests, 0 fallos.
+- Backend config/controller/view/gateway: 74 tests, 0 fallos, `BUILD SUCCESS`.
+- `@tpverp/app-gestion`: TypeScript + Vite, exit 0.
+- `@tpverp/app-venta`: TypeScript + Vite, exit 0.
+- `git diff --check`: sin errores; únicamente avisos LF/CRLF de Windows.

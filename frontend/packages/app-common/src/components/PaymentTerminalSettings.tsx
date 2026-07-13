@@ -7,7 +7,7 @@ export type SimulatorOutcome = "APPROVED" | "DECLINED" | "TIMEOUT" | "CONNECTION
 type PaymentCardMode = "MANUAL" | "INTEGRATED";
 type PaymentTerminalProvider = "NONE" | "REDSYS_TPV_PC" | "PAYTEF" | "PAYCOMET" | "GLOBAL_PAYMENTS";
 type PaymentTerminalMode = "MANUAL" | "SIMULATED" | "LIVE";
-type ProviderDescriptor = {
+export type ProviderDescriptor = {
   provider: Exclude<PaymentTerminalProvider, "NONE">;
   displayName: string;
   supportedModes: Exclude<PaymentTerminalMode, "MANUAL">[];
@@ -72,6 +72,11 @@ function descriptors(view: PaymentTerminalConfigurationView): ProviderDescriptor
         modes: ["SIMULATED"], options: simulatorOutcomes }] }));
 }
 
+export function normalizeTerminalMode(mode: PaymentTerminalMode, descriptor?: ProviderDescriptor): PaymentTerminalMode {
+  if (!descriptor || descriptor.supportedModes.includes(mode as "SIMULATED" | "LIVE")) return mode;
+  return descriptor.supportedModes[0] ?? mode;
+}
+
 export function loadPaymentTerminalConfiguration(token?: string) {
   return apiRequest<PaymentTerminalConfigurationView>(paymentConfigurationPath, { method: "GET", token });
 }
@@ -98,7 +103,7 @@ export function paymentTerminalUpdatePayload(form: PaymentTerminalSettingsForm) 
     displayName: form.displayName.trim(),
     enabled: form.enabled,
     testMode: simulated,
-    providerParameters: simulated ? { ...providerParameters, simulatorOutcome: form.simulatorOutcome } : providerParameters
+    providerParameters: simulated ? { ...providerParameters, simulatorOutcome: providerParameters.simulatorOutcome ?? form.simulatorOutcome } : providerParameters
   };
 }
 
@@ -147,13 +152,16 @@ export function loadPaymentTerminalPairingStatus(token: string | undefined, pair
 
 function toForm(view: PaymentTerminalConfigurationView): PaymentTerminalSettingsForm {
   const outcome = view.configuration.providerParameters.simulatorOutcome;
+  const descriptor = descriptors(view).find((item) => item.provider === view.configuration.provider);
+  const requestedMode = view.configuration.cardMode === "MANUAL" ? "MANUAL" : view.configuration.testMode ? "SIMULATED" : "LIVE";
+  const terminalMode = normalizeTerminalMode(requestedMode, descriptor);
   return {
     cardMode: view.configuration.cardMode,
     provider: view.configuration.provider,
     displayName: view.configuration.displayName ?? "",
     enabled: view.configuration.enabled,
-    testMode: view.configuration.testMode,
-    terminalMode: view.configuration.cardMode === "MANUAL" ? "MANUAL" : view.configuration.testMode ? "SIMULATED" : "LIVE",
+    testMode: terminalMode === "SIMULATED",
+    terminalMode,
     simulatorOutcome: simulatorOutcomes.includes(outcome as SimulatorOutcome)
       ? outcome as SimulatorOutcome
       : "APPROVED",
@@ -274,9 +282,9 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
 
   const rulesError = paymentTerminalRulesError(form, configuration!.rules);
   const integrated = form.cardMode === "INTEGRATED";
-  const terminalMode = form.terminalMode ?? (form.testMode ? "SIMULATED" : "LIVE");
   const availableDescriptors = descriptors(configuration!);
   const descriptor = availableDescriptors.find((item) => item.provider === form.provider);
+  const terminalMode = normalizeTerminalMode(form.terminalMode ?? (form.testMode ? "SIMULATED" : "LIVE"), descriptor);
   const connectionTestAvailable = !!descriptor?.capabilities.includes("CONNECTION_TEST");
   const fieldLabel = (label: string) => label.startsWith("settings.") ? t(label) : label;
   const changeMode = (mode: PaymentCardMode) => {
@@ -290,11 +298,11 @@ export function PaymentTerminalSettings({ locale, token, initialConfiguration }:
       <p>{t("settings.paymentTerminal.description")}</p>
       <div className="payment-terminal-form">
         <label>{t("settings.paymentTerminal.mode")}<select value={form.cardMode} disabled={busy} onChange={(e) => changeMode(e.currentTarget.value as PaymentCardMode)}><option value="MANUAL" disabled={!configuration!.rules.cardManualEnabled}>{t("settings.paymentTerminal.manual")}</option><option value="INTEGRATED" disabled={!configuration!.rules.integratedCardEnabled}>{t("settings.paymentTerminal.integrated")}</option></select></label>
-        <label>{t("settings.paymentTerminal.provider")}<select value={form.provider} disabled={busy || !integrated} onChange={(e) => update("provider", e.currentTarget.value as PaymentTerminalProvider)}><option value="NONE">{t("settings.paymentTerminal.none")}</option>{availableDescriptors.map((item) => <option value={item.provider} key={item.provider}>{item.displayName}</option>)}</select></label>
+        <label>{t("settings.paymentTerminal.provider")}<select value={form.provider} disabled={busy || !integrated} onChange={(e) => { const provider = e.currentTarget.value as PaymentTerminalProvider; const selected = availableDescriptors.find((item) => item.provider === provider); setForm((current) => current ? { ...current, provider, terminalMode: normalizeTerminalMode(current.terminalMode ?? "SIMULATED", selected), testMode: normalizeTerminalMode(current.terminalMode ?? "SIMULATED", selected) === "SIMULATED", providerParameters: {} } : current); }}><option value="NONE">{t("settings.paymentTerminal.none")}</option>{availableDescriptors.map((item) => <option value={item.provider} key={item.provider}>{item.displayName}</option>)}</select></label>
         {integrated && <label>{t("settings.paymentTerminal.terminalMode")}<select value={terminalMode} disabled={busy} onChange={(e) => { const mode = e.currentTarget.value as PaymentTerminalMode; update("terminalMode", mode); update("testMode", mode === "SIMULATED"); }}>{descriptor?.supportedModes.map((mode) => <option key={mode} value={mode} disabled={mode === "LIVE" && !descriptor.liveAvailable}>{t(mode === "SIMULATED" ? "settings.paymentTerminal.simulated" : "settings.paymentTerminal.live")}</option>)}</select></label>}
         {integrated && descriptor?.unavailableReason && <p className="payment-terminal-hint">{t(`settings.paymentTerminal.unavailable.${descriptor.unavailableReason}`)}</p>}
         <label>{t("settings.paymentTerminal.displayName")}<input value={form.displayName} disabled={busy} onChange={(e) => update("displayName", e.currentTarget.value)} /></label>
-        {integrated && descriptor?.fieldSchemas.filter((field) => field.modes.includes(terminalMode as "SIMULATED" | "LIVE")).map((field) => field.key === "simulatorOutcome" ? <label key={field.key}>{t("settings.paymentTerminal.outcome")}<select value={form.simulatorOutcome} required={field.required} disabled={busy} onChange={(e) => update("simulatorOutcome", e.currentTarget.value as SimulatorOutcome)}>{field.options.map((option) => <option value={option} key={option}>{t(`settings.paymentTerminal.outcome.${option}`)}</option>)}</select></label> : <label key={field.key}>{fieldLabel(field.label)}{field.type === "SELECT" ? <select value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })}>{field.options.map((option) => <option value={option} key={option}>{option}</option>)}</select> : <input value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })} />}</label>)}
+        {integrated && descriptor?.fieldSchemas.filter((field) => field.modes.includes(terminalMode as "SIMULATED" | "LIVE")).map((field) => <label key={field.key}>{fieldLabel(field.label)}{field.type === "SELECT" ? <select value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })}>{field.options.map((option) => <option value={option} key={option}>{t(`settings.paymentTerminal.outcome.${option}`) === `settings.paymentTerminal.outcome.${option}` ? option : t(`settings.paymentTerminal.outcome.${option}`)}</option>)}</select> : <input value={form.providerParameters?.[field.key] ?? ""} required={field.required} disabled={busy} onChange={(e) => update("providerParameters", { ...form.providerParameters, [field.key]: e.currentTarget.value })} />}</label>)}
         <label className="payment-terminal-check"><input type="checkbox" checked={form.enabled} disabled={busy} onChange={(e) => update("enabled", e.currentTarget.checked)} />{t("settings.paymentTerminal.enabled")}</label>
       </div>
       {integrated && descriptor?.capabilities.includes("PAIRING") && <div className="payment-terminal-pairing"><p>{t("settings.paymentTerminal.pairingState")}: {pairingStatus === "PAIRED" ? t("settings.paymentTerminal.paired") : pairingStatus ?? t("settings.paymentTerminal.pairingUnknown")}</p><button type="button" disabled={busy} onClick={pair}>{t("settings.paymentTerminal.pair")}</button><button type="button" disabled={busy || !pairingId} onClick={refreshPairing}>{t("settings.paymentTerminal.refreshPairing")}</button></div>}
