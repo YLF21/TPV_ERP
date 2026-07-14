@@ -14,6 +14,7 @@ import {
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
  paymentSessionLocksSale,
+ prepareAutomaticExit,
  stableAllocationAttempt,
 } from "./SalePaymentCheckout";
 import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
@@ -185,6 +186,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  it("translates the pending-payment logout error in every supported locale",()=>{
   for(const locale of ["es","en","zh"] as const)expect(createTranslator(locale)("payment.pending.logoutError")).not.toBe("payment.pending.logoutError");
  });
+ it("does not issue a second cleanup request after cancellation fails",async()=>{
+  const discard=vi.fn(async()=>true);
+  await expect(prepareAutomaticExit(async()=>"ERROR",discard)).resolves.toBe("BLOCKED");
+  expect(discard).not.toHaveBeenCalled();
+ });
  it("prepares application close by discarding an uncertain simulator session and clearing recovery",async()=>{
   const storageKey="tpverp.payment-session.01";const attemptKey=`${storageKey}.allocation-attempt`;
   const session={id:"session-shutdown",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[{id:"a-1",idempotencyKey:"a-1",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};
@@ -247,6 +253,42 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(discard).toHaveBeenCalledWith({reason:"sale_entry_cleanup"}));
   view.rerender(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
   await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));expect(discard).toHaveBeenCalledTimes(1);
+ });
+ it.each([
+  ["empty",[]],
+  ["declined",[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"DECLINED"}]],
+  ["error",[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"ERROR"}]],
+  ["cancelled",[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"CANCELLED"}]],
+ ])("discards a stale AUTO_CANCEL %s session on entry and clears its lock",async(label,allocations)=>{
+  const session={id:`session-stale-auto-${label}`,total:"12.10",status:"COLLECTING",allocations};
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard")){expect(options?.body).toEqual({reason:"sale_entry_cleanup"});return {...session,status:"CANCELLED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onLockedChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1));
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
+  expect(sessionStorage.getItem("tpverp.payment-session.01")).toBeNull();
+ });
+ it("does not duplicate rejected entry cleanup after a real unmount and remount",async()=>{
+  const session={id:"session-stale-live-remount",total:"12.10",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard"))throw new ApiError("terminal live",409);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1));
+  first.unmount();
+  render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/active")).toHaveLength(2));
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
+  expect(sessionStorage.getItem("tpverp.payment-session.01")).toBe(session.id);
  });
  it("translates shutdown and simulator cleanup feedback in every supported locale",()=>{
   for(const locale of ["es","en","zh"] as const){expect(createTranslator(locale)("payment.pending.shutdownBlocked")).not.toBe("payment.pending.shutdownBlocked");expect(createTranslator(locale)("payment.pending.simulatorCleanupError")).not.toBe("payment.pending.simulatorCleanupError");}
