@@ -953,6 +953,7 @@ export class MessagesEn {
     "payment.split.refundAmount": "Refund amount", "payment.split.confirm": "Confirm", "payment.split.cancel": "Cancel",
     "payment.split.error.start": "Could not start payment", "payment.split.error.uncertainSame": "The same attempt is retained until its status is confirmed.",
     "payment.split.error.uncertain": "Uncertain result; the same attempt is retained. Query or retry without creating another charge.", "payment.split.error.query": "Could not query; the operation remains pending",
+    "payment.pending.logoutError": "You must resolve the pending payment before logging out",
     "payment.split.error.cancelCompensation": "There are approved payments: compensation is required. Manage card voids or refunds; cash and manual card require an authorized administrative resolution.",
     "payment.split.error.cancel": "Could not cancel", "payment.split.error.acknowledge": "Could not record the resolution", "payment.split.error.loadOperation": "Could not load the operation",
     "payment.split.error.operationQuery": "Could not query", "payment.split.error.void": "Could not void", "payment.split.error.refund": "Could not refund", "payment.split.error.print": "Could not print",

@@ -953,6 +953,7 @@ export class MessagesZh {
     "payment.split.refundAmount": "退款金额", "payment.split.confirm": "确认", "payment.split.cancel": "取消",
     "payment.split.error.start": "无法开始支付", "payment.split.error.uncertainSame": "在确认状态前保留同一次尝试。",
     "payment.split.error.uncertain": "结果不确定；保留同一次尝试。请查询或重试，不要创建新扣款。", "payment.split.error.query": "无法查询；操作仍处于待处理状态",
+    "payment.pending.logoutError": "退出登录前必须先处理待完成的付款",
     "payment.split.error.cancelCompensation": "存在已批准的支付：需要补偿。请处理卡撤销或退款；现金和手动刷卡需要授权的管理解决方案。",
     "payment.split.error.cancel": "无法取消", "payment.split.error.acknowledge": "无法记录解决方案", "payment.split.error.loadOperation": "无法加载操作",
     "payment.split.error.operationQuery": "无法查询", "payment.split.error.void": "无法撤销", "payment.split.error.refund": "无法退款", "payment.split.error.print": "无法打印",

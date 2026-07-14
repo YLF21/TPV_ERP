@@ -3,8 +3,19 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement,createRef } from "react";
-import { afterEach, describe,expect,it,vi } from "vitest";
-import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,checkoutPresentation,compensationNoteIsEphemeral,compensationGuidanceKey,paymentLogoutDisposition,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+ allocationFailureIsSafePreEffect,
+ authorizationPasswordIsEphemeral,
+ canManuallyFinalizePayment,
+ checkoutPresentation,
+ compensationGuidanceKey,
+ compensationNoteIsEphemeral,
+ paymentLogoutDisposition,
+ paymentSessionAfterFinalization,
+ paymentSessionLocksSale,
+ stableAllocationAttempt,
+} from "./SalePaymentCheckout";
 import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -90,6 +101,37 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(sessionStorage.getItem("tpverp.payment-session.01")).toBe(session.id);
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toContain("stable");
   expect(await screen.findByRole("alert")).toHaveTextContent("Debes resolver el cobro pendiente");
+ });
+ it("blocks logout when active-session hydration fails without a stored recovery id",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")throw new ApiError("offline",500);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  await expect(ref.current!.prepareLogout()).resolves.toBe("BLOCKED");
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/cancel"))).toHaveLength(0);
+ });
+ it("blocks logout and preserves recovery data when active and stored-session hydration both fail",async()=>{
+  const storageKey="tpverp.payment-session.01";
+  sessionStorage.setItem(storageKey,"session-recovery");
+  localStorage.setItem(`${storageKey}.allocation-attempt`,"stable-recovery");
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active"||path==="/pos/payment-sessions/session-recovery")throw new ApiError("offline",500);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/session-recovery",expect.anything()));
+  await expect(ref.current!.prepareLogout()).resolves.toBe("BLOCKED");
+  expect(sessionStorage.getItem(storageKey)).toBe("session-recovery");
+  expect(localStorage.getItem(`${storageKey}.allocation-attempt`)).toBe("stable-recovery");
+ });
+ it("translates the pending-payment logout error in every supported locale",()=>{
+  for(const locale of ["es","en","zh"] as const)expect(createTranslator(locale)("payment.pending.logoutError")).not.toBe("payment.pending.logoutError");
  });
  it("selects individual actions when there is no exceptional session",()=>{
   expect(checkoutPresentation(null)).toBe("INDIVIDUAL_ACTIONS");
