@@ -11,6 +11,7 @@ import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -127,6 +128,14 @@ class ApiExceptionHandlerTest {
         assertEquals("/api/v1/auth/login", problem.getProperties().get("path"));
         assertEquals("POST", problem.getProperties().get("supportedMethods"));
         assertEquals("Metodo GET no permitido para /api/v1/auth/login. Usa POST.", problem.getDetail());
+    }
+
+    @Test
+    void mapsMissingOrOutOfScopeResourcesToNotFound() {
+        var problem = handler.notFound(new NoSuchElementException(), new MockHttpServletRequest());
+
+        assertEquals(404, problem.getStatus());
+        assertEquals("NOT_FOUND", problem.getProperties().get("code"));
     }
 
     private static UserAccount userWithLanguage(SupportedLanguage language) {

@@ -31,6 +31,13 @@ class SalePaymentSessionServiceTest {
   assertThatThrownBy(()->f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth)).isInstanceOf(NoSuchElementException.class);verifyNoInteractions(f.configs);verify(f.repo,never()).save(any());
  }
 
+ @Test void simulatorDiscardRejectsArbitraryReasonBeforeLoadingOrSavingSession(){
+  var f=discardFixture();
+  assertThatThrownBy(()->f.service.discardSimulation(f.sessionId,"operator_cleanup",f.auth)).hasMessage("simulator_discard_reason_invalid");
+  verify(f.repo,never()).findLocked(any());verify(f.repo,never()).save(any());verifyNoInteractions(f.configs);
+  assertThat(f.session.getStatus()).isEqualTo(SalePaymentSessionStatus.COLLECTING);assertThat(f.session.getCompensationNote()).isNull();
+ }
+
  private static DiscardFixture discardFixture(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",BigDecimal.TEN);var allocation=session.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,allocation.getId(),null,null,"uncertain");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops);return new DiscardFixture(repo,org,terminal,configs,auth,session,service,storeId,terminalId,sessionId);

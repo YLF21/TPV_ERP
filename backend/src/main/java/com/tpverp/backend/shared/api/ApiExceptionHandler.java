@@ -11,6 +11,7 @@ import com.tpverp.backend.shared.i18n.SystemErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.Arrays;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.springframework.context.MessageSource;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -72,6 +73,19 @@ public class ApiExceptionHandler {
                 SystemErrorCode.VALIDATION_ERROR.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.VALIDATION_ERROR, language),
                 language);
+    }
+
+    @ExceptionHandler(NoSuchElementException.class)
+    ProblemDetail notFound(
+            NoSuchElementException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "Resource not found";
+            case ZH -> "未找到资源";
+            default -> "Recurso no encontrado";
+        };
+        return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", detail, language);
     }
 
     @ExceptionHandler(IllegalStateException.class)

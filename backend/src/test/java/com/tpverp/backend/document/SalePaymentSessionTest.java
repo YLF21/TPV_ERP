@@ -59,6 +59,9 @@ class SalePaymentSessionTest {
     @Test void simulatorDiscardRequiresReasonAndUser() {
         var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
         assertThatThrownBy(() -> session.discardSimulation(" ",UUID.randomUUID())).hasMessage("simulator_discard_reason_required");
+        assertThatThrownBy(() -> session.discardSimulation("operator_cleanup",UUID.randomUUID())).hasMessage("simulator_discard_reason_invalid");
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COLLECTING);
+        assertThat(session.getCompensationNote()).isNull();
         assertThatThrownBy(() -> session.discardSimulation("application_shutdown",null)).isInstanceOf(NullPointerException.class);
     }
     @Test void coversExactlyOnlyFromApprovedAllocationsAndKeepsStableKeys() {
