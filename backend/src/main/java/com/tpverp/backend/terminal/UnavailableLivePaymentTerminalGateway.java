@@ -6,7 +6,7 @@ public final class UnavailableLivePaymentTerminalGateway implements CardTerminal
     private final PaymentTerminalProvider provider;
     public UnavailableLivePaymentTerminalGateway(PaymentTerminalProvider provider) { if(provider==null||provider==PaymentTerminalProvider.NONE)throw new IllegalArgumentException("provider required"); this.provider=provider; }
     @Override public boolean supports(PaymentTerminalProvider candidate,boolean testMode){ return candidate==provider&&!testMode; }
-    @Override public Set<PaymentTerminalCapability> capabilities(){ return Set.of(); }
+    @Override public Set<PaymentTerminalCapability> capabilities(){ return Set.of(PaymentTerminalCapability.PAIRING); }
     @Override public CardTerminalResult testConnection(CardTerminalConfiguration configuration){ var r=unavailable(); return new CardTerminalResult(r.status(),null,null,r.message()); }
     @Override public CardTerminalResult charge(CardTerminalRequest request,CardTerminalConfiguration configuration){ var r=unavailable(); return new CardTerminalResult(r.status(),null,null,r.message()); }
     @Override public PaymentTerminalResult pair(PaymentTerminalPairCommand command,PaymentTerminalGatewayContext context){ return unavailable(); }

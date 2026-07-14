@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class TerminalPaymentConfigurationViewTest {
@@ -29,8 +30,8 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(json.at("/rules/allowedPaymentTerminalProviders").isArray()).isTrue();
         assertThat(json.at("/configuration/providerParameters/simulatorOutcome").asText())
                 .isEqualTo("APPROVED");
-        assertThat(json.at("/configuration/providerParameters/ip").isMissingNode()).isTrue();
-        assertThat(json.toString()).contains("pts_0123456789abcdef0123456789abcdef").doesNotContain("192.168.1.50");
+        assertThat(json.at("/configuration/providerParameters/ip").asText()).isEqualTo("192.168.1.50");
+        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef");
     }
 
     @Test
@@ -45,6 +46,61 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(TerminalPaymentConfigurationView.from(
                 terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration)
                 .configuration().lastConnectionStatus()).isEqualTo("ERROR");
+    }
+
+    @Test
+    void exposesFourSafeProviderDescriptorsAndNeverRehydratesSecretReferences() throws Exception {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.PAYTEF, "Paytef",
+                true, true, Map.of("simulatorOutcome", "APPROVED"),
+                "pts_0123456789abcdef0123456789abcdef", 1));
+
+        var json = mapper.valueToTree(TerminalPaymentConfigurationView.from(
+                terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration));
+
+        assertThat(json.at("/providerDescriptors").size()).isEqualTo(4);
+        assertThat(json.at("/providerDescriptors/0/capabilities").isArray()).isTrue();
+        assertThat(json.at("/providerDescriptors/0/supportedModes").toString()).contains("SIMULATED", "LIVE");
+        assertThat(json.at("/providerDescriptors/0/liveAvailable").asBoolean()).isFalse();
+        assertThat(json.at("/providerDescriptors/0/unavailableReason").asText()).isEqualTo("SDK_NOT_INSTALLED");
+        assertThat(json.at("/providerDescriptors/0/fieldSchemas/0/key").asText()).isEqualTo("simulatorOutcome");
+        assertThat(json.at("/providerDescriptors/0/fieldSchemas").toString()).contains("simulatorQueryOutcome");
+        assertThat(json.toString()).doesNotContain("pts_0123456789abcdef0123456789abcdef");
+        assertThat(json.at("/configuration/secretConfigured").asBoolean()).isTrue();
+    }
+
+    @Test
+    void rehydratesAllowedNonSensitiveIpParameterInTheConfigurationView() {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, false, Map.of("ip", "10.0.0.25"), null));
+
+        var view = TerminalPaymentConfigurationView.from(
+                terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration);
+
+        assertThat(view.configuration().providerParameters()).containsExactlyEntriesOf(Map.of("ip", "10.0.0.25"));
+    }
+
+    @Test
+    void exposesPairingIdentitySoTheFrontendCanResumeStatusQueriesAfterReload() {
+        var terminal = terminal();
+        var configuration = TerminalPaymentConfiguration.manual(terminal);
+        configuration.configure(new TerminalPaymentConfigurationCommand(
+                PaymentCardMode.INTEGRATED, PaymentTerminalProvider.REDSYS_TPV_PC, "Redsys",
+                true, true, Map.of("simulatorOutcome", "APPROVED"), null));
+        var pairingId = UUID.randomUUID();
+        configuration.recordPairing(pairingId, new PaymentTerminalResult(
+                PaymentTerminalOperationStatus.APPROVED, "PAIRED", pairingId.toString(), null, "OK"));
+
+        var view = TerminalPaymentConfigurationView.from(
+                terminal, new StorePaymentConfiguration(terminal.getTienda()), configuration);
+
+        assertThat(view.configuration().pairingId()).isEqualTo(pairingId);
+        assertThat(view.configuration().pairingStatus()).isEqualTo("PAIRED");
     }
 
     private Terminal terminal() {

@@ -73,9 +73,7 @@ public class PaymentTerminalOperationService {
     public PaymentTerminalOperation recover(UUID id,UUID owner){
         var claimed=tx(()->claim(id,owner)); if(claimed==null)return operations.findById(id).orElseThrow();
         var configuration=configurations.required(claimed.getTerminalId());
-        if(configuration.provider()!=claimed.getProvider()
-                || configuration.configurationVersion()!=claimed.getConfigurationVersion()
-                || !java.util.Objects.equals(configuration.configurationHash(),claimed.getConfigurationHash())){
+        if(!claimed.matchesConfigurationIdentity(configuration)){
             return tx(()->review(id,"CONFIGURATION_CHANGED","La configuracion del datafono ha cambiado"));
         }
         var gateway=resolve(configuration);
@@ -89,8 +87,10 @@ public class PaymentTerminalOperationService {
         tx(()->recordQueryResult(id,result));return operations.findById(id).orElseThrow();
     }
 
-    PaymentTerminalOperation claim(UUID id,UUID owner){var op=operations.findLockedById(id).orElseThrow();var now=clock.instant();
-        return op.claimProcessing(owner,now.plus(LEASE),now)?operations.save(op):null;}
+    PaymentTerminalOperation claim(UUID id,UUID owner){var op=operations.findLockedById(id).orElseThrow();
+        if(!java.util.Set.of(PaymentTerminalOperationStatus.PENDING,PaymentTerminalOperationStatus.SENT,
+                PaymentTerminalOperationStatus.TIMEOUT,PaymentTerminalOperationStatus.ERROR).contains(op.getStatus()))return null;
+        var now=clock.instant();return op.claimProcessing(owner,now.plus(LEASE),now)?operations.save(op):null;}
     PaymentTerminalOperation scheduleOrReview(UUID id,String code,String message){var op=operations.findLockedById(id).orElseThrow();var now=clock.instant();
         if(op.getRetryCount()+1>=MAX_RECOVERY_ATTEMPTS){op.markReviewRequired(code,message,now);op.releaseProcessing(now);}
         else op.scheduleRetry(now.plusSeconds(Math.min(300,1L<<(op.getRetryCount()+1))),now);
@@ -128,6 +128,7 @@ public class PaymentTerminalOperationService {
     public PaymentTerminalOperation documentReview(UUID id,String diagnostic){return tx(()->{var operation=operations.findLockedById(id).orElseThrow();var now=clock.instant();
         operation.markDocumentReviewRequired("DOCUMENT_IDENTITY_INVALID",diagnostic,now);operation.releaseProcessing(now);return operations.save(operation);});}
     public java.util.Optional<PaymentTerminalOperation> find(UUID id){return operations.findById(id);}
+    public PaymentTerminalOperation requireFinalizableApprovedCharge(UUID id){return tx(()->{var operation=operations.findLockedById(id).orElseThrow(()->new IllegalStateException("payment_operation_not_finalizable"));if(operation.getOperationType()!=PaymentTerminalOperationType.CHARGE||operation.getStatus()!=PaymentTerminalOperationStatus.APPROVED||operation.getRefundedAmount().signum()!=0||operation.getDocumentId()!=null)throw new IllegalStateException("payment_operation_not_finalizable");return operation;});}
     public void linkDocument(UUID operationId,UUID documentId,UUID paymentId){tx(()->{var operation=operations.findLockedById(operationId).orElseThrow();
         if(operation.getDocumentId()==null){var now=clock.instant();operation.linkDocument(documentId,paymentId,now);operation.releaseProcessing(now);operations.save(operation);}return operation;});}
 

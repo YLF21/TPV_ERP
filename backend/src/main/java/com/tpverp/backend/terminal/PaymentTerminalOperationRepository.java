@@ -67,16 +67,19 @@ public interface PaymentTerminalOperationRepository extends JpaRepository<Paymen
     java.util.List<PaymentTerminalOperation> findRecoverable(@Param("now") java.time.Instant now,@Param("sentBefore") java.time.Instant sentBefore,
             org.springframework.data.domain.Pageable pageable);
 
-    @Query("""
-            select operation from PaymentTerminalOperation operation
-            where operation.operationType in (com.tpverp.backend.terminal.PaymentTerminalOperationType.CHARGE,
-                    com.tpverp.backend.terminal.PaymentTerminalOperationType.REFUND)
-              and operation.status = com.tpverp.backend.terminal.PaymentTerminalOperationStatus.APPROVED
-              and operation.documentId is null
-              and (operation.nextRetryAt is null or operation.nextRetryAt <= :now)
-              and (operation.processingLeaseUntil is null or operation.processingLeaseUntil <= :now)
-            order by operation.updatedAt
-            """)
+    @Query(value="""
+            select operation.* from payment_terminal_operation operation
+            where operation.operation_type in ('CHARGE','REFUND')
+              and operation.status = 'APPROVED'
+              and operation.document_id is null
+              and (operation.next_retry_at is null or operation.next_retry_at <= :now)
+              and (operation.processing_lease_until is null or operation.processing_lease_until <= :now)
+              and not exists (
+                  select 1 from sale_payment_allocation allocation
+                  where allocation.operation_id = operation.id
+              )
+            order by operation.updated_at
+            """,nativeQuery=true)
     java.util.List<PaymentTerminalOperation> findApprovedWithoutDocument(@Param("now") java.time.Instant now,
             org.springframework.data.domain.Pageable pageable);
 }

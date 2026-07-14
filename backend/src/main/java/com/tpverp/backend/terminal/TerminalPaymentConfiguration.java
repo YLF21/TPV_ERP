@@ -21,6 +21,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "configuracion_pago_terminal")
 public class TerminalPaymentConfiguration {
+    private static final String PAIRING_ID = "_pairingId";
+    private static final String PAIRING_STATUS = "_pairingStatus";
 
     @Id
     private UUID id;
@@ -65,6 +67,9 @@ public class TerminalPaymentConfiguration {
     @Version
     private long version;
 
+    @Column(name = "operational_version", nullable = false)
+    private long operationalVersion;
+
     protected TerminalPaymentConfiguration() {
     }
 
@@ -79,6 +84,7 @@ public class TerminalPaymentConfiguration {
 
     public void configure(TerminalPaymentConfigurationCommand command) {
         var previousProvider=this.provider;
+        var pairingMetadata = pairingMetadata();
         this.cardMode = Objects.requireNonNull(command.cardMode(), "cardMode");
         this.provider = Objects.requireNonNull(command.provider(), "provider");
         if (cardMode == PaymentCardMode.MANUAL && provider != PaymentTerminalProvider.NONE) {
@@ -91,17 +97,31 @@ public class TerminalPaymentConfiguration {
         this.enabled = command.enabled();
         this.testMode = command.testMode();
         this.providerParameters = safeProviderParameters(command.providerParameters(), provider, testMode);
+        if (cardMode == PaymentCardMode.INTEGRATED && provider == previousProvider) {
+            this.providerParameters.putAll(pairingMetadata);
+        }
         if (command.secretReference() != null && !command.secretReference().isBlank()) {
             assignSecretReference(command.secretReference(),Objects.requireNonNull(command.secretVersion(),"secretVersion"));
         } else if (cardMode != PaymentCardMode.INTEGRATED || provider != previousProvider) {
             clearSecretReference();
         }
+        operationalVersion++;
     }
 
     public void recordConnectionTest(boolean success, Instant when) {
         this.lastConnectionTestAt = Objects.requireNonNull(when, "when");
         this.lastConnectionStatus = success ? "OK" : "ERROR";
     }
+
+    public void recordPairing(UUID pairingId, PaymentTerminalResult result) {
+        Objects.requireNonNull(pairingId,"pairingId");Objects.requireNonNull(result,"result");
+        if(cardMode!=PaymentCardMode.INTEGRATED||provider==PaymentTerminalProvider.NONE)throw new IllegalStateException("message.payment_terminal.pairing_not_supported");
+        providerParameters.put(PAIRING_ID,pairingId.toString());
+        providerParameters.put(PAIRING_STATUS,result.code()==null?result.status().name():result.code());
+    }
+    public boolean matchesPairing(UUID pairingId){return pairingId!=null&&pairingId.toString().equals(providerParameters.get(PAIRING_ID));}
+    public UUID getPairingId(){var value=providerParameters.get(PAIRING_ID);return value==null||value.isBlank()?null:UUID.fromString(value);}
+    public String getPairingStatus(){return providerParameters.get(PAIRING_STATUS);}
 
     public UUID getId() {
         return id;
@@ -143,6 +163,13 @@ public class TerminalPaymentConfiguration {
         return Map.copyOf(providerParameters);
     }
 
+    public Map<String, String> getOperationalProviderParameters() {
+        var operational = new LinkedHashMap<>(providerParameters);
+        operational.remove(PAIRING_ID);
+        operational.remove(PAIRING_STATUS);
+        return Map.copyOf(operational);
+    }
+
     public String getSecretReference() {
         return secretReference;
     }
@@ -159,6 +186,14 @@ public class TerminalPaymentConfiguration {
     public void clearSecretReference(){this.secretReference=null;this.secretReferenceVersion=null;}
 
     public long getVersion() { return version; }
+    public long getOperationalVersion() { return operationalVersion; }
+
+    private Map<String, String> pairingMetadata() {
+        var metadata = new LinkedHashMap<String, String>();
+        if (providerParameters.containsKey(PAIRING_ID)) metadata.put(PAIRING_ID, providerParameters.get(PAIRING_ID));
+        if (providerParameters.containsKey(PAIRING_STATUS)) metadata.put(PAIRING_STATUS, providerParameters.get(PAIRING_STATUS));
+        return metadata;
+    }
 
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
@@ -171,7 +206,7 @@ public class TerminalPaymentConfiguration {
             var normalized = Objects.requireNonNull(key, "key").trim();
             if(PaymentTerminalSensitiveData.sensitiveKey(normalized))throw new IllegalArgumentException("message.payment_terminal.sensitive_parameter_not_allowed");
             if(normalized.equals("simulatorOutcome")&&!testMode)throw new IllegalArgumentException("message.payment_terminal.simulator_outcome_invalid");
-            var allowed=(provider!=PaymentTerminalProvider.NONE&&testMode&&normalized.equals("simulatorOutcome"))
+            var allowed=(provider!=PaymentTerminalProvider.NONE&&testMode&&(normalized.equals("simulatorOutcome")||normalized.equals("simulatorQueryOutcome")))
                     ||(provider==PaymentTerminalProvider.REDSYS_TPV_PC&&normalized.equals("ip"));
             if(!allowed)throw new IllegalArgumentException("message.payment_terminal.provider_parameter_not_allowed");
             safe.put(normalized, value);
@@ -186,6 +221,8 @@ public class TerminalPaymentConfiguration {
             }
             safe.put("simulatorOutcome", normalizedOutcome);
         }
+        var simulatorQueryOutcome=safe.get("simulatorQueryOutcome");
+        if(simulatorQueryOutcome!=null){var normalized=simulatorQueryOutcome.trim().toUpperCase(java.util.Locale.ROOT);if(!testMode||provider==PaymentTerminalProvider.NONE||!java.util.Set.of("APPROVED","DECLINED","TIMEOUT","PENDING","ERROR").contains(normalized))throw new IllegalArgumentException("message.payment_terminal.simulator_query_outcome_invalid");safe.put("simulatorQueryOutcome",normalized);}
         return safe;
     }
 }

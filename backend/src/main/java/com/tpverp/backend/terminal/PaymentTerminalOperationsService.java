@@ -118,8 +118,7 @@ public class PaymentTerminalOperationsService {
         return reconciliations.required(id,store.getId(),store.getEmpresa().getId());}
 
     private CardTerminalConfiguration configuration(PaymentTerminalOperation op){ var c=configurations.required(op.getTerminalId());
-        if(c.provider()!=op.getProvider() || c.configurationVersion()!=op.getConfigurationVersion()
-                || !java.util.Objects.equals(c.configurationHash(),op.getConfigurationHash()))
+        if(!op.matchesConfigurationIdentity(c))
             throw problem(HttpStatus.CONFLICT,"PAYMENT_CONFIGURATION_CHANGED","La configuracion del datafono ha cambiado"); return c; }
     private CardTerminalGateway gateway(CardTerminalConfiguration c){ return gateways.stream().filter(g->g.supports(c.provider(),c.testMode())).findFirst()
             .orElseThrow(()->problem(HttpStatus.SERVICE_UNAVAILABLE,"PAYMENT_GATEWAY_UNAVAILABLE","Conector no disponible")); }

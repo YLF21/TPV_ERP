@@ -392,11 +392,16 @@ class DocumentServiceTest {
     void approvedCardSnapshotKeepsAuthorizedFiscalLinesWithoutRepricingLoyaltyOrPromotions() {
         var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
         when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        var terminalConfiguration=org.mockito.Mockito.mock(TerminalPaymentConfiguration.class);
+        when(terminalConfiguration.getCardMode()).thenReturn(PaymentCardMode.INTEGRATED);
+        when(terminalConfiguration.isEnabled()).thenReturn(true);
+        when(terminalConfiguration.getProvider()).thenReturn(PaymentTerminalProvider.GLOBAL_PAYMENTS);
+        when(terminalPaymentConfigurations.findByTerminalId(terminalId)).thenReturn(Optional.of(terminalConfiguration));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any())).thenReturn(Optional.empty());
         when(stockGateway.confirm(any())).thenReturn(false);
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var frozen = new ApprovedCardTicketSnapshot(
-                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, card.getId(),
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 6, 8), null, UUID.randomUUID(),
                 BigDecimal.ZERO, new BigDecimal("8.26"), new BigDecimal("1.74"),
                 new BigDecimal("10.00"), List.of(new DocumentLineCommand(
                         UUID.randomUUID(), BigDecimal.ONE, "P-OLD", "Precio autorizado",
@@ -407,7 +412,7 @@ class DocumentServiceTest {
                 frozen, List.of(new PaymentCommand(
                         card.getId(), new BigDecimal("10.00"), true, null, null,
                         null, "REF", PaymentCardMode.INTEGRATED,
-                        PaymentTerminalProvider.REDSYS_TPV_PC,
+                        PaymentTerminalProvider.GLOBAL_PAYMENTS,
                         PaymentTerminalOperationStatus.APPROVED, "AUTH", terminalId)),
                 authentication());
 
@@ -416,11 +421,53 @@ class DocumentServiceTest {
         assertThat(ticket.getImpuestoTotal()).isEqualByComparingTo("1.74");
         assertThat(ticket.getLineas().getFirst().getPrecioUnitario()).isEqualByComparingTo("10.00");
         assertThat(ticket.getLineas().getFirst().getTarifa()).isEqualTo("SOCIO");
+        assertThat(ticket.getPagos().getFirst().getPaymentTerminalProvider())
+                .isEqualTo(PaymentTerminalProvider.GLOBAL_PAYMENTS);
         verify(productRepository, never()).findById(any());
         verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
         verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
         verifyNoInteractions(promotionRepository);
         verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
+    void approvedSnapshotPersistsCashOnlyPayment() {
+        var cash=new PaymentMethod(store.getEmpresa().getId(),"EFECTIVO",true);
+        var ticket=createFrozenTicket(List.of(new PaymentCommand(cash.getId(),new BigDecimal("10.00"),true,
+                new BigDecimal("20.00"),new BigDecimal("10.00"))),cash);
+        assertThat(ticket.getPagos()).singleElement().satisfies(payment->{
+            assertThat(payment.getMetodoPago().getNombre()).isEqualTo("EFECTIVO");
+            assertThat(payment.getImporte()).isEqualByComparingTo("10.00");
+            assertThat(payment.getEntregado()).isEqualByComparingTo("20.00");
+            assertThat(payment.getCambio()).isEqualByComparingTo("10.00");
+        });
+    }
+
+    @Test
+    void approvedSnapshotPersistsManualCardPayment() {
+        var card=new PaymentMethod(store.getEmpresa().getId(),"TARJETA",true);
+        var ticket=createFrozenTicket(List.of(new PaymentCommand(card.getId(),new BigDecimal("10.00"),true,
+                null,null,null,"MANUAL-REF",PaymentCardMode.MANUAL,null,null,null,null)),card);
+        assertThat(ticket.getPagos()).singleElement().satisfies(payment->{
+            assertThat(payment.getCardMode()).isEqualTo(PaymentCardMode.MANUAL);
+            assertThat(payment.getReferencia()).isEqualTo("MANUAL-REF");
+            assertThat(payment.getImporte()).isEqualByComparingTo("10.00");
+        });
+    }
+
+    @Test
+    void approvedSnapshotPersistsExactMixedSplitPayments() {
+        var cash=new PaymentMethod(store.getEmpresa().getId(),"EFECTIVO",true);
+        var card=new PaymentMethod(store.getEmpresa().getId(),"TARJETA",true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        var ticket=createFrozenTicket(List.of(
+                new PaymentCommand(cash.getId(),new BigDecimal("3.25"),true,new BigDecimal("5.00"),new BigDecimal("1.75")),
+                new PaymentCommand(card.getId(),new BigDecimal("6.75"),false,null,null,null,"MANUAL-2",PaymentCardMode.MANUAL,null,null,null,null)));
+        assertThat(ticket.getPagos()).extracting(DocumentPayment::getImporte)
+                .containsExactly(new BigDecimal("3.25"),new BigDecimal("6.75"));
+        assertThat(ticket.getPagos().stream().map(DocumentPayment::getImporte).reduce(BigDecimal.ZERO,BigDecimal::add))
+                .isEqualByComparingTo(ticket.getTotal());
     }
 
     @Test
@@ -1347,6 +1394,22 @@ class DocumentServiceTest {
                         UUID.randomUUID(), -1, "P-1", "Producto", "VENTA",
                         new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
                         new BigDecimal("21"))));
+    }
+
+    private CommercialDocument createFrozenTicket(List<PaymentCommand> payments,PaymentMethod... methods) {
+        for(var method:methods) when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        return createFrozenTicket(payments);
+    }
+
+    private CommercialDocument createFrozenTicket(List<PaymentCommand> payments) {
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(),any(),any())).thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation->invocation.getArgument(0));
+        var frozen=new ApprovedCardTicketSnapshot(store.getId(),UUID.randomUUID(),LocalDate.of(2026,6,8),null,
+                payments.getFirst().metodoPagoId(),BigDecimal.ZERO,new BigDecimal("8.26"),new BigDecimal("1.74"),
+                new BigDecimal("10.00"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","Producto",
+                "VENTA",new BigDecimal("10.00"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));
+        return service.createApprovedCardTicketFromSnapshot(frozen,payments,authentication());
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

@@ -50,6 +50,14 @@ class PaymentTerminalGatewayContractTest {
     }
 
     @ParameterizedTest @MethodSource("providers")
+    void simulatorOnlyQueriesPairingThatWasStarted(PaymentTerminalProvider provider) {
+        var gateway=gateway(provider);var context=context(provider,"APPROVED");var pairing=new PaymentTerminalPairCommand(UUID.randomUUID());
+        assertThat(gateway.pairingStatus(pairing,context).code()).isEqualTo("PAIRING_NOT_FOUND");
+        assertThat(gateway.pair(pairing,context).code()).isEqualTo("PAIRED");
+        assertThat(gateway.pairingStatus(pairing,context).code()).isEqualTo("PAIRED");
+    }
+
+    @ParameterizedTest @MethodSource("providers")
     void queryPreservesChargeOutcomeUntilAnExplicitQueryOutcomeResolvesIt(PaymentTerminalProvider provider) {
         var gateway=gateway(provider);
         var operationId=UUID.randomUUID();
@@ -106,7 +114,7 @@ class PaymentTerminalGatewayContractTest {
                 .containsExactly(PaymentTerminalOperationStatus.ERROR,"SDK_NOT_INSTALLED");
         assertThat(gateway.supports(provider,false)).isTrue();
         assertThat(gateway.supports(provider,true)).isFalse();
-        assertThat(gateway.capabilities()).isEmpty();
+        assertThat(gateway.capabilities()).contains(PaymentTerminalCapability.PAIRING);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.tpverp.backend.terminal;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +79,41 @@ public class TerminalPaymentConfigurationService {
                 .orElseThrow(() -> new IllegalStateException("message.payment_terminal.gateway_not_available"));
         var result = gateway.testConnection(configuration);
         return gatewayConfigurations.recordAndView(terminalId,result.status()==PaymentTerminalOperationStatus.APPROVED);
+    }
+
+    public PaymentTerminalResult pair(UUID pairingId) {
+        return pairing(pairingId, false);
+    }
+
+    public PaymentTerminalResult pairingStatus(UUID pairingId) {
+        return pairing(pairingId, true);
+    }
+
+    private PaymentTerminalResult pairing(UUID pairingId, boolean statusOnly) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var terminalId = currentTerminal.terminalId(authentication);
+        var persistent=configurations.findByTerminalId(terminalId);
+        if(statusOnly&&(persistent.isEmpty()||!persistent.orElseThrow().matchesPairing(pairingId)))throw new IllegalStateException("message.payment_terminal.pairing_not_started");
+        var configuration = gatewayConfigurations.required(terminalId);
+        var gateway = gateways.stream()
+                .filter(candidate -> candidate.supports(configuration.provider(), configuration.testMode()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("message.payment_terminal.gateway_not_available"));
+        var command = new PaymentTerminalPairCommand(pairingId);
+        var context = gatewayContext(configuration, pairingId);
+        if (!gateway.capabilities().contains(PaymentTerminalCapability.PAIRING)) {
+            throw new IllegalStateException("message.payment_terminal.pairing_not_supported");
+        }
+        var result=statusOnly ? gateway.pairingStatus(command, context) : gateway.pair(command, context);
+        persistent.ifPresent(entity->{entity.recordPairing(pairingId,result);configurations.save(entity);});
+        return result;
+    }
+
+    private PaymentTerminalGatewayContext gatewayContext(CardTerminalConfiguration configuration, UUID operationId) {
+        return new PaymentTerminalGatewayContext(configuration.terminalId(), configuration.provider(),
+                configuration.testMode() ? PaymentTerminalMode.SIMULATED : PaymentTerminalMode.LIVE,
+                "EUR", operationId.toString(), configuration.configurationReference(),
+                configuration.configurationVersion(), configuration.configurationHash(), configuration.parameters());
     }
 
     private Terminal currentTerminal() {

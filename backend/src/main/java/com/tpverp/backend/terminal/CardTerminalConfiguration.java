@@ -9,11 +9,11 @@ public record CardTerminalConfiguration(
         long configurationVersion, String configurationHash, Map<String,String> parameters) {
     public CardTerminalConfiguration { parameters=Map.copyOf(parameters); }
     static CardTerminalConfiguration from(TerminalPaymentConfiguration entity){
-        var parameters=entity.getProviderParameters();
+        var parameters=entity.getOperationalProviderParameters();
         var reference="terminal-payment:"+entity.getId();
         var hash=ConfigurationFingerprint.sha256(entity.getProvider().name()+"|"+entity.isTestMode()+"|"+parameters);
         return new CardTerminalConfiguration(entity.getTerminal().getId(),entity.getTerminal().getTienda().getId(),entity.getCardMode(),entity.getProvider(),
-                entity.isEnabled(),entity.isTestMode(),entity.getDisplayName(),reference,entity.getVersion(),hash,parameters);
+                entity.isEnabled(),entity.isTestMode(),entity.getDisplayName(),reference,entity.getOperationalVersion(),hash,parameters);
     }
 
     /** Compatibility constructor retained for existing tests and callers. */

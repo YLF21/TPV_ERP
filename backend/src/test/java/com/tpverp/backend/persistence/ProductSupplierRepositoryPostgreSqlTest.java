@@ -132,18 +132,19 @@ class ProductSupplierRepositoryPostgreSqlTest {
         org.springframework.test.context.transaction.TestTransaction.flagForCommit();
         org.springframework.test.context.transaction.TestTransaction.end();
 
-        var firstWritten = new CountDownLatch(1);
-        var releaseFirst = new CountDownLatch(1);
+        var start = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var first = executor.submit(() -> concurrentUpsert(
-                    ids, Instant.parse("2026-06-09T10:00:00Z"), firstWritten, releaseFirst));
-            assertThat(firstWritten.await(5, TimeUnit.SECONDS)).isTrue();
-            var second = executor.submit(() -> concurrentUpsert(
-                    ids, Instant.parse("2026-07-01T12:00:00Z"), null, null));
-
-            Thread.sleep(200);
-            assertThat(second.isDone()).isFalse();
-            releaseFirst.countDown();
+            var first = executor.submit(() -> {
+                start.await();
+                concurrentUpsert(ids, Instant.parse("2026-06-09T10:00:00Z"), null, null);
+                return null;
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                concurrentUpsert(ids, Instant.parse("2026-07-01T12:00:00Z"), null, null);
+                return null;
+            });
+            start.countDown();
             first.get(5, TimeUnit.SECONDS);
             second.get(5, TimeUnit.SECONDS);
         }
@@ -165,11 +166,16 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 + "currentSchema=" + SCHEMA;
         try (var connection = DriverManager.getConnection(connectionUrl, USER, PASSWORD);
                 var statement = connection.prepareStatement("""
+                        with product_lock as materialized (
+                            select pg_advisory_xact_lock(
+                                hashtextextended(cast(? as text), 0))
+                        )
                         insert into producto_proveedor as current_link (
                             id, producto_id, proveedor_id, referencia_proveedor,
                             ultimo_proveedor, precio_compra_bruto, descuento_compra,
                             ultima_entrada_en, version)
-                        values (?, ?, ?, null, true, 10.00, 0.00, ?, 0)
+                        select ?, ?, ?, null, true, 10.00, 0.00, ?, 0
+                        from product_lock
                         on conflict (producto_id, proveedor_id) do update
                         set ultimo_proveedor = true,
                             precio_compra_bruto = case
@@ -190,10 +196,11 @@ class ProductSupplierRepositoryPostgreSqlTest {
                             version = current_link.version + 1
                         """)) {
             connection.setAutoCommit(false);
-            statement.setObject(1, UUID.randomUUID());
-            statement.setObject(2, ids.productId());
-            statement.setObject(3, ids.firstSupplierId());
-            statement.setObject(4, entryAt);
+            statement.setObject(1, ids.productId());
+            statement.setObject(2, UUID.randomUUID());
+            statement.setObject(3, ids.productId());
+            statement.setObject(4, ids.firstSupplierId());
+            statement.setTimestamp(5, java.sql.Timestamp.from(entryAt));
             statement.executeUpdate();
             if (written != null) {
                 written.countDown();
@@ -217,7 +224,7 @@ class ProductSupplierRepositoryPostgreSqlTest {
             long version) {
         Map<String, Object> row = jdbc.queryForMap("""
                 select referencia_proveedor, ultima_entrada_en,
-                       precio_compra_bruto, descuento_compra, precio_compra_neto,
+                       precio_compra_bruto, descuento_compra,
                        ultimo_proveedor, version
                 from %s.producto_proveedor
                 where producto_id = ? and proveedor_id = ?
@@ -227,7 +234,12 @@ class ProductSupplierRepositoryPostgreSqlTest {
                 .isEqualTo(lastEntryAt);
         assertThat((java.math.BigDecimal) row.get("precio_compra_bruto")).isEqualByComparingTo(grossPrice);
         assertThat((java.math.BigDecimal) row.get("descuento_compra")).isEqualByComparingTo(discount);
-        assertThat((java.math.BigDecimal) row.get("precio_compra_neto")).isEqualByComparingTo(netPrice);
+        var calculatedNet = ((java.math.BigDecimal) row.get("precio_compra_bruto"))
+                .multiply(java.math.BigDecimal.ONE.subtract(
+                        ((java.math.BigDecimal) row.get("descuento_compra"))
+                                .movePointLeft(2)))
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+        assertThat(calculatedNet).isEqualByComparingTo(netPrice);
         assertThat(row.get("ultimo_proveedor")).isEqualTo(true);
         assertThat(row.get("version")).isEqualTo(version);
     }

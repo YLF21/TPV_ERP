@@ -51,14 +51,19 @@ public interface ProductSupplierRepository extends JpaRepository<ProductSupplier
 
     @Modifying(flushAutomatically = true)
     @Query(value = """
+            with product_lock as materialized (
+                select pg_advisory_xact_lock(
+                    hashtextextended(cast(:productId as text), 0))
+            )
             insert into producto_proveedor as current_link (
                 id, producto_id, proveedor_id, referencia_proveedor,
                 principal, ultimo_proveedor, precio_compra_bruto, descuento_compra,
                 ultima_entrada_en, version)
-            values (
+            select
                 :id, :productId, :supplierId, :reference,
                 :makePrincipal, :makeLastSupplier, :grossPurchasePrice, :purchaseDiscount,
-                :entryAt, 0)
+                :entryAt, 0
+            from product_lock
             on conflict (producto_id, proveedor_id) do update
             set referencia_proveedor = coalesce(
                     excluded.referencia_proveedor,

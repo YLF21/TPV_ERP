@@ -82,6 +82,7 @@ class PaymentTerminalOperationServiceTest {
         var recovered=service.recover(operationId,UUID.randomUUID());
 
         assertThat(recovered.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);
         verify(paytef).query(any(),any());verify(paytef,never()).charge(any(PaymentTerminalChargeCommand.class),any(PaymentTerminalGatewayContext.class));
     }
 
@@ -99,6 +100,48 @@ class PaymentTerminalOperationServiceTest {
         when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));when(configurations.required(terminal)).thenReturn(
                 new CardTerminalConfiguration(terminal,store,PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"changed","config:new",8,"c".repeat(64),Map.of()));
         assertThat(service.recover(operationId,UUID.randomUUID()).getStatus()).isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
+        verify(paytef,never()).query(any(),any());
+    }
+
+    @Test void preV61FingerprintRemainsRecoverableOnlyAtTheExactOperationalVersion(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        org.springframework.test.util.ReflectionTestUtils.setField(operation,"legacyConfigurationFingerprint",true);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(repository.findById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                7,"c".repeat(64),Map.of()));
+        when(paytef.capabilities()).thenReturn(Set.of(PaymentTerminalCapability.QUERY));
+        when(paytef.query(any(),any())).thenReturn(new PaymentTerminalResult(
+                PaymentTerminalOperationStatus.APPROVED,"APPROVED","REF","AUTH","ok"));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        verify(paytef).query(any(),any());
+    }
+
+    @Test void financialConfigurationChangeStillInvalidatesAPreV61Operation(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        org.springframework.test.util.ReflectionTestUtils.setField(operation,"legacyConfigurationFingerprint",true);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                8,"c".repeat(64),Map.of()));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
+        verify(paytef,never()).query(any(),any());
+    }
+
+    @Test void newOperationAlwaysRequiresAnExactFingerprintAtTheSameVersion(){
+        var operation=operation("a".repeat(64));operation.timeout("TIMEOUT","incierto",now);
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(operation));
+        when(configurations.required(terminal)).thenReturn(new CardTerminalConfiguration(terminal,store,
+                PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"PAYTEF","config:paytef",
+                7,"c".repeat(64),Map.of()));
+
+        assertThat(service.recover(operationId,UUID.randomUUID()).getStatus())
+                .isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
         verify(paytef,never()).query(any(),any());
     }
 
@@ -127,6 +170,17 @@ class PaymentTerminalOperationServiceTest {
         assertThat(approved.getStatus()).isEqualTo(PaymentTerminalOperationStatus.REVIEW_REQUIRED);
         assertThat(approved.getDocumentRetryCount()).isEqualTo(4);
         assertThat(approved.getProcessingOwner()).isNull();
+    }
+
+    @Test void finalizationRevalidatesTheIntegratedChargeUnderLock() {
+        var approved=operation("a".repeat(64));approved.approve("REF","AUTH",now.plusSeconds(1));
+        approved.recordRefund(new BigDecimal("10.00"),now.plusSeconds(2));
+        when(repository.findLockedById(operationId)).thenReturn(Optional.of(approved));
+
+        assertThatThrownBy(()->service.requireFinalizableApprovedCharge(operationId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_operation_not_finalizable");
+        verify(repository).findLockedById(operationId);
     }
 
     private PaymentTerminalOperation operation(String hash){var operation=PaymentTerminalOperation.reserve(operationId,terminal,store,

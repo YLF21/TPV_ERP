@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
@@ -10,6 +10,8 @@ import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
 import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { queryPaymentOperation } from "../sale/paymentOperations";
+import { SalePaymentCheckout } from "./SalePaymentCheckout";
 
 export type SaleProduct = {
   id: string;
@@ -118,6 +120,10 @@ export function selectedProductAfterRemoval(lines: SaleLine[], productId: string
 
 export function saleLineSubtotal(line: SaleLine) {
   return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+}
+
+export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lineCount:number, reservedTotalCents:number|null){
+  return paymentLocked && lineCount===0 && reservedTotalCents!=null ? reservedTotalCents/100 : localTotal;
 }
 
 export function effectiveSaleLineDiscount(line: SaleLine) {
@@ -359,6 +365,8 @@ export function SaleScreen({
   const [cardMessage, setCardMessage] = useState("");
   const [cardSubmitting, setCardSubmitting] = useState(false);
   const [cardOpening, setCardOpening] = useState(false);
+  const [paymentLocked, setPaymentLocked] = useState(false);
+  const [reservedPaymentTotalCents, setReservedPaymentTotalCents] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
@@ -370,6 +378,7 @@ export function SaleScreen({
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
+  const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
 
   useEffect(() => {
     let cancelled = false;
@@ -561,8 +570,13 @@ export function SaleScreen({
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
         }
       } catch (error) {
-        const outcome = cardTransportFailureOutcome(checkoutId, error instanceof Error ? error.message : "No se pudo comunicar con el datafono");
-        setCardStatus(outcome.status); setCardMessage(outcome.message);
+        if (error instanceof ApiError) {
+          setCardStatus("ERROR");
+          setCardMessage(error.message);
+        } else {
+          const outcome = cardTransportFailureOutcome(checkoutId, error instanceof Error ? error.message : "No se pudo comunicar con el datafono");
+          setCardStatus(outcome.status); setCardMessage(outcome.message);
+        }
       }
       finally { setCardSubmitting(false); }
     });
@@ -575,7 +589,24 @@ export function SaleScreen({
     void submitCardPayment(next, cardQuoteCents);
   }
 
-  function consultCardPayment() { void submitCardPayment(cardCheckoutId, cardQuoteCents); }
+  function consultCardPayment() {
+    setCardSubmitting(true);
+    void queryPaymentOperation(cardCheckoutId, session.accessToken)
+      .then((operation) => {
+        const outcome = resolveCardPaymentOutcome({
+          status: operation.status,
+          total: operation.amount,
+          reference: operation.reference,
+          authorization: operation.authorization
+        }, cardQuoteCents);
+        setCardStatus(outcome.status);
+        setCardMessage(outcome.message);
+      })
+      .catch((error) => {
+        setCardMessage(error instanceof Error ? error.message : "No se pudo consultar la operacion");
+      })
+      .finally(() => setCardSubmitting(false));
+  }
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -605,10 +636,10 @@ export function SaleScreen({
         <section className="sale-ticket work-panel" aria-label="Ticket actual">
           <header className="work-panel-heading">
             <h2>Lineas de venta</h2>
-            <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
+            <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? paymentLocked ? t("payment.split.reservedTicket") : "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
           </header>
           {lines.length === 0 ? (
-            <div className="sale-ticket-lines sale-empty-state">Sin venta iniciada</div>
+            <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : "Sin venta iniciada"}</div>
           ) : (
             <div className="sale-ticket-lines" aria-label="Lineas del ticket">
               {lines.map((line) => (
@@ -647,7 +678,7 @@ export function SaleScreen({
         <section className="sale-tools work-panel" aria-label="Busqueda y cobro">
           <footer className="sale-total">
             <span>Total</span>
-            <strong>{formatSaleAmount(total)}</strong>
+            <strong>{formatSaleAmount(displayedTotal)}</strong>
           </footer>
           <div className="work-panel-heading sale-product-heading">
             <div>
@@ -666,7 +697,7 @@ export function SaleScreen({
               aria-controls="sale-product-results"
               aria-expanded={query.trim().length > 0}
               autoComplete="off"
-              disabled={catalogLoading || catalogError}
+              disabled={catalogLoading || catalogError || paymentLocked}
               placeholder="Codigo o nombre"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -690,7 +721,7 @@ export function SaleScreen({
               <p className="sale-search-status">No se encontraron productos</p>
             )}
             {!catalogLoading && !catalogError && results.map((product) => (
-              <button className="sale-search-result" type="button" key={product.id} onClick={() => addProduct(product)}>
+              <button className="sale-search-result" type="button" disabled={paymentLocked} key={product.id} onClick={() => addProduct(product)}>
                 <span>
                   <strong>{product.name ?? "Producto sin nombre"}</strong>
                   <small>{product.code ?? product.barcode ?? "Sin codigo"}</small>
@@ -700,44 +731,31 @@ export function SaleScreen({
             ))}
           </div>
           <div className="sale-quick-grid">
-            <button type="button" disabled={!selectedLine} onClick={openQuantityDialog}>
+            <button type="button" disabled={!selectedLine || paymentLocked} onClick={openQuantityDialog}>
               <span>Cantidad</span>
               <kbd>F2</kbd>
             </button>
             <button
               type="button"
-              disabled={!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)}
+              disabled={!selectedLine || paymentLocked || saleProductBlocksManualDiscount(selectedLine.product)}
               title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
               onClick={openDiscountDialog}
             >
               <span>Descuento</span>
               <kbd>F7</kbd>
             </button>
-            <button type="button" onClick={openCustomerDialog}>
+            <button type="button" disabled={paymentLocked} onClick={openCustomerDialog}>
               <span>Cliente</span>
               <kbd>F6</kbd>
             </button>
-            <button type="button" disabled={!selectedLine} onClick={() => setActionDialog("remove")}>
+            <button type="button" disabled={!selectedLine || paymentLocked} onClick={() => setActionDialog("remove")}>
               <span>Anular linea</span>
               <kbd>Supr</kbd>
             </button>
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <div className="sale-payment-actions">
-              <button type="button" disabled={lines.length === 0 || total <= 0} onClick={() => void openCashDialog()}>
-                <span>Efectivo</span>
-                <kbd>F10</kbd>
-              </button>
-              <button type="button" disabled={lines.length === 0 || total <= 0 || cardOpening || cardSubmitting} onClick={() => void openCardDialog()}>
-                <span>Tarjeta</span>
-                <kbd>F11</kbd>
-              </button>
-              <button type="button">
-                <span>Pendiente cliente</span>
-                <kbd>F12</kbd>
-              </button>
-            </div>
+            <SalePaymentCheckout locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult({ticketNumber,totalCents:authoritativeTotalCents});}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>

@@ -14,6 +14,8 @@ import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
+import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
+import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -82,6 +84,8 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @MockitoBean private MemberLoyaltyService memberLoyaltyService;
     @MockitoBean private SyncOutboxService syncOutboxService;
     @MockitoBean private PromotionEngine promotionEngine;
+    @MockitoBean private AuthoritativePromotionPricing authoritativePromotionPricing;
+    @MockitoBean private PromotionCatalogGateway promotionCatalogGateway;
     @MockitoBean private PromotionalCouponService promotionalCouponService;
 
     @DynamicPropertySource

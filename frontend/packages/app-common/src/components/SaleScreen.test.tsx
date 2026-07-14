@@ -22,6 +22,7 @@ import {
   resolveCashPaymentResult,
   selectedProductAfterRemoval,
   saleLineSubtotal,
+  saleDisplayedTotal,
   saleOfferIsCurrent,
   saleProductBlocksManualDiscount,
   saleTotal,
@@ -64,6 +65,10 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
+    expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);
+    expect(saleDisplayedTotal(5, false, 0, 1210)).toBe(5);
+  });
   it("renders the sales workspace with shared frame controls", () => {
     const html = renderToStaticMarkup(
       <SaleScreen

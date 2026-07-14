@@ -41,5 +41,12 @@ class TerminalPaymentConfigurationControllerContractTest {
         assertThat(connectionTest.getParameterCount()).isZero();
         assertThat(connectionTest.getAnnotation(PreAuthorize.class).value())
                 .contains("CONFIGURACION_TERMINAL");
+
+        Method pair = TerminalPaymentConfigurationController.class.getDeclaredMethod("pair",
+                TerminalPaymentConfigurationController.PairingRequest.class);
+        assertThat(pair.getAnnotation(PostMapping.class).value()).containsExactly("/pairing");
+        Method pairingStatus = TerminalPaymentConfigurationController.class.getDeclaredMethod(
+                "pairingStatus", java.util.UUID.class);
+        assertThat(pairingStatus.getAnnotation(GetMapping.class).value()).containsExactly("/pairing/{pairingId}");
     }
 }
