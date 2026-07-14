@@ -45,15 +45,67 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(paymentLogoutDisposition(null,false)).toBe("BLOCKED");
  });
  it("prepares logout immediately after an empty active-session hydration",async()=>{
+  let resolveActive!:(value:null)=>void;
+  const activeResponse=new Promise<null>(resolve=>{resolveActive=resolve;});
   apiRequestMock.mockImplementation(async(path:string)=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
-   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions/active")return activeResponse;
    throw new Error(`unexpected request ${path}`);
   });
   const ref=createRef<SalePaymentCheckoutHandle>();
   render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  await waitFor(()=>expect(ref.current).not.toBeNull());
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active",expect.anything()));
+  await act(async()=>{resolveActive(null);await activeResponse;});
   await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
+ });
+ it("auto-cancels a collecting session whose declined and errored allocations are safely terminal",async()=>{
+  const storageKey="tpverp.payment-session.01";
+  const attemptKey=`${storageKey}.allocation-attempt`;
+  const session={id:"session-terminal-failures",total:"12.10",status:"COLLECTING",allocations:[
+   {id:"a-declined",idempotencyKey:"a-declined",kind:"INTEGRATED_CARD",amount:"6.05",status:"DECLINED"},
+   {id:"a-error",idempotencyKey:"a-error",kind:"MANUAL_CARD",amount:"6.05",status:"ERROR"},
+  ]};
+  localStorage.setItem(attemptKey,"stable-attempt");
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-terminal-failures/cancel")return {...session,status:"CANCELLED"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(sessionStorage.getItem(storageKey)).toBe(session.id));
+  await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-terminal-failures/cancel")).toHaveLength(1);
+  expect(sessionStorage.getItem(storageKey)).toBeNull();
+  expect(localStorage.getItem(attemptKey)).toBeNull();
+ });
+ it("does not recover or lock the old sale after safe cancellation and remount",async()=>{
+  const session={id:"session-remount",total:"12.10",status:"COLLECTING",allocations:[]};
+  let activeCalls=0;
+  let resolveSecondActive!:(value:null)=>void;
+  const secondActive=new Promise<null>(resolve=>{resolveSecondActive=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return ++activeCalls===1?session:secondActive;
+   if(path==="/pos/payment-sessions/session-remount/cancel")return {...session,status:"CANCELLED"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const firstRef=createRef<SalePaymentCheckoutHandle>();
+  const first=render(createElement(SalePaymentCheckout,{...props,ref:firstRef}));
+  await screen.findByRole("button",{name:"Cancelar sesión de cobro"});
+  await expect(firstRef.current!.prepareLogout()).resolves.toBe("READY");
+  first.unmount();
+  const onLockedChange=vi.fn();
+  const secondRef=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{...props,ref:secondRef,onLockedChange}));
+  await waitFor(()=>expect(activeCalls).toBe(2));
+  await act(async()=>{resolveSecondActive(null);await secondActive;});
+  await expect(secondRef.current!.prepareLogout()).resolves.toBe("READY");
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/cancel"))).toHaveLength(1);
+  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("cancels a safe empty collecting session before allowing logout",async()=>{
   const session={id:"session-logout",total:"12.10",status:"COLLECTING",allocations:[]};
