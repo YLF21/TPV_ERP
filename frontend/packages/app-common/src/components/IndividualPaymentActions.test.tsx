@@ -1,61 +1,68 @@
-import { isValidElement, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndividualPaymentActions } from "./IndividualPaymentActions";
 
-type ButtonProps = {
-  children?: ReactNode;
-  disabled?: boolean;
-  onClick?: () => void;
-  title?: string;
-};
+afterEach(cleanup);
 
-function renderedButtons(node: ReactNode): ButtonProps[] {
-  if (!isValidElement<ButtonProps>(node)) return [];
-  const current = node.type === "button" ? [node.props] : [];
-  const children = Array.isArray(node.props.children) ? node.props.children : [node.props.children];
-  return [...current, ...children.flatMap(renderedButtons)];
-}
-
-function buttonText(button: ButtonProps) {
-  const read = (node: ReactNode): string => {
-    if (typeof node === "string") return node;
-    if (Array.isArray(node)) return node.map(read).join(" ");
-    if (!isValidElement<{ children?: ReactNode }>(node)) return "";
-    const children = Array.isArray(node.props.children) ? node.props.children : [node.props.children];
-    return children.map(read).join(" ");
-  };
-  return read(button.children);
-}
+const callbacks = () => ({ onCash: vi.fn(), onCard: vi.fn() });
 
 describe("IndividualPaymentActions", () => {
-  it("renders the compact payment actions and invokes cash", () => {
-    const onCash = vi.fn();
-    const onCard = vi.fn();
-    const buttons = renderedButtons(IndividualPaymentActions({ disabled: false, busy: false, cardEnabled: true, onCash, onCard }));
+  it("renders accessible payment actions with shortcuts and the pending explanation", () => {
+    render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...callbacks()} />);
 
-    const cash = buttons.find((button) => buttonText(button).includes("Efectivo"));
-    const card = buttons.find((button) => buttonText(button).includes("Tarjeta"));
-    const pending = buttons.find((button) => buttonText(button).includes("Pendiente cliente"));
-
-    expect(cash).toBeDefined();
-    expect(card).toBeDefined();
-    expect(pending).toBeDefined();
-    expect(cash?.disabled).toBeFalsy();
-    expect(card?.disabled).toBeFalsy();
-    expect(pending?.disabled).toBe(true);
-    cash?.onClick?.();
-    card?.onClick?.();
-    expect(onCash).toHaveBeenCalledOnce();
-    expect(onCard).toHaveBeenCalledOnce();
+    const cash = screen.getByRole("button", { name: /Efectivo/ });
+    const card = screen.getByRole("button", { name: /Tarjeta/ });
+    const pending = screen.getByRole("button", { name: /Pendiente cliente/ });
+    expect(cash).toBeEnabled();
+    expect(card).toBeEnabled();
+    expect(pending).toBeDisabled();
+    expect(within(cash).getByText("F10")).toBeInTheDocument();
+    expect(within(card).getByText("F11")).toBeInTheDocument();
+    expect(within(pending).getByText("F12")).toBeInTheDocument();
+    expect(screen.getByTitle("Funcionalidad pendiente de definir")).toBe(
+      pending,
+    );
   });
 
-  it("disables payment actions according to busy, disabled and card capability", () => {
-    const callbacks = { onCash: vi.fn(), onCard: vi.fn() };
-    const busy = renderedButtons(IndividualPaymentActions({ disabled: false, busy: true, cardEnabled: true, ...callbacks }));
-    const unavailableCard = renderedButtons(IndividualPaymentActions({ disabled: false, busy: false, cardEnabled: false, ...callbacks }));
+  it("dispatches cash and card callbacks through DOM click events", () => {
+    const handlers = callbacks();
+    render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...handlers} />);
 
-    expect(busy.slice(0, 2).every((button) => button.disabled)).toBe(true);
-    expect(unavailableCard[0]?.disabled).toBe(false);
-    expect(unavailableCard[1]?.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Tarjeta/ }));
+
+    expect(handlers.onCash).toHaveBeenCalledOnce();
+    expect(handlers.onCard).toHaveBeenCalledOnce();
+  });
+
+  it("disables cash and card when the action bar is disabled", () => {
+    const handlers = callbacks();
+    render(<IndividualPaymentActions disabled busy={false} cardEnabled {...handlers} />);
+
+    const cash = screen.getByRole("button", { name: /Efectivo/ });
+    const card = screen.getByRole("button", { name: /Tarjeta/ });
+    expect(cash).toBeDisabled();
+    expect(card).toBeDisabled();
+    fireEvent.click(cash);
+    fireEvent.click(card);
+    expect(handlers.onCash).not.toHaveBeenCalled();
+    expect(handlers.onCard).not.toHaveBeenCalled();
+  });
+
+  it("disables cash and card while busy", () => {
+    render(<IndividualPaymentActions disabled={false} busy cardEnabled {...callbacks()} />);
+
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
+  });
+
+  it("keeps cash enabled but disables card when card payments are unavailable", () => {
+    render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled={false} {...callbacks()} />);
+
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
   });
 });
