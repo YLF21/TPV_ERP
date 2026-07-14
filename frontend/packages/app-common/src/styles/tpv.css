@@ -9515,7 +9515,22 @@ body,
 }
 
 .individual-payment-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: 1fr !important;
+}
+
+.individual-payment-actions button {
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: 1fr auto 1fr !important;
+}
+
+.individual-payment-actions button span {
+  grid-column: 2 !important;
+}
+
+.individual-payment-actions button kbd {
+  grid-column: 3 !important;
+  justify-self: end !important;
 }
 
 .individual-payment-actions button:disabled {

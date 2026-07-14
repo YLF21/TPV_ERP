@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,8 +10,16 @@ import { IndividualPaymentActions } from "./IndividualPaymentActions";
 afterEach(cleanup);
 
 const callbacks = () => ({ onCash: vi.fn(), onCard: vi.fn() });
+const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 
 describe("IndividualPaymentActions", () => {
+  it("lays out the actions in full-width rows with centered labels and right-aligned shortcuts", () => {
+    expect(tpvCss).toMatch(/\.individual-payment-actions\s*{[^}]*grid-template-columns:\s*1fr\s*!important;/s);
+    expect(tpvCss).toMatch(/\.individual-payment-actions button\s*{[^}]*width:\s*100%\s*!important;[^}]*display:\s*grid\s*!important;[^}]*grid-template-columns:\s*1fr auto 1fr\s*!important;/s);
+    expect(tpvCss).toMatch(/\.individual-payment-actions button span\s*{[^}]*grid-column:\s*2\s*!important;/s);
+    expect(tpvCss).toMatch(/\.individual-payment-actions button kbd\s*{[^}]*grid-column:\s*3\s*!important;[^}]*justify-self:\s*end\s*!important;/s);
+  });
+
   it("renders accessible payment actions with shortcuts and the pending explanation", () => {
     render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...callbacks()} />);
 
