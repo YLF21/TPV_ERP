@@ -30,6 +30,55 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  it("selects recovery controls for an active collecting session",()=>{expect(checkoutPresentation("COLLECTING")).toBe("RECOVERY");});
  it("selects finalization retry controls for a covered session",()=>{expect(checkoutPresentation("COVERED")).toBe("FINALIZE_RETRY");});
  it("selects compensation controls when administrative recovery is required",()=>{expect(checkoutPresentation("COMPENSATION_REQUIRED")).toBe("COMPENSATION");});
+ it("renders only individual actions for an ordinary checkout",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  expect(screen.getByRole("button",{name:/Efectivo/})).toBeVisible();
+  expect(screen.getByRole("button",{name:/Tarjeta/})).toBeVisible();
+  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeDisabled();
+  expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
+ });
+ it.each([
+  ["COLLECTING","Cancelar sesión de cobro"],
+  ["COVERED","Finalizar venta"],
+  ["COMPENSATION_REQUIRED","Registrar resolución administrativa"],
+ ])("renders exceptional %s controls without ordinary actions",async(status,control)=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return {id:`session-${status}`,total:"12.10",status,allocations:[]};
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  expect(await screen.findByRole("button",{name:control})).toBeVisible();
+  expect(screen.queryByRole("button",{name:/F10/})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:/F12/})).not.toBeInTheDocument();
+ });
+ it("focuses and traps the manual-card dialog, closes on Escape, and restores the card trigger",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  card.focus();
+  fireEvent.click(card);
+  const dialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
+  const reference=within(dialog).getByRole("textbox");
+  expect(reference).toHaveFocus();
+  const cancel=within(dialog).getByRole("button",{name:"Cancelar"});
+  cancel.focus();
+  fireEvent.keyDown(cancel,{key:"Tab"});
+  expect(reference).toHaveFocus();
+  fireEvent.keyDown(dialog,{key:"Escape"});
+  expect(screen.queryByRole("dialog",{name:"Cobro con tarjeta manual"})).not.toBeInTheDocument();
+  expect(card).toHaveFocus();
+ });
  it("starts a full-total integrated card allocation with the configured provider",async()=>{
   const session={id:"session-card",total:"12.10",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
