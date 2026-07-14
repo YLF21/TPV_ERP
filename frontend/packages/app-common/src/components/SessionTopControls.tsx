@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LocaleCode, UserSession } from "../types";
 import languageIcon from "../assets/language.png";
+import { TopDateTime } from "./TopDateTime";
 
 type SessionTopControlsProps = {
   locale: LocaleCode;
@@ -51,6 +52,7 @@ export function SessionTopControls({
 
   return (
     <>
+      <TopDateTime locale={locale} />
       <button
         type="button"
         className="report-user-button"

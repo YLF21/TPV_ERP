@@ -1,6 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsScreen } from "./SettingsScreen";
+import {
+  readSaleInterfaceTouchMode,
+  saleInterfaceTouchModeStorageKey,
+  saveSaleInterfaceTouchMode
+} from "./saleInterfacePreferences";
 import type { TerminalContext, UserSession } from "../types";
 import { persistCashInputModeSelection } from "../sale/cashInputMode";
 
@@ -23,7 +28,9 @@ const terminalContext: TerminalContext = {
 };
 
 describe("SettingsScreen", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   it("renders a settings hub with formal controls and hardware entry", () => {
     const html = renderToStaticMarkup(
@@ -57,6 +64,7 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Teclado normal");
     expect(html).toContain("Datáfono");
     expect(html).toContain("Cargando configuración del datáfono");
+    expect(html).toContain("Interfaz de venta");
   });
 
   it("initializes the cash input selector from the stored keyboard preference", () => {
@@ -99,5 +107,49 @@ describe("SettingsScreen", () => {
     expect(html).toContain("Choose how amounts are entered when taking cash payments.");
     expect(html).toContain("Touch");
     expect(html).toContain("Standard keyboard");
+  });
+
+  it("keeps the sale interface section scoped to APP VENTA", () => {
+    const html = renderToStaticMarkup(
+      <SettingsScreen
+        app="gestion"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+        onOpenHardware={vi.fn()}
+      />
+    );
+
+    expect(html).not.toContain("Interfaz de venta");
+  });
+
+  it("persists touch mode by app and terminal", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        removeItem: (key: string) => {
+          values.delete(key);
+        },
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        }
+      }
+    });
+
+    const ventaKey = saleInterfaceTouchModeStorageKey("venta", terminalContext);
+    const gestionKey = saleInterfaceTouchModeStorageKey("gestion", terminalContext);
+
+    saveSaleInterfaceTouchMode("venta", terminalContext, true);
+    expect(values.get(ventaKey)).toBe("enabled");
+    expect(values.has(gestionKey)).toBe(false);
+    expect(readSaleInterfaceTouchMode("venta", terminalContext)).toBe(true);
+    expect(readSaleInterfaceTouchMode("gestion", terminalContext)).toBe(false);
+
+    saveSaleInterfaceTouchMode("venta", terminalContext, false);
+    expect(values.has(ventaKey)).toBe(false);
   });
 });

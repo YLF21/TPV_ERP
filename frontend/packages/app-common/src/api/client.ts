@@ -16,15 +16,26 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiConnectionError extends Error {
+  constructor(message = "backend_unreachable") {
+    super(message);
+  }
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: options.method ?? (options.body === undefined ? "GET" : "POST"),
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: options.method ?? (options.body === undefined ? "GET" : "POST"),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+  } catch (error) {
+    throw new ApiConnectionError(error instanceof Error ? error.message : undefined);
+  }
 
   if (!response.ok) {
     let message = response.statusText || "api_error";
@@ -44,4 +55,13 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function checkBackendConnection(): Promise<boolean> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/auth/login`, { method: "GET" });
+    return response.status < 500;
+  } catch {
+    return false;
+  }
 }

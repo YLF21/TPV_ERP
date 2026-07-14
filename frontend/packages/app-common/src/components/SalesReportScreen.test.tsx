@@ -113,6 +113,7 @@ describe("SalesReportScreen", () => {
     expect(html).toContain('class="report-data-toolbar"');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain('class="report-user-button"');
+    expect(html).toContain('class="top-date-time"');
     expect(html).toContain("DB:");
     expect(html).toContain("Conexión");
     expect(html).not.toContain("Backend");

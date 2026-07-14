@@ -154,9 +154,9 @@ export function ErpSelect({
       }
       return;
     }
-    if (intent === "select" && !open) {
+    if (intent === "select" && open) {
       event.preventDefault();
-      openMenu();
+      selectOption(activeIndex);
     }
   }
 

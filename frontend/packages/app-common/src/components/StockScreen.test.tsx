@@ -248,6 +248,96 @@ describe("StockScreen", () => {
     ]);
   });
 
+  it("keeps optional product fields empty in inventory rows when the backend has blanks", () => {
+    const rows = buildStockInventoryRows(
+      [
+        {
+          id: "product-1",
+          code: "A001",
+          barcode: null,
+          barcode2: "",
+          name: "Articulo nuevo",
+          description: null,
+          comments: "",
+          purchasePrice: "1.00",
+          salePrice: "3.95",
+          memberPrice: null,
+          wholesalePrice: "",
+          offerPrice: null,
+          offerDiscountPercent: "",
+          productType: "UNIT",
+          discountType: "NORMAL",
+          familyId: null,
+          subfamilyId: "",
+          taxId: null,
+          taxesIncluded: true,
+          offerActive: false,
+          offerFrom: null,
+          offerUntil: ""
+        }
+      ],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      []
+    );
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        barcode: "",
+        barcode2: "",
+        description: "",
+        comments: "",
+        memberPrice: "",
+        wholesalePrice: "",
+        offerPrice: "",
+        offerDiscountPercent: "",
+        familyId: "",
+        subfamilyId: "",
+        taxId: "",
+        offerFrom: "",
+        offerUntil: ""
+      })
+    ]);
+  });
+
+  it("uses default family and tax ids for edit rows when a product is missing them", () => {
+    const [row] = buildStockInventoryRows(
+      [
+        {
+          id: "product-1",
+          code: "0",
+          barcode: null,
+          name: "ARTICULO",
+          purchasePrice: "0",
+          salePrice: "5",
+          priceUseMode: "OFFER_PRICE",
+          discountType: "DISCOUNT_PRICE",
+          offerPrice: "3",
+          offerFrom: "2026-07-01",
+          offerUntil: "2026-07-31"
+        }
+      ],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      [],
+      {
+        families: [{ id: "family-general", name: "GENERAL" }],
+        taxes: [{ id: "tax-21", percentage: 21 }]
+      }
+    );
+
+    expect(row).toEqual(expect.objectContaining({
+      familyId: "family-general",
+      familyName: "GENERAL",
+      taxId: "tax-21",
+      taxName: "21%"
+    }));
+    expect(stockRowToProductEdit(row).form).toEqual(expect.objectContaining({
+      familyId: "family-general",
+      taxId: "tax-21",
+      code: "0",
+      barcode: ""
+    }));
+  });
+
   it("keeps products without stock visible when other products have stock", () => {
     const rows = buildStockInventoryRows(
       [

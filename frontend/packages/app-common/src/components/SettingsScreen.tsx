@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
@@ -9,8 +9,9 @@ import {
   type CashInputMode
 } from "../sale/cashInputMode";
 import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
+import { readSaleInterfaceTouchMode, saveSaleInterfaceTouchMode } from "./saleInterfacePreferences";
 
-type SettingsSection = "terminal" | "user" | "reports" | "system";
+type SettingsSection = "terminal" | "saleInterface" | "user" | "reports" | "system";
 
 type SettingsScreenProps = {
   app: AppKind;
@@ -23,7 +24,7 @@ type SettingsScreenProps = {
   onOpenHardware?: () => void;
 };
 
-const settingsSections: SettingsSection[] = ["terminal", "user", "reports", "system"];
+const baseSettingsSections: SettingsSection[] = ["terminal", "user", "reports", "system"];
 
 export function SettingsScreen({
   app,
@@ -36,8 +37,13 @@ export function SettingsScreen({
   onOpenHardware
 }: SettingsScreenProps) {
   const t = createTranslator(locale);
+  const settingsSections: SettingsSection[] =
+    app === "venta" ? ["terminal", "saleInterface", "user", "reports", "system"] : baseSettingsSections;
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("terminal");
   const [cashInputMode, setCashInputMode] = useState<CashInputMode>(() => readCashInputMode());
+  const [touchModeEnabled, setTouchModeEnabled] = useState(() =>
+    readSaleInterfaceTouchMode(app, terminalContext)
+  );
 
   const handleCashInputModeChange = (value: string) => {
     const mode = persistCashInputModeSelection(value);
@@ -47,6 +53,25 @@ export function SettingsScreen({
 
     setCashInputMode(mode);
   };
+
+  useEffect(() => {
+    setTouchModeEnabled(readSaleInterfaceTouchMode(app, terminalContext));
+  }, [app, terminalContext.terminalCode, terminalContext.terminalId]);
+
+  function updateTouchMode(enabled: boolean) {
+    setTouchModeEnabled(enabled);
+    saveSaleInterfaceTouchMode(app, terminalContext, enabled);
+  }
+
+  function settingsSectionLabel(section: SettingsSection) {
+    return section === "saleInterface" ? "Interfaz de venta" : t(`settings.${section}`);
+  }
+
+  function settingsSectionSubtitle(section: SettingsSection) {
+    return section === "saleInterface"
+      ? "Preferencias locales para esta terminal"
+      : t(`settings.${section}.subtitle`);
+  }
 
   return (
     <main className="settings-screen">
@@ -82,7 +107,7 @@ export function SettingsScreen({
               key={section}
               onClick={() => setSelectedSection(section)}
             >
-              {t(`settings.${section}`)}
+              {settingsSectionLabel(section)}
             </button>
           ))}
           <button type="button" className="report-back" onClick={onBack}>
@@ -92,8 +117,8 @@ export function SettingsScreen({
 
         <section className="settings-workspace">
           <header className="settings-heading">
-            <h2>{t(`settings.${selectedSection}`)}</h2>
-            <span>{t(`settings.${selectedSection}.subtitle`)}</span>
+            <h2>{settingsSectionLabel(selectedSection)}</h2>
+            <span>{settingsSectionSubtitle(selectedSection)}</span>
           </header>
           {selectedSection === "terminal" && (
             <div className="settings-grid">
@@ -133,7 +158,23 @@ export function SettingsScreen({
               <PaymentTerminalSettings locale={locale} token={session.accessToken} />
             </div>
           )}
-          {selectedSection !== "terminal" && (
+          {selectedSection === "saleInterface" && (
+            <div className="settings-grid">
+              <article className="settings-card settings-card-wide">
+                <h3>Interfaz de venta</h3>
+                <p>Configuracion local de la experiencia de venta en esta terminal.</p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={touchModeEnabled}
+                    onChange={(event) => updateTouchMode(event.currentTarget.checked)}
+                  />
+                  Modo tactil
+                </label>
+              </article>
+            </div>
+          )}
+          {selectedSection !== "terminal" && selectedSection !== "saleInterface" && (
             <div className="settings-grid">
               <article className="settings-card settings-card-wide">
                 <h3>{t(`settings.${selectedSection}`)}</h3>

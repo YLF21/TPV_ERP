@@ -77,15 +77,17 @@ describe("SaleScreen", () => {
       />
     );
 
-    expect(html).toContain('class="sale-screen work-screen"');
+    expect(html).toContain('class="sale-screen work-screen keyboard-mode"');
     expect(html).toContain('class="report-user-button"');
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("Venta");
     expect(html).toContain("Añadir producto");
-    expect(html).toContain("Ticket actual");
+    expect(html).toContain("Lineas de venta");
     expect(html).toContain("Cobro");
+    expect(html).toContain("F5");
+    expect(html).toContain("F10");
     expect(html).toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Buscar producto"');
     expect(html).toContain('aria-controls="sale-product-results"');

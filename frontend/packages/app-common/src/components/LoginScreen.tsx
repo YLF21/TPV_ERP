@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ApiError } from "../api/client";
+import { ApiConnectionError, ApiError, checkBackendConnection } from "../api/client";
 import { authenticateRemote } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
+import { TopDateTime } from "./TopDateTime";
 import languageIcon from "../assets/language.png";
 
 type LoginScreenProps = {
@@ -28,6 +29,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
   const [userHistory, setUserHistory] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
 
@@ -40,6 +42,19 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
     }
   }, [historyKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setBackendOnline(null);
+    void checkBackendConnection().then((online) => {
+      if (!cancelled) {
+        setBackendOnline(online);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -50,6 +65,9 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
       rememberUser(normalizedUsername);
       onLogin(session);
     } catch (caught) {
+      if (caught instanceof ApiConnectionError) {
+        setBackendOnline(false);
+      }
       const message =
         caught instanceof Error && caught.message === "no_access"
           ? t("login.noAccess")
@@ -86,6 +104,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
       <header className="entry-topbar">
         <strong className="app-brand-static">{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
       </header>
+      <TopDateTime locale={locale} />
       <div className="login-store-heading">
         <strong>{terminalContext.storeName}</strong>
         <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
@@ -129,6 +148,10 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
         ⏻
       </button>
       <form className="login-panel" onSubmit={submit}>
+        <header className="login-panel-heading">
+          <strong>{t(app === "venta" ? "venta.title" : "gestion.title")}</strong>
+          <span>{`${terminalContext.storeName} - ${t("login.terminalPrefix")} ${terminalContext.terminalCode}`}</span>
+        </header>
         <label>
           <span>{t("login.user")}</span>
           <input
@@ -157,6 +180,18 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
         </label>
         {error && <strong className="login-error">{error}</strong>}
         <button type="submit" disabled={loading}>{loading ? t("login.loading") : t("login.submit")}</button>
+        <span
+          className={`login-server-status ${
+            backendOnline === false ? "offline" : backendOnline === null ? "checking" : "online"
+          }`}
+          role={backendOnline === false ? "alert" : "status"}
+        >
+          {backendOnline === null
+            ? t("login.backendChecking")
+            : backendOnline
+              ? t("login.backendOnline")
+              : t("login.backendOffline")}
+        </span>
       </form>
       {shutdownOpen && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">

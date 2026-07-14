@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiRequest } from "./client";
+import { ApiConnectionError, ApiError, apiRequest, checkBackendConnection } from "./client";
 
 describe("apiRequest", () => {
   afterEach(() => {
@@ -39,5 +39,22 @@ describe("apiRequest", () => {
         formIndexes: [0, 2]
       }
     } satisfies Partial<ApiError>);
+  });
+
+  it("turns network failures into backend connection errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    await expect(apiRequest("/auth/login")).rejects.toBeInstanceOf(ApiConnectionError);
+  });
+
+  it("reports backend connection availability from a probe request", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 405 })));
+
+    await expect(checkBackendConnection()).resolves.toBe(false);
+    await expect(checkBackendConnection()).resolves.toBe(false);
+    await expect(checkBackendConnection()).resolves.toBe(true);
   });
 });

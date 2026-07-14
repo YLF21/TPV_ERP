@@ -21,6 +21,7 @@ describe("LoginScreen", () => {
     );
 
     expect(html).toContain('class="entry-topbar"');
+    expect(html).toContain('class="top-date-time"');
     expect(html).toContain("APP VENTA");
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("DB:");

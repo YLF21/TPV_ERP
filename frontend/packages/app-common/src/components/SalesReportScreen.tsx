@@ -14,6 +14,7 @@ import {
   type WarehouseOption,
   type WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
+import { TopDateTime } from "./TopDateTime";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import languageIcon from "../assets/language.png";
 import lockIcon from "../assets/lock.png";
@@ -366,6 +367,25 @@ function formatSingleFilterDate(filters: ReportFilters, locale: LocaleCode) {
 
 function formatDateFilterText(filters: ReportFilters, locale: LocaleCode, singleDay: boolean) {
   return singleDay ? formatSingleFilterDate(filters, locale) : formatDateRange(filters, locale);
+}
+
+function dateRangeDayCount(from: string, to: string) {
+  const start = parseIsoDate(from);
+  const end = parseIsoDate(to || from);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
+function selectedDaysText(count: number, locale: LocaleCode) {
+  if (locale === "zh") {
+    return `已选择 ${count} 天`;
+  }
+  if (locale === "en") {
+    return `${count} days selected`;
+  }
+  return `${count} días seleccionados`;
 }
 
 function parseManualDate(value: string) {
@@ -1188,7 +1208,6 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
       setDateRangeText(formatDateRange({ ...draftFilters, ...range }, locale));
     }
     setDateRangeStart(null);
-    setOpenFilterControl(null);
   }
 
   function updateDateRangeText(value: string) {
@@ -1301,7 +1320,16 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         </div>
         {isOpen && (
           <div className="date-popover date-range-popover">
-            <p>{isDailySalesReport ? t("salesReport.filter.pickDate") : dateRangeStart ? t("salesReport.filter.pickDateTo") : t("salesReport.filter.pickDateFrom")}</p>
+            <div className="date-range-strip">
+              <div className={`date-range-strip-cell ${dateRangeStart ? "" : "active"}`}>
+                <span>{t("salesReport.filter.dateFrom")}</span>
+                <strong>{selectedStart ? formatFilterDate(selectedStart, locale) : "-"}</strong>
+              </div>
+              <div className={`date-range-strip-cell ${dateRangeStart ? "active" : ""}`}>
+                <span>{t("salesReport.filter.dateTo")}</span>
+                <strong>{selectedEnd ? formatFilterDate(selectedEnd, locale) : "-"}</strong>
+              </div>
+            </div>
             <header className="date-calendar-header">
               <button type="button" onClick={() => moveCalendarMonth(-1)}>
                 {"<"}
@@ -1336,6 +1364,23 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
                 )
               )}
             </div>
+            <footer className="date-range-footer">
+              <span>{selectedStart ? selectedDaysText(dateRangeDayCount(selectedStart, selectedEnd), locale) : t(isDailySalesReport ? "salesReport.filter.pickDate" : "salesReport.filter.pickDateFrom")}</span>
+              <div className="date-range-actions">
+                <button type="button" onClick={() => {
+                  setDateRangeStart(null);
+                  setOpenFilterControl(null);
+                }}>
+                  {t("common.cancel")}
+                </button>
+                <button type="button" className="primary" onClick={() => {
+                  setDateRangeStart(null);
+                  setOpenFilterControl(null);
+                }}>
+                  {t("common.apply")}
+                </button>
+              </div>
+            </footer>
           </div>
         )}
       </div>
@@ -1616,6 +1661,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
 
   return (
     <main className="report-screen">
+      <TopDateTime locale={locale} />
       <button
         type="button"
         className="report-user-button"
