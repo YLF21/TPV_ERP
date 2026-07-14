@@ -940,6 +940,7 @@ export class MessagesZh {
     "promotion.segment.IDENTIFIED_CUSTOMERS": "\u5df2\u8bc6\u522b\u5ba2\u6237",
     "promotion.segment.MEMBERS_ONLY": "\u4ec5\u4f1a\u5458",
     "promotion.segment.MEMBER_CATEGORY": "\u4f1a\u5458\u7c7b\u522b",
+    "payment.individual.cash": "\u73b0\u91d1", "payment.individual.card": "\u5361", "payment.individual.pendingCustomer": "\u5ba2\u6237\u5f85\u5b9a", "payment.individual.pendingTitle": "\u529f\u80fd\u5f85\u5b9a\u4e49",
     "payment.split.title": "分拆支付", "payment.split.remaining": "待付", "payment.split.amount": "金额",
     "payment.split.cash": "现金", "payment.split.manualCard": "手动刷卡", "payment.split.manualCardDialogTitle": "手动刷卡付款", "payment.split.manualReference": "必填的手动刷卡参考号",
     "payment.split.query": "查询状态", "payment.split.manage": "管理操作", "payment.split.compensationRequired": "需要补偿：不允许新的扣款。",

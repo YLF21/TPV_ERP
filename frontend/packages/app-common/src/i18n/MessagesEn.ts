@@ -940,6 +940,7 @@ export class MessagesEn {
     "promotion.segment.IDENTIFIED_CUSTOMERS": "Identified customers",
     "promotion.segment.MEMBERS_ONLY": "Members only",
     "promotion.segment.MEMBER_CATEGORY": "Member category",
+    "payment.individual.cash": "Cash", "payment.individual.card": "Card", "payment.individual.pendingCustomer": "Customer pending", "payment.individual.pendingTitle": "Functionality pending definition",
     "payment.split.title": "Split payment", "payment.split.remaining": "Remaining", "payment.split.amount": "Amount",
     "payment.split.cash": "Cash", "payment.split.manualCard": "Manual card", "payment.split.manualCardDialogTitle": "Manual card payment", "payment.split.manualReference": "Required manual card reference",
     "payment.split.query": "Check status", "payment.split.manage": "Manage operation", "payment.split.compensationRequired": "Compensation required: no new charges are allowed.",
