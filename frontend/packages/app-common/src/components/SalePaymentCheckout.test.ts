@@ -178,6 +178,84 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(allocationCalls).toBe(2));
  });
 
+ it.each(["DECLINED","ERROR"])("releases the card guard when query resolves an uncertain allocation to %s",async(status)=>{
+  const session={id:`session-card-query-${status.toLowerCase()}`,total:"12.10",status:"COLLECTING",allocations:[]};
+  let allocationCalls=0;
+  let allocationId="";
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path===`/pos/payment-sessions/${session.id}/allocations`){
+    allocationCalls+=1;
+    allocationId=(options?.body as {allocationId:string}).allocationId;
+    return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-card-query"}]};
+   }
+   if(path===`/pos/payment-sessions/${session.id}/allocations/operation-card-query/query`)return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status,kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-card-query"}]};
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  fireEvent.click(await screen.findByRole("button",{name:/Tarjeta.*F11/}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
+  const retry=await screen.findByRole("button",{name:/Tarjeta.*F11/});
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+  fireEvent.click(retry);
+  await waitFor(()=>expect(allocationCalls).toBe(2));
+ });
+
+ it.each(["DECLINED","ERROR"])("cleans the cash dialog and guard when query resolves an uncertain allocation to %s",async(status)=>{
+  const session={id:`session-cash-query-${status.toLowerCase()}`,total:"12.10",status:"COLLECTING",allocations:[]};
+  let allocationCalls=0;
+  let allocationId="";
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path===`/pos/payment-sessions/${session.id}/allocations`){
+    allocationCalls+=1;
+    allocationId=(options?.body as {allocationId:string}).allocationId;
+    return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status:"TIMEOUT",kind:"CASH",amount:"12.10",operationId:"operation-cash-query"}]};
+   }
+   if(path===`/pos/payment-sessions/${session.id}/allocations/operation-cash-query/query`)return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status,kind:"CASH",amount:"12.10",operationId:"operation-cash-query"}]};
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  fireEvent.click(await screen.findByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(screen.getByRole("button",{name:/20/}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
+  expect(screen.getByRole("dialog",{name:"Cobro en efectivo"})).toBeVisible();
+  fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
+  await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Cobro en efectivo"})).not.toBeInTheDocument());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(screen.getByRole("button",{name:/50/}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
+  await waitFor(()=>expect(allocationCalls).toBe(2));
+ });
+
+ it.each(["PENDING","TIMEOUT"])("keeps recovery metadata and blocks a new charge when query remains %s",async(status)=>{
+  const session={id:`session-card-query-${status.toLowerCase()}`,total:"12.10",status:"COLLECTING",allocations:[]};
+  let allocationId="";
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path===`/pos/payment-sessions/${session.id}/allocations`){allocationId=(options?.body as {allocationId:string}).allocationId;return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-query-uncertain"}]};}
+   if(path===`/pos/payment-sessions/${session.id}/allocations/operation-query-uncertain/query`)return {...session,allocations:[{id:allocationId,idempotencyKey:allocationId,status,kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-query-uncertain"}]};
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  fireEvent.click(await screen.findByRole("button",{name:/Tarjeta.*F11/}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
+  fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  expect(screen.queryByRole("button",{name:/Tarjeta.*F11/})).not.toBeInTheDocument();
+ });
+
  it("synchronously ignores a second integrated card click",async()=>{
   const session={id:"session-card-guard",total:"12.10",status:"COLLECTING",allocations:[]};
   let releaseSession!:(value:typeof session)=>void;
