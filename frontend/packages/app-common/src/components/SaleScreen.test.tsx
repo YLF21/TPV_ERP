@@ -6,6 +6,7 @@ import {
   applyMemberDiscounts,
   cashPaymentErrorTransition,
   cashPaymentSuccessTransition,
+  cashResultFromFinalization,
   finishCashPaymentResult,
   readCashModeForOpening,
   runGuardedCashSubmission,
@@ -65,6 +66,10 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("preserves cash received by individual checkout and falls back to the total", () => {
+    expect(cashResultFromFinalization("T-1", 1210, 2000)).toEqual({ ticketNumber: "T-1", totalCents: 1210, receivedCents: 2000 });
+    expect(cashResultFromFinalization("T-2", 1210)).toEqual({ ticketNumber: "T-2", totalCents: 1210, receivedCents: 1210 });
+  });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);
     expect(saleDisplayedTotal(5, false, 0, 1210)).toBe(5);

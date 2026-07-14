@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CashPaymentDialog, cashPaymentKeyAction } from "./CashPaymentDialog";
 import { activateModalFocusTrap } from "./modalFocusTrap";
 
@@ -11,7 +15,16 @@ const baseProps = {
   onConfirm: vi.fn(),
 };
 
+afterEach(cleanup);
+
 describe("CashPaymentDialog", () => {
+  it("starts with touch controls and can switch to the physical keyboard for this opening", () => {
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
+
+    expect(screen.getByRole("button", { name: "Tecla 7" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Usar teclado físico" }));
+    expect(screen.queryByRole("button", { name: "Tecla 7" })).not.toBeInTheDocument();
+  });
   it("labels the modal from its visible heading", () => {
     const html = renderToStaticMarkup(<CashPaymentDialog {...baseProps} initialMode="touch" />);
     expect(html).toContain('aria-labelledby="cash-payment-title"');

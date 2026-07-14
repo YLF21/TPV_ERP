@@ -1,8 +1,55 @@
-import { describe,expect,it } from "vitest";
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe,expect,it,vi } from "vitest";
 import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,compensationNoteIsEphemeral,compensationGuidanceKey,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
+import { SalePaymentCheckout } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+
+const { apiRequestMock } = vi.hoisted(() => ({ apiRequestMock: vi.fn() }));
+vi.mock("../api/client", async (importOriginal) => ({
+ ...(await importOriginal<typeof import("../api/client")>()),
+ apiRequest: apiRequestMock,
+}));
+
+afterEach(() => {
+ cleanup();
+ apiRequestMock.mockReset();
+ localStorage.clear();
+ sessionStorage.clear();
+});
+
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("opens the touch cash calculator and submits the total exactly once",async()=>{
+  const session={id:"session-1",total:"12.10",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-1/allocations")return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"CASH",amount:"12.10"}]};
+   if(path==="/pos/payment-sessions/session-1/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-1"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
+  expect(screen.getByRole("button",{name:"Tecla 7"})).toBeVisible();
+  fireEvent.click(screen.getByRole("button",{name:"Usar teclado físico"}));
+  fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
+  expect(screen.getByRole("button",{name:"Tecla 7"})).toBeVisible();
+  fireEvent.click(screen.getByRole("button",{name:/20/}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-1",1210,2000));
+  const allocationCalls=apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-1/allocations");
+  expect(allocationCalls).toHaveLength(1);
+  expect(allocationCalls[0][1].body).toMatchObject({kind:"CASH",amount:"12.10"});
+ });
  it("freezes sale controls for every active or compensation state",()=>{expect(paymentSessionLocksSale("COLLECTING")).toBe(true);expect(paymentSessionLocksSale("COVERED")).toBe(true);expect(paymentSessionLocksSale("COMPENSATION_REQUIRED")).toBe(true);});
  it("unfreezes only after finalization or safe cancellation",()=>{expect(paymentSessionLocksSale("FINALIZED")).toBe(false);expect(paymentSessionLocksSale("CANCELLED")).toBe(false);});
  it("offers an explicit idempotent finalize retry for a recovered covered session",()=>{expect(canManuallyFinalizePayment("COVERED",false)).toBe(true);expect(canManuallyFinalizePayment("COVERED",true)).toBe(false);expect(canManuallyFinalizePayment("COLLECTING",false)).toBe(false);});

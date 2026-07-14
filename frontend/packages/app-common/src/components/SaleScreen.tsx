@@ -248,6 +248,10 @@ export function finishCashPaymentResult(
   focusSearch();
 }
 
+export function cashResultFromFinalization(ticketNumber:string,totalCents:number,receivedCents?:number):CashPaymentResult {
+  return {ticketNumber,totalCents,receivedCents:receivedCents??totalCents};
+}
+
 export async function runGuardedCashSubmission(
   guard: { current: boolean },
   submission: () => Promise<unknown>
@@ -755,7 +759,7 @@ export function SaleScreen({
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <SalePaymentCheckout locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult({ticketNumber,totalCents:authoritativeTotalCents});}} />
+            <SalePaymentCheckout locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents,receivedCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult(cashResultFromFinalization(ticketNumber,authoritativeTotalCents,receivedCents));}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
