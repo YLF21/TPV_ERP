@@ -191,6 +191,33 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await expect(prepareAutomaticExit(async()=>"ERROR",discard)).resolves.toBe("BLOCKED");
   expect(discard).not.toHaveBeenCalled();
  });
+ it.each(["logout","application close"])("blocks %s without discard when cancellation is not confirmed CANCELLED",async()=>{
+  const cancel=vi.fn(async()=>"NOT_CANCELLED" as const);
+  const discard=vi.fn(async()=>true);
+  await expect(prepareAutomaticExit(cancel,discard)).resolves.toBe("BLOCKED");
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(discard).not.toHaveBeenCalled();
+ });
+ it.each([
+  ["logout","prepareLogout"],
+  ["application close","prepareApplicationClose"],
+ ] as const)("does not issue a second HTTP cleanup request for %s after a non-CANCELLED cancel response",async(label,method)=>{
+  const session={id:`session-non-cancelled-${label.replace(" ","-")}`,total:"12.10",status:"COLLECTING",allocations:[]};
+  const cancelRequest=vi.fn();const discardRequest=vi.fn();
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard")){discardRequest();return session;}
+   if(path.endsWith("/cancel")){cancelRequest();return {...session,status:"COMPENSATION_REQUIRED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(discardRequest).toHaveBeenCalledTimes(1));
+  await expect(ref.current![method]()).resolves.toBe("BLOCKED");
+  expect(cancelRequest).toHaveBeenCalledTimes(1);
+  expect(discardRequest).toHaveBeenCalledTimes(1);
+ });
  it("prepares application close by discarding an uncertain simulator session and clearing recovery",async()=>{
   const storageKey="tpverp.payment-session.01";const attemptKey=`${storageKey}.allocation-attempt`;
   const session={id:"session-shutdown",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[{id:"a-1",idempotencyKey:"a-1",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};

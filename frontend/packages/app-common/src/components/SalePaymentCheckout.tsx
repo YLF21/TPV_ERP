@@ -24,7 +24,7 @@ export const compensationGuidanceKey="payment.split.compensationGuidance";
 export type PaymentLogoutPreparation="READY"|"BLOCKED";
 export type SalePaymentCheckoutHandle={prepareLogout():Promise<PaymentLogoutPreparation>;prepareApplicationClose():Promise<PaymentLogoutPreparation>};
 type CancellationResult="CANCELLED"|"NOT_CANCELLED"|"ERROR";
-export async function prepareAutomaticExit(cancel:()=>Promise<CancellationResult>,discard:()=>Promise<boolean>){const cancellation=await cancel();if(cancellation==="CANCELLED")return "READY" as const;if(cancellation==="ERROR")return "BLOCKED" as const;return await discard()?"READY" as const:"BLOCKED" as const;}
+export async function prepareAutomaticExit(cancel:()=>Promise<CancellationResult>,_discard:()=>Promise<boolean>){return await cancel()==="CANCELLED"?"READY" as const:"BLOCKED" as const;}
 export function paymentLogoutDisposition(session:ServerSession|null|undefined,hydrationComplete:boolean){
  if(!hydrationComplete)return "BLOCKED" as const;
  if(!session||session.status==="FINALIZED"||session.status==="CANCELLED")return "READY" as const;
