@@ -954,6 +954,8 @@ export class MessagesEs {
     "payment.split.error.start": "No se pudo iniciar el cobro", "payment.split.error.uncertainSame": "Se conserva el mismo intento hasta confirmar el estado.",
     "payment.split.error.uncertain": "Resultado incierto; se conserva el mismo intento. Consulta o reintenta sin crear otro cargo.", "payment.split.error.query": "No se pudo consultar; la operación permanece pendiente",
     "payment.pending.logoutError": "Debes resolver el cobro pendiente antes de cerrar sesión",
+    "payment.pending.shutdownBlocked": "Debes resolver el cobro pendiente antes de cerrar la aplicación",
+    "payment.pending.simulatorCleanupError": "No se pudo limpiar el cobro simulado pendiente; conserva la recuperación y vuelve a intentarlo",
     "payment.split.error.cancelCompensation": "Hay pagos aprobados: requiere compensación. Gestiona anulación o reembolso de tarjeta; efectivo y tarjeta manual requieren resolución administrativa autorizada.",
     "payment.split.error.cancel": "No se pudo cancelar", "payment.split.error.acknowledge": "No se pudo registrar la resolución", "payment.split.error.loadOperation": "No se pudo cargar la operación",
     "payment.split.error.operationQuery": "No se pudo consultar", "payment.split.error.void": "No se pudo anular", "payment.split.error.refund": "No se pudo reembolsar", "payment.split.error.print": "No se pudo imprimir",

@@ -954,6 +954,8 @@ export class MessagesEn {
     "payment.split.error.start": "Could not start payment", "payment.split.error.uncertainSame": "The same attempt is retained until its status is confirmed.",
     "payment.split.error.uncertain": "Uncertain result; the same attempt is retained. Query or retry without creating another charge.", "payment.split.error.query": "Could not query; the operation remains pending",
     "payment.pending.logoutError": "You must resolve the pending payment before logging out",
+    "payment.pending.shutdownBlocked": "You must resolve the pending payment before closing the application",
+    "payment.pending.simulatorCleanupError": "The pending simulated payment could not be cleared; keep the recovery state and try again",
     "payment.split.error.cancelCompensation": "There are approved payments: compensation is required. Manage card voids or refunds; cash and manual card require an authorized administrative resolution.",
     "payment.split.error.cancel": "Could not cancel", "payment.split.error.acknowledge": "Could not record the resolution", "payment.split.error.loadOperation": "Could not load the operation",
     "payment.split.error.operationQuery": "Could not query", "payment.split.error.void": "Could not void", "payment.split.error.refund": "Could not refund", "payment.split.error.print": "Could not print",
