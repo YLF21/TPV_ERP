@@ -133,10 +133,8 @@ describe("SaleScreen", () => {
       resolvePreparation = resolve;
     }));
     const onLogout = renderSaleScreen();
-    const button = logoutButton();
-
-    fireEvent.click(button);
-    fireEvent.click(button);
+    fireEvent.click(logoutButton());
+    fireEvent.click(logoutButton());
     resolvePreparation("READY");
 
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));

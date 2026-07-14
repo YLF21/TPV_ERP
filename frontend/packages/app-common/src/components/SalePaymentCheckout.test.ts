@@ -201,6 +201,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  expect(await screen.findByRole("heading",{name:"Cobro pendiente"})).toBeVisible();
   expect(await screen.findByRole("button",{name:"Consultar estado"})).toBeVisible();
   expect(screen.getByRole("button",{name:"Gestionar operación"})).toBeVisible();
   expect(screen.getByRole("button",{name:"Cancelar sesión de cobro"})).toBeVisible();
@@ -208,6 +209,8 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByRole("button",{name:"Tarjeta manual"})).not.toBeInTheDocument();
   expect(screen.queryByRole("button",{name:"GLOBAL_PAYMENTS"})).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox",{name:/Importe/})).not.toBeInTheDocument();
+  expect(screen.queryByText("Cobro dividido")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Iniciar cobro dividido"})).not.toBeInTheDocument();
  });
  it("renders a safe declined session as a fresh individual checkout",async()=>{
   const declined={id:"session-declined",total:"12.10",status:"COLLECTING",allocations:[{id:"allocation-declined",idempotencyKey:"allocation-declined",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-declined",status:"DECLINED"}]};

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ManualCardReferenceDialog, PaymentAllocationPanel, manualCardDialogState } from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
+import { createTranslator } from "../i18n/LocalizedMessages";
 
 const session: PaymentSession = {
   id: "sale-1", totalCents: 1200, status: "COLLECTING", allocations: [
@@ -29,13 +30,16 @@ describe("PaymentAllocationPanel", () => {
     expect(html).not.toContain("Reintentar cargo");
   });
 
-  it("renders split-payment controls in the selected locale", () => {
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="en" session={session} providers={[]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
-    expect(html).toContain("Split payment");
-    expect(html).toContain("Remaining: 7.00");
-    expect(html).toContain("Cash");
-    expect(html).toContain("Manual card");
-    expect(html).not.toContain("Cobro dividido");
+  it.each([
+    ["es", "Cobro pendiente", "Iniciar cobro pendiente", "Cobro dividido", "Pendiente: 7,00"],
+    ["en", "Pending payment", "Start pending payment", "Split payment", "Remaining: 7.00"],
+    ["zh", "待处理付款", "开始待处理付款", "分拆支付", "待付: 7.00"],
+  ] as const)("presents pending payment in %s without legacy split-payment copy", (locale, title, start, legacyTitle, remaining) => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale={locale} session={session} providers={[]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
+    expect(html).toContain(title);
+    expect(html).not.toContain(legacyTitle);
+    expect(html).toContain(remaining);
+    expect(createTranslator(locale)("payment.split.start")).toBe(start);
   });
 
   it("shows compensation explicitly and offers no new tender", () => {
