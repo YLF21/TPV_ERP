@@ -2,10 +2,10 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { createElement } from "react";
+import { createElement,createRef } from "react";
 import { afterEach, describe,expect,it,vi } from "vitest";
-import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,checkoutPresentation,compensationNoteIsEphemeral,compensationGuidanceKey,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
-import { SalePaymentCheckout } from "./SalePaymentCheckout";
+import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,checkoutPresentation,compensationNoteIsEphemeral,compensationGuidanceKey,paymentLogoutDisposition,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
+import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 
@@ -23,6 +23,74 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("classifies logout safety from hydration, session, and allocation state",()=>{
+  const sessionWith=(statuses:string[])=>({id:"session",total:"12.10",status:"COLLECTING",allocations:statuses.map((status,index)=>({id:`a-${index}`,idempotencyKey:`a-${index}`,kind:"CASH" as const,amount:"1.00",status}))});
+  expect(paymentLogoutDisposition(null,true)).toBe("READY");
+  expect(paymentLogoutDisposition(sessionWith([]),true)).toBe("AUTO_CANCEL");
+  expect(paymentLogoutDisposition(sessionWith(["DECLINED","ERROR"]),true)).toBe("AUTO_CANCEL");
+  for(const status of ["PENDING","TIMEOUT","APPROVED"])expect(paymentLogoutDisposition(sessionWith([status]),true)).toBe("BLOCKED");
+  expect(paymentLogoutDisposition({...sessionWith([]),status:"COVERED"},true)).toBe("BLOCKED");
+  expect(paymentLogoutDisposition({...sessionWith([]),status:"COMPENSATION_REQUIRED"},true)).toBe("BLOCKED");
+  expect(paymentLogoutDisposition(null,false)).toBe("BLOCKED");
+ });
+ it("prepares logout immediately after an empty active-session hydration",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
+ });
+ it("cancels a safe empty collecting session before allowing logout",async()=>{
+  const session={id:"session-logout",total:"12.10",status:"COLLECTING",allocations:[]};
+  const cancelRequest=vi.fn();
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-logout/cancel"){cancelRequest();return {...session,status:"CANCELLED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await screen.findByRole("button",{name:"Cancelar sesión de cobro"});
+  await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
+  expect(cancelRequest).toHaveBeenCalledTimes(1);
+ });
+ it("blocks logout for an unresolved payment without cancelling it",async()=>{
+  const session={id:"session-pending",total:"12.10",status:"COLLECTING",allocations:[{id:"a-1",idempotencyKey:"a-1",kind:"INTEGRATED_CARD",amount:"12.10",status:"PENDING"}]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await screen.findByRole("button",{name:"Cancelar sesión de cobro"});
+  await expect(ref.current!.prepareLogout()).resolves.toBe("BLOCKED");
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/cancel"))).toHaveLength(0);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Debes resolver el cobro pendiente");
+ });
+ it("keeps payment recovery state when automatic cancellation has an uncertain outcome",async()=>{
+  const session={id:"session-cancel-error",total:"12.10",status:"COLLECTING",allocations:[]};
+  sessionStorage.setItem("tpverp.payment-session.01",session.id);
+  localStorage.setItem("tpverp.payment-session.01.allocation-attempt",JSON.stringify({sessionId:session.id,allocationId:"stable",input:{kind:"CASH",amountCents:1210}}));
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-cancel-error/cancel")throw new ApiError("network uncertain",500);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await screen.findByRole("button",{name:"Cancelar sesión de cobro"});
+  await expect(ref.current!.prepareLogout()).resolves.toBe("BLOCKED");
+  expect(sessionStorage.getItem("tpverp.payment-session.01")).toBe(session.id);
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toContain("stable");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Debes resolver el cobro pendiente");
+ });
  it("selects individual actions when there is no exceptional session",()=>{
   expect(checkoutPresentation(null)).toBe("INDIVIDUAL_ACTIONS");
   expect(checkoutPresentation("FINALIZED")).toBe("INDIVIDUAL_ACTIONS");
