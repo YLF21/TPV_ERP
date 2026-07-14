@@ -28,6 +28,10 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(checkoutPresentation("FINALIZED")).toBe("INDIVIDUAL_ACTIONS");
  });
  it("selects recovery controls for an active collecting session",()=>{expect(checkoutPresentation("COLLECTING")).toBe("RECOVERY");});
+ it("returns safely declined and errored collecting sessions to individual actions",()=>{
+  expect(checkoutPresentation("COLLECTING",["DECLINED"])).toBe("INDIVIDUAL_ACTIONS");
+  expect(checkoutPresentation("COLLECTING",["ERROR"])).toBe("INDIVIDUAL_ACTIONS");
+ });
  it("selects finalization retry controls for a covered session",()=>{expect(checkoutPresentation("COVERED")).toBe("FINALIZE_RETRY");});
  it("selects compensation controls when administrative recovery is required",()=>{expect(checkoutPresentation("COMPENSATION_REQUIRED")).toBe("COMPENSATION");});
  it("renders only individual actions for an ordinary checkout",async()=>{
@@ -78,6 +82,35 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.keyDown(dialog,{key:"Escape"});
   expect(screen.queryByRole("dialog",{name:"Cobro con tarjeta manual"})).not.toBeInTheDocument();
   expect(card).toHaveFocus();
+ });
+ it("offers only query, manage, and cancel for an uncertain full-ticket recovery",async()=>{
+  const uncertain={id:"session-uncertain-recovery",total:"12.10",status:"COLLECTING",allocations:[{id:"allocation-timeout",idempotencyKey:"allocation-timeout",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-timeout",status:"TIMEOUT"}]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return uncertain;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  expect(await screen.findByRole("button",{name:"Consultar estado"})).toBeVisible();
+  expect(screen.getByRole("button",{name:"Gestionar operación"})).toBeVisible();
+  expect(screen.getByRole("button",{name:"Cancelar sesión de cobro"})).toBeVisible();
+  expect(screen.queryByRole("button",{name:"Efectivo"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Tarjeta manual"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"GLOBAL_PAYMENTS"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox",{name:/Importe/})).not.toBeInTheDocument();
+ });
+ it("renders a safe declined session as a fresh individual checkout",async()=>{
+  const declined={id:"session-declined",total:"12.10",status:"COLLECTING",allocations:[{id:"allocation-declined",idempotencyKey:"allocation-declined",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-declined",status:"DECLINED"}]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return declined;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  expect(await screen.findByRole("button",{name:/F10/})).toBeVisible();
+  expect(screen.getByRole("button",{name:/F11/})).toBeVisible();
+  expect(screen.getByRole("button",{name:/F12/})).toBeDisabled();
+  expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("starts a full-total integrated card allocation with the configured provider",async()=>{
   const session={id:"session-card",total:"12.10",status:"COLLECTING",allocations:[]};
@@ -324,7 +357,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(screen.getAllByText("cash rejected safely")).not.toHaveLength(0));
   fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
 
-  fireEvent.click(screen.getByRole("button",{name:"Tarjeta manual"}));
+  fireEvent.click(screen.getByRole("button",{name:/Tarjeta.*F11/}));
   const manualDialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
   fireEvent.change(within(manualDialog).getByRole("textbox"),{target:{value:"REF-1"}});
   fireEvent.click(within(manualDialog).getByRole("button",{name:"Confirmar"}));

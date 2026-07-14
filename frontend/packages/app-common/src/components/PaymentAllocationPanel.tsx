@@ -11,6 +11,7 @@ type Props = {
   onAdd: (input: { kind: AllocationKind; amountCents: number; provider?: string; reference?: string }) => void;
   onQuery: (operationId: string) => void;
   onManage?: (operationId: string) => void;
+  allowAdd?: boolean;
 };
 
 const localeName: Record<LocaleCode, string> = { es: "es-ES", en: "en-US", zh: "zh-CN" };
@@ -48,7 +49,7 @@ export function ManualCardReferenceDialog({ locale, reference, onReferenceChange
   </div>;
 }
 
-export function PaymentAllocationPanel({ locale, session, providers, manualCardEnabled, onAdd, onQuery, onManage }: Props) {
+export function PaymentAllocationPanel({ locale, session, providers, manualCardEnabled, onAdd, onQuery, onManage, allowAdd = true }: Props) {
   const t = createTranslator(locale);
   const money = (cents: number) => (cents / 100).toLocaleString(localeName[locale], { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const remaining = remainingPaymentCents(session);
@@ -69,7 +70,7 @@ export function PaymentAllocationPanel({ locale, session, providers, manualCardE
         <button type="button" onClick={() => onQuery(allocation.operationId!)}>{t("payment.split.query")}</button>}
       {allocation.operationId && onManage && <button type="button" onClick={() => onManage(allocation.operationId!)}>{t("payment.split.manage")}</button>}
     </li>)}</ul>
-    {remaining > 0 && !compensationRequired && <div>
+    {allowAdd && remaining > 0 && !compensationRequired && <div>
       <label>{t("payment.split.amount")} <input value={amount} onChange={(event) => setAmount(event.currentTarget.value)} /></label>
       <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "CASH", amountCents })}>{t("payment.split.cash")}</button>
       {manualCardEnabled && <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => dispatchManualCardDialog({ type: "open" })}>{t("payment.split.manualCard")}</button>}
