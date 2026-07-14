@@ -380,6 +380,7 @@ export function SaleScreen({
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
   const logoutInProgressRef = useRef(false);
+  const shutdownInProgressRef = useRef(false);
   const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
@@ -392,8 +393,22 @@ export function SaleScreen({
     try {
       const result = await paymentCheckoutRef.current?.prepareLogout();
       if (result === "READY") onLogout?.();
+    } catch {
+      // Fail closed: checkout keeps the recoverable payment state visible.
     } finally {
       logoutInProgressRef.current = false;
+    }
+  }
+
+  async function handleApplicationClose() {
+    if (shutdownInProgressRef.current || !paymentCheckoutRef.current) return false;
+    shutdownInProgressRef.current = true;
+    try {
+      return await paymentCheckoutRef.current.prepareApplicationClose() === "READY";
+    } catch {
+      return false;
+    } finally {
+      shutdownInProgressRef.current = false;
     }
   }
 
@@ -640,6 +655,7 @@ export function SaleScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={() => void handleSaleLogout()}
+        onPrepareShutdown={handleApplicationClose}
       />
 
       <section className="work-shell" aria-label="Venta">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { LocaleCode, UserSession } from "../types";
 import languageIcon from "../assets/language.png";
 import { TopDateTime } from "./TopDateTime";
@@ -16,6 +16,7 @@ type SessionTopControlsProps = {
   yesLabel: string;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
+  onPrepareShutdown?: () => Promise<boolean>;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -36,11 +37,14 @@ export function SessionTopControls({
   noLabel,
   yesLabel,
   onLocaleChange,
-  onLogout
+  onLogout,
+  onPrepareShutdown
 }: SessionTopControlsProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [shutdownPreparing, setShutdownPreparing] = useState(false);
+  const shutdownPreparingRef = useRef(false);
 
   function closeApplication() {
     if (window.tpvDesktop) {
@@ -48,6 +52,25 @@ export function SessionTopControls({
       return;
     }
     window.close();
+  }
+
+  async function handleApplicationClose() {
+    if (shutdownPreparingRef.current) return;
+    shutdownPreparingRef.current = true;
+    setShutdownPreparing(true);
+    let ready = false;
+    try {
+      ready = await (onPrepareShutdown?.() ?? Promise.resolve(true));
+      if (ready) closeApplication();
+    } catch {
+      ready = false;
+    } finally {
+      if (!ready) {
+        setShutdownOpen(false);
+        shutdownPreparingRef.current = false;
+        setShutdownPreparing(false);
+      }
+    }
   }
 
   return (
@@ -131,10 +154,10 @@ export function SessionTopControls({
             <h2 id="shutdown-title">{shutdownConfirmTitle}</h2>
             <p>{shutdownConfirmText}</p>
             <div className="shutdown-actions">
-              <button type="button" className="shutdown-no" autoFocus onClick={() => setShutdownOpen(false)}>
+              <button type="button" className="shutdown-no" autoFocus disabled={shutdownPreparing} onClick={() => setShutdownOpen(false)}>
                 {noLabel}
               </button>
-              <button type="button" className="shutdown-yes" onClick={closeApplication}>
+              <button type="button" className="shutdown-yes" disabled={shutdownPreparing} onClick={() => void handleApplicationClose()}>
                 {yesLabel}
               </button>
             </div>

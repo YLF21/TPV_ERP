@@ -39,13 +39,17 @@ import {
 } from "./SaleScreen";
 import type { TerminalContext, UserSession } from "../types";
 
-const { prepareLogout } = vi.hoisted(() => ({ prepareLogout: vi.fn() }));
+const { prepareApplicationClose, prepareLogout, checkoutHandle } = vi.hoisted(() => ({
+  prepareApplicationClose: vi.fn(),
+  prepareLogout: vi.fn(),
+  checkoutHandle: { attached: true }
+}));
 
 vi.mock("./SalePaymentCheckout", async () => {
   const { forwardRef, useImperativeHandle } = await import("react");
   return {
     SalePaymentCheckout: forwardRef(function MockSalePaymentCheckout(_props, ref) {
-      useImperativeHandle(ref, () => ({ prepareLogout }));
+      useImperativeHandle(ref, () => checkoutHandle.attached ? ({ prepareApplicationClose, prepareLogout }) : null);
       return null;
     })
   };
@@ -53,7 +57,10 @@ vi.mock("./SalePaymentCheckout", async () => {
 
 afterEach(() => {
   cleanup();
+  prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
+  checkoutHandle.attached = true;
+  delete window.tpvDesktop;
 });
 
 const session: UserSession = {
@@ -107,6 +114,56 @@ describe("SaleScreen", () => {
     return screen.getByRole("menuitem", { name: "Cerrar usuario" });
   }
 
+  function confirmShutdown() {
+    fireEvent.click(screen.getByRole("button", { name: "Apagar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí" }));
+  }
+
+  it("closes the application only after payment checkout is ready", async () => {
+    let resolvePreparation!: (result: "READY") => void;
+    prepareApplicationClose.mockImplementation(() => new Promise((resolve) => {
+      resolvePreparation = resolve;
+    }));
+    const closeApplication = vi.fn().mockResolvedValue(undefined);
+    window.tpvDesktop = { closeApplication };
+    renderSaleScreen();
+
+    confirmShutdown();
+
+    expect(prepareApplicationClose).toHaveBeenCalledTimes(1);
+    expect(closeApplication).not.toHaveBeenCalled();
+    resolvePreparation("READY");
+    await waitFor(() => expect(closeApplication).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    ["BLOCKED", vi.fn().mockResolvedValue("BLOCKED")],
+    ["rejection", vi.fn().mockRejectedValue(new Error("cleanup failed"))]
+  ])("keeps the application open after shutdown preparation %s", async (_label, implementation) => {
+    prepareApplicationClose.mockImplementation(implementation);
+    const closeApplication = vi.fn().mockResolvedValue(undefined);
+    window.tpvDesktop = { closeApplication };
+    renderSaleScreen();
+
+    confirmShutdown();
+
+    await waitFor(() => expect(prepareApplicationClose).toHaveBeenCalledTimes(1));
+    expect(closeApplication).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when payment checkout has not attached its handle", async () => {
+    checkoutHandle.attached = false;
+    const closeApplication = vi.fn().mockResolvedValue(undefined);
+    window.tpvDesktop = { closeApplication };
+    renderSaleScreen();
+
+    confirmShutdown();
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(prepareApplicationClose).not.toHaveBeenCalled();
+    expect(closeApplication).not.toHaveBeenCalled();
+  });
+
   it("logs out only after payment checkout is ready", async () => {
     prepareLogout.mockResolvedValue("READY");
     const onLogout = renderSaleScreen();
@@ -127,6 +184,16 @@ describe("SaleScreen", () => {
     expect(onLogout).not.toHaveBeenCalled();
   });
 
+  it("does not log out when payment checkout preparation rejects", async () => {
+    prepareLogout.mockRejectedValue(new Error("cleanup failed"));
+    const onLogout = renderSaleScreen();
+
+    fireEvent.click(logoutButton());
+
+    await waitFor(() => expect(prepareLogout).toHaveBeenCalledTimes(1));
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
   it("ignores a second logout click while payment preparation is pending", async () => {
     let resolvePreparation!: (result: "READY") => void;
     prepareLogout.mockImplementation(() => new Promise((resolve) => {
@@ -135,6 +202,8 @@ describe("SaleScreen", () => {
     const onLogout = renderSaleScreen();
     fireEvent.click(logoutButton());
     fireEvent.click(logoutButton());
+
+    expect(onLogout).not.toHaveBeenCalled();
     resolvePreparation("READY");
 
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
