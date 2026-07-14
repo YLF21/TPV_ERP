@@ -56,7 +56,7 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
 
   return (
     <div className="sale-action-overlay" role="presentation">
-      <section ref={dialogRef} className="cash-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="cash-payment-title">
+      <section ref={dialogRef} className="cash-payment-dialog cash-payment-entry-dialog" role="dialog" aria-modal="true" aria-labelledby="cash-payment-title">
         <header>
           <h2 id="cash-payment-title">Cobro en efectivo</h2>
           <button type="button" aria-label="Cerrar" disabled={submitting} onClick={onCancel}>×</button>

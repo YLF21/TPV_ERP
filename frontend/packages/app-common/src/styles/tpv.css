@@ -11525,3 +11525,130 @@ textarea:focus,
 .product-create-form .date-range-control button .filter-control-arrow::after {
   background: #ffffff !important;
 }
+
+/* APP VENTA: classic, compact cash-entry dialog. */
+.cash-payment-entry-dialog {
+  box-sizing: border-box !important;
+  width: min(420px, calc(100vw - 32px)) !important;
+  max-height: calc(100dvh - 32px) !important;
+  padding: 0 !important;
+  overflow-y: auto !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 4px !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.22) !important;
+}
+
+.cash-payment-entry-dialog > header {
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--tpv-v3-line);
+  background: var(--tpv-v3-surface-alt);
+}
+
+.cash-payment-entry-dialog > header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.cash-payment-entry-dialog > header button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface);
+  color: var(--tpv-v3-muted);
+}
+
+.cash-payment-entry-dialog .cash-payment-summary {
+  gap: 4px;
+  margin: 10px 12px 8px;
+}
+
+.cash-payment-entry-dialog .cash-payment-summary > div {
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--tpv-v3-line-soft);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface-alt);
+}
+
+.cash-payment-entry-dialog .cash-payment-summary strong {
+  color: var(--tpv-v3-text);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cash-payment-entry-dialog .cash-payment-summary .cash-change {
+  border-color: #b9ddc7;
+  background: #eef8f2;
+  color: #116634;
+}
+
+.cash-payment-entry-dialog .cash-received-input {
+  width: calc(100% - 24px);
+  min-height: 40px;
+  margin: 0 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 3px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cash-payment-entry-dialog .cash-input-mode-toggle {
+  margin: 6px 12px 0 auto;
+  padding: 2px 0;
+  color: var(--tpv-v3-blue);
+  font-size: 12px;
+}
+
+.cash-payment-entry-dialog .cash-shortcuts,
+.cash-payment-entry-dialog .cash-keypad {
+  gap: 4px;
+  margin: 8px 12px 0;
+}
+
+.cash-payment-entry-dialog .cash-shortcuts button,
+.cash-payment-entry-dialog .cash-keypad button,
+.cash-payment-entry-dialog .cash-payment-actions button {
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface-alt);
+  color: var(--tpv-v3-text);
+  box-shadow: none;
+  font-weight: 800;
+}
+
+.cash-payment-entry-dialog .cash-shortcuts button {
+  min-height: 32px;
+  padding: 4px;
+  font-size: 12px;
+}
+
+.cash-payment-entry-dialog .cash-keypad button {
+  min-height: 42px;
+  font-size: 16px;
+}
+
+.cash-payment-entry-dialog .sale-action-error {
+  margin: 8px 12px 0;
+}
+
+.cash-payment-entry-dialog .cash-payment-actions {
+  gap: 6px;
+  margin: 10px 12px 12px;
+}
+
+.cash-payment-entry-dialog .cash-payment-actions button {
+  min-height: 34px;
+  padding: 5px 10px;
+}
+
+.cash-payment-entry-dialog .cash-payment-actions button:last-child {
+  border-color: var(--tpv-v3-blue);
+  background: var(--tpv-v3-blue);
+  color: #ffffff;
+}

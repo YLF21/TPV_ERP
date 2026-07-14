@@ -25,8 +25,9 @@ describe("CashPaymentDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Usar teclado físico" }));
     expect(screen.queryByRole("button", { name: "Tecla 7" })).not.toBeInTheDocument();
   });
-  it("labels the modal from its visible heading", () => {
+  it("labels and scopes the cash-entry modal", () => {
     const html = renderToStaticMarkup(<CashPaymentDialog {...baseProps} initialMode="touch" />);
+    expect(html).toContain('class="cash-payment-dialog cash-payment-entry-dialog"');
     expect(html).toContain('aria-labelledby="cash-payment-title"');
     expect(html).toContain('<h2 id="cash-payment-title">Cobro en efectivo</h2>');
     expect(html).not.toContain('aria-label="Cobro en efectivo"');
