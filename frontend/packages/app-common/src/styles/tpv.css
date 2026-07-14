@@ -11652,3 +11652,27 @@ textarea:focus,
   background: var(--tpv-v3-blue);
   color: #ffffff;
 }
+
+.test-cash-session-button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--tpv-v3-blue);
+  border-radius: var(--tpv-v3-radius);
+  background: var(--tpv-v3-blue);
+  color: #ffffff;
+  box-shadow: none;
+  font-weight: 800;
+}
+
+.test-cash-session-status {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid #b9ddc7;
+  border-radius: var(--tpv-v3-radius);
+  background: #eef8f2;
+  color: #116634;
+  font-size: 12px;
+  font-weight: 750;
+}

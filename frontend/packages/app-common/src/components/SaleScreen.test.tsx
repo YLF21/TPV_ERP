@@ -39,16 +39,18 @@ import {
 } from "./SaleScreen";
 import type { TerminalContext, UserSession } from "../types";
 
-const { prepareApplicationClose, prepareLogout, checkoutHandle } = vi.hoisted(() => ({
+const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
-  checkoutHandle: { attached: true }
+  checkoutHandle: { attached: true },
+  checkoutProps: { current: null as null | { testCashEnabled?: boolean } }
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
   const { forwardRef, useImperativeHandle } = await import("react");
   return {
-    SalePaymentCheckout: forwardRef(function MockSalePaymentCheckout(_props, ref) {
+    SalePaymentCheckout: forwardRef(function MockSalePaymentCheckout(props, ref) {
+      checkoutProps.current = props;
       useImperativeHandle(ref, () => checkoutHandle.attached ? ({ prepareApplicationClose, prepareLogout }) : null);
       return null;
     })
@@ -60,6 +62,7 @@ afterEach(() => {
   prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
   checkoutHandle.attached = true;
+  checkoutProps.current = null;
   delete window.tpvDesktop;
 });
 
@@ -118,6 +121,12 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apagar" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí" }));
   }
+
+  it("enables test cash for APP VENTA only in Vite development", async () => {
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current).not.toBeNull());
+    expect(checkoutProps.current?.testCashEnabled).toBe(import.meta.env.DEV);
+  });
 
   it("closes the application only after payment checkout is ready", async () => {
     let resolvePreparation!: (result: "READY") => void;

@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -788,7 +790,35 @@ export function SaleScreen({
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <SalePaymentCheckout ref={paymentCheckoutRef} locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents,receivedCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult(cashResultFromFinalization(ticketNumber,authoritativeTotalCents,receivedCents));}} />
+            <SalePaymentCheckout
+              ref={paymentCheckoutRef}
+              locale={locale}
+              totalCents={Math.round(total * 100)}
+              sale={cashSaleRequest()}
+              token={session.accessToken}
+              permissions={session.permissions}
+              terminal={terminalContext}
+              disabled={lines.length === 0 || total <= 0}
+              testCashEnabled={import.meta.env.DEV && app === "venta"}
+              onLockedChange={(locked, reservedTotalCents) => {
+                setPaymentLocked(locked);
+                setReservedPaymentTotalCents(
+                  locked && reservedTotalCents != null ? reservedTotalCents : null,
+                );
+              }}
+              onFinalized={(ticketNumber, authoritativeTotalCents, receivedCents) => {
+                setLines([]);
+                setSelectedProductId(null);
+                setSelectedCustomer(null);
+                setQuery("");
+                setReservedPaymentTotalCents(null);
+                setCashResult(cashResultFromFinalization(
+                  ticketNumber,
+                  authoritativeTotalCents,
+                  receivedCents,
+                ));
+              }}
+            />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
