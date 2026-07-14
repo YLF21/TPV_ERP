@@ -23,3 +23,11 @@
 - Manual input rejects whitespace-only values and submits `" REF-1 "` as `"REF-1"`.
 - Same-tick double card click creates one session/allocation attempt.
 - A 5xx card outcome retains the stable allocation attempt and blocks a second charge.
+
+## Important review fixes
+
+- Allocation recovery metadata is retained while a covered session is awaiting a ticket, including across finalization failure and component reload. It is cleared only after ticket finalization succeeds, a known-safe pre-effect rejection, a resolved non-covered allocation, or safe session cancellation.
+- Manual references are sent only in the allocation request. The local recovery record contains the stable allocation ID plus a sanitized fingerprint (`kind`, `amountCents`, and optional provider), never the manual reference.
+- Successful session cancellation now clears the persisted attempt, card guard, cash guard/metadata, and any open manual-card dialog so a subsequent checkout can start normally.
+- Added regression tests for finalization failure/reload recovery, sensitive manual-reference persistence, and card reuse after cancellation.
+- Review-fix verification: focused checkout tests 20/20 passed; full frontend suite 342/342 passed; both frontend applications built successfully.

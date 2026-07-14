@@ -102,6 +102,91 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions/session-manual/allocations")?.[1].body).toMatchObject({kind:"MANUAL_CARD",amount:"12.10",reference:"REF-1"});
  });
 
+ it("never persists a manual card reference while retaining its stable allocation id",async()=>{
+  const session={id:"session-manual-private",total:"12.10",status:"COLLECTING",allocations:[]};
+  let releaseAllocation!:(value:typeof session)=>void;
+  const pendingAllocation=new Promise<typeof session>(resolve=>{releaseAllocation=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-manual-private/allocations")return pendingAllocation;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  fireEvent.change(screen.getByRole("textbox",{name:"Referencia obligatoria"}),{target:{value:" SECRET-REF "}});
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar"}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-manual-private/allocations")).toHaveLength(1));
+  const persisted=localStorage.getItem("tpverp.payment-session.01.allocation-attempt") ?? "";
+  expect(persisted).not.toContain("SECRET-REF");
+  expect(JSON.parse(persisted)).toMatchObject({sessionId:"session-manual-private",allocationId:expect.any(String),input:{kind:"MANUAL_CARD",amountCents:1210}});
+  releaseAllocation(session);
+ });
+
+ it("retains allocation recovery metadata across finalization failure and reload",async()=>{
+  const collecting={id:"session-finalize-reload",total:"12.10",status:"COLLECTING",allocations:[]};
+  const covered={...collecting,status:"COVERED",allocations:[{id:"allocation-stable",idempotencyKey:"allocation-stable",status:"APPROVED",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS"}]};
+  let finalizeAttempts=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return finalizeAttempts?covered:null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/session-finalize-reload/allocations")return covered;
+   if(path==="/pos/payment-sessions/session-finalize-reload/finalize"){
+    finalizeAttempts+=1;
+    if(finalizeAttempts===1)throw new ApiError("finalize unavailable",500);
+    return {...covered,status:"FINALIZED",ticketNumber:"T-RECOVERED"};
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("finalize unavailable"));
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  first.unmount();
+  render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Finalizar venta"})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Finalizar venta"}));
+  await waitFor(()=>expect(props.onFinalized).toHaveBeenCalledWith("T-RECOVERED",1210,undefined));
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+ });
+
+ it("clears card recovery state on safe cancellation so a later card checkout can start",async()=>{
+  const first={id:"session-cancel-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
+  const second={id:"session-cancel-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
+  let creations=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return ++creations===1?first:second;
+   if(path==="/pos/payment-sessions/session-cancel-card-1/allocations"){
+    const id=(options?.body as {allocationId:string}).allocationId;
+    return {...first,allocations:[{id,idempotencyKey:id,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"op-1"}]};
+   }
+   if(path==="/pos/payment-sessions/session-cancel-card-1/cancel")return {...first,status:"CANCELLED"};
+   if(path==="/pos/payment-sessions/session-cancel-card-2/allocations")return second;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Cancelar sesión de cobro"})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Cancelar sesión de cobro"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-2/allocations")).toHaveLength(1));
+ });
+
  it("synchronously ignores a second cash confirmation before React disables the dialog",async()=>{
   const session={id:"session-guard",total:"12.10",status:"COLLECTING",allocations:[]};
   let releaseSession!:(value:typeof session)=>void;
