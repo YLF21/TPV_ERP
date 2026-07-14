@@ -187,6 +187,38 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-2/allocations")).toHaveLength(1));
  });
 
+ it("clears card recovery state after compensation acknowledgement so a later card checkout can start",async()=>{
+  const first={id:"session-ack-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
+  const second={id:"session-ack-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
+  let creations=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return ++creations===1?first:second;
+   if(path==="/pos/payment-sessions/session-ack-card-1/allocations"){
+    const id=(options?.body as {allocationId:string}).allocationId;
+    return {...first,status:"COMPENSATION_REQUIRED",allocations:[{id,idempotencyKey:id,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"op-ack"}]};
+   }
+   if(path==="/pos/payment-sessions/session-ack-card-1/compensation-ack")return {...first,status:"CANCELLED"};
+   if(path==="/pos/payment-sessions/session-ack-card-2/allocations")return second;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Registrar resolución administrativa"})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Registrar resolución administrativa"}));
+  const dialog=screen.getByRole("dialog",{name:"Resolución administrativa"});
+  fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:" Resuelta "}});
+  fireEvent.click(within(dialog).getByRole("button",{name:"Confirmar"}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-ack-card-2/allocations")).toHaveLength(1));
+ });
+
  it("synchronously ignores a second cash confirmation before React disables the dialog",async()=>{
   const session={id:"session-guard",total:"12.10",status:"COLLECTING",allocations:[]};
   let releaseSession!:(value:typeof session)=>void;

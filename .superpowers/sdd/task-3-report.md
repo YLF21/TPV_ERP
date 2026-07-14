@@ -31,3 +31,4 @@
 - Successful session cancellation now clears the persisted attempt, card guard, cash guard/metadata, and any open manual-card dialog so a subsequent checkout can start normally.
 - Added regression tests for finalization failure/reload recovery, sensitive manual-reference persistence, and card reuse after cancellation.
 - Review-fix verification: focused checkout tests 20/20 passed; full frontend suite 342/342 passed; both frontend applications built successfully.
+- Compensation acknowledgement now performs the same safe card-state cleanup as successful cancellation after the backend returns `CANCELLED`: persisted recovery attempt, synchronous card guard, cash metadata/guard, and manual-card dialog state are cleared. A regression test proves a new direct card checkout can start afterward. Final verification: focused checkout tests 21/21 passed; full frontend suite 343/343 passed; both frontend applications built successfully.
