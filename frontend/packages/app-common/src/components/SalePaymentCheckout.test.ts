@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe,expect,it,vi } from "vitest";
 import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,compensationNoteIsEphemeral,compensationGuidanceKey,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
@@ -23,6 +23,63 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("synchronously ignores a second cash confirmation before React disables the dialog",async()=>{
+  const session={id:"session-guard",total:"12.10",status:"COLLECTING",allocations:[]};
+  let releaseSession!:(value:typeof session)=>void;
+  const pendingSession=new Promise<typeof session>(resolve=>{releaseSession=resolve;});
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return pendingSession;
+   if(path==="/pos/payment-sessions/session-guard/allocations")return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"CASH",amount:"12.10"}]};
+   if(path==="/pos/payment-sessions/session-guard/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-GUARD"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
+  fireEvent.click(screen.getByRole("button",{name:/20/}));
+  const confirm=screen.getByRole("button",{name:"Confirmar cobro"});
+
+  act(()=>{confirm.click();window.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));});
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1);
+  releaseSession(session);
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-GUARD",1210,2000));
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-guard/allocations")).toHaveLength(1);
+ });
+
+ it("does not leak received cash into a manual-card finalize after a safe cash failure",async()=>{
+  const session={id:"session-safe",total:"12.10",status:"COLLECTING",allocations:[]};
+  let allocationAttempt=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-safe/allocations"){
+    allocationAttempt+=1;
+    if(allocationAttempt===1)throw new ApiError("cash rejected safely",422);
+    return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"MANUAL_CARD",amount:"12.10"}]};
+   }
+   if(path==="/pos/payment-sessions/session-safe/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-MANUAL"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo/}));
+  fireEvent.click(screen.getByRole("button",{name:/20/}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
+  await waitFor(()=>expect(screen.getAllByText("cash rejected safely")).not.toHaveLength(0));
+  fireEvent.click(screen.getByRole("button",{name:"Cancelar"}));
+
+  fireEvent.click(screen.getByRole("button",{name:"Tarjeta manual"}));
+  const manualDialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
+  fireEvent.change(within(manualDialog).getByRole("textbox"),{target:{value:"REF-1"}});
+  fireEvent.click(within(manualDialog).getByRole("button",{name:"Confirmar"}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-MANUAL",1210,undefined));
+ });
+
  it("opens the touch cash calculator and submits the total exactly once",async()=>{
   const session={id:"session-1",total:"12.10",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
