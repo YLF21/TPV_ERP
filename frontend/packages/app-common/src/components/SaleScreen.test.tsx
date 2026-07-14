@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SaleScreen,
   addSaleLine,
@@ -35,6 +39,23 @@ import {
 } from "./SaleScreen";
 import type { TerminalContext, UserSession } from "../types";
 
+const { prepareLogout } = vi.hoisted(() => ({ prepareLogout: vi.fn() }));
+
+vi.mock("./SalePaymentCheckout", async () => {
+  const { forwardRef, useImperativeHandle } = await import("react");
+  return {
+    SalePaymentCheckout: forwardRef(function MockSalePaymentCheckout(_props, ref) {
+      useImperativeHandle(ref, () => ({ prepareLogout }));
+      return null;
+    })
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  prepareLogout.mockReset();
+});
+
 const session: UserSession = {
   username: "admin",
   displayName: "ADMIN",
@@ -66,6 +87,62 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  function renderSaleScreen(onLogout = vi.fn()) {
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={onLogout}
+      />
+    );
+    return onLogout;
+  }
+
+  function logoutButton() {
+    fireEvent.click(screen.getByRole("button", { name: "ADMIN" }));
+    return screen.getByRole("menuitem", { name: "Cerrar usuario" });
+  }
+
+  it("logs out only after payment checkout is ready", async () => {
+    prepareLogout.mockResolvedValue("READY");
+    const onLogout = renderSaleScreen();
+
+    fireEvent.click(logoutButton());
+
+    await waitFor(() => expect(prepareLogout).toHaveBeenCalledTimes(1));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not log out when payment checkout blocks it", async () => {
+    prepareLogout.mockResolvedValue("BLOCKED");
+    const onLogout = renderSaleScreen();
+
+    fireEvent.click(logoutButton());
+
+    await waitFor(() => expect(prepareLogout).toHaveBeenCalledTimes(1));
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it("ignores a second logout click while payment preparation is pending", async () => {
+    let resolvePreparation!: (result: "READY") => void;
+    prepareLogout.mockImplementation(() => new Promise((resolve) => {
+      resolvePreparation = resolve;
+    }));
+    const onLogout = renderSaleScreen();
+    const button = logoutButton();
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    resolvePreparation("READY");
+
+    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
+    expect(prepareLogout).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves cash received by individual checkout and falls back to the total", () => {
     expect(cashResultFromFinalization("T-1", 1210, 2000)).toEqual({ ticketNumber: "T-1", totalCents: 1210, receivedCents: 2000 });
     expect(cashResultFromFinalization("T-2", 1210)).toEqual({ ticketNumber: "T-2", totalCents: 1210, receivedCents: 1210 });

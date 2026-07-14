@@ -11,7 +11,7 @@ import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
-import { SalePaymentCheckout } from "./SalePaymentCheckout";
+import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 
 export type SaleProduct = {
   id: string;
@@ -378,11 +378,24 @@ export function SaleScreen({
   const cashSubmissionRef = useRef(false);
   const cardSubmissionRef = useRef(false);
   const cardOpeningRef = useRef({ current: false, generation: 0 });
+  const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
+  const logoutInProgressRef = useRef(false);
   const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
+
+  async function handleSaleLogout() {
+    if (logoutInProgressRef.current) return;
+    logoutInProgressRef.current = true;
+    try {
+      const result = await paymentCheckoutRef.current?.prepareLogout();
+      if (result === "READY") onLogout?.();
+    } finally {
+      logoutInProgressRef.current = false;
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -626,7 +639,7 @@ export function SaleScreen({
         noLabel={t("common.no")}
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
-        onLogout={onLogout}
+        onLogout={() => void handleSaleLogout()}
       />
 
       <section className="work-shell" aria-label="Venta">
@@ -759,7 +772,7 @@ export function SaleScreen({
           </div>
           <section className="sale-payment" aria-label="Cobro">
             <h2>Cobro</h2>
-            <SalePaymentCheckout locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents,receivedCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult(cashResultFromFinalization(ticketNumber,authoritativeTotalCents,receivedCents));}} />
+            <SalePaymentCheckout ref={paymentCheckoutRef} locale={locale} totalCents={Math.round(total*100)} sale={cashSaleRequest()} token={session.accessToken} permissions={session.permissions} terminal={terminalContext} disabled={lines.length===0||total<=0} onLockedChange={(locked,reservedTotalCents)=>{setPaymentLocked(locked);setReservedPaymentTotalCents(locked&&reservedTotalCents!=null?reservedTotalCents:null);}} onFinalized={(ticketNumber,authoritativeTotalCents,receivedCents)=>{setLines([]);setSelectedProductId(null);setSelectedCustomer(null);setQuery("");setReservedPaymentTotalCents(null);setCashResult(cashResultFromFinalization(ticketNumber,authoritativeTotalCents,receivedCents));}} />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
           </section>
         </section>
