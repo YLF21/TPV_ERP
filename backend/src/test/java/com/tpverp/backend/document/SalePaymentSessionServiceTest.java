@@ -10,6 +10,34 @@ import org.springframework.security.core.Authentication;
 import com.tpverp.backend.security.domain.UserAccount;
 
 class SalePaymentSessionServiceTest {
+ @Test void discardsSimulationOnlyFromPersistedTestConfiguration(){
+  var f=discardFixture();var config=new CardTerminalConfiguration(f.terminalId,f.storeId,PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"sim","ref",1,"hash",Map.of());when(f.configs.required(f.terminalId)).thenReturn(config);
+  var result=f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth);
+  assertThat(result.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);assertThat(result.getAllocations()).hasSize(1);verify(f.repo).save(f.session);verify(f.configs).required(f.terminalId);
+ }
+
+ @Test void simulatorDiscardRejectsLiveConfigurationWithoutSaving(){
+  var f=discardFixture();when(f.configs.required(f.terminalId)).thenReturn(new CardTerminalConfiguration(f.terminalId,f.storeId,PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,false,"live","ref",1,"hash",Map.of()));
+  assertThatThrownBy(()->f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth)).hasMessage("simulator_discard_requires_test_mode");verify(f.repo,never()).save(any());
+ }
+
+ @Test void simulatorDiscardRejectsWrongTerminalScopeBeforeReadingConfiguration(){
+  var f=discardFixture();when(f.terminal.terminalId(f.auth)).thenReturn(UUID.randomUUID());
+  assertThatThrownBy(()->f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth)).isInstanceOf(NoSuchElementException.class);verifyNoInteractions(f.configs);verify(f.repo,never()).save(any());
+ }
+
+ @Test void simulatorDiscardRejectsMissingSessionWithoutSaving(){
+  var f=discardFixture();when(f.repo.findLocked(f.sessionId)).thenReturn(Optional.empty());
+  assertThatThrownBy(()->f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth)).isInstanceOf(NoSuchElementException.class);verifyNoInteractions(f.configs);verify(f.repo,never()).save(any());
+ }
+
+ private static DiscardFixture discardFixture(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",BigDecimal.TEN);var allocation=session.addAllocation(UUID.randomUUID(),"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,allocation.getId(),null,null,"uncertain");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops);return new DiscardFixture(repo,org,terminal,configs,auth,session,service,storeId,terminalId,sessionId);
+ }
+
+ private record DiscardFixture(SalePaymentSessionRepository repo,CurrentOrganization org,CurrentTerminal terminal,CardTerminalConfigurationReader configs,Authentication auth,SalePaymentSession session,SalePaymentSessionService service,UUID storeId,UUID terminalId,UUID sessionId){}
+
  @Test void compensationAcknowledgementUsesDurableOperationTruthAfterTimeout(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"incierto");session.cancel();when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var durable=mock(PaymentTerminalOperation.class);when(ops.find(operationId)).thenReturn(Optional.of(durable));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops);

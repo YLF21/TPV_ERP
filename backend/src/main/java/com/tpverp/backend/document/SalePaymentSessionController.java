@@ -19,10 +19,12 @@ public class SalePaymentSessionController {
  @PostMapping("/{id}/allocations/{allocationId}/query") public View query(@PathVariable UUID id,@PathVariable UUID allocationId,Authentication auth){return View.from(service.query(id,allocationId,auth));}
  @PostMapping("/{id}/finalize") public View finalizeSession(@PathVariable UUID id,Authentication auth){return View.from(service.finalizeSession(id,auth));}
  @PostMapping("/{id}/cancel") public View cancel(@PathVariable UUID id,Authentication auth){return View.from(service.cancel(id,auth));}
+ @PostMapping("/{id}/simulator-discard") public View discardSimulation(@PathVariable UUID id,@Valid @RequestBody SimulatorDiscard request,Authentication auth){return View.from(service.discardSimulation(id,request.reason(),auth));}
  @PostMapping("/{id}/compensation-ack") @PreAuthorize("hasRole('ADMIN') or hasAuthority('PAYMENT_TERMINAL_REFUND')") public View acknowledge(@PathVariable UUID id,@Valid @RequestBody CompensationAck request,Authentication auth){return View.from(service.acknowledgeCompensation(id,request.note(),auth));}
  public record Reserve(@NotNull UUID sessionId,@NotNull @Valid PosCashController.SaleRequest sale){}
  public record Allocation(@NotNull UUID allocationId,@NotBlank String idempotencyKey,@NotNull SalePaymentAllocationKind kind,@NotNull @DecimalMin("0.01") BigDecimal amount,String provider,String reference){}
  public record CompensationAck(@NotBlank @Size(max=512) String note){}
+ public record SimulatorDiscard(@NotBlank @Pattern(regexp="application_shutdown|sale_entry_cleanup") String reason){}
  public record AllocationView(UUID id,String idempotencyKey,SalePaymentAllocationKind kind,BigDecimal amount,String provider,String mode,UUID operationId,String status,String reference,String authorization,String message){static AllocationView from(SalePaymentAllocation a){return new AllocationView(a.getId(),a.getIdempotencyKey(),a.getKind(),a.getAmount(),a.getProvider(),a.getMode(),a.getOperationId(),a.getStatus().name(),a.getReference(),a.getAuthorization(),a.getMessage());}}
  public record View(UUID id,BigDecimal total,String currency,String status,UUID ticketId,String ticketNumber,List<AllocationView> allocations){static View from(SalePaymentSession s){return new View(s.getId(),s.getTotal(),s.getCurrency(),s.getStatus().name(),s.getTicketId(),s.getTicketNumber(),s.getAllocations().stream().map(AllocationView::from).toList());}}
 }
