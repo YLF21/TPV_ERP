@@ -1,25 +1,35 @@
-# Task 3 report
+# Task 3 report — guarded shutdown and strict logout
 
-## Status
+## Commit
 
-Changed the visible split-payment presentation to pending-payment wording in Spanish, English, and Chinese while retaining the existing `payment.split.*` keys and all recovery behavior.
+- `64b97e1794dcd477214394e50d81293bcd83db33` — `fix(venta): prepare payment state before shutdown`
+- Local commit only; no push.
+
+## Files
+
+- `frontend/packages/app-common/src/components/SessionTopControls.tsx`
+- `frontend/packages/app-common/src/components/SessionTopControls.test.tsx`
+- `frontend/packages/app-common/src/components/SaleScreen.tsx`
+- `frontend/packages/app-common/src/components/SaleScreen.test.tsx`
+
+## Implemented behavior
+
+- `SessionTopControls` accepts `onPrepareShutdown?: () => Promise<boolean>`, waits for it after confirmation, and invokes Electron/window close only for `true`.
+- A synchronous ref guard plus disabled confirmation controls prevent concurrent preparation and duplicate close calls. Choosing **No** never prepares or closes.
+- `false` and rejected preparation fail closed, dismiss the confirmation so the existing checkout recovery/error UI is visible, and keep the application open.
+- `SaleScreen` maps `prepareApplicationClose()` `READY/BLOCKED` to boolean and treats rejection or a not-yet-attached checkout ref as blocked.
+- **Cerrar usuario** still uses `handleSaleLogout()` and `prepareLogout()`; only `READY` invokes `onLogout`. `BLOCKED`, rejection, missing ref, and pending preparation do not log out.
 
 ## TDD evidence
 
-- RED: `npm.cmd test -- PaymentAllocationPanel.test.tsx SalePaymentCheckout.test.ts` exited 1 with four expected failures: the ES/EN/ZH panels still rendered `Cobro dividido`, `Split payment`, and `分拆支付`, and the uncertain-recovery heading was not `Cobro pendiente`.
-- GREEN focused: `npm.cmd test -- PaymentAllocationPanel.test.tsx SalePaymentCheckout.test.ts SaleScreen.test.tsx` exited 0 with 3 files and 94 tests passed.
-- Full frontend suite: `npm.cmd test` exited 0 with 47 files and 377 tests passed.
-- Frontend build: `npm.cmd run build` exited 0; both `@tpverp/app-gestion` and `@tpverp/app-venta` compiled and produced Vite bundles.
-- Diff hygiene: `git diff --check` exited 0 with no whitespace errors; Git emitted only the repository's LF-to-CRLF working-copy notices.
-
-## Self-review
-
-- Only the visible values for `payment.split.title` and `payment.split.start` changed; keys, request paths, types, and payment operations are untouched.
-- Tests cover the pending-payment title and start copy in ES/EN/ZH and reject the legacy title.
-- The uncertain recovery test proves `Consultar estado`, `Gestionar operación`, and `Cancelar sesión de cobro` remain available while cash, manual card, provider, and amount controls remain absent.
-- Existing exceptional-state coverage continues to prove finalization and compensation controls are available in their corresponding states.
-- Strengthened the Task 2 same-tick logout regression: the second click now reopens the menu and invokes the live menu item rather than clicking a detached DOM node; one preparation and one logout are still asserted.
+- Session controls RED: `npm.cmd test -- SessionTopControls.test.tsx` — 4 expected failures because preparation was not invoked and close was immediate; **No** already passed.
+- Session controls GREEN: same command — 5/5 passed.
+- Sale integration RED: `npm.cmd test -- SaleScreen.test.tsx` — 4 expected shutdown wiring failures plus one unhandled logout-preparation rejection.
+- Sale integration GREEN: same command — 40/40 passed with no unhandled errors.
+- Final focused suite: `npm.cmd test -- SessionTopControls.test.tsx SaleScreen.test.tsx SalePaymentCheckout.test.ts` — 3 files, 112/112 passed.
+- Frontend build: `npm.cmd run build` — APP GESTIÓN and APP VENTA TypeScript/Vite builds succeeded.
+- `git diff --check` — exit 0; only repository LF-to-CRLF working-copy notices.
 
 ## Concerns
 
-None identified within Task 3 scope.
+- None identified within Task 3 scope.
