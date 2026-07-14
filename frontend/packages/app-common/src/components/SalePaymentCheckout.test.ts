@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe,expect,it,vi } from "vitest";
-import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,compensationNoteIsEphemeral,compensationGuidanceKey,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
+import { authorizationPasswordIsEphemeral,canManuallyFinalizePayment,checkoutPresentation,compensationNoteIsEphemeral,compensationGuidanceKey,paymentSessionAfterFinalization,paymentSessionLocksSale,stableAllocationAttempt,allocationFailureIsSafePreEffect } from "./SalePaymentCheckout";
 import { SalePaymentCheckout } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -23,6 +23,13 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("selects individual actions when there is no exceptional session",()=>{
+  expect(checkoutPresentation(null)).toBe("INDIVIDUAL_ACTIONS");
+  expect(checkoutPresentation("FINALIZED")).toBe("INDIVIDUAL_ACTIONS");
+ });
+ it("selects recovery controls for an active collecting session",()=>{expect(checkoutPresentation("COLLECTING")).toBe("RECOVERY");});
+ it("selects finalization retry controls for a covered session",()=>{expect(checkoutPresentation("COVERED")).toBe("FINALIZE_RETRY");});
+ it("selects compensation controls when administrative recovery is required",()=>{expect(checkoutPresentation("COMPENSATION_REQUIRED")).toBe("COMPENSATION");});
  it("starts a full-total integrated card allocation with the configured provider",async()=>{
   const session={id:"session-card",total:"12.10",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{

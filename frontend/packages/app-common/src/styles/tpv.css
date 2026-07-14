@@ -9514,6 +9514,51 @@ body,
   gap: 6px !important;
 }
 
+.individual-payment-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.individual-payment-actions button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.58 !important;
+}
+
+.cash-payment-dialog,
+.manual-card-payment-dialog {
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.22) !important;
+}
+
+.manual-card-payment-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px;
+}
+
+.manual-card-payment-dialog [role="dialog"] {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-card-payment-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.manual-card-payment-dialog label {
+  display: grid;
+  gap: 6px;
+  font-weight: 750;
+}
+
+.manual-card-payment-dialog input,
+.manual-card-payment-dialog button {
+  min-height: 36px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: var(--tpv-v3-radius);
+}
+
 .sale-screen.touch-mode .work-shell {
   grid-template-columns: 380px minmax(0, 1fr) !important;
 }
