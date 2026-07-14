@@ -1,7 +1,7 @@
-import { readSheet } from "read-excel-file/browser";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import type { StockInventoryRow } from "./StockScreen";
+import { excelCellText, findExcelColumn, findExcelColumns, readExcelSheet } from "./excelImport";
 
 export type StockBulkEditRowData = {
   id: string;
@@ -595,7 +595,7 @@ export async function importStockBulkFile(
   catalogs: StockBulkImportCatalogs = {}
 ) {
   const t = createTranslator(catalogs.locale ?? "es");
-  const sheet = await readSheet(file);
+  const sheet = await readExcelSheet(file);
   if (sheet.length < 2) {
     return [];
   }
@@ -904,24 +904,6 @@ function importStockBulkBoolean(
       field: t(`stock.bulkEdit.import.field.${field}`)
     }));
   }
-}
-
-function findExcelColumns(headers: string[], keys: readonly string[]) {
-  return headers.flatMap((header, index) => keys.includes(header) ? [index] : []);
-}
-
-function findExcelColumn(headers: string[], keys: readonly string[]) {
-  return headers.findIndex((header) => keys.includes(header));
-}
-
-function excelCellText(value: unknown) {
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-  return text(value).trim();
 }
 
 function normalizedPriceUse(value: unknown) {

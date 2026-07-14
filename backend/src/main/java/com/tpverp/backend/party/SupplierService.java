@@ -69,6 +69,11 @@ public class SupplierService {
     }
 
     @Transactional
+    public void activate(UUID id) {
+        supplier(id).activate();
+    }
+
+    @Transactional
     public void delete(UUID id) {
         Supplier supplier = supplier(id);
         if (suppliers.hasHistory(id)) {

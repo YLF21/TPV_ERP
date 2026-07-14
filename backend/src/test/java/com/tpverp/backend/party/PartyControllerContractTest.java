@@ -7,6 +7,7 @@ import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 
 class PartyControllerContractTest {
 
@@ -30,8 +31,22 @@ class PartyControllerContractTest {
                 .contains("CUSTOMERS_WRITE");
         assertThat(permission(SupplierController.class.getMethod("list")))
                 .contains("SUPPLIERS_READ");
+        assertThat(permission(CustomerController.class.getMethod("activate", java.util.UUID.class)))
+                .contains("CUSTOMERS_WRITE");
+        assertThat(permission(SupplierController.class.getMethod("activate", java.util.UUID.class)))
+                .contains("SUPPLIERS_WRITE");
         assertThat(permission(SalesRepresentativeController.class.getMethod("list")))
                 .contains("SUPPLIERS_READ");
+    }
+
+    @Test
+    void exposesActivationEndpointsAsPatchOperations() throws Exception {
+        assertThat(CustomerController.class.getMethod("activate", java.util.UUID.class)
+                .getAnnotation(PatchMapping.class).value())
+                .containsExactly("/{id}/activate");
+        assertThat(SupplierController.class.getMethod("activate", java.util.UUID.class)
+                .getAnnotation(PatchMapping.class).value())
+                .containsExactly("/{id}/activate");
     }
 
     @Test

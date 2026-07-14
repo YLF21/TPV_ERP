@@ -34,8 +34,8 @@ public class CommercialBootstrapService {
                 storeId,
                 storeId);
         jdbc.update(
-                "insert into familia (id, tienda_id, nombre, predeterminada) "
-                        + "values (?, ?, 'GENERAL', true) on conflict do nothing",
+                "insert into familia (id, tienda_id, family_id, nombre, predeterminada) "
+                        + "values (?, ?, 'GENERAL', 'GENERAL', true) on conflict do nothing",
                 storeId,
                 storeId);
         jdbc.update(

@@ -1,6 +1,7 @@
 package com.tpverp.backend.party;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -96,6 +97,30 @@ class SupplierServiceTest {
                 null, null, null, null));
 
         assertThat(created.supplierId()).isEqualTo("S-000001");
+    }
+
+    @Test
+    void reactivatesSupplierInCurrentCompanyWithoutChangingItsCode() {
+        supplier.assignCode("S-000001");
+        supplier.deactivate();
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(supplier));
+
+        service().activate(supplier.getId());
+        service().activate(supplier.getId());
+
+        assertThat(supplier.isActive()).isTrue();
+        assertThat(supplier.getSupplierId()).isEqualTo("S-000001");
+    }
+
+    @Test
+    void doesNotReactivateSupplierFromAnotherCompany() {
+        when(suppliers.findByIdAndCompanyId(supplier.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().activate(supplier.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no encontrado");
     }
 
     private SupplierService service() {

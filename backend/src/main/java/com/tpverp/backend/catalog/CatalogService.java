@@ -323,6 +323,8 @@ public class CatalogService {
         product.setPrice(PriceTier.OFERTA, offerPrice(request));
         product.configurePriceUse(request.priceUseMode(), request.offerDiscountPercent());
         product.configurePurchaseDiscount(request.purchaseDiscountPercent());
+        product.configureStockLimits(request.stockMin(), request.stockMax());
+        product.configurePackageQuantity(request.packageQuantity());
         product.configureOffer(offerActive(request), request.offerFrom(), request.offerUntil());
     }
 
@@ -647,11 +649,76 @@ public class CatalogService {
             BigDecimal purchaseDiscountPercent,
             boolean offerActive,
             LocalDate offerFrom,
-            LocalDate offerUntil) {
+            LocalDate offerUntil,
+            BigDecimal stockMin,
+            BigDecimal stockMax,
+            BigDecimal packageQuantity) {
 
         public ProductRequest {
             priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
             discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
+        }
+
+        public ProductRequest(
+                UUID familyId,
+                UUID subfamilyId,
+                UUID taxId,
+                ProductType productType,
+                DiscountType discountType,
+                PriceUseMode priceUseMode,
+                String name,
+                String description,
+                String comments,
+                BigDecimal purchasePrice,
+                boolean taxesIncluded,
+                String code,
+                String barcode,
+                String barcode2,
+                BigDecimal salePrice,
+                BigDecimal memberPrice,
+                BigDecimal wholesalePrice,
+                BigDecimal offerPrice,
+                BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent,
+                boolean offerActive,
+                LocalDate offerFrom,
+                LocalDate offerUntil) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
+                    comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
+                    wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
+                    offerFrom, offerUntil, null, null, null);
+        }
+
+        public ProductRequest(
+                UUID familyId,
+                UUID subfamilyId,
+                UUID taxId,
+                ProductType productType,
+                DiscountType discountType,
+                PriceUseMode priceUseMode,
+                String name,
+                String description,
+                String comments,
+                BigDecimal purchasePrice,
+                boolean taxesIncluded,
+                String code,
+                String barcode,
+                String barcode2,
+                BigDecimal salePrice,
+                BigDecimal memberPrice,
+                BigDecimal wholesalePrice,
+                BigDecimal offerPrice,
+                BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent,
+                boolean offerActive,
+                LocalDate offerFrom,
+                LocalDate offerUntil,
+                BigDecimal stockMin,
+                BigDecimal stockMax) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
+                    comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
+                    wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
+                    offerFrom, offerUntil, stockMin, stockMax, null);
         }
     }
 

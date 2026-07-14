@@ -63,6 +63,15 @@ public class Product {
     @Column(name = "descuento_compra_porcentaje", precision = 5, scale = 2)
     private BigDecimal purchaseDiscountPercent;
 
+    @Column(name = "stock_min", precision = 19, scale = 3)
+    private BigDecimal stockMin;
+
+    @Column(name = "stock_max", precision = 19, scale = 3)
+    private BigDecimal stockMax;
+
+    @Column(name = "package_quantity", precision = 19, scale = 3)
+    private BigDecimal packageQuantity = BigDecimal.ONE;
+
     @Column(name = "impuestos_incluidos", nullable = false)
     private boolean taxesIncluded;
 
@@ -231,6 +240,18 @@ public class Product {
         return purchaseDiscountPercent;
     }
 
+    public BigDecimal getStockMin() {
+        return stockMin;
+    }
+
+    public BigDecimal getStockMax() {
+        return stockMax;
+    }
+
+    public BigDecimal getPackageQuantity() {
+        return packageQuantity;
+    }
+
     public boolean isTaxesIncluded() {
         return taxesIncluded;
     }
@@ -386,6 +407,22 @@ public class Product {
         purchaseDiscountPercent = discountPercent;
     }
 
+    public void configureStockLimits(BigDecimal min, BigDecimal max) {
+        stockMin = min;
+        stockMax = max;
+        if (stockMin != null && stockMax != null && stockMax.compareTo(stockMin) < 0) {
+            throw new IllegalArgumentException("stockMax no puede ser menor que stockMin");
+        }
+    }
+
+    public void configurePackageQuantity(BigDecimal quantity) {
+        quantity = quantity == null ? BigDecimal.ONE : quantity;
+        if (quantity.signum() < 0) {
+            throw new IllegalArgumentException("packageQuantity no puede ser negativo");
+        }
+        packageQuantity = quantity;
+    }
+
     private static BigDecimal nonNegative(BigDecimal value, String field) {
         Objects.requireNonNull(value, field);
         if (value.signum() < 0) {
@@ -393,4 +430,5 @@ public class Product {
         }
         return value;
     }
+
 }

@@ -158,6 +158,11 @@ public class CustomerService {
     }
 
     @Transactional
+    public void activate(UUID id) {
+        customer(id).activate();
+    }
+
+    @Transactional
     public CustomerView activateMember(UUID id) {
         Customer customer = customer(id);
         Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())

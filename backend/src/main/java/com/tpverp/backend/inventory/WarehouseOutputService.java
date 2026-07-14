@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -115,15 +116,39 @@ public class WarehouseOutputService {
                         output.getStoreId(), "SAL", Integer.toString(output.getDate().getYear()))
                 .orElseGet(() -> DocumentCounter.salidaAlmacen(
                         output.getStoreId(), output.getDate()));
-        output.confirm(
-                counter.siguienteSalidaAlmacen(output.getDate()),
-                user.getId(),
-                Instant.now(clock));
-        counters.save(counter);
-        for (var line : output.getLines()) {
-            applyLine(output, line, user.getId(), confirmationStocks.get(line.getProductId()));
+        try {
+            output.confirm(nextAvailableNumber(output, counter), user.getId(), Instant.now(clock));
+            outputs.saveAndFlush(output);
+        } catch (DataIntegrityViolationException exception) {
+            throw new WarehouseConfirmationException(
+                    "No se pudo confirmar salida de almacen: conflicto al guardar el documento numerado",
+                    exception);
         }
-        return outputs.save(output);
+        try {
+            counters.saveAndFlush(counter);
+        } catch (DataIntegrityViolationException exception) {
+            throw new WarehouseConfirmationException(
+                    "No se pudo confirmar salida de almacen: conflicto al actualizar el contador",
+                    exception);
+        }
+        try {
+            for (var line : output.getLines()) {
+                applyLine(output, line, user.getId(), confirmationStocks.get(line.getProductId()));
+            }
+            return outputs.saveAndFlush(output);
+        } catch (DataIntegrityViolationException exception) {
+            throw new WarehouseConfirmationException(
+                    "No se pudo confirmar salida de almacen: conflicto al guardar stock o movimientos",
+                    exception);
+        }
+    }
+
+    private String nextAvailableNumber(WarehouseOutput output, DocumentCounter counter) {
+        String number;
+        do {
+            number = counter.siguienteSalidaAlmacen(output.getDate());
+        } while (outputs.findByStoreIdAndNumero(output.getStoreId(), number).isPresent());
+        return number;
     }
 
     private void applyLine(

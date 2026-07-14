@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -12,6 +12,7 @@ export type ProductCreateDialogProps = {
   locale: LocaleCode;
   token?: string;
   editProduct?: ProductCreateEditProduct | null;
+  initialForm?: Partial<ProductCreateFormState>;
   onClose: () => void;
   onCreated?: (product: ProductCreateResponse) => void;
 };
@@ -54,6 +55,9 @@ export type ProductCreateEditProduct = {
 export type ProductCreateInitialData = {
   discountType?: DiscountTypeCode | null;
   purchaseDiscountPercent?: string | number | null;
+  packageQuantity?: string | number | null;
+  stockMin?: string | number | null;
+  stockMax?: string | number | null;
 };
 
 export type ProductCreateFieldName =
@@ -193,6 +197,19 @@ export function createProductFormFromEditProduct(product?: ProductCreateEditProd
   return form;
 }
 
+export function createProductFormFromInitial(
+  product?: ProductCreateEditProduct | null,
+  initialForm?: Partial<ProductCreateFormState>
+): ProductCreateFormState {
+  if (product) {
+    return createProductFormFromEditProduct(product);
+  }
+  return {
+    ...createDefaultProductForm(),
+    ...(initialForm ?? {})
+  };
+}
+
 export function applyProductRequiredDefaults(
   form: ProductCreateFormState,
   families: FamilyView[] = [],
@@ -236,6 +253,9 @@ export function buildCreateProductRequest(
     offerPrice: noDiscountLocked ? null : emptyToNull(offerPrice),
     offerDiscountPercent: noDiscountLocked ? null : emptyToNull(form.offerDiscountPercent),
     purchaseDiscountPercent: preservedNullableDecimal(initialData?.purchaseDiscountPercent),
+    packageQuantity: preservedNullableDecimal(initialData?.packageQuantity) ?? "1",
+    stockMin: preservedNullableDecimal(initialData?.stockMin),
+    stockMax: preservedNullableDecimal(initialData?.stockMax),
     offerActive,
     offerFrom: emptyToNull(form.offerFrom),
     offerUntil: emptyToNull(form.offerUntil)
@@ -593,9 +613,15 @@ export async function saveProductWithOptionalImage({
   }
 }
 
-export function productCreateErrorMessage(error: unknown, fallback: string) {
+export function productCreateErrorMessage(error: unknown, fallback: string, conflictFallback = fallback) {
   if (error instanceof TypeError || (error instanceof Error && error.message === "Failed to write request")) {
     return fallback;
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    const code = typeof error.problem?.code === "string" ? error.problem.code : "";
+    if (code === "DATA_INTEGRITY_CONFLICT" || code === "STATE_CONFLICT") {
+      return conflictFallback;
+    }
   }
   return error instanceof Error ? error.message : fallback;
 }
@@ -632,11 +658,13 @@ export function ProductCreateDialog({
   locale,
   token,
   editProduct,
+  initialForm,
   onClose,
   onCreated
 }: ProductCreateDialogProps) {
   const t = createTranslator(locale);
-  const [form, setForm] = useState<ProductCreateFormState>(() => createProductFormFromEditProduct(editProduct));
+  const initialFormSignature = JSON.stringify(initialForm ?? {});
+  const [form, setForm] = useState<ProductCreateFormState>(() => createProductFormFromInitial(editProduct, initialForm));
   const [families, setFamilies] = useState<FamilyView[]>([]);
   const [subfamilies, setSubfamilies] = useState<SubfamilyView[]>([]);
   const [taxes, setTaxes] = useState<TaxView[]>([]);
@@ -664,7 +692,7 @@ export function ProductCreateDialog({
   const invalidFields = new Set(validationErrors);
 
   function resetDialogState() {
-    setForm(createProductFormFromEditProduct(editProduct));
+    setForm(createProductFormFromInitial(editProduct, initialForm));
     setStatus("");
     setTouchedErrors([]);
     setSaving(false);
@@ -696,7 +724,7 @@ export function ProductCreateDialog({
     if (!open) {
       return;
     }
-    const nextForm = createProductFormFromEditProduct(editProduct);
+    const nextForm = createProductFormFromInitial(editProduct, initialForm);
     setForm(nextForm);
     setSelectedProductFamily({
       familyId: nextForm.familyId,
@@ -710,7 +738,7 @@ export function ProductCreateDialog({
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
     changeImage(null);
-  }, [open, editProduct?.id]);
+  }, [open, editProduct?.id, initialFormSignature]);
 
   useEffect(() => {
     if (!open || !token) {
@@ -782,6 +810,32 @@ export function ProductCreateDialog({
     window.addEventListener("keydown", handleProductShortcut);
     return () => window.removeEventListener("keydown", handleProductShortcut);
   }, [open, form, token, imageFile, saving]);
+
+  useEffect(() => {
+    if (!open || (!openDropdown && !offerPickerOpen)) {
+      return;
+    }
+    function closeProductDropdownsOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        setOpenDropdown("");
+        setOfferPickerOpen(false);
+        return;
+      }
+      if (
+        target.closest(".product-dropdown-field.open")
+        || target.closest(".product-select-popover")
+        || target.closest(".product-offer-range.open")
+        || target.closest(".date-range-popover")
+      ) {
+        return;
+      }
+      setOpenDropdown("");
+      setOfferPickerOpen(false);
+    }
+    document.addEventListener("pointerdown", closeProductDropdownsOnOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", closeProductDropdownsOnOutsidePointer, true);
+  }, [open, openDropdown, offerPickerOpen]);
 
   if (!open) {
     return null;
@@ -1188,7 +1242,7 @@ export function ProductCreateDialog({
         onClose();
       }
     } catch (error) {
-      setStatus(productCreateErrorMessage(error, t("product.create.saveError")));
+      setStatus(productCreateErrorMessage(error, t("product.create.saveError"), t("product.create.duplicateIdentifier")));
     } finally {
       if (!closeAfterSave) {
         setSaving(false);

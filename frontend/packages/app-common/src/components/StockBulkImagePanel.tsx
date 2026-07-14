@@ -618,7 +618,7 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
                 </div>
                 <span className="stock-bulk-image-state" style={{ gridColumn: "span 2" }}>
                   {t(`stock.bulkEdit.images.status.${row.status}`)}
-                  {product && <small>{product.name}</small>}
+                  {product && <small className="product-name-text">{product.name}</small>}
                   {row.error && <small>{row.error}</small>}
                 </span>
               </div>

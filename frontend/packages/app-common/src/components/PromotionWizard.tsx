@@ -809,7 +809,7 @@ export function PromotionWizard({ locale, session, initialDraft, onCreated }: Pr
                         onClick={() => togglePickerTarget(option.id)}
                         onDoubleClick={() => applyTargetOnDoubleClick(option.id)}
                       >
-                        {option.label}
+                        <span className={draft.scope === "PRODUCT_LIST" ? "product-name-text" : ""}>{option.label}</span>
                       </button>
                     </div>
                   </div>

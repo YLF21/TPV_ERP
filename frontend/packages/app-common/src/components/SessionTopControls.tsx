@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { LocaleCode, UserSession } from "../types";
 import languageIcon from "../assets/language.png";
 import { TopDateTime } from "./TopDateTime";
+import { useOutsidePointerDown } from "./useOutsidePointerDown";
 
 type SessionTopControlsProps = {
   locale: LocaleCode;
@@ -45,6 +46,11 @@ export function SessionTopControls({
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [shutdownPreparing, setShutdownPreparing] = useState(false);
   const shutdownPreparingRef = useRef(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const languagePickerRef = useRef<HTMLDivElement | null>(null);
+
+  useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
+  useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
   function closeApplication() {
     if (window.tpvDesktop) {
@@ -76,69 +82,73 @@ export function SessionTopControls({
   return (
     <>
       <TopDateTime locale={locale} />
-      <button
-        type="button"
-        className="report-user-button"
-        aria-expanded={userMenuOpen}
-        aria-haspopup="menu"
-        aria-label={session.displayName}
-        title={session.displayName}
-        onClick={() => {
-          setLanguageOpen(false);
-          setUserMenuOpen((open) => !open);
-        }}
-      >
-        {session.displayName}
-      </button>
-      {userMenuOpen && (
-        <section className="report-user-menu" role="menu" aria-label={session.displayName}>
-          <button type="button" role="menuitem" onClick={() => setUserMenuOpen(false)}>
-            {changePasswordLabel}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setUserMenuOpen(false);
-              onLogout?.();
-            }}
-          >
-            {logoutLabel}
-          </button>
-        </section>
-      )}
-      <button
-        type="button"
-        className="language-button"
-        aria-expanded={languageOpen}
-        aria-haspopup="listbox"
-        aria-label={languageLabel}
-        title={languageLabel}
-        onClick={() => {
-          setUserMenuOpen(false);
-          setLanguageOpen((open) => !open);
-        }}
-      >
-        <img alt="" src={languageIcon} />
-      </button>
-      {languageOpen && (
-        <section className="language-picker" aria-label={languageLabel}>
-          {languageOptions.map((option) => (
+      <div ref={userMenuRef} style={{ display: "contents" }}>
+        <button
+          type="button"
+          className="report-user-button"
+          aria-expanded={userMenuOpen}
+          aria-haspopup="menu"
+          aria-label={session.displayName}
+          title={session.displayName}
+          onClick={() => {
+            setLanguageOpen(false);
+            setUserMenuOpen((open) => !open);
+          }}
+        >
+          {session.displayName}
+        </button>
+        {userMenuOpen && (
+          <section className="report-user-menu" role="menu" aria-label={session.displayName}>
+            <button type="button" role="menuitem" onClick={() => setUserMenuOpen(false)}>
+              {changePasswordLabel}
+            </button>
             <button
               type="button"
-              className={option.code === locale ? "selected" : ""}
-              key={option.code}
+              role="menuitem"
               onClick={() => {
-                onLocaleChange(option.code);
-                setLanguageOpen(false);
+                setUserMenuOpen(false);
+                onLogout?.();
               }}
             >
-              <span>{option.label}</span>
-              <strong>{option.code.toUpperCase()}</strong>
+              {logoutLabel}
             </button>
-          ))}
-        </section>
-      )}
+          </section>
+        )}
+      </div>
+      <div ref={languagePickerRef} style={{ display: "contents" }}>
+        <button
+          type="button"
+          className="language-button"
+          aria-expanded={languageOpen}
+          aria-haspopup="listbox"
+          aria-label={languageLabel}
+          title={languageLabel}
+          onClick={() => {
+            setUserMenuOpen(false);
+            setLanguageOpen((open) => !open);
+          }}
+        >
+          <img alt="" src={languageIcon} />
+        </button>
+        {languageOpen && (
+          <section className="language-picker" aria-label={languageLabel}>
+            {languageOptions.map((option) => (
+              <button
+                type="button"
+                className={option.code === locale ? "selected" : ""}
+                key={option.code}
+                onClick={() => {
+                  onLocaleChange(option.code);
+                  setLanguageOpen(false);
+                }}
+              >
+                <span>{option.label}</span>
+                <strong>{option.code.toUpperCase()}</strong>
+              </button>
+            ))}
+          </section>
+        )}
+      </div>
       <button
         type="button"
         className="shutdown-button"

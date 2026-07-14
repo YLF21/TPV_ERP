@@ -60,6 +60,13 @@ public class SupplierController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_WRITE')")
+    public ResponseEntity<Void> activate(@PathVariable UUID id) {
+        service.activate(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_DELETE')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {

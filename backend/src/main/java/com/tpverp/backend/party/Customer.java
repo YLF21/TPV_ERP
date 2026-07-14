@@ -154,6 +154,10 @@ public class Customer {
         activo = false;
     }
 
+    public void activate() {
+        activo = true;
+    }
+
     public UUID getId() {
         return id;
     }

@@ -5,6 +5,7 @@ import {
   warehouseOperationsCanDelete,
   warehouseOperationsCanOpen,
   warehouseOperationsDelete,
+  warehouseOperationsErrorMessage,
   warehouseOperationsFilter,
   warehouseOperationsLoad,
   warehouseOperationsNextId,
@@ -179,5 +180,16 @@ describe("WarehouseOperationsPanel", () => {
     expect(html).not.toContain("Imprimir");
     expect(html).toContain("erp-select__trigger");
     expect(html).not.toContain("<select");
+  });
+
+  it("does not expose low-level write errors in the operations list", () => {
+    expect(warehouseOperationsErrorMessage(
+      new TypeError("Failed to write request"),
+      "No se pudieron cargar los documentos de almacen"
+    )).toBe("No se pudieron cargar los documentos de almacen");
+    expect(warehouseOperationsErrorMessage(
+      new Error("Failed to write request"),
+      "No se pudieron cargar los documentos de almacen"
+    )).toBe("No se pudieron cargar los documentos de almacen");
   });
 });

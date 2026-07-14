@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent, ReactNode } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
+import { PartyDirectoryPanel } from "./PartyDirectoryPanel";
+import type { PartyDirectoryKind } from "./PartyDirectoryPanel";
 import type { ProductCreateEditProduct, ProductCreateFormState } from "./ProductCreateDialog";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
@@ -68,6 +70,7 @@ import { StockBulkWorkspaceList } from "./StockBulkWorkspaceList";
 import { StockPromotionGroups } from "./StockPromotionGroups";
 import type { PromotionView } from "./PromotionForm";
 import { ErpSelect } from "./ErpSelect";
+import { excelImportAccept } from "./excelImport";
 import { enterNavigationIntent, nextEnterTargetIndex } from "./keyboardNavigation";
 import stockFilterIcon from "../assets/stock/filter.png";
 import stockSearchIcon from "../assets/stock/search.png";
@@ -152,6 +155,9 @@ type ProductView = {
   comments?: string | null;
   purchasePrice?: number | string | null;
   purchaseDiscountPercent?: number | string | null;
+  packageQuantity?: number | string | null;
+  stockMin?: number | string | null;
+  stockMax?: number | string | null;
   salePrice?: number | string | null;
   memberPrice?: number | string | null;
   wholesalePrice?: number | string | null;
@@ -266,6 +272,10 @@ export type StockInventoryRow = {
   comments?: string;
   purchasePrice: string;
   purchaseDiscountPercent?: string;
+  packageQuantity?: string;
+  stockMin?: string;
+  stockMax?: string;
+  supplierName?: string;
   salePrice: string;
   memberPrice: string;
   wholesalePrice: string;
@@ -336,6 +346,7 @@ export type StockInventoryFilters = {
 export type StockColumnSetting = {
   key: string;
   width: number;
+  visible?: boolean;
 };
 
 export type StockTopSalesFamilyNode = {
@@ -413,10 +424,12 @@ const stockInventoryColumns: StockColumnDefinition[] = [
   { key: "name", labelKey: "stock.column.name", defaultWidth: 220 },
   { key: "type", labelKey: "stock.column.type", defaultWidth: 88 },
   { key: "discount", labelKey: "product.field.usePrice", defaultWidth: 120 },
+  { key: "supplier", labelKey: "stock.column.supplier", defaultWidth: 180 },
   { key: "family", labelKey: "stock.column.family", defaultWidth: 180 },
   { key: "subfamily", labelKey: "stock.column.subfamily", defaultWidth: 180 },
   { key: "tax", labelKey: "stock.column.tax", defaultWidth: 180 },
   { key: "taxIncluded", labelKey: "stock.column.taxIncluded", defaultWidth: 82 },
+  { key: "packageQuantity", labelKey: "stock.column.packageQuantity", defaultWidth: 112 },
   { key: "purchasePrice", labelKey: "stock.column.purchasePrice", defaultWidth: 86 },
   { key: "salePrice", labelKey: "stock.column.salePrice", defaultWidth: 86 },
   { key: "memberPrice", labelKey: "stock.column.memberPrice", defaultWidth: 86 },
@@ -428,6 +441,8 @@ const stockInventoryColumns: StockColumnDefinition[] = [
   { key: "warehouse", labelKey: "stock.column.warehouse", defaultWidth: 140 },
   { key: "localStock", labelKey: "stock.column.localStock", defaultWidth: 96 },
   { key: "totalStock", labelKey: "stock.column.totalStock", defaultWidth: 96 },
+  { key: "stockMin", labelKey: "stock.column.stockMin", defaultWidth: 92 },
+  { key: "stockMax", labelKey: "stock.column.stockMax", defaultWidth: 92 },
   { key: "status", labelKey: "stock.column.status", defaultWidth: 180 }
 ];
 
@@ -597,7 +612,8 @@ function clampStockColumnWidth(width: number) {
 function stockColumnDefaultsForView(view: StockViewKey): StockColumnSetting[] {
   return stockColumnDefinitions[view].map((column) => ({
     key: column.key,
-    width: column.defaultWidth
+    width: column.defaultWidth,
+    visible: true
   }));
 }
 
@@ -625,7 +641,7 @@ export function sanitizeStockColumnSettings(saved?: Partial<Record<StockViewKey,
         return columns;
       }
       seen.add(column.key);
-      columns.push({ key: column.key, width: clampStockColumnWidth(column.width) });
+      columns.push({ key: column.key, width: clampStockColumnWidth(column.width), visible: column.visible !== false });
       return columns;
     }, []);
 
@@ -661,8 +677,45 @@ export function resizeStockColumn(settings: StockColumnSettingsByView, view: Sto
   };
 }
 
+export function reorderStockColumn(settings: StockColumnSettingsByView, view: StockViewKey, columnKey: string, targetKey: string): StockColumnSettingsByView {
+  if (columnKey === targetKey) {
+    return settings;
+  }
+  const columns = [...settings[view]];
+  const from = columns.findIndex((column) => column.key === columnKey);
+  const to = columns.findIndex((column) => column.key === targetKey);
+  if (from < 0 || to < 0) {
+    return settings;
+  }
+  const [column] = columns.splice(from, 1);
+  columns.splice(to, 0, column);
+  return { ...settings, [view]: columns };
+}
+
+export function toggleStockColumnVisibility(settings: StockColumnSettingsByView, view: StockViewKey, columnKey: string): StockColumnSettingsByView {
+  const visibleCount = settings[view].filter((column) => column.visible !== false).length;
+  return {
+    ...settings,
+    [view]: settings[view].map((column) => {
+      if (column.key !== columnKey) {
+        return column;
+      }
+      const nextVisible = column.visible === false;
+      if (!nextVisible && visibleCount <= 1) {
+        return column;
+      }
+      return { ...column, visible: nextVisible };
+    })
+  };
+}
+
+export function visibleStockColumns(columns: StockColumnSetting[]) {
+  const visible = columns.filter((column) => column.visible !== false);
+  return visible.length > 0 ? visible : columns.slice(0, 1);
+}
+
 export function stockColumnGridTemplate(columns: StockColumnSetting[]) {
-  return columns.map((column) => `${column.width}px`).join(" ");
+  return visibleStockColumns(columns).map((column) => `${column.width}px`).join(" ");
 }
 
 export function stockTableShouldAutoFocus(selectedView: StockViewKey, state: StockTableFocusState) {
@@ -738,7 +791,10 @@ export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEdit
     id: row.productId,
     initialData: {
       discountType: discountTypeForForm(backendDiscountType),
-      purchaseDiscountPercent: row.purchaseDiscountPercent || null
+      purchaseDiscountPercent: row.purchaseDiscountPercent || null,
+      packageQuantity: row.packageQuantity || null,
+      stockMin: row.stockMin || null,
+      stockMax: row.stockMax || null
     },
     form: {
       familyId: row.familyId,
@@ -793,6 +849,22 @@ export function userCanCreateWarehouseOutput(session: Pick<UserSession, "permiss
 
 export function userCanManageWarehouses(session: Pick<UserSession, "permissions">) {
   return userHasStockPermission(session, "WAREHOUSES_MANAGE");
+}
+
+export function stockNavigationStateForWarehouseMode(mode: WarehouseDocumentMode) {
+  return {
+    partyDirectory: null as PartyDirectoryKind | null,
+    warehouseDocumentMode: mode
+  };
+}
+
+export function stockViewIsSelected(
+  selectedView: StockViewKey,
+  view: StockViewKey,
+  warehouseDocumentMode: WarehouseDocumentMode | null,
+  partyDirectory: PartyDirectoryKind | null
+) {
+  return !warehouseDocumentMode && !partyDirectory && selectedView === view;
 }
 
 function uniqueProductRows(rows: StockInventoryRow[]) {
@@ -998,6 +1070,10 @@ export function buildStockInventoryRows(
       comments: valueText(product.comments),
       purchasePrice: valueText(product.purchasePrice),
       purchaseDiscountPercent: valueText(product.purchaseDiscountPercent),
+      packageQuantity: valueText(product.packageQuantity ?? 1),
+      stockMin: valueText(product.stockMin),
+      stockMax: valueText(product.stockMax),
+      supplierName: "",
       salePrice: valueText(product.salePrice),
       memberPrice: valueText(product.memberPrice),
       wholesalePrice: valueText(product.wholesalePrice),
@@ -1086,6 +1162,29 @@ export function selectStockInventoryRows(
     current.totalQuantity = current.quantity;
   });
   return Array.from(rowsByProduct.values());
+}
+
+function supplierNameForStockRow(productId: string, links: StockBulkStoreSupplierLink[]) {
+  const suppliers = links
+    .filter((link) => link.productId === productId)
+    .sort((left, right) => {
+      const lastDifference = Number(Boolean(right.lastSupplier)) - Number(Boolean(left.lastSupplier));
+      if (lastDifference !== 0) return lastDifference;
+      const principalDifference = Number(Boolean(right.principal)) - Number(Boolean(left.principal));
+      if (principalDifference !== 0) return principalDifference;
+      return left.legalName.localeCompare(right.legalName, undefined, { sensitivity: "base" });
+    });
+  return suppliers[0]?.legalName ?? "";
+}
+
+function attachSupplierNamesToStockRows(rows: StockInventoryRow[], links: StockBulkStoreSupplierLink[]) {
+  if (links.length === 0) {
+    return rows;
+  }
+  return rows.map((row) => ({
+    ...row,
+    supplierName: supplierNameForStockRow(row.productId, links)
+  }));
 }
 
 export async function loadStockSubfamilies(
@@ -1554,6 +1653,7 @@ export function StockScreen({
   const t = createTranslator(locale);
   const stockTitle = t("home.stock").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
   const [selectedView, setSelectedView] = useState<StockViewKey>("stock.current");
+  const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(null);
   const [searchText, setSearchText] = useState("");
   const [allStockRows, setAllStockRows] = useState<StockInventoryRow[]>([]);
   const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseView[]>([]);
@@ -1800,8 +1900,8 @@ export function StockScreen({
 
   const effectiveWarehouseId = inventoryFilters.warehouse || defaultWarehouseId || allStockRows[0]?.warehouseId || "";
   const stockRows = useMemo(
-    () => selectStockInventoryRows(allStockRows, effectiveWarehouseId),
-    [allStockRows, effectiveWarehouseId]
+    () => attachSupplierNamesToStockRows(selectStockInventoryRows(allStockRows, effectiveWarehouseId), bulkProductSupplierLinks),
+    [allStockRows, bulkProductSupplierLinks, effectiveWarehouseId]
   );
   const visibleRows = filterStockInventoryRows(stockRows, selectedView, searchText, inventoryFilters);
   const visibleTopSalesRows = filterStockTopSalesRows(topSalesRows, topSalesFilters);
@@ -1827,7 +1927,7 @@ export function StockScreen({
   useEffect(() => {
     let cancelled = false;
     setBulkProductSupplierLinksReady(false);
-    if (selectedView !== "stock.bulkEdit" || !session.accessToken || !canManageProducts) {
+    if (!session.accessToken || !canManageProducts) {
       setBulkProductSupplierLinks([]);
       return;
     }
@@ -1848,7 +1948,7 @@ export function StockScreen({
     return () => {
       cancelled = true;
     };
-  }, [canManageProducts, selectedView, session.accessToken, stockRefreshCounter]);
+  }, [canManageProducts, session.accessToken, stockRefreshCounter]);
 
   useEffect(() => {
     if (!bulkProductSupplierLinksReady) return;
@@ -1880,6 +1980,12 @@ export function StockScreen({
     : canManageProducts
       ? stockViews
       : stockViews.filter((view) => view !== "stock.bulkEdit");
+  const canReadCustomers = session.permissions.includes("ADMIN") || session.permissions.includes("CUSTOMERS_READ");
+  const canReadSuppliers = session.permissions.includes("ADMIN") || session.permissions.includes("SUPPLIERS_READ");
+  const visiblePartyDirectories: PartyDirectoryKind[] = [
+    ...(canReadCustomers ? ["customers", "members"] as PartyDirectoryKind[] : []),
+    ...(canReadSuppliers ? ["suppliers"] as PartyDirectoryKind[] : [])
+  ];
   const bulkProducts = useMemo(() => uniqueProductRows(stockRows), [stockRows]);
   const filteredBulkRows = filterStockBulkRows(bulkRows, bulkFilters).filter((row) => {
     const normalized = normalizeBulkQuery(bulkSearchText);
@@ -1927,12 +2033,17 @@ export function StockScreen({
     code: product.code,
     barcode: product.barcode,
     reference: product.barcode2 ?? undefined,
-    name: product.name
+    name: product.name,
+    discountType: product.discountType,
+    salePrice: product.salePrice,
+    wholesalePrice: product.wholesalePrice,
+    purchasePrice: product.purchasePrice
   }));
   const warehouseOptions: WarehouseOption[] = warehouseCatalog
     .filter((warehouse) => warehouse.active !== false)
     .map((warehouse) => ({ id: warehouse.id, name: valueText(warehouse.name ?? warehouse.id) }));
   const selectedColumnSettings = columnSettings[selectedView];
+  const visibleSelectedColumnSettings = visibleStockColumns(selectedColumnSettings);
   const selectedColumnDefinitions = stockColumnDefinitions[selectedView];
   const selectedColumnDefinitionByKey = new Map(selectedColumnDefinitions.map((column) => [column.key, column]));
   const selectedGridStyle: CSSProperties = {
@@ -2125,8 +2236,8 @@ export function StockScreen({
       setBulkImportOpen(false);
       setBulkEditSelectedOpen(false);
     };
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [bulkEditSelectedOpen, bulkFileOpen]);
 
   useEffect(() => {
@@ -3669,6 +3780,14 @@ export function StockScreen({
     setColumnSettings((current) => moveStockColumn(current, selectedView, columnKey, direction));
   }
 
+  function reorderSelectedColumn(columnKey: string, targetKey: string) {
+    setColumnSettings((current) => reorderStockColumn(current, selectedView, columnKey, targetKey));
+  }
+
+  function toggleSelectedColumnVisibility(columnKey: string) {
+    setColumnSettings((current) => toggleStockColumnVisibility(current, selectedView, columnKey));
+  }
+
   function resizeSelectedColumn(columnKey: string, width: number) {
     setColumnSettings((current) => resizeStockColumn(current, selectedView, columnKey, width));
   }
@@ -3690,7 +3809,7 @@ export function StockScreen({
   function renderStockHeader() {
     return (
       <div className="stock-row stock-row-head" style={selectedGridStyle}>
-        {selectedColumnSettings.map((column) => (
+        {visibleSelectedColumnSettings.map((column) => (
           <span className="stock-header-cell" key={column.key}>
             {t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
             <button
@@ -3774,7 +3893,7 @@ export function StockScreen({
       return <span>{row.barcode}</span>;
     }
     if (columnKey === "name") {
-      return <span>{row.name}</span>;
+      return <span className="product-name-text">{row.name}</span>;
     }
     if (columnKey === "family") {
       return <span>{row.familyName}</span>;
@@ -3808,7 +3927,7 @@ export function StockScreen({
       return <span>{row.barcode}</span>;
     }
     if (columnKey === "name") {
-      return <span>{row.name}</span>;
+      return <span className="product-name-text">{row.name}</span>;
     }
     if (columnKey === "type") {
       return <span>{row.productType === "-" ? row.productType : t(stockProductTypeLabel(row.productType))}</span>;
@@ -3816,6 +3935,9 @@ export function StockScreen({
     if (columnKey === "discount") {
       const discountType = row.backendDiscountType === "NONE" ? "NONE" : row.discountType;
       return <span>{discountType === "-" ? discountType : t(stockDiscountTypeLabel(discountType))}</span>;
+    }
+    if (columnKey === "supplier") {
+      return <span>{row.supplierName || "-"}</span>;
     }
     if (columnKey === "family") {
       return <span>{row.familyName}</span>;
@@ -3828,6 +3950,9 @@ export function StockScreen({
     }
     if (columnKey === "taxIncluded") {
       return <span>{t(row.taxesIncluded)}</span>;
+    }
+    if (columnKey === "packageQuantity") {
+      return <span>{row.packageQuantity || "-"}</span>;
     }
     if (columnKey === "purchasePrice") {
       return <span>{row.purchasePrice}</span>;
@@ -3876,6 +4001,12 @@ export function StockScreen({
     }
     if (columnKey === "totalStock") {
       return <b>{row.totalQuantity}</b>;
+    }
+    if (columnKey === "stockMin") {
+      return <span>{row.stockMin || "-"}</span>;
+    }
+    if (columnKey === "stockMax") {
+      return <span>{row.stockMax || "-"}</span>;
     }
     if (columnKey === "status") {
       return <em>{t(stockInventoryStatus(row.quantity))}</em>;
@@ -4048,7 +4179,7 @@ export function StockScreen({
   function renderBulkPricePair(row: StockBulkEditRow, key: keyof StockInventoryRow, labelKey: string) {
     return (
       <div className="bulk-edit-pair">
-        <span className="bulk-before">{valueText(row.product?.[key])}</span>
+        <span className={`bulk-before ${key === "name" ? "product-name-text" : ""}`}>{valueText(row.product?.[key])}</span>
         {renderBulkEditableCell(row, key, labelKey)}
       </div>
     );
@@ -4251,7 +4382,7 @@ export function StockScreen({
       return (
         <div className={rowClassName} data-bulk-row-id={row.id} key={row.id}>
           {commonStart}
-          <span>{bulkValue(row, "name")}</span>
+          <span className="product-name-text">{bulkValue(row, "name")}</span>
           {renderBulkPriceUseCell(row)}
           {renderBulkEditableCell(row, "purchaseDiscountPercent" as keyof StockInventoryRow, "stock.column.purchaseDiscount")}
           {renderBulkPricePair(row, "purchasePrice", "stock.column.purchasePrice")}
@@ -4267,7 +4398,7 @@ export function StockScreen({
       return (
         <div className={rowClassName} data-bulk-row-id={row.id} key={row.id}>
           {commonStart}
-          <span>{bulkValue(row, "name")}</span>
+          <span className="product-name-text">{bulkValue(row, "name")}</span>
           {renderBulkPriceUseCell(row)}
           {renderBulkOfferActiveCell(row)}
           {renderBulkEditableCell(row, "purchaseDiscountPercent" as keyof StockInventoryRow, "stock.column.purchaseDiscount")}
@@ -4303,7 +4434,7 @@ export function StockScreen({
       return (
         <div className={rowClassName} data-bulk-row-id={row.id} key={row.id}>
           {renderCommonStart(false)}
-          <span>{bulkValue(row, "name")}</span>
+          <span className="product-name-text">{bulkValue(row, "name")}</span>
           <div
             className={`bulk-supplier-cell ${row.pendingSupplier ? "changed" : ""}`}
             title={supplierNames || undefined}
@@ -4936,7 +5067,7 @@ export function StockScreen({
             {bulkFinderMatches.length === 0 && <span className="stock-empty-state">{t("stock.bulkEdit.noMatches")}</span>}
             {bulkFinderMatches.map((product) => (
               <button type="button" className="bulk-finder-row" key={product.productId} onDoubleClick={() => assignBulkProduct(bulkFinder.rowId, product)} onClick={() => assignBulkProduct(bulkFinder.rowId, product)}>
-                <strong>{product.name}</strong>
+                <strong className="product-name-text">{product.name}</strong>
                 <span>{product.code} - {product.barcode}</span>
               </button>
             ))}
@@ -5351,7 +5482,7 @@ export function StockScreen({
           ref={bulkFileInputRef}
           className="bulk-file-input"
           type="file"
-          accept=".xlsx,.xls"
+          accept={excelImportAccept}
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) {
@@ -5645,14 +5776,15 @@ export function StockScreen({
         </header>
 
         <aside className="stock-nav">
-          <strong>{stockTitle}</strong>
+          {!(selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor") && <strong>{stockTitle}</strong>}
           {visibleStockViews.map((view) => (
             <button
               type="button"
-              className={!warehouseDocumentMode && selectedView === view ? "selected" : ""}
+              className={stockViewIsSelected(selectedView, view, warehouseDocumentMode, partyDirectory) ? "selected" : ""}
               key={view}
               onClick={() => {
                 setWarehouseDocumentMode(null);
+                setPartyDirectory(null);
                 setSelectedView(view);
               }}
             >
@@ -5660,16 +5792,32 @@ export function StockScreen({
             </button>
           ))}
 
+          {visiblePartyDirectories.length > 0 && <strong className="stock-nav-section">{t("party.section")}</strong>}
+          {visiblePartyDirectories.map((kind) => (
+            <button type="button" className={partyDirectory === kind ? "selected" : ""} key={kind} onClick={() => {
+              setWarehouseDocumentMode(null);
+              setPartyDirectory(kind);
+            }}>{t(`party.${kind}.title`)}</button>
+          ))}
+
           {(canReadWarehouseInput || canReadWarehouseOutput) && (
             <>
               <strong className="stock-nav-section">{t("stock.warehouse")}</strong>
               {canReadWarehouseInput && (
-                <button type="button" className={warehouseDocumentMode === "input" ? "selected" : ""} onClick={() => setWarehouseDocumentMode("input")}>
+                <button type="button" className={!partyDirectory && warehouseDocumentMode === "input" ? "selected" : ""} onClick={() => {
+                  const nextState = stockNavigationStateForWarehouseMode("input");
+                  setPartyDirectory(nextState.partyDirectory);
+                  setWarehouseDocumentMode(nextState.warehouseDocumentMode);
+                }}>
                   {t("stock.nav.inputWarehouse")}
                 </button>
               )}
               {canReadWarehouseOutput && (
-                <button type="button" className={warehouseDocumentMode === "output" ? "selected" : ""} onClick={() => setWarehouseDocumentMode("output")}>
+                <button type="button" className={!partyDirectory && warehouseDocumentMode === "output" ? "selected" : ""} onClick={() => {
+                  const nextState = stockNavigationStateForWarehouseMode("output");
+                  setPartyDirectory(nextState.partyDirectory);
+                  setWarehouseDocumentMode(nextState.warehouseDocumentMode);
+                }}>
                   {t("stock.nav.outputWarehouse")}
                 </button>
               )}
@@ -5689,8 +5837,8 @@ export function StockScreen({
           </button>
         </aside>
 
-        <section className={`stock-list work-panel ${!warehouseDocumentMode && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={warehouseDocumentMode ? t(warehouseDocumentMode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse") : selectedViewLabel}>
-          {warehouseDocumentMode ? (
+        <section className={`stock-list work-panel ${!warehouseDocumentMode && !partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : warehouseDocumentMode ? t(warehouseDocumentMode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse") : selectedViewLabel}>
+          {partyDirectory ? null : warehouseDocumentMode ? (
             <header className="work-panel-heading stock-panel-heading">
               <div>
                 <h2>{t(warehouseDocumentMode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse")}</h2>
@@ -5719,7 +5867,9 @@ export function StockScreen({
               )}
             </header>
           )}
-          {warehouseDocumentMode ? (
+          {partyDirectory ? (
+            <PartyDirectoryPanel kind={partyDirectory} locale={locale} session={session} />
+          ) : warehouseDocumentMode ? (
             <WarehouseOperationsPanel
               mode={warehouseDocumentMode}
               token={session.accessToken}
@@ -5729,6 +5879,7 @@ export function StockScreen({
               suppliers={warehouseSuppliers}
               t={t}
               locale={locale}
+              terminalContext={terminalContext}
               defaultWarehouseId={stockSettings?.defaultWarehouseId}
               permissions={warehouseDocumentMode === "input" ? {
                 read: canReadWarehouseInput,
@@ -5743,7 +5894,10 @@ export function StockScreen({
                 delete: userHasStockPermission(session, "WAREHOUSE_OUTPUTS_DELETE"),
                 canConfirm: userHasStockPermission(session, "WAREHOUSE_OUTPUTS_CONFIRM")
               }}
-              onClose={() => setWarehouseDocumentMode(null)}
+              onClose={() => {
+                setWarehouseDocumentMode(null);
+                setPartyDirectory(null);
+              }}
               onConfirmed={() => setStockRefreshCounter((current) => current + 1)}
               onError={(error) => setStatus(error instanceof Error ? error.message : "stock.status.noData")}
             />
@@ -5784,7 +5938,7 @@ export function StockScreen({
                 {visibleTopSalesRows.length === 0 && <div className="stock-empty-state">{topSalesRows.length === 0 ? t(topSalesStatus) : t("stock.status.noResults")}</div>}
                 {visibleTopSalesRows.map((row, index) => (
                   <article className="stock-row" key={`${row.productId}-${row.warehouseId ?? "all"}`} style={selectedGridStyle}>
-                    {selectedColumnSettings.map((column) => (
+                    {visibleSelectedColumnSettings.map((column) => (
                       <span className="stock-cell" key={column.key}>
                         {renderTopSalesCell(row, index, column.key)}
                       </span>
@@ -5826,7 +5980,7 @@ export function StockScreen({
                     onClick={() => setSelectedStockIndex(index)}
                     onDoubleClick={() => openStockDetail(row, "stock")}
                   >
-                    {selectedColumnSettings.map((column) => (
+                    {visibleSelectedColumnSettings.map((column) => (
                       <span className="stock-cell" key={column.key}>
                         {renderInventoryCell(row, column.key)}
                       </span>
@@ -6152,10 +6306,40 @@ export function StockScreen({
               {selectedColumnSettings.map((column, index) => {
                 const definition = selectedColumnDefinitionByKey.get(column.key);
                 const label = t(definition?.labelKey ?? column.key);
+                const visibleColumns = selectedColumnSettings.filter((setting) => setting.visible !== false).length;
+                const canHide = column.visible === false || visibleColumns > 1;
                 return (
-                  <div className="stock-column-editor-row" key={column.key}>
+                  <div
+                    className={`stock-column-editor-row ${column.visible === false ? "hidden" : ""}`}
+                    draggable
+                    key={column.key}
+                    onDragStart={(event: DragEvent<HTMLDivElement>) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", column.key);
+                    }}
+                    onDragOver={(event: DragEvent<HTMLDivElement>) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(event: DragEvent<HTMLDivElement>) => {
+                      event.preventDefault();
+                      const draggedKey = event.dataTransfer.getData("text/plain");
+                      if (draggedKey) {
+                        reorderSelectedColumn(draggedKey, column.key);
+                      }
+                    }}
+                  >
+                    <span className="stock-column-drag-handle" aria-hidden="true">::</span>
+                    <label className="stock-column-visible">
+                      <input
+                        type="checkbox"
+                        checked={column.visible !== false}
+                        disabled={!canHide}
+                        onChange={() => toggleSelectedColumnVisibility(column.key)}
+                      />
+                    </label>
                     <strong>{label}</strong>
-                    <div className="attribute-actions">
+                    <div className="attribute-actions stock-column-order-actions">
                       <button
                         type="button"
                         aria-label={t("salesReport.moveUp")}

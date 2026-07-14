@@ -86,9 +86,11 @@ describe("SalesReportScreen", () => {
     ]);
   });
 
-  it("only enables warehouse document creation for input and output warehouse reports", () => {
+  it("enables document creation for warehouse and purchase input reports", () => {
     expect(isWarehouseDocumentReport("salesReport.warehouseOutputs")).toBe(true);
     expect(isWarehouseDocumentReport("salesReport.inputWarehouse")).toBe(true);
+    expect(isWarehouseDocumentReport("salesReport.inputInvoices")).toBe(true);
+    expect(isWarehouseDocumentReport("salesReport.inputDeliveryNotes")).toBe(true);
     expect(isWarehouseDocumentReport("salesReport.dailySales")).toBe(false);
     expect(isWarehouseDocumentReport("salesReport.invoices")).toBe(false);
   });

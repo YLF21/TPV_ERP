@@ -88,6 +88,7 @@ class WarehouseInputServiceTest {
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(organization.currentUser(any())).thenReturn(user);
         lenient().when(inputs.save(any())).thenAnswer(call -> call.getArgument(0));
+        lenient().when(inputs.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         lenient().when(movements.save(any())).thenAnswer(call -> call.getArgument(0));
     }
 
@@ -123,6 +124,8 @@ class WarehouseInputServiceTest {
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
+        when(inputs.findByStoreIdAndNumero(store.getId(), "ENT-2026-000001"))
+                .thenReturn(Optional.empty());
         when(stockLevels.findByProductIdAndWarehouseId(
                 product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
 
@@ -135,6 +138,33 @@ class WarehouseInputServiceTest {
         assertThat(movement.getValue().getType()).isEqualTo(StockMovementType.ENTRADA_ALMACEN);
         assertThat(movement.getValue().getQuantity()).isEqualByComparingTo("5");
         verify(syncOutbox).enqueue(any());
+    }
+
+    @Test
+    void skipsExistingAnnualNumberWhenCounterIsStale() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(
+                supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(product.getId(), 5)));
+        var existing = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 1), user.getId());
+        var stock = new StockLevel(product.getId(), warehouse.getId());
+        when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
+                .thenReturn(Optional.empty());
+        when(inputs.findByStoreIdAndNumero(store.getId(), "ENT-2026-000001"))
+                .thenReturn(Optional.of(existing));
+        when(inputs.findByStoreIdAndNumero(store.getId(), "ENT-2026-000002"))
+                .thenReturn(Optional.empty());
+        when(stockLevels.findByProductIdAndWarehouseId(
+                product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
+
+        var confirmed = service.confirm(input.getId(), authentication());
+
+        assertThat(confirmed.getNumber()).isEqualTo("ENT-2026-000002");
+        assertThat(stock.getQuantity()).isEqualByComparingTo("5");
     }
 
     @Test

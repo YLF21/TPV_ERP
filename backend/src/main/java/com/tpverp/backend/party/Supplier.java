@@ -137,6 +137,10 @@ public class Supplier {
         activo = false;
     }
 
+    public void activate() {
+        activo = true;
+    }
+
     public void assignCode(String code) {
         if (supplierId != null) {
             throw new IllegalStateException("El codigo de proveedor es inmutable");

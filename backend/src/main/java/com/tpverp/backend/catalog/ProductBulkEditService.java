@@ -366,6 +366,8 @@ public class ProductBulkEditService {
         requireSame(path, "offerActive", bool(content.offerActive()), product.offerActive());
         requireSame(path, "offerFrom", date(content.offerFrom()), product.offerFrom());
         requireSame(path, "offerUntil", date(content.offerUntil()), product.offerUntil());
+        requireSame(path, "stockMin", decimal(content.stockMin()), product.stockMin());
+        requireSame(path, "stockMax", decimal(content.stockMax()), product.stockMax());
     }
 
     private static void requireSame(String path, String field, Object expected, Object actual) {

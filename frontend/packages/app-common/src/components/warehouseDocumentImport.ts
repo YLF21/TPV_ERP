@@ -1,4 +1,4 @@
-import { readSheet } from "read-excel-file/browser";
+import { normalizeExcelHeader, normalizeExcelText, readExcelTable } from "./excelImport";
 
 export type WarehouseImportProduct = {
   id: string;
@@ -6,6 +6,10 @@ export type WarehouseImportProduct = {
   barcode?: string | null;
   reference?: string | null;
   name?: string | null;
+  discountType?: string | null;
+  salePrice?: string | number | null;
+  wholesalePrice?: string | number | null;
+  purchasePrice?: string | number | null;
 };
 
 export type WarehouseDocumentImportRow = Record<string, unknown>;
@@ -16,6 +20,7 @@ export type WarehouseDocumentLineDraft = {
   productLabel: string;
   importedProduct: string;
   quantity: number;
+  discountPercent?: string;
   valid: boolean;
   errorKey: string;
 };
@@ -46,6 +51,7 @@ export function buildWarehouseDocumentLines(
         productLabel,
         importedProduct,
         quantity,
+        discountPercent: "0",
         valid: !errorKey,
         errorKey
       };
@@ -53,17 +59,8 @@ export function buildWarehouseDocumentLines(
 }
 
 export async function readWarehouseDocumentFile(file: File, products: WarehouseImportProduct[]) {
-  const rows = await readSheet(file);
-  if (rows.length < 2) {
-    return [];
-  }
-  const headers = rows[0].map((header) => String(header ?? ""));
-  return buildWarehouseDocumentLines(
-    rows.slice(1).map((row) => Object.fromEntries(
-      headers.map((header, index) => [header, row[index] ?? ""])
-    )),
-    products
-  );
+  const table = await readExcelTable(file);
+  return table.headers.length === 0 ? [] : buildWarehouseDocumentLines(table.rows, products);
 }
 
 function buildProductIndex(products: WarehouseImportProduct[]) {
@@ -102,13 +99,9 @@ function productLabelText(product: WarehouseImportProduct) {
 }
 
 function normalizeHeader(value: string) {
-  return normalize(value).replace(/\s+/g, " ");
+  return normalizeExcelHeader(value);
 }
 
 function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
+  return normalizeExcelText(value);
 }

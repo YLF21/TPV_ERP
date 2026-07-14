@@ -33,9 +33,10 @@ public class WarehouseInputController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_READ + "','" + GESTION_PRODUCTO + "')")
-    public List<WarehouseInput> list() {
-        return service.list();
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_INPUTS_READ + "','" + WAREHOUSE_INPUTS_WRITE + "','"
+            + WAREHOUSE_INPUTS_DELETE + "','" + WAREHOUSE_INPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
+    public List<WarehouseInputView> list() {
+        return service.list().stream().map(WarehouseInputView::from).toList();
     }
 
     @PostMapping

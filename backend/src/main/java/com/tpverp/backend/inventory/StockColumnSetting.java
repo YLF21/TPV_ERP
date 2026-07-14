@@ -7,5 +7,10 @@ import jakarta.validation.constraints.Size;
 
 public record StockColumnSetting(
         @NotBlank @Size(max = 64) String key,
-        @Min(72) @Max(420) int width) {
+        @Min(72) @Max(420) int width,
+        Boolean visible) {
+
+    public StockColumnSetting(String key, int width) {
+        this(key, width, true);
+    }
 }

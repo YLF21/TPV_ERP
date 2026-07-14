@@ -26,6 +26,26 @@ class CatalogDomainTest {
     }
 
     @Test
+    void assignsReadableBusinessIdsToFamiliesAndSubfamilies() {
+        var family = new Family(storeId, "  bebidas frias  ", false);
+        var subfamily = new Subfamily(family.getId(), "  agua con gas  ");
+
+        assertThat(family.getFamilyId()).isEqualTo("BEBIDAS_FRIAS");
+        assertThat(subfamily.getSubfamilyId()).isEqualTo("AGUA_CON_GAS");
+
+        family.rename("bebidas calientes");
+        subfamily.rename("cafe molido");
+
+        assertThat(family.getFamilyId()).isEqualTo("BEBIDAS_CALIENTES");
+        assertThat(subfamily.getSubfamilyId()).isEqualTo("CAFE_MOLIDO");
+    }
+
+    @Test
+    void defaultFamilyKeepsGeneralBusinessId() {
+        assertThat(Family.general(storeId).getFamilyId()).isEqualTo("GENERAL");
+    }
+
+    @Test
     void validatesPricesAndOfferCoherence() {
         var product = product();
 

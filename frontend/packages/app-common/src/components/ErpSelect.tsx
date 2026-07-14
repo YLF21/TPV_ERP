@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FocusEvent, KeyboardEvent } from "react";
+import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import "./ErpSelect.css";
 
 export type ErpSelectOption = Readonly<{
@@ -117,14 +118,7 @@ export function ErpSelect({
     optionRefs.current[activeIndex]?.focus();
   }, [activeIndex, open]);
 
-  useEffect(() => {
-    if (!open) return;
-    function handlePointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+  useOutsidePointerDown(open, rootRef, () => setOpen(false));
 
   useEffect(() => {
     if (disabled) setOpen(false);

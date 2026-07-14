@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -15,6 +15,7 @@ import {
   type WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
 import { TopDateTime } from "./TopDateTime";
+import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import languageIcon from "../assets/language.png";
 import lockIcon from "../assets/lock.png";
@@ -894,7 +895,12 @@ export function buildDocumentReports(
 }
 
 export function isWarehouseDocumentReport(reportKey: string) {
-  return reportKey === "salesReport.warehouseOutputs" || reportKey === "salesReport.inputWarehouse";
+  return [
+    "salesReport.warehouseOutputs",
+    "salesReport.inputWarehouse",
+    "salesReport.inputInvoices",
+    "salesReport.inputDeliveryNotes"
+  ].includes(reportKey);
 }
 
 async function optionalApiRequest<T>(path: string, token: string, fallback: T): Promise<T> {
@@ -963,6 +969,9 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
+  const printMenuRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const languagePickerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [dateRangeText, setDateRangeText] = useState(() => formatDateRange(createDefaultFilters(), locale));
@@ -1011,7 +1020,11 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
   const hasStatusFilter = !isDailySalesReport && selectedReport !== "salesReport.tickets" && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
-  const warehouseDocumentMode = selectedReport === "salesReport.inputWarehouse" ? "input" : "output";
+  const warehouseDocumentMode = selectedReport === "salesReport.warehouseOutputs" ? "output" : "input";
+
+  useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
+  useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
+  useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
   useEffect(() => {
     let cancelled = false;
@@ -1594,7 +1607,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   function renderReportToolbar() {
     return (
       <header className="report-data-toolbar">
-        <div className="report-action-menu">
+        <div className="report-action-menu" ref={printMenuRef}>
           <button
             type="button"
             aria-expanded={isDailySalesReport ? undefined : printMenuOpen}
@@ -1662,73 +1675,77 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   return (
     <main className="report-screen">
       <TopDateTime locale={locale} />
-      <button
-        type="button"
-        className="report-user-button"
-        aria-expanded={userMenuOpen}
-        aria-haspopup="menu"
-        aria-label={session.displayName}
-        title={session.displayName}
-        onClick={() => {
-          setLanguageOpen(false);
-          setUserMenuOpen((open) => !open);
-        }}
-      >
-        {session.displayName}
-      </button>
-      {userMenuOpen && (
-        <section className="report-user-menu" role="menu" aria-label={session.displayName}>
-          <button type="button" role="menuitem" onClick={() => setUserMenuOpen(false)}>
-            {t("common.changePassword")}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setUserMenuOpen(false);
-              if (onLogout) {
-                onLogout();
-                return;
-              }
-              onBack();
-            }}
-          >
-            {t("common.logout")}
-          </button>
-        </section>
-      )}
-      <button
-        type="button"
-        className="language-button"
-        aria-expanded={languageOpen}
-        aria-haspopup="listbox"
-        aria-label={t("login.language")}
-        title={t("login.language")}
-        onClick={() => {
-          setUserMenuOpen(false);
-          setLanguageOpen((open) => !open);
-        }}
-      >
-        <img alt="" src={languageIcon} />
-      </button>
-      {languageOpen && (
-        <section className="language-picker" aria-label={t("login.language")}>
-          {languageOptions.map((option) => (
+      <div ref={userMenuRef} style={{ display: "contents" }}>
+        <button
+          type="button"
+          className="report-user-button"
+          aria-expanded={userMenuOpen}
+          aria-haspopup="menu"
+          aria-label={session.displayName}
+          title={session.displayName}
+          onClick={() => {
+            setLanguageOpen(false);
+            setUserMenuOpen((open) => !open);
+          }}
+        >
+          {session.displayName}
+        </button>
+        {userMenuOpen && (
+          <section className="report-user-menu" role="menu" aria-label={session.displayName}>
+            <button type="button" role="menuitem" onClick={() => setUserMenuOpen(false)}>
+              {t("common.changePassword")}
+            </button>
             <button
               type="button"
-              className={option.code === locale ? "selected" : ""}
-              key={option.code}
+              role="menuitem"
               onClick={() => {
-                onLocaleChange(option.code);
-                setLanguageOpen(false);
+                setUserMenuOpen(false);
+                if (onLogout) {
+                  onLogout();
+                  return;
+                }
+                onBack();
               }}
             >
-              <span>{option.label}</span>
-              <strong>{option.code.toUpperCase()}</strong>
+              {t("common.logout")}
             </button>
-          ))}
-        </section>
-      )}
+          </section>
+        )}
+      </div>
+      <div ref={languagePickerRef} style={{ display: "contents" }}>
+        <button
+          type="button"
+          className="language-button"
+          aria-expanded={languageOpen}
+          aria-haspopup="listbox"
+          aria-label={t("login.language")}
+          title={t("login.language")}
+          onClick={() => {
+            setUserMenuOpen(false);
+            setLanguageOpen((open) => !open);
+          }}
+        >
+          <img alt="" src={languageIcon} />
+        </button>
+        {languageOpen && (
+          <section className="language-picker" aria-label={t("login.language")}>
+            {languageOptions.map((option) => (
+              <button
+                type="button"
+                className={option.code === locale ? "selected" : ""}
+                key={option.code}
+                onClick={() => {
+                  onLocaleChange(option.code);
+                  setLanguageOpen(false);
+                }}
+              >
+                <span>{option.label}</span>
+                <strong>{option.code.toUpperCase()}</strong>
+              </button>
+            ))}
+          </section>
+        )}
+      </div>
       <button
         type="button"
         className="shutdown-button"
@@ -1970,11 +1987,13 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
       <WarehouseDocumentDialog
         mode={warehouseDocumentMode}
         open={warehouseDocumentOpen}
+        title={t(selectedReport)}
         token={session.accessToken}
         products={warehouseProducts}
         warehouses={warehouseMasterOptions}
         customers={warehouseCustomers}
         suppliers={warehouseSuppliers}
+        terminalContext={terminalContext}
         canConfirm={
           session.permissions.includes("ADMIN")
           || session.permissions.includes("GESTION_PRODUCTO")

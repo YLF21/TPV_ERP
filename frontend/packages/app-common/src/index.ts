@@ -11,6 +11,9 @@ export { SaleScreen } from "./components/SaleScreen";
 export { SettingsScreen } from "./components/SettingsScreen";
 export { SessionHomeScreen } from "./components/SessionHomeScreen";
 export { StockScreen } from "./components/StockScreen";
+export { PartyDirectoryPanel } from "./components/PartyDirectoryPanel";
+export type { PartyDirectoryKind } from "./components/PartyDirectoryPanel";
+export { MemberLoyaltyPanel } from "./components/MemberLoyaltyPanel";
 export {
   createHardwareUnavailableResult,
   createTestTicket,
