@@ -23,6 +23,85 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("starts a full-total integrated card allocation with the configured provider",async()=>{
+  const session={id:"session-card",total:"12.10",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-card/allocations")return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS"}]};
+   if(path==="/pos/payment-sessions/session-card/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-CARD"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+  fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-card/allocations")).toHaveLength(1));
+  expect(apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions/session-card/allocations")?.[1].body).toMatchObject({kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS"});
+ });
+
+ it("synchronously ignores a second integrated card click",async()=>{
+  const session={id:"session-card-guard",total:"12.10",status:"COLLECTING",allocations:[]};
+  let releaseSession!:(value:typeof session)=>void;
+  const pendingSession=new Promise<typeof session>(resolve=>{releaseSession=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return pendingSession;
+   if(path==="/pos/payment-sessions/session-card-guard/allocations")return session;
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  act(()=>{card.click();card.click();});
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1);
+  releaseSession(session);
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-card-guard/allocations")).toHaveLength(1));
+ });
+
+ it("does not create a second charge after an uncertain integrated card outcome",async()=>{
+  const session={id:"session-card-uncertain",total:"12.10",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-card-uncertain/allocations")throw new ApiError("timeout",500);
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("timeout"));
+  fireEvent.click(card);
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-card-uncertain/allocations")).toHaveLength(1);
+  expect(JSON.parse(localStorage.getItem("tpverp.payment-session.01.allocation-attempt") ?? "null")).toMatchObject({sessionId:"session-card-uncertain",input:{kind:"INTEGRATED_CARD",amountCents:1210,provider:"GLOBAL_PAYMENTS"}});
+ });
+
+ it("opens direct manual card entry and submits its trimmed reference",async()=>{
+  const session={id:"session-manual",total:"12.10",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-manual/allocations")return session;
+   throw new Error(`unexpected request ${path} ${JSON.stringify(options)}`);
+  });
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  const dialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
+  const confirm=within(dialog).getByRole("button",{name:"Confirmar"});
+  fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:"   "}});
+  expect(confirm).toBeDisabled();
+  fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:" REF-1 "}});
+  fireEvent.click(confirm);
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-manual/allocations")).toHaveLength(1));
+  expect(apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions/session-manual/allocations")?.[1].body).toMatchObject({kind:"MANUAL_CARD",amount:"12.10",reference:"REF-1"});
+ });
+
  it("synchronously ignores a second cash confirmation before React disables the dialog",async()=>{
   const session={id:"session-guard",total:"12.10",status:"COLLECTING",allocations:[]};
   let releaseSession!:(value:typeof session)=>void;
