@@ -11,11 +11,13 @@ import {
  checkoutPresentation,
  compensationGuidanceKey,
  compensationNoteIsEphemeral,
+ isMissingCashSessionError,
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
  paymentSessionLocksSale,
  prepareAutomaticExit,
  stableAllocationAttempt,
+ shouldOfferTestCashSession,
 } from "./SalePaymentCheckout";
 import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
@@ -35,6 +37,18 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("recognizes the missing cash-session error with or without accents", () => {
+  expect(isMissingCashSessionError("No hay una sesion de caja abierta")).toBe(true);
+  expect(isMissingCashSessionError("No hay una sesión de caja abierta")).toBe(true);
+  expect(isMissingCashSessionError("La terminal no existe")).toBe(false);
+ });
+ it("offers test cash only for an enabled covered checkout with a terminal", () => {
+  expect(shouldOfferTestCashSession(true, "COVERED", true, "terminal-1")).toBe(true);
+  expect(shouldOfferTestCashSession(false, "COVERED", true, "terminal-1")).toBe(false);
+  expect(shouldOfferTestCashSession(true, "COLLECTING", true, "terminal-1")).toBe(false);
+  expect(shouldOfferTestCashSession(true, "COVERED", false, "terminal-1")).toBe(false);
+  expect(shouldOfferTestCashSession(true, "COVERED", true, undefined)).toBe(false);
+ });
  it("classifies logout safety from hydration, session, and allocation state",()=>{
   const sessionWith=(statuses:string[])=>({id:"session",total:"12.10",status:"COLLECTING",allocations:statuses.map((status,index)=>({id:`a-${index}`,idempotencyKey:`a-${index}`,kind:"CASH" as const,amount:"1.00",status}))});
   expect(paymentLogoutDisposition(null,true)).toBe("READY");
@@ -833,6 +847,63 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(within(manualDialog).getByRole("button",{name:"Confirmar"}));
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-MANUAL",1210,undefined));
+ });
+
+ it("opens test cash for a covered checkout and leaves finalization explicit", async () => {
+  const session = {
+   id: "session-test-cash",
+   total: "12.10",
+   status: "COVERED",
+   allocations: [{
+    id: "cash-1",
+    idempotencyKey: "cash-1",
+    kind: "CASH" as const,
+    amount: "12.10",
+    status: "APPROVED",
+   }],
+  };
+  let finalizeCalls = 0;
+  apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
+   if (path === "/terminal-configuration/payment") return {
+    rules: { cardManualEnabled: true, integratedCardEnabled: false },
+    providerDescriptors: [],
+    configuration: { provider: "", enabled: false },
+   };
+   if (path === "/pos/payment-sessions/active") return session;
+   if (path === "/pos/payment-sessions/session-test-cash/finalize") {
+    finalizeCalls += 1;
+    throw new ApiError("No hay una sesión de caja abierta", 409);
+   }
+   if (path === "/cash/sessions/open") {
+    expect(options?.body).toEqual({ terminalId: "terminal-1" });
+    return { id: "cash-session-1", status: "ABIERTA", openingFund: "0.00" };
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+
+  render(createElement(SalePaymentCheckout, {
+   locale: "es",
+   totalCents: 1210,
+   sale: { customerId: null, lines: [{ productId: "p-1", quantity: 1, discount: 0 }] },
+   permissions: ["ADMIN"],
+   terminal: { storeName: "Tienda", terminalCode: "01", terminalId: "terminal-1" },
+   testCashEnabled: true,
+   onFinalized: vi.fn(),
+  }));
+
+  const finalize = await screen.findByRole("button", { name: "Finalizar venta" });
+  fireEvent.click(finalize);
+  const openTestCash = await screen.findByRole("button", { name: "Abrir caja de prueba" });
+  fireEvent.click(openTestCash);
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+   "Caja de prueba abierta. Pulse Finalizar venta.",
+  );
+  expect(finalizeCalls).toBe(1);
+  expect(apiRequestMock.mock.calls.filter(([path]) =>
+   path === "/cash/sessions/open")).toHaveLength(1);
+  expect(apiRequestMock.mock.calls.filter(([path]) =>
+   path.includes("/allocations"))).toHaveLength(0);
  });
 
  it("opens the touch cash calculator and submits the total exactly once",async()=>{
