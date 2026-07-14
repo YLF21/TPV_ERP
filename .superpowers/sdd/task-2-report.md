@@ -1,22 +1,38 @@
-# Task 2 report
+# Task 2 report — Frontend cleanup policy
 
-## Status
+## Implementation commit
 
-Implemented logout coordination in `SaleScreen`: the session logout action now awaits `SalePaymentCheckout.prepareLogout()`, invokes `onLogout` only for `READY`, and ignores repeated clicks while preparation is pending.
+- `d4b328a feat(payment): clear stale simulator checkout safely`
 
-## TDD evidence
+## Files
 
-- RED: `npm.cmd test -- SaleScreen.test.tsx` failed all three new DOM tests because `prepareLogout` was called 0 times while `SessionTopControls` still received `onLogout` directly. The pending double-click test also showed preparation never started.
-- GREEN: `npm.cmd test -- SaleScreen.test.tsx SalePaymentCheckout.test.ts` exited 0 with 2 test files and 85 tests passed.
-- Diff hygiene: `git diff --check` exited 0 (Git emitted only the repository's LF-to-CRLF working-copy notices).
+- `frontend/packages/app-common/src/components/SalePaymentCheckout.tsx`
+- `frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts`
+- `frontend/packages/app-common/src/i18n/MessagesEs.ts`
+- `frontend/packages/app-common/src/i18n/MessagesEn.ts`
+- `frontend/packages/app-common/src/i18n/MessagesZh.ts`
 
-## Self-review
+`SessionTopControls` was not modified.
 
-- `SalePaymentCheckoutHandle` is imported as a type and the checkout receives the coordinating ref.
-- The in-progress flag is set before awaiting and reset in `finally`, so both `BLOCKED` and thrown preparations allow a later retry.
-- An absent checkout handle does not log out because the result is `undefined`, preserving the requirement that logout follows only explicit `READY`.
-- DOM tests cover `READY`, `BLOCKED`, and two clicks against one unresolved preparation, asserting exactly one preparation and one logout where applicable.
+## Implemented behavior
 
-## Concerns
+- Added `prepareApplicationClose(): Promise<"READY" | "BLOCKED">`.
+- Logout and application shutdown share the same strict exit preparation policy.
+- Uncertain sessions use audited `simulator-discard`; shutdown/logout send `application_shutdown` and entry recovery sends `sale_entry_cleanup`.
+- `READY` is returned only after authoritative hydration shows no active session, or a cancellation/discard response confirms `CANCELLED`; the common local cleanup then removes both storage keys, guards, dialogs, operation state and the server lock.
+- A normal cancellation that returns a non-`CANCELLED` status cannot permit logout. The simulator discard is attempted and exit remains blocked unless that response confirms `CANCELLED`.
+- An unsafe stale active session is auto-discarded once per session ID for the lifetime of the loaded frontend module. Backend rejection preserves recovery state and does not create a render loop.
+- Added localized blocked/cleanup feedback in Spanish, English and Chinese.
+- No delete endpoint is called and payment audit data is untouched.
 
-None identified within Task 2 scope. The DOM tests mock the checkout boundary so the focused `SalePaymentCheckout.test.ts` suite independently verifies the real imperative handle behavior.
+## TDD and verification
+
+- RED: `npm.cmd test -- SalePaymentCheckout.test.ts` — 4 expected failures (missing close handle, missing auto cleanup and missing translations), 53 passing.
+- GREEN/final: `npm.cmd test -- SalePaymentCheckout.test.ts` — 57/57 passing, exit 0.
+- `git diff --check` — exit 0; only Git's existing LF-to-CRLF notices were printed.
+- Diff scope check found no `SessionTopControls` changes.
+
+## Concerns / handoff
+
+- Task 3 still needs to wire `prepareApplicationClose()` into `SaleScreen`/`SessionTopControls`; this task intentionally does not initiate navigation or window closing.
+- The in-memory once-per-ID entry-attempt set resets on a full application reload, which is intentional: a new process may retry a stale simulated session, while a rejected live-terminal session is never retried in a render/remount loop within the current loaded application.
