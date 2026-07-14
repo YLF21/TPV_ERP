@@ -863,7 +863,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    }],
   };
   let finalizeCalls = 0;
-  apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
+  apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown; token?: string }) => {
    if (path === "/terminal-configuration/payment") return {
     rules: { cardManualEnabled: true, integratedCardEnabled: false },
     providerDescriptors: [],
@@ -876,6 +876,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    }
    if (path === "/cash/sessions/open") {
     expect(options?.body).toEqual({ terminalId: "terminal-1" });
+    expect(options?.token).toBe("dev-access-token");
     return { id: "cash-session-1", status: "ABIERTA", openingFund: "0.00" };
    }
    throw new Error(`unexpected request ${path}`);
@@ -888,6 +889,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    permissions: ["ADMIN"],
    terminal: { storeName: "Tienda", terminalCode: "01", terminalId: "terminal-1" },
    testCashEnabled: true,
+   token: "dev-access-token",
    onFinalized: vi.fn(),
   }));
 
@@ -904,6 +906,89 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    path === "/cash/sessions/open")).toHaveLength(1);
   expect(apiRequestMock.mock.calls.filter(([path]) =>
    path.includes("/allocations"))).toHaveLength(0);
+ });
+
+ it("keeps the test cash offer retryable when opening fails", async () => {
+  const session = {id:"session-open-retry",total:"12.10",status:"COVERED",allocations:[]};
+  let openCalls = 0;
+  apiRequestMock.mockImplementation(async(path:string) => {
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-open-retry/finalize")throw new ApiError("No hay una sesión de caja abierta",409);
+   if(path==="/cash/sessions/open"){
+    openCalls += 1;
+    if(openCalls===1)throw new ApiError("No se pudo abrir",503);
+    return {id:"cash-session-retry",status:"ABIERTA",openingFund:"0.00"};
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01",terminalId:"terminal-1"},testCashEnabled:true,onFinalized:vi.fn()}));
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Abrir caja de prueba"}));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("No se pudo abrir"));
+  fireEvent.click(screen.getByRole("button",{name:"Abrir caja de prueba"}));
+  expect(await screen.findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  expect(openCalls).toBe(2);
+ });
+
+ it("hides the test cash offer after a later unrelated finalization error", async () => {
+  const session = {id:"session-finalize-errors",total:"12.10",status:"COVERED",allocations:[]};
+  let finalizeCalls = 0;
+  apiRequestMock.mockImplementation(async(path:string) => {
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-finalize-errors/finalize"){
+    finalizeCalls += 1;
+    throw finalizeCalls===1
+     ? new ApiError("No hay una sesión de caja abierta",409)
+     : new ApiError("Ticket bloqueado por otra causa",409);
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01",terminalId:"terminal-1"},testCashEnabled:true,onFinalized:vi.fn()}));
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+  expect(await screen.findByRole("button",{name:"Abrir caja de prueba"})).toBeVisible();
+  fireEvent.click(screen.getByRole("button",{name:"Finalizar venta"}));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Ticket bloqueado"));
+  expect(screen.queryByRole("button",{name:"Abrir caja de prueba"})).not.toBeInTheDocument();
+ });
+
+ it("does not leak opened test cash status or stale errors into the next checkout", async () => {
+  const first={id:"session-first",total:"12.10",status:"COVERED",allocations:[]};
+  const second={id:"session-second",total:"12.10",status:"COLLECTING",allocations:[]};
+  let finalizeFirstCalls=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return first;
+   if(path==="/pos/payment-sessions/session-first/finalize"){
+    finalizeFirstCalls+=1;
+    if(finalizeFirstCalls===1)throw new ApiError("No hay una sesión de caja abierta",409);
+    return {...first,status:"FINALIZED",ticketNumber:"T-FIRST"};
+   }
+   if(path==="/cash/sessions/open")return {id:"cash-session-1",status:"ABIERTA",openingFund:"0.00"};
+   if(path==="/pos/payment-sessions")return second;
+   if(path==="/pos/payment-sessions/session-second/allocations")return {...second,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,idempotencyKey:"second",kind:"MANUAL_CARD",amount:"12.10",status:"APPROVED"}]};
+   if(path==="/pos/payment-sessions/session-second/finalize")throw new ApiError("Segundo cierre rechazado",409);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01",terminalId:"terminal-1"},testCashEnabled:true,onFinalized}));
+
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+  fireEvent.click(await screen.findByRole("button",{name:"Abrir caja de prueba"}));
+  expect(await screen.findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  fireEvent.click(screen.getByRole("button",{name:"Finalizar venta"}));
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-FIRST",1210,undefined));
+
+  fireEvent.click(screen.getByRole("button",{name:/Tarjeta.*F11/}));
+  const dialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
+  fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:"REF-NEXT"}});
+  fireEvent.click(within(dialog).getByRole("button",{name:"Confirmar"}));
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Segundo cierre rechazado"));
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Abrir caja de prueba"})).not.toBeInTheDocument();
  });
 
  it("opens the touch cash calculator and submits the total exactly once",async()=>{

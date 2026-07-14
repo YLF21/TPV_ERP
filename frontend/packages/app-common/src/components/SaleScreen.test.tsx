@@ -128,6 +128,23 @@ describe("SaleScreen", () => {
     expect(checkoutProps.current?.testCashEnabled).toBe(import.meta.env.DEV);
   });
 
+  it("never enables test cash when SaleScreen is wired for APP GESTION", async () => {
+    render(
+      <SaleScreen
+        app="gestion"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(checkoutProps.current).not.toBeNull());
+    expect(checkoutProps.current?.testCashEnabled).toBe(false);
+  });
+
   it("closes the application only after payment checkout is ready", async () => {
     let resolvePreparation!: (result: "READY") => void;
     prepareApplicationClose.mockImplementation(() => new Promise((resolve) => {

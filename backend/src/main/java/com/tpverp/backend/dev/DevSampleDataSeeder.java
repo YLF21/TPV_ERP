@@ -47,6 +47,10 @@ public class DevSampleDataSeeder {
         return TYPES;
     }
 
+    static UUID cashSessionHistoryId() {
+        return CASH_SESSION_HISTORY;
+    }
+
     @Transactional
     // Loads an idempotent demo dataset only for the dev profile.
     public void seed() {

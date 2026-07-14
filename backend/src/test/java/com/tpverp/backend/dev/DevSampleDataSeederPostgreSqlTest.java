@@ -86,27 +86,37 @@ class DevSampleDataSeederPostgreSqlTest {
 
     @Test
     void seedsOneClosedZeroBalanceCashHistoryIdempotently() {
-        assertThat(jdbc.queryForObject("""
-                select count(*)
-                from sesion_caja
-                where estado = 'CERRADA'
-                  and fondo_inicial = 0.00
-                  and efectivo_teorico = 0.00
-                  and fondo_dejado = 0.00
-                  and descuadre = 0.00
-                """, Integer.class)).isEqualTo(1);
+        var historyId = DevSampleDataSeeder.cashSessionHistoryId();
+        var history = jdbc.queryForMap("""
+                select sc.estado, sc.fondo_inicial, sc.efectivo_teorico,
+                       sc.fondo_dejado, sc.descuadre,
+                       t.nombre as terminal_nombre, u.user_id as usuario_apertura
+                from sesion_caja sc
+                join terminal t on t.id = sc.terminal_id
+                join usuario u on u.id = sc.usuario_apertura_id
+                where sc.id = ?
+                """, historyId);
+
+        assertThat(history)
+                .containsEntry("estado", "CERRADA")
+                .containsEntry("terminal_nombre", "SERVIDOR PRUEBAS")
+                .containsEntry("usuario_apertura", "E-999001");
+        assertThat(history.get("fondo_inicial").toString()).isEqualTo("0.00");
+        assertThat(history.get("efectivo_teorico").toString()).isEqualTo("0.00");
+        assertThat(history.get("fondo_dejado").toString()).isEqualTo("0.00");
+        assertThat(history.get("descuadre").toString()).isEqualTo("0.00");
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sesion_caja where estado = 'ABIERTA'", Integer.class))
+                .isEqualTo(0);
 
         seeder.seed();
 
-        assertThat(jdbc.queryForObject("""
-                select count(*)
-                from sesion_caja
-                where estado = 'CERRADA'
-                  and fondo_inicial = 0.00
-                  and efectivo_teorico = 0.00
-                  and fondo_dejado = 0.00
-                  and descuadre = 0.00
-                """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sesion_caja where id = ?", Integer.class, historyId))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from sesion_caja where estado = 'ABIERTA'", Integer.class))
+                .isEqualTo(0);
     }
 
     private Integer count(String table) {
