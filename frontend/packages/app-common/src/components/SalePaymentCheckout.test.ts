@@ -281,6 +281,49 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   view.rerender(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
   await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));expect(discard).toHaveBeenCalledTimes(1);
  });
+ it("shares one in-flight cleanup across entry, logout, and application close",async()=>{
+  const session={id:"session-concurrent-success",total:"12.10",status:"COVERED",allocations:[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"APPROVED"}]};
+  let resolveDiscard!:(value:typeof session&{status:string})=>void;
+  const discardResponse=new Promise<typeof session&{status:string}>(resolve=>{resolveDiscard=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard"))return discardResponse;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1));
+
+  const logout=ref.current!.prepareLogout();const close=ref.current!.prepareApplicationClose();
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
+  resolveDiscard({...session,status:"CANCELLED"});
+
+  await expect(Promise.all([logout,close])).resolves.toEqual(["READY","READY"]);
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
+ });
+ it("shares a failed cleanup result and clears single-flight so a later explicit retry can succeed",async()=>{
+  const session={id:"session-concurrent-failure",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[]};
+  let rejectDiscard!:(reason:Error)=>void;let requests=0;
+  const firstResponse=new Promise<never>((_resolve,reject)=>{rejectDiscard=reject;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard")){requests++;return requests===1?firstResponse:{...session,status:"CANCELLED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  await waitFor(()=>expect(requests).toBe(1));
+
+  const logout=ref.current!.prepareLogout();const close=ref.current!.prepareApplicationClose();
+  rejectDiscard(new Error("offline"));
+
+  await expect(Promise.all([logout,close])).resolves.toEqual(["BLOCKED","BLOCKED"]);
+  expect(requests).toBe(1);
+  await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
+  expect(requests).toBe(2);
+ });
  it.each([
   ["empty",[]],
   ["declined",[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"DECLINED"}]],

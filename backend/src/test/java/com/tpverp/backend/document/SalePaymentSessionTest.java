@@ -56,6 +56,19 @@ class SalePaymentSessionTest {
         assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.FINALIZED);
     }
 
+    @Test void simulatorDiscardedCoveredSessionCannotBeFinalized() {
+        var userId=UUID.randomUUID();
+        var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),userId,"hash","{}",BigDecimal.TEN);
+        session.addAllocation(UUID.randomUUID(),"cash",SalePaymentAllocationKind.CASH,BigDecimal.TEN,null,null).approve(null,null,null);
+        session.discardSimulation("application_shutdown",userId);
+
+        assertThatThrownBy(() -> session.finalizeWith(UUID.randomUUID(),"T-1"))
+                .hasMessage("payment_session_not_finalizable");
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+        assertThat(session.getTicketId()).isNull();
+        assertThat(session.getTicketNumber()).isNull();
+    }
+
     @Test void simulatorDiscardRequiresReasonAndUser() {
         var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
         assertThatThrownBy(() -> session.discardSimulation(" ",UUID.randomUUID())).hasMessage("simulator_discard_reason_required");
