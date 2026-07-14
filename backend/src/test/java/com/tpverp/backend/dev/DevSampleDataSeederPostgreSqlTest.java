@@ -31,6 +31,9 @@ class DevSampleDataSeederPostgreSqlTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private DevSampleDataSeeder seeder;
+
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> databaseUrl()
@@ -79,6 +82,31 @@ class DevSampleDataSeederPostgreSqlTest {
         assertThat(count("documento")).isGreaterThanOrEqualTo(1_000);
         assertThat(jdbc.queryForObject("select count(distinct fecha) from documento", Integer.class))
                 .isGreaterThanOrEqualTo(90);
+    }
+
+    @Test
+    void seedsOneClosedZeroBalanceCashHistoryIdempotently() {
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from sesion_caja
+                where estado = 'CERRADA'
+                  and fondo_inicial = 0.00
+                  and efectivo_teorico = 0.00
+                  and fondo_dejado = 0.00
+                  and descuadre = 0.00
+                """, Integer.class)).isEqualTo(1);
+
+        seeder.seed();
+
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from sesion_caja
+                where estado = 'CERRADA'
+                  and fondo_inicial = 0.00
+                  and efectivo_teorico = 0.00
+                  and fondo_dejado = 0.00
+                  and descuadre = 0.00
+                """, Integer.class)).isEqualTo(1);
     }
 
     private Integer count(String table) {

@@ -25,6 +25,7 @@ public class DevSampleDataSeeder {
     private static final UUID ROLE = id("role-ventas");
     private static final UUID USER = id("user-vendedor");
     private static final UUID TERMINAL = id("terminal-servidor");
+    private static final UUID CASH_SESSION_HISTORY = id("cash-session-history");
     private static final UUID CUSTOMER = id("customer");
     private static final UUID SUPPLIER = id("supplier");
     private static final UUID PRODUCT_A = id("product-cafe");
@@ -52,6 +53,7 @@ public class DevSampleDataSeeder {
         UUID installation = installation();
         seedOrganization();
         seedSecurity();
+        seedCashSessionHistory();
         seedLicense(installation);
         seedCatalog();
         seedParties();
@@ -136,6 +138,24 @@ public class DevSampleDataSeeder {
                 on conflict (id) do update
                 set aprobada = true, activa = true
                 """, TERMINAL, STORE, passwordEncoder.encode("DEV-SERVER"));
+    }
+
+    private void seedCashSessionHistory() {
+        jdbc.update("""
+                insert into sesion_caja
+                    (id, tienda_id, terminal_id, usuario_apertura_id, abierta_en,
+                     fondo_inicial, usuario_cierre_id, cerrada_en, efectivo_teorico,
+                     fondo_dejado, descuadre, estado, cierre_tardio)
+                values (?, ?, ?, ?, ?, 0.00, ?, ?, 0.00, 0.00, 0.00, 'CERRADA', false)
+                on conflict (id) do nothing
+                """,
+                CASH_SESSION_HISTORY,
+                STORE,
+                TERMINAL,
+                USER,
+                ts(NOW.minusSeconds(7_200)),
+                USER,
+                ts(NOW.minusSeconds(3_600)));
     }
 
     private void grant(UUID roleId, String permission) {

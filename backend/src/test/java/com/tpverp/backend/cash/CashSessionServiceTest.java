@@ -237,6 +237,28 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void opensWithZeroFundFromClosedDemoHistory() {
+        var fixture = serviceFixture();
+        var previous = closedSession(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "0.00");
+        when(fixture.sessions.findByTerminalIdAndStatus(
+                fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.empty());
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(), CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+        when(fixture.movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(
+                fixture.terminal.getId()))
+                .thenReturn(List.of());
+
+        var opened = fixture.service.open(
+                fixture.terminal.getId(), salesAuthentication(fixture.user));
+
+        assertThat(opened.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(opened.openingFund()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     void opensWithPreviousRetainedFundMinusBetweenSessionWithdrawal() {
         var fixture = serviceFixture();
         var previous = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), "100.00");
