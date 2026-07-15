@@ -4,15 +4,15 @@
 
 **Goal:** Always show the calculated change for cash results and render the three cash summary labels in bold.
 
-**Architecture:** Calculate `changeCents` at the existing `cashResultFromFinalization` data boundary so `CashPaymentResultDialog` remains presentation-only. Add one component-scoped CSS rule for label emphasis and protect both behaviors with focused tests.
+**Architecture:** Discriminate card and cash at the `SaleScreen` finalization boundary, then calculate `changeCents` in the cash-only `cashResultFromFinalization` helper so `CashPaymentResultDialog` remains presentation-only. Add one component-scoped CSS rule for label emphasis and protect the boundary and presentation with focused tests.
 
 **Tech Stack:** React 19, TypeScript, CSS, Vitest, React DOM server rendering.
 
 ## Global Constraints
 
 - Cash results always contain `Total`, `Dinero recibido`, and `Cambio`, including `Cambio 0,00` for exact payment.
-- Calculate `changeCents` as `Math.max(0, normalizedReceivedCents - totalCents)`.
-- If `receivedCents` is absent, normalize it to `totalCents`.
+- Calculate `changeCents` as `Math.max(0, receivedCents - totalCents)` for cash.
+- `receivedCents === undefined` means card; cash finalizations always provide `receivedCents`, including exact payment.
 - Keep card results without `Dinero recibido` and `Cambio`.
 - Bold only the cash-result summary labels through `.cash-payment-result-dialog .cash-payment-summary span`.
 - Do not change backend contracts, endpoints, payment finalization, card behavior, or result-dialog arithmetic.
@@ -28,8 +28,8 @@
 - Modify: `frontend/packages/app-common/src/styles/tpv.css`
 
 **Interfaces:**
-- Consumes: `cashResultFromFinalization(ticketNumber: string, totalCents: number, receivedCents?: number): CashPaymentResult`.
-- Produces: `CashPaymentResult` with defined `receivedCents` and `changeCents` for every cash finalization; component-scoped bold label contract.
+- Consumes: `paymentResultFromFinalization(ticketNumber: string, totalCents: number, receivedCents?: number): CashPaymentResult` at the shared handler and `cashResultFromFinalization(ticketNumber: string, totalCents: number, receivedCents: number): CashPaymentResult` for cash only.
+- Produces: a card result with `method: "Tarjeta"` and no `receivedCents`/`changeCents` when the boundary receives `undefined`, or a cash result with defined `receivedCents` and `changeCents`; component-scoped bold label contract.
 
 - [ ] **Step 1: Write failing change-calculation tests**
 
@@ -43,7 +43,7 @@ it("preserves cash received and calculates non-negative change for individual ch
     receivedCents: 2000,
     changeCents: 790,
   });
-  expect(cashResultFromFinalization("T-2", 1210)).toEqual({
+  expect(cashResultFromFinalization("T-2", 1210, 1210)).toEqual({
     ticketNumber: "T-2",
     totalCents: 1210,
     receivedCents: 1210,
@@ -52,6 +52,8 @@ it("preserves cash received and calculates non-negative change for individual ch
   expect(cashResultFromFinalization("T-3", 1210, 1000).changeCents).toBe(0);
 });
 ```
+
+Add a boundary test that invokes the `onFinalized` callback wired by `SaleScreen`: `onFinalized("CARD-1", 1210)` must render method `Tarjeta` without `Dinero recibido` or `Cambio`, while `onFinalized("CASH-1", 1210, 2000)` must render cash change `7,90`.
 
 Keep the existing `CashPaymentResultDialog` assertions that already verify a positive `Cambio` row and that card results omit `Dinero recibido` and `Cambio`; do not duplicate them.
 
@@ -71,7 +73,7 @@ Run from `frontend`:
 npm.cmd test -- SaleScreen.test.tsx CashPaymentResultDialog.test.tsx -t "cash received|compact rectangular ERP result layout"
 ```
 
-Expected: the `cashResultFromFinalization` assertions fail because `changeCents` is absent, and the CSS contract fails because the bold-label rule is absent.
+Expected for the original implementation: the `cashResultFromFinalization` assertions fail because `changeCents` is absent, and the CSS contract fails because the bold-label rule is absent. The boundary regression test must additionally fail while `undefined` is incorrectly normalized as exact cash.
 
 - [ ] **Step 4: Calculate change at the result boundary**
 
@@ -81,17 +83,29 @@ Replace `cashResultFromFinalization` in `SaleScreen.tsx` with:
 export function cashResultFromFinalization(
   ticketNumber: string,
   totalCents: number,
-  receivedCents?: number,
+  receivedCents: number,
 ): CashPaymentResult {
-  const normalizedReceivedCents = receivedCents ?? totalCents;
   return {
     ticketNumber,
     totalCents,
-    receivedCents: normalizedReceivedCents,
-    changeCents: Math.max(0, normalizedReceivedCents - totalCents),
+    receivedCents,
+    changeCents: Math.max(0, receivedCents - totalCents),
   };
 }
+
+export function paymentResultFromFinalization(
+  ticketNumber: string,
+  totalCents: number,
+  receivedCents?: number,
+): CashPaymentResult {
+  if (receivedCents === undefined) {
+    return { ticketNumber, totalCents, method: "Tarjeta" };
+  }
+  return cashResultFromFinalization(ticketNumber, totalCents, receivedCents);
+}
 ```
+
+Wire the shared `SaleScreen.onFinalized` handler through `paymentResultFromFinalization`; do not pass card events to `cashResultFromFinalization`.
 
 - [ ] **Step 5: Make result labels bold**
 

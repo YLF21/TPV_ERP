@@ -253,15 +253,25 @@ export function finishCashPaymentResult(
 export function cashResultFromFinalization(
   ticketNumber: string,
   totalCents: number,
-  receivedCents?: number,
+  receivedCents: number,
 ): CashPaymentResult {
-  const normalizedReceivedCents = receivedCents ?? totalCents;
   return {
     ticketNumber,
     totalCents,
-    receivedCents: normalizedReceivedCents,
-    changeCents: Math.max(0, normalizedReceivedCents - totalCents),
+    receivedCents,
+    changeCents: Math.max(0, receivedCents - totalCents),
   };
+}
+
+export function paymentResultFromFinalization(
+  ticketNumber: string,
+  totalCents: number,
+  receivedCents?: number,
+): CashPaymentResult {
+  if (receivedCents === undefined) {
+    return { ticketNumber, totalCents, method: "Tarjeta" };
+  }
+  return cashResultFromFinalization(ticketNumber, totalCents, receivedCents);
 }
 
 export async function runGuardedCashSubmission(
@@ -822,7 +832,7 @@ export function SaleScreen({
                 setSelectedCustomer(null);
                 setQuery("");
                 setReservedPaymentTotalCents(null);
-                setCashResult(cashResultFromFinalization(
+                setCashResult(paymentResultFromFinalization(
                   ticketNumber,
                   authoritativeTotalCents,
                   receivedCents,

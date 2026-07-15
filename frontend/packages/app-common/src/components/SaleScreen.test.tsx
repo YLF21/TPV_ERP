@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SaleScreen,
@@ -43,7 +43,12 @@ const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } 
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   checkoutHandle: { attached: true },
-  checkoutProps: { current: null as null | { testCashEnabled?: boolean } }
+  checkoutProps: {
+    current: null as null | {
+      testCashEnabled?: boolean;
+      onFinalized?: (ticketNumber: string, totalCents: number, receivedCents?: number) => void;
+    },
+  }
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
@@ -243,13 +248,33 @@ describe("SaleScreen", () => {
       receivedCents: 2000,
       changeCents: 790,
     });
-    expect(cashResultFromFinalization("T-2", 1210)).toEqual({
+    expect(cashResultFromFinalization("T-2", 1210, 1210)).toEqual({
       ticketNumber: "T-2",
       totalCents: 1210,
       receivedCents: 1210,
       changeCents: 0,
     });
     expect(cashResultFromFinalization("T-3", 1210, 1000).changeCents).toBe(0);
+  });
+
+  it("maps the checkout finalization boundary to card or cash result details", async () => {
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    act(() => checkoutProps.current?.onFinalized?.("CARD-1", 1210));
+
+    const cardResult = within(screen.getByRole("dialog"));
+    expect(cardResult.getByText("Tarjeta")).toBeInTheDocument();
+    expect(cardResult.queryByText("Dinero recibido")).not.toBeInTheDocument();
+    expect(cardResult.queryByText("Cambio")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    act(() => checkoutProps.current?.onFinalized?.("CASH-1", 1210, 2000));
+
+    const cashResult = within(screen.getByRole("dialog"));
+    expect(cashResult.getByText("Dinero recibido")).toBeInTheDocument();
+    expect(cashResult.getByText("Cambio")).toBeInTheDocument();
+    expect(cashResult.getByText("7,90")).toBeInTheDocument();
   });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);

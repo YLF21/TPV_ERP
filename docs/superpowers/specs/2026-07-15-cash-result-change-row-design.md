@@ -8,8 +8,8 @@ Además, las etiquetas `Total`, `Dinero recibido` y `Cambio` tienen menos peso v
 
 ## Diseño aprobado
 
-- `cashResultFromFinalization` calculará `changeCents` como `Math.max(0, receivedCents - totalCents)`.
-- Si `receivedCents` no viene informado, se seguirá usando `totalCents`; por tanto, el cambio será `0`.
+- `cashResultFromFinalization` calculará `changeCents` como `Math.max(0, receivedCents - totalCents)` y solo representará finalizaciones de efectivo.
+- `receivedCents === undefined` identifica una finalización de tarjeta; el efectivo siempre informa `receivedCents`, incluido el pago exacto.
 - Todo resultado de efectivo mostrará siempre `Total`, `Dinero recibido` y `Cambio`, incluido el pago exacto con `Cambio 0,00`.
 - Los pagos con tarjeta conservarán su presentación actual y no mostrarán `Dinero recibido` ni `Cambio`.
 - Las etiquetas de las tres filas de efectivo se mostrarán en negrita mediante una regla limitada a `.cash-payment-result-dialog .cash-payment-summary span`.
@@ -18,10 +18,11 @@ Además, las etiquetas `Total`, `Dinero recibido` y `Cambio` tienen menos peso v
 
 ## Flujo de datos
 
-1. `SalePaymentCheckout` entrega `ticketNumber`, `authoritativeTotalCents` y el efectivo recibido a `SaleScreen`.
-2. `cashResultFromFinalization` normaliza el recibido y calcula el cambio no negativo.
-3. `SaleScreen` guarda el resultado completo en `cashResult`.
-4. `CashPaymentResultDialog` recibe `changeCents` y renderiza la fila existente sin lógica aritmética adicional.
+1. `SalePaymentCheckout` entrega `ticketNumber`, `authoritativeTotalCents` y, solo para efectivo, el importe recibido a `SaleScreen`.
+2. `paymentResultFromFinalization` discrimina en el boundary: `receivedCents === undefined` produce un resultado de método `Tarjeta`; un valor numérico se delega a `cashResultFromFinalization`.
+3. `cashResultFromFinalization` conserva el recibido y calcula el cambio no negativo para efectivo.
+4. `SaleScreen` guarda el resultado completo en `cashResult`.
+5. `CashPaymentResultDialog` recibe el resultado y renderiza las filas presentes sin lógica aritmética adicional.
 
 ## Alcance
 
@@ -33,7 +34,7 @@ Además, las etiquetas `Total`, `Dinero recibido` y `Cambio` tienen menos peso v
 
 - Probar que `cashResultFromFinalization` calcula cambio positivo.
 - Probar que el pago exacto genera `changeCents: 0` y conserva la fila.
-- Mantener la prueba que confirma que la tarjeta no muestra filas exclusivas de efectivo.
+- Probar el boundary real `SalePaymentCheckout.onFinalized -> SaleScreen`: sin `receivedCents` produce `method: "Tarjeta"` y omite las filas exclusivas de efectivo; con `receivedCents` conserva el cálculo de cambio.
+- Mantener la prueba aislada que confirma que la tarjeta no muestra filas exclusivas de efectivo.
 - Añadir un contrato CSS para el peso de las etiquetas.
 - Ejecutar pruebas enfocadas, suite frontend completa y builds de APP GESTIÓN y APP VENTA.
-
