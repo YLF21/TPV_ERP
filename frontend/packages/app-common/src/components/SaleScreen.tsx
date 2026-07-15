@@ -511,6 +511,10 @@ export function SaleScreen({
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
   const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
+  const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
+  const activeSearchResultId = selectedSearchProductId
+    ? `sale-product-result-${encodeURIComponent(selectedSearchProductId)}`
+    : undefined;
 
   useEffect(() => {
     setSelectedSearchProductId(results[0]?.id ?? "");
@@ -965,11 +969,14 @@ export function SaleScreen({
             <input
               ref={searchInputRef}
               aria-label={t("sale.main.searchProduct")}
+              aria-activedescendant={searchResultsVisible ? activeSearchResultId : undefined}
+              aria-autocomplete="list"
               aria-controls="sale-product-results"
-              aria-expanded={query.trim().length > 0}
+              aria-expanded={searchResultsVisible}
               autoComplete="off"
               disabled={catalogLoading || catalogError || paymentLocked}
               placeholder={t("sale.main.searchPlaceholder")}
+              role="combobox"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -980,7 +987,13 @@ export function SaleScreen({
               }}
             />
           </label>
-          <div className="sale-search-results" id="sale-product-results" aria-live="polite">
+          <div
+            aria-label={searchResultsVisible ? t("sale.main.searchProduct") : undefined}
+            aria-live="polite"
+            className="sale-search-results"
+            id="sale-product-results"
+            role={searchResultsVisible ? "listbox" : undefined}
+          >
             {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
             {catalogError && (
               <div className="sale-search-status sale-search-error">
@@ -995,6 +1008,8 @@ export function SaleScreen({
               <button
                 aria-selected={product.id === selectedSearchProductId}
                 className={`sale-search-result${product.id === selectedSearchProductId ? " selected" : ""}`}
+                id={`sale-product-result-${encodeURIComponent(product.id)}`}
+                role="option"
                 type="button"
                 disabled={paymentLocked}
                 key={product.id}

@@ -275,7 +275,7 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
 
     fireEvent.keyDown(window, { key: "F5" });
@@ -291,10 +291,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "F2" });
     expect(screen.getByRole("dialog", { name: "Cambiar cantidad" })).toBeInTheDocument();
@@ -315,10 +315,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
     expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
@@ -335,10 +335,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
     expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
@@ -355,10 +355,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "F2" });
     const quantityInput = screen.getByRole("spinbutton", { name: "Nueva cantidad" });
@@ -382,10 +382,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "F7" });
     const discountInput = screen.getByRole("spinbutton", { name: "Nuevo descuento" });
@@ -409,7 +409,7 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
 
     fireEvent.keyDown(window, { key: "F6" });
@@ -427,10 +427,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "Cafe" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "PageDown" });
     fireEvent.keyDown(window, { key: "F11" });
@@ -454,10 +454,10 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "Cafe" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     const contentEditable = document.createElement("div");
     contentEditable.contentEditable = "true";
@@ -496,12 +496,12 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "Cafe" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
     fireEvent.change(search, { target: { value: "Pan" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Pan integral/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Pan integral/ }));
     const coffee = screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s });
     const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
 
@@ -524,12 +524,12 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "Cafe" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
     fireEvent.change(search, { target: { value: "Pan" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Pan integral/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Pan integral/ }));
     const coffee = screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s });
     const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
 
@@ -784,7 +784,7 @@ describe("SaleScreen", () => {
     ]), { status: 200, headers: { "Content-Type": "application/json" } })));
     renderSaleScreen(vi.fn(), locale);
 
-    const searchInput = await screen.findByRole("textbox", { name: locale === "en" ? "Search product" : "搜索商品" });
+    const searchInput = await screen.findByRole("combobox", { name: locale === "en" ? "Search product" : "搜索商品" });
     await waitFor(() => expect(searchInput).toBeEnabled());
     fireEvent.change(searchInput, { target: { value: "SKU-原样-001" } });
 
@@ -853,16 +853,19 @@ describe("SaleScreen", () => {
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
 
     fireEvent.change(search, { target: { value: "00" } });
 
-    const coffeeResult = await screen.findByRole("button", { name: /Cafe molido/ });
-    const breadResult = screen.getByRole("button", { name: /Pan integral/ });
+    const results = await screen.findByRole("listbox", { name: "Buscar producto" });
+    const coffeeResult = within(results).getByRole("option", { name: /Cafe molido/ });
+    const breadResult = within(results).getByRole("option", { name: /Pan integral/ });
     expect(coffeeResult).toHaveAttribute("aria-selected", "true");
     expect(coffeeResult).toHaveClass("selected");
     expect(breadResult).toHaveAttribute("aria-selected", "false");
+    expect(search).toHaveAttribute("aria-controls", results.id);
+    expect(search).toHaveAttribute("aria-activedescendant", coffeeResult.id);
 
     fireEvent.keyDown(search, { key: "Enter" });
 
@@ -1107,10 +1110,10 @@ describe("SaleScreen", () => {
     installTicketHardware(printTicket);
     renderSaleScreen();
 
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
     fireEvent.click(screen.getByRole("button", { name: /Efectivo.*AvPág/ }));
     const cashDialog = await screen.findByRole("dialog", { name: "Cobro en efectivo" });
     fireEvent.click(within(cashDialog).getByRole("button", { name: /20/ }));
@@ -1141,10 +1144,10 @@ describe("SaleScreen", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     const cashAction = screen.getByRole("button", { name: /Efectivo.*AvPág/ });
     fireEvent.click(cashAction);
@@ -1169,10 +1172,10 @@ describe("SaleScreen", () => {
       throw new Error(`unexpected request ${path}`);
     }));
     renderSaleScreen();
-    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
     fireEvent.click(screen.getByRole("button", { name: /Efectivo.*AvPág/ }));
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-WINS-ERROR"), { kind: "CARD", totalCents: 1000 }));
 
