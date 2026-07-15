@@ -479,6 +479,21 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.getByRole("button",{name:/F12/})).toBeDisabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
+ it("delegates the cash action exactly once when onCash is supplied",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onCash=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onCash,onFinalized:vi.fn()}));
+
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*F10/}));
+
+  expect(onCash).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("dialog",{name:"Cobro en efectivo"})).not.toBeInTheDocument();
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(0);
+ });
  it("starts a full-total integrated card allocation with the configured provider",async()=>{
   const session={id:"session-card",total:"12.10",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{

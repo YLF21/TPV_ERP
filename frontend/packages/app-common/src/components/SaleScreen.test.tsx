@@ -48,6 +48,7 @@ import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
+  disabled?: boolean;
   onCash?: () => void;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
@@ -70,7 +71,7 @@ vi.mock("./SalePaymentCheckout", async () => {
         prepareApplicationClose,
         prepareLogout,
       }));
-      return <button type="button" onClick={props.onCash}>Efectivo <kbd>F10</kbd></button>;
+      return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>F10</kbd></button>;
     })
   };
 });
@@ -758,6 +759,35 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/pos/cash"))).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/finalize"))).toHaveLength(0);
+  });
+
+  it("excludes duplicate cash quotes and ignores a quote resolved after finalization", async () => {
+    let resolveQuote!: (response: Response) => void;
+    const pendingQuote = new Promise<Response>((resolve) => { resolveQuote = resolve; });
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/cash/quote")) return pendingQuote;
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    const cashAction = screen.getByRole("button", { name: /Efectivo.*F10/ });
+    fireEvent.click(cashAction);
+    fireEvent.click(cashAction);
+    expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/pos/cash/quote"))).toHaveLength(1);
+    expect(cashAction).toBeDisabled();
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-WINS"), { kind: "CARD", totalCents: 1000 }));
+    resolveQuote(new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByText("CARD-WINS")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Cobro en efectivo" })).not.toBeInTheDocument();
   });
 
   it("reads the current cash mode on every opening", () => {

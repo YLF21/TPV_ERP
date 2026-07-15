@@ -334,6 +334,21 @@ export async function runGuardedCashSubmission(
   }
 }
 
+export async function runGuardedCashOpening(
+  guard: { current: boolean; generation: number },
+  opening: (context: { isCurrent: () => boolean }) => Promise<unknown>
+) {
+  if (guard.current) return false;
+  guard.current = true;
+  const generation = ++guard.generation;
+  try {
+    await opening({ isCurrent: () => guard.generation === generation });
+    return true;
+  } finally {
+    if (guard.generation === generation) guard.current = false;
+  }
+}
+
 export function saleProductBlocksManualDiscount(product: SaleProduct) {
   return String(product.discountType ?? "NORMAL").toUpperCase() === "NONE";
 }
@@ -423,6 +438,7 @@ export function SaleScreen({
   const [customerError, setCustomerError] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
   const [cashDialogOpen, setCashDialogOpen] = useState(false);
+  const [cashOpening, setCashOpening] = useState(false);
   const [cashQuoteCents, setCashQuoteCents] = useState(0);
   const [cashCheckoutId, setCashCheckoutId] = useState("");
   const [cashSubmitting, setCashSubmitting] = useState(false);
@@ -444,6 +460,7 @@ export function SaleScreen({
   const [catalogReload, setCatalogReload] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cashSubmissionRef = useRef(false);
+  const cashOpeningRef = useRef({ current: false, generation: 0 });
   const cardSubmissionRef = useRef(false);
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
@@ -454,6 +471,12 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
+
+  function invalidateCashOpening() {
+    cashOpeningRef.current.generation += 1;
+    cashOpeningRef.current.current = false;
+    setCashOpening(false);
+  }
 
   function updateMatchingPrintOutcome(documentId: string, outcome: TicketPrintOutcome) {
     setCashResult((current) => current?.printTicket?.documentId === documentId
@@ -610,21 +633,27 @@ export function SaleScreen({
   }
 
   async function openCashDialog() {
-    if (lines.length === 0 || total <= 0) return;
-    setCashError("");
-    setCashStatus("");
-    setCashInputMode(readCashModeForOpening());
-    try {
-      const quote = await apiRequest<{ total: number | string }>("/pos/cash/quote", {
-        token: session.accessToken,
-        body: cashSaleRequest()
-      });
-      setCashQuoteCents(Math.round(Number(quote.total) * 100));
-      setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
-      setCashDialogOpen(true);
-    } catch (error) {
-      setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
-    }
+    await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
+      if (lines.length === 0 || total <= 0) return;
+      setCashOpening(true);
+      setCashError("");
+      setCashStatus("");
+      setCashInputMode(readCashModeForOpening());
+      try {
+        const quote = await apiRequest<{ total: number | string }>("/pos/cash/quote", {
+          token: session.accessToken,
+          body: cashSaleRequest()
+        });
+        if (!opening.isCurrent()) return;
+        setCashQuoteCents(Math.round(Number(quote.total) * 100));
+        setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+        setCashDialogOpen(true);
+      } catch (error) {
+        setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
+      } finally {
+        if (opening.isCurrent()) setCashOpening(false);
+      }
+    });
   }
 
   async function confirmCashPayment(receivedCents: number) {
@@ -890,7 +919,7 @@ export function SaleScreen({
               token={session.accessToken}
               permissions={session.permissions}
               terminal={terminalContext}
-              disabled={lines.length === 0 || total <= 0}
+              disabled={lines.length === 0 || total <= 0 || cashOpening}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onLockedChange={(locked, reservedTotalCents) => {
@@ -900,6 +929,7 @@ export function SaleScreen({
                 );
               }}
               onFinalized={(printTicket, summary) => {
+                invalidateCashOpening();
                 setLines([]);
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
@@ -945,7 +975,10 @@ export function SaleScreen({
           initialMode={cashInputMode}
           submitting={cashSubmitting}
           error={cashError}
-          onCancel={() => setCashDialogOpen(false)}
+          onCancel={() => {
+            invalidateCashOpening();
+            setCashDialogOpen(false);
+          }}
           onConfirm={(receivedCents) => void confirmCashPayment(receivedCents)}
         />
       )}
