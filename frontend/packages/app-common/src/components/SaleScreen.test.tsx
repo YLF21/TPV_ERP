@@ -1136,7 +1136,14 @@ describe("SaleScreen", () => {
     });
   });
 
-  it("runs direct /pos/cash through UI, shows pending print, and retries only hardware", async () => {
+  it("sends only the manual discount when member pricing is active", async () => {
+    const user = userEvent.setup();
+    const activeMember: SaleCustomer = {
+      id: "member-customer",
+      fiscalName: "Cliente Bronce",
+      activeMember: true,
+      memberDiscountPercent: 5,
+    };
     const snapshot: ConfirmedTicketPrintSnapshot = {
       ...printSnapshot("DIRECT-UI"),
       total: "10.00",
@@ -1145,10 +1152,16 @@ describe("SaleScreen", () => {
     };
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([activeMember]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash")) {
         expect(options?.method).toBe("POST");
+        const request = JSON.parse(String(options?.body));
+        expect(request.sale).toEqual({
+          customerId: "member-customer",
+          lines: [{ productId: "member-coffee", quantity: 1, discount: 3 }],
+        });
         return new Response(JSON.stringify({ number: "DIRECT-UI", total: "10.00", change: "10.00", printTicket: snapshot }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       throw new Error(`unexpected request ${path}`);
@@ -1163,8 +1176,12 @@ describe("SaleScreen", () => {
 
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
-    fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.change(search, { target: { value: "MEM-CAFE" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe socio/ }));
+    fireEvent.keyDown(window, { key: "F7" });
+    await user.keyboard("3{Enter}");
+    fireEvent.keyDown(window, { key: "F6" });
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente Bronce/ }));
     fireEvent.click(screen.getByRole("button", { name: /Efectivo.*AvPág/ }));
     const cashDialog = await screen.findByRole("dialog", { name: "Cobro en efectivo" });
     fireEvent.click(within(cashDialog).getByRole("button", { name: /20/ }));
