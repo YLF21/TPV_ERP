@@ -222,6 +222,23 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(cancel).toHaveBeenCalledTimes(1);
   expect(discard).not.toHaveBeenCalled();
  });
+ it("exposes the same enabled cash and card actions through its imperative handle",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onCash=vi.fn();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onCash,onFinalized:vi.fn()}));
+  await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+
+  act(()=>ref.current!.triggerCash());
+  expect(onCash).toHaveBeenCalledTimes(1);
+
+  act(()=>ref.current!.triggerCard());
+  expect(screen.getByRole("dialog",{name:"Cobro con tarjeta manual"})).toBeInTheDocument();
+ });
  it.each([
   ["logout","prepareLogout"],
   ["application close","prepareApplicationClose"],

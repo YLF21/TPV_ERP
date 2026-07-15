@@ -12,7 +12,10 @@ const session: UserSession = {
   permissions: ["ADMIN"]
 };
 
-function renderControls(onPrepareShutdown?: () => Promise<boolean>) {
+function renderControls(
+  onPrepareShutdown?: () => Promise<boolean>,
+  onBrowserClose?: () => void | Promise<void>
+) {
   render(
     <SessionTopControls
       locale="es"
@@ -27,6 +30,7 @@ function renderControls(onPrepareShutdown?: () => Promise<boolean>) {
       yesLabel="Sí"
       onLocaleChange={vi.fn()}
       onPrepareShutdown={onPrepareShutdown}
+      onBrowserClose={onBrowserClose}
     />
   );
 }
@@ -59,6 +63,18 @@ describe("SessionTopControls shutdown", () => {
     expect(closeApplication).not.toHaveBeenCalled();
     resolvePreparation(true);
     await waitFor(() => expect(closeApplication).toHaveBeenCalledTimes(1));
+  });
+
+  it("uses the browser close fallback after successful preparation outside Electron", async () => {
+    const onPrepareShutdown = vi.fn().mockResolvedValue(true);
+    const onBrowserClose = vi.fn().mockResolvedValue(undefined);
+    renderControls(onPrepareShutdown, onBrowserClose);
+    openShutdownConfirmation();
+
+    fireEvent.click(screen.getByRole("button", { name: /^S/ }));
+
+    await waitFor(() => expect(onBrowserClose).toHaveBeenCalledTimes(1));
+    expect(onPrepareShutdown).toHaveBeenCalledTimes(1);
   });
 
   it.each([
