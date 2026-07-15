@@ -236,9 +236,20 @@ describe("SaleScreen", () => {
     expect(prepareLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves cash received by individual checkout and falls back to the total", () => {
-    expect(cashResultFromFinalization("T-1", 1210, 2000)).toEqual({ ticketNumber: "T-1", totalCents: 1210, receivedCents: 2000 });
-    expect(cashResultFromFinalization("T-2", 1210)).toEqual({ ticketNumber: "T-2", totalCents: 1210, receivedCents: 1210 });
+  it("preserves cash received and calculates non-negative change for individual checkout", () => {
+    expect(cashResultFromFinalization("T-1", 1210, 2000)).toEqual({
+      ticketNumber: "T-1",
+      totalCents: 1210,
+      receivedCents: 2000,
+      changeCents: 790,
+    });
+    expect(cashResultFromFinalization("T-2", 1210)).toEqual({
+      ticketNumber: "T-2",
+      totalCents: 1210,
+      receivedCents: 1210,
+      changeCents: 0,
+    });
+    expect(cashResultFromFinalization("T-3", 1210, 1000).changeCents).toBe(0);
   });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);

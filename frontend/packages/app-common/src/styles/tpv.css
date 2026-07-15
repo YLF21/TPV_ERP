@@ -11716,6 +11716,10 @@ textarea:focus,
   background: var(--tpv-v3-surface-alt);
 }
 
+.cash-payment-result-dialog .cash-payment-summary span {
+  font-weight: 800;
+}
+
 .cash-payment-result-dialog .cash-payment-summary strong {
   color: var(--tpv-v3-text);
   font-size: 16px;

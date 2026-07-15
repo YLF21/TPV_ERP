@@ -30,6 +30,7 @@ describe("CashPaymentResultDialog", () => {
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog\s*>\s*header\s*{[^}]*min-height:\s*38px;[^}]*border-bottom:\s*1px solid var\(--tpv-v3-line\);/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary\s*>\s*div\s*{[^}]*min-height:\s*34px;[^}]*border-radius:\s*3px;/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary strong\s*{[^}]*font-size:\s*16px;[^}]*font-variant-numeric:\s*tabular-nums;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary span\s*{[^}]*font-weight:\s*800;/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-actions button\s*{[^}]*min-height:\s*34px;[^}]*border-radius:\s*3px;/s);
   });
 

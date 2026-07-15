@@ -250,8 +250,18 @@ export function finishCashPaymentResult(
   focusSearch();
 }
 
-export function cashResultFromFinalization(ticketNumber:string,totalCents:number,receivedCents?:number):CashPaymentResult {
-  return {ticketNumber,totalCents,receivedCents:receivedCents??totalCents};
+export function cashResultFromFinalization(
+  ticketNumber: string,
+  totalCents: number,
+  receivedCents?: number,
+): CashPaymentResult {
+  const normalizedReceivedCents = receivedCents ?? totalCents;
+  return {
+    ticketNumber,
+    totalCents,
+    receivedCents: normalizedReceivedCents,
+    changeCents: Math.max(0, normalizedReceivedCents - totalCents),
+  };
 }
 
 export async function runGuardedCashSubmission(
