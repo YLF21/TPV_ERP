@@ -164,8 +164,8 @@ function saleShortcutTargetIsEditable(target: EventTarget | null) {
   );
 }
 
-export function saleLineSubtotal(line: SaleLine) {
-  return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+export function saleLineSubtotal(line: SaleLine, activeMember = false) {
+  return effectiveSaleProductPrice(line.product, activeMember) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
 
 export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lineCount:number, reservedTotalCents:number|null){
@@ -180,12 +180,12 @@ export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer |
   const customerDiscount = customer?.activeMember ? Number(customer.memberDiscountPercent ?? 0) : 0;
   return lines.map((line) => ({
     ...line,
-    memberDiscountPercent: line.product.discountType === "MEMBER_DISCOUNT" ? customerDiscount : 0
+    memberDiscountPercent: customerDiscount
   }));
 }
 
-export function saleTotal(lines: SaleLine[]) {
-  return lines.reduce((total, line) => total + saleLineSubtotal(line), 0);
+export function saleTotal(lines: SaleLine[], activeMember = false) {
+  return lines.reduce((total, line) => total + saleLineSubtotal(line, activeMember), 0);
 }
 
 type CashPaymentResponse = {
@@ -388,12 +388,16 @@ export function saleProductBlocksManualDiscount(product: SaleProduct) {
   return String(product.discountType ?? "NORMAL").toUpperCase() === "NONE";
 }
 
-export function effectiveSaleProductPrice(product: SaleProduct, currentDate = currentSaleDate()) {
+export function effectiveSaleProductPrice(product: SaleProduct, activeMember = false, currentDate = currentSaleDate()) {
   const salePrice = salePriceNumber(product.salePrice);
-  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
-  if (mode === "MEMBER_PRICE") {
-    return salePriceNumber(product.memberPrice, salePrice);
+  if (
+    activeMember
+    && String(product.discountType ?? "").toUpperCase() === "MEMBER_PRICE"
+    && salePriceNumber(product.memberPrice) > 0
+  ) {
+    return salePriceNumber(product.memberPrice);
   }
+  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
   if ((mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT") && saleOfferIsCurrent(product, currentDate)) {
     const explicitOfferPrice = salePriceNumber(product.offerPrice, Number.NaN);
     if (Number.isFinite(explicitOfferPrice)) return explicitOfferPrice;
@@ -507,7 +511,8 @@ export function SaleScreen({
   const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
-  const total = saleTotal(lines);
+  const activeMember = selectedCustomer?.activeMember === true;
+  const total = saleTotal(lines, activeMember);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
   const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
   const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
@@ -926,7 +931,7 @@ export function SaleScreen({
                     <span>{line.product.code ?? line.product.barcode ?? t("sale.main.missingCode")}</span>
                   </div>
                   <span>
-                    {line.quantity} x {formatSaleAmount(effectiveSaleProductPrice(line.product))}
+                    {line.quantity} x {formatSaleAmount(effectiveSaleProductPrice(line.product, activeMember))}
                     {effectiveSaleLineDiscount(line) > 0 && (
                       <small>
                         {line.memberDiscountPercent != null
@@ -938,7 +943,7 @@ export function SaleScreen({
                     )}
                     {saleProductBlocksManualDiscount(line.product) && <small> {t("sale.discountBlockedShort")}</small>}
                   </span>
-                  <b>{formatSaleAmount(saleLineSubtotal(line))}</b>
+                  <b>{formatSaleAmount(saleLineSubtotal(line, activeMember))}</b>
                 </button>
               ))}
             </div>
@@ -1015,7 +1020,7 @@ export function SaleScreen({
                   <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
                   <small>{product.code ?? product.barcode ?? t("sale.main.missingCode")}</small>
                 </span>
-                <b>{formatSaleAmount(effectiveSaleProductPrice(product))}</b>
+                <b>{formatSaleAmount(effectiveSaleProductPrice(product, activeMember))}</b>
               </button>
             ))}
           </div>

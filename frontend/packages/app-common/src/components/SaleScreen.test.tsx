@@ -906,13 +906,29 @@ describe("SaleScreen", () => {
     expect(saleTotal(completed)).toBe(22.5);
   });
 
-  it("displays the configured member or valid offer price and falls back after expiry", () => {
+  it("uses a valid member price only for an active member", () => {
     expect(effectiveSaleProductPrice({
       id: "member",
       salePrice: 10,
       memberPrice: 8.5,
-      priceUseMode: "MEMBER_PRICE"
-    }, "2026-07-11")).toBe(8.5);
+      discountType: "MEMBER_PRICE"
+    }, true)).toBe(8.5);
+    expect(effectiveSaleProductPrice({
+      id: "member",
+      salePrice: 10,
+      memberPrice: 8.5,
+      discountType: "MEMBER_PRICE"
+    }, false)).toBe(10);
+    expect(effectiveSaleProductPrice({
+      id: "member",
+      salePrice: 10,
+      memberPrice: 0,
+      discountType: "MEMBER_PRICE"
+    }, true)).toBe(10);
+    expect(effectiveSaleProductPrice({ id: "normal", salePrice: 10 }, true)).toBe(10);
+  });
+
+  it("displays a current offer price and falls back after expiry", () => {
 
     const offered: SaleProduct = {
       id: "offer",
@@ -924,15 +940,15 @@ describe("SaleScreen", () => {
       offerUntil: "2026-07-31"
     };
     expect(saleOfferIsCurrent(offered, "2026-07-11")).toBe(true);
-    expect(effectiveSaleProductPrice(offered, "2026-07-11")).toBe(7.5);
-    expect(effectiveSaleProductPrice(offered, "2026-08-01")).toBe(10);
+    expect(effectiveSaleProductPrice(offered, false, "2026-07-11")).toBe(7.5);
+    expect(effectiveSaleProductPrice(offered, false, "2026-08-01")).toBe(10);
     expect(effectiveSaleProductPrice({
       ...offered,
       offerPrice: null,
       offerDiscountPercent: 25,
       priceUseMode: "OFFER_DISCOUNT"
-    }, "2026-07-11")).toBe(7.5);
-    expect(effectiveSaleProductPrice({ ...offered, offerActive: false }, "2026-07-11")).toBe(10);
+    }, false, "2026-07-11")).toBe(7.5);
+    expect(effectiveSaleProductPrice({ ...offered, offerActive: false }, false, "2026-07-11")).toBe(10);
   });
 
   it("updates quantity only with valid integer values", () => {
@@ -1003,7 +1019,7 @@ describe("SaleScreen", () => {
     expect(filterSaleCustomers(customers, "c-002").map((customer) => customer.id)).toEqual(["customer-2"]);
   });
 
-  it("applies the bronze member discount only to MEMBER_DISCOUNT products", () => {
+  it("applies the member tier discount to every product line", () => {
     const lines = addSaleLine(addSaleLine([], memberDiscountProduct), products[0]);
     const bronze: SaleCustomer = {
       id: "bronze",
@@ -1017,7 +1033,7 @@ describe("SaleScreen", () => {
 
     expect(discounted[0].memberDiscountPercent).toBe(5);
     expect(effectiveSaleLineDiscount(discounted[0])).toBe(5);
-    expect(discounted[1].memberDiscountPercent).toBe(0);
+    expect(discounted[1].memberDiscountPercent).toBe(5);
   });
 
   it("preserves a greater manual discount when a member is selected or removed", () => {
@@ -1033,11 +1049,25 @@ describe("SaleScreen", () => {
     expect(withoutMember[0].memberDiscountPercent).toBe(0);
   });
 
+  it("uses a greater member tier discount than the manual discount", () => {
+    const manuallyDiscounted = updateSaleLineDiscount(addSaleLine([], memberDiscountProduct), "member-coffee", 3);
+    const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
+
+    expect(effectiveSaleLineDiscount(applyMemberDiscounts(manuallyDiscounted, bronze)[0])).toBe(5);
+  });
+
   it("applies member discount to a product added after selecting the customer", () => {
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
     const added = applyMemberDiscounts(addSaleLine([], memberDiscountProduct), bronze);
 
     expect(saleTotal(added)).toBe(9.5);
+  });
+
+  it("applies member discount when the customer is selected after adding a product", () => {
+    const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
+    const addedBeforeSelection = addSaleLine([], products[0]);
+
+    expect(saleTotal(applyMemberDiscounts(addedBeforeSelection, bronze))).toBe(9.5);
   });
 
   it("uses confirmed server amounts in the cash payment result", () => {
