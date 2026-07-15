@@ -348,7 +348,7 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
   });
 
-  it("focuses and saves quantity from the keyboard form", async () => {
+  it("replaces the selected quantity from the keyboard and cancels later edits with Escape", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
@@ -363,14 +363,19 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F2" });
     const quantityInput = screen.getByRole("spinbutton", { name: "Nueva cantidad" });
     expect(quantityInput).toHaveFocus();
-    fireEvent.change(quantityInput, { target: { value: "3" } });
-    await user.keyboard("{Enter}");
+    await user.keyboard("2{Enter}");
 
     expect(screen.queryByRole("dialog", { name: "Cambiar cantidad" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Cafe molido.*3 x 10,00/s })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*2 x 10,00/s })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "F2" });
+    await user.keyboard("9{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "Cambiar cantidad" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*2 x 10,00/s })).toBeInTheDocument();
   });
 
-  it("focuses and saves discount from the keyboard form", async () => {
+  it("replaces the selected discount from the keyboard and cancels later edits with Escape", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
@@ -385,11 +390,35 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F7" });
     const discountInput = screen.getByRole("spinbutton", { name: "Nuevo descuento" });
     expect(discountInput).toHaveFocus();
-    fireEvent.change(discountInput, { target: { value: "25" } });
-    await user.keyboard("{Enter}");
+    await user.keyboard("10{Enter}");
 
     expect(screen.queryByRole("dialog", { name: "Aplicar descuento" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Cafe molido.*25,00%/s })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*10,00%/s })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "F7" });
+    await user.keyboard("25{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "Aplicar descuento" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*10,00%/s })).toBeInTheDocument();
+  });
+
+  it("cancels customer selection with Escape without changing the customer", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.keyDown(window, { key: "F6" });
+    const customerSearch = await screen.findByRole("textbox", { name: "Buscar cliente" });
+    await user.type(customerSearch, "Maria");
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cliente: /)).not.toBeInTheDocument();
   });
 
   it("delegates PageDown and F11 to the checkout actions and ignores F10, repeats, or open modals", async () => {

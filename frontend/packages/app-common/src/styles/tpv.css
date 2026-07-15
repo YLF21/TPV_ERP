@@ -3972,6 +3972,16 @@ input {
   font: inherit;
 }
 
+.sale-action-form {
+  display: grid;
+  gap: 18px;
+}
+
+.sale-action-form .sale-action-buttons {
+  margin-top: 4px;
+  gap: 14px;
+}
+
 .sale-action-buttons {
   justify-content: flex-end;
 }

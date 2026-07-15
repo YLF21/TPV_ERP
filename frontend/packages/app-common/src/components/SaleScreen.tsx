@@ -598,8 +598,14 @@ export function SaleScreen({
   }
 
   useEffect(() => {
-    if (actionDialog === "quantity") quantityInputRef.current?.focus();
-    if (actionDialog === "discount") discountInputRef.current?.focus();
+    if (actionDialog === "quantity") {
+      quantityInputRef.current?.focus();
+      quantityInputRef.current?.select();
+    }
+    if (actionDialog === "discount") {
+      discountInputRef.current?.focus();
+      discountInputRef.current?.select();
+    }
     if (actionDialog === "remove") removeConfirmButtonRef.current?.focus();
   }, [actionDialog]);
 
@@ -1106,7 +1112,7 @@ export function SaleScreen({
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
-          <form onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
+          <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
             <label>
               <span>Cantidad</span>
               <input ref={quantityInputRef} aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
@@ -1119,7 +1125,7 @@ export function SaleScreen({
 
       {actionDialog === "discount" && selectedLine && (
         <SaleActionDialog title="Aplicar descuento" onClose={() => setActionDialog(null)}>
-          <form onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
+          <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
             <label>
               <span>Descuento (%)</span>
               <input ref={discountInputRef} aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
@@ -1164,9 +1170,17 @@ export function SaleScreen({
 }
 
 function SaleActionDialog({ title, children, onClose, onKeyDown, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void; wide?: boolean }) {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    onKeyDown?.(event);
+    if (event.defaultPrevented || event.repeat || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  }
+
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
+      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
         <header><h2>{title}</h2><button type="button" aria-label="Cerrar" onClick={onClose}>x</button></header>
         {children}
       </section>
