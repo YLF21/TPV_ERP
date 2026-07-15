@@ -7,4 +7,14 @@ function resolveTicketPrintRoute(config = {}) {
   };
 }
 
-module.exports = { resolveTicketPrintRoute };
+function buildTicketCopyBuffers(ticketBuffer, copies, drawerBuffer) {
+  return Array.from({ length: copies }, (_, index) => (
+    index === 0 && drawerBuffer ? Buffer.concat([drawerBuffer, ticketBuffer]) : ticketBuffer
+  ));
+}
+
+function withTicketPrinterRoute(config, route) {
+  return { ...config, ticketPrinterName: route.printerName };
+}
+
+module.exports = { buildTicketCopyBuffers, resolveTicketPrintRoute, withTicketPrinterRoute };

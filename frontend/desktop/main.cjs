@@ -3,7 +3,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
-const { resolveTicketPrintRoute } = require("./ticket-print-route.cjs");
+const { buildTicketCopyBuffers, resolveTicketPrintRoute, withTicketPrinterRoute } = require("./ticket-print-route.cjs");
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
@@ -496,19 +496,18 @@ async function printTicket(ticket, config) {
   const nextConfig = normalizeHardwareConfig({ ...readHardwareConfig(), ...config });
   const route = resolveTicketPrintRoute(nextConfig);
   const printerName = route.printerName;
+  const routedConfig = withTicketPrinterRoute(nextConfig, route);
 
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
     try {
       const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
       const ticketBuffer = buildTicketBuffer(ticket);
-      for (let copy = 0; copy < route.copies; copy += 1) {
-        const copyBuffer = copy === 0 && shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
-          ? Buffer.concat([buildCashDrawerBuffer(), ticketBuffer])
-          : ticketBuffer;
-        await sendTicketPrinterRawBuffer({ ...nextConfig, ticketPrinterName: printerName }, copyBuffer);
+      const drawerBuffer = shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER" ? buildCashDrawerBuffer() : undefined;
+      for (const copyBuffer of buildTicketCopyBuffers(ticketBuffer, route.copies, drawerBuffer)) {
+        await sendTicketPrinterRawBuffer(routedConfig, copyBuffer);
       }
       if (shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER") {
-        await openCashDrawerWithConfig(nextConfig);
+        await openCashDrawerWithConfig(routedConfig);
       }
       return { ok: true };
     } catch (error) {
@@ -541,7 +540,7 @@ async function printTicket(ticket, config) {
       });
     });
     if (shouldOpenCashDrawerForTicket(nextConfig, ticket) && nextConfig.cashDrawerConnection !== "NONE") {
-      await openCashDrawerWithConfig(nextConfig);
+      await openCashDrawerWithConfig(routedConfig);
     }
     return { ok: true };
   } catch (error) {
