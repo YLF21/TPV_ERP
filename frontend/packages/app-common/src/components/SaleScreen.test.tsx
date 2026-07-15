@@ -38,29 +38,31 @@ import {
   type SaleProduct
 } from "./SaleScreen";
 import type { TerminalContext, UserSession } from "../types";
+import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+
+type CheckoutMockProps = {
+  testCashEnabled?: boolean;
+  onFinalized: (ticketNumber: string, summary: PaymentFinalizationSummary) => void;
+};
 
 const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   checkoutHandle: { attached: true },
   checkoutProps: {
-    current: null as null | {
-      testCashEnabled?: boolean;
-      onFinalized?: (ticketNumber: string, summary: {
-        kind: "CASH" | "CARD" | "MIXED";
-        totalCents: number;
-        receivedCents?: number;
-      }) => void;
-    },
+    current: null as CheckoutMockProps | null,
   }
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
   const { forwardRef, useImperativeHandle } = await import("react");
   return {
-    SalePaymentCheckout: forwardRef(function MockSalePaymentCheckout(props, ref) {
+    SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
-      useImperativeHandle(ref, () => checkoutHandle.attached ? ({ prepareApplicationClose, prepareLogout }) : null);
+      useImperativeHandle(checkoutHandle.attached ? ref : null, (): SalePaymentCheckoutHandle => ({
+        prepareApplicationClose,
+        prepareLogout,
+      }));
       return null;
     })
   };

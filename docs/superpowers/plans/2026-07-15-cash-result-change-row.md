@@ -4,7 +4,7 @@
 
 **Goal:** Always show the calculated change for cash results and render the three cash summary labels in bold.
 
-**Architecture:** `SalePaymentCheckout` derives an explicit `PaymentFinalizationSummary` from the finalized session's effective allocations (`CASH`, `CARD`, or `MIXED`). `SaleScreen` consumes that discriminated summary and calculates `changeCents` only for CASH, keeping `CashPaymentResultDialog` presentation-only.
+**Architecture:** Before the irreversible finalize POST, `SalePaymentCheckout` validates the authoritative COVERED session and derives an explicit `PaymentFinalizationSummary` from its effective allocations (`CASH`, `CARD`, or `MIXED`). The ticket response cannot redefine the summary. `SaleScreen` consumes that discriminated summary and calculates `changeCents` only for CASH, keeping `CashPaymentResultDialog` presentation-only.
 
 **Tech Stack:** React 19, TypeScript, CSS, Vitest, React DOM server rendering.
 
@@ -102,7 +102,7 @@ export type PaymentFinalizationSummary =
   | { kind: "CARD" | "MIXED"; totalCents: number; receivedCents?: never };
 ```
 
-Derive the summary in `SalePaymentCheckout.finish` from `APPROVED` allocations. Preserve `cashAttempt.receivedCents` for keyboard CASH; otherwise cap authorized CASH at `totalCents`. Wire `SaleScreen.onFinalized` through `paymentResultFromFinalization(ticketNumber, summary)` and map `CARD`/`MIXED` to `Tarjeta`/`Mixto` without cash fields.
+Derive and validate the summary in `SalePaymentCheckout.finish` from the COVERED `next` session's `APPROVED` allocations before calling `/finalize`. Preserve `cashAttempt.receivedCents` for keyboard CASH; otherwise cap authorized CASH at `totalCents`. Reuse the precomputed summary when the response contains a ticket, even if the response omits allocations. Wire `SaleScreen.onFinalized` through `paymentResultFromFinalization(ticketNumber, summary)` and map `CARD`/`MIXED` to `Tarjeta`/`Mixto` without cash fields.
 
 - [ ] **Step 5: Make result labels bold**
 
@@ -122,7 +122,7 @@ Run from `frontend`:
 npm.cmd test -- SalePaymentCheckout.test.ts SaleScreen.test.tsx CashPaymentResultDialog.test.tsx
 ```
 
-Expected: all tests in both files pass, including the card-only negative assertions.
+Expected: all tests in all three files pass, including the card-only negative assertions.
 
 - [ ] **Step 7: Run full frontend verification**
 
@@ -138,6 +138,6 @@ Expected: all frontend tests pass; APP GESTIÓN and APP VENTA production builds 
 - [ ] **Step 8: Commit the implementation**
 
 ```powershell
-git add -- frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts frontend/packages/app-common/src/components/SalePaymentCheckout.tsx frontend/packages/app-common/src/components/SaleScreen.test.tsx frontend/packages/app-common/src/components/SaleScreen.tsx docs/superpowers/specs/2026-07-15-cash-result-change-row-design.md docs/superpowers/plans/2026-07-15-cash-result-change-row.md
+git add -- frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts frontend/packages/app-common/src/components/SalePaymentCheckout.tsx frontend/packages/app-common/src/components/SaleScreen.test.tsx frontend/packages/app-common/src/components/SaleScreen.tsx frontend/packages/app-common/src/components/CashPaymentResultDialog.test.tsx frontend/packages/app-common/src/styles/tpv.css docs/superpowers/specs/2026-07-15-cash-result-change-row-design.md docs/superpowers/plans/2026-07-15-cash-result-change-row.md
 git commit -m "fix(payment): summarize finalized payment method"
 ```

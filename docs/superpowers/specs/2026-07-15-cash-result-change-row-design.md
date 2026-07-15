@@ -21,12 +21,13 @@ Además, las etiquetas `Total`, `Dinero recibido` y `Cambio` tienen menos peso v
 
 ## Flujo de datos
 
-1. `SalePaymentCheckout` inspecciona las allocations `APPROVED` de la sesión finalizada y construye un `PaymentFinalizationSummary` explícito.
-2. `SalePaymentCheckout.onFinalized` entrega `ticketNumber` y el resumen discriminado a `SaleScreen`.
-3. `paymentResultFromFinalization` consume `summary.kind`: delega `CASH` a `cashResultFromFinalization`, traduce `CARD` a `Tarjeta` y `MIXED` a `Mixto`.
-4. `cashResultFromFinalization` conserva el recibido y calcula el cambio no negativo para efectivo.
-5. `SaleScreen` guarda el resultado completo en `cashResult`.
-6. `CashPaymentResultDialog` recibe el resultado y renderiza las filas presentes sin lógica aritmética adicional.
+1. `SalePaymentCheckout` inspecciona y valida las allocations `APPROVED` de la sesión COVERED autoritativa y construye un `PaymentFinalizationSummary` explícito antes del POST irreversible de finalización.
+2. Si la respuesta devuelve un ticket, `SalePaymentCheckout` reutiliza el resumen precomputado aunque la respuesta omita o altere sus allocations; una sesión COVERED incoherente falla antes del POST y permanece bloqueada.
+3. `SalePaymentCheckout.onFinalized` entrega `ticketNumber` y el resumen discriminado a `SaleScreen`.
+4. `paymentResultFromFinalization` consume `summary.kind`: delega `CASH` a `cashResultFromFinalization`, traduce `CARD` a `Tarjeta` y `MIXED` a `Mixto`.
+5. `cashResultFromFinalization` conserva el recibido y calcula el cambio no negativo para efectivo.
+6. `SaleScreen` guarda el resultado completo en `cashResult`.
+7. `CashPaymentResultDialog` recibe el resultado y renderiza las filas presentes sin lógica aritmética adicional.
 
 ## Alcance
 
@@ -39,6 +40,8 @@ Además, las etiquetas `Total`, `Dinero recibido` y `Cambio` tienen menos peso v
 - Probar que `cashResultFromFinalization` calcula cambio positivo.
 - Probar que el pago exacto genera `changeCents: 0` y conserva la fila.
 - Probar en el productor CASH desde `PaymentAllocationPanel` sin intento local, CARD y MIXED a partir de allocations efectivas.
+- Probar que una respuesta con ticket y allocations vacías usa exactamente una vez el resumen precomputado y no reconcilia `/active`.
+- Probar que una sesión COVERED sin allocations `APPROVED` falla antes del endpoint `/finalize` y conserva la UI bloqueada con error seguro.
 - Probar el boundary real `SalePaymentCheckout.onFinalized -> SaleScreen` para los tres `kind`, incluido `Mixto` sin filas exclusivas de efectivo.
 - Mantener la prueba aislada que confirma que la tarjeta no muestra filas exclusivas de efectivo.
 - Añadir un contrato CSS para el peso de las etiquetas.

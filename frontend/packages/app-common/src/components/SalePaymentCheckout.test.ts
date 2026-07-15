@@ -909,7 +909,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  });
 
  it("keeps the test cash offer retryable when opening fails", async () => {
-  const session = {id:"session-open-retry",total:"12.10",status:"COVERED",allocations:[]};
+  const session = {id:"session-open-retry",total:"12.10",status:"COVERED",allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"APPROVED"}]};
   let openCalls = 0;
   apiRequestMock.mockImplementation(async(path:string) => {
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
@@ -933,7 +933,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  });
 
  it("hides the test cash offer after a later unrelated finalization error", async () => {
-  const session = {id:"session-finalize-errors",total:"12.10",status:"COVERED",allocations:[]};
+  const session = {id:"session-finalize-errors",total:"12.10",status:"COVERED",allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"APPROVED"}]};
   let finalizeCalls = 0;
   apiRequestMock.mockImplementation(async(path:string) => {
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
@@ -1152,6 +1152,49 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-SUMMARY",expectedSummary));
+ });
+ it("uses the pre-finalize summary when the ticket response omits allocations and never reconciles active", async () => {
+  const collecting={id:"session-done-empty",total:"12.10",status:"COLLECTING",allocations:[]};
+  const covered={...collecting,status:"COVERED",allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"APPROVED"}]};
+  let activeCalls=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active"){activeCalls+=1;return null;}
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/session-done-empty/allocations")return covered;
+   if(path==="/pos/payment-sessions/session-done-empty/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"T-DONE-EMPTY",allocations:[]};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+
+  fireEvent.click(await screen.findByRole("button",{name:/Efectivo/}));
+  fireEvent.click(screen.getByRole("button",{name:"Exacto"}));
+  fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-DONE-EMPTY",{kind:"CASH",totalCents:1210,receivedCents:1210}));
+  expect(onFinalized).toHaveBeenCalledTimes(1);
+  expect(activeCalls).toBe(1);
+ });
+ it("rejects an incoherent covered session before finalize and keeps checkout safely locked", async () => {
+  const covered={id:"session-invalid-covered",total:"12.10",status:"COVERED",allocations:[{id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"12.10",status:"DECLINED"}]};
+  let finalizeCalls=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return covered;
+   if(path==="/pos/payment-sessions/session-invalid-covered/finalize"){finalizeCalls+=1;return {...covered,status:"FINALIZED",ticketNumber:"T-INVALID"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+
+  await waitFor(()=>expect(screen.getByRole("alert")).toBeInTheDocument());
+  expect(finalizeCalls).toBe(0);
+  expect(onFinalized).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button",{name:/Efectivo.*F10/})).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Finalizar venta"})).toBeInTheDocument();
  });
  it("freezes sale controls for every active or compensation state",()=>{expect(paymentSessionLocksSale("COLLECTING")).toBe(true);expect(paymentSessionLocksSale("COVERED")).toBe(true);expect(paymentSessionLocksSale("COMPENSATION_REQUIRED")).toBe(true);});
  it("unfreezes only after finalization or safe cancellation",()=>{expect(paymentSessionLocksSale("FINALIZED")).toBe(false);expect(paymentSessionLocksSale("CANCELLED")).toBe(false);});
