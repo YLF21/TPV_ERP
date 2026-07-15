@@ -144,6 +144,21 @@ export function selectedProductAfterRemoval(lines: SaleLine[], productId: string
   return remaining[nextIndex].product.id;
 }
 
+export function saleLineSelectionAfterArrow(
+  lines: SaleLine[],
+  selectedId: string | null,
+  key: "ArrowUp" | "ArrowDown",
+) {
+  if (lines.length === 0) return null;
+  const selectedIndex = lines.findIndex((line) => line.product.id === selectedId);
+  if (selectedIndex < 0) {
+    return key === "ArrowDown" ? lines[0].product.id : lines[lines.length - 1].product.id;
+  }
+  const offset = key === "ArrowDown" ? 1 : -1;
+  const nextIndex = Math.min(Math.max(selectedIndex + offset, 0), lines.length - 1);
+  return lines[nextIndex].product.id;
+}
+
 export function saleLineSubtotal(line: SaleLine) {
   return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
@@ -793,6 +808,20 @@ export function SaleScreen({
     function handleSaleShortcut(event: KeyboardEvent) {
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
 
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const target = event.target;
+        const editableTarget = target instanceof HTMLElement && (
+          target.matches("input, textarea, select")
+          || target.isContentEditable
+          || target.contentEditable === "true"
+          || target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+        );
+        if (editableTarget || paymentLocked || lines.length === 0) return;
+        setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
+        event.preventDefault();
+        return;
+      }
+
       let handled = true;
       switch (event.key) {
         case "F2":
@@ -829,7 +858,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, paymentLocked, selectedLine]);
+  }, [catalogError, catalogLoading, lines, paymentLocked, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>

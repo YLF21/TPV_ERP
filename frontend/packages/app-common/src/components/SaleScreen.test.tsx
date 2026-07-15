@@ -30,6 +30,7 @@ import {
   filterSaleProducts,
   removeSaleLine,
   resolveCashPaymentResult,
+  saleLineSelectionAfterArrow,
   selectedProductAfterRemoval,
   saleLineSubtotal,
   saleDisplayedTotal,
@@ -52,6 +53,7 @@ type CheckoutMockProps = {
   testCashEnabled?: boolean;
   disabled?: boolean;
   onCash?: () => void;
+  onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
@@ -410,6 +412,73 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves ticket-line selection with vertical arrows without wrapping", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.change(search, { target: { value: "Pan" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Pan integral/ }));
+    const coffee = screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
+
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    const handledArrow = new KeyboardEvent("keydown", { key: "ArrowUp", cancelable: true });
+    act(() => window.dispatchEvent(handledArrow));
+    expect(handledArrow.defaultPrevented).toBe(true);
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("leaves vertical arrows to editable targets and ignores repeats, payment locks, and modals", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.change(search, { target: { value: "Pan" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Pan integral/ }));
+    const coffee = screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s });
+    const bread = screen.getByRole("button", { name: /Pan integral.*1 x 2,50/s });
+
+    const editable = document.createElement("div");
+    editable.contentEditable = "true";
+    document.body.appendChild(editable);
+    for (const target of [search, document.createElement("textarea"), document.createElement("select"), editable]) {
+      if (!target.isConnected) document.body.appendChild(target);
+      const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(bread).toHaveAttribute("aria-pressed", "true");
+    }
+
+    fireEvent.keyDown(window, { key: "ArrowUp", repeat: true });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1250));
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    act(() => checkoutProps.current?.onLockedChange?.(false));
+    fireEvent.keyDown(window, { key: "F6" });
+    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+    expect(coffee).toHaveAttribute("aria-pressed", "false");
   });
 
   it("ignores a second logout click while payment preparation is pending", async () => {
@@ -781,6 +850,18 @@ describe("SaleScreen", () => {
 
     expect(selectedProductAfterRemoval(lines, "bread")).toBe("milk");
     expect(selectedProductAfterRemoval(lines, "milk")).toBe("bread");
+  });
+
+  it("selects ticket lines after vertical arrows and stops at the boundaries", () => {
+    const lines = addSaleLine(addSaleLine([], products[0]), products[1]);
+
+    expect(saleLineSelectionAfterArrow([], null, "ArrowDown")).toBeNull();
+    expect(saleLineSelectionAfterArrow(lines, null, "ArrowDown")).toBe("coffee");
+    expect(saleLineSelectionAfterArrow(lines, null, "ArrowUp")).toBe("bread");
+    expect(saleLineSelectionAfterArrow(lines, "coffee", "ArrowDown")).toBe("bread");
+    expect(saleLineSelectionAfterArrow(lines, "bread", "ArrowUp")).toBe("coffee");
+    expect(saleLineSelectionAfterArrow(lines, "coffee", "ArrowUp")).toBe("coffee");
+    expect(saleLineSelectionAfterArrow(lines, "bread", "ArrowDown")).toBe("bread");
   });
 
   it("does not increment a line above the maximum quantity", () => {
