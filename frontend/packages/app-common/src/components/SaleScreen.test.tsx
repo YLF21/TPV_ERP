@@ -77,7 +77,7 @@ vi.mock("./SalePaymentCheckout", async () => {
         triggerCash,
         triggerCard,
       }) as unknown as SalePaymentCheckoutHandle);
-      return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>F10</kbd></button>;
+      return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>;
     })
   };
 });
@@ -390,24 +390,25 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("button", { name: /Cafe molido.*25,00%/s })).toBeInTheDocument();
   });
 
-  it("delegates F10 and F11 to the checkout actions and ignores repeats or open modals", async () => {
+  it("delegates PageDown and F11 to the checkout actions and ignores F10, repeats, or open modals", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
       status: 200,
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
 
-    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "PageDown" });
     fireEvent.keyDown(window, { key: "F11" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
     expect(triggerCard).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(window, { key: "F10", repeat: true });
+    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "PageDown", repeat: true });
     expect(triggerCash).toHaveBeenCalledTimes(1);
 
     fireEvent.keyDown(window, { key: "F6" });
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
   });
 
@@ -594,7 +595,8 @@ describe("SaleScreen", () => {
     expect(html).toContain("Líneas de venta");
     expect(html).toContain("Cobro");
     expect(html).toContain("F5");
-    expect(html).toContain("F10");
+    expect(html).toContain("AvPág");
+    expect(html).not.toContain("F10");
     expect(html).toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Buscar producto"');
     expect(html).toContain('aria-label="Búsqueda y cobro"');
@@ -930,7 +932,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
     fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*F10/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*AvPág/ }));
     const cashDialog = await screen.findByRole("dialog", { name: "Cobro en efectivo" });
     fireEvent.click(within(cashDialog).getByRole("button", { name: /20/ }));
     fireEvent.click(within(cashDialog).getByRole("button", { name: "Confirmar cobro" }));
@@ -965,7 +967,7 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "CAF-001" } });
     fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
 
-    const cashAction = screen.getByRole("button", { name: /Efectivo.*F10/ });
+    const cashAction = screen.getByRole("button", { name: /Efectivo.*AvPág/ });
     fireEvent.click(cashAction);
     fireEvent.click(cashAction);
     expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/pos/cash/quote"))).toHaveLength(1);
@@ -992,7 +994,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(search).toBeEnabled());
     fireEvent.change(search, { target: { value: "CAF-001" } });
     fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*F10/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*AvPág/ }));
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-WINS-ERROR"), { kind: "CARD", totalCents: 1000 }));
 
     rejectQuote(new Error("stale quote failure"));

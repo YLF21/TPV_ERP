@@ -1,35 +1,51 @@
-# Task 3 report — guarded shutdown and strict logout
+# Task 3 report: PageDown para efectivo y etiquetas AvPág
 
-## Commit
+## Alcance implementado
 
-- `64b97e1794dcd477214394e50d81293bcd83db33` — `fix(venta): prepare payment state before shutdown`
-- Local commit only; no push.
+- El atajo global de efectivo usa `KeyboardEvent.key === "PageDown"`.
+- `F10` deja de invocar `triggerCash()`.
+- La protección existente frente a eventos repetidos y diálogos incompatibles se conserva.
+- Las etiquetas visibles de efectivo muestran `AvPág` tanto en el botón como en la barra inferior.
+- No se renombró la API interna `triggerCash`.
 
-## Files
+## Evidencia TDD
 
-- `frontend/packages/app-common/src/components/SessionTopControls.tsx`
-- `frontend/packages/app-common/src/components/SessionTopControls.test.tsx`
-- `frontend/packages/app-common/src/components/SaleScreen.tsx`
-- `frontend/packages/app-common/src/components/SaleScreen.test.tsx`
+### RED inicial
 
-## Implemented behavior
+Comando:
 
-- `SessionTopControls` accepts `onPrepareShutdown?: () => Promise<boolean>`, waits for it after confirmation, and invokes Electron/window close only for `true`.
-- A synchronous ref guard plus disabled confirmation controls prevent concurrent preparation and duplicate close calls. Choosing **No** never prepares or closes.
-- `false` and rejected preparation fail closed, dismiss the confirmation so the existing checkout recovery/error UI is visible, and keep the application open.
-- `SaleScreen` maps `prepareApplicationClose()` `READY/BLOCKED` to boolean and treats rejection or a not-yet-attached checkout ref as blocked.
-- **Cerrar usuario** still uses `handleSaleLogout()` and `prepareLogout()`; only `READY` invokes `onLogout`. `BLOCKED`, rejection, missing ref, and pending preparation do not log out.
+`npm.cmd test -- SaleScreen.test.tsx SalePaymentCheckout.test.ts`
 
-## TDD evidence
+Resultado esperado y observado: exit 1; 8 fallos y 146 pruebas aprobadas. Los fallos demostraron que `PageDown` todavía no invocaba efectivo y que producción todavía renderizaba `F10`.
 
-- Session controls RED: `npm.cmd test -- SessionTopControls.test.tsx` — 4 expected failures because preparation was not invoked and close was immediate; **No** already passed.
-- Session controls GREEN: same command — 5/5 passed.
-- Sale integration RED: `npm.cmd test -- SaleScreen.test.tsx` — 4 expected shutdown wiring failures plus one unhandled logout-preparation rejection.
-- Sale integration GREEN: same command — 40/40 passed with no unhandled errors.
-- Final focused suite: `npm.cmd test -- SessionTopControls.test.tsx SaleScreen.test.tsx SalePaymentCheckout.test.ts` — 3 files, 112/112 passed.
-- Frontend build: `npm.cmd run build` — APP GESTIÓN and APP VENTA TypeScript/Vite builds succeeded.
-- `git diff --check` — exit 0; only repository LF-to-CRLF working-copy notices.
+### GREEN focused
 
-## Concerns
+Comando:
 
-- None identified within Task 3 scope.
+`npm.cmd test -- SaleScreen.test.tsx SalePaymentCheckout.test.ts`
+
+Resultado: exit 0; 2 archivos y 154/154 pruebas aprobadas.
+
+### RED adicional de suite completa
+
+Comando:
+
+`npm.cmd test`
+
+Resultado: exit 1; 1 fallo y 519/520 pruebas aprobadas. `IndividualPaymentActions.test.tsx` conservaba la expectativa visible `F10`; se actualizó a `AvPág`.
+
+### GREEN del componente y suite completa
+
+- `npm.cmd test -- IndividualPaymentActions.test.tsx`: exit 0; 6/6 pruebas aprobadas.
+- `npm.cmd test`: exit 0; 59 archivos y 520/520 pruebas aprobadas.
+
+## Auto-revisión
+
+- Comportamiento de ratón preservado: no se modificaron `onClick` ni `onCash`.
+- F11 y F12 preservados: sus ramas de teclado y etiquetas no cambiaron.
+- Repeticiones bloqueadas por la guarda global existente y cubiertas con `PageDown` repetido.
+- Diálogos incompatibles bloquean `PageDown`, cubierto con el diálogo de cliente abierto.
+- `F10` queda inerte, cubierto explícitamente sin incrementar el contador de `triggerCash`.
+- Sin cambios en backend, base de datos, migraciones ni navegación por flechas.
+- `git diff --check` no encontró errores de whitespace; sólo mostró advertencias de normalización LF/CRLF propias del worktree.
+- Los cambios preexistentes en `task-1-report.md` y `task-2-report.md` no forman parte de Task 3 y se excluyen del commit.

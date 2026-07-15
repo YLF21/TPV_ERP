@@ -815,7 +815,7 @@ export function SaleScreen({
           if (!selectedLine || paymentLocked) return;
           setActionDialog("remove");
           break;
-        case "F10":
+        case "PageDown":
           paymentCheckoutRef.current?.triggerCash();
           break;
         case "F11":
@@ -1027,7 +1027,7 @@ export function SaleScreen({
           <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
           <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
           <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
-          <span><kbd>F10</kbd> {t("sale.main.cash")}</span>
+          <span><kbd>AvPág</kbd> {t("sale.main.cash")}</span>
           <span><kbd>F11</kbd> {t("sale.main.card")}</span>
           <span><kbd>F12</kbd> {t("sale.main.pending")}</span>
         </nav>
