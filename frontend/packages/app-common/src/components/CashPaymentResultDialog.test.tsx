@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -7,6 +9,8 @@ import {
   activateCashResultFocusTrap,
   focusTrapTarget,
 } from "./CashPaymentResultDialog";
+
+const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 
 function findButton(node: ReactNode): ReactElement<{ onClick?: () => void; autoFocus?: boolean }> | null {
   if (!node || typeof node !== "object" || !("props" in node)) return null;
@@ -21,6 +25,14 @@ function findButton(node: ReactNode): ReactElement<{ onClick?: () => void; autoF
 }
 
 describe("CashPaymentResultDialog", () => {
+  it("uses the approved compact rectangular ERP result layout", () => {
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog\s*{[^}]*width:\s*min\(420px,\s*calc\(100vw - 32px\)\)\s*!important;[^}]*padding:\s*0\s*!important;[^}]*border:\s*1px solid var\(--tpv-v3-line\)\s*!important;[^}]*border-radius:\s*4px\s*!important;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog\s*>\s*header\s*{[^}]*min-height:\s*38px;[^}]*border-bottom:\s*1px solid var\(--tpv-v3-line\);/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary\s*>\s*div\s*{[^}]*min-height:\s*34px;[^}]*border-radius:\s*3px;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary strong\s*{[^}]*font-size:\s*16px;[^}]*font-variant-numeric:\s*tabular-nums;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-actions button\s*{[^}]*min-height:\s*34px;[^}]*border-radius:\s*3px;/s);
+  });
+
   it("shows the completed cash payment summary and finish action", () => {
     const html = renderToStaticMarkup(
       <CashPaymentResultDialog

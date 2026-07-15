@@ -11662,6 +11662,86 @@ textarea:focus,
   margin: 8px 12px 0;
 }
 
+/* APP VENTA: compact ERP payment result dialog. */
+.cash-payment-result-dialog {
+  box-sizing: border-box !important;
+  width: min(420px, calc(100vw - 32px)) !important;
+  max-height: calc(100dvh - 32px) !important;
+  padding: 0 !important;
+  overflow-y: auto !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: 4px !important;
+  background: var(--tpv-v3-surface) !important;
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.22) !important;
+}
+
+.cash-payment-result-dialog > header {
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--tpv-v3-line);
+  background: var(--tpv-v3-surface-alt);
+}
+
+.cash-payment-result-dialog > header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.cash-payment-result-dialog .cash-payment-result-mark {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #b9ddc7;
+  border-radius: 3px;
+  background: #eef8f2;
+  font-size: 16px;
+}
+
+.cash-payment-result-dialog .cash-payment-ticket {
+  margin: 8px 12px 0;
+  font-size: 12px;
+}
+
+.cash-payment-result-dialog .cash-payment-summary {
+  gap: 4px;
+  margin: 10px 12px 8px;
+}
+
+.cash-payment-result-dialog .cash-payment-summary > div {
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border: 1px solid var(--tpv-v3-line-soft);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface-alt);
+}
+
+.cash-payment-result-dialog .cash-payment-summary strong {
+  color: var(--tpv-v3-text);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cash-payment-result-dialog .cash-payment-summary .cash-change {
+  border-color: #b9ddc7;
+  background: #eef8f2;
+  color: #116634;
+}
+
+.cash-payment-result-dialog .cash-payment-actions {
+  margin: 10px 12px 12px;
+}
+
+.cash-payment-result-dialog .cash-payment-actions button {
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--tpv-v3-blue);
+  border-radius: 3px;
+  background: var(--tpv-v3-blue);
+  color: #ffffff;
+  box-shadow: none;
+}
+
 .test-cash-session-button {
   width: 100%;
   min-height: 34px;
