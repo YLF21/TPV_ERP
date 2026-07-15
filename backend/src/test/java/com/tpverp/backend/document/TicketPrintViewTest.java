@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -11,17 +12,14 @@ import org.junit.jupiter.api.Test;
 class TicketPrintViewTest {
 
     @Test
-    void directCashResultCarriesConfirmedTicketSnapshot() {
-        var printTicket = new TicketPrintView(
-                UUID.randomUUID(), "001-260715-000001",
-                Instant.parse("2026-07-15T10:15:30Z"),
-                java.util.List.of(), java.util.List.of(), BigDecimal.TEN);
+    void rejectsUnconfirmedDocumentWithLocalizedMessageKey() {
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 15), UUID.randomUUID(), BigDecimal.ZERO);
 
-        var result = new PosCashService.Result(
-                printTicket.documentId(), printTicket.documentNumber(), BigDecimal.TEN,
-                BigDecimal.TEN, BigDecimal.ZERO, printTicket);
-
-        assertThat(result.printTicket()).isSameAs(printTicket);
+        assertThatThrownBy(() -> TicketPrintView.from(document))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.print_ticket_requires_confirmed_document");
     }
 
     @Test

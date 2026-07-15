@@ -16,7 +16,8 @@ public record TicketPrintView(
     public static TicketPrintView from(CommercialDocument document) {
         if (document.getEstado() != DocumentStatus.CONFIRMADO
                 || document.getConfirmadoEn() == null) {
-            throw new IllegalArgumentException("print_ticket_requires_confirmed_document");
+            throw new IllegalArgumentException(
+                    "message.document.print_ticket_requires_confirmed_document");
         }
         return new TicketPrintView(
                 document.getId(), document.getNumero(), document.getConfirmadoEn(),

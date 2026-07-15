@@ -52,6 +52,18 @@ class LocalizedMessagesTest {
     }
 
     @Test
+    void translatesConfirmedTicketPrintRequirement() {
+        var key = "message.document.print_ticket_requires_confirmed_document";
+
+        assertEquals("El ticket imprimible requiere un documento confirmado",
+                messages.legacy(key, SupportedLanguage.ES).orElseThrow());
+        assertEquals("The printable ticket requires a confirmed document",
+                messages.legacy(key, SupportedLanguage.EN).orElseThrow());
+        assertEquals("可打印票据需要已确认的单据",
+                messages.legacy(key, SupportedLanguage.ZH).orElseThrow());
+    }
+
+    @Test
     void translatesVerifactuDomainErrors() {
         assertEquals("The sales invoice must be F1 or F3",
                 messages.legacy("La factura de venta debe ser F1 o F3", SupportedLanguage.EN).orElseThrow());
