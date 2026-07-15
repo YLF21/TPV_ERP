@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -634,6 +634,14 @@ export function SaleScreen({
     setActionDialog(null);
   }
 
+  function handleRemoveLineKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat || (event.key !== "Enter" && event.key !== "Escape")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Enter") confirmRemoveLine();
+    else setActionDialog(null);
+  }
+
   function submitSearch() {
     const selected = selectSaleProduct(products, query);
     if (selected) {
@@ -1109,7 +1117,7 @@ export function SaleScreen({
       )}
 
       {actionDialog === "remove" && selectedLine && (
-        <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
           <p>Se eliminara {selectedLine.product.name ?? "el producto"} del ticket.</p>
           <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
         </SaleActionDialog>
@@ -1118,10 +1126,10 @@ export function SaleScreen({
   );
 }
 
-function SaleActionDialog({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+function SaleActionDialog({ title, children, onClose, onKeyDown, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void; wide?: boolean }) {
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
         <header><h2>{title}</h2><button type="button" aria-label="Cerrar" onClick={onClose}>x</button></header>
         {children}
       </section>

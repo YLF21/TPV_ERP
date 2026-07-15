@@ -306,6 +306,44 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
   });
 
+  it("cancels remove-line confirmation with Escape without removing the line", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    const dialog = screen.getByRole("dialog", { name: "Anular linea" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
+  });
+
+  it("confirms remove-line confirmation with Enter", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    const dialog = screen.getByRole("dialog", { name: "Anular linea" });
+    fireEvent.keyDown(dialog, { key: "Enter" });
+
+    expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
+  });
+
   it("focuses and saves quantity from the keyboard form", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
