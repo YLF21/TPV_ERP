@@ -16,6 +16,8 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,12 +37,18 @@ class PosCashServiceTest {
         var warehouses = mock(WarehouseRepository.class);
         var paymentMethods = mock(PaymentMethodRepository.class);
         var organization = mock(CurrentOrganization.class);
+        var checkouts = mock(PosCashCheckoutRepository.class);
+        var snapshots = new PosCashTicketSnapshot();
+        var currentTerminal = mock(CurrentTerminal.class);
         var authentication = mock(Authentication.class);
+        var user = mock(UserAccount.class);
         var store = mock(Store.class);
         var company = mock(Company.class);
         var product = mock(Product.class);
         var storeId = UUID.randomUUID();
         var companyId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
         var productId = UUID.randomUUID();
         var warehouse = Warehouse.general(storeId);
         var tax = new StoreTax(storeId, BigDecimal.valueOf(21), true);
@@ -54,6 +62,10 @@ class PosCashServiceTest {
         when(company.getId()).thenReturn(companyId);
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentCompany()).thenReturn(company);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(user.getId()).thenReturn(userId);
+        when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
+        when(checkouts.reserve(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
         when(warehouses.findByStoreIdAndPredeterminadoTrue(storeId))
                 .thenReturn(Optional.of(warehouse));
         when(product.getId()).thenReturn(productId);
@@ -71,7 +83,8 @@ class PosCashServiceTest {
         when(documents.createTicket(any(DocumentCommand.class), anyList(), any()))
                 .thenReturn(ticket);
         var service = new PosCashService(
-                documents, products, taxes, warehouses, paymentMethods, organization);
+                documents, products, taxes, warehouses, paymentMethods, organization,
+                checkouts, snapshots, currentTerminal);
         var sale = new PosCashController.SaleRequest(
                 null, List.of(new PosCashController.LineRequest(
                         productId, BigDecimal.valueOf(2), BigDecimal.ZERO)));
@@ -97,7 +110,98 @@ class PosCashServiceTest {
         assertThat(result.printTicket().total()).isEqualByComparingTo("7.00");
         verify(documents).createTicket(any(DocumentCommand.class), anyList(),
                 org.mockito.ArgumentMatchers.same(authentication));
+        verify(checkouts).save(any(PosCashCheckout.class));
     }
+
+    @Test
+    void identicalReplayReturnsPersistedConfirmedResultWithoutCreatingAnotherTicket() {
+        var fixture = replayFixture("hash-placeholder");
+        var request = fixture.request();
+        var expectedHash = PosCashService.requestHash(request);
+        var snapshot = new TicketPrintView(
+                UUID.randomUUID(), "T-REPLAY", Instant.parse("2026-07-15T10:15:30Z"),
+                List.of(), List.of(), new BigDecimal("7.00"));
+        var checkout = PosCashCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), fixture.companyId(), fixture.storeId(),
+                fixture.terminalId(), fixture.userId(), expectedHash, Instant.now());
+        checkout.complete(UUID.randomUUID(), "T-REPLAY", new BigDecimal("7.00"),
+                new BigDecimal("10.00"), new BigDecimal("3.00"),
+                fixture.snapshots().serialize(snapshot), Instant.now());
+        when(fixture.checkouts().reserve(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(0);
+        when(fixture.checkouts().findScopedForUpdate(
+                request.checkoutId(), fixture.companyId(), fixture.storeId(),
+                fixture.terminalId(), fixture.userId())).thenReturn(Optional.of(checkout));
+
+        var result = fixture.service().charge(request, fixture.authentication());
+
+        assertThat(result.number()).isEqualTo("T-REPLAY");
+        assertThat(result.printTicket()).isEqualTo(snapshot);
+        verify(fixture.documents(), org.mockito.Mockito.never())
+                .createTicket(any(), anyList(), any());
+    }
+
+    @Test
+    void replayWithDifferentEconomicRequestIsRejected() {
+        var fixture = replayFixture("different-request-hash");
+        var request = fixture.request();
+        var checkout = PosCashCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), fixture.companyId(), fixture.storeId(),
+                fixture.terminalId(), fixture.userId(), "0".repeat(64), Instant.now());
+        when(fixture.checkouts().reserve(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(0);
+        when(fixture.checkouts().findScopedForUpdate(
+                request.checkoutId(), fixture.companyId(), fixture.storeId(),
+                fixture.terminalId(), fixture.userId())).thenReturn(Optional.of(checkout));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> fixture.service().charge(request, fixture.authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("cash_checkout_idempotency_conflict");
+        verify(fixture.documents(), org.mockito.Mockito.never())
+                .createTicket(any(), anyList(), any());
+    }
+
+    private static ReplayFixture replayFixture(String ignored) {
+        var documents = mock(DocumentService.class);
+        var products = mock(ProductRepository.class);
+        var taxes = mock(StoreTaxRepository.class);
+        var warehouses = mock(WarehouseRepository.class);
+        var methods = mock(PaymentMethodRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var checkouts = mock(PosCashCheckoutRepository.class);
+        var snapshots = new PosCashTicketSnapshot();
+        var currentTerminal = mock(CurrentTerminal.class);
+        var authentication = mock(Authentication.class);
+        var user = mock(UserAccount.class);
+        var store = mock(Store.class);
+        var company = mock(Company.class);
+        var companyId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        when(organization.currentCompany()).thenReturn(company);
+        when(organization.currentStore()).thenReturn(store);
+        when(company.getId()).thenReturn(companyId);
+        when(store.getId()).thenReturn(storeId);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(user.getId()).thenReturn(userId);
+        when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
+        var service = new PosCashService(documents, products, taxes, warehouses, methods,
+                organization, checkouts, snapshots, currentTerminal);
+        var request = new PosCashController.CashRequest(
+                UUID.randomUUID(), new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO))),
+                new BigDecimal("10.00"), new BigDecimal("7.00"));
+        return new ReplayFixture(service, documents, checkouts, snapshots, authentication,
+                request, companyId, storeId, terminalId, userId);
+    }
+
+    private record ReplayFixture(
+            PosCashService service, DocumentService documents, PosCashCheckoutRepository checkouts,
+            PosCashTicketSnapshot snapshots, Authentication authentication,
+            PosCashController.CashRequest request, UUID companyId, UUID storeId,
+            UUID terminalId, UUID userId) {}
 
     private static CommercialDocument confirmedTicket(
             UUID storeId,

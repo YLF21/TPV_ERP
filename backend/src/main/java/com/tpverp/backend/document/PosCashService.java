@@ -4,10 +4,17 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.HexFormat;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -22,6 +29,9 @@ public class PosCashService {
     private final WarehouseRepository warehouses;
     private final PaymentMethodRepository paymentMethods;
     private final CurrentOrganization organization;
+    private final PosCashCheckoutRepository checkouts;
+    private final PosCashTicketSnapshot snapshots;
+    private final CurrentTerminal currentTerminal;
 
     public PosCashService(
             DocumentService documents,
@@ -29,13 +39,19 @@ public class PosCashService {
             StoreTaxRepository taxes,
             WarehouseRepository warehouses,
             PaymentMethodRepository paymentMethods,
-            CurrentOrganization organization) {
+            CurrentOrganization organization,
+            PosCashCheckoutRepository checkouts,
+            PosCashTicketSnapshot snapshots,
+            CurrentTerminal currentTerminal) {
         this.documents = documents;
         this.products = products;
         this.taxes = taxes;
         this.warehouses = warehouses;
         this.paymentMethods = paymentMethods;
         this.organization = organization;
+        this.checkouts = checkouts;
+        this.snapshots = snapshots;
+        this.currentTerminal = currentTerminal;
     }
 
     @Transactional(readOnly = true)
@@ -46,6 +62,30 @@ public class PosCashService {
 
     @Transactional
     public Result charge(PosCashController.CashRequest request, Authentication authentication) {
+        var companyId = organization.currentCompany().getId();
+        var storeId = organization.currentStore().getId();
+        var terminalId = currentTerminal.terminalId(authentication);
+        var userId = requireUser(authentication).getId();
+        var requestHash = requestHash(request);
+        var now = Instant.now();
+        var reserved = PosCashCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), companyId, storeId, terminalId,
+                userId, requestHash, now);
+        var inserted = checkouts.reserve(
+                reserved.getId(), request.checkoutId(), companyId, storeId, terminalId,
+                userId, requestHash, now);
+        if (inserted == 0) {
+            var existing = checkouts.findScopedForUpdate(
+                    request.checkoutId(), companyId, storeId, terminalId, userId)
+                    .orElseThrow();
+            if (!existing.getRequestHash().equals(requestHash)) {
+                throw new IllegalStateException("cash_checkout_idempotency_conflict");
+            }
+            if (!existing.isCompleted()) {
+                throw new IllegalStateException("cash_checkout_in_progress");
+            }
+            return resultFrom(existing);
+        }
         var command = authoritativeCommand(request.sale());
         var quote = documents.quoteTicket(command, authentication);
         var total = quote.getTotal();
@@ -64,8 +104,11 @@ public class PosCashService {
                 command,
                 List.of(new PaymentCommand(cash.getId(), total, true, received, change)),
                 authentication);
-        return new Result(ticket.getId(), ticket.getNumero(), total, received, change,
-                TicketPrintView.from(ticket));
+        var printTicket = TicketPrintView.from(ticket);
+        reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
+                snapshots.serialize(printTicket), Instant.now());
+        checkouts.save(reserved);
+        return new Result(ticket.getId(), ticket.getNumero(), total, received, change, printTicket);
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +139,37 @@ public class PosCashService {
     }
 
     public record Quote(BigDecimal total) {}
+
+    static String requestHash(PosCashController.CashRequest request) {
+        var canonical = new StringBuilder("v1|")
+                .append(request.sale().customerId()).append('|')
+                .append(Money.euros(request.received())).append('|')
+                .append(Money.euros(request.quotedTotal()));
+        request.sale().lines().forEach(line -> canonical.append('|')
+                .append(line.productId()).append(':')
+                .append(line.quantity().stripTrailingZeros().toPlainString()).append(':')
+                .append(line.discount().stripTrailingZeros().toPlainString()));
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.toString().getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    private Result resultFrom(PosCashCheckout checkout) {
+        return new Result(checkout.getDocumentId(), checkout.getTicketNumber(), checkout.getTotal(),
+                checkout.getReceived(), checkout.getChange(),
+                snapshots.deserialize(checkout.getTicketSnapshot()));
+    }
+
+    private static UserAccount requireUser(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof UserAccount user) {
+            return user;
+        }
+        throw new IllegalStateException("user_required");
+    }
+
     public record Result(
             UUID id,
             String number,
