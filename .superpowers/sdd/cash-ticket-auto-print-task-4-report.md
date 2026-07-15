@@ -68,3 +68,10 @@ Implementación completada en el worktree `cash-ticket-auto-print`. El resultado
 - Minor: se añadió una prueba real de `SalePaymentCheckout` con `onCash`. Una mutación temporal que ignoraba el callback produjo RED (0 llamadas esperadas 1); restaurado el contrato, el botón delega exactamente una vez, no abre el diálogo fallback y no crea sesión. Las pruebas existentes sin callback conservan la cobertura del fallback.
 - La protección tardía posterior al resultado sigue cubierta por los casos de diálogo cerrado y ticket nuevo citados en Review fixes; no se añaden manejadores F10 globales, por lo que click/atajo visual comparten un único callback.
 - Verificación de Review fixes 2: RED tardío confirmó reapertura tras finalización; GREEN dirigido 1/1 y callback dirigido 1/1; enfocadas finales de Tarea 4 159/159. Antes de añadir la invalidación de identidad, la suite frontend pasó 475/475 y el build APP VENTA pasó (TypeScript + Vite, 145 módulos); la ejecución completa posterior fue interrumpida y, por instrucción expresa, no se repitió.
+
+## Review fixes 3
+
+- RED: una quote invalidada por una finalización posterior rechazaba y publicaba el error obsoleto `stale quote failure` sobre el pago ganador.
+- GREEN: el `catch` de `openCashDialog` sólo actualiza `cashStatus` cuando `opening.isCurrent()`; rechazos de generaciones invalidadas quedan ignorados igual que respuestas tardías exitosas.
+- Cobertura: quote pendiente, `onFinalized` CARD ganador y rechazo tardío; el ticket ganador permanece visible, sin error obsoleto ni reapertura del diálogo de efectivo.
+- Verificación: caso dirigido 1/1; enfocadas Task 4 160/160; suite frontend 55 archivos y 477/477; build APP VENTA PASS (TypeScript + Vite, 145 módulos).

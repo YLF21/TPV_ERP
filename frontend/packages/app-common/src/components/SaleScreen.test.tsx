@@ -790,6 +790,31 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog", { name: "Cobro en efectivo" })).not.toBeInTheDocument();
   });
 
+  it("ignores an obsolete quote rejection after another payment finalizes", async () => {
+    let rejectQuote!: (error: Error) => void;
+    const pendingQuote = new Promise<Response>((_resolve, reject) => { rejectQuote = reject; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/cash/quote")) return pendingQuote;
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*F10/ }));
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-WINS-ERROR"), { kind: "CARD", totalCents: 1000 }));
+
+    rejectQuote(new Error("stale quote failure"));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByText("CARD-WINS-ERROR")).toBeInTheDocument();
+    expect(screen.queryByText("stale quote failure")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Cobro en efectivo" })).not.toBeInTheDocument();
+  });
+
   it("reads the current cash mode on every opening", () => {
     let value = "touch";
     const storage = { getItem: vi.fn(() => value) } as unknown as Storage;

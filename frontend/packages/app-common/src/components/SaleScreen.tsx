@@ -649,7 +649,7 @@ export function SaleScreen({
         setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
         setCashDialogOpen(true);
       } catch (error) {
-        setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
+        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
       } finally {
         if (opening.isCurrent()) setCashOpening(false);
       }
