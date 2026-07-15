@@ -38,11 +38,15 @@ public class AuthoritativePromotionPricing {
         var member = members.findByCustomerIdAndCompanyId(customerId, companyId)
                 .filter(Member::isActive)
                 .orElse(null);
+        var category = member == null ? null : member.getMemberCategory();
+        var categoryDiscount = category != null && category.isActive() && category.isDiscountEnabled()
+                ? category.getDiscountPercent()
+                : BigDecimal.ZERO;
         return new CustomerContext(
                 customerId,
                 member == null ? null : member.getId(),
-                member == null || member.getMemberCategory() == null
-                        ? null : member.getMemberCategory().getId());
+                category == null ? null : category.getId(),
+                categoryDiscount);
     }
 
     public DocumentLineCommand priceLine(
@@ -53,9 +57,12 @@ public class AuthoritativePromotionPricing {
         var price = basePrice(product, documentDate, customer);
         var rate = rate(product, documentDate, customer);
         var priced = line.withPrice(price, rate);
-        return product.getDiscountType() == DiscountType.NONE
-                ? priced.withDiscount(BigDecimal.ZERO, rate)
-                : priced;
+        var categoryDiscount = customer.categoryDiscountPercent();
+        if (product.getDiscountType() == DiscountType.NONE && categoryDiscount.signum() == 0) {
+            return priced.withDiscount(BigDecimal.ZERO, rate);
+        }
+        var discount = line.descuento().max(categoryDiscount);
+        return priced.withDiscount(discount, categoryDiscount.signum() > 0 ? "MEMBER" : rate);
     }
 
     public BigDecimal basePrice(
@@ -66,6 +73,10 @@ public class AuthoritativePromotionPricing {
         Objects.requireNonNull(documentDate, "documentDate");
         Objects.requireNonNull(customer, "customer");
         var salePrice = requiredPrice(product.getSalePrice(), "precio de venta");
+        if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
+            return customer.isMember() && product.getMemberPrice() != null
+                    ? Money.euros(product.getMemberPrice()) : salePrice;
+        }
         if (product.getDiscountType() == DiscountType.NONE) {
             return salePrice;
         }
@@ -95,6 +106,9 @@ public class AuthoritativePromotionPricing {
     }
 
     private String rate(Product product, LocalDate date, CustomerContext customer) {
+        if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
+            return customer.isMember() && product.getMemberPrice() != null ? "MEMBER" : "VENTA";
+        }
         if (product.getDiscountType() == DiscountType.NONE) {
             return "VENTA";
         }
@@ -125,10 +139,20 @@ public class AuthoritativePromotionPricing {
     public record CustomerContext(
             UUID customerId,
             UUID memberId,
-            UUID memberCategoryId) {
+            UUID memberCategoryId,
+            BigDecimal categoryDiscountPercent) {
+
+        public CustomerContext(UUID customerId, UUID memberId, UUID memberCategoryId) {
+            this(customerId, memberId, memberCategoryId, BigDecimal.ZERO);
+        }
+
+        public CustomerContext {
+            categoryDiscountPercent = categoryDiscountPercent == null
+                    ? BigDecimal.ZERO : categoryDiscountPercent;
+        }
 
         public static CustomerContext anonymous() {
-            return new CustomerContext(null, null, null);
+            return new CustomerContext(null, null, null, BigDecimal.ZERO);
         }
 
         public boolean isMember() {

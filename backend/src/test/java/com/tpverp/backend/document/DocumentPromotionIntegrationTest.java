@@ -19,6 +19,9 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
+import com.tpverp.backend.party.MemberRepository;
+import com.tpverp.backend.party.Member;
+import com.tpverp.backend.party.MemberCategory;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.DocumentType;
@@ -98,6 +101,8 @@ class DocumentPromotionIntegrationTest {
     private CashPaymentRecorder cashPaymentRecorder;
     @Mock
     private MemberLoyaltyService memberLoyaltyService;
+    @Mock
+    private MemberRepository memberRepository;
     @Mock
     private SyncOutboxService syncOutbox;
     @Mock
@@ -217,6 +222,55 @@ class DocumentPromotionIntegrationTest {
         assertThat(ticket.getPagos()).singleElement()
                 .satisfies(payment -> assertThat(payment.getImporte()).isEqualByComparingTo("2.00"));
         verify(stockGateway).confirm(ticket);
+    }
+
+    @Test
+    void finalDocumentQuoteRetainsMemberPriceAndCategoryDiscountWithOneMemberLookup() {
+        var customerId = UUID.randomUUID();
+        var normalProductId = UUID.randomUUID();
+        var memberProductId = UUID.randomUUID();
+        var customer = org.mockito.Mockito.mock(com.tpverp.backend.party.Customer.class);
+        var member = org.mockito.Mockito.mock(Member.class);
+        var category = org.mockito.Mockito.mock(MemberCategory.class);
+        var normalProduct = product(normalProductId, UUID.randomUUID(), null);
+        var memberProduct = product(memberProductId, UUID.randomUUID(), null);
+        when(customerRepository.findByIdAndCompanyId(customerId, store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(memberRepository.findByCustomerIdAndCompanyId(customerId, store.getEmpresa().getId()))
+                .thenReturn(Optional.of(member));
+        when(member.isActive()).thenReturn(true);
+        when(member.getId()).thenReturn(UUID.randomUUID());
+        when(member.getMemberCategory()).thenReturn(category);
+        when(category.getId()).thenReturn(UUID.randomUUID());
+        when(category.isActive()).thenReturn(true);
+        when(category.isDiscountEnabled()).thenReturn(true);
+        when(category.getDiscountPercent()).thenReturn(new BigDecimal("5.00"));
+        when(normalProduct.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(normalProduct.getSalePrice()).thenReturn(new BigDecimal("100.00"));
+        when(memberProduct.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
+        when(memberProduct.getSalePrice()).thenReturn(new BigDecimal("100.00"));
+        when(memberProduct.getMemberPrice()).thenReturn(new BigDecimal("80.00"));
+        org.mockito.Mockito.doReturn(Map.of(
+                normalProductId, productSnapshot(normalProduct),
+                memberProductId, productSnapshot(memberProduct)))
+                .when(promotionCatalog).products(any(), any());
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "promotionPricing",
+                new AuthoritativePromotionPricing(customerRepository, memberRepository));
+        var command = new DocumentCommand(
+                UUID.randomUUID(), CommercialDocumentType.TICKET, TODAY, customerId,
+                null, null, BigDecimal.ZERO, false, List.of(
+                line(normalProductId, "1", "100.00"),
+                line(memberProductId, "1", "100.00")));
+
+        var quote = service.quoteTicket(command, authentication());
+
+        assertThat(quote.getLineas()).hasSize(2);
+        assertThat(quote.getLineas().get(0).getPrecioUnitario()).isEqualByComparingTo("100.00");
+        assertThat(quote.getLineas().get(0).getDescuento()).isEqualByComparingTo("5.00");
+        assertThat(quote.getLineas().get(1).getPrecioUnitario()).isEqualByComparingTo("80.00");
+        assertThat(quote.getLineas().get(1).getDescuento()).isEqualByComparingTo("5.00");
+        verify(memberRepository).findByCustomerIdAndCompanyId(customerId, store.getEmpresa().getId());
     }
 
     @Test

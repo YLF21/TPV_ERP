@@ -16,7 +16,6 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
-import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -41,7 +40,6 @@ class PosCashServiceTest {
         var checkouts = mock(PosCashCheckoutRepository.class);
         var snapshots = new PosCashTicketSnapshot();
         var currentTerminal = mock(CurrentTerminal.class);
-        var memberLoyalty = mock(MemberLoyaltyService.class);
         var authentication = mock(Authentication.class);
         var user = mock(UserAccount.class);
         var store = mock(Store.class);
@@ -85,16 +83,9 @@ class PosCashServiceTest {
         when(documents.createTicket(any(DocumentCommand.class), anyList(), any()))
                 .thenReturn(ticket);
         var customerId = UUID.randomUUID();
-        var benefited = new DocumentLineCommand(
-                productId, BigDecimal.valueOf(2), "REQUEST-CODE", "Request name", "MEMBER",
-                new BigDecimal("80.00"), new BigDecimal("5.00"), true, "IVA",
-                new BigDecimal("21.00"));
-        when(memberLoyalty.applyLineBenefit(
-                org.mockito.ArgumentMatchers.eq(customerId), any(DocumentLineCommand.class),
-                org.mockito.ArgumentMatchers.same(product))).thenReturn(benefited);
         var service = new PosCashService(
                 documents, products, taxes, warehouses, paymentMethods, organization,
-                checkouts, snapshots, currentTerminal, memberLoyalty);
+                checkouts, snapshots, currentTerminal);
         var sale = new PosCashController.SaleRequest(
                 customerId, List.of(new PosCashController.LineRequest(
                         productId, BigDecimal.valueOf(2), BigDecimal.ZERO)));
@@ -123,10 +114,10 @@ class PosCashServiceTest {
         var command = org.mockito.ArgumentCaptor.forClass(DocumentCommand.class);
         verify(documents).quoteTicket(command.capture(),
                 org.mockito.ArgumentMatchers.same(authentication));
-        assertThat(command.getValue().lineas()).containsExactly(benefited);
-        verify(memberLoyalty).applyLineBenefit(
-                org.mockito.ArgumentMatchers.eq(customerId), any(DocumentLineCommand.class),
-                org.mockito.ArgumentMatchers.same(product));
+        assertThat(command.getValue().lineas()).singleElement().satisfies(line -> {
+            assertThat(line.precioUnitario()).isEqualByComparingTo("99.00");
+            assertThat(line.descuento()).isZero();
+        });
         verify(checkouts).save(any(PosCashCheckout.class));
     }
 
@@ -189,7 +180,6 @@ class PosCashServiceTest {
         var checkouts = mock(PosCashCheckoutRepository.class);
         var snapshots = new PosCashTicketSnapshot();
         var currentTerminal = mock(CurrentTerminal.class);
-        var memberLoyalty = mock(MemberLoyaltyService.class);
         var authentication = mock(Authentication.class);
         var user = mock(UserAccount.class);
         var store = mock(Store.class);
@@ -206,7 +196,7 @@ class PosCashServiceTest {
         when(user.getId()).thenReturn(userId);
         when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         var service = new PosCashService(documents, products, taxes, warehouses, methods,
-                organization, checkouts, snapshots, currentTerminal, memberLoyalty);
+                organization, checkouts, snapshots, currentTerminal);
         var request = new PosCashController.CashRequest(
                 UUID.randomUUID(), new PosCashController.SaleRequest(null, List.of(
                         new PosCashController.LineRequest(UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO))),

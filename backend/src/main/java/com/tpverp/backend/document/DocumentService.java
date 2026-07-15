@@ -222,8 +222,9 @@ public class DocumentService {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
-        var ticket = createDraft(command, authentication);
-        applyDirectPromotions(ticket, promotionContext(ticket));
+        var customer = pricingCustomer(command);
+        var ticket = createDraft(command, authentication, customer);
+        applyDirectPromotions(ticket, promotionContext(ticket, customer));
         return ticket;
     }
 
@@ -236,8 +237,9 @@ public class DocumentService {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
-        var ticket = createDraft(command, authentication);
-        var promotionContext = promotionContext(ticket);
+        var customer = pricingCustomer(command);
+        var ticket = createDraft(command, authentication, customer);
+        var promotionContext = promotionContext(ticket, customer);
         applyDirectPromotions(ticket, promotionContext);
         if (ticket.getTotal().signum() >= 0) {
             requirePaymentsPresent(payments);
@@ -355,6 +357,15 @@ public class DocumentService {
         }
         var customer = promotionPricing.customerContext(
                 organization.currentCompany().getId(), document.getClienteId());
+        return promotionContext(document, customer);
+    }
+
+    private PromotionContext promotionContext(
+            CommercialDocument document,
+            AuthoritativePromotionPricing.CustomerContext customer) {
+        if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
+            return PromotionContext.empty();
+        }
         var active = activePromotions(document, customer);
         if (active.isEmpty()) {
             return new PromotionContext(List.of(), List.of(), List.of(), customer);
@@ -838,7 +849,11 @@ public class DocumentService {
         }
         var authoritativeLines = authoritativeClientLines(
                 document.getTiendaId(), document.getFecha(), document.getTipo(),
-                customerId, globalDiscount, lines);
+                PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())
+                        ? promotionPricing.customerContext(
+                        organization.currentCompany().getId(), customerId)
+                        : AuthoritativePromotionPricing.CustomerContext.anonymous(),
+                globalDiscount, lines);
         document.adminReplace(
                 globalDiscount, customerId, supplierId, authoritativeLines);
         return documents.save(document);
@@ -866,6 +881,13 @@ public class DocumentService {
 
     private CommercialDocument createDraft(
             DocumentCommand command, Authentication authentication) {
+        return createDraft(command, authentication, pricingCustomer(command));
+    }
+
+    private CommercialDocument createDraft(
+            DocumentCommand command,
+            Authentication authentication,
+            AuthoritativePromotionPricing.CustomerContext customer) {
         Objects.requireNonNull(command, "command");
         if (command.lineas() == null || command.lineas().isEmpty()) {
             throw new IllegalArgumentException("message.document.lines_required");
@@ -873,7 +895,7 @@ public class DocumentService {
         var store = organization.currentStore();
         var user = organization.currentUser(authentication);
         var authoritativeLines = authoritativeClientLines(
-                store.getId(), command.fecha(), command.tipo(), command.clienteId(),
+                store.getId(), command.fecha(), command.tipo(), customer,
                 command.descuentoGlobal(), command.lineas());
         var document = new CommercialDocument(
                 store.getId(), command.almacenId(), command.tipo(), command.fecha(),
@@ -894,7 +916,7 @@ public class DocumentService {
             UUID storeId,
             LocalDate documentDate,
             CommercialDocumentType documentType,
-            UUID customerId,
+            AuthoritativePromotionPricing.CustomerContext customer,
             BigDecimal globalDiscount,
             List<DocumentLineCommand> lines) {
         Objects.requireNonNull(globalDiscount, "descuentoGlobal");
@@ -906,10 +928,6 @@ public class DocumentService {
         var snapshots = promotionCatalog.products(
                 storeId, values.stream().map(DocumentLineCommand::productoId).toList());
         var salesDocument = PROMOTION_SALES_DOCUMENTS.contains(documentType);
-        var customer = salesDocument
-                ? promotionPricing.customerContext(
-                organization.currentCompany().getId(), customerId)
-                : AuthoritativePromotionPricing.CustomerContext.anonymous();
         if (salesDocument && globalDiscount.signum() > 0
                 && snapshots.values().stream()
                 .anyMatch(snapshot -> snapshot.product().getDiscountType() == DiscountType.NONE)) {
@@ -925,6 +943,13 @@ public class DocumentService {
                     : line;
             return snapshot.authoritativeSnapshot(priced);
         }).toList();
+    }
+
+    private AuthoritativePromotionPricing.CustomerContext pricingCustomer(DocumentCommand command) {
+        return PROMOTION_SALES_DOCUMENTS.contains(command.tipo())
+                ? promotionPricing.customerContext(
+                organization.currentCompany().getId(), command.clienteId())
+                : AuthoritativePromotionPricing.CustomerContext.anonymous();
     }
 
     private void validateLineQuantity(DocumentLineCommand line, Product product) {
