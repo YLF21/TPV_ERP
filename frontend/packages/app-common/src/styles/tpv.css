@@ -11653,6 +11653,15 @@ textarea:focus,
   color: #ffffff;
 }
 
+.cash-payment-entry-dialog > .test-cash-session-button {
+  width: calc(100% - 24px);
+  margin: 8px 12px 0;
+}
+
+.cash-payment-entry-dialog > .test-cash-session-status {
+  margin: 8px 12px 0;
+}
+
 .test-cash-session-button {
   width: 100%;
   min-height: 34px;

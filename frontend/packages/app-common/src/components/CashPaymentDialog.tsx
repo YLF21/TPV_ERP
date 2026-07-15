@@ -10,6 +10,8 @@ type CashPaymentDialogProps = {
   initialMode: CashInputMode;
   onCancel: () => void;
   onConfirm: (receivedCents: number) => void;
+  testCashAction?: { label: string; onOpen: () => void };
+  testCashStatus?: string;
 };
 
 const keypad = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ","];
@@ -28,7 +30,7 @@ export function cashPaymentKeyAction(
   return "none";
 }
 
-export function CashPaymentDialog({ totalCents, submitting, error, initialMode, onCancel, onConfirm }: CashPaymentDialogProps) {
+export function CashPaymentDialog({ totalCents, submitting, error, initialMode, onCancel, onConfirm, testCashAction, testCashStatus }: CashPaymentDialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const [received, setReceived] = useState("");
   const [mode, setMode] = useState<CashInputMode>(initialMode);
@@ -96,6 +98,17 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
         </>}
         {receivedCents > 0 && receivedCents < totalCents && <p className="sale-action-error" role="alert">El importe recibido no cubre el total</p>}
         {error && <p className="sale-action-error" role="alert">{error}</p>}
+        {testCashAction && (
+          <button
+            className="test-cash-session-button"
+            type="button"
+            disabled={submitting}
+            onClick={testCashAction.onOpen}
+          >
+            {testCashAction.label}
+          </button>
+        )}
+        {testCashStatus && <p className="test-cash-session-status" role="status">{testCashStatus}</p>}
         <footer className="cash-payment-actions">
           <button type="button" disabled={submitting} onClick={onCancel}>Cancelar</button>
           <button type="button" disabled={submitting || receivedCents < totalCents} onClick={() => onConfirm(receivedCents)}>{submitting ? "Registrando..." : "Confirmar cobro"}</button>

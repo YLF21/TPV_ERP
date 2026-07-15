@@ -955,6 +955,57 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByRole("button",{name:"Abrir caja de prueba"})).not.toBeInTheDocument();
  });
 
+ it("offers test cash inside the active cash dialog after finalization is blocked", async () => {
+  const session = { id: "session-modal-cash", total: "12.10", status: "COLLECTING", allocations: [] };
+  apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
+   if (path === "/terminal-configuration/payment") return {
+    rules: { cardManualEnabled: true, integratedCardEnabled: false },
+    providerDescriptors: [],
+    configuration: { provider: "", enabled: false },
+   };
+   if (path === "/pos/payment-sessions/active") return null;
+   if (path === "/pos/payment-sessions") return session;
+   if (path === "/pos/payment-sessions/session-modal-cash/allocations") return {
+    ...session,
+    status: "COVERED",
+    allocations: [{
+     id: (options?.body as { allocationId: string }).allocationId,
+     idempotencyKey: "cash-modal",
+     kind: "CASH",
+     amount: "12.10",
+     status: "APPROVED",
+    }],
+   };
+   if (path === "/pos/payment-sessions/session-modal-cash/finalize") {
+    throw new ApiError("No hay una sesión de caja abierta", 409);
+   }
+   if (path === "/cash/sessions/open") return { id: "cash-session-modal", status: "ABIERTA", openingFund: "0.00" };
+   throw new Error(`unexpected request ${path}`);
+  });
+
+  render(createElement(SalePaymentCheckout, {
+   locale: "es",
+   totalCents: 1210,
+   sale: { customerId: null, lines: [{ productId: "p-1", quantity: 1, discount: 0 }] },
+   permissions: ["ADMIN"],
+   terminal: { storeName: "Tienda", terminalCode: "01", terminalId: "terminal-1" },
+   testCashEnabled: true,
+   onFinalized: vi.fn(),
+  }));
+
+  fireEvent.click(await screen.findByRole("button", { name: /Efectivo/ }));
+  const dialog = screen.getByRole("dialog", { name: "Cobro en efectivo" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Exacto" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
+
+  const openTestCash = await within(dialog).findByRole("button", { name: "Abrir caja de prueba" });
+  fireEvent.click(openTestCash);
+
+  expect(await within(dialog).findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
+  expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/finalize"))).toHaveLength(1);
+ });
+
  it("does not leak opened test cash status or stale errors into the next checkout", async () => {
   const first={id:"session-first",total:"12.10",status:"COVERED",allocations:[]};
   const second={id:"session-second",total:"12.10",status:"COLLECTING",allocations:[]};
