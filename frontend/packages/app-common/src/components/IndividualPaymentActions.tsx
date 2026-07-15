@@ -9,7 +9,7 @@ type Props = {
 export function IndividualPaymentActions(props: Props) {
   return <div className="sale-payment-actions individual-payment-actions">
     <button type="button" disabled={props.disabled || props.busy} onClick={props.onCash}>
-      <span>Efectivo</span><kbd>F10</kbd>
+      <span>Efectivo</span><kbd>AvPág</kbd>
     </button>
     <button type="button" disabled={props.disabled || props.busy || !props.cardEnabled} onClick={props.onCard}>
       <span>Tarjeta</span><kbd>F11</kbd>

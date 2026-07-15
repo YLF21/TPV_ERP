@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -142,6 +142,30 @@ export function selectedProductAfterRemoval(lines: SaleLine[], productId: string
   if (remaining.length === 0) return null;
   const nextIndex = Math.min(Math.max(removedIndex, 0), remaining.length - 1);
   return remaining[nextIndex].product.id;
+}
+
+export function saleLineSelectionAfterArrow(
+  lines: SaleLine[],
+  selectedId: string | null,
+  key: "ArrowUp" | "ArrowDown",
+) {
+  if (lines.length === 0) return null;
+  const selectedIndex = lines.findIndex((line) => line.product.id === selectedId);
+  if (selectedIndex < 0) {
+    return key === "ArrowDown" ? lines[0].product.id : lines[lines.length - 1].product.id;
+  }
+  const offset = key === "ArrowDown" ? 1 : -1;
+  const nextIndex = Math.min(Math.max(selectedIndex + offset, 0), lines.length - 1);
+  return lines[nextIndex].product.id;
+}
+
+function saleShortcutTargetIsEditable(target: EventTarget | null) {
+  return target instanceof HTMLElement && (
+    target.matches("input, textarea, select")
+    || target.isContentEditable
+    || target.contentEditable === "true"
+    || target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
 }
 
 export function saleLineSubtotal(line: SaleLine) {
@@ -474,6 +498,9 @@ export function SaleScreen({
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const discountInputRef = useRef<HTMLInputElement>(null);
+  const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
   const cardSubmissionRef = useRef(false);
@@ -486,6 +513,7 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
+  const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
@@ -569,6 +597,12 @@ export function SaleScreen({
     searchInputRef.current?.focus();
   }
 
+  useEffect(() => {
+    if (actionDialog === "quantity") quantityInputRef.current?.focus();
+    if (actionDialog === "discount") discountInputRef.current?.focus();
+    if (actionDialog === "remove") removeConfirmButtonRef.current?.focus();
+  }, [actionDialog]);
+
   function openQuantityDialog() {
     if (!selectedLine) return;
     setQuantityInput(String(selectedLine.quantity));
@@ -625,6 +659,14 @@ export function SaleScreen({
       return remaining;
     });
     setActionDialog(null);
+  }
+
+  function handleRemoveLineKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat || (event.key !== "Enter" && event.key !== "Escape")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Enter") confirmRemoveLine();
+    else setActionDialog(null);
   }
 
   function submitSearch() {
@@ -775,6 +817,14 @@ export function SaleScreen({
   useEffect(() => {
     function handleSaleShortcut(event: KeyboardEvent) {
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (saleShortcutTargetIsEditable(event.target)) return;
+
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if (paymentLocked || lines.length === 0) return;
+        setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
+        event.preventDefault();
+        return;
+      }
 
       let handled = true;
       switch (event.key) {
@@ -798,10 +848,12 @@ export function SaleScreen({
           if (!selectedLine || paymentLocked) return;
           setActionDialog("remove");
           break;
-        case "F10":
+        case "PageDown":
+          if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCash();
           break;
         case "F11":
+          if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCard();
           break;
         default:
@@ -812,7 +864,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, paymentLocked, selectedLine]);
+  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentLocked, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -975,7 +1027,7 @@ export function SaleScreen({
               token={session.accessToken}
               permissions={session.permissions}
               terminal={terminalContext}
-              disabled={lines.length === 0 || total <= 0 || cashOpening}
+              disabled={paymentActionsDisabled}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onLockedChange={(locked, reservedTotalCents) => {
@@ -1010,7 +1062,7 @@ export function SaleScreen({
           <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
           <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
           <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
-          <span><kbd>F10</kbd> {t("sale.main.cash")}</span>
+          <span><kbd>AvPág</kbd> {t("sale.main.cash")}</span>
           <span><kbd>F11</kbd> {t("sale.main.card")}</span>
           <span><kbd>F12</kbd> {t("sale.main.pending")}</span>
         </nav>
@@ -1054,23 +1106,27 @@ export function SaleScreen({
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
-          <label>
-            <span>Cantidad</span>
-            <input aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
-          </label>
-          {actionError && <strong className="sale-action-error">{actionError}</strong>}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" onClick={saveQuantity}>Guardar</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
+            <label>
+              <span>Cantidad</span>
+              <input ref={quantityInputRef} aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
+            </label>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+          </form>
         </SaleActionDialog>
       )}
 
       {actionDialog === "discount" && selectedLine && (
         <SaleActionDialog title="Aplicar descuento" onClose={() => setActionDialog(null)}>
-          <label>
-            <span>Descuento (%)</span>
-            <input aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
-          </label>
-          {actionError && <strong className="sale-action-error">{actionError}</strong>}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" onClick={saveDiscount}>Guardar</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
+            <label>
+              <span>Descuento (%)</span>
+              <input ref={discountInputRef} aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
+            </label>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+          </form>
         </SaleActionDialog>
       )}
 
@@ -1098,19 +1154,19 @@ export function SaleScreen({
       )}
 
       {actionDialog === "remove" && selectedLine && (
-        <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
           <p>Se eliminara {selectedLine.product.name ?? "el producto"} del ticket.</p>
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
+          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
         </SaleActionDialog>
       )}
     </main>
   );
 }
 
-function SaleActionDialog({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+function SaleActionDialog({ title, children, onClose, onKeyDown, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void; wide?: boolean }) {
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
         <header><h2>{title}</h2><button type="button" aria-label="Cerrar" onClick={onClose}>x</button></header>
         {children}
       </section>

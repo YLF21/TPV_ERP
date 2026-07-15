@@ -491,7 +491,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  expect(await screen.findByRole("button",{name:/F10/})).toBeVisible();
+  expect(await screen.findByRole("button",{name:/AvPág/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F11/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F12/})).toBeDisabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
@@ -505,7 +505,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   const onCash=vi.fn();
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onCash,onFinalized:vi.fn()}));
 
-  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*AvPág/}));
 
   expect(onCash).toHaveBeenCalledOnce();
   expect(screen.queryByRole("dialog",{name:"Cobro en efectivo"})).not.toBeInTheDocument();
@@ -567,11 +567,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  fireEvent.click(await screen.findByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(await screen.findByRole("button",{name:/Efectivo.*AvPág/}));
   fireEvent.click(screen.getByRole("button",{name:/20/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
   await waitFor(()=>expect(allocationCalls).toBe(1));
-  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*AvPág/}));
   fireEvent.click(screen.getByRole("button",{name:/20/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
   await waitFor(()=>expect(allocationCalls).toBe(2));
@@ -621,7 +621,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  fireEvent.click(await screen.findByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(await screen.findByRole("button",{name:/Efectivo.*AvPág/}));
   fireEvent.click(screen.getByRole("button",{name:/20/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
@@ -629,7 +629,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
   await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Cobro en efectivo"})).not.toBeInTheDocument());
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
-  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*F10/}));
+  fireEvent.click(screen.getByRole("button",{name:/Efectivo.*AvPág/}));
   fireEvent.click(screen.getByRole("button",{name:/50/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
   await waitFor(()=>expect(allocationCalls).toBe(2));
@@ -1237,7 +1237,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(screen.getByRole("alert")).toBeInTheDocument());
   expect(finalizeCalls).toBe(0);
   expect(onFinalized).not.toHaveBeenCalled();
-  expect(screen.queryByRole("button",{name:/Efectivo.*F10/})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:/Efectivo.*AvPág/})).not.toBeInTheDocument();
   expect(screen.getByRole("button",{name:"Finalizar venta"})).toBeInTheDocument();
  });
  it("freezes sale controls for every active or compensation state",()=>{expect(paymentSessionLocksSale("COLLECTING")).toBe(true);expect(paymentSessionLocksSale("COVERED")).toBe(true);expect(paymentSessionLocksSale("COMPENSATION_REQUIRED")).toBe(true);});

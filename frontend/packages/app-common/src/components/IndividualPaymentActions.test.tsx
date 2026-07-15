@@ -29,7 +29,7 @@ describe("IndividualPaymentActions", () => {
     expect(cash).toBeEnabled();
     expect(card).toBeEnabled();
     expect(pending).toBeDisabled();
-    expect(within(cash).getByText("F10")).toBeInTheDocument();
+    expect(within(cash).getByText("AvPág")).toBeInTheDocument();
     expect(within(card).getByText("F11")).toBeInTheDocument();
     expect(within(pending).getByText("F12")).toBeInTheDocument();
     expect(screen.getByTitle("Funcionalidad pendiente de definir")).toBe(
