@@ -20,6 +20,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -143,6 +145,21 @@ class AuthoritativePromotionPricingTest {
 
         var priced = pricing.priceLine(
                 product, DATE, pricing.customerContext(COMPANY_ID, CUSTOMER_ID), line(BigDecimal.ZERO));
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("100.00");
+        assertThat(priced.tarifa()).isEqualTo("VENTA");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0.00", "-1.00"})
+    void nonPositiveMemberPriceFallsBackToSalePrice(String memberPrice) {
+        when(product.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("100.00"));
+        when(product.getMemberPrice()).thenReturn(new BigDecimal(memberPrice));
+        var context = new AuthoritativePromotionPricing.CustomerContext(
+                CUSTOMER_ID, UUID.randomUUID(), null);
+
+        var priced = service().priceLine(product, DATE, context, line(BigDecimal.ZERO));
 
         assertThat(priced.precioUnitario()).isEqualByComparingTo("100.00");
         assertThat(priced.tarifa()).isEqualTo("VENTA");

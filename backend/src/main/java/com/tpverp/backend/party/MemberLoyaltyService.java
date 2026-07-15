@@ -224,7 +224,8 @@ public class MemberLoyaltyService {
         }
         var priced = line;
         var memberPrice = product.getMemberPrice();
-        if (product.getDiscountType() == DiscountType.MEMBER_PRICE && memberPrice != null) {
+        if (product.getDiscountType() == DiscountType.MEMBER_PRICE
+                && memberPrice != null && memberPrice.signum() > 0) {
             priced = priced.withPrice(memberPrice, "MEMBER");
         }
         var category = member.getMemberCategory();

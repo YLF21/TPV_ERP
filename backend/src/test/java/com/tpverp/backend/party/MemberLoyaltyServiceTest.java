@@ -26,6 +26,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -128,6 +130,27 @@ class MemberLoyaltyServiceTest {
         assertThat(priced.tarifa()).isEqualTo("MEMBER");
         assertThat(priced.precioUnitario()).isEqualByComparingTo("80.00");
         assertThat(priced.descuento()).isEqualByComparingTo("5.00");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0.00", "-1.00"})
+    void compatibilityPricingIgnoresNonPositiveMemberPrice(String memberPrice) {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
+        when(product.getMemberPrice()).thenReturn(new BigDecimal(memberPrice));
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        var line = line(BigDecimal.ZERO);
+
+        var priced = service().applyLineBenefit(customer.getId(), line, product);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("100.00");
+        assertThat(priced.tarifa()).isEqualTo("VENTA");
     }
 
     @Test

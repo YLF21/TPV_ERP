@@ -74,7 +74,7 @@ public class AuthoritativePromotionPricing {
         Objects.requireNonNull(customer, "customer");
         var salePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
-            return customer.isMember() && product.getMemberPrice() != null
+            return customer.isMember() && isPositive(product.getMemberPrice())
                     ? Money.euros(product.getMemberPrice()) : salePrice;
         }
         if (product.getDiscountType() == DiscountType.NONE) {
@@ -83,7 +83,7 @@ public class AuthoritativePromotionPricing {
         var mode = product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
         return switch (mode) {
             case NORMAL -> salePrice;
-            case MEMBER_PRICE -> customer.isMember() && product.getMemberPrice() != null
+            case MEMBER_PRICE -> customer.isMember() && isPositive(product.getMemberPrice())
                     ? Money.euros(product.getMemberPrice()) : salePrice;
             case OFFER_PRICE -> offerApplies(product, documentDate) && product.getOfferPrice() != null
                     ? Money.euros(product.getOfferPrice()) : salePrice;
@@ -107,14 +107,14 @@ public class AuthoritativePromotionPricing {
 
     private String rate(Product product, LocalDate date, CustomerContext customer) {
         if (product.getDiscountType() == DiscountType.MEMBER_PRICE) {
-            return customer.isMember() && product.getMemberPrice() != null ? "MEMBER" : "VENTA";
+            return customer.isMember() && isPositive(product.getMemberPrice()) ? "MEMBER" : "VENTA";
         }
         if (product.getDiscountType() == DiscountType.NONE) {
             return "VENTA";
         }
         var mode = product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
         return switch (mode) {
-            case MEMBER_PRICE -> customer.isMember() && product.getMemberPrice() != null ? "MEMBER" : "VENTA";
+            case MEMBER_PRICE -> customer.isMember() && isPositive(product.getMemberPrice()) ? "MEMBER" : "VENTA";
             case OFFER_PRICE -> offerApplies(product, date) && product.getOfferPrice() != null ? "OFERTA" : "VENTA";
             case OFFER_DISCOUNT -> offerApplies(product, date)
                     && product.getOfferDiscountPercent() != null ? "OFERTA" : "VENTA";
@@ -134,6 +134,10 @@ public class AuthoritativePromotionPricing {
             throw new IllegalStateException(field + " no configurado");
         }
         return Money.euros(value);
+    }
+
+    private static boolean isPositive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     public record CustomerContext(
