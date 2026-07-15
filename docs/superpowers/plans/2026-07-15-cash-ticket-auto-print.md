@@ -233,15 +233,15 @@ git commit -m "feat(payment): return confirmed ticket print snapshot"
 - [ ] **Step 1: Write failing pure route tests**
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const { resolveTicketPrintRoute } = require("./ticket-print-route.cjs");
 
-test("uses the configured TICKET route printer and copies", () => {
-  assert.deepEqual(resolveTicketPrintRoute({
+describe("ticket print route", () => {
+it("uses the configured TICKET route printer and copies", () => {
+  expect(resolveTicketPrintRoute({
     ticketPrinterName: "Legacy",
     documentPrintRoutes: [{
       documentType: "TICKET",
@@ -249,14 +249,15 @@ test("uses the configured TICKET route printer and copies", () => {
       copies: 2,
       printAutomatically: true
     }]
-  }), { printerName: "Caja 1", copies: 2, printAutomatically: true });
+  })).toEqual({ printerName: "Caja 1", copies: 2, printAutomatically: true });
 });
 
-test("falls back to the legacy printer and normalizes copies", () => {
-  assert.deepEqual(resolveTicketPrintRoute({
+it("falls back to the legacy printer and normalizes copies", () => {
+  expect(resolveTicketPrintRoute({
     ticketPrinterName: "Legacy",
     documentPrintRoutes: [{ documentType: "TICKET", printerName: "", copies: 0, printAutomatically: true }]
-  }), { printerName: "Legacy", copies: 1, printAutomatically: true });
+  })).toEqual({ printerName: "Legacy", copies: 1, printAutomatically: true });
+});
 });
 ```
 
@@ -266,7 +267,7 @@ Run:
 
 ```powershell
 cd frontend
-node --test desktop/ticket-print-route.test.mjs
+npm.cmd test -- desktop/ticket-print-route.test.mjs
 ```
 
 Expected: FAIL because `ticket-print-route.cjs` does not exist.
@@ -308,7 +309,7 @@ Run:
 
 ```powershell
 cd frontend
-node --test desktop/ticket-print-route.test.mjs desktop/escpos.test.mjs
+npm.cmd test -- desktop/ticket-print-route.test.mjs desktop/escpos.test.mjs
 ```
 
 Expected: all tests PASS.
@@ -640,7 +641,7 @@ Expected: every Vitest file PASS and both workspaces build successfully.
 
 ```powershell
 cd frontend
-node --test desktop/ticket-print-route.test.mjs desktop/escpos.test.mjs
+npm.cmd test -- desktop/ticket-print-route.test.mjs desktop/escpos.test.mjs
 ```
 
 Expected: all Node tests PASS.
