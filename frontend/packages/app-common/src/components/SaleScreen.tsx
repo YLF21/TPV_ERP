@@ -159,6 +159,15 @@ export function saleLineSelectionAfterArrow(
   return lines[nextIndex].product.id;
 }
 
+function saleShortcutTargetIsEditable(target: EventTarget | null) {
+  return target instanceof HTMLElement && (
+    target.matches("input, textarea, select")
+    || target.isContentEditable
+    || target.contentEditable === "true"
+    || target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
+}
+
 export function saleLineSubtotal(line: SaleLine) {
   return effectiveSaleProductPrice(line.product) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
@@ -504,6 +513,7 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
+  const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
@@ -807,16 +817,10 @@ export function SaleScreen({
   useEffect(() => {
     function handleSaleShortcut(event: KeyboardEvent) {
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (saleShortcutTargetIsEditable(event.target)) return;
 
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        const target = event.target;
-        const editableTarget = target instanceof HTMLElement && (
-          target.matches("input, textarea, select")
-          || target.isContentEditable
-          || target.contentEditable === "true"
-          || target.closest('[contenteditable]:not([contenteditable="false"])') !== null
-        );
-        if (editableTarget || paymentLocked || lines.length === 0) return;
+        if (paymentLocked || lines.length === 0) return;
         setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
         event.preventDefault();
         return;
@@ -845,9 +849,11 @@ export function SaleScreen({
           setActionDialog("remove");
           break;
         case "PageDown":
+          if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCash();
           break;
         case "F11":
+          if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCard();
           break;
         default:
@@ -858,7 +864,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, lines, paymentLocked, selectedLine, selectedProductId]);
+  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentLocked, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1021,7 +1027,7 @@ export function SaleScreen({
               token={session.accessToken}
               permissions={session.permissions}
               terminal={terminalContext}
-              disabled={lines.length === 0 || total <= 0 || cashOpening}
+              disabled={paymentActionsDisabled}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onLockedChange={(locked, reservedTotalCents) => {

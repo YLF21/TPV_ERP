@@ -393,11 +393,15 @@ describe("SaleScreen", () => {
   });
 
   it("delegates PageDown and F11 to the checkout actions and ignores F10, repeats, or open modals", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
       headers: { "Content-Type": "application/json" }
     })));
     renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "PageDown" });
     fireEvent.keyDown(window, { key: "F11" });
@@ -412,6 +416,49 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run global sale shortcuts from focused editable controls", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    const contentEditable = document.createElement("div");
+    contentEditable.contentEditable = "true";
+    contentEditable.tabIndex = 0;
+    document.body.appendChild(contentEditable);
+
+    for (const target of [search, contentEditable]) {
+      target.focus();
+      expect(target).toHaveFocus();
+      await user.keyboard("{PageDown}{F11}{F2}{F7}{F6}{Delete}");
+      expect(triggerCash).not.toHaveBeenCalled();
+      expect(triggerCard).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toHaveAttribute("aria-pressed", "true");
+    }
+  });
+
+  it("does not start cash payment from PageDown when checkout is disabled for an empty sale", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const cashButton = await screen.findByRole("button", { name: /Efectivo/ });
+    expect(cashButton).toBeDisabled();
+
+    fireEvent.keyDown(window, { key: "PageDown" });
+
+    expect(triggerCash).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("moves ticket-line selection with vertical arrows without wrapping", async () => {
