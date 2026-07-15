@@ -307,6 +307,7 @@ describe("SaleScreen", () => {
   });
 
   it("cancels remove-line confirmation with Escape without removing the line", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -318,14 +319,15 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    const dialog = screen.getByRole("dialog", { name: "Anular linea" });
-    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
     expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
   });
 
   it("confirms remove-line confirmation with Enter", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -337,8 +339,8 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    const dialog = screen.getByRole("dialog", { name: "Anular linea" });
-    fireEvent.keyDown(dialog, { key: "Enter" });
+    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
 
     expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();

@@ -476,6 +476,7 @@ export function SaleScreen({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
+  const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
   const cardSubmissionRef = useRef(false);
@@ -574,6 +575,7 @@ export function SaleScreen({
   useEffect(() => {
     if (actionDialog === "quantity") quantityInputRef.current?.focus();
     if (actionDialog === "discount") discountInputRef.current?.focus();
+    if (actionDialog === "remove") removeConfirmButtonRef.current?.focus();
   }, [actionDialog]);
 
   function openQuantityDialog() {
@@ -1119,7 +1121,7 @@ export function SaleScreen({
       {actionDialog === "remove" && selectedLine && (
         <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
           <p>Se eliminara {selectedLine.product.name ?? "el producto"} del ticket.</p>
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
+          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
         </SaleActionDialog>
       )}
     </main>
