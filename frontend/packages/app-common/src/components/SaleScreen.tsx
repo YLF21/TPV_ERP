@@ -772,6 +772,48 @@ export function SaleScreen({
       .finally(() => setCardSubmitting(false));
   }
 
+  useEffect(() => {
+    function handleSaleShortcut(event: KeyboardEvent) {
+      if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
+      let handled = true;
+      switch (event.key) {
+        case "F2":
+          if (!selectedLine || paymentLocked) return;
+          openQuantityDialog();
+          break;
+        case "F5":
+          if (catalogLoading || catalogError || paymentLocked) return;
+          searchInputRef.current?.focus();
+          break;
+        case "F6":
+          if (paymentLocked) return;
+          openCustomerDialog();
+          break;
+        case "F7":
+          if (!selectedLine || paymentLocked || saleProductBlocksManualDiscount(selectedLine.product)) return;
+          openDiscountDialog();
+          break;
+        case "Delete":
+          if (!selectedLine || paymentLocked) return;
+          setActionDialog("remove");
+          break;
+        case "F10":
+          paymentCheckoutRef.current?.triggerCash();
+          break;
+        case "F11":
+          paymentCheckoutRef.current?.triggerCard();
+          break;
+        default:
+          handled = false;
+      }
+      if (handled) event.preventDefault();
+    }
+
+    window.addEventListener("keydown", handleSaleShortcut);
+    return () => window.removeEventListener("keydown", handleSaleShortcut);
+  }, [catalogError, catalogLoading, paymentLocked, selectedLine]);
+
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
       <SessionTopControls
@@ -788,6 +830,7 @@ export function SaleScreen({
         onLocaleChange={onLocaleChange}
         onLogout={() => void handleSaleLogout()}
         onPrepareShutdown={handleApplicationClose}
+        onBrowserClose={onLogout}
       />
 
       <section className="work-shell" aria-label={t("sale.main.screen")}>

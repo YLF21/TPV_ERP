@@ -54,9 +54,11 @@ type CheckoutMockProps = {
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
-const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
+const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
+  triggerCash: vi.fn(),
+  triggerCard: vi.fn(),
   checkoutHandle: { attached: true },
   checkoutProps: {
     current: null as CheckoutMockProps | null,
@@ -68,10 +70,12 @@ vi.mock("./SalePaymentCheckout", async () => {
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
-      useImperativeHandle(checkoutHandle.attached ? ref : null, (): SalePaymentCheckoutHandle => ({
+      useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
         prepareLogout,
-      }));
+        triggerCash,
+        triggerCard,
+      }) as unknown as SalePaymentCheckoutHandle);
       return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>F10</kbd></button>;
     })
   };
@@ -82,6 +86,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
+  triggerCash.mockReset();
+  triggerCard.mockReset();
   checkoutHandle.attached = true;
   checkoutProps.current = null;
   delete window.tpvDesktop;
@@ -258,6 +264,66 @@ describe("SaleScreen", () => {
 
     await waitFor(() => expect(prepareLogout).toHaveBeenCalledTimes(1));
     expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it("focuses product search with F5 and opens customer selection with F6", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.keyDown(window, { key: "F5" });
+    expect(search).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "F6" });
+    expect(screen.getByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+  });
+
+  it("opens quantity, discount and remove-line dialogs from their shortcuts", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F2" });
+    expect(screen.getByRole("dialog", { name: "Cambiar cantidad" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.keyDown(window, { key: "F7" });
+    expect(screen.getByRole("dialog", { name: "Aplicar descuento" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+  });
+
+  it("delegates F10 and F11 to the checkout actions and ignores repeats or open modals", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+
+    fireEvent.keyDown(window, { key: "F10" });
+    fireEvent.keyDown(window, { key: "F11" });
+    expect(triggerCash).toHaveBeenCalledTimes(1);
+    expect(triggerCard).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: "F10", repeat: true });
+    expect(triggerCash).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: "F6" });
+    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(triggerCash).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a second logout click while payment preparation is pending", async () => {

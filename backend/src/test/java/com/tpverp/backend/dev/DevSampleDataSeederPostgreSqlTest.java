@@ -78,6 +78,35 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
+    void seedsBronzeSilverAndGoldMembersIdempotently() {
+        var members = jdbc.queryForList("""
+                select concat(c.nombre_fiscal, '|', mc.code, '|',
+                              to_char(mc.discount_percent, 'FM999990.00'))
+                from cliente c
+                join miembro m on m.cliente_id = c.id and m.active = true
+                join member_category mc on mc.id = m.member_category_id
+                where c.nombre_fiscal in (
+                    'CLIENTE BRONCE DEMO', 'CLIENTE PLATA DEMO', 'CLIENTE ORO DEMO')
+                order by mc.discount_percent
+                """, String.class);
+
+        assertThat(members).containsExactly(
+                "CLIENTE BRONCE DEMO|BRONCE|5.00",
+                "CLIENTE PLATA DEMO|PLATA|10.00",
+                "CLIENTE ORO DEMO|ORO|15.00");
+
+        seeder.seed();
+
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from miembro m
+                join cliente c on c.id = m.cliente_id
+                where c.nombre_fiscal in (
+                    'CLIENTE BRONCE DEMO', 'CLIENTE PLATA DEMO', 'CLIENTE ORO DEMO')
+                """, Integer.class)).isEqualTo(3);
+    }
+
+    @Test
     void seedsFrontendRoleWithPartyAndWarehousePermissions() {
         var permissions = jdbc.queryForList("""
                 select permiso.codigo

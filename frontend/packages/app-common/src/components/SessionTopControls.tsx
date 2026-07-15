@@ -18,6 +18,7 @@ type SessionTopControlsProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onPrepareShutdown?: () => Promise<boolean>;
+  onBrowserClose?: () => void | Promise<void>;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -39,7 +40,8 @@ export function SessionTopControls({
   yesLabel,
   onLocaleChange,
   onLogout,
-  onPrepareShutdown
+  onPrepareShutdown,
+  onBrowserClose
 }: SessionTopControlsProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
@@ -52,12 +54,12 @@ export function SessionTopControls({
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
-  function closeApplication() {
+  async function closeApplication() {
     if (window.tpvDesktop) {
-      void window.tpvDesktop.closeApplication();
+      await window.tpvDesktop.closeApplication();
       return;
     }
-    window.close();
+    await onBrowserClose?.();
   }
 
   async function handleApplicationClose() {
@@ -67,7 +69,7 @@ export function SessionTopControls({
     let ready = false;
     try {
       ready = await (onPrepareShutdown?.() ?? Promise.resolve(true));
-      if (ready) closeApplication();
+      if (ready) await closeApplication();
     } catch {
       ready = false;
     } finally {

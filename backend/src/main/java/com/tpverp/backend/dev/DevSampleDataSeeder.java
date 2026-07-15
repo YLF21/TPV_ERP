@@ -27,6 +27,9 @@ public class DevSampleDataSeeder {
     private static final UUID TERMINAL = id("terminal-servidor");
     private static final UUID CASH_SESSION_HISTORY = id("cash-session-history");
     private static final UUID CUSTOMER = id("customer");
+    private static final UUID CUSTOMER_BRONZE = id("customer-member-bronze");
+    private static final UUID CUSTOMER_SILVER = id("customer-member-silver");
+    private static final UUID CUSTOMER_GOLD = id("customer-member-gold");
     private static final UUID SUPPLIER = id("supplier");
     private static final UUID PRODUCT_A = id("product-cafe");
     private static final UUID PRODUCT_B = id("product-agua");
@@ -274,6 +277,15 @@ public class DevSampleDataSeeder {
                     'C-001-999001', ?)
                 on conflict (id) do nothing
                 """, CUSTOMER, COMPANY, STORE);
+        memberCategory("BRONCE", "Bronce", "5.00", 100);
+        memberCategory("PLATA", "Plata", "10.00", 200);
+        memberCategory("ORO", "Oro", "15.00", 300);
+        demoMember(CUSTOMER_BRONZE, "CLIENTE BRONCE DEMO", "11111111H",
+                "C-001-999002", "BRONCE", "M-001-999002", "SOCIO-BRONCE-001");
+        demoMember(CUSTOMER_SILVER, "CLIENTE PLATA DEMO", "22222222J",
+                "C-001-999003", "PLATA", "M-001-999003", "SOCIO-PLATA-001");
+        demoMember(CUSTOMER_GOLD, "CLIENTE ORO DEMO", "33333333P",
+                "C-001-999004", "ORO", "M-001-999004", "SOCIO-ORO-001");
         jdbc.update("""
                 insert into proveedor
                     (id, empresa_id, razon_social, nombre_comercial, tipo_documento, numero_documento,
@@ -292,6 +304,60 @@ public class DevSampleDataSeeder {
                 values (?, ?, ?, 'PROV-DEV-CAFE', true, 3.50, 0.00, ?)
                 on conflict (producto_id, proveedor_id) do nothing
                 """, id("product-supplier"), PRODUCT_A, SUPPLIER, ts(NOW));
+    }
+
+    private void memberCategory(String code, String name, String discount, int sortOrder) {
+        jdbc.update("""
+                insert into member_category
+                    (id, empresa_id, code, name, min_points, discount_percent,
+                     discount_enabled, manual_only, active, sort_order)
+                values (?, ?, ?, ?, 0, ?, true, false, true, ?)
+                on conflict (empresa_id, code) do update
+                set name = excluded.name,
+                    discount_percent = excluded.discount_percent,
+                    discount_enabled = true,
+                    manual_only = false,
+                    active = true,
+                    sort_order = excluded.sort_order
+                """, id("member-category-" + code), COMPANY, code, name,
+                new BigDecimal(discount), sortOrder);
+    }
+
+    private void demoMember(
+            UUID customerId,
+            String name,
+            String documentNumber,
+            String clientId,
+            String categoryCode,
+            String memberId,
+            String memberNumber) {
+        jdbc.update("""
+                insert into cliente
+                    (id, empresa_id, nombre_fiscal, tipo_documento, numero_documento,
+                     observaciones, tarifa, descuento, client_id, client_code_store_id)
+                values (?, ?, ?, 'NIF', ?, 'Socio de demostracion para pruebas de descuento',
+                        'VENTA', 0, ?, ?)
+                on conflict (id) do update
+                set nombre_fiscal = excluded.nombre_fiscal,
+                    numero_documento = excluded.numero_documento,
+                    observaciones = excluded.observaciones,
+                    tarifa = 'VENTA',
+                    descuento = 0
+                """, customerId, COMPANY, name, documentNumber, clientId, STORE);
+        jdbc.update("""
+                insert into miembro
+                    (id, empresa_id, cliente_id, member_id, member_code_store_id,
+                     num_member, member_since, member_balance, active,
+                     member_category_id, auto_category_locked)
+                values (?, ?, ?, ?, ?, ?, ?, 0, true,
+                        (select id from member_category where empresa_id = ? and code = ?), true)
+                on conflict (id) do update
+                set num_member = excluded.num_member,
+                    active = true,
+                    member_category_id = excluded.member_category_id,
+                    auto_category_locked = true
+                """, id("member-" + categoryCode), COMPANY, customerId, memberId, STORE,
+                memberNumber, TODAY, COMPANY, categoryCode);
     }
 
     private void seedDocuments() {

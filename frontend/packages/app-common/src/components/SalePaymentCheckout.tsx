@@ -27,7 +27,12 @@ const entryCleanupAttempted=new Set<string>();
 const map=(s:ServerSession):PaymentSession=>({id:s.id,totalCents:Math.round(Number(s.total)*100),status:s.status==="COVERED"||s.status==="FINALIZED"?"COVERED":s.status==="COMPENSATION_REQUIRED"?"COMPENSATION_REQUIRED":"COLLECTING",allocations:s.allocations.map(a=>({...a,amountCents:Math.round(Number(a.amount)*100),status:a.status as never}))});
 export const compensationGuidanceKey="payment.split.compensationGuidance";
 export type PaymentLogoutPreparation="READY"|"BLOCKED";
-export type SalePaymentCheckoutHandle={prepareLogout():Promise<PaymentLogoutPreparation>;prepareApplicationClose():Promise<PaymentLogoutPreparation>};
+export type SalePaymentCheckoutHandle={
+ prepareLogout():Promise<PaymentLogoutPreparation>;
+ prepareApplicationClose():Promise<PaymentLogoutPreparation>;
+ triggerCash():void;
+ triggerCard():void;
+};
 type CancellationResult="CANCELLED"|"NOT_CANCELLED"|"ERROR";
 export async function prepareAutomaticExit(cancel:()=>Promise<CancellationResult>,_discard:()=>Promise<boolean>){return await cancel()==="CANCELLED"?"READY" as const:"BLOCKED" as const;}
 export function paymentLogoutDisposition(session:ServerSession|null|undefined,hydrationComplete:boolean){
@@ -98,7 +103,10 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  async function discardSimulator(reason:"application_shutdown"|"sale_entry_cleanup",feedbackKey:"payment.pending.logoutError"|"payment.pending.shutdownBlocked"|"payment.pending.simulatorCleanupError"){if(!server)return false;setBusy(true);try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/simulator-discard`,{token,body:{reason}});setServer(next);if(next.status==="CANCELLED"){clearRecoveredSession();return true;}setError(t(feedbackKey==="payment.pending.simulatorCleanupError"?(exitFeedbackRef.current??feedbackKey):feedbackKey));return false;}catch{setError(t(feedbackKey==="payment.pending.simulatorCleanupError"?(exitFeedbackRef.current??feedbackKey):feedbackKey));return false;}finally{setBusy(false);}}
  function cleanupSingleFlight(sessionId:string,operation:()=>Promise<boolean>){const current=cleanupFlightRef.current;if(current?.sessionId===sessionId)return current.promise;const promise=operation().finally(()=>{if(cleanupFlightRef.current?.promise===promise)cleanupFlightRef.current=null;});cleanupFlightRef.current={sessionId,promise};return promise;}
  async function prepareExit(feedbackKey:"payment.pending.logoutError"|"payment.pending.shutdownBlocked"){exitFeedbackRef.current=feedbackKey;const disposition=paymentLogoutDisposition(server,hydrationComplete);if(disposition==="READY"){clearRecoveredSession();return "READY" as const;}if(!server){setError(t(feedbackKey));return "BLOCKED" as const;}const cleaned=await cleanupSingleFlight(server.id,disposition==="AUTO_CANCEL"?async()=>await cancel()==="CANCELLED":()=>discardSimulator("application_shutdown",feedbackKey));if(cleaned)return "READY" as const;setError(t(feedbackKey));return "BLOCKED" as const;}
- useImperativeHandle(ref,()=>({prepareLogout:()=>prepareExit("payment.pending.logoutError"),prepareApplicationClose:()=>prepareExit("payment.pending.shutdownBlocked")}));
+ function individualActionsAvailable(){return checkoutPresentation(server?.status,server?.allocations.map(allocation=>allocation.status),safeRetry)==="INDIVIDUAL_ACTIONS"&&!disabled&&!busy&&totalCents>0;}
+ function triggerCash(){if(!individualActionsAvailable()||cashOpen||manualCardOpen)return;(onCash??(()=>setCashOpen(true)))();}
+ function triggerCard(){if(!individualActionsAvailable()||cashOpen||manualCardOpen||(!manual&&providers.length===0))return;startCard();}
+ useImperativeHandle(ref,()=>({prepareLogout:()=>prepareExit("payment.pending.logoutError"),prepareApplicationClose:()=>prepareExit("payment.pending.shutdownBlocked"),triggerCash,triggerCard}));
  useEffect(()=>{if(!hydrationComplete||!server||entryHydratedSessionIdRef.current!==server.id||paymentLogoutDisposition(server,true)==="READY"||entryCleanupAttempted.has(server.id))return;entryCleanupAttempted.add(server.id);void cleanupSingleFlight(server.id,()=>discardSimulator("sale_entry_cleanup","payment.pending.simulatorCleanupError"));},[hydrationComplete,server?.id]);
  async function acknowledge(){if(!server||!compensationNote.trim())return;setCompensationDialog(false);setBusy(true);await compensationNoteIsEphemeral(compensationNote,setCompensationNote,async note=>{try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/compensation-ack`,{token,body:{note}});setServer(next);if(next.status==="CANCELLED")clearRecoveredSession();}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.acknowledge"));}finally{setBusy(false);}});}
  async function manage(id:string){setBusy(true);try{const [op,history]=await Promise.all([apiRequest<PaymentOperationView>(`/payment-terminal/operations/${id}`,{token}),loadPaymentOperationHistory(id,token)]);setOperation(op);setEvents(history);}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.loadOperation"));}finally{setBusy(false);}}
