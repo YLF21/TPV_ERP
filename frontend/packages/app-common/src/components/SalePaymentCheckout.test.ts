@@ -955,8 +955,9 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByRole("button",{name:"Abrir caja de prueba"})).not.toBeInTheDocument();
  });
 
- it("offers test cash inside the active cash dialog after finalization is blocked", async () => {
+ it("offers test cash inside the active cash dialog and retries finalization explicitly", async () => {
   const session = { id: "session-modal-cash", total: "12.10", status: "COLLECTING", allocations: [] };
+  let finalizeCalls = 0;
   apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
    if (path === "/terminal-configuration/payment") return {
     rules: { cardManualEnabled: true, integratedCardEnabled: false },
@@ -977,9 +978,59 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
     }],
    };
    if (path === "/pos/payment-sessions/session-modal-cash/finalize") {
-    throw new ApiError("No hay una sesión de caja abierta", 409);
+    finalizeCalls += 1;
+    if (finalizeCalls === 1) throw new ApiError("No hay una sesión de caja abierta", 409);
+    return { ...session, status: "FINALIZED", ticketNumber: "T-MODAL-CASH" };
    }
    if (path === "/cash/sessions/open") return { id: "cash-session-modal", status: "ABIERTA", openingFund: "0.00" };
+   throw new Error(`unexpected request ${path}`);
+  });
+
+  const onFinalized = vi.fn();
+  render(createElement(SalePaymentCheckout, {
+   locale: "es",
+   totalCents: 1210,
+   sale: { customerId: null, lines: [{ productId: "p-1", quantity: 1, discount: 0 }] },
+   permissions: ["ADMIN"],
+   terminal: { storeName: "Tienda", terminalCode: "01", terminalId: "terminal-1" },
+   testCashEnabled: true,
+   onFinalized,
+  }));
+
+  fireEvent.click(await screen.findByRole("button", { name: /Efectivo/ }));
+  const dialog = screen.getByRole("dialog", { name: "Cobro en efectivo" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Exacto" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
+
+  const openTestCash = await within(dialog).findByRole("button", { name: "Abrir caja de prueba" });
+  fireEvent.click(openTestCash);
+
+  expect(await within(dialog).findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  expect(finalizeCalls).toBe(1);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
+
+  await waitFor(() => expect(onFinalized).toHaveBeenCalledWith("T-MODAL-CASH", 1210, 1210));
+  expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
+  expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/finalize"))).toHaveLength(2);
+ });
+
+ it("reconciles the active session after an uncertain allocation error mentioning missing cash", async () => {
+  const session = { id: "session-uncertain-cash", total: "12.10", status: "COLLECTING", allocations: [] };
+  let activeCalls = 0;
+  apiRequestMock.mockImplementation(async (path: string) => {
+   if (path === "/terminal-configuration/payment") return {
+    rules: { cardManualEnabled: true, integratedCardEnabled: false },
+    providerDescriptors: [],
+    configuration: { provider: "", enabled: false },
+   };
+   if (path === "/pos/payment-sessions/active") {
+    activeCalls += 1;
+    return activeCalls === 1 ? null : session;
+   }
+   if (path === "/pos/payment-sessions") return session;
+   if (path === "/pos/payment-sessions/session-uncertain-cash/allocations") {
+    throw new ApiError("No hay una sesión de caja abierta", 500);
+   }
    throw new Error(`unexpected request ${path}`);
   });
 
@@ -998,12 +1049,8 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(within(dialog).getByRole("button", { name: "Exacto" }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
 
-  const openTestCash = await within(dialog).findByRole("button", { name: "Abrir caja de prueba" });
-  fireEvent.click(openTestCash);
-
-  expect(await within(dialog).findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  await waitFor(() => expect(activeCalls).toBe(2));
   expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
-  expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/finalize"))).toHaveLength(1);
  });
 
  it("does not leak opened test cash status or stale errors into the next checkout", async () => {
