@@ -13,7 +13,7 @@ import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
-import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 
 export type SaleProduct = {
   id: string;
@@ -265,13 +265,16 @@ export function cashResultFromFinalization(
 
 export function paymentResultFromFinalization(
   ticketNumber: string,
-  totalCents: number,
-  receivedCents?: number,
+  summary: PaymentFinalizationSummary,
 ): CashPaymentResult {
-  if (receivedCents === undefined) {
-    return { ticketNumber, totalCents, method: "Tarjeta" };
+  if (summary.kind === "CASH") {
+    return cashResultFromFinalization(ticketNumber, summary.totalCents, summary.receivedCents);
   }
-  return cashResultFromFinalization(ticketNumber, totalCents, receivedCents);
+  return {
+    ticketNumber,
+    totalCents: summary.totalCents,
+    method: summary.kind === "CARD" ? "Tarjeta" : "Mixto",
+  };
 }
 
 export async function runGuardedCashSubmission(
@@ -826,7 +829,7 @@ export function SaleScreen({
                   locked && reservedTotalCents != null ? reservedTotalCents : null,
                 );
               }}
-              onFinalized={(ticketNumber, authoritativeTotalCents, receivedCents) => {
+              onFinalized={(ticketNumber, summary) => {
                 setLines([]);
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
@@ -834,8 +837,7 @@ export function SaleScreen({
                 setReservedPaymentTotalCents(null);
                 setCashResult(paymentResultFromFinalization(
                   ticketNumber,
-                  authoritativeTotalCents,
-                  receivedCents,
+                  summary,
                 ));
               }}
             />

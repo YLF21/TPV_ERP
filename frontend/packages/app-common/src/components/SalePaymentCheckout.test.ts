@@ -727,7 +727,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(screen.getByRole("button",{name:"Finalizar venta"})).toBeEnabled());
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Finalizar venta"}));
-  await waitFor(()=>expect(props.onFinalized).toHaveBeenCalledWith("T-RECOVERED",1210,undefined));
+  await waitFor(()=>expect(props.onFinalized).toHaveBeenCalledWith("T-RECOVERED",{kind:"CARD",totalCents:1210}));
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
  });
 
@@ -801,7 +801,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return null;
    if(path==="/pos/payment-sessions")return pendingSession;
    if(path==="/pos/payment-sessions/session-guard/allocations")return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"CASH",amount:"12.10"}]};
-   if(path==="/pos/payment-sessions/session-guard/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-GUARD"};
+   if(path==="/pos/payment-sessions/session-guard/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-GUARD",allocations:[{id:"cash-guard",idempotencyKey:"cash-guard",status:"APPROVED",kind:"CASH",amount:"12.10"}]};
    throw new Error(`unexpected request ${path}`);
   });
   const onFinalized=vi.fn();
@@ -814,7 +814,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(1);
   releaseSession(session);
 
-  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-GUARD",1210,2000));
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-GUARD",{kind:"CASH",totalCents:1210,receivedCents:2000}));
   expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-guard/allocations")).toHaveLength(1);
  });
 
@@ -830,7 +830,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
     if(allocationAttempt===1)throw new ApiError("cash rejected safely",422);
     return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"MANUAL_CARD",amount:"12.10"}]};
    }
-   if(path==="/pos/payment-sessions/session-safe/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-MANUAL"};
+   if(path==="/pos/payment-sessions/session-safe/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-MANUAL",allocations:[{id:"card-safe",idempotencyKey:"card-safe",status:"APPROVED",kind:"MANUAL_CARD",amount:"12.10"}]};
    throw new Error(`unexpected request ${path}`);
   });
   const onFinalized=vi.fn();
@@ -846,7 +846,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.change(within(manualDialog).getByRole("textbox"),{target:{value:"REF-1"}});
   fireEvent.click(within(manualDialog).getByRole("button",{name:"Confirmar"}));
 
-  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-MANUAL",1210,undefined));
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-MANUAL",{kind:"CARD",totalCents:1210}));
  });
 
  it("opens test cash for a covered checkout and leaves finalization explicit", async () => {
@@ -980,7 +980,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if (path === "/pos/payment-sessions/session-modal-cash/finalize") {
     finalizeCalls += 1;
     if (finalizeCalls === 1) throw new ApiError("No hay una sesión de caja abierta", 409);
-    return { ...session, status: "FINALIZED", ticketNumber: "T-MODAL-CASH" };
+    return { ...session, status: "FINALIZED", ticketNumber: "T-MODAL-CASH", allocations: [{id:"cash-modal",idempotencyKey:"cash-modal",kind:"CASH",amount:"12.10",status:"APPROVED"}] };
    }
    if (path === "/cash/sessions/open") return { id: "cash-session-modal", status: "ABIERTA", openingFund: "0.00" };
    throw new Error(`unexpected request ${path}`);
@@ -1009,7 +1009,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(finalizeCalls).toBe(1);
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
 
-  await waitFor(() => expect(onFinalized).toHaveBeenCalledWith("T-MODAL-CASH", 1210, 1210));
+  await waitFor(() => expect(onFinalized).toHaveBeenCalledWith("T-MODAL-CASH", {
+   kind: "CASH",
+   totalCents: 1210,
+   receivedCents: 1210,
+  }));
   expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
   expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/finalize"))).toHaveLength(2);
  });
@@ -1054,7 +1058,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  });
 
  it("does not leak opened test cash status or stale errors into the next checkout", async () => {
-  const first={id:"session-first",total:"12.10",status:"COVERED",allocations:[]};
+  const first={id:"session-first",total:"12.10",status:"COVERED",allocations:[{id:"cash-first",idempotencyKey:"cash-first",kind:"CASH",amount:"12.10",status:"APPROVED"}]};
   const second={id:"session-second",total:"12.10",status:"COLLECTING",allocations:[]};
   let finalizeFirstCalls=0;
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
@@ -1078,7 +1082,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(await screen.findByRole("button",{name:"Abrir caja de prueba"}));
   expect(await screen.findByRole("status")).toHaveTextContent("Caja de prueba abierta");
   fireEvent.click(screen.getByRole("button",{name:"Finalizar venta"}));
-  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-FIRST",1210,undefined));
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-FIRST", {
+   kind: "CASH",
+   totalCents: 1210,
+   receivedCents: 1210,
+  }));
 
   fireEvent.click(screen.getByRole("button",{name:/Tarjeta.*F11/}));
   const dialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
@@ -1096,7 +1104,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return null;
    if(path==="/pos/payment-sessions")return session;
    if(path==="/pos/payment-sessions/session-1/allocations")return {...session,status:"COVERED",allocations:[{id:(options?.body as {allocationId:string}).allocationId,status:"APPROVED",kind:"CASH",amount:"12.10"}]};
-   if(path==="/pos/payment-sessions/session-1/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-1"};
+   if(path==="/pos/payment-sessions/session-1/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-1",allocations:[{id:"cash-1",idempotencyKey:"cash-1",status:"APPROVED",kind:"CASH",amount:"12.10"}]};
    throw new Error(`unexpected request ${path}`);
   });
   const onFinalized=vi.fn();
@@ -1111,10 +1119,39 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(screen.getByRole("button",{name:/20/}));
   fireEvent.click(screen.getByRole("button",{name:"Confirmar cobro"}));
 
-  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-1",1210,2000));
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-1", {
+   kind: "CASH",
+   totalCents: 1210,
+   receivedCents: 2000,
+  }));
   const allocationCalls=apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-1/allocations");
   expect(allocationCalls).toHaveLength(1);
   expect(allocationCalls[0][1].body).toMatchObject({kind:"CASH",amount:"12.10"});
+ });
+ it.each([
+  ["CASH from PaymentAllocationPanel", [
+   {id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"20.00",status:"APPROVED"},
+   {id:"declined-card",idempotencyKey:"declined-card",kind:"MANUAL_CARD",amount:"1.00",status:"DECLINED"},
+  ], {kind:"CASH",totalCents:1210,receivedCents:1210}],
+  ["CARD", [{id:"card",idempotencyKey:"card",kind:"MANUAL_CARD",amount:"12.10",status:"APPROVED"}], {kind:"CARD",totalCents:1210}],
+  ["MIXED", [
+   {id:"cash",idempotencyKey:"cash",kind:"CASH",amount:"5.00",status:"APPROVED"},
+   {id:"card",idempotencyKey:"card",kind:"INTEGRATED_CARD",amount:"7.10",status:"APPROVED"},
+  ], {kind:"MIXED",totalCents:1210}],
+ ] as const)("emits an explicit %s finalization summary from effective allocations", async (_label, allocations, expectedSummary) => {
+  const session={id:"session-summary",total:"12.10",status:"COVERED",allocations};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path==="/pos/payment-sessions/session-summary/finalize")return {...session,status:"FINALIZED",ticketNumber:"T-SUMMARY"};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized}));
+
+  fireEvent.click(await screen.findByRole("button",{name:"Finalizar venta"}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith("T-SUMMARY",expectedSummary));
  });
  it("freezes sale controls for every active or compensation state",()=>{expect(paymentSessionLocksSale("COLLECTING")).toBe(true);expect(paymentSessionLocksSale("COVERED")).toBe(true);expect(paymentSessionLocksSale("COMPENSATION_REQUIRED")).toBe(true);});
  it("unfreezes only after finalization or safe cancellation",()=>{expect(paymentSessionLocksSale("FINALIZED")).toBe(false);expect(paymentSessionLocksSale("CANCELLED")).toBe(false);});

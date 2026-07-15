@@ -13,7 +13,10 @@ import type { LocaleCode, Permission, TerminalContext } from "../types";
 
 type Sale = { customerId: string | null; lines: Array<{ productId: string; quantity: number; discount: number }> };
 export type ServerSession = { id: string; total: number | string; status: string; ticketId?: string; ticketNumber?: string; allocations: Array<{ id: string; idempotencyKey: string; kind: "CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"; amount: number|string; provider?: string; operationId?: string; status: string; reference?: string; authorization?: string; message?: string }> };
-type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; testCashEnabled?: boolean; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (ticketNumber: string,totalCents:number,cashReceivedCents?:number) => void };
+export type PaymentFinalizationSummary =
+ | { kind: "CASH"; totalCents: number; receivedCents: number }
+ | { kind: "CARD" | "MIXED"; totalCents: number; receivedCents?: never };
+type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; testCashEnabled?: boolean; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (ticketNumber: string,summary:PaymentFinalizationSummary) => void };
 type AuthorizationAction = { kind: "VOID" | "REFUND"; amount: string };
 type CashAttemptMetadata = { sessionId?: string; receivedCents: number };
 
@@ -41,6 +44,18 @@ export function checkoutPresentation(status?:string|null,allocationStatuses:read
 export function paymentSessionLocksSale(status:string|null|undefined){return !!status&&status!=="FINALIZED"&&status!=="CANCELLED";}
 export function canManuallyFinalizePayment(status:string|null|undefined,busy:boolean){return status==="COVERED"&&!busy;}
 export function paymentSessionAfterFinalization<T>(ticketNumber:string|undefined,session:T){return ticketNumber?null:session;}
+export function paymentFinalizationSummary(session:ServerSession,cashAttempt?:CashAttemptMetadata):PaymentFinalizationSummary{
+ const totalCents=Math.round(Number(session.total)*100);
+ const effective=session.allocations.filter(allocation=>allocation.status==="APPROVED");
+ const hasCash=effective.some(allocation=>allocation.kind==="CASH");
+ const hasCard=effective.some(allocation=>allocation.kind==="MANUAL_CARD"||allocation.kind==="INTEGRATED_CARD");
+ if(hasCash&&hasCard)return {kind:"MIXED",totalCents};
+ if(hasCard)return {kind:"CARD",totalCents};
+ if(!hasCash)throw new Error("finalized_payment_has_no_effective_allocations");
+ const authorizedCashCents=effective.filter(allocation=>allocation.kind==="CASH").reduce((sum,allocation)=>sum+Math.round(Number(allocation.amount)*100),0);
+ const receivedCents=cashAttempt?.sessionId===session.id?cashAttempt.receivedCents:Math.min(totalCents,authorizedCashCents);
+ return {kind:"CASH",totalCents,receivedCents};
+}
 export function stableAllocationAttempt<T>(stored:{sessionId:string;allocationId:string;input:T}|null,sessionId:string,input:T,generate:()=>string){return stored?.sessionId===sessionId&&JSON.stringify(stored.input)===JSON.stringify(input)?stored:{sessionId,allocationId:generate(),input};}
 export function allocationFailureIsSafePreEffect(error:ApiError){return [400,401,403,404,409,422].includes(error.status);}
 export function isMissingCashSessionError(message:string){return message.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es").includes("sesion de caja abierta");}
@@ -68,7 +83,7 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  useEffect(()=>onLockedChange?.(paymentSessionLocksSale(server?.status),server?Math.round(Number(server.total)*100):undefined),[server,onLockedChange]);
  function clearRecoveredSession(){globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setCompensationDialog(false);setCompensationNote("");setAuthorization(null);setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
  async function ensure(){if(server)return server;const id=uuid();const created=await apiRequest<ServerSession>("/pos/payment-sessions",{token,body:{sessionId:id,sale}});globalThis.sessionStorage?.setItem(storageKey,created.id);setServer(created);return created;}
- async function finish(next:ServerSession,cashAttempt?:CashAttemptMetadata){if(next.status!=="COVERED")return;const done=await apiRequest<ServerSession>(`/pos/payment-sessions/${next.id}/finalize`,{token,method:"POST"});setServer(paymentSessionAfterFinalization(done.ticketNumber,done));if(done.ticketNumber){globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);setCashOpen(false);setManualCardOpen(false);setTestCashRequired(false);setTestCashStatus("");setError("");const receivedCents=cashAttempt?.sessionId===done.id?cashAttempt.receivedCents:undefined;if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;onFinalized(done.ticketNumber,Math.round(Number(done.total)*100),receivedCents);}}
+ async function finish(next:ServerSession,cashAttempt?:CashAttemptMetadata){if(next.status!=="COVERED")return;const done=await apiRequest<ServerSession>(`/pos/payment-sessions/${next.id}/finalize`,{token,method:"POST"});const summary=done.ticketNumber?paymentFinalizationSummary(done,cashAttempt):null;setServer(paymentSessionAfterFinalization(done.ticketNumber,done));if(done.ticketNumber&&summary){globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);setCashOpen(false);setManualCardOpen(false);setTestCashRequired(false);setTestCashStatus("");setError("");if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;onFinalized(done.ticketNumber,summary);}}
  function markTestCashRequirement(failure:unknown){const required=testCashEnabled&&failure instanceof ApiError&&isMissingCashSessionError(failure.message);setTestCashRequired(required);setTestCashStatus("");}
  async function openTestCashSession(){if(!testCashEnabled||!terminal.terminalId||busy)return;setBusy(true);setTestCashStatus("");try{await apiRequest("/cash/sessions/open",{token,body:{terminalId:terminal.terminalId}});setError("");setTestCashRequired(false);setTestCashStatus(t("payment.testCash.opened"));}catch(failure){setError(failure instanceof ApiError?failure.message:t("payment.testCash.error"));}finally{setBusy(false);}}
  async function retryFinish(){if(!server||server.status!=="COVERED")return;setBusy(true);setError("");const cashAttempt=cashAttemptRef.current?.sessionId===server.id?cashAttemptRef.current:undefined;try{await finish(server,cashAttempt);}catch(e){markTestCashRequirement(e);setError(e instanceof ApiError?e.message:t("payment.split.error.finalize"));}finally{setBusy(false);}}

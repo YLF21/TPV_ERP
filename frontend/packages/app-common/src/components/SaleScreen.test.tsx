@@ -46,7 +46,11 @@ const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } 
   checkoutProps: {
     current: null as null | {
       testCashEnabled?: boolean;
-      onFinalized?: (ticketNumber: string, totalCents: number, receivedCents?: number) => void;
+      onFinalized?: (ticketNumber: string, summary: {
+        kind: "CASH" | "CARD" | "MIXED";
+        totalCents: number;
+        receivedCents?: number;
+      }) => void;
     },
   }
 }));
@@ -257,11 +261,11 @@ describe("SaleScreen", () => {
     expect(cashResultFromFinalization("T-3", 1210, 1000).changeCents).toBe(0);
   });
 
-  it("maps the checkout finalization boundary to card or cash result details", async () => {
+  it("maps explicit checkout finalization summaries to card, cash, or mixed result details", async () => {
     renderSaleScreen();
     await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
 
-    act(() => checkoutProps.current?.onFinalized?.("CARD-1", 1210));
+    act(() => checkoutProps.current?.onFinalized?.("CARD-1", { kind: "CARD", totalCents: 1210 }));
 
     const cardResult = within(screen.getByRole("dialog"));
     expect(cardResult.getByText("Tarjeta")).toBeInTheDocument();
@@ -269,12 +273,20 @@ describe("SaleScreen", () => {
     expect(cardResult.queryByText("Cambio")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
-    act(() => checkoutProps.current?.onFinalized?.("CASH-1", 1210, 2000));
+    act(() => checkoutProps.current?.onFinalized?.("CASH-1", { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
 
     const cashResult = within(screen.getByRole("dialog"));
     expect(cashResult.getByText("Dinero recibido")).toBeInTheDocument();
     expect(cashResult.getByText("Cambio")).toBeInTheDocument();
     expect(cashResult.getByText("7,90")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    act(() => checkoutProps.current?.onFinalized?.("MIXED-1", { kind: "MIXED", totalCents: 1210 }));
+
+    const mixedResult = within(screen.getByRole("dialog"));
+    expect(mixedResult.getByText("Mixto")).toBeInTheDocument();
+    expect(mixedResult.queryByText("Dinero recibido")).not.toBeInTheDocument();
+    expect(mixedResult.queryByText("Cambio")).not.toBeInTheDocument();
   });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);

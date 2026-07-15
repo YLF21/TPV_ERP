@@ -4,7 +4,7 @@
 
 **Goal:** Always show the calculated change for cash results and render the three cash summary labels in bold.
 
-**Architecture:** Discriminate card and cash at the `SaleScreen` finalization boundary, then calculate `changeCents` in the cash-only `cashResultFromFinalization` helper so `CashPaymentResultDialog` remains presentation-only. Add one component-scoped CSS rule for label emphasis and protect the boundary and presentation with focused tests.
+**Architecture:** `SalePaymentCheckout` derives an explicit `PaymentFinalizationSummary` from the finalized session's effective allocations (`CASH`, `CARD`, or `MIXED`). `SaleScreen` consumes that discriminated summary and calculates `changeCents` only for CASH, keeping `CashPaymentResultDialog` presentation-only.
 
 **Tech Stack:** React 19, TypeScript, CSS, Vitest, React DOM server rendering.
 
@@ -12,8 +12,10 @@
 
 - Cash results always contain `Total`, `Dinero recibido`, and `Cambio`, including `Cambio 0,00` for exact payment.
 - Calculate `changeCents` as `Math.max(0, receivedCents - totalCents)` for cash.
-- `receivedCents === undefined` means card; cash finalizations always provide `receivedCents`, including exact payment.
+- Never infer the payment method from `receivedCents`; use explicit `kind: "CASH" | "CARD" | "MIXED"`.
+- Derive `kind` from `APPROVED` allocations. Only CASH carries `receivedCents`; CASH without a local attempt uses authorized cash capped at the total, while CARD and MIXED omit it.
 - Keep card results without `Dinero recibido` and `Cambio`.
+- Keep mixed results without `Dinero recibido` and `Cambio`, and show method `Mixto`.
 - Bold only the cash-result summary labels through `.cash-payment-result-dialog .cash-payment-summary span`.
 - Do not change backend contracts, endpoints, payment finalization, card behavior, or result-dialog arithmetic.
 
@@ -22,14 +24,16 @@
 ### Task 1: Complete and emphasize the cash result summary
 
 **Files:**
+- Modify: `frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts`
+- Modify: `frontend/packages/app-common/src/components/SalePaymentCheckout.tsx`
 - Modify: `frontend/packages/app-common/src/components/SaleScreen.test.tsx`
 - Modify: `frontend/packages/app-common/src/components/SaleScreen.tsx`
 - Modify: `frontend/packages/app-common/src/components/CashPaymentResultDialog.test.tsx`
 - Modify: `frontend/packages/app-common/src/styles/tpv.css`
 
 **Interfaces:**
-- Consumes: `paymentResultFromFinalization(ticketNumber: string, totalCents: number, receivedCents?: number): CashPaymentResult` at the shared handler and `cashResultFromFinalization(ticketNumber: string, totalCents: number, receivedCents: number): CashPaymentResult` for cash only.
-- Produces: a card result with `method: "Tarjeta"` and no `receivedCents`/`changeCents` when the boundary receives `undefined`, or a cash result with defined `receivedCents` and `changeCents`; component-scoped bold label contract.
+- Produces: `SalePaymentCheckout.onFinalized(ticketNumber, PaymentFinalizationSummary)`, where only `{ kind: "CASH" }` includes `receivedCents`.
+- Consumes: `paymentResultFromFinalization(ticketNumber, summary)` at the shared handler and `cashResultFromFinalization(ticketNumber, totalCents, receivedCents)` for cash only.
 
 - [ ] **Step 1: Write failing change-calculation tests**
 
@@ -53,7 +57,7 @@ it("preserves cash received and calculates non-negative change for individual ch
 });
 ```
 
-Add a boundary test that invokes the `onFinalized` callback wired by `SaleScreen`: `onFinalized("CARD-1", 1210)` must render method `Tarjeta` without `Dinero recibido` or `Cambio`, while `onFinalized("CASH-1", 1210, 2000)` must render cash change `7,90`.
+Add producer tests that finalize sessions with effective allocations for CASH without `cashAttempt`, CARD, and MIXED. Add a boundary test that invokes the `onFinalized` callback wired by `SaleScreen` with each explicit summary: CARD renders `Tarjeta`, CASH renders its calculated change, and MIXED renders `Mixto`; CARD/MIXED omit `Dinero recibido` and `Cambio`.
 
 Keep the existing `CashPaymentResultDialog` assertions that already verify a positive `Cambio` row and that card results omit `Dinero recibido` and `Cambio`; do not duplicate them.
 
@@ -70,10 +74,10 @@ expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary span
 Run from `frontend`:
 
 ```powershell
-npm.cmd test -- SaleScreen.test.tsx CashPaymentResultDialog.test.tsx -t "cash received|compact rectangular ERP result layout"
+npm.cmd test -- SalePaymentCheckout.test.ts SaleScreen.test.tsx -t "explicit .*finalization summar|explicit checkout finalization summaries"
 ```
 
-Expected for the original implementation: the `cashResultFromFinalization` assertions fail because `changeCents` is absent, and the CSS contract fails because the bold-label rule is absent. The boundary regression test must additionally fail while `undefined` is incorrectly normalized as exact cash.
+Expected for the architectural regression: producer tests fail because `finish` still emits scalar arguments, and the consumer test fails because `SaleScreen` does not consume the discriminated summary.
 
 - [ ] **Step 4: Calculate change at the result boundary**
 
@@ -93,19 +97,12 @@ export function cashResultFromFinalization(
   };
 }
 
-export function paymentResultFromFinalization(
-  ticketNumber: string,
-  totalCents: number,
-  receivedCents?: number,
-): CashPaymentResult {
-  if (receivedCents === undefined) {
-    return { ticketNumber, totalCents, method: "Tarjeta" };
-  }
-  return cashResultFromFinalization(ticketNumber, totalCents, receivedCents);
-}
+export type PaymentFinalizationSummary =
+  | { kind: "CASH"; totalCents: number; receivedCents: number }
+  | { kind: "CARD" | "MIXED"; totalCents: number; receivedCents?: never };
 ```
 
-Wire the shared `SaleScreen.onFinalized` handler through `paymentResultFromFinalization`; do not pass card events to `cashResultFromFinalization`.
+Derive the summary in `SalePaymentCheckout.finish` from `APPROVED` allocations. Preserve `cashAttempt.receivedCents` for keyboard CASH; otherwise cap authorized CASH at `totalCents`. Wire `SaleScreen.onFinalized` through `paymentResultFromFinalization(ticketNumber, summary)` and map `CARD`/`MIXED` to `Tarjeta`/`Mixto` without cash fields.
 
 - [ ] **Step 5: Make result labels bold**
 
@@ -122,7 +119,7 @@ Add next to the existing result-summary styles in `tpv.css`:
 Run from `frontend`:
 
 ```powershell
-npm.cmd test -- SaleScreen.test.tsx CashPaymentResultDialog.test.tsx
+npm.cmd test -- SalePaymentCheckout.test.ts SaleScreen.test.tsx CashPaymentResultDialog.test.tsx
 ```
 
 Expected: all tests in both files pass, including the card-only negative assertions.
@@ -141,6 +138,6 @@ Expected: all frontend tests pass; APP GESTIÓN and APP VENTA production builds 
 - [ ] **Step 8: Commit the implementation**
 
 ```powershell
-git add -- frontend/packages/app-common/src/components/SaleScreen.test.tsx frontend/packages/app-common/src/components/SaleScreen.tsx frontend/packages/app-common/src/components/CashPaymentResultDialog.test.tsx frontend/packages/app-common/src/styles/tpv.css
-git commit -m "fix(payment): show cash result change"
+git add -- frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts frontend/packages/app-common/src/components/SalePaymentCheckout.tsx frontend/packages/app-common/src/components/SaleScreen.test.tsx frontend/packages/app-common/src/components/SaleScreen.tsx docs/superpowers/specs/2026-07-15-cash-result-change-row-design.md docs/superpowers/plans/2026-07-15-cash-result-change-row.md
+git commit -m "fix(payment): summarize finalized payment method"
 ```
