@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cashChangeCents, cashInputCents, pressCashKey, setCashShortcut } from "../sale/cashCalculator";
 import type { CashInputMode } from "../sale/cashInputMode";
+import { CashPaymentValidationDialog } from "./CashPaymentValidationDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 type CashPaymentDialogProps = {
@@ -20,45 +21,77 @@ export type CashPaymentKeyAction = "confirm" | "cancel" | "none";
 
 export function cashPaymentKeyAction(
   key: string,
-  receivedCents: number,
-  totalCents: number,
   submitting: boolean,
+  validationOpen: boolean,
 ): CashPaymentKeyAction {
-  if (submitting) return "none";
+  if (submitting || validationOpen) return "none";
   if (key === "Escape") return "cancel";
-  if (key === "Enter" && receivedCents >= totalCents) return "confirm";
+  if (key === "Enter") return "confirm";
   return "none";
 }
 
 export function CashPaymentDialog({ totalCents, submitting, error, initialMode, onCancel, onConfirm, testCashAction, testCashStatus }: CashPaymentDialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const restoreInputFocusRef = useRef(false);
   const [received, setReceived] = useState("");
   const [mode, setMode] = useState<CashInputMode>(initialMode);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const receivedCents = useMemo(() => cashInputCents(received), [received]);
   const changeCents = cashChangeCents(totalCents, receivedCents);
+
+  const attemptConfirm = useCallback(() => {
+    if (receivedCents === 0) {
+      setValidationMessage("Debe indicar el importe recibido.");
+      return;
+    }
+    if (receivedCents < totalCents) {
+      setValidationMessage("El importe recibido no cubre el total.");
+      return;
+    }
+    onConfirm(receivedCents);
+  }, [onConfirm, receivedCents, totalCents]);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
     : undefined, []);
 
   useEffect(() => {
+    if (validationMessage !== null || !restoreInputFocusRef.current) return;
+    restoreInputFocusRef.current = false;
+    inputRef.current?.focus();
+  }, [validationMessage]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const action = cashPaymentKeyAction(event.key, receivedCents, totalCents, submitting);
+      const action = cashPaymentKeyAction(event.key, submitting, validationMessage !== null);
       if (action === "cancel") {
         event.preventDefault();
         onCancel();
       } else if (action === "confirm") {
         event.preventDefault();
-        onConfirm(receivedCents);
+        attemptConfirm();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel, onConfirm, receivedCents, submitting, totalCents]);
+  }, [attemptConfirm, onCancel, submitting, validationMessage]);
+
+  const closeValidation = () => {
+    restoreInputFocusRef.current = true;
+    setValidationMessage(null);
+  };
 
   return (
     <div className="sale-action-overlay" role="presentation">
-      <section ref={dialogRef} className="cash-payment-dialog cash-payment-entry-dialog" role="dialog" aria-modal="true" aria-labelledby="cash-payment-title">
+      <section
+        ref={dialogRef}
+        className="cash-payment-dialog cash-payment-entry-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-payment-title"
+        aria-hidden={validationMessage !== null ? true : undefined}
+      >
         <header>
           <h2 id="cash-payment-title">Cobro en efectivo</h2>
           <button type="button" aria-label="Cerrar" disabled={submitting} onClick={onCancel}>×</button>
@@ -69,6 +102,7 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
           <div className="cash-change"><span>Cambio</span><strong>{money(changeCents)}</strong></div>
         </div>
         <input
+          ref={inputRef}
           autoFocus
           className="cash-received-input"
           aria-label="Dinero recibido"
@@ -96,7 +130,6 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
             <button type="button" disabled={submitting} aria-label="Limpiar importe" onClick={() => setReceived("")}>C</button>
           </div>
         </>}
-        {receivedCents > 0 && receivedCents < totalCents && <p className="sale-action-error" role="alert">El importe recibido no cubre el total</p>}
         {error && <p className="sale-action-error" role="alert">{error}</p>}
         {testCashAction && (
           <button
@@ -111,9 +144,12 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
         {testCashStatus && <p className="test-cash-session-status" role="status">{testCashStatus}</p>}
         <footer className="cash-payment-actions">
           <button type="button" disabled={submitting} onClick={onCancel}>Cancelar</button>
-          <button type="button" disabled={submitting || receivedCents < totalCents} onClick={() => onConfirm(receivedCents)}>{submitting ? "Registrando..." : "Confirmar cobro"}</button>
+          <button type="button" disabled={submitting} onClick={attemptConfirm}>{submitting ? "Registrando..." : "Confirmar cobro"}</button>
         </footer>
       </section>
+      {validationMessage !== null && (
+        <CashPaymentValidationDialog message={validationMessage} onAccept={closeValidation} />
+      )}
     </div>
   );
 }

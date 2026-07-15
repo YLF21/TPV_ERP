@@ -99,15 +99,62 @@ describe("CashPaymentDialog", () => {
     expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(22);
   });
 
+  it("keeps validation hidden while typing and warns only after confirming an insufficient amount", () => {
+    const onConfirm = vi.fn();
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" onConfirm={onConfirm} />);
+    const input = screen.getByRole("textbox", { name: "Dinero recibido" });
+
+    fireEvent.change(input, { target: { value: "5" } });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cobro" }));
+
+    expect(screen.getByRole("alertdialog", { name: "Aviso" })).toHaveTextContent("El importe recibido no cubre el total.");
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("uses the formal empty-amount warning", () => {
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cobro" }));
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Debe indicar el importe recibido.");
+  });
+
+  it("preserves the amount and returns focus to the input after accepting", () => {
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
+    const input = screen.getByRole("textbox", { name: "Dinero recibido" });
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cobro" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+
+    expect(input).toHaveValue("5");
+    expect(input).toHaveFocus();
+  });
+
+  it("validates Enter and confirms only an amount that covers the total", () => {
+    const onConfirm = vi.fn();
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="keyboard" onConfirm={onConfirm} />);
+    const input = screen.getByRole("textbox", { name: "Dinero recibido" });
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Debe indicar el importe recibido.");
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    fireEvent.change(input, { target: { value: "12,10" } });
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(onConfirm).toHaveBeenCalledWith(1210);
+  });
+
   it.each([
-    ["Escape", 2000, 1543, false, "cancel"],
-    ["Enter", 1543, 1543, false, "confirm"],
-    ["Enter", 2000, 1543, false, "confirm"],
-    ["Enter", 1542, 1543, false, "none"],
-    ["a", 2000, 1543, false, "none"],
-    ["Escape", 2000, 1543, true, "none"],
-    ["Enter", 2000, 1543, true, "none"],
-  ] as const)("decides %s with received=%i total=%i submitting=%s as %s", (key, received, total, submitting, action) => {
-    expect(cashPaymentKeyAction(key, received, total, submitting)).toBe(action);
+    ["Escape", false, false, "cancel"],
+    ["Enter", false, false, "confirm"],
+    ["a", false, false, "none"],
+    ["Escape", true, false, "none"],
+    ["Enter", true, false, "none"],
+    ["Escape", false, true, "none"],
+    ["Enter", false, true, "none"],
+  ] as const)("decides %s with submitting=%s validationOpen=%s as %s", (key, submitting, validationOpen, action) => {
+    expect(cashPaymentKeyAction(key, submitting, validationOpen)).toBe(action);
   });
 });
