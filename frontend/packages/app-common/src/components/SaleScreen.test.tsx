@@ -11,6 +11,7 @@ import {
   cashPaymentErrorTransition,
   cashPaymentSuccessTransition,
   cashPaymentResultForAutomaticPrinting,
+  updateCashResultPrintOutcome,
   cashResultFromFinalization,
   finishCashPaymentResult,
   readCashModeForOpening,
@@ -710,6 +711,42 @@ describe("SaleScreen", () => {
       changeCents: 790,
       printTicket: snapshot,
       printStatus: "PRINTING",
+    });
+  });
+
+  it("retains the automatic print technical failure for diagnostics without exposing it as UI text", () => {
+    const current = cashPaymentResultForAutomaticPrinting(
+      { number: "T-DIAG", total: "12.10", change: "0.00", printTicket: printSnapshot("T-DIAG") },
+      1210,
+      1210,
+    );
+
+    expect(updateCashResultPrintOutcome(current, "document-T-DIAG", {
+      status: "FAILED",
+      technicalMessage: "USB endpoint stalled",
+    })).toMatchObject({
+      printStatus: "FAILED",
+      printTechnicalMessage: "USB endpoint stalled",
+    });
+  });
+
+  it("replaces the retained diagnostic when a retry fails for a different technical reason", () => {
+    const current = {
+      ...cashPaymentResultForAutomaticPrinting(
+        { number: "T-RETRY", total: "12.10", change: "0.00", printTicket: printSnapshot("T-RETRY") },
+        1210,
+        1210,
+      ),
+      printStatus: "PRINTING" as const,
+      printTechnicalMessage: "paper jam",
+    };
+
+    expect(updateCashResultPrintOutcome(current, "document-T-RETRY", {
+      status: "FAILED",
+      technicalMessage: "printer offline",
+    })).toMatchObject({
+      printStatus: "FAILED",
+      printTechnicalMessage: "printer offline",
     });
   });
 

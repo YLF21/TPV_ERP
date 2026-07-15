@@ -176,7 +176,7 @@ type CashPaymentResponse = {
   printTicket: ConfirmedTicketPrintSnapshot;
 };
 
-type CashPaymentResult = {
+export type CashPaymentResult = {
   ticketNumber: string;
   totalCents: number;
   receivedCents?: number;
@@ -186,6 +186,7 @@ type CashPaymentResult = {
   reference?: string;
   printTicket?: ConfirmedTicketPrintSnapshot;
   printStatus?: TicketPrintUiStatus;
+  printTechnicalMessage?: string;
 };
 
 type CardPaymentResponse = { status: string; ticketId?: string | null; ticketNumber?: string | null; total?: number | string; reference?: string | null; authorization?: string | null; message?: string | null };
@@ -318,6 +319,20 @@ export function cashPaymentResultForAutomaticPrinting(
     printTicket: response.printTicket,
     printStatus: "PRINTING",
   };
+}
+
+export function updateCashResultPrintOutcome(
+  current: CashPaymentResult | null,
+  documentId: string,
+  outcome: TicketPrintOutcome,
+) {
+  return current?.printTicket?.documentId === documentId
+    ? {
+        ...current,
+        printStatus: outcome.status,
+        printTechnicalMessage: outcome.technicalMessage,
+      }
+    : current;
 }
 
 export async function runGuardedCashSubmission(
@@ -479,9 +494,7 @@ export function SaleScreen({
   }
 
   function updateMatchingPrintOutcome(documentId: string, outcome: TicketPrintOutcome) {
-    setCashResult((current) => current?.printTicket?.documentId === documentId
-      ? { ...current, printStatus: outcome.status }
-      : current);
+    setCashResult((current) => updateCashResultPrintOutcome(current, documentId, outcome));
   }
 
   function startAutomaticTicketPrint(snapshot: ConfirmedTicketPrintSnapshot) {
@@ -493,7 +506,7 @@ export function SaleScreen({
     const snapshot = cashResult?.printTicket;
     if (!snapshot) return;
     setCashResult((current) => current?.printTicket?.documentId === snapshot.documentId
-      ? { ...current, printStatus: "PRINTING" }
+      ? { ...current, printStatus: "PRINTING", printTechnicalMessage: undefined }
       : current);
     void retryConfirmedTicketPrint(snapshot, terminalContext)
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));

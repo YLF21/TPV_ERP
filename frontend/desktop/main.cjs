@@ -3,7 +3,12 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
-const { buildTicketCopyBuffers, resolveTicketPrintRoute, withTicketPrinterRoute } = require("./ticket-print-route.cjs");
+const {
+  executeEscposTicketPrint,
+  executeWindowsTicketPrint,
+  resolveTicketPrintRoute,
+  withTicketPrinterRoute
+} = require("./ticket-print-route.cjs");
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
@@ -499,20 +504,19 @@ async function printTicket(ticket, config) {
   const routedConfig = withTicketPrinterRoute(nextConfig, route);
 
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
-    try {
-      const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
-      const ticketBuffer = buildTicketBuffer(ticket);
-      const drawerBuffer = shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER" ? buildCashDrawerBuffer() : undefined;
-      for (const copyBuffer of buildTicketCopyBuffers(ticketBuffer, route.copies, drawerBuffer)) {
-        await sendTicketPrinterRawBuffer(routedConfig, copyBuffer);
-      }
-      if (shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER") {
-        await openCashDrawerWithConfig(routedConfig);
-      }
-      return { ok: true };
-    } catch (error) {
-      return structuredError("ESCPOS_NOT_AVAILABLE", error instanceof Error ? error.message : "Error ESC/POS");
-    }
+    const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
+    return executeEscposTicketPrint({
+      sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
+      ticketBuffer: buildTicketBuffer(ticket),
+      drawerBuffer: shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
+        ? buildCashDrawerBuffer()
+        : undefined,
+      copies: route.copies,
+      openExternalDrawer: shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER"
+        ? () => openCashDrawerWithConfig(routedConfig)
+        : undefined,
+      structuredError
+    });
   }
 
   if (!printerName) {
@@ -530,19 +534,16 @@ async function printTicket(ticket, config) {
 
   try {
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderTicketHtml(ticket))}`);
-    await new Promise((resolve, reject) => {
-      printWindow.webContents.print({ silent: true, deviceName: printerName, copies: route.copies, printBackground: true }, (success, failureReason) => {
-        if (success) {
-          resolve();
-          return;
-        }
-        reject(new Error(failureReason || "PRINT_FAILED"));
-      });
+    return executeWindowsTicketPrint({
+      webContents: printWindow.webContents,
+      printerName,
+      copies: route.copies,
+      openDrawer: shouldOpenCashDrawerForTicket(nextConfig, ticket)
+          && nextConfig.cashDrawerConnection !== "NONE"
+        ? () => openCashDrawerWithConfig(routedConfig)
+        : undefined,
+      structuredError
     });
-    if (shouldOpenCashDrawerForTicket(nextConfig, ticket) && nextConfig.cashDrawerConnection !== "NONE") {
-      await openCashDrawerWithConfig(routedConfig);
-    }
-    return { ok: true };
   } catch (error) {
     return structuredError("PRINT_FAILED", error instanceof Error ? error.message : "Error de impresion");
   } finally {
