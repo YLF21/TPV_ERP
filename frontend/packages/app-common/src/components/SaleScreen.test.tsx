@@ -19,6 +19,8 @@ import {
   cardTransportFailureOutcome,
   buildCardChargeBody,
   runGuardedCardOpening,
+  saleMainMessage,
+  saleMainProductCount,
   effectiveSaleLineDiscount,
   effectiveSaleProductPrice,
   filterSaleCustomers,
@@ -37,6 +39,7 @@ import {
   type SaleCustomer,
   type SaleProduct
 } from "./SaleScreen";
+import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 
@@ -108,11 +111,11 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
-  function renderSaleScreen(onLogout = vi.fn()) {
+  function renderSaleScreen(onLogout = vi.fn(), locale: "es" | "en" | "zh" = "es") {
     render(
       <SaleScreen
         app="venta"
-        locale="es"
+        locale={locale}
         session={session}
         terminalContext={terminalContext}
         onBack={vi.fn()}
@@ -314,18 +317,62 @@ describe("SaleScreen", () => {
     expect(html).toContain('class="report-footer-context"');
     expect(html).toContain("Venta");
     expect(html).toContain("Añadir producto");
-    expect(html).toContain("Lineas de venta");
+    expect(html).toContain("Líneas de venta");
     expect(html).toContain("Cobro");
     expect(html).toContain("F5");
     expect(html).toContain("F10");
     expect(html).toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Buscar producto"');
+    expect(html).toContain('aria-label="Búsqueda y cobro"');
+    expect(html).toContain("Entrada rápida por código, nombre o referencia");
+    expect(html).toContain('placeholder="Código o nombre"');
+    expect(html).toContain("Anular línea");
     expect(html).toContain('aria-controls="sale-product-results"');
     expect(html).toContain("Cargando productos");
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Leche fresca");
     expect(html).not.toContain("15,15");
+  });
+
+  it.each([
+    ["es", ["Venta", "Líneas de venta", "Sin venta iniciada", "Buscar producto", "Cobro"]],
+    ["en", ["Sale", "Sale lines", "No sale started", "Search product", "Payment"]],
+    ["zh", ["销售", "销售明细", "尚未开始销售", "搜索商品", "收款"]],
+  ] as const)("localizes the main sale view in %s", (locale, labels) => {
+    const html = renderToStaticMarkup(
+      <SaleScreen
+        app="venta"
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    labels.forEach((label) => expect(html).toContain(label));
+    expect(html).toContain("0,00");
+  });
+
+  it.each(["en", "zh"] as const)("does not leak fixed Spanish main-view labels in %s", (locale) => {
+    const html = renderToStaticMarkup(
+      <SaleScreen app="venta" locale={locale} session={session} terminalContext={terminalContext} onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={vi.fn()} />,
+    );
+
+    ["Líneas de venta", "Sin venta iniciada", "Buscar producto", "Cantidad", "Descuento", "Anular línea", "Cobro"].forEach((label) => {
+      expect(html).not.toContain(label);
+    });
+  });
+
+  it("interpolates localized customer and product counters", () => {
+    const tEn = createTranslator("en");
+    const tZh = createTranslator("zh");
+    expect(saleMainMessage(tEn, "sale.main.selectedCustomer", { name: "ACME" })).toBe("Customer: ACME");
+    expect(saleMainProductCount(tEn, 1)).toBe("1 product");
+    expect(saleMainProductCount(tEn, 2)).toBe("2 products");
+    expect(saleMainProductCount(tZh, 2)).toBe("2 件商品");
   });
 
   it("filters products by name without case sensitivity", () => {

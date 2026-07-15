@@ -50,6 +50,23 @@ export type SaleCustomer = {
   memberDiscountPercent?: number | string | null;
 };
 
+type SaleTranslator = (key: string) => string;
+
+export function saleMainMessage(
+  t: SaleTranslator,
+  key: string,
+  values: Record<string, string | number> = {},
+) {
+  return Object.entries(values).reduce(
+    (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
+    t(key),
+  );
+}
+
+export function saleMainProductCount(t: SaleTranslator, count: number) {
+  return saleMainMessage(t, count === 1 ? "sale.main.productCount.one" : "sale.main.productCount.many", { count });
+}
+
 function normalizedSearchValue(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
 }
@@ -559,7 +576,7 @@ export function SaleScreen({
       setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
       setCashDialogOpen(true);
     } catch (error) {
-      setCashStatus(error instanceof Error ? error.message : "No se pudo calcular el total de la venta");
+      setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
     }
   }
 
@@ -611,7 +628,7 @@ export function SaleScreen({
         setCardQuoteCents(cents); setCardCheckoutId(checkoutId); setCardStatus("PENDING"); setCardMessage("Esperando respuesta del datafono..."); setCardDialogOpen(true);
         await submitCardPayment(checkoutId, cents);
       } catch (error) {
-        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : "No se pudo calcular el total de la venta");
+        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
       } finally { setCardOpening(false); }
     });
   }
@@ -683,23 +700,27 @@ export function SaleScreen({
         onPrepareShutdown={handleApplicationClose}
       />
 
-      <section className="work-shell" aria-label="Venta">
+      <section className="work-shell" aria-label={t("sale.main.screen")}>
         <header className="work-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
-          <h1 className="report-title">Venta</h1>
+          <h1 className="report-title">{t("sale.main.screen")}</h1>
         </header>
 
-        <section className="sale-ticket work-panel" aria-label="Ticket actual">
+        <section className="sale-ticket work-panel" aria-label={t("sale.main.ticket")}>
           <header className="work-panel-heading">
-            <h2>Lineas de venta</h2>
-            <span>{selectedCustomer ? `Cliente: ${selectedCustomer.fiscalName}` : lines.length === 0 ? paymentLocked ? t("payment.split.reservedTicket") : "Sin venta iniciada" : `${lines.length} producto${lines.length === 1 ? "" : "s"}`}</span>
+            <h2>{t("sale.main.lines")}</h2>
+            <span>{selectedCustomer
+              ? saleMainMessage(t, "sale.main.selectedCustomer", { name: selectedCustomer.fiscalName ?? "" })
+              : lines.length === 0
+                ? paymentLocked ? t("payment.split.reservedTicket") : t("sale.main.noSale")
+                : saleMainProductCount(t, lines.length)}</span>
           </header>
           {lines.length === 0 ? (
-            <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : "Sin venta iniciada"}</div>
+            <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : t("sale.main.noSale")}</div>
           ) : (
-            <div className="sale-ticket-lines" aria-label="Lineas del ticket">
+            <div className="sale-ticket-lines" aria-label={t("sale.main.ticketLines")}>
               {lines.map((line) => (
                 <button
                   type="button"
@@ -709,8 +730,8 @@ export function SaleScreen({
                   onClick={() => setSelectedProductId(line.product.id)}
                 >
                   <div>
-                    <strong>{line.product.name ?? "Producto sin nombre"}</strong>
-                    <span>{line.product.code ?? line.product.barcode ?? "Sin codigo"}</span>
+                    <strong>{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
+                    <span>{line.product.code ?? line.product.barcode ?? t("sale.main.missingCode")}</span>
                   </div>
                   <span>
                     {line.quantity} x {formatSaleAmount(effectiveSaleProductPrice(line.product))}
@@ -719,7 +740,7 @@ export function SaleScreen({
                         {line.memberDiscountPercent != null
                           && line.memberDiscountPercent >= line.discountPercent
                           && line.memberDiscountPercent > 0
-                          ? ` - Socio ${formatSaleAmount(line.memberDiscountPercent)}%`
+                          ? ` - ${t("sale.main.member")} ${formatSaleAmount(line.memberDiscountPercent)}%`
                           : ` - ${formatSaleAmount(line.discountPercent)}%`}
                       </small>
                     )}
@@ -733,30 +754,30 @@ export function SaleScreen({
           <PromotionPreviewPanel locale={locale} preview={null} />
         </section>
 
-        <section className="sale-tools work-panel" aria-label="Busqueda y cobro">
+        <section className="sale-tools work-panel" aria-label={t("sale.main.searchAndPayment")}>
           <footer className="sale-total">
-            <span>Total</span>
+            <span>{t("sale.main.total")}</span>
             <strong>{formatSaleAmount(displayedTotal)}</strong>
           </footer>
           <div className="work-panel-heading sale-product-heading">
             <div>
-              <h2>Producto</h2>
-              <span>Entrada rapida por codigo, nombre o referencia</span>
+              <h2>{t("sale.main.product")}</h2>
+              <span>{t("sale.main.quickEntry")}</span>
             </div>
             <button type="button" className="stock-add-product-button" onClick={() => setProductCreateOpen(true)}>
               {t("product.create.button")}
             </button>
           </div>
           <label className="work-search">
-            <span>Buscar producto <kbd>F5</kbd></span>
+            <span>{t("sale.main.searchProduct")} <kbd>F5</kbd></span>
             <input
               ref={searchInputRef}
-              aria-label="Buscar producto"
+              aria-label={t("sale.main.searchProduct")}
               aria-controls="sale-product-results"
               aria-expanded={query.trim().length > 0}
               autoComplete="off"
               disabled={catalogLoading || catalogError || paymentLocked}
-              placeholder="Codigo o nombre"
+              placeholder={t("sale.main.searchPlaceholder")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -768,21 +789,21 @@ export function SaleScreen({
             />
           </label>
           <div className="sale-search-results" id="sale-product-results" aria-live="polite">
-            {catalogLoading && <p className="sale-search-status">Cargando productos...</p>}
+            {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
             {catalogError && (
               <div className="sale-search-status sale-search-error">
-                <span>No se pudo cargar el catalogo</span>
-                <button type="button" onClick={() => setCatalogReload((value) => value + 1)}>Reintentar</button>
+                <span>{t("sale.main.catalogError")}</span>
+                <button type="button" onClick={() => setCatalogReload((value) => value + 1)}>{t("sale.main.retry")}</button>
               </div>
             )}
             {!catalogLoading && !catalogError && query.trim() && results.length === 0 && (
-              <p className="sale-search-status">No se encontraron productos</p>
+              <p className="sale-search-status">{t("sale.main.noProducts")}</p>
             )}
             {!catalogLoading && !catalogError && results.map((product) => (
               <button className="sale-search-result" type="button" disabled={paymentLocked} key={product.id} onClick={() => addProduct(product)}>
                 <span>
-                  <strong>{product.name ?? "Producto sin nombre"}</strong>
-                  <small>{product.code ?? product.barcode ?? "Sin codigo"}</small>
+                  <strong>{product.name ?? t("sale.main.unnamedProduct")}</strong>
+                  <small>{product.code ?? product.barcode ?? t("sale.main.missingCode")}</small>
                 </span>
                 <b>{formatSaleAmount(effectiveSaleProductPrice(product))}</b>
               </button>
@@ -790,7 +811,7 @@ export function SaleScreen({
           </div>
           <div className="sale-quick-grid">
             <button type="button" disabled={!selectedLine || paymentLocked} onClick={openQuantityDialog}>
-              <span>Cantidad</span>
+              <span>{t("sale.main.quantity")}</span>
               <kbd>F2</kbd>
             </button>
             <button
@@ -799,20 +820,20 @@ export function SaleScreen({
               title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
               onClick={openDiscountDialog}
             >
-              <span>Descuento</span>
+              <span>{t("sale.main.discount")}</span>
               <kbd>F7</kbd>
             </button>
             <button type="button" disabled={paymentLocked} onClick={openCustomerDialog}>
-              <span>Cliente</span>
+              <span>{t("sale.main.customer")}</span>
               <kbd>F6</kbd>
             </button>
             <button type="button" disabled={!selectedLine || paymentLocked} onClick={() => setActionDialog("remove")}>
-              <span>Anular linea</span>
-              <kbd>Supr</kbd>
+              <span>{t("sale.main.removeLine")}</span>
+              <kbd>{t("sale.main.deleteKey")}</kbd>
             </button>
           </div>
-          <section className="sale-payment" aria-label="Cobro">
-            <h2>Cobro</h2>
+          <section className="sale-payment" aria-label={t("sale.main.payment")}>
+            <h2>{t("sale.main.payment")}</h2>
             <SalePaymentCheckout
               ref={paymentCheckoutRef}
               locale={locale}
@@ -845,15 +866,15 @@ export function SaleScreen({
           </section>
         </section>
 
-        <nav className="sale-shortcut-bar" aria-label="Atajos de venta">
-          <span><kbd>F5</kbd> Buscar</span>
-          <span><kbd>F2</kbd> Cantidad</span>
-          <span><kbd>F7</kbd> Descuento</span>
-          <span><kbd>F6</kbd> Cliente</span>
-          <span><kbd>Supr</kbd> Anular linea</span>
-          <span><kbd>F10</kbd> Efectivo</span>
-          <span><kbd>F11</kbd> Tarjeta</span>
-          <span><kbd>F12</kbd> Pendiente</span>
+        <nav className="sale-shortcut-bar" aria-label={t("sale.main.shortcuts")}>
+          <span><kbd>F5</kbd> {t("sale.main.search")}</span>
+          <span><kbd>F2</kbd> {t("sale.main.quantity")}</span>
+          <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
+          <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
+          <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
+          <span><kbd>F10</kbd> {t("sale.main.cash")}</span>
+          <span><kbd>F11</kbd> {t("sale.main.card")}</span>
+          <span><kbd>F12</kbd> {t("sale.main.pending")}</span>
         </nav>
 
         <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
