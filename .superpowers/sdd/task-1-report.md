@@ -166,3 +166,78 @@ fallos. La suite sí ejecutó las pruebas PostgreSQL habilitadas por el entorno 
   ejecutó el mismo ciclo con la instalación existente `E:\apache-maven-3.9.10\bin\mvn.cmd`.
 - Maven/JDK emiten avisos preexistentes sobre APIs deprecadas, auto-attach de Mockito y acceso
   nativo futuro. No hubo warnings atribuibles al contrato implementado ni fallos de compilación.
+
+## Review fixes
+
+### Cambios
+
+- El error de `TicketPrintView.from` usa ahora la clave localizable
+  `message.document.print_ticket_requires_confirmed_document` en lugar de exponer
+  `print_ticket_requires_confirmed_document` literalmente.
+- Se añadió la clave a los tres catálogos existentes del backend. El repositorio no contiene un
+  bundle `messages.properties` base, por lo que no fue necesario añadir un cuarto catálogo:
+  - ES: `El ticket imprimible requiere un documento confirmado`.
+  - EN: `The printable ticket requires a confirmed document`.
+  - ZH: `可打印票据需要已确认的单据`.
+- `TicketPrintViewTest` demuestra que los documentos no confirmados emiten la clave `message.*`.
+- `LocalizedMessagesTest` demuestra que esa clave se resuelve en ES, EN y ZH, además de conservar
+  la comprobación global de paridad entre catálogos.
+- Se sustituyó la prueba superficial que construía `PosCashService.Result` manualmente por
+  `PosCashServiceTest`, que ejecuta `charge` real con dependencias simuladas. La solicitud usa
+  nombre `Request name` y precio `99.00`, mientras el `CommercialDocument` devuelto por
+  `DocumentService.createTicket` contiene `Authoritative Cafe` y `3.50`; las aserciones prueban
+  que `printTicket` procede exactamente del documento confirmado.
+
+### Evidencia RED/GREEN
+
+Localización RED, antes de modificar producción y catálogos:
+
+```powershell
+E:\apache-maven-3.9.10\bin\mvn.cmd "-Dtest=TicketPrintViewTest#rejectsUnconfirmedDocumentWithLocalizedMessageKey,LocalizedMessagesTest#translatesConfirmedTicketPrintRequirement" test
+```
+
+```text
+TicketPrintViewTest: expected message.document.print_ticket_requires_confirmed_document
+but was print_ticket_requires_confirmed_document
+LocalizedMessagesTest: NoSuchMessageException for locale es
+Tests run: 2, Failures: 1, Errors: 1
+BUILD FAILURE
+```
+
+Localización GREEN tras añadir la clave y los tres textos:
+
+```text
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+La cobertura de caja prueba comportamiento ya implementado, por lo que se validó mediante una
+mutación controlada: se sustituyó temporalmente `TicketPrintView.from(ticket)` por `null`, se
+ejecutó la prueba y se restauró inmediatamente la implementación autoritativa.
+
+```powershell
+E:\apache-maven-3.9.10\bin\mvn.cmd -Dtest=PosCashServiceTest test
+```
+
+```text
+RED con mutación: printTicket() is null; Tests run: 1, Errors: 1; BUILD FAILURE
+GREEN restaurado: Tests run: 1, Failures: 0, Errors: 0; BUILD SUCCESS
+```
+
+Verificación enfocada final:
+
+```powershell
+E:\apache-maven-3.9.10\bin\mvn.cmd "-Dtest=TicketPrintViewTest,PosCashServiceTest,LocalizedMessagesTest" test
+```
+
+```text
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+### Commit
+
+- `1aca50f fix(payment): localize ticket print validation`
+
+No quedan preocupaciones funcionales nuevas. Persisten únicamente los avisos ambientales ya
+documentados sobre `mvnw.cmd`, Mockito/JDK y APIs deprecadas.
