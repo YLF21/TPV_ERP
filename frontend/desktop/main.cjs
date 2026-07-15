@@ -3,6 +3,7 @@ const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
+const { resolveTicketPrintRoute } = require("./ticket-print-route.cjs");
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
@@ -493,14 +494,19 @@ function openCustomerDisplay(config, state) {
 
 async function printTicket(ticket, config) {
   const nextConfig = normalizeHardwareConfig({ ...readHardwareConfig(), ...config });
+  const route = resolveTicketPrintRoute(nextConfig);
+  const printerName = route.printerName;
 
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
     try {
       const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
-      const ticketBuffer = shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
-        ? Buffer.concat([buildCashDrawerBuffer(), buildTicketBuffer(ticket)])
-        : buildTicketBuffer(ticket);
-      await sendTicketPrinterRawBuffer(nextConfig, ticketBuffer);
+      const ticketBuffer = buildTicketBuffer(ticket);
+      for (let copy = 0; copy < route.copies; copy += 1) {
+        const copyBuffer = copy === 0 && shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
+          ? Buffer.concat([buildCashDrawerBuffer(), ticketBuffer])
+          : ticketBuffer;
+        await sendTicketPrinterRawBuffer({ ...nextConfig, ticketPrinterName: printerName }, copyBuffer);
+      }
       if (shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER") {
         await openCashDrawerWithConfig(nextConfig);
       }
@@ -510,7 +516,6 @@ async function printTicket(ticket, config) {
     }
   }
 
-  const printerName = nextConfig.ticketPrinterName;
   if (!printerName) {
     return structuredError("PRINTER_NOT_CONFIGURED", "Impresora no configurada");
   }
@@ -527,7 +532,7 @@ async function printTicket(ticket, config) {
   try {
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderTicketHtml(ticket))}`);
     await new Promise((resolve, reject) => {
-      printWindow.webContents.print({ silent: true, deviceName: printerName, printBackground: true }, (success, failureReason) => {
+      printWindow.webContents.print({ silent: true, deviceName: printerName, copies: route.copies, printBackground: true }, (success, failureReason) => {
         if (success) {
           resolve();
           return;
