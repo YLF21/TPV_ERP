@@ -11769,3 +11769,61 @@ textarea:focus,
   font-size: 12px;
   font-weight: 750;
 }
+
+.cash-payment-validation-overlay {
+  position: fixed;
+  z-index: 171;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(12, 29, 53, 0.18);
+}
+
+.cash-payment-validation-dialog {
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 4px;
+  background: var(--tpv-v3-surface);
+  box-shadow: 0 8px 24px rgba(23, 32, 51, 0.24);
+}
+
+.cash-payment-validation-dialog > header {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--tpv-v3-line);
+  background: var(--tpv-v3-surface-alt);
+}
+
+.cash-payment-validation-dialog h2,
+.cash-payment-validation-dialog p {
+  margin: 0;
+}
+
+.cash-payment-validation-dialog h2 {
+  font-size: 15px;
+}
+
+.cash-payment-validation-dialog p {
+  padding: 16px 12px;
+  color: var(--tpv-v3-text);
+  font-weight: 700;
+}
+
+.cash-payment-validation-dialog footer {
+  padding: 0 12px 12px;
+}
+
+.cash-payment-validation-dialog button {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--tpv-v3-blue);
+  border-radius: 3px;
+  background: var(--tpv-v3-blue);
+  color: #fff;
+  font-weight: 800;
+}
