@@ -7,6 +7,7 @@ import { SessionHomeScreen } from "../../../packages/app-common/src/components/S
 import { readSaleInterfaceTouchMode } from "../../../packages/app-common/src/components/saleInterfacePreferences";
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+import { useSaleUserLocalePreference } from "./saleUserLocale";
 
 const SalesReportScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
@@ -31,9 +32,20 @@ const StockScreen = lazy(() =>
 );
 
 function App() {
-  const [locale, setLocale] = useState<LocaleCode>("es");
   const [session, setSession] = useState<UserSession | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "settings" | "hardwareSettings">("home");
+  const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
+
+  const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
+  const handleLogin = (nextSession: UserSession) => {
+    setSession(nextSession);
+    applyUserLocale(nextSession);
+    setScreen("home");
+  };
+  const handleLogout = () => {
+    setSession(null);
+    resetLocale();
+  };
 
   if (!session) {
     return (
@@ -41,11 +53,8 @@ function App() {
         app="venta"
         locale={locale}
         terminalContext={devTerminalContext}
-        onLocaleChange={setLocale}
-        onLogin={(nextSession) => {
-          setSession(nextSession);
-          setScreen("home");
-        }}
+        onLocaleChange={handleLocaleChange}
+        onLogin={handleLogin}
       />
     );
   }
@@ -61,8 +70,8 @@ function App() {
         session={session}
         terminalContext={devTerminalContext}
         onBack={() => setScreen("home")}
-        onLogout={() => setSession(null)}
-        onLocaleChange={setLocale}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
       />
     );
   }
@@ -76,8 +85,8 @@ function App() {
         terminalContext={devTerminalContext}
         touchMode={readSaleInterfaceTouchMode("venta", devTerminalContext)}
         onBack={() => setScreen("home")}
-        onLogout={() => setSession(null)}
-        onLocaleChange={setLocale}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
       />
     );
   }
@@ -90,8 +99,8 @@ function App() {
         session={session}
         terminalContext={devTerminalContext}
         onBack={() => setScreen("home")}
-        onLogout={() => setSession(null)}
-        onLocaleChange={setLocale}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
       />
     );
   }
@@ -104,8 +113,8 @@ function App() {
         session={session}
         terminalContext={devTerminalContext}
         onBack={() => setScreen("home")}
-        onLocaleChange={setLocale}
-        onLogout={() => setSession(null)}
+        onLocaleChange={handleLocaleChange}
+        onLogout={handleLogout}
       />
     );
   }
@@ -118,8 +127,8 @@ function App() {
         session={session}
         terminalContext={devTerminalContext}
         onBack={() => setScreen("home")}
-        onLogout={() => setSession(null)}
-        onLocaleChange={setLocale}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
         onOpenHardware={() => setScreen("hardwareSettings")}
       />
     );
@@ -132,8 +141,8 @@ function App() {
       session={session}
       terminalContext={devTerminalContext}
       canOpenSalesReport={canOpenSalesReport}
-      onLocaleChange={setLocale}
-      onLogout={() => setSession(null)}
+      onLocaleChange={handleLocaleChange}
+      onLogout={handleLogout}
       onOpenSales={() => setScreen("sale")}
       onOpenStock={() => setScreen("stock")}
       onOpenSalesReport={() => setScreen("salesReport")}
