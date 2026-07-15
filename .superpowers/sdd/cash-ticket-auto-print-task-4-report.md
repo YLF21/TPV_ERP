@@ -51,4 +51,12 @@ Implementación completada en el worktree `cash-ticket-auto-print`. El resultado
 
 ## Preocupaciones
 
-- Ninguna bloqueante. El flujo directo `/pos/cash` conserva su integración existente y ahora tiene una transición explícita y probada al snapshot autoritativo; su activación de UI sigue dependiendo del cableado preexistente de esa ruta.
+- Ninguna bloqueante. El flujo directo `/pos/cash` queda accesible desde el control Efectivo/F10 y probado de extremo a extremo dentro de `SaleScreen`.
+
+## Review fixes
+
+- Hallazgo Important corregido: se añadió una integración real de `SaleScreen` que carga catálogo, añade una línea, acciona Efectivo/F10, obtiene quote y confirma mediante `POST /pos/cash` con snapshot autoritativo.
+- El RED demostró un defecto real: `openCashDialog` no tenía caller y el control Efectivo/F10 no abría el flujo directo. El GREEN añade el callback opcional `SalePaymentCheckout.onCash`; `SaleScreen` lo conecta a `openCashDialog` y el checkout mantiene su fallback de sesión cuando no se proporciona.
+- La prueba mantiene `hardware.printTicket` pendiente para observar `PRINTING`, resuelve a fallo para observar `FAILED` con `Finalizar` y reintento, y comprueba dos llamadas de hardware frente a una sola llamada `/pos/cash` y ninguna `/finalize`.
+- El cierre antes de una resolución tardía ya queda cubierto por `ignores a late print result after the completed-payment dialog is closed`; la guardia contra alterar otro ticket está cubierta por `does not apply an old print result to a newer completed ticket`.
+- Verificación de la corrección: `SaleScreen.test.tsx` 59/59; enfocadas de Tarea 4 157/157; suite frontend 55 archivos y 474/474; build APP VENTA PASS (TypeScript + Vite, 145 módulos).

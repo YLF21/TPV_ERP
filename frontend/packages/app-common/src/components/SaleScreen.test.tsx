@@ -48,6 +48,7 @@ import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
+  onCash?: () => void;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
@@ -69,7 +70,7 @@ vi.mock("./SalePaymentCheckout", async () => {
         prepareApplicationClose,
         prepareLogout,
       }));
-      return null;
+      return <button type="button" onClick={props.onCash}>Efectivo <kbd>F10</kbd></button>;
     })
   };
 });
@@ -709,6 +710,54 @@ describe("SaleScreen", () => {
       printTicket: snapshot,
       printStatus: "PRINTING",
     });
+  });
+
+  it("runs direct /pos/cash through UI, shows pending print, and retries only hardware", async () => {
+    const snapshot: ConfirmedTicketPrintSnapshot = {
+      ...printSnapshot("DIRECT-UI"),
+      total: "10.00",
+      lines: [{ name: "Cafe molido", quantity: "1", price: "10.00", total: "10.00" }],
+      payments: [{ method: "EFECTIVO", amount: "10.00" }],
+    };
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/cash/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/cash")) {
+        expect(options?.method).toBe("POST");
+        return new Response(JSON.stringify({ number: "DIRECT-UI", total: "10.00", change: "10.00", printTicket: snapshot }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    let failFirstPrint!: (result: { ok: false; code: "PRINT_FAILED"; message: string }) => void;
+    const printTicket = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { failFirstPrint = resolve; }))
+      .mockResolvedValueOnce({ ok: true });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Efectivo.*F10/ }));
+    const cashDialog = await screen.findByRole("dialog", { name: "Cobro en efectivo" });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /20/ }));
+    fireEvent.click(within(cashDialog).getByRole("button", { name: "Confirmar cobro" }));
+
+    expect(await screen.findByText("Pago completado")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    expect(printTicket).toHaveBeenNthCalledWith(1, expect.objectContaining({ documentNumber: "DIRECT-UI" }), expect.anything());
+    failFirstPrint({ ok: false, code: "PRINT_FAILED", message: "paper jam" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
+    expect(screen.getByRole("button", { name: "Finalizar" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
+
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/pos/cash"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => new URL(String(url), "http://localhost").pathname.endsWith("/finalize"))).toHaveLength(0);
   });
 
   it("reads the current cash mode on every opening", () => {

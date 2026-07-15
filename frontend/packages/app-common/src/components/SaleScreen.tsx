@@ -892,6 +892,7 @@ export function SaleScreen({
               terminal={terminalContext}
               disabled={lines.length === 0 || total <= 0}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
+              onCash={() => void openCashDialog()}
               onLockedChange={(locked, reservedTotalCents) => {
                 setPaymentLocked(locked);
                 setReservedPaymentTotalCents(
