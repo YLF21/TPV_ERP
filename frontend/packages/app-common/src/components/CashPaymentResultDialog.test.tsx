@@ -25,6 +25,62 @@ function findButton(node: ReactNode): ReactElement<{ onClick?: () => void; autoF
 }
 
 describe("CashPaymentResultDialog", () => {
+  it.each([
+    ["PRINTING", "Imprimiendo ticket...", 'role="status"'],
+    ["PRINTED", "Ticket enviado a la impresora", 'role="status"'],
+  ] as const)("renders the %s ticket print state", (printStatus, message, role) => {
+    const html = renderToStaticMarkup(
+      <CashPaymentResultDialog
+        locale="es"
+        ticketNumber="T-0042"
+        totalCents={1543}
+        printStatus={printStatus}
+        onRetryPrint={vi.fn()}
+        onFinish={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain(role);
+    expect(html).toContain(message);
+  });
+
+  it("keeps payment completed and offers print retry after hardware failure", () => {
+    const html = renderToStaticMarkup(
+      <CashPaymentResultDialog
+        locale="es"
+        ticketNumber="T-0042"
+        totalCents={1543}
+        printStatus="FAILED"
+        onRetryPrint={vi.fn()}
+        onFinish={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("Pago completado");
+    expect(html).toContain("El cobro se ha completado, pero no ha sido posible imprimir el ticket.");
+    expect(html).toContain("Reintentar impresión");
+    expect(html).toContain("Finalizar");
+    expect(html).toContain('role="alert"');
+  });
+
+  it("does not render a print message when printing is skipped", () => {
+    const html = renderToStaticMarkup(
+      <CashPaymentResultDialog locale="es" ticketNumber="T-0042" totalCents={1543} printStatus="SKIPPED" onRetryPrint={vi.fn()} onFinish={vi.fn()} />,
+    );
+
+    expect(html).not.toContain("Imprimiendo ticket");
+    expect(html).not.toContain("Ticket impreso");
+    expect(html).not.toContain("Reintentar impresión");
+  });
+
+  it("uses the requested locale for ticket print feedback", () => {
+    const html = renderToStaticMarkup(
+      <CashPaymentResultDialog locale="en" ticketNumber="T-0042" totalCents={1543} printStatus="FAILED" onRetryPrint={vi.fn()} onFinish={vi.fn()} />,
+    );
+
+    expect(html).toContain("Payment has been completed, but the ticket could not be printed.");
+    expect(html).toContain("Retry printing");
+  });
   it("uses the approved compact rectangular ERP result layout", () => {
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog\s*{[^}]*width:\s*min\(420px,\s*calc\(100vw - 32px\)\)\s*!important;[^}]*padding:\s*0\s*!important;[^}]*border:\s*1px solid var\(--tpv-v3-line\)\s*!important;[^}]*border-radius:\s*4px\s*!important;/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog\s*>\s*header\s*{[^}]*min-height:\s*38px;[^}]*border-bottom:\s*1px solid var\(--tpv-v3-line\);/s);
@@ -32,6 +88,9 @@ describe("CashPaymentResultDialog", () => {
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary strong\s*{[^}]*font-size:\s*16px;[^}]*font-variant-numeric:\s*tabular-nums;/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-summary span\s*{[^}]*font-weight:\s*800;/s);
     expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-actions button\s*{[^}]*min-height:\s*34px;[^}]*border-radius:\s*3px;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-print-status\s*{[^}]*min-height:\s*30px;[^}]*border-radius:\s*3px;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-print-error\s*{[^}]*border-color:\s*#e4b5b5;[^}]*color:\s*#a12626;/s);
+    expect(tpvCss).toMatch(/\.cash-payment-result-dialog \.cash-payment-print-retry\s*{[^}]*min-height:\s*28px;[^}]*border-radius:\s*3px;/s);
   });
 
   it("shows the completed cash payment summary and finish action", () => {

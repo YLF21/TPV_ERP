@@ -14,6 +14,13 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
 import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import {
+  printConfirmedTicketAutomatically,
+  retryConfirmedTicketPrint,
+  type ConfirmedTicketPrintSnapshot,
+  type TicketPrintOutcome,
+} from "../sale/ticketPrinting";
+import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 
 export type SaleProduct = {
   id: string;
@@ -166,6 +173,7 @@ type CashPaymentResponse = {
   change: number | string;
   total?: number | string;
   received?: number | string;
+  printTicket: ConfirmedTicketPrintSnapshot;
 };
 
 type CashPaymentResult = {
@@ -176,6 +184,8 @@ type CashPaymentResult = {
   method?: string;
   authorization?: string;
   reference?: string;
+  printTicket?: ConfirmedTicketPrintSnapshot;
+  printStatus?: TicketPrintUiStatus;
 };
 
 type CardPaymentResponse = { status: string; ticketId?: string | null; ticketNumber?: string | null; total?: number | string; reference?: string | null; authorization?: string | null; message?: string | null };
@@ -228,7 +238,7 @@ function serverAmountCents(value: number | string | undefined, fallback: number)
 }
 
 export function resolveCashPaymentResult(
-  response: CashPaymentResponse,
+  response: Pick<CashPaymentResponse, "number" | "change" | "total" | "received">,
   quotedTotalCents: number,
   sentReceivedCents: number
 ): CashPaymentResult {
@@ -281,16 +291,32 @@ export function cashResultFromFinalization(
 }
 
 export function paymentResultFromFinalization(
-  ticketNumber: string,
+  printTicket: ConfirmedTicketPrintSnapshot,
   summary: PaymentFinalizationSummary,
 ): CashPaymentResult {
   if (summary.kind === "CASH") {
-    return cashResultFromFinalization(ticketNumber, summary.totalCents, summary.receivedCents);
+    return {
+      ...cashResultFromFinalization(printTicket.documentNumber, summary.totalCents, summary.receivedCents),
+      printTicket,
+    };
   }
   return {
-    ticketNumber,
+    ticketNumber: printTicket.documentNumber,
     totalCents: summary.totalCents,
     method: summary.kind === "CARD" ? "Tarjeta" : "Mixto",
+    printTicket,
+  };
+}
+
+export function cashPaymentResultForAutomaticPrinting(
+  response: CashPaymentResponse,
+  quotedTotalCents: number,
+  receivedCents: number,
+): CashPaymentResult {
+  return {
+    ...resolveCashPaymentResult(response, quotedTotalCents, receivedCents),
+    printTicket: response.printTicket,
+    printStatus: "PRINTING",
   };
 }
 
@@ -428,6 +454,27 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
+
+  function updateMatchingPrintOutcome(documentId: string, outcome: TicketPrintOutcome) {
+    setCashResult((current) => current?.printTicket?.documentId === documentId
+      ? { ...current, printStatus: outcome.status }
+      : current);
+  }
+
+  function startAutomaticTicketPrint(snapshot: ConfirmedTicketPrintSnapshot) {
+    void printConfirmedTicketAutomatically(snapshot, terminalContext)
+      .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
+  }
+
+  function retryTicketPrint() {
+    const snapshot = cashResult?.printTicket;
+    if (!snapshot) return;
+    setCashResult((current) => current?.printTicket?.documentId === snapshot.documentId
+      ? { ...current, printStatus: "PRINTING" }
+      : current);
+    void retryConfirmedTicketPrint(snapshot, terminalContext)
+      .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
+  }
 
   async function handleSaleLogout() {
     if (logoutInProgressRef.current) return;
@@ -594,7 +641,7 @@ export function SaleScreen({
           quotedTotal: (cashQuoteCents / 100).toFixed(2)
         }
       });
-      const confirmedResult = resolveCashPaymentResult(result, cashQuoteCents, receivedCents);
+      const confirmedResult = cashPaymentResultForAutomaticPrinting(result, cashQuoteCents, receivedCents);
       const transition = cashPaymentSuccessTransition(confirmedResult);
       setCashDialogOpen(transition.cashDialogOpen);
       setLines(transition.lines);
@@ -602,6 +649,7 @@ export function SaleScreen({
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
       setQuery(transition.query);
+      startAutomaticTicketPrint(result.printTicket);
       } catch (error) {
       const transition = cashPaymentErrorTransition(
         { cashDialogOpen, lines, selectedProductId, selectedCustomer, query },
@@ -850,16 +898,19 @@ export function SaleScreen({
                   locked && reservedTotalCents != null ? reservedTotalCents : null,
                 );
               }}
-              onFinalized={(ticketNumber, summary) => {
+              onFinalized={(printTicket, summary) => {
                 setLines([]);
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
                 setQuery("");
                 setReservedPaymentTotalCents(null);
-                setCashResult(paymentResultFromFinalization(
-                  ticketNumber,
-                  summary,
-                ));
+                const result = paymentResultFromFinalization(printTicket, summary);
+                if (summary.kind === "CARD") {
+                  setCashResult({ ...result, printStatus: "SKIPPED" });
+                  return;
+                }
+                setCashResult({ ...result, printStatus: "PRINTING" });
+                startAutomaticTicketPrint(printTicket);
               }}
             />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
@@ -901,6 +952,8 @@ export function SaleScreen({
       {cashResult && (
         <CashPaymentResultDialog
           {...cashResult}
+          locale={locale}
+          onRetryPrint={retryTicketPrint}
           onFinish={() => {
             finishCashPaymentResult(setCashResult, () => searchInputRef.current?.focus());
           }}

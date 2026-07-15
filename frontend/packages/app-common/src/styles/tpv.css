@@ -11732,6 +11732,41 @@ textarea:focus,
   color: #116634;
 }
 
+.cash-payment-result-dialog .cash-payment-print-status {
+  min-height: 30px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 12px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--tpv-v3-line-soft);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface-alt);
+  color: var(--tpv-v3-text);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.cash-payment-result-dialog .cash-payment-print-error {
+  border-color: #e4b5b5;
+  background: #fff2f2;
+  color: #a12626;
+}
+
+.cash-payment-result-dialog .cash-payment-print-retry {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--tpv-v3-line);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface);
+  color: var(--tpv-v3-text);
+  box-shadow: none;
+  font-weight: 800;
+}
+
 .cash-payment-result-dialog .cash-payment-actions {
   margin: 10px 12px 12px;
 }

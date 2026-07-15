@@ -10,6 +10,7 @@ import {
   applyMemberDiscounts,
   cashPaymentErrorTransition,
   cashPaymentSuccessTransition,
+  cashPaymentResultForAutomaticPrinting,
   cashResultFromFinalization,
   finishCashPaymentResult,
   readCashModeForOpening,
@@ -42,10 +43,12 @@ import {
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import { defaultHardwareConfig } from "../hardware/hardware";
+import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
-  onFinalized: (ticketNumber: string, summary: PaymentFinalizationSummary) => void;
+  onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
 const { prepareApplicationClose, prepareLogout, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
@@ -91,6 +94,25 @@ const terminalContext: TerminalContext = {
   storeName: "Tienda Principal",
   terminalCode: "01"
 };
+
+const printSnapshot = (documentNumber: string): ConfirmedTicketPrintSnapshot => ({
+  documentId: `document-${documentNumber}`,
+  documentNumber,
+  issuedAt: "2026-07-15T12:00:00.000Z",
+  lines: [],
+  payments: [],
+  total: "12.10",
+});
+
+function installTicketHardware(printTicket: ReturnType<typeof vi.fn>) {
+  window.tpvDesktop = {
+    closeApplication: vi.fn().mockResolvedValue(undefined),
+    hardware: {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      printTicket,
+    } as never,
+  };
+}
 
 const products: SaleProduct[] = [
   { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10 },
@@ -271,7 +293,7 @@ describe("SaleScreen", () => {
     renderSaleScreen();
     await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
 
-    act(() => checkoutProps.current?.onFinalized?.("CARD-1", { kind: "CARD", totalCents: 1210 }));
+    act(() => checkoutProps.current?.onFinalized?.(printSnapshot("CARD-1"), { kind: "CARD", totalCents: 1210 }));
 
     const cardResult = within(screen.getByRole("dialog"));
     expect(cardResult.getByText("Tarjeta")).toBeInTheDocument();
@@ -279,7 +301,7 @@ describe("SaleScreen", () => {
     expect(cardResult.queryByText("Cambio")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
-    act(() => checkoutProps.current?.onFinalized?.("CASH-1", { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
+    act(() => checkoutProps.current?.onFinalized?.(printSnapshot("CASH-1"), { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
 
     const cashResult = within(screen.getByRole("dialog"));
     expect(cashResult.getByText("Dinero recibido")).toBeInTheDocument();
@@ -287,12 +309,109 @@ describe("SaleScreen", () => {
     expect(cashResult.getByText("7,90")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
-    act(() => checkoutProps.current?.onFinalized?.("MIXED-1", { kind: "MIXED", totalCents: 1210 }));
+    act(() => checkoutProps.current?.onFinalized?.(printSnapshot("MIXED-1"), { kind: "MIXED", totalCents: 1210 }));
 
     const mixedResult = within(screen.getByRole("dialog"));
     expect(mixedResult.getByText("Mixto")).toBeInTheDocument();
     expect(mixedResult.queryByText("Dinero recibido")).not.toBeInTheDocument();
     expect(mixedResult.queryByText("Cambio")).not.toBeInTheDocument();
+  });
+
+  it("shows completed CASH checkout as PRINTING before ticket hardware settles", async () => {
+    let resolvePrint!: (result: { ok: true }) => void;
+    const printTicket = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolvePrint = resolve; }));
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-PRINT"), { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
+
+    expect(screen.getByText("Pago completado")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    resolvePrint({ ok: true });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+  });
+
+  it("skips automatic ticket printing for a pure CARD checkout", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CARD-NO-PRINT"), { kind: "CARD", totalCents: 1210 }));
+
+    expect(screen.getByText("Pago completado")).toBeInTheDocument();
+    expect(printTicket).not.toHaveBeenCalled();
+    expect(screen.queryByText("Imprimiendo ticket…")).not.toBeInTheDocument();
+  });
+
+  it("automatically prints a MIXED checkout ticket", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("MIXED-PRINT"), { kind: "MIXED", totalCents: 1210 }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+  });
+
+  it("keeps completion after print failure and retries hardware without finalizing payment again", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const printTicket = vi.fn()
+      .mockResolvedValueOnce({ ok: false, code: "PRINT_FAILED", message: "paper jam" })
+      .mockResolvedValueOnce({ ok: true });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-RETRY"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
+    expect(screen.getByRole("button", { name: "Finalizar" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/pos/cash"))).toHaveLength(0);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+  });
+
+  it("ignores a late print result after the completed-payment dialog is closed", async () => {
+    let resolvePrint!: (result: { ok: false; code: "PRINT_FAILED"; message: string }) => void;
+    const printTicket = vi.fn(() => new Promise((resolve) => { resolvePrint = resolve; }));
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-CLOSED"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+
+    resolvePrint({ ok: false, code: "PRINT_FAILED", message: "late failure" });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText("Pago completado")).not.toBeInTheDocument();
+  });
+
+  it("does not apply an old print result to a newer completed ticket", async () => {
+    const resolvers: Array<(result: { ok: boolean; code?: "PRINT_FAILED"; message?: string }) => void> = [];
+    const printTicket = vi.fn(() => new Promise((resolve) => { resolvers.push(resolve); }));
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-OLD"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
+    act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-NEW"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+
+    resolvers[0]({ ok: false, code: "PRINT_FAILED", message: "old failure" });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("CASH-NEW")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
+    resolvers[1]({ ok: true });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
   it("shows the authoritative reserved total when a recovered payment locks an empty local cart", () => {
     expect(saleDisplayedTotal(0, true, 0, 1210)).toBe(12.1);
@@ -572,6 +691,23 @@ describe("SaleScreen", () => {
       totalCents: 1234,
       receivedCents: 2000,
       changeCents: 766
+    });
+  });
+
+  it("opens direct cash completion in PRINTING with the authoritative snapshot", () => {
+    const snapshot = printSnapshot("DIRECT-CASH");
+
+    expect(cashPaymentResultForAutomaticPrinting(
+      { number: "DIRECT-CASH", total: "12.10", change: "7.90", printTicket: snapshot },
+      1210,
+      2000,
+    )).toEqual({
+      ticketNumber: "DIRECT-CASH",
+      totalCents: 1210,
+      receivedCents: 2000,
+      changeCents: 790,
+      printTicket: snapshot,
+      printStatus: "PRINTING",
     });
   });
 

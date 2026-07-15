@@ -1,8 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import type { LocaleCode } from "../types";
+import { createTranslator } from "../i18n/LocalizedMessages";
 import { activateModalFocusTrap, modalFocusTarget, type ModalFocusRoot } from "./modalFocusTrap";
 
+export type TicketPrintUiStatus = "PRINTING" | "PRINTED" | "FAILED" | "SKIPPED";
+
 type CashPaymentResultDialogProps = {
+  locale?: LocaleCode;
   ticketNumber: string;
   totalCents: number;
   receivedCents?: number;
@@ -10,6 +15,8 @@ type CashPaymentResultDialogProps = {
   method?: string;
   authorization?: string;
   reference?: string;
+  printStatus?: TicketPrintUiStatus;
+  onRetryPrint?: () => void;
   onFinish: () => void;
 };
 
@@ -32,6 +39,7 @@ export function CashPaymentResultDialog(props: CashPaymentResultDialogProps) {
 export const activateCashResultFocusTrap = activateModalFocusTrap;
 
 export function CashPaymentResultContent({
+  locale = "es",
   ticketNumber,
   totalCents,
   receivedCents,
@@ -39,9 +47,12 @@ export function CashPaymentResultContent({
   method,
   authorization,
   reference,
+  printStatus = "SKIPPED",
+  onRetryPrint,
   onFinish,
   dialogRef,
 }: CashPaymentResultContentProps) {
+  const t = createTranslator(locale);
   return (
     <div className="sale-action-overlay" role="presentation">
       <section
@@ -62,6 +73,14 @@ export function CashPaymentResultContent({
           {receivedCents != null && <div><span>Dinero recibido</span><strong>{money(receivedCents)}</strong></div>}
           {changeCents != null && <div className="cash-change"><span>Cambio</span><strong>{money(changeCents)}</strong></div>}
         </div>
+        {printStatus === "PRINTING" && <p className="cash-payment-print-status" role="status">{t("payment.result.printing")}</p>}
+        {printStatus === "PRINTED" && <p className="cash-payment-print-status" role="status">{t("payment.result.printed")}</p>}
+        {printStatus === "FAILED" && (
+          <div className="cash-payment-print-status cash-payment-print-error" role="alert">
+            <span>{t("payment.result.printFailed")}</span>
+            <button type="button" className="cash-payment-print-retry" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
+          </div>
+        )}
         <footer className="cash-payment-actions">
           <button type="button" autoFocus onClick={onFinish}>Finalizar</button>
         </footer>
