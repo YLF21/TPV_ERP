@@ -73,6 +73,7 @@ vi.mock("./SalePaymentCheckout", async () => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
   checkoutHandle.attached = true;
@@ -336,10 +337,10 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", ["Venta", "Líneas de venta", "Sin venta iniciada", "Buscar producto", "Cobro"]],
-    ["en", ["Sale", "Sale lines", "No sale started", "Search product", "Payment"]],
-    ["zh", ["销售", "销售明细", "尚未开始销售", "搜索商品", "收款"]],
-  ] as const)("localizes the main sale view in %s", (locale, labels) => {
+    ["es", ["Venta", "Líneas de venta", "Sin venta iniciada", "Buscar producto", "Cobro"], null],
+    ["en", ["Sale", "Sale lines", "No sale started", "Search product", "Payment"], ["Sale", "Current ticket", "Search and payment", "Search product", "Payment", "Sale shortcuts"]],
+    ["zh", ["销售", "销售明细", "尚未开始销售", "搜索商品", "收款"], ["销售", "当前小票", "商品搜索与收款", "搜索商品", "收款", "销售快捷键"]],
+  ] as const)("localizes the main sale view in %s", (locale, labels, ariaLabels) => {
     const html = renderToStaticMarkup(
       <SaleScreen
         app="venta"
@@ -353,7 +354,22 @@ describe("SaleScreen", () => {
     );
 
     labels.forEach((label) => expect(html).toContain(label));
+    ariaLabels?.forEach((label) => expect(html).toContain(`aria-label="${label}"`));
     expect(html).toContain("0,00");
+  });
+
+  it.each(["en", "zh"] as const)("keeps dynamic product names and codes literal in %s", async (locale) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { id: "literal-product", name: "Café 原样", code: "SKU-原样-001", salePrice: 12.34 },
+    ]), { status: 200, headers: { "Content-Type": "application/json" } })));
+    renderSaleScreen(vi.fn(), locale);
+
+    const searchInput = await screen.findByRole("textbox", { name: locale === "en" ? "Search product" : "搜索商品" });
+    await waitFor(() => expect(searchInput).toBeEnabled());
+    fireEvent.change(searchInput, { target: { value: "SKU-原样-001" } });
+
+    expect(await screen.findByText("Café 原样")).toBeInTheDocument();
+    expect(screen.getByText("SKU-原样-001")).toBeInTheDocument();
   });
 
   it.each(["en", "zh"] as const)("does not leak fixed Spanish main-view labels in %s", (locale) => {

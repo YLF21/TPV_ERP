@@ -14,7 +14,7 @@ function browserStorage(storage?: Storage) {
 }
 
 export function saleUserLocaleStorageKey(session: UserSession) {
-  const identity = (session.userId?.trim() || session.username.trim()).toLocaleLowerCase();
+  const identity = (session.userId?.trim() || session.username.trim()).toLowerCase();
   return `tpv-erp:venta:user:${encodeURIComponent(identity)}:locale`;
 }
 

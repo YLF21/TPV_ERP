@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UserSession } from "../../../packages/app-common/src/types";
 import {
   readSaleUserLocale,
@@ -16,12 +16,19 @@ const userB: UserSession = { username: " VENTA.B ", displayName: "Venta B", perm
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("sale user locale", () => {
   it("builds a normalized APP VENTA key from userId or username", () => {
     expect(saleUserLocaleStorageKey(userA)).toBe("tpv-erp:venta:user:user%2Fa:locale");
     expect(saleUserLocaleStorageKey(userB)).toBe("tpv-erp:venta:user:venta.b:locale");
+  });
+
+  it("normalizes storage identities independently from the host locale", () => {
+    vi.spyOn(String.prototype, "toLocaleLowerCase").mockReturnValue("locale-dependent");
+
+    expect(saleUserLocaleStorageKey(userA)).toBe("tpv-erp:venta:user:user%2Fa:locale");
   });
 
   it("stores valid locales independently and rejects invalid stored values", () => {

@@ -31,7 +31,7 @@ const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({ default: StockScreen }))
 );
 
-function App() {
+export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "settings" | "hardwareSettings">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
