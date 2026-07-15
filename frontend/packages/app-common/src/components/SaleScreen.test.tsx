@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SaleScreen,
@@ -306,6 +307,7 @@ describe("SaleScreen", () => {
   });
 
   it("focuses and saves quantity from the keyboard form", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -320,14 +322,14 @@ describe("SaleScreen", () => {
     const quantityInput = screen.getByRole("spinbutton", { name: "Nueva cantidad" });
     expect(quantityInput).toHaveFocus();
     fireEvent.change(quantityInput, { target: { value: "3" } });
-    fireEvent.keyDown(quantityInput, { key: "Enter" });
-    fireEvent.submit(quantityInput.closest("form")!);
+    await user.keyboard("{Enter}");
 
     expect(screen.queryByRole("dialog", { name: "Cambiar cantidad" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*3 x 10,00/s })).toBeInTheDocument();
   });
 
   it("focuses and saves discount from the keyboard form", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -342,8 +344,7 @@ describe("SaleScreen", () => {
     const discountInput = screen.getByRole("spinbutton", { name: "Nuevo descuento" });
     expect(discountInput).toHaveFocus();
     fireEvent.change(discountInput, { target: { value: "25" } });
-    fireEvent.keyDown(discountInput, { key: "Enter" });
-    fireEvent.submit(discountInput.closest("form")!);
+    await user.keyboard("{Enter}");
 
     expect(screen.queryByRole("dialog", { name: "Aplicar descuento" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*25,00%/s })).toBeInTheDocument();
