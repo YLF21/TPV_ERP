@@ -873,6 +873,27 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
   });
 
+  it("keeps the active search option within a disjoint result set after the query changes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    expect(await screen.findByRole("option", { name: /Cafe molido/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.change(search, { target: { value: "Pan" } });
+
+    const currentOptions = screen.getAllByRole("option");
+    const selectedOptions = currentOptions.filter((option) => option.getAttribute("aria-selected") === "true");
+    expect(selectedOptions).toHaveLength(1);
+    expect(selectedOptions[0]).toHaveAccessibleName(/Pan integral/);
+    expect(search).toHaveAttribute("aria-activedescendant", selectedOptions[0].id);
+    expect(document.getElementById(search.getAttribute("aria-activedescendant")!)).toBe(selectedOptions[0]);
+  });
+
   it("adds products, increments repeated quantities and calculates the total", () => {
     const first = addSaleLine([], products[0]);
     const repeated = addSaleLine(first, products[0]);

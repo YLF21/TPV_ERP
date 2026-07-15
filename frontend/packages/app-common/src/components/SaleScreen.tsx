@@ -461,7 +461,6 @@ export function SaleScreen({
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [query, setQuery] = useState("");
-  const [selectedSearchProductId, setSelectedSearchProductId] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "customer" | "remove" | null>(null);
@@ -512,13 +511,10 @@ export function SaleScreen({
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
   const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
   const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
+  const selectedSearchProductId = results[0]?.id ?? "";
   const activeSearchResultId = selectedSearchProductId
     ? `sale-product-result-${encodeURIComponent(selectedSearchProductId)}`
     : undefined;
-
-  useEffect(() => {
-    setSelectedSearchProductId(results[0]?.id ?? "");
-  }, [results]);
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
