@@ -834,8 +834,8 @@ describe("SaleScreen", () => {
 
   it("prioritizes an exact code or barcode when selecting with Enter", () => {
     const ambiguous: SaleProduct[] = [
-      ...products,
-      { id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 }
+      { id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 },
+      ...products
     ];
 
     expect(selectSaleProduct(ambiguous, "caf-001")?.id).toBe("coffee");
@@ -845,7 +845,29 @@ describe("SaleScreen", () => {
 
   it("selects the only partial match with Enter", () => {
     expect(selectSaleProduct(products, "leche")?.id).toBe("milk");
-    expect(selectSaleProduct(products, "00")).toBeUndefined();
+  });
+
+  it("selects and adds the first result with Enter when a query has multiple matches", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.change(search, { target: { value: "00" } });
+
+    const coffeeResult = await screen.findByRole("button", { name: /Cafe molido/ });
+    const breadResult = screen.getByRole("button", { name: /Pan integral/ });
+    expect(coffeeResult).toHaveAttribute("aria-selected", "true");
+    expect(coffeeResult).toHaveClass("selected");
+    expect(breadResult).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
   });
 
   it("adds products, increments repeated quantities and calculates the total", () => {

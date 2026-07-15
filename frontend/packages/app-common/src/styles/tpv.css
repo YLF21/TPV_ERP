@@ -3674,7 +3674,8 @@ input {
 }
 
 .sale-search-result:hover,
-.sale-search-result:focus-visible {
+.sale-search-result:focus-visible,
+.sale-search-result.selected {
   border-color: #9db8db;
   background: #eef5ff;
   outline: 3px solid rgba(36, 78, 134, 0.13);

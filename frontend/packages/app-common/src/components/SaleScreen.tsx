@@ -96,11 +96,7 @@ export function selectSaleProduct(products: SaleProduct[], query: string) {
   }
   const exact = products.find((product) => [product.code, product.barcode, product.barcode2]
     .some((value) => normalizedSearchValue(value) === normalizedQuery));
-  if (exact) {
-    return exact;
-  }
-  const matches = filterSaleProducts(products, query);
-  return matches.length === 1 ? matches[0] : undefined;
+  return exact ?? filterSaleProducts(products, query)[0];
 }
 
 export function addSaleLine(lines: SaleLine[], product: SaleProduct) {
@@ -465,6 +461,7 @@ export function SaleScreen({
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [query, setQuery] = useState("");
+  const [selectedSearchProductId, setSelectedSearchProductId] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "customer" | "remove" | null>(null);
@@ -514,6 +511,10 @@ export function SaleScreen({
   const total = saleTotal(lines);
   const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
   const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
+
+  useEffect(() => {
+    setSelectedSearchProductId(results[0]?.id ?? "");
+  }, [results]);
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
@@ -991,7 +992,14 @@ export function SaleScreen({
               <p className="sale-search-status">{t("sale.main.noProducts")}</p>
             )}
             {!catalogLoading && !catalogError && results.map((product) => (
-              <button className="sale-search-result" type="button" disabled={paymentLocked} key={product.id} onClick={() => addProduct(product)}>
+              <button
+                aria-selected={product.id === selectedSearchProductId}
+                className={`sale-search-result${product.id === selectedSearchProductId ? " selected" : ""}`}
+                type="button"
+                disabled={paymentLocked}
+                key={product.id}
+                onClick={() => addProduct(product)}
+              >
                 <span>
                   <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
                   <small>{product.code ?? product.barcode ?? t("sale.main.missingCode")}</small>
