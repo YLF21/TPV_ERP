@@ -150,6 +150,10 @@ public class CommercialDocument {
         return fecha;
     }
 
+    public Instant getConfirmadoEn() {
+        return confirmadoEn;
+    }
+
     // Returns the calculated document total.
     public BigDecimal getTotal() {
         return total;

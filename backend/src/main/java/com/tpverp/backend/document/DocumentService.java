@@ -717,6 +717,11 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public CommercialDocument loadForPrint(UUID id) {
+        return find(id);
+    }
+
+    @Transactional(readOnly = true)
     public List<CommercialDocument> listTickets() {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
                 organization.currentStore().getId(), List.of(CommercialDocumentType.TICKET));

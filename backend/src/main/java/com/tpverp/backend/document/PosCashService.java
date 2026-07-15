@@ -64,7 +64,8 @@ public class PosCashService {
                 command,
                 List.of(new PaymentCommand(cash.getId(), total, true, received, change)),
                 authentication);
-        return new Result(ticket.getId(), ticket.getNumero(), total, received, change);
+        return new Result(ticket.getId(), ticket.getNumero(), total, received, change,
+                TicketPrintView.from(ticket));
     }
 
     @Transactional(readOnly = true)
@@ -95,5 +96,11 @@ public class PosCashService {
     }
 
     public record Quote(BigDecimal total) {}
-    public record Result(UUID id, String number, BigDecimal total, BigDecimal received, BigDecimal change) {}
+    public record Result(
+            UUID id,
+            String number,
+            BigDecimal total,
+            BigDecimal received,
+            BigDecimal change,
+            TicketPrintView printTicket) {}
 }
