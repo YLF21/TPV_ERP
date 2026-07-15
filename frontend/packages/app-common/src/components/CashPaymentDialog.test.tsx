@@ -120,6 +120,23 @@ describe("CashPaymentDialog", () => {
     expect(screen.getByRole("alertdialog")).toHaveTextContent("Debe indicar el importe recibido.");
   });
 
+  it("releases focus before hiding the cash-entry dialog", () => {
+    render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
+    const entryDialog = screen.getByRole("dialog", { name: "Cobro en efectivo" });
+    const confirm = screen.getByRole("button", { name: "Confirmar cobro" });
+    confirm.focus();
+    const blur = vi.spyOn(confirm, "blur").mockImplementation(() => {
+      expect(entryDialog).not.toHaveAttribute("aria-hidden");
+      HTMLElement.prototype.blur.call(confirm);
+    });
+
+    fireEvent.click(confirm);
+
+    expect(blur).toHaveBeenCalledOnce();
+    expect(entryDialog).toHaveAttribute("aria-hidden", "true");
+    expect(entryDialog).not.toContainElement(document.activeElement as HTMLElement);
+  });
+
   it("preserves the amount and returns focus to the input after accepting", () => {
     render(<CashPaymentDialog {...baseProps} totalCents={1210} initialMode="touch" />);
     const input = screen.getByRole("textbox", { name: "Dinero recibido" });

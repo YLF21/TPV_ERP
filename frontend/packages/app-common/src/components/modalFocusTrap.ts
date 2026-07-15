@@ -7,6 +7,7 @@ export type ModalFocusRoot = {
   removeEventListener: (type: string, listener: (event: ModalKeyEvent) => void) => void;
 };
 export type ModalFocusDocument = { activeElement: unknown };
+export type ModalFocusTrapOptions = { restoreFocus?: boolean };
 
 const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -17,7 +18,11 @@ export function modalFocusTarget(focusables: readonly FocusableNode[], activeEle
   return null;
 }
 
-export function activateModalFocusTrap(root: ModalFocusRoot, doc: ModalFocusDocument) {
+export function activateModalFocusTrap(
+  root: ModalFocusRoot,
+  doc: ModalFocusDocument,
+  { restoreFocus = true }: ModalFocusTrapOptions = {},
+) {
   const previouslyFocused = isFocusable(doc.activeElement) ? doc.activeElement : null;
   if (!root.contains(doc.activeElement)) {
     Array.from(root.querySelectorAll(focusableSelector))[0]?.focus();
@@ -32,7 +37,7 @@ export function activateModalFocusTrap(root: ModalFocusRoot, doc: ModalFocusDocu
   root.addEventListener("keydown", handleKeyDown);
   return () => {
     root.removeEventListener("keydown", handleKeyDown);
-    previouslyFocused?.focus();
+    if (restoreFocus) previouslyFocused?.focus();
   };
 }
 

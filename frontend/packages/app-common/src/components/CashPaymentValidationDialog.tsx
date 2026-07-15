@@ -10,7 +10,7 @@ export function CashPaymentValidationDialog({ message, onAccept }: CashPaymentVa
   const dialogRef = useRef<HTMLElement>(null);
 
   useEffect(() => dialogRef.current
-    ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
+    ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document, { restoreFocus: false })
     : undefined, []);
 
   return (

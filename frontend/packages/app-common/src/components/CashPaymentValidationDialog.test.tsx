@@ -40,4 +40,14 @@ describe("CashPaymentValidationDialog", () => {
 
     expect(onAccept).toHaveBeenCalledOnce();
   });
+
+  it("does not restore focus when its focus trap is removed", () => {
+    const { unmount } = render(<CashPaymentValidationDialog message="Debe indicar el importe recibido." onAccept={vi.fn()} />);
+    const accept = screen.getByRole("button", { name: "Aceptar" });
+    const focus = vi.spyOn(accept, "focus");
+
+    unmount();
+
+    expect(focus).not.toHaveBeenCalled();
+  });
 });

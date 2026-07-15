@@ -40,17 +40,25 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
   const receivedCents = useMemo(() => cashInputCents(received), [received]);
   const changeCents = cashChangeCents(totalCents, receivedCents);
 
+  const showValidation = useCallback((message: string) => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && dialogRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+    setValidationMessage(message);
+  }, []);
+
   const attemptConfirm = useCallback(() => {
     if (receivedCents === 0) {
-      setValidationMessage("Debe indicar el importe recibido.");
+      showValidation("Debe indicar el importe recibido.");
       return;
     }
     if (receivedCents < totalCents) {
-      setValidationMessage("El importe recibido no cubre el total.");
+      showValidation("El importe recibido no cubre el total.");
       return;
     }
     onConfirm(receivedCents);
-  }, [onConfirm, receivedCents, totalCents]);
+  }, [onConfirm, receivedCents, showValidation, totalCents]);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
