@@ -19,6 +19,12 @@ function withTicketPrinterRoute(config, route) {
   return { ...config, ticketPrinterName: route.printerName };
 }
 
+function resolveExternalDrawerAction(shouldOpenDrawer, connection, openDrawer) {
+  return shouldOpenDrawer && connection !== "PRINTER" && connection !== "NONE"
+    ? openDrawer
+    : undefined;
+}
+
 async function executeWindowsTicketPrint({
   webContents,
   printerName,
@@ -68,6 +74,7 @@ module.exports = {
   buildTicketCopyBuffers,
   executeEscposTicketPrint,
   executeWindowsTicketPrint,
+  resolveExternalDrawerAction,
   resolveTicketPrintRoute,
   withTicketPrinterRoute
 };

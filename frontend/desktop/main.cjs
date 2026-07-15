@@ -6,6 +6,7 @@ const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCa
 const {
   executeEscposTicketPrint,
   executeWindowsTicketPrint,
+  resolveExternalDrawerAction,
   resolveTicketPrintRoute,
   withTicketPrinterRoute
 } = require("./ticket-print-route.cjs");
@@ -512,9 +513,11 @@ async function printTicket(ticket, config) {
         ? buildCashDrawerBuffer()
         : undefined,
       copies: route.copies,
-      openExternalDrawer: shouldOpenDrawer && nextConfig.cashDrawerConnection !== "PRINTER"
-        ? () => openCashDrawerWithConfig(routedConfig)
-        : undefined,
+      openExternalDrawer: resolveExternalDrawerAction(
+        shouldOpenDrawer,
+        nextConfig.cashDrawerConnection,
+        () => openCashDrawerWithConfig(routedConfig)
+      ),
       structuredError
     });
   }

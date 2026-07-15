@@ -6,6 +6,7 @@ const {
   buildTicketCopyBuffers,
   executeEscposTicketPrint,
   executeWindowsTicketPrint,
+  resolveExternalDrawerAction,
   resolveTicketPrintRoute,
   withTicketPrinterRoute
 } = require("./ticket-print-route.cjs");
@@ -115,5 +116,40 @@ describe("ticket print route", () => {
       structuredError: (code, message) => ({ ok: false, code, message })
     });
     expect(failure).toEqual({ ok: false, code: "ESCPOS_NOT_AVAILABLE", message: "usb detached" });
+  });
+
+  it("prints all ESC/POS copies successfully without creating a drawer action for NONE", async () => {
+    const operations = [];
+    const openDrawer = vi.fn(async () => operations.push("drawer"));
+    const externalDrawer = resolveExternalDrawerAction(true, "NONE", openDrawer);
+
+    const result = await executeEscposTicketPrint({
+      sendBuffer: async (buffer) => operations.push(buffer.toString()),
+      ticketBuffer: Buffer.from("ticket"),
+      copies: 2,
+      openExternalDrawer: externalDrawer,
+      structuredError: (code, message) => ({ ok: false, code, message })
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(operations).toEqual(["ticket", "ticket"]);
+    expect(openDrawer).not.toHaveBeenCalled();
+  });
+
+  it("opens an external drawer once and only after every ESC/POS copy is written", async () => {
+    const operations = [];
+    const openDrawer = vi.fn(async () => operations.push("drawer"));
+
+    const result = await executeEscposTicketPrint({
+      sendBuffer: async (buffer) => operations.push(buffer.toString()),
+      ticketBuffer: Buffer.from("ticket"),
+      copies: 3,
+      openExternalDrawer: resolveExternalDrawerAction(true, "NETWORK", openDrawer),
+      structuredError: (code, message) => ({ ok: false, code, message })
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(operations).toEqual(["ticket", "ticket", "ticket", "drawer"]);
+    expect(openDrawer).toHaveBeenCalledOnce();
   });
 });
