@@ -956,6 +956,7 @@ export class MessagesEs {
     "payment.testCash.open": "Abrir caja de prueba",
     "payment.testCash.opening": "Abriendo caja...",
     "payment.testCash.opened": "Caja de prueba abierta. Pulse Finalizar venta.",
+    "payment.testCash.openedDialog": "Caja de prueba abierta. Pulse Confirmar cobro.",
     "payment.testCash.error": "No se pudo abrir la caja de prueba",
     "payment.pending.logoutError": "Debes resolver el cobro pendiente antes de cerrar sesión",
     "payment.pending.shutdownBlocked": "Debes resolver el cobro pendiente antes de cerrar la aplicación",

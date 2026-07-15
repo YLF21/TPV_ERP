@@ -956,6 +956,7 @@ export class MessagesEn {
     "payment.testCash.open": "Open test cash session",
     "payment.testCash.opening": "Opening test cash session...",
     "payment.testCash.opened": "Test cash session opened. Select Finalize sale.",
+    "payment.testCash.openedDialog": "Test cash session opened. Select Confirm payment.",
     "payment.testCash.error": "Could not open the test cash session",
     "payment.pending.logoutError": "You must resolve the pending payment before logging out",
     "payment.pending.shutdownBlocked": "You must resolve the pending payment before closing the application",

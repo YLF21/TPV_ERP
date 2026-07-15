@@ -1005,7 +1005,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   const openTestCash = await within(dialog).findByRole("button", { name: "Abrir caja de prueba" });
   fireEvent.click(openTestCash);
 
-  expect(await within(dialog).findByRole("status")).toHaveTextContent("Caja de prueba abierta");
+  expect(await within(dialog).findByRole("status")).toHaveTextContent("Caja de prueba abierta. Pulse Confirmar cobro.");
   expect(finalizeCalls).toBe(1);
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
 

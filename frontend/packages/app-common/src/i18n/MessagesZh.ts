@@ -956,6 +956,7 @@ export class MessagesZh {
     "payment.testCash.open": "打开测试钱箱会话",
     "payment.testCash.opening": "正在打开测试钱箱会话...",
     "payment.testCash.opened": "测试钱箱会话已打开。请选择完成销售。",
+    "payment.testCash.openedDialog": "测试钱箱会话已打开。请选择确认收款。",
     "payment.testCash.error": "无法打开测试钱箱会话",
     "payment.pending.logoutError": "退出登录前必须先处理待完成的付款",
     "payment.pending.shutdownBlocked": "关闭应用前必须先处理待完成的付款",
