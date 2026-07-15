@@ -305,6 +305,50 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
   });
 
+  it("focuses and saves quantity from the keyboard form", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F2" });
+    const quantityInput = screen.getByRole("spinbutton", { name: "Nueva cantidad" });
+    expect(quantityInput).toHaveFocus();
+    fireEvent.change(quantityInput, { target: { value: "3" } });
+    fireEvent.keyDown(quantityInput, { key: "Enter" });
+    fireEvent.submit(quantityInput.closest("form")!);
+
+    expect(screen.queryByRole("dialog", { name: "Cambiar cantidad" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*3 x 10,00/s })).toBeInTheDocument();
+  });
+
+  it("focuses and saves discount from the keyboard form", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("textbox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F7" });
+    const discountInput = screen.getByRole("spinbutton", { name: "Nuevo descuento" });
+    expect(discountInput).toHaveFocus();
+    fireEvent.change(discountInput, { target: { value: "25" } });
+    fireEvent.keyDown(discountInput, { key: "Enter" });
+    fireEvent.submit(discountInput.closest("form")!);
+
+    expect(screen.queryByRole("dialog", { name: "Aplicar descuento" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*25,00%/s })).toBeInTheDocument();
+  });
+
   it("delegates F10 and F11 to the checkout actions and ignores repeats or open modals", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
       status: 200,

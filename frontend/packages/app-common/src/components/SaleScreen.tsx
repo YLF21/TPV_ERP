@@ -474,6 +474,8 @@ export function SaleScreen({
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const discountInputRef = useRef<HTMLInputElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
   const cardSubmissionRef = useRef(false);
@@ -568,6 +570,11 @@ export function SaleScreen({
     setQuery("");
     searchInputRef.current?.focus();
   }
+
+  useEffect(() => {
+    if (actionDialog === "quantity") quantityInputRef.current?.focus();
+    if (actionDialog === "discount") discountInputRef.current?.focus();
+  }, [actionDialog]);
 
   function openQuantityDialog() {
     if (!selectedLine) return;
@@ -1054,23 +1061,27 @@ export function SaleScreen({
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
-          <label>
-            <span>Cantidad</span>
-            <input aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
-          </label>
-          {actionError && <strong className="sale-action-error">{actionError}</strong>}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" onClick={saveQuantity}>Guardar</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
+            <label>
+              <span>Cantidad</span>
+              <input ref={quantityInputRef} aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
+            </label>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+          </form>
         </SaleActionDialog>
       )}
 
       {actionDialog === "discount" && selectedLine && (
         <SaleActionDialog title="Aplicar descuento" onClose={() => setActionDialog(null)}>
-          <label>
-            <span>Descuento (%)</span>
-            <input aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
-          </label>
-          {actionError && <strong className="sale-action-error">{actionError}</strong>}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="button" onClick={saveDiscount}>Guardar</button></div>
+          <form onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
+            <label>
+              <span>Descuento (%)</span>
+              <input ref={discountInputRef} aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
+            </label>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+          </form>
         </SaleActionDialog>
       )}
 
