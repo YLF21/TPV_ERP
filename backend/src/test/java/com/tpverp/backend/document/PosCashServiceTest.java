@@ -16,6 +16,7 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -40,6 +41,7 @@ class PosCashServiceTest {
         var checkouts = mock(PosCashCheckoutRepository.class);
         var snapshots = new PosCashTicketSnapshot();
         var currentTerminal = mock(CurrentTerminal.class);
+        var memberLoyalty = mock(MemberLoyaltyService.class);
         var authentication = mock(Authentication.class);
         var user = mock(UserAccount.class);
         var store = mock(Store.class);
@@ -82,11 +84,19 @@ class PosCashServiceTest {
         when(documents.quoteTicket(any(DocumentCommand.class), any())).thenReturn(quoted);
         when(documents.createTicket(any(DocumentCommand.class), anyList(), any()))
                 .thenReturn(ticket);
+        var customerId = UUID.randomUUID();
+        var benefited = new DocumentLineCommand(
+                productId, BigDecimal.valueOf(2), "REQUEST-CODE", "Request name", "MEMBER",
+                new BigDecimal("80.00"), new BigDecimal("5.00"), true, "IVA",
+                new BigDecimal("21.00"));
+        when(memberLoyalty.applyLineBenefit(
+                org.mockito.ArgumentMatchers.eq(customerId), any(DocumentLineCommand.class),
+                org.mockito.ArgumentMatchers.same(product))).thenReturn(benefited);
         var service = new PosCashService(
                 documents, products, taxes, warehouses, paymentMethods, organization,
-                checkouts, snapshots, currentTerminal);
+                checkouts, snapshots, currentTerminal, memberLoyalty);
         var sale = new PosCashController.SaleRequest(
-                null, List.of(new PosCashController.LineRequest(
+                customerId, List.of(new PosCashController.LineRequest(
                         productId, BigDecimal.valueOf(2), BigDecimal.ZERO)));
 
         var result = service.charge(new PosCashController.CashRequest(
@@ -110,6 +120,13 @@ class PosCashServiceTest {
         assertThat(result.printTicket().total()).isEqualByComparingTo("7.00");
         verify(documents).createTicket(any(DocumentCommand.class), anyList(),
                 org.mockito.ArgumentMatchers.same(authentication));
+        var command = org.mockito.ArgumentCaptor.forClass(DocumentCommand.class);
+        verify(documents).quoteTicket(command.capture(),
+                org.mockito.ArgumentMatchers.same(authentication));
+        assertThat(command.getValue().lineas()).containsExactly(benefited);
+        verify(memberLoyalty).applyLineBenefit(
+                org.mockito.ArgumentMatchers.eq(customerId), any(DocumentLineCommand.class),
+                org.mockito.ArgumentMatchers.same(product));
         verify(checkouts).save(any(PosCashCheckout.class));
     }
 
@@ -172,6 +189,7 @@ class PosCashServiceTest {
         var checkouts = mock(PosCashCheckoutRepository.class);
         var snapshots = new PosCashTicketSnapshot();
         var currentTerminal = mock(CurrentTerminal.class);
+        var memberLoyalty = mock(MemberLoyaltyService.class);
         var authentication = mock(Authentication.class);
         var user = mock(UserAccount.class);
         var store = mock(Store.class);
@@ -188,7 +206,7 @@ class PosCashServiceTest {
         when(user.getId()).thenReturn(userId);
         when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         var service = new PosCashService(documents, products, taxes, warehouses, methods,
-                organization, checkouts, snapshots, currentTerminal);
+                organization, checkouts, snapshots, currentTerminal, memberLoyalty);
         var request = new PosCashController.CashRequest(
                 UUID.randomUUID(), new PosCashController.SaleRequest(null, List.of(
                         new PosCashController.LineRequest(UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO))),

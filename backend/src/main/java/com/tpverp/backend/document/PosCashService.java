@@ -4,6 +4,7 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -32,6 +33,7 @@ public class PosCashService {
     private final PosCashCheckoutRepository checkouts;
     private final PosCashTicketSnapshot snapshots;
     private final CurrentTerminal currentTerminal;
+    private final MemberLoyaltyService memberLoyalty;
 
     public PosCashService(
             DocumentService documents,
@@ -42,7 +44,8 @@ public class PosCashService {
             CurrentOrganization organization,
             PosCashCheckoutRepository checkouts,
             PosCashTicketSnapshot snapshots,
-            CurrentTerminal currentTerminal) {
+            CurrentTerminal currentTerminal,
+            MemberLoyaltyService memberLoyalty) {
         this.documents = documents;
         this.products = products;
         this.taxes = taxes;
@@ -52,6 +55,7 @@ public class PosCashService {
         this.checkouts = checkouts;
         this.snapshots = snapshots;
         this.currentTerminal = currentTerminal;
+        this.memberLoyalty = memberLoyalty;
     }
 
     @Transactional(readOnly = true)
@@ -127,10 +131,11 @@ public class PosCashService {
             var tax = taxes.findById(product.getTaxId())
                     .filter(value -> value.getStoreId().equals(store.getId()) && value.isActive())
                     .orElseThrow(() -> new IllegalStateException("El impuesto del producto no esta activo"));
-            return new DocumentLineCommand(
+            var catalogLine = new DocumentLineCommand(
                     product.getId(), line.quantity(), product.getCode(), product.getName(), null,
                     product.getSalePrice(), line.discount(), product.isTaxesIncluded(),
                     "IVA", tax.getPercentage());
+            return memberLoyalty.applyLineBenefit(request.customerId(), catalogLine, product);
         }).toList();
         return new DocumentCommand(
                 warehouse.getId(), CommercialDocumentType.TICKET,

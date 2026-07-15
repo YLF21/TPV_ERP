@@ -106,11 +106,13 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
-    void appliesMemberPriceAsTheOnlyMemberSpecificProductBenefit() {
+    void appliesMemberPriceAndActiveCategoryDiscount() {
         var company = PartyTestData.company();
         var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.setCategory(new MemberCategory(
+                company, "Oro", 0, new BigDecimal("5.00"), true, 1), false);
         var product = org.mockito.Mockito.mock(Product.class);
         when(product.getDiscountType()).thenReturn(DiscountType.MEMBER_PRICE);
         when(product.getMemberPrice()).thenReturn(new BigDecimal("80.00"));
@@ -125,7 +127,81 @@ class MemberLoyaltyServiceTest {
 
         assertThat(priced.tarifa()).isEqualTo("MEMBER");
         assertThat(priced.precioUnitario()).isEqualByComparingTo("80.00");
-        assertThat(priced.descuento()).isEqualByComparingTo("0.00");
+        assertThat(priced.descuento()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void appliesActiveCategoryDiscountToNormalProduct() {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.setCategory(new MemberCategory(
+                company, "Oro", 0, new BigDecimal("5.00"), true, 1), false);
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        var line = line(new BigDecimal("5.00"));
+
+        var priced = service().applyLineBenefit(customer.getId(), line, product);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("100.00");
+        assertThat(priced.descuento()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void preservesManualDiscountWhenItExceedsCategoryDiscount() {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.setCategory(new MemberCategory(
+                company, "Oro", 0, new BigDecimal("5.00"), true, 1), false);
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+
+        var priced = service().applyLineBenefit(customer.getId(), line(new BigDecimal("8.00")), product);
+
+        assertThat(priced.descuento()).isEqualByComparingTo("8.00");
+    }
+
+    @Test
+    void doesNotApplyCategoryBenefitForInactiveMemberOrDisabledCategory() {
+        var company = PartyTestData.company();
+        var inactiveCustomer = new Customer(company, "Inactivo", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var inactive = new Member(inactiveCustomer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        inactive.setCategory(new MemberCategory(
+                company, "Oro", 0, new BigDecimal("5.00"), true, 1), false);
+        inactive.deactivate();
+        var disabledCustomer = new Customer(company, "Deshabilitado", DocumentType.NIF, "2",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var disabled = new Member(disabledCustomer, "M-001-000002", LocalDate.of(2026, 7, 2));
+        disabled.setCategory(new MemberCategory(
+                company, "Plata", 0, new BigDecimal("5.00"), false, 2), false);
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(inactiveCustomer.getId(), company.getId()))
+                .thenReturn(Optional.of(inactive));
+        when(members.findByCustomerIdAndCompanyId(disabledCustomer.getId(), company.getId()))
+                .thenReturn(Optional.of(disabled));
+
+        assertThat(service().applyLineBenefit(inactiveCustomer.getId(), line(BigDecimal.ZERO), product)
+                .descuento()).isEqualByComparingTo("0.00");
+        assertThat(service().applyLineBenefit(disabledCustomer.getId(), line(BigDecimal.ZERO), product)
+                .descuento()).isEqualByComparingTo("0.00");
+    }
+
+    private static DocumentLineCommand line(BigDecimal discount) {
+        return new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P-1", "Producto", "VENTA",
+                new BigDecimal("100.00"), discount, true, "IVA", new BigDecimal("21.00"));
     }
 
     @Test
