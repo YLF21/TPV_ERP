@@ -78,6 +78,7 @@ class WarehouseOutputServiceTest {
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(organization.currentUser(any())).thenReturn(user);
         lenient().when(outputs.save(any())).thenAnswer(call -> call.getArgument(0));
+        lenient().when(outputs.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
         lenient().when(movements.save(any())).thenAnswer(call -> call.getArgument(0));
     }
 
@@ -110,6 +111,8 @@ class WarehouseOutputServiceTest {
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "SAL", "2026"))
                 .thenReturn(Optional.empty());
+        when(outputs.findByStoreIdAndNumero(store.getId(), "SAL-2026-000001"))
+                .thenReturn(Optional.empty());
         when(stockLevels.findByProductIdAndWarehouseId(
                 product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
 
@@ -118,6 +121,33 @@ class WarehouseOutputServiceTest {
         assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000001");
         assertThat(stock.getQuantity()).isEqualByComparingTo("-3");
         org.mockito.Mockito.verify(syncOutbox).enqueue(any());
+    }
+
+    @Test
+    void skipsExistingAnnualNumberWhenCounterIsStale() {
+        var output = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(new WarehouseOutputLineCommand(product.getId(), 3)));
+        var existing = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 1), user.getId());
+        var stock = new StockLevel(product.getId(), warehouse.getId());
+        when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
+        when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "SAL", "2026"))
+                .thenReturn(Optional.empty());
+        when(outputs.findByStoreIdAndNumero(store.getId(), "SAL-2026-000001"))
+                .thenReturn(Optional.of(existing));
+        when(outputs.findByStoreIdAndNumero(store.getId(), "SAL-2026-000002"))
+                .thenReturn(Optional.empty());
+        when(stockLevels.findByProductIdAndWarehouseId(
+                product.getId(), warehouse.getId())).thenReturn(Optional.of(stock));
+
+        var confirmed = service.confirm(output.getId(), authentication());
+
+        assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000002");
+        assertThat(stock.getQuantity()).isEqualByComparingTo("-3");
     }
 
     @Test

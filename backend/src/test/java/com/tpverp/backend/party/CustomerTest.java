@@ -21,6 +21,21 @@ class CustomerTest {
         assertThat(customer.hasCompleteFiscalData()).isTrue();
     }
 
+    @Test
+    void activationAndDeactivationAreIdempotent() {
+        var customer = new Customer(
+                company(), "Cliente", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+
+        customer.deactivate();
+        customer.deactivate();
+        assertThat(customer.isActive()).isFalse();
+
+        customer.activate();
+        customer.activate();
+        assertThat(customer.isActive()).isTrue();
+    }
+
     private Company company() {
         return new Company("B00000000", "Company", Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",

@@ -153,7 +153,7 @@ public class StockColumnPreference {
                 if (column.width() < 72 || column.width() > 420) {
                     throw new IllegalArgumentException("column.width debe estar entre 72 y 420");
                 }
-                return new StockColumnSetting(key, column.width());
+                return new StockColumnSetting(key, column.width(), column.visible() == null || column.visible());
             }).toList();
             normalized.put(view, viewColumns);
         });

@@ -97,8 +97,8 @@ public class DevSampleDataSeeder {
                 on conflict do nothing
                 """, WAREHOUSE, STORE);
         jdbc.update("""
-                insert into familia (id, tienda_id, nombre, predeterminada)
-                values (?, ?, 'GENERAL', true)
+                insert into familia (id, tienda_id, family_id, nombre, predeterminada)
+                values (?, ?, 'GENERAL', 'GENERAL', true)
                 on conflict do nothing
                 """, FAMILY, STORE);
         jdbc.update("""
@@ -118,6 +118,18 @@ public class DevSampleDataSeeder {
         grant(ROLE, "GESTION_VENTAS");
         grant(ROLE, "PRODUCTS_READ");
         grant(ROLE, "STOCK_READ");
+        grant(ROLE, "CUSTOMERS_READ");
+        grant(ROLE, "CUSTOMERS_WRITE");
+        grant(ROLE, "SUPPLIERS_READ");
+        grant(ROLE, "SUPPLIERS_WRITE");
+        grant(ROLE, "WAREHOUSE_INPUTS_READ");
+        grant(ROLE, "WAREHOUSE_INPUTS_WRITE");
+        grant(ROLE, "WAREHOUSE_INPUTS_DELETE");
+        grant(ROLE, "WAREHOUSE_INPUTS_CONFIRM");
+        grant(ROLE, "WAREHOUSE_OUTPUTS_READ");
+        grant(ROLE, "WAREHOUSE_OUTPUTS_EDIT");
+        grant(ROLE, "WAREHOUSE_OUTPUTS_DELETE");
+        grant(ROLE, "WAREHOUSE_OUTPUTS_CONFIRM");
         grant(ROLE, "DELIVERY_NOTES_READ");
         grant(ROLE, "DELIVERY_NOTES_WRITE");
         grant(ROLE, "INVOICES_READ");

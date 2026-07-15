@@ -7,11 +7,14 @@ import {
   filterStockInventoryRows,
   filterStockTopSalesRows,
   moveStockColumn,
+  reorderStockColumn,
   resizeStockColumn,
   sanitizeStockColumnSettings,
   stockColumnGridTemplate,
   stockColumnStorageKey,
   stockTableShouldAutoFocus,
+  toggleStockColumnVisibility,
+  visibleStockColumns,
   stockViewAfterProductCreated,
   stockTopSalesPeriodLabel,
   stockTopSalesPeriodRange,
@@ -43,6 +46,8 @@ import {
   userCanManageStockProducts,
   userCanManageWarehouses,
   userCanReadStock,
+  stockNavigationStateForWarehouseMode,
+  stockViewIsSelected,
   StockScreen
 } from "./StockScreen";
 import type { TerminalContext, UserSession } from "../types";
@@ -168,6 +173,23 @@ describe("StockScreen", () => {
     ]);
     expect(stockViews).not.toContain("stock.low");
     expect(stockViews).not.toContain("stock.empty");
+  });
+
+  it("clears party directory selection when opening warehouse document sections", () => {
+    expect(stockNavigationStateForWarehouseMode("input")).toEqual({
+      partyDirectory: null,
+      warehouseDocumentMode: "input"
+    });
+    expect(stockNavigationStateForWarehouseMode("output")).toEqual({
+      partyDirectory: null,
+      warehouseDocumentMode: "output"
+    });
+  });
+
+  it("does not keep stock selected while a party directory is open", () => {
+    expect(stockViewIsSelected("stock.current", "stock.current", null, "customers")).toBe(false);
+    expect(stockViewIsSelected("stock.current", "stock.current", "input", null)).toBe(false);
+    expect(stockViewIsSelected("stock.current", "stock.current", null, null)).toBe(true);
   });
 
   it("groups every import action inside the Archivo import submenu", () => {
@@ -741,7 +763,10 @@ describe("StockScreen", () => {
     expect(stockRowToProductEdit({ ...row, purchaseDiscountPercent: "12.50" })).toEqual(expect.objectContaining({
       initialData: {
         discountType: "NONE",
-        purchaseDiscountPercent: "12.50"
+        purchaseDiscountPercent: "12.50",
+        packageQuantity: "1",
+        stockMin: null,
+        stockMax: null
       },
       form: expect.objectContaining({ discountType: "NONE" })
     }));
@@ -958,31 +983,50 @@ describe("StockScreen", () => {
     });
 
     expect(sanitized["stock.topSales"].slice(0, 2)).toEqual([
-      { key: "name", width: 420 },
-      { key: "code", width: 72 }
+      { key: "name", width: 420, visible: true },
+      { key: "code", width: 72, visible: true }
     ]);
     expect(sanitized["stock.current"].map((column) => column.key)).toEqual(createDefaultStockColumnSettings()["stock.current"].map((column) => column.key));
   });
 
-  it("moves and resizes stock columns without mutating other views", () => {
+  it("moves resizes reorders and toggles stock columns without mutating other views", () => {
     const settings = createDefaultStockColumnSettings();
     const moved = moveStockColumn(settings, "stock.topSales", "name", -1);
     const resized = resizeStockColumn(settings, "stock.topSales", "name", 320);
+    const reordered = reorderStockColumn(settings, "stock.topSales", "amount", "code");
+    const hidden = toggleStockColumnVisibility(settings, "stock.topSales", "name");
 
     expect(moved["stock.topSales"].map((column) => column.key).indexOf("name")).toBe(
       settings["stock.topSales"].map((column) => column.key).indexOf("name") - 1
     );
+    expect(reordered["stock.topSales"].map((column) => column.key).slice(1, 3)).toEqual(["amount", "code"]);
     expect(moved["stock.current"]).toEqual(settings["stock.current"]);
     expect(resized["stock.topSales"].find((column) => column.key === "name")?.width).toBe(320);
+    expect(hidden["stock.topSales"].find((column) => column.key === "name")?.visible).toBe(false);
   });
 
-  it("builds one stock grid template from the selected column settings", () => {
-    const settings = resizeStockColumn(createDefaultStockColumnSettings(), "stock.topSales", "name", 320);
-    const template = stockColumnGridTemplate(settings["stock.topSales"]);
+  it("builds one stock grid template from visible selected column settings", () => {
+    let settings = resizeStockColumn(createDefaultStockColumnSettings(), "stock.topSales", "name", 320);
+    settings = toggleStockColumnVisibility(settings, "stock.topSales", "code");
+    const columns = settings["stock.topSales"];
+    const template = stockColumnGridTemplate(columns);
 
-    expect(template.split(" ")).toHaveLength(settings["stock.topSales"].length);
+    expect(visibleStockColumns(columns).map((column) => column.key)).not.toContain("code");
+    expect(template.split(" ")).toHaveLength(visibleStockColumns(columns).length);
     expect(template).toContain("320px");
-    expect(template).toBe(settings["stock.topSales"].map((column) => `${column.width}px`).join(" "));
+    expect(template).toBe(visibleStockColumns(columns).map((column) => `${column.width}px`).join(" "));
+  });
+
+  it("keeps at least one stock column visible", () => {
+    let settings = createDefaultStockColumnSettings();
+    for (const column of settings["stock.topSales"].slice(1)) {
+      settings = toggleStockColumnVisibility(settings, "stock.topSales", column.key);
+    }
+    const before = settings["stock.topSales"].filter((column) => column.visible !== false).length;
+    const after = toggleStockColumnVisibility(settings, "stock.topSales", "ranking");
+
+    expect(before).toBe(1);
+    expect(after["stock.topSales"].filter((column) => column.visible !== false).length).toBe(1);
   });
 
   it("auto-focuses the stock table when opening an inventory section without dialogs", () => {

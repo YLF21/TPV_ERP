@@ -469,7 +469,7 @@ function PromotionProductsTable({
           {products.map((product) => (
             <tr key={product.productId}>
               <td><strong>{product.code || "-"}</strong></td>
-              <td>{product.name}</td>
+              <td><span className="product-name-text">{product.name}</span></td>
               <td>{product.familyName || product.familyId || "-"}</td>
               <td>{product.subfamilyName || product.subfamilyId || "-"}</td>
               <td>{formatNumber(product.stock, locale)}</td>

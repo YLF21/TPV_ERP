@@ -209,6 +209,24 @@ class CustomerServiceTest {
                 .hasMessageContaining("fiscales");
     }
 
+    @Test
+    void reactivatesCustomerInCurrentCompanyWithoutChangingItsCode() {
+        var customer = new Customer(
+                company, "Cliente", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.assignClientCode(store.getId(), "C-001-000001");
+        customer.deactivate();
+        when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(customer));
+
+        service().activate(customer.getId());
+        service().activate(customer.getId());
+
+        assertThat(customer.isActive()).isTrue();
+        assertThat(customer.getClientId()).isEqualTo("C-001-000001");
+        verify(codes, never()).nextClient(any());
+    }
+
     private CustomerService service() {
         var organization = new CurrentOrganization(stores, users);
         return new CustomerService(

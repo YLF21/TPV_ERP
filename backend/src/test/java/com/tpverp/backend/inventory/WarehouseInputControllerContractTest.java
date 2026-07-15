@@ -38,6 +38,8 @@ class WarehouseInputControllerContractTest {
                 "confirm", UUID.class, org.springframework.security.core.Authentication.class);
 
         assertThat(list.getAnnotation(GetMapping.class)).isNotNull();
+        assertThat(list.getGenericReturnType().getTypeName())
+                .contains("java.util.List", "WarehouseInputView");
         assertThat(create.getAnnotation(PostMapping.class).value()).isEmpty();
         assertThat(create.getAnnotation(ResponseStatus.class).value()).isEqualTo(HttpStatus.CREATED);
         assertThat(update.getAnnotation(PutMapping.class).value()).containsExactly("/{id}");
@@ -48,7 +50,13 @@ class WarehouseInputControllerContractTest {
                 .filter(parameter -> parameter.isAnnotationPresent(PathVariable.class)))
                 .hasSize(1);
         assertThat(list.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSE_INPUTS_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+                .contains(
+                        "WAREHOUSE_INPUTS_READ",
+                        "WAREHOUSE_INPUTS_WRITE",
+                        "WAREHOUSE_INPUTS_DELETE",
+                        "WAREHOUSE_INPUTS_CONFIRM",
+                        "GESTION_PRODUCTO",
+                        "hasRole('ADMIN')");
         assertThat(create.getAnnotation(PreAuthorize.class).value())
                 .contains("WAREHOUSE_INPUTS_WRITE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
         assertThat(update.getAnnotation(PreAuthorize.class).value())

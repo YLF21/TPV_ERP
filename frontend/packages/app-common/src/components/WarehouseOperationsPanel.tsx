@@ -6,7 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { apiRequest } from "../api/client";
-import type { LocaleCode } from "../types";
+import type { LocaleCode, TerminalContext } from "../types";
 import {
   WarehouseDocumentDialog,
   warehouseDocumentPath,
@@ -60,6 +60,7 @@ export type WarehouseOperationsPanelProps = {
   suppliers: WarehouseSupplierOption[];
   t: (key: string) => string;
   locale?: LocaleCode;
+  terminalContext?: TerminalContext;
   defaultWarehouseId?: string;
   permissions?: WarehouseOperationsPanelPermissions;
   confirmDelete?: (document: WarehouseOperationView) => boolean | Promise<boolean>;
@@ -247,6 +248,7 @@ export function WarehouseOperationsPanel({
   suppliers,
   t,
   locale = "es",
+  terminalContext,
   defaultWarehouseId,
   permissions,
   confirmDelete,
@@ -647,7 +649,7 @@ export function WarehouseOperationsPanel({
             )}
             {!loading && error && visibleDocuments.length === 0 && (
               <tr>
-                <td colSpan={7}>{labels.loadError}</td>
+                <td colSpan={7}>{error}</td>
               </tr>
             )}
           </tbody>
@@ -665,6 +667,7 @@ export function WarehouseOperationsPanel({
         suppliers={suppliers}
         document={dialogDocument}
         defaultWarehouseId={defaultWarehouseId}
+        terminalContext={terminalContext}
         canConfirm={resolvedPermissions.canConfirm}
         onClose={closeDialog}
         onSaved={handleSaved}
@@ -747,7 +750,10 @@ function warehouseOperationsFormatDate(value: string, formatter: Intl.DateTimeFo
   return Number.isNaN(date.getTime()) ? value : formatter.format(date);
 }
 
-function warehouseOperationsErrorMessage(error: unknown, fallback: string) {
+export function warehouseOperationsErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof TypeError || (error instanceof Error && error.message === "Failed to write request")) {
+    return fallback;
+  }
   return error instanceof Error && error.message ? error.message : fallback;
 }
 

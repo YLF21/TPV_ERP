@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
 import {
   applyProductRequiredDefaults,
   buildCreateProductRequest,
@@ -68,6 +69,9 @@ describe("ProductCreateDialog", () => {
       offerPrice: "3.20",
       offerDiscountPercent: "10",
       purchaseDiscountPercent: null,
+      packageQuantity: "1",
+      stockMin: null,
+      stockMax: null,
       offerActive: false,
       offerFrom: "2026-07-01",
       offerUntil: "2026-07-31"
@@ -197,6 +201,9 @@ describe("ProductCreateDialog", () => {
       "offerPrice",
       "offerDiscountPercent",
       "purchaseDiscountPercent",
+      "packageQuantity",
+      "stockMin",
+      "stockMax",
       "offerActive",
       "offerFrom",
       "offerUntil"
@@ -205,6 +212,9 @@ describe("ProductCreateDialog", () => {
     expect(request.priceUseMode).toBe("OFFER_PRICE");
     expect(request.offerDiscountPercent).toBeNull();
     expect(request.purchaseDiscountPercent).toBeNull();
+    expect(request.packageQuantity).toBe("1");
+    expect(request.stockMin).toBeNull();
+    expect(request.stockMax).toBeNull();
   });
 
   it("detects duplicated product identifiers before saving", () => {
@@ -488,6 +498,11 @@ describe("ProductCreateDialog", () => {
     expect(productCreateErrorMessage(new TypeError("Failed to write request"), "No se pudo cargar")).toBe("No se pudo cargar");
     expect(productCreateErrorMessage(new Error("Failed to write request"), "No se pudo cargar")).toBe("No se pudo cargar");
     expect(productCreateErrorMessage(new Error("Codigo duplicado"), "No se pudo cargar")).toBe("Codigo duplicado");
+    expect(productCreateErrorMessage(
+      new ApiError("La operacion entra en conflicto con los datos existentes", 409, { code: "DATA_INTEGRITY_CONFLICT" }),
+      "No se pudo registrar",
+      "El codigo o codigo de barras ya existe"
+    )).toBe("El codigo o codigo de barras ya existe");
   });
 
   it("keeps the product creation when the optional image upload fails", async () => {

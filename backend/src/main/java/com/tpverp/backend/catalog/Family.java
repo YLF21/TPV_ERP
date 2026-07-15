@@ -18,6 +18,9 @@ public class Family {
     @Column(name = "tienda_id", nullable = false)
     private UUID storeId;
 
+    @Column(name = "family_id", nullable = false, length = 32)
+    private String familyId;
+
     @Column(nullable = false, length = 128)
     private String nombre;
 
@@ -34,6 +37,7 @@ public class Family {
         this.id = UUID.randomUUID();
         this.storeId = Objects.requireNonNull(storeId, "storeId");
         this.nombre = CatalogText.normalized(name, "nombre");
+        this.familyId = defaultFamily ? "GENERAL" : businessId(this.nombre, "FAMILIA");
         this.predeterminada = defaultFamily;
         if (defaultFamily && !"GENERAL".equals(nombre)) {
             throw new IllegalArgumentException("La familia predeterminada debe llamarse GENERAL");
@@ -52,6 +56,10 @@ public class Family {
         return storeId;
     }
 
+    public String getFamilyId() {
+        return familyId;
+    }
+
     public String getName() {
         return nombre;
     }
@@ -65,11 +73,22 @@ public class Family {
             throw new IllegalStateException("La familia GENERAL esta protegida");
         }
         nombre = CatalogText.normalized(name, "nombre");
+        familyId = businessId(nombre, "FAMILIA");
     }
 
     public void requireDeletable() {
         if (predeterminada) {
             throw new IllegalStateException("La familia GENERAL esta protegida");
         }
+    }
+
+    static String businessId(String value, String fallback) {
+        String normalized = CatalogText.normalized(value, fallback)
+                .replaceAll("[^A-Z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+        if (normalized.isBlank()) {
+            normalized = fallback;
+        }
+        return normalized.length() <= 32 ? normalized : normalized.substring(0, 32);
     }
 }

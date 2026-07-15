@@ -4,6 +4,7 @@ import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
+import com.tpverp.backend.inventory.WarehouseConfirmationException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -91,6 +92,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     ProblemDetail stateConflict(
             IllegalStateException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        return problem(
+                HttpStatus.CONFLICT,
+                SystemErrorCode.STATE_CONFLICT.name(),
+                localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language);
+    }
+
+    @ExceptionHandler(WarehouseConfirmationException.class)
+    ProblemDetail warehouseConfirmationConflict(
+            WarehouseConfirmationException exception,
             HttpServletRequest request) {
         var language = language(request);
         return problem(

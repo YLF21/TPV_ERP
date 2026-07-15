@@ -1,9 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
 import {
   buildWarehouseDocumentCommand,
   canConfirmWarehouseDocument,
   createManualWarehouseDocumentLine,
+  documentLineTotal,
+  documentTotalAfterDiscount,
+  warehouseDocumentRequestErrorMessage,
   warehouseDocumentPath,
   WarehouseDocumentDialog
 } from "./WarehouseDocumentDialog";
@@ -25,7 +29,7 @@ const lines = [
 ];
 
 describe("WarehouseDocumentDialog", () => {
-  it("renders output mode with customer fields and formal dialog chrome", () => {
+  it("renders output mode with document workspace and file actions", () => {
     const html = renderToStaticMarkup(
       <WarehouseDocumentDialog
         mode="output"
@@ -41,14 +45,17 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    expect(html).toContain("Crear documento");
     expect(html).toContain("Salida almacén");
-    expect(html).toContain("Cliente");
-    expect(html).toContain("Importar Excel");
-    expect(html).toContain("Añadir línea");
-    expect(html).toContain("Guardar borrador");
+    expect(html).toContain("Archivo");
+    expect(html).toContain("Guardar F9");
+    expect(html).toContain("Salir Esc");
+    expect(html).toContain("Cliente/Destino");
+    expect(html).toContain("Descuento total documento %");
+    expect(html).toContain("Importe total");
+    expect(html).not.toContain("Acciones");
+    expect(html).not.toContain("Eliminar</button>");
     expect(html).toContain("Confirmar");
-    expect(html).toContain('class="warehouse-document-dialog"');
+    expect(html).toContain('class="warehouse-document-dialog warehouse-document-dialog-v2"');
     expect(html).toContain("erp-select__trigger");
     expect(html).not.toContain("<select");
   });
@@ -69,7 +76,7 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html).toContain("Entrada almacén");
-    expect(html).toContain("Proveedor");
+    expect(html).toContain("Proveedor/Origen");
     expect(html).not.toContain("Cliente</span>");
   });
 
@@ -88,8 +95,9 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    expect(html).toContain("Guardar borrador");
-    expect(html).not.toContain("Confirmar");
+    expect(html).toContain("Guardar F9");
+    expect(html).toContain("Confirmar");
+    expect(html).toContain('disabled=""');
   });
 
   it("blocks confirmation with no valid lines", () => {
@@ -105,6 +113,12 @@ describe("WarehouseDocumentDialog", () => {
       partnerText: "",
       lines: [{ ...lines[0], valid: false, errorKey: "warehouseDocument.error.invalidQuantity" }]
     })).toBe(false);
+    expect(canConfirmWarehouseDocument({
+      warehouseId: "warehouse-1",
+      partnerId: "",
+      partnerText: "",
+      lines
+    })).toBe(true);
   });
 
   it("builds output and input commands for backend endpoints", () => {
@@ -149,5 +163,22 @@ describe("WarehouseDocumentDialog", () => {
       valid: true
     }));
     expect(createManualWarehouseDocumentLine("missing", 4, products, 2).valid).toBe(false);
+  });
+
+  it("applies line discount before document discount", () => {
+    const lineTotal = documentLineTotal(100, 2, "20");
+    expect(lineTotal).toBe(160);
+    expect(documentTotalAfterDiscount(lineTotal, "5")).toBe(152);
+  });
+
+  it("keeps backend conflict detail when available", () => {
+    expect(warehouseDocumentRequestErrorMessage(
+      new ApiError("La operacion entra en conflicto con los datos existentes", 409, { code: "DATA_INTEGRITY_CONFLICT" }),
+      "No se pudo confirmar",
+      {
+        integrityConflict: "Revisa el documento",
+        stateConflict: "Recarga el borrador"
+      }
+    )).toBe("La operacion entra en conflicto con los datos existentes");
   });
 });

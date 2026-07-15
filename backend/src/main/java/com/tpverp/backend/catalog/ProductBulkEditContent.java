@@ -97,6 +97,11 @@ public final class ProductBulkEditContent {
         nonNegative(product.memberPrice(), rowIndex, "memberPrice", false);
         nonNegative(product.wholesalePrice(), rowIndex, "wholesalePrice", false);
         nonNegative(product.offerPrice(), rowIndex, "offerPrice", false);
+        BigDecimal stockMin = decimal(product.stockMin(), rowIndex, "stockMin", false);
+        BigDecimal stockMax = decimal(product.stockMax(), rowIndex, "stockMax", false);
+        if (stockMin != null && stockMax != null && stockMax.compareTo(stockMin) < 0) {
+            throw invalid(rowIndex, "stockMax no puede ser menor que stockMin");
+        }
         percentage(product.purchaseDiscountPercent(), rowIndex, "purchaseDiscountPercent");
         percentage(product.offerDiscountPercent(), rowIndex, "offerDiscountPercent");
         date(product.offerFrom(), rowIndex, "offerFrom");
@@ -234,7 +239,7 @@ public final class ProductBulkEditContent {
                 product.subfamilyId(), product.subfamilyName(), product.taxId(), product.taxName(),
                 product.taxesIncluded(), product.offerActive(), product.offerFrom(),
                 product.offerUntil(), product.warehouseName(), product.quantity(),
-                product.totalQuantity());
+                product.totalQuantity(), product.stockMin(), product.stockMax());
     }
 
     private static long estimatedSize(SupplierData supplier) {
@@ -327,13 +332,57 @@ public final class ProductBulkEditContent {
             String offerUntil,
             String warehouseName,
             String quantity,
-            String totalQuantity) {
+            String totalQuantity,
+            String stockMin,
+            String stockMax) {
+
+        public ProductData(
+                UUID productId,
+                Long version,
+                String imageId,
+                String warehouseId,
+                String code,
+                String barcode,
+                String barcode2,
+                String name,
+                String description,
+                String comments,
+                String purchasePrice,
+                String purchaseDiscountPercent,
+                String salePrice,
+                String memberPrice,
+                String wholesalePrice,
+                String offerPrice,
+                String offerDiscountPercent,
+                String productType,
+                String discountType,
+                String backendDiscountType,
+                String familyId,
+                String familyName,
+                String subfamilyId,
+                String subfamilyName,
+                String taxId,
+                String taxName,
+                String taxesIncluded,
+                String offerActive,
+                String offerFrom,
+                String offerUntil,
+                String warehouseName,
+                String quantity,
+                String totalQuantity) {
+            this(productId, version, imageId, warehouseId, code, barcode, barcode2, name, description,
+                    comments, purchasePrice, purchaseDiscountPercent, salePrice, memberPrice, wholesalePrice,
+                    offerPrice, offerDiscountPercent, productType, discountType, backendDiscountType,
+                    familyId, familyName, subfamilyId, subfamilyName, taxId, taxName, taxesIncluded,
+                    offerActive, offerFrom, offerUntil, warehouseName, quantity, totalQuantity, null, null);
+        }
 
         public static ProductData empty() {
             return new ProductData(
                     null, null, null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
 
         public ProductData overlay(ProductData changes) {
@@ -373,7 +422,9 @@ public final class ProductBulkEditContent {
                     pick(changes.offerUntil, offerUntil),
                     pick(changes.warehouseName, warehouseName),
                     pick(changes.quantity, quantity),
-                    pick(changes.totalQuantity, totalQuantity));
+                    pick(changes.totalQuantity, totalQuantity),
+                    pick(changes.stockMin, stockMin),
+                    pick(changes.stockMax, stockMax));
         }
 
         public ProductData withPersistenceState(long actualVersion, UUID actualImageId) {
@@ -420,7 +471,9 @@ public final class ProductBulkEditContent {
                     offerUntil,
                     warehouseName,
                     quantity,
-                    totalQuantity);
+                    totalQuantity,
+                    stockMin,
+                    stockMax);
         }
 
         private static <T> T pick(T preferred, T fallback) {

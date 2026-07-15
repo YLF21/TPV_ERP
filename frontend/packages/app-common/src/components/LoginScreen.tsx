@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiConnectionError, ApiError, checkBackendConnection } from "../api/client";
 import { authenticateRemote } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { TopDateTime } from "./TopDateTime";
+import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import languageIcon from "../assets/language.png";
 
 type LoginScreenProps = {
@@ -32,6 +33,9 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const languagePickerRef = useRef<HTMLDivElement | null>(null);
+
+  useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
   useEffect(() => {
     try {
@@ -109,35 +113,37 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
         <strong>{terminalContext.storeName}</strong>
         <span>{t("login.terminalPrefix")}: {terminalContext.terminalCode}</span>
       </div>
-      <button
-        type="button"
-        className="language-button"
-        aria-expanded={languageOpen}
-        aria-haspopup="listbox"
-        aria-label={t("login.language")}
-        title={t("login.language")}
-        onClick={() => setLanguageOpen((open) => !open)}
-      >
-        <img alt="" src={languageIcon} />
-      </button>
-      {languageOpen && (
-        <section className="language-picker" aria-label={t("login.language")}>
-          {languageOptions.map((option) => (
-            <button
-              type="button"
-              className={option.code === locale ? "selected" : ""}
-              key={option.code}
-              onClick={() => {
-                onLocaleChange(option.code);
-                setLanguageOpen(false);
-              }}
-            >
-              <span>{option.label}</span>
-              <strong>{option.code.toUpperCase()}</strong>
-            </button>
-          ))}
-        </section>
-      )}
+      <div ref={languagePickerRef} style={{ display: "contents" }}>
+        <button
+          type="button"
+          className="language-button"
+          aria-expanded={languageOpen}
+          aria-haspopup="listbox"
+          aria-label={t("login.language")}
+          title={t("login.language")}
+          onClick={() => setLanguageOpen((open) => !open)}
+        >
+          <img alt="" src={languageIcon} />
+        </button>
+        {languageOpen && (
+          <section className="language-picker" aria-label={t("login.language")}>
+            {languageOptions.map((option) => (
+              <button
+                type="button"
+                className={option.code === locale ? "selected" : ""}
+                key={option.code}
+                onClick={() => {
+                  onLocaleChange(option.code);
+                  setLanguageOpen(false);
+                }}
+              >
+                <span>{option.label}</span>
+                <strong>{option.code.toUpperCase()}</strong>
+              </button>
+            ))}
+          </section>
+        )}
+      </div>
       <button
         type="button"
         className="shutdown-button"

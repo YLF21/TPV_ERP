@@ -820,7 +820,7 @@ export function SaleScreen({
                   onClick={() => setSelectedProductId(line.product.id)}
                 >
                   <div>
-                    <strong>{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
+                    <strong className="product-name-text">{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
                     <span>{line.product.code ?? line.product.barcode ?? t("sale.main.missingCode")}</span>
                   </div>
                   <span>
@@ -892,7 +892,7 @@ export function SaleScreen({
             {!catalogLoading && !catalogError && results.map((product) => (
               <button className="sale-search-result" type="button" disabled={paymentLocked} key={product.id} onClick={() => addProduct(product)}>
                 <span>
-                  <strong>{product.name ?? t("sale.main.unnamedProduct")}</strong>
+                  <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
                   <small>{product.code ?? product.barcode ?? t("sale.main.missingCode")}</small>
                 </span>
                 <b>{formatSaleAmount(effectiveSaleProductPrice(product))}</b>

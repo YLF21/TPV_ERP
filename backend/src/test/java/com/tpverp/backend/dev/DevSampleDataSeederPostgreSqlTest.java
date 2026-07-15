@@ -78,6 +78,31 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
+    void seedsFrontendRoleWithPartyAndWarehousePermissions() {
+        var permissions = jdbc.queryForList("""
+                select permiso.codigo
+                from rol
+                join rol_permiso on rol_permiso.rol_id = rol.id
+                join permiso on permiso.id = rol_permiso.permiso_id
+                where rol.nombre = 'VENTAS'
+                """, String.class);
+
+        assertThat(permissions).contains(
+                "CUSTOMERS_READ",
+                "CUSTOMERS_WRITE",
+                "SUPPLIERS_READ",
+                "SUPPLIERS_WRITE",
+                "WAREHOUSE_INPUTS_READ",
+                "WAREHOUSE_INPUTS_WRITE",
+                "WAREHOUSE_INPUTS_DELETE",
+                "WAREHOUSE_INPUTS_CONFIRM",
+                "WAREHOUSE_OUTPUTS_READ",
+                "WAREHOUSE_OUTPUTS_EDIT",
+                "WAREHOUSE_OUTPUTS_DELETE",
+                "WAREHOUSE_OUTPUTS_CONFIRM");
+    }
+
+    @Test
     void seedsAboutOneThousandFrontendDocumentsWithDifferentDates() {
         assertThat(count("documento")).isGreaterThanOrEqualTo(1_000);
         assertThat(jdbc.queryForObject("select count(distinct fecha) from documento", Integer.class))

@@ -72,6 +72,13 @@ public class CustomerController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    public ResponseEntity<Void> activate(@PathVariable UUID id) {
+        service.activate(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/member/activate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
     public CustomerService.CustomerView activateMember(@PathVariable UUID id) {

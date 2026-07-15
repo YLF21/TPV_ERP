@@ -33,9 +33,10 @@ public class WarehouseOutputController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_READ + "','" + GESTION_PRODUCTO + "')")
-    public List<WarehouseOutput> list() {
-        return service.list();
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_READ + "','" + WAREHOUSE_OUTPUTS_EDIT + "','"
+            + WAREHOUSE_OUTPUTS_DELETE + "','" + WAREHOUSE_OUTPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
+    public List<WarehouseOutputView> list() {
+        return service.list().stream().map(WarehouseOutputView::from).toList();
     }
 
     @PostMapping
