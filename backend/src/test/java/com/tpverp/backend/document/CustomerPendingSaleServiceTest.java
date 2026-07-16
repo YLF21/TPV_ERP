@@ -228,13 +228,83 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("approved_card_payment_required");
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
-        verify(reservations, never()).insert(any());
 
         var changed = withIntegratedPayment(
                 omitted, UUID.randomUUID(), omitted.checkoutId(), new BigDecimal("30.00"));
         assertThatThrownBy(() -> service.create(changed, authentication))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("approved_card_payment_required");
+        verify(reservations, org.mockito.Mockito.times(2)).insert(any());
+        verify(reservations, org.mockito.Mockito.times(2)).release(any());
+    }
+
+    @Test
+    void unresolvedDurableCardChargeBlocksCreateWhenPaymentIsOmitted() {
+        for (var status : List.of(
+                PaymentTerminalOperationStatus.PENDING,
+                PaymentTerminalOperationStatus.SENT,
+                PaymentTerminalOperationStatus.TIMEOUT,
+                PaymentTerminalOperationStatus.ERROR,
+                PaymentTerminalOperationStatus.REVIEW_REQUIRED)) {
+            var request = request(List.of(), new BigDecimal("100.00"));
+            stubQuote(request, new BigDecimal("100.00"));
+            when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+            var operation = org.mockito.Mockito.mock(PaymentTerminalOperation.class);
+            when(operation.getStatus()).thenReturn(status);
+            when(operation.getOperationType()).thenReturn(
+                    com.tpverp.backend.terminal.PaymentTerminalOperationType.CHARGE);
+            when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
+
+            assertThatThrownBy(() -> service.create(request, authentication))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("payment_operation_resolution_required");
+        }
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(reservations, org.mockito.Mockito.times(5)).insert(any());
+        verify(reservations, org.mockito.Mockito.times(5)).release(any());
+    }
+
+    @Test
+    void reservationRaceWinnerIsReturnedBeforeLoserConsumesCardOperation() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenThrow(new DataIntegrityViolationException("race"));
+        var winnerDocument = document(new BigDecimal("100.00"));
+        var winner = CustomerPendingSaleCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
+                CustomerPendingSaleRequestHasher.hash(request, request.quotedTotal()), NOW);
+        winner.complete(winnerDocument.getId(), NOW);
+        when(reservations.findAfterConflict(terminalId, request.checkoutId())).thenReturn(winner);
+        when(documents.find(winnerDocument.getId())).thenReturn(winnerDocument);
+        var view = org.mockito.Mockito.mock(CustomerReceivableView.class);
+        when(views.receivableView(winnerDocument, request.date())).thenReturn(view);
+
+        assertThat(service.create(request, authentication)).isSameAs(view);
+        verify(terminalOperations, never()).requireFinalizableApprovedCharge(any());
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void canonicalHashCannotCollideByRedistributingDelimitersAcrossStrings() {
+        var original = request(List.of(new CustomerPendingSaleController.PaymentItem(
+                CustomerPendingSaleController.PaymentKind.STANDARD,
+                UUID.randomUUID(), BigDecimal.TEN, true, null, null,
+                "A:B", "C|D", UUID.randomUUID(), null)), new BigDecimal("100.00"));
+        var payment = original.payments().getFirst();
+        var redistributed = new CustomerPendingSaleController.CreateRequest(
+                original.checkoutId(), original.warehouseId(), original.type(), original.date(),
+                original.customerId(), original.dueDate(), original.globalDiscount(), original.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        payment.kind(), payment.methodId(), payment.amount(), payment.principal(),
+                        payment.delivered(), payment.change(), "A", "B:C|D",
+                        payment.requestId(), payment.paymentTerminalOperationId())),
+                original.quotedTotal());
+
+        assertThat(CustomerPendingSaleRequestHasher.hash(original, original.quotedTotal()))
+                .isNotEqualTo(CustomerPendingSaleRequestHasher.hash(
+                        redistributed, redistributed.quotedTotal()));
     }
 
     @Test
@@ -255,7 +325,8 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("configuration");
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
-        verify(reservations, never()).insert(any());
+        verify(reservations).insert(any());
+        verify(reservations).release(any());
     }
 
     @Test
@@ -336,6 +407,8 @@ class CustomerPendingSaleServiceTest {
         org.mockito.Mockito.lenient().when(operation.getAuthorizationCode()).thenReturn("AUTH");
         org.mockito.Mockito.lenient().when(operation.getStatus())
                 .thenReturn(PaymentTerminalOperationStatus.APPROVED);
+        org.mockito.Mockito.lenient().when(operation.getOperationType()).thenReturn(
+                com.tpverp.backend.terminal.PaymentTerminalOperationType.CHARGE);
         return operation;
     }
 

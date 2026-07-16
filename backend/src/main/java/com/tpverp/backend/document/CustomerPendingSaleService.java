@@ -103,22 +103,6 @@ public class CustomerPendingSaleService {
         requireQuotedTotal(request, total);
         var hash = CustomerPendingSaleRequestHasher.hash(request, total);
 
-        var declaredCard = integratedCardPayment(request);
-        var associatedApproved = terminalOperations.find(request.checkoutId())
-                .filter(operation -> operation.getStatus() == PaymentTerminalOperationStatus.APPROVED);
-        if (associatedApproved.isPresent() && declaredCard.isEmpty()) {
-            throw new IllegalStateException("approved_card_payment_required");
-        }
-        PaymentTerminalOperation cardOperation = null;
-        if (declaredCard.isPresent()) {
-            requireExactCardAssociation(request, declaredCard.orElseThrow());
-            cardOperation = terminalOperations.requireFinalizableApprovedCharge(
-                    request.checkoutId());
-            var configuration = configurations.required(terminalId);
-            requireCardIdentity(cardOperation, configuration, hash,
-                    declaredCard.orElseThrow().amount(), terminalId, storeId);
-        }
-
         var checkout = CustomerPendingSaleCheckout.reserve(
                 UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
                 hash, Instant.now(clock));
@@ -130,6 +114,21 @@ public class CustomerPendingSaleService {
         }
 
         try {
+            var declaredCard = integratedCardPayment(request);
+            var durableCharge = terminalOperations.find(request.checkoutId())
+                    .filter(CustomerPendingSaleService::isDurableCharge);
+            if (durableCharge.isPresent() && declaredCard.isEmpty()) {
+                throw unresolvedCard(durableCharge.orElseThrow());
+            }
+            PaymentTerminalOperation cardOperation = null;
+            if (declaredCard.isPresent()) {
+                requireExactCardAssociation(request, declaredCard.orElseThrow());
+                cardOperation = terminalOperations.requireFinalizableApprovedCharge(
+                        request.checkoutId());
+                var configuration = configurations.required(terminalId);
+                requireCardIdentity(cardOperation, configuration, hash,
+                        declaredCard.orElseThrow().amount(), terminalId, storeId);
+            }
             var commands = paymentCommands(request, cardOperation, terminalId);
             var document = documents.createPendingSale(
                     request.toCommand(), request.dueDate(), commands, authentication);
@@ -149,6 +148,17 @@ public class CustomerPendingSaleService {
             reservations.release(checkout);
             throw failure;
         }
+    }
+
+    private static boolean isDurableCharge(PaymentTerminalOperation operation) {
+        return operation.getOperationType()
+                == com.tpverp.backend.terminal.PaymentTerminalOperationType.CHARGE;
+    }
+
+    private static IllegalStateException unresolvedCard(PaymentTerminalOperation operation) {
+        return operation.getStatus() == PaymentTerminalOperationStatus.APPROVED
+                ? new IllegalStateException("approved_card_payment_required")
+                : new IllegalStateException("payment_operation_resolution_required");
     }
 
     private CustomerReceivableView replayOrContinue(
