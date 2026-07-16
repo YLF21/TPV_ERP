@@ -12,23 +12,35 @@ public record DocumentView(
         DocumentStatus estado,
         String numero,
         LocalDate fecha,
+        UUID customerId,
+        String customerName,
+        LocalDate dueDate,
         BigDecimal base,
         BigDecimal impuesto,
         BigDecimal total,
+        BigDecimal paidTotal,
+        BigDecimal pendingTotal,
         String numTicket,
         String qrUrl,
         boolean origenStock,
         List<PaymentView> payments) {
 
     public static DocumentView from(CommercialDocument document) {
-        return from(document, null);
+        return from(document, null, null);
     }
 
     public static DocumentView from(CommercialDocument document, String qrUrl) {
+        return from(document, null, qrUrl);
+    }
+
+    static DocumentView from(
+            CommercialDocument document, String customerName, String qrUrl) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
-                document.getNumero(), document.getFecha(), document.getBaseTotal(),
-                document.getImpuestoTotal(), document.getTotal(),
+                document.getNumero(), document.getFecha(), document.getClienteId(), customerName,
+                document.getDueDate(), document.getBaseTotal(),
+                document.getImpuestoTotal(), document.getTotal(), document.getPaidTotal(),
+                document.getPendingTotal(),
                 document.getNumTicket(), qrUrl, document.isOrigenStock(),
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))

@@ -10,7 +10,8 @@ const localUsers: LocalUser[] = [
     username: "admin",
     password: "admin",
     displayName: "ADMIN",
-    permissions: ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS"]
+    permissions: ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"]
   },
   {
     username: "venta",
@@ -102,7 +103,8 @@ export async function authenticateRemote(
 function permissionsFromRole(role: string): Permission[] {
   const normalized = role.toUpperCase();
   if (normalized === "ADMIN") {
-    return ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS"];
+    return ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"];
   }
 
   const permissions: Permission[] = [];
