@@ -208,14 +208,16 @@ public class CustomerReceivableService {
                 && Objects.equals(existing.getEntregado(), nullableMoney(item.entregado()))
                 && Objects.equals(existing.getCambio(), nullableMoney(item.cambio()))
                 && Objects.equals(existing.getVoucherCode(), normalized(item.voucherCode()));
-        var sameReference = item.paymentTerminalOperationId() != null
-                ? existing.getCardMode() == PaymentCardMode.INTEGRATED
+        var integrated = existing.getCardMode() == PaymentCardMode.INTEGRATED;
+        var sameReference = integrated
+                ? true
                 : Objects.equals(existing.getReferencia(), normalized(item.reference()));
-        var sameOperation = item.paymentTerminalOperationId() == null
-                || terminalOperations.findByDocumentPaymentId(existing.getId())
+        var sameOperation = !integrated
+                || (item.paymentTerminalOperationId() != null
+                && terminalOperations.findByDocumentPaymentId(existing.getId())
                         .map(PaymentTerminalOperation::getId)
                         .filter(item.paymentTerminalOperationId()::equals)
-                        .isPresent();
+                        .isPresent());
         if (!sameDocument || !sameCore || !sameReference || !sameOperation) {
             throw new IllegalStateException("payment_idempotency_conflict");
         }

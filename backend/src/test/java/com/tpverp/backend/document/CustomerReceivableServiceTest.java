@@ -246,6 +246,29 @@ class CustomerReceivableServiceTest {
     }
 
     @Test
+    void integratedReplayRejectsOmittedDurableOperationId() {
+        var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
+        var method = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", false);
+        var persisted = new DocumentPayment(
+                document, method, 1, new BigDecimal("20.00"), true, null, null, null,
+                "CARD-REF", Instant.now(), PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.PAYTEF, PaymentTerminalOperationStatus.APPROVED,
+                "AUTH", UUID.randomUUID(), PAYMENT_ID);
+        document.addPayment(persisted);
+        document.updatePaymentStatus();
+        when(documents.findLockedReceivable(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(payments.findByRequestId(PAYMENT_ID)).thenReturn(Optional.of(persisted));
+        var request = new PaymentRequest(List.of(new PaymentRequest.Item(
+                method.getId(), new BigDecimal("20.00"), true, null, null, null,
+                "CARD-REF", null, null, null, null, null, PAYMENT_ID, null)));
+
+        assertThatThrownBy(() -> service.pay(document.getId(), request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_idempotency_conflict");
+    }
+
+    @Test
     void replayWithDifferentAmountIsAnIdempotencyConflict() {
         var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
         var transfer = new PaymentMethod(store.getEmpresa().getId(), "TRANSFERENCIA", false, true, false);
