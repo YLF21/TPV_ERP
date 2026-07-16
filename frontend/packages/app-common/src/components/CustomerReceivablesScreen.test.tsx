@@ -53,4 +53,21 @@ describe("CustomerReceivablesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar transferencia" }));
     await waitFor(() => expect(screen.getAllByText("50,00")).toHaveLength(2));
   });
+
+  it("ignores an older filter response that arrives after the current request", async () => {
+    let resolveOld!: (value: unknown) => void;
+    const request = vi.fn((path: string) => path.includes("search=old") ? new Promise((resolve) => { resolveOld = resolve; }) : Promise.resolve(path.includes("search=new") ? [{ ...row, documentNumber: "NEW" }] : []));
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "old" } }); await waitFor(() => expect(request.mock.calls.some(([path]) => String(path).includes("search=old"))).toBe(true));
+    fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "new" } }); expect(await screen.findByText("NEW")).toBeVisible();
+    resolveOld([{ ...row, documentNumber: "OLD" }]); await Promise.resolve(); expect(screen.queryByText("OLD")).not.toBeInTheDocument();
+  });
+
+  it("uses semantic cells and ignores a response after unmount", async () => {
+    let resolve!: (value: unknown) => void; const request = vi.fn(() => new Promise((done) => { resolve = done; }));
+    const view = render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    view.unmount(); resolve([row]); await Promise.resolve();
+    const immediate = vi.fn().mockResolvedValue([row]); render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={immediate as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    expect(await screen.findAllByRole("cell")).toHaveLength(9);
+  });
 });

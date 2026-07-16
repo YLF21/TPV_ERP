@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
@@ -16,19 +16,21 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [search, setSearch] = useState(""); const [status, setStatus] = useState(""); const [documentType, setDocumentType] = useState("");
   const [overdue, setOverdue] = useState(false); const [dueFrom, setDueFrom] = useState(""); const [dueTo, setDueTo] = useState("");
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [selected, setSelected] = useState<CustomerReceivable | null>(null);
+  const loadGeneration = useRef(0);
   const canPay = hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     const query = new URLSearchParams();
     if (initialCustomerId) query.set("customerId", initialCustomerId); if (search.trim()) query.set("search", search.trim()); if (status) query.set("status", status);
     if (documentType) query.set("documentType", documentType); if (overdue) query.set("overdue", "true"); if (dueFrom) query.set("dueFrom", dueFrom); if (dueTo) query.set("dueTo", dueTo);
     setLoading(true); setError("");
-    try { setRows(await request<CustomerReceivable[]>(`/customer-receivables${query.size ? `?${query}` : ""}`, { token: session.accessToken })); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "No se pudieron cargar las deudas"); }
-    finally { setLoading(false); }
+    try { const result = await request<CustomerReceivable[]>(`/customer-receivables${query.size ? `?${query}` : ""}`, { token: session.accessToken }); if (generation === loadGeneration.current) setRows(result); }
+    catch (failure) { if (generation === loadGeneration.current) setError(failure instanceof Error ? failure.message : "No se pudieron cargar las deudas"); }
+    finally { if (generation === loadGeneration.current) setLoading(false); }
   }, [documentType, dueFrom, dueTo, initialCustomerId, overdue, request, search, session.accessToken, status]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { loadGeneration.current += 1; }; }, [load]);
 
   return <main className="customer-receivables-screen">
     <header className="entry-topbar"><strong>DEUDAS DE CLIENTES</strong></header>
@@ -48,8 +50,8 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         <div role="row" className="receivable-row header">{["Documento", "Cliente", "Emision", "Vencimiento", "Total", "Pagado", "Pendiente", "Estado", "Acciones"].map((value) => <span role="columnheader" key={value}>{value}</span>)}</div>
         {loading && <p>Cargando...</p>}
         {!loading && rows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId}>
-          <strong>{row.documentNumber}</strong><span>{row.customerName}</span><span>{row.issueDate}</span><span>{row.dueDate || "-"}</span><span>{money(row.total, locale)}</span><span>{money(row.paidTotal, locale)}</span><span>{money(row.pendingTotal, locale)}</span><span>{row.status}</span>
-          <span><button type="button" aria-label={`Cobrar ${row.documentNumber}`} disabled={!canPay || Number(row.pendingTotal) <= 0 || row.status === "PAGADO"} onClick={() => setSelected(row)}>Cobrar</button></span>
+          <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{row.status}</span>
+          <span role="cell"><button type="button" aria-label={`Cobrar ${row.documentNumber}`} disabled={!canPay || Number(row.pendingTotal) <= 0 || row.status === "PAGADO"} onClick={() => setSelected(row)}>Cobrar</button></span>
         </div>)}
       </div>
     </section>
