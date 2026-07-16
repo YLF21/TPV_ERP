@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -9,10 +10,16 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CommercialDocumentRepository extends JpaRepository<CommercialDocument, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from CommercialDocument d left join fetch d.pagos where d.id=:id and d.tiendaId=:storeId")
+    Optional<CommercialDocument> findLockedReceivable(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})

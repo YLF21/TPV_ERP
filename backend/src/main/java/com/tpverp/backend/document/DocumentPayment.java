@@ -60,6 +60,8 @@ public class DocumentPayment {
     private String cardAuthorizationCode;
     @Column(name = "terminal_cobro_id")
     private UUID paymentTerminalId;
+    @Column(name = "request_id", unique = true)
+    private UUID requestId;
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn;
     @Version
@@ -84,6 +86,28 @@ public class DocumentPayment {
             PaymentTerminalOperationStatus paymentTerminalStatus,
             String cardAuthorizationCode,
             UUID paymentTerminalId) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio,
+                voucherCode, referencia, creadoEn, cardMode, paymentTerminalProvider,
+                paymentTerminalStatus, cardAuthorizationCode, paymentTerminalId, null);
+    }
+
+    public DocumentPayment(
+            CommercialDocument documento,
+            PaymentMethod metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String referencia,
+            Instant creadoEn,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId,
+            UUID requestId) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
@@ -102,6 +126,7 @@ public class DocumentPayment {
         this.paymentTerminalStatus = paymentTerminalStatus;
         this.cardAuthorizationCode = optionalReference(cardAuthorizationCode);
         this.paymentTerminalId = paymentTerminalId;
+        this.requestId = requestId;
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
         validateCashAmounts();
         validatePaymentTerminalMetadata();
@@ -209,6 +234,10 @@ public class DocumentPayment {
 
     public UUID getPaymentTerminalId() {
         return paymentTerminalId;
+    }
+
+    public UUID getRequestId() {
+        return requestId;
     }
 
     // Adjusts only the principal payment when a ticket is administratively changed.
