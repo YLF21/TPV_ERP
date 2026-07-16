@@ -19,6 +19,9 @@ const HardwareSettingsScreen = lazy(() =>
     default: HardwareSettingsScreen
   }))
 );
+const CustomerReceivablesScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/CustomerReceivablesScreen").then(({ CustomerReceivablesScreen }) => ({ default: CustomerReceivablesScreen }))
+);
 const SaleScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SaleScreen").then(({ SaleScreen }) => ({ default: SaleScreen }))
 );
@@ -33,7 +36,8 @@ const StockScreen = lazy(() =>
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "settings" | "hardwareSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
+  const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
 
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
@@ -61,6 +65,11 @@ export function App() {
 
   const canOpenSalesReport =
     hasPermission(session, "GESTION_VENTAS") || hasPermission(session, "GESTION_CUENTAS");
+  const canOpenCustomerReceivables = hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
+
+  if (screen === "customerReceivables" && canOpenCustomerReceivables) {
+    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={devTerminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen("home"); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
+  }
 
   if (screen === "salesReport" && canOpenSalesReport) {
     return (
@@ -101,6 +110,7 @@ export function App() {
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
+        onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setScreen("customerReceivables"); }}
       />
     );
   }
@@ -146,6 +156,7 @@ export function App() {
       onOpenSales={() => setScreen("sale")}
       onOpenStock={() => setScreen("stock")}
       onOpenSalesReport={() => setScreen("salesReport")}
+      onOpenCustomerReceivables={() => { setReceivablesCustomerId(undefined); setScreen("customerReceivables"); }}
       onOpenSettings={() => setScreen("settings")}
     />
   );

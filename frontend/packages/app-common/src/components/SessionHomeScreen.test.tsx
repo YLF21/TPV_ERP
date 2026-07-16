@@ -129,4 +129,13 @@ describe("SessionHomeScreen", () => {
 
     expect(stockButton?.props.onClick).toBe(onOpenStock);
   });
+
+  it("shows customer receivables only with CUSTOMER_RECEIVABLES_READ", () => {
+    const onOpenCustomerReceivables = vi.fn();
+    const tree = SessionHomeScreen({ app: "venta", locale: "es", session: { ...session, permissions: ["CUSTOMER_RECEIVABLES_READ"] }, terminalContext, onLocaleChange: vi.fn(), onOpenCustomerReceivables });
+    const button = buttonsIn(tree).find((candidate) => directButtonText(candidate.props.children).includes("DEUDAS"));
+    expect(button?.props.onClick).toBe(onOpenCustomerReceivables);
+    const forbidden = SessionHomeScreen({ app: "venta", locale: "es", session: { ...session, permissions: [] }, terminalContext, onLocaleChange: vi.fn(), onOpenCustomerReceivables });
+    expect(buttonsIn(forbidden).some((candidate) => directButtonText(candidate.props.children).includes("DEUDAS"))).toBe(false);
+  });
 });

@@ -135,6 +135,7 @@ type StockScreenProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenDocument?: (documentId: string, documentType: string) => void | Promise<void>;
+  onOpenCustomerReceivables?: (customerId: string) => void;
 };
 
 type StockItemView = {
@@ -1648,7 +1649,8 @@ export function StockScreen({
   onBack,
   onLocaleChange,
   onLogout,
-  onOpenDocument
+  onOpenDocument,
+  onOpenCustomerReceivables
 }: StockScreenProps) {
   const t = createTranslator(locale);
   const stockTitle = t("home.stock").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
@@ -5868,7 +5870,7 @@ export function StockScreen({
             </header>
           )}
           {partyDirectory ? (
-            <PartyDirectoryPanel kind={partyDirectory} locale={locale} session={session} />
+            <PartyDirectoryPanel kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} />
           ) : warehouseDocumentMode ? (
             <WarehouseOperationsPanel
               mode={warehouseDocumentMode}

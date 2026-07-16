@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
-import type { LocaleCode, UserSession } from "../types";
+import type { LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpSelect } from "./ErpSelect";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
@@ -39,6 +39,10 @@ export const emptyPartyForm: PartyForm = {
   postalCode: "", city: "", province: "", country: "ES", notes: "", discount: "0", numMember: "",
   birthday: "", gender: "", commercialConsent: false, preferredCommercialChannelId: ""
 };
+
+export function customerReceivablesActionVisible(kind: PartyDirectoryKind, selected: boolean, permissions: Permission[]) {
+  return kind !== "suppliers" && selected && (permissions.includes("ADMIN") || permissions.includes("CUSTOMER_RECEIVABLES_READ"));
+}
 
 export function partyFormFromView(entry: CustomerView | SupplierView, supplier: boolean): PartyForm {
   const customer = entry as CustomerView;
@@ -88,7 +92,7 @@ export function validatePartyForm(form: PartyForm, supplier: boolean): string[] 
   return errors;
 }
 
-export function PartyDirectoryPanel({ kind, locale, session }: { kind: PartyDirectoryKind; locale: LocaleCode; session: UserSession }) {
+export function PartyDirectoryPanel({ kind, locale, session, onOpenCustomerReceivables }: { kind: PartyDirectoryKind; locale: LocaleCode; session: UserSession; onOpenCustomerReceivables?: (customerId: string) => void }) {
   const t = createTranslator(locale);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierView[]>([]);
@@ -225,7 +229,7 @@ export function PartyDirectoryPanel({ kind, locale, session }: { kind: PartyDire
           {isMember && selected && (selected as CustomerView).memberUuid && (
             <MemberLoyaltyPanel memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
           )}
-          <footer className="filter-actions">{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          <footer className="filter-actions">{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>Ver deudas</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
         </form>
       </section>
     </div>}

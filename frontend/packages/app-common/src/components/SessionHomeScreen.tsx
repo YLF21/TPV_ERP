@@ -19,6 +19,7 @@ type SessionHomeScreenProps = {
   onOpenSales?: () => void;
   onOpenStock?: () => void;
   onOpenSalesReport?: () => void;
+  onOpenCustomerReceivables?: () => void;
   onOpenSettings?: () => void;
 };
 
@@ -33,6 +34,7 @@ export function SessionHomeScreen({
   onOpenSales,
   onOpenStock,
   onOpenSalesReport,
+  onOpenCustomerReceivables,
   onOpenSettings
 }: SessionHomeScreenProps) {
   const t = createTranslator(locale);
@@ -42,6 +44,7 @@ export function SessionHomeScreen({
     || hasPermission(session, "STOCK_READ")
   );
   const canOpenReport = Boolean(onOpenSalesReport) && canOpenSalesReport;
+  const canOpenReceivables = Boolean(onOpenCustomerReceivables) && hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
   const canOpenSettings = Boolean(onOpenSettings);
 
   return (
@@ -91,6 +94,12 @@ export function SessionHomeScreen({
             >
               <img className="home-action-icon" alt="" src={reportIcon} />
               <span>{t("home.salesReport")}</span>
+            </button>
+          )}
+          {canOpenReceivables && (
+            <button type="button" className="home-action" onClick={onOpenCustomerReceivables}>
+              <img className="home-action-icon" alt="" src={reportIcon} />
+              <span>DEUDAS CLIENTES</span>
             </button>
           )}
           {canOpenSettings && (

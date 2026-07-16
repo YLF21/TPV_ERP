@@ -10,7 +10,7 @@ const session: UserSession = {
   userId: " CASHIER-1 ",
   username: "cashier",
   displayName: "Cashier",
-  permissions: [],
+  permissions: ["CUSTOMER_RECEIVABLES_READ"],
 };
 
 vi.mock("react-dom/client", () => ({
@@ -40,17 +40,24 @@ vi.mock("../../../packages/app-common/src/components/SessionHomeScreen", () => (
     locale,
     onLocaleChange,
     onLogout,
+    onOpenCustomerReceivables,
   }: {
     locale: LocaleCode;
     onLocaleChange: (locale: LocaleCode) => void;
     onLogout: () => void;
+    onOpenCustomerReceivables?: () => void;
   }) => (
     <section aria-label="home">
       <output aria-label="home locale">{locale}</output>
       <button type="button" onClick={() => onLocaleChange("zh")}>Change home locale</button>
       <button type="button" onClick={onLogout}>Log out</button>
+      <button type="button" onClick={onOpenCustomerReceivables}>Open receivables</button>
     </section>
   ),
+}));
+
+vi.mock("../../../packages/app-common/src/components/CustomerReceivablesScreen", () => ({
+  CustomerReceivablesScreen: ({ initialCustomerId, onBack }: { initialCustomerId?: string; onBack: () => void }) => <section aria-label="receivables"><output>{initialCustomerId}</output><button onClick={onBack}>Back home</button></section>
 }));
 
 import { App } from "./main";
@@ -75,5 +82,13 @@ describe("APP VENTA locale wiring", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
     expect(screen.getByLabelText("login locale")).toHaveTextContent("es");
+  });
+
+  it("opens the customer receivables screen from home", async () => {
+    render(<App />); fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open receivables" }));
+    expect(await screen.findByLabelText("receivables")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back home" }));
+    expect(screen.getByLabelText("home")).toBeVisible();
   });
 });

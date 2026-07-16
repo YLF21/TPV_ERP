@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPartyRequest, emptyPartyForm, partyFormFromView, validatePartyForm } from "./PartyDirectoryPanel";
+import { buildPartyRequest, customerReceivablesActionVisible, emptyPartyForm, partyFormFromView, validatePartyForm } from "./PartyDirectoryPanel";
 
 describe("PartyDirectoryPanel", () => {
   it("builds the complete customer request", () => {
@@ -40,5 +40,12 @@ describe("PartyDirectoryPanel", () => {
   it("requires a valid country and a channel when consent is enabled", () => {
     expect(validatePartyForm({ ...emptyPartyForm, name: "Ana", documentNumber: "1", country: "E", commercialConsent: true }, false))
       .toEqual(["country", "preferredCommercialChannelId"]);
+  });
+
+  it("offers the selected customer receivables action only for customer directories with read permission", () => {
+    expect(customerReceivablesActionVisible("customers", true, ["CUSTOMER_RECEIVABLES_READ"])).toBe(true);
+    expect(customerReceivablesActionVisible("members", true, ["ADMIN"])).toBe(true);
+    expect(customerReceivablesActionVisible("suppliers", true, ["ADMIN"])).toBe(false);
+    expect(customerReceivablesActionVisible("customers", false, ["ADMIN"])).toBe(false);
   });
 });
