@@ -1,12 +1,15 @@
 package com.tpverp.backend.inventory;
 
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_ADJUST;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.STOCK_TRANSFER;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
+import com.tpverp.backend.security.application.PermissionChecks;
+import com.tpverp.backend.shared.api.PagedResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -21,6 +24,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,15 +57,33 @@ public class StockController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<InventoryService.StockItem> list(
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) UUID warehouseId) {
         return service.stock(productId, warehouseId);
     }
 
+    @GetMapping("/page")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    public PagedResult<InventoryService.StockPageItem> page(
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String view,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String discount,
+            @RequestParam(required = false) UUID familyId,
+            @RequestParam(required = false) UUID taxId,
+            @RequestParam(required = false) Boolean offerActive,
+            Authentication authentication) {
+        return service.stockPage(
+                limit, cursor, search, view, type, discount, familyId, taxId, offerActive,
+                PermissionChecks.hasProductManagement(authentication));
+    }
+
     @GetMapping("/top-sales")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<StockTopSalesRow> topSales(
             @RequestParam(defaultValue = "week") String period,
             @RequestParam(required = false) LocalDate date,
@@ -80,7 +102,7 @@ public class StockController {
     }
 
     @GetMapping("/products/{productId}/sales-history")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "')")
     public List<StockSalesHistoryRow> salesHistory(
             @PathVariable UUID productId,
             @RequestParam(required = false) LocalDate from,
@@ -95,10 +117,17 @@ public class StockController {
     }
 
     @PutMapping("/settings")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
     public StockSettingsView updateSettings(
             @Valid @RequestBody StockSettingsCommand command) {
         return settingsService.updateSettings(command);
+    }
+
+    @PatchMapping("/settings/inactive-product-sales")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
+    public StockSettingsView updateInactiveProductSales(
+            @Valid @RequestBody InactiveProductSalesCommand command) {
+        return settingsService.updateInactiveProductSales(command);
     }
 
     @GetMapping("/minimums/{productId}/{warehouseId}")
@@ -109,7 +138,7 @@ public class StockController {
     }
 
     @PutMapping("/minimums/{productId}/{warehouseId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
     public StockMinimumView updateMinimum(
             @PathVariable UUID productId,
             @PathVariable UUID warehouseId,
@@ -119,20 +148,20 @@ public class StockController {
 
     @DeleteMapping("/minimums/{productId}/{warehouseId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
     public void deleteMinimum(
             @PathVariable UUID productId, @PathVariable UUID warehouseId) {
         settingsService.deleteMinimum(productId, warehouseId);
     }
 
     @GetMapping("/movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + VENTA + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<StockMovement> movements(@RequestParam UUID productId) {
         return service.movements(productId);
     }
 
     @PostMapping("/adjustments")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_ADJUST + "')")
     public InventoryService.StockItem adjust(
             @Valid @RequestBody AdjustmentRequest request, Authentication authentication) {
         return service.adjust(
@@ -141,7 +170,7 @@ public class StockController {
     }
 
     @PostMapping("/transfers")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_TRANSFER + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_TRANSFER + "')")
     public InventoryService.TransferResult transfer(
             @Valid @RequestBody TransferRequest request, Authentication authentication) {
         return service.transfer(
@@ -150,7 +179,7 @@ public class StockController {
     }
 
     @PostMapping("/snapshots/rebuild")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_ADJUST + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + STOCK_ADJUST + "')")
     public StockSnapshotRebuildResult rebuildSnapshots() {
         return snapshotRebuildService.rebuild();
     }

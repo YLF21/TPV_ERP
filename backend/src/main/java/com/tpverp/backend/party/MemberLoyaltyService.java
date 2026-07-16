@@ -69,6 +69,14 @@ public class MemberLoyaltyService {
     }
 
     @Transactional(readOnly = true)
+    public List<MemberDirectoryView> list() {
+        return members.findByCompanyIdOrderByCustomerFiscalNameAsc(context.currentCompany().getId())
+                .stream()
+                .map(MemberDirectoryView::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<MemberMovementView> movements(UUID memberId) {
         var member = member(memberId);
         return movements.findByMemberIdOrderByCreatedAtDesc(member.getId()).stream()
@@ -498,6 +506,39 @@ public class MemberLoyaltyService {
                     member.getOfficialMemberBalance(), member.getOfficialMemberPoints(),
                     member.getOfficialSyncedAt(),
                     member.isAutoCategoryLocked(), member.isActive());
+        }
+    }
+
+    public record MemberDirectoryView(
+            UUID id,
+            UUID customerId,
+            String memberId,
+            String numMember,
+            java.time.LocalDate memberSince,
+            BigDecimal balance,
+            long points,
+            UUID categoryId,
+            String categoryName,
+            boolean active,
+            boolean customerActive,
+            String clientId,
+            String fiscalName,
+            DocumentType documentType,
+            String documentNumber,
+            String phone,
+            String email) {
+
+        static MemberDirectoryView from(Member member) {
+            var customer = member.getCustomer();
+            var category = member.getMemberCategory();
+            return new MemberDirectoryView(
+                    member.getId(), customer.getId(), member.getMemberId(), member.getNumMember(),
+                    member.getMemberSince(), member.getMemberBalance(), member.getMemberPoints(),
+                    category == null ? null : category.getId(),
+                    category == null ? null : category.getName(),
+                    member.isActive(), customer.isActive(), customer.getClientId(),
+                    customer.getFiscalName(), customer.getDocumentType(), customer.getDocumentNumber(),
+                    customer.getPhone(), customer.getEmail());
         }
     }
 

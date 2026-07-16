@@ -164,6 +164,37 @@ class ProductBulkEditControllerContractTest {
     }
 
     @Test
+    void createAcceptsPersistedProductFieldsUsedByTheBulkEditor() throws Exception {
+        mvc.perform(post("/api/v1/product-bulk-edits")
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"Revision",
+                                  "content":[{
+                                    "id":"row-1",
+                                    "selected":false,
+                                    "query":"P-1",
+                                    "product":{
+                                      "productId":"11111111-1111-1111-1111-111111111111",
+                                      "version":1,
+                                      "quantity":"0",
+                                      "totalQuantity":"0",
+                                      "packageQuantity":"6"
+                                    },
+                                    "draft":{},
+                                    "suppliers":[]
+                                  }]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(service).create(
+                any(ProductBulkEditService.ProductBulkCreateRequest.class), any());
+    }
+
+    @Test
     void updateApplyAndDeleteRequireTheCurrentVersion() throws Exception {
         UUID id = UUID.randomUUID();
         var manager = user("manager").authorities(() -> GESTION_PRODUCTO);

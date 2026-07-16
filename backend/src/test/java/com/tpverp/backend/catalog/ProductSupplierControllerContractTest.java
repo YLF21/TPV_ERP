@@ -1,7 +1,6 @@
 package com.tpverp.backend.catalog;
 
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_READ;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.PRODUCTS_WRITE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,26 +50,26 @@ class ProductSupplierControllerContractTest {
     private ProductSupplierService service;
 
     @Test
-    void exposesProductSupplierEndpointsWithProductPermissions() throws Exception {
+    void exposesProductSupplierEndpointsWithProductManagementPermission() throws Exception {
         RequestMapping root = ProductSupplierController.class.getAnnotation(RequestMapping.class);
         assertThat(root.value()).containsExactly("/api/v1/products/{productId}/suppliers");
 
         assertEndpoint(
                 "list",
-                PRODUCTS_READ,
+                GESTION_PRODUCTO,
                 GetMapping.class,
                 new String[0],
                 UUID.class);
         assertEndpoint(
                 "link",
-                PRODUCTS_WRITE,
+                GESTION_PRODUCTO,
                 PostMapping.class,
                 new String[0],
                 UUID.class,
                 ProductSupplierController.LinkRequest.class);
         assertEndpoint(
                 "update",
-                PRODUCTS_WRITE,
+                GESTION_PRODUCTO,
                 PutMapping.class,
                 new String[] {"/{supplierId}"},
                 UUID.class,
@@ -78,7 +77,7 @@ class ProductSupplierControllerContractTest {
                 ProductSupplierController.ReferenceRequest.class);
         assertEndpoint(
                 "unlink",
-                PRODUCTS_WRITE,
+                GESTION_PRODUCTO,
                 DeleteMapping.class,
                 new String[] {"/{supplierId}"},
                 UUID.class,
@@ -105,11 +104,10 @@ class ProductSupplierControllerContractTest {
         when(service.link(PRODUCT_ID, SUPPLIER_ID, "REF-POST", true)).thenReturn(view);
         when(service.update(PRODUCT_ID, SUPPLIER_ID, "REF-PUT", false)).thenReturn(view);
 
-        mvc.perform(get(path()).with(user("reader").authorities(
-                        () -> PRODUCTS_READ, () -> PRODUCTS_WRITE)))
+        mvc.perform(get(path()).with(user("manager").authorities(() -> GESTION_PRODUCTO)))
                 .andExpect(status().isOk());
         mvc.perform(post(path())
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -117,7 +115,7 @@ class ProductSupplierControllerContractTest {
                                 """.formatted(SUPPLIER_ID)))
                 .andExpect(status().isOk());
         mvc.perform(put(path() + "/" + SUPPLIER_ID)
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -133,7 +131,7 @@ class ProductSupplierControllerContractTest {
     @Test
     void deletesAProductSupplierLinkWithNoContent() throws Exception {
         mvc.perform(delete(path() + "/" + SUPPLIER_ID)
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf()))
                 .andExpect(status().isNoContent());
 
@@ -143,7 +141,7 @@ class ProductSupplierControllerContractTest {
     @Test
     void rejectsSupplierReferencesLongerThan128Characters() throws Exception {
         mvc.perform(post(path())
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -155,7 +153,7 @@ class ProductSupplierControllerContractTest {
     @Test
     void rejectsUpdatedSupplierReferencesLongerThan128Characters() throws Exception {
         mvc.perform(put(path() + "/" + SUPPLIER_ID)
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -178,7 +176,7 @@ class ProductSupplierControllerContractTest {
                 .when(service).unlink(PRODUCT_ID, SUPPLIER_ID);
 
         mvc.perform(post(path())
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -186,7 +184,7 @@ class ProductSupplierControllerContractTest {
                                 """.formatted(SUPPLIER_ID)))
                 .andExpect(status().isConflict());
         mvc.perform(delete(path() + "/" + SUPPLIER_ID)
-                        .with(user("writer").authorities(() -> PRODUCTS_WRITE))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf()))
                 .andExpect(status().isConflict());
     }

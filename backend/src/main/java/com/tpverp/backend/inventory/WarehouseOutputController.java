@@ -1,13 +1,9 @@
 package com.tpverp.backend.inventory;
 
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_CONFIRM;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_DELETE;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_EDIT;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSE_OUTPUTS_READ;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 
+import com.tpverp.backend.shared.api.PagedResult;
 import jakarta.validation.Valid;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,15 +30,16 @@ public class WarehouseOutputController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_READ + "','" + WAREHOUSE_OUTPUTS_EDIT + "','"
-            + WAREHOUSE_OUTPUTS_DELETE + "','" + WAREHOUSE_OUTPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
-    public List<WarehouseOutputView> list() {
-        return service.list().stream().map(WarehouseOutputView::from).toList();
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
+    public PagedResult<WarehouseOutputView> list(
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor) {
+        return service.listPage(limit, cursor);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
     public WarehouseOutput create(
             @Valid @RequestBody WarehouseOutputCommand command,
             Authentication authentication) {
@@ -49,7 +47,7 @@ public class WarehouseOutputController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_EDIT + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
     public WarehouseOutput update(
             @PathVariable UUID id,
             @Valid @RequestBody WarehouseOutputCommand command) {
@@ -58,13 +56,13 @@ public class WarehouseOutputController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_DELETE + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
     public void delete(@PathVariable UUID id) {
         service.delete(id);
     }
 
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSE_OUTPUTS_CONFIRM + "','" + GESTION_PRODUCTO + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')")
     public WarehouseOutput confirm(
             @PathVariable UUID id, Authentication authentication) {
         return service.confirm(id, authentication);

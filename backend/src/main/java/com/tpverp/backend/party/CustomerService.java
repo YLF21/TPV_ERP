@@ -53,8 +53,8 @@ public class CustomerService {
     public CustomerView create(CustomerCommand command) {
         var company = context.currentCompany();
         var store = context.currentStore();
+        rejectDirectMemberCreation(command);
         ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
-        ensureUniqueMemberNumber(company.getId(), command.numMember(), null);
         var customer = new Customer(
                 company, command.fiscalName(), command.documentType(), command.documentNumber(),
                 command.address(), command.phone(), command.email(), command.notes(),
@@ -64,15 +64,7 @@ public class CustomerService {
                 command.preferredCommercialChannelId());
         customer.assignClientCode(store.getId(), codes.nextClient(store));
         customer = customers.save(customer);
-        Member member = null;
-        if (command.member()) {
-            member = new Member(customer, codes.nextMember(store), LocalDate.now(clock));
-            member.assignMemberStore(store.getId());
-            member.setNumMember(command.numMember());
-            members.save(member);
-            memberLoyalty.activateMember(member);
-        }
-        return view(customer, member);
+        return view(customer, null);
     }
 
     @Transactional
@@ -82,13 +74,13 @@ public class CustomerService {
         }
         var company = context.currentCompany();
         var store = context.currentStore();
+        commands.forEach(this::rejectDirectMemberCreation);
         List<CustomerCommand> ordered = commands.stream()
                 .sorted(Comparator.comparing(
                         command -> PartyValues.document(command.documentNumber())))
                 .toList();
         ordered.forEach(command -> {
             ensureUnique(company.getId(), command.documentType(), command.documentNumber(), null);
-            ensureUniqueMemberNumber(company.getId(), command.numMember(), null);
         });
         List<String> reservedCodes = codes.nextClients(store, ordered.size());
         var pending = new java.util.ArrayList<Customer>(ordered.size());
@@ -105,16 +97,6 @@ public class CustomerService {
             pending.add(customer);
         }
         List<Customer> saved = customers.saveAll(pending);
-        for (int index = 0; index < saved.size(); index++) {
-            CustomerCommand command = ordered.get(index);
-            if (command.member()) {
-                var member = new Member(saved.get(index), codes.nextMember(store), LocalDate.now(clock));
-                member.assignMemberStore(store.getId());
-                member.setNumMember(command.numMember());
-                members.save(member);
-                memberLoyalty.activateMember(member);
-            }
-        }
         return saved.stream().map(this::view).toList();
     }
 
@@ -165,6 +147,9 @@ public class CustomerService {
     @Transactional
     public CustomerView activateMember(UUID id) {
         Customer customer = customer(id);
+        if (!customer.isActive()) {
+            throw new IllegalStateException("message.member.customer_inactive");
+        }
         Member member = members.findByCustomerIdAndCompanyId(id, context.currentCompany().getId())
                 .orElseGet(() -> {
                     var store = context.currentStore();
@@ -236,6 +221,12 @@ public class CustomerService {
     private Customer customer(UUID id) {
         return customers.findByIdAndCompanyId(id, context.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado"));
+    }
+
+    private void rejectDirectMemberCreation(CustomerCommand command) {
+        if (command.member()) {
+            throw new IllegalArgumentException("message.member.customer_must_exist");
+        }
     }
 
     private void ensureUnique(

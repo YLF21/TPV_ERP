@@ -99,7 +99,8 @@ class ProductPriceRuleServiceTest {
         ProductPriceRule rule = rule(userId, List.of(form));
         stubRule(rule, product);
 
-        ProductPriceRulePreview preview = service.preview(rule.getId(), rule.getVersion());
+        ProductPriceRulePreview preview = service.preview(
+                rule.getId(), rule.getVersion(), List.of(product.getId()));
 
         assertThat(preview.matchedProducts()).isEqualTo(1);
         assertThat(preview.products()).singleElement().satisfies(change -> {
@@ -113,26 +114,7 @@ class ProductPriceRuleServiceTest {
         });
         verify(catalog).validateProductUpdate(
                 org.mockito.ArgumentMatchers.eq(product.getId()), any());
-    }
-
-    @Test
-    void applyDelegatesCompleteRowsToCatalogBulkUpdate() {
-        Product product = product();
-        ProductPriceRule rule = rule(userId, List.of(fixedPriceForm("22.40")));
-        stubRule(rule, product);
-
-        ProductPriceRulePreview applied = service.apply(rule.getId(), rule.getVersion());
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<CatalogService.BulkProductUpdate>> captor = ArgumentCaptor.forClass(List.class);
-        verify(catalog).updateProducts(captor.capture());
-        assertThat(captor.getValue()).singleElement().satisfies(update -> {
-            assertThat(update.productId()).isEqualTo(product.getId());
-            assertThat(update.product().salePrice()).isEqualByComparingTo("22.40");
-            assertThat(update.product().familyId()).isEqualTo(product.getFamilyId());
-            assertThat(update.product().code()).isEqualTo("P-1");
-        });
-        assertThat(applied.products()).hasSize(1);
+        verify(catalog, never()).updateProducts(any());
     }
 
     @Test
@@ -152,7 +134,7 @@ class ProductPriceRuleServiceTest {
         ProductPriceRule rule = rule(userId, List.of(form));
         stubRule(rule, product);
 
-        service.preview(rule.getId(), rule.getVersion());
+        service.preview(rule.getId(), rule.getVersion(), List.of(product.getId()));
 
         ArgumentCaptor<CatalogService.ProductRequest> captor =
                 ArgumentCaptor.forClass(CatalogService.ProductRequest.class);
@@ -181,7 +163,7 @@ class ProductPriceRuleServiceTest {
         ProductPriceRule rule = rule(userId, List.of(form));
         stubRule(rule, product);
 
-        service.preview(rule.getId(), rule.getVersion());
+        service.preview(rule.getId(), rule.getVersion(), List.of(product.getId()));
 
         ArgumentCaptor<CatalogService.ProductRequest> captor =
                 ArgumentCaptor.forClass(CatalogService.ProductRequest.class);
@@ -217,7 +199,8 @@ class ProductPriceRuleServiceTest {
         ProductPriceRule rule = rule(userId, List.of(offerPrice, offerDiscount));
         stubRule(rule, product);
 
-        assertThatThrownBy(() -> service.preview(rule.getId(), rule.getVersion()))
+        assertThatThrownBy(() -> service.preview(
+                rule.getId(), rule.getVersion(), List.of(product.getId())))
                 .isInstanceOfSatisfying(ProductPriceRuleConflictException.class, conflict -> {
                     assertThat(conflict.getProductId()).isEqualTo(product.getId());
                     assertThat(conflict.getField())
@@ -233,7 +216,8 @@ class ProductPriceRuleServiceTest {
                 fixedPriceForm("20.00"), fixedPriceForm("21.00")));
         stubRule(rule, product);
 
-        assertThatThrownBy(() -> service.preview(rule.getId(), rule.getVersion()))
+        assertThatThrownBy(() -> service.preview(
+                rule.getId(), rule.getVersion(), List.of(product.getId())))
                 .isInstanceOfSatisfying(ProductPriceRuleConflictException.class, conflict -> {
                     assertThat(conflict.getProductId()).isEqualTo(product.getId());
                     assertThat(conflict.getField()).isEqualTo(ProductPriceRulePreview.Field.SALE_PRICE);
@@ -270,11 +254,12 @@ class ProductPriceRuleServiceTest {
         ProductPriceRule rule = rule(userId, List.of(fixedPriceForm("20.00")));
         when(repository.findByIdAndCompanyId(rule.getId(), companyId)).thenReturn(Optional.of(rule));
 
-        assertThatThrownBy(() -> service.preview(rule.getId(), rule.getVersion() + 1))
+        assertThatThrownBy(() -> service.preview(
+                rule.getId(), rule.getVersion() + 1, List.of(UUID.randomUUID())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Conflicto de version");
 
-        verify(products, never()).findByStoreIdOrderByNombre(any());
+        verify(products, never()).findAllByStoreIdAndIdIn(any(), any());
     }
 
     @Test
@@ -295,11 +280,11 @@ class ProductPriceRuleServiceTest {
         when(rule.getForms()).thenReturn(List.of(invalid));
         when(repository.findByIdAndCompanyId(ruleId, companyId)).thenReturn(Optional.of(rule));
 
-        assertThatThrownBy(() -> service.preview(ruleId, 0L))
+        assertThatThrownBy(() -> service.preview(ruleId, 0L, List.of(UUID.randomUUID())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("NUMBER.TOTAL_STOCK no se admite para PRICES");
 
-        verify(products, never()).findByStoreIdOrderByNombre(any());
+        verify(products, never()).findAllByStoreIdAndIdIn(any(), any());
     }
 
     @Test
@@ -311,7 +296,8 @@ class ProductPriceRuleServiceTest {
                 .when(catalog).validateProductUpdate(
                         org.mockito.ArgumentMatchers.eq(product.getId()), any());
 
-        assertThatThrownBy(() -> service.preview(rule.getId(), rule.getVersion()))
+        assertThatThrownBy(() -> service.preview(
+                rule.getId(), rule.getVersion(), List.of(product.getId())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("oferta no valida");
 
@@ -328,9 +314,27 @@ class ProductPriceRuleServiceTest {
                 .hasMessageContaining("99.99");
     }
 
+    @Test
+    void previewRejectsTargetsOutsideTheSelectedStoreProducts() {
+        Product selected = product();
+        UUID missingProductId = UUID.randomUUID();
+        ProductPriceRule rule = rule(userId, List.of(fixedPriceForm("20.00")));
+        when(repository.findByIdAndCompanyId(rule.getId(), companyId)).thenReturn(Optional.of(rule));
+        when(products.findAllByStoreIdAndIdIn(
+                org.mockito.ArgumentMatchers.eq(storeId), any())).thenReturn(List.of(selected));
+
+        assertThatThrownBy(() -> service.preview(
+                rule.getId(), rule.getVersion(), List.of(selected.getId(), missingProductId)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("tienda actual");
+
+        verify(catalog, never()).validateProductUpdate(any(), any());
+    }
+
     private void stubRule(ProductPriceRule rule, Product product) {
         when(repository.findByIdAndCompanyId(rule.getId(), companyId)).thenReturn(Optional.of(rule));
-        when(products.findByStoreIdOrderByNombre(storeId)).thenReturn(List.of(product));
+        when(products.findAllByStoreIdAndIdIn(
+                org.mockito.ArgumentMatchers.eq(storeId), any())).thenReturn(List.of(product));
     }
 
     private ProductPriceRule rule(

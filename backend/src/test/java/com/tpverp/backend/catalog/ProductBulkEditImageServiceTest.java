@@ -203,6 +203,40 @@ class ProductBulkEditImageServiceTest {
         assertThat(saved.getContent()).containsExactly(1, 2, 3);
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void reusesOneReceivedFileForSeveralProductAssignments() {
+        UUID firstProductId = UUID.randomUUID();
+        UUID secondProductId = UUID.randomUUID();
+        Product firstProduct = org.mockito.Mockito.mock(Product.class);
+        Product secondProduct = org.mockito.Mockito.mock(Product.class);
+        when(firstProduct.getId()).thenReturn(firstProductId);
+        when(secondProduct.getId()).thenReturn(secondProductId);
+        when(edits.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(images.findByEdicion_IdOrderByPosicionAsc(edit.getId())).thenReturn(List.of());
+        when(products.findAllByStoreIdAndIdIn(eq(storeId), anyCollection()))
+                .thenReturn(List.of(firstProduct, secondProduct));
+
+        service.sync(
+                edit.getId(),
+                new ProductBulkEditImageService.ProductBulkEditImageSyncRequest(
+                        edit.getVersion(),
+                        List.of(
+                                new ProductBulkEditImageService.ProductBulkEditImageSyncItem(
+                                        null, firstProductId, 0),
+                                new ProductBulkEditImageService.ProductBulkEditImageSyncItem(
+                                        null, secondProductId, 0))),
+                List.of(new ProductBulkEditImageService.ProductBulkEditImageUpload(
+                        "compartida.png", "image/png", new byte[] {1, 2, 3})),
+                authentication());
+
+        ArgumentCaptor<List<ProductBulkEditImage>> captor = ArgumentCaptor.forClass(List.class);
+        verify(images).saveAll(captor.capture());
+        assertThat(captor.getValue()).extracting(ProductBulkEditImage::getProductId)
+                .containsExactly(firstProductId, secondProductId);
+        verify(productImages).validateUpload(new byte[] {1, 2, 3});
+    }
+
     private ProductBulkEditImage image(
             UUID productId, int position, String fileName, byte[] content) {
         return new ProductBulkEditImage(

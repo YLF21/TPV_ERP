@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
 import {
@@ -117,6 +117,15 @@ type SharedExcelImportStoredSettings = {
   updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>>;
 };
 
+type DragScrollState = {
+  element: HTMLDivElement;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
 const excelImportStoragePrefix = "tpv.sharedExcelImport.v1";
 
 export function SharedExcelImportDialog({
@@ -138,6 +147,7 @@ export function SharedExcelImportDialog({
 }: SharedExcelImportDialogProps) {
   const t = createTranslator(locale);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragScrollRef = useRef<DragScrollState | null>(null);
   const storedSettings = loadStoredExcelImportSettings(terminalContext);
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [sheet, setSheet] = useState<ExcelSheet>(providedSheet ?? []);
@@ -309,6 +319,53 @@ export function SharedExcelImportDialog({
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
+  function startDragScroll(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    const target = event.target;
+    if (target instanceof Element && target.closest("button,input,select,textarea,a")) {
+      return;
+    }
+    const element = event.currentTarget;
+    dragScrollRef.current = {
+      element,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: element.scrollLeft,
+      scrollTop: element.scrollTop
+    };
+    element.dataset.dragging = "true";
+    element.setPointerCapture(event.pointerId);
+  }
+
+  function moveDragScroll(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragScrollRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+      event.preventDefault();
+    }
+    drag.element.scrollLeft = drag.scrollLeft - deltaX;
+    drag.element.scrollTop = drag.scrollTop - deltaY;
+  }
+
+  function endDragScroll(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragScrollRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    delete drag.element.dataset.dragging;
+    if (drag.element.hasPointerCapture(event.pointerId)) {
+      drag.element.releasePointerCapture(event.pointerId);
+    }
+    dragScrollRef.current = null;
+  }
+
   return (
     <div className="filter-overlay shared-excel-overlay" role="dialog" aria-modal="true" aria-labelledby="shared-excel-title">
       <section className="filter-dialog shared-excel-dialog">
@@ -349,7 +406,13 @@ export function SharedExcelImportDialog({
               </ol>
             </div>
           ) : (
-            <div className="shared-excel-preview">
+            <div
+              className="shared-excel-preview"
+              onPointerCancel={endDragScroll}
+              onPointerDown={startDragScroll}
+              onPointerMove={moveDragScroll}
+              onPointerUp={endDragScroll}
+            >
               <table>
                 <thead>
                   <tr>
@@ -436,7 +499,13 @@ export function SharedExcelImportDialog({
               </div>
             </div>
           ) : (
-            <div className="shared-excel-results">
+            <div
+              className="shared-excel-results"
+              onPointerCancel={endDragScroll}
+              onPointerDown={startDragScroll}
+              onPointerMove={moveDragScroll}
+              onPointerUp={endDragScroll}
+            >
               {activePanel === "summary" && renderResultTable({
                 title: "Documento resumen",
                 rows: existingRows,

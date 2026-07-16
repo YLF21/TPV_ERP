@@ -107,7 +107,7 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
-    void seedsFrontendRoleWithPartyAndWarehousePermissions() {
+    void seedsSalesRoleWithoutWarehouseManagementPermission() {
         var permissions = jdbc.queryForList("""
                 select permiso.codigo
                 from rol
@@ -120,15 +120,8 @@ class DevSampleDataSeederPostgreSqlTest {
                 "CUSTOMERS_READ",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_READ",
-                "SUPPLIERS_WRITE",
-                "WAREHOUSE_INPUTS_READ",
-                "WAREHOUSE_INPUTS_WRITE",
-                "WAREHOUSE_INPUTS_DELETE",
-                "WAREHOUSE_INPUTS_CONFIRM",
-                "WAREHOUSE_OUTPUTS_READ",
-                "WAREHOUSE_OUTPUTS_EDIT",
-                "WAREHOUSE_OUTPUTS_DELETE",
-                "WAREHOUSE_OUTPUTS_CONFIRM");
+                "SUPPLIERS_WRITE")
+                .doesNotContain("GESTION_ALMACEN");
     }
 
     @Test

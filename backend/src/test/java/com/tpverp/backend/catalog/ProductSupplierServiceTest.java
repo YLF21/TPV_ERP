@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -83,6 +84,52 @@ class ProductSupplierServiceTest {
         assertThat(result.principal()).isTrue();
         verify(links).lockProduct(product.getId());
         verify(links).clearPrincipal(product.getId(), supplier.getId());
+    }
+
+    @Test
+    void setPrincipalRequiresAnExistingLinkAndPreservesItsReference() {
+        var existing = new ProductSupplier(product, supplier, "REF-EXISTENTE");
+        currentStore();
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.of(existing));
+
+        var result = service.setPrincipal(product.getId(), supplier.getId());
+
+        assertThat(result.principal()).isTrue();
+        assertThat(result.supplierReference()).isEqualTo("REF-EXISTENTE");
+        var ordered = inOrder(links);
+        ordered.verify(links).lockProduct(product.getId());
+        ordered.verify(links).clearPrincipal(product.getId(), supplier.getId());
+    }
+
+    @Test
+    void setPrincipalRejectsAMissingLinkBeforeLockingTheProduct() {
+        currentStore();
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+        when(links.findByProduct_IdAndSupplier_Id(product.getId(), supplier.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setPrincipal(product.getId(), supplier.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no vinculado");
+
+        verify(links, never()).lockProduct(any(UUID.class));
+        verify(links, never()).clearPrincipal(any(UUID.class), any(UUID.class));
+    }
+
+    @Test
+    void clearPrincipalLocksTheProductAndDoesNotLoadOrChangeAnyLink() {
+        currentStore();
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
+
+        service.clearPrincipal(product.getId());
+
+        var ordered = inOrder(links);
+        ordered.verify(links).lockProduct(product.getId());
+        ordered.verify(links).clearPrincipal(product.getId());
+        verify(links, never()).findByProduct_IdAndSupplier_Id(any(), any());
+        verify(links, never()).save(any());
     }
 
     @Test
@@ -288,7 +335,7 @@ class ProductSupplierServiceTest {
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
@@ -313,7 +360,7 @@ class ProductSupplierServiceTest {
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.eq("REF-1"),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
@@ -321,13 +368,12 @@ class ProductSupplierServiceTest {
     }
 
     @Test
-    void confirmedPurchaseDoesNotReplaceAnExistingPrincipalSupplier() {
+    void confirmedPurchaseNeverReadsOrChangesPrincipalState() {
         currentStoreAndCompany();
         when(suppliers.findByIdAndCompanyId(supplier.getId(), company.getId()))
                 .thenReturn(Optional.of(supplier));
         when(products.findAllByStoreIdAndIdIn(eq(store.getId()), any()))
                 .thenReturn(List.of(product));
-        when(links.existsByProduct_IdAndPrincipalTrue(product.getId())).thenReturn(true);
 
         Instant entryAt = Instant.parse("2026-06-09T10:15:30Z");
         service.record(supplier.getId(), entryAt, List.of(
@@ -342,6 +388,9 @@ class ProductSupplierServiceTest {
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),
                 org.mockito.ArgumentMatchers.eq(entryAt));
+        verify(links, never()).existsByProduct_IdAndPrincipalTrue(any(UUID.class));
+        verify(links, never()).clearPrincipal(any(UUID.class), any(UUID.class));
+        verify(links, never()).clearPrincipal(any(UUID.class));
     }
 
 
@@ -361,7 +410,7 @@ class ProductSupplierServiceTest {
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("0.00")),
@@ -386,7 +435,7 @@ class ProductSupplierServiceTest {
         verify(links).upsertPurchase(
                 any(), eq(product.getId()), eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(false),
                 eq(new BigDecimal("2.50")), eq(new BigDecimal("0.00")), eq(oldEntry));
     }
@@ -413,7 +462,7 @@ class ProductSupplierServiceTest {
                 any(), org.mockito.ArgumentMatchers.eq(product.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("2.50")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("10.00")),
@@ -422,7 +471,7 @@ class ProductSupplierServiceTest {
                 any(), org.mockito.ArgumentMatchers.eq(secondProduct.getId()),
                 org.mockito.ArgumentMatchers.eq(supplier.getId()),
                 org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("3.00")),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("5.00")),

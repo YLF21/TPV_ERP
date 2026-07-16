@@ -3,6 +3,7 @@ package com.tpverp.backend.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -28,7 +29,7 @@ class WarehouseInputControllerContractTest {
 
     @Test
     void exposesListCreateUpdateDeleteAndConfirmEndpoints() throws NoSuchMethodException {
-        var list = WarehouseInputController.class.getDeclaredMethod("list");
+        var list = WarehouseInputController.class.getDeclaredMethod("list", Integer.class, String.class);
         var create = WarehouseInputController.class.getDeclaredMethod(
                 "create", WarehouseInputCommand.class, org.springframework.security.core.Authentication.class);
         var update = WarehouseInputController.class.getDeclaredMethod(
@@ -39,7 +40,7 @@ class WarehouseInputControllerContractTest {
 
         assertThat(list.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(list.getGenericReturnType().getTypeName())
-                .contains("java.util.List", "WarehouseInputView");
+                .contains("PagedResult", "WarehouseInputView");
         assertThat(create.getAnnotation(PostMapping.class).value()).isEmpty();
         assertThat(create.getAnnotation(ResponseStatus.class).value()).isEqualTo(HttpStatus.CREATED);
         assertThat(update.getAnnotation(PutMapping.class).value()).containsExactly("/{id}");
@@ -49,21 +50,9 @@ class WarehouseInputControllerContractTest {
         assertThat(Arrays.stream(update.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(PathVariable.class)))
                 .hasSize(1);
-        assertThat(list.getAnnotation(PreAuthorize.class).value())
-                .contains(
-                        "WAREHOUSE_INPUTS_READ",
-                        "WAREHOUSE_INPUTS_WRITE",
-                        "WAREHOUSE_INPUTS_DELETE",
-                        "WAREHOUSE_INPUTS_CONFIRM",
-                        "GESTION_PRODUCTO",
-                        "hasRole('ADMIN')");
-        assertThat(create.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSE_INPUTS_WRITE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
-        assertThat(update.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSE_INPUTS_WRITE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
-        assertThat(delete.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSE_INPUTS_DELETE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
-        assertThat(confirm.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSE_INPUTS_CONFIRM", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+        assertThat(List.of(list, create, update, delete, confirm))
+                .allSatisfy(method -> assertThat(method.getAnnotation(PreAuthorize.class).value())
+                        .contains("GESTION_ALMACEN", "hasRole('ADMIN')")
+                        .doesNotContain("GESTION_PRODUCTO", "WAREHOUSE_INPUTS_"));
     }
 }

@@ -47,6 +47,34 @@ class MemberLoyaltyServiceTest {
     @Mock PartyContext context;
 
     @Test
+    void listsActiveAndInactiveMembersWithTheirOwnAndCustomerStatus() {
+        var company = PartyTestData.company();
+        var activeCustomer = new Customer(company, "Ana", DocumentType.NIF, "1",
+                null, "600000001", "ana@example.com", null, CustomerRate.VENTA, BigDecimal.ZERO);
+        activeCustomer.assignClientCode(UUID.randomUUID(), "C-001-000001");
+        var inactiveCustomer = new Customer(company, "Luis", DocumentType.NIF, "2",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        inactiveCustomer.assignClientCode(UUID.randomUUID(), "C-001-000002");
+        inactiveCustomer.deactivate();
+        var activeMember = new Member(activeCustomer, "M-001-000001", LocalDate.of(2026, 7, 1));
+        var inactiveMember = new Member(inactiveCustomer, "M-001-000002", LocalDate.of(2026, 7, 2));
+        inactiveMember.deactivate();
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCompanyIdOrderByCustomerFiscalNameAsc(company.getId()))
+                .thenReturn(java.util.List.of(activeMember, inactiveMember));
+
+        var result = service().list();
+
+        assertThat(result).extracting(
+                MemberLoyaltyService.MemberDirectoryView::memberId,
+                MemberLoyaltyService.MemberDirectoryView::active,
+                MemberLoyaltyService.MemberDirectoryView::customerActive)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("M-001-000001", true, true),
+                        org.assertj.core.groups.Tuple.tuple("M-001-000002", false, false));
+    }
+
+    @Test
     void accruesPointsBalanceLotAndSyncFromPaidSalesAmount() {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);

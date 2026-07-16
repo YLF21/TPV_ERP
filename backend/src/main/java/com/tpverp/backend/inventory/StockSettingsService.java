@@ -56,6 +56,23 @@ public class StockSettingsService {
     }
 
     @Transactional
+    public StockSettingsView updateInactiveProductSales(InactiveProductSalesCommand command) {
+        Objects.requireNonNull(command, "command");
+        var storeId = organization.currentStore().getId();
+        var current = settingsFor(storeId);
+        current.setAllowInactiveProductSales(Objects.requireNonNull(
+                command.allowInactiveProductSales(), "allowInactiveProductSales"));
+        return view(settings.save(current));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean allowsInactiveProductSales(UUID storeId) {
+        return settings.findById(Objects.requireNonNull(storeId, "storeId"))
+                .map(StockSettings::isAllowInactiveProductSales)
+                .orElse(false);
+    }
+
+    @Transactional
     public StockMinimumView minimum(UUID productId, UUID warehouseId) {
         var storeId = organization.currentStore().getId();
         validateReferences(productId, warehouseId, storeId);
@@ -123,7 +140,8 @@ public class StockSettingsService {
                 value.getDefaultWarehouseId(),
                 value.isAllowNegativeStock(),
                 value.getDefaultMinimumStock(),
-                value.isAlertsEnabled());
+                value.isAlertsEnabled(),
+                value.isAllowInactiveProductSales());
     }
 
     private static StockMinimumView minimumView(StockMinimum value, boolean overridden) {

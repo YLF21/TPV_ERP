@@ -24,6 +24,7 @@ import {
   runGuardedCardOpening,
   saleMainMessage,
   saleMainProductCount,
+  saleSelectableProducts,
   effectiveSaleLineDiscount,
   effectiveSaleProductPrice,
   filterSaleCustomers,
@@ -819,6 +820,67 @@ describe("SaleScreen", () => {
     expect(filterSaleProducts(products, "PAN-0").map((product) => product.id)).toEqual(["bread"]);
     expect(filterSaleProducts(products, "0000000011").map((product) => product.id)).toEqual(["coffee"]);
     expect(filterSaleProducts(products, "alt-cafe").map((product) => product.id)).toEqual(["coffee"]);
+  });
+
+  it("excludes inactive products unless the store setting allows them", () => {
+    const inactive = { ...products[0], id: "inactive", active: false };
+
+    expect(saleSelectableProducts([...products, inactive], false)).not.toContainEqual(inactive);
+    expect(saleSelectableProducts([...products, inactive], true)).toContainEqual(inactive);
+  });
+
+  it("hides inactive products from sale search when the store setting is disabled", async () => {
+    const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) {
+        return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+
+    const searchInput = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(searchInput).toBeEnabled());
+    fireEvent.change(searchInput, { target: { value: "OFF-001" } });
+
+    expect(await screen.findByText("No se encontraron productos")).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Producto desactivado/ })).not.toBeInTheDocument();
+  });
+
+  it("requires Enter confirmation before adding an allowed inactive product and cancels with Escape", async () => {
+    const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) {
+        return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+
+    const searchInput = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(searchInput).toBeEnabled());
+    fireEvent.change(searchInput, { target: { value: "OFF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Producto desactivado/ }));
+
+    const confirmationDialog = screen.getByRole("dialog", { name: "Producto desactivado" });
+    expect(confirmationDialog).toBeInTheDocument();
+    fireEvent.keyDown(confirmationDialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Producto desactivado" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sin venta iniciada")).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("option", { name: /Producto desactivado/ }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Producto desactivado" }), { key: "Enter" });
+
+    expect(screen.queryByRole("dialog", { name: "Producto desactivado" })).not.toBeInTheDocument();
+    expect(screen.getByText("1 producto")).toBeInTheDocument();
   });
 
   it("limits visible search results", () => {

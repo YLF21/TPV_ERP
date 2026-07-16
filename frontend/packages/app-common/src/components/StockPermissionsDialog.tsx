@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 export type StockSecurityRole = {
   id: string;
@@ -19,6 +23,8 @@ type StockPermissionsStatus = {
 
 type StockPermissionsDialogProps = {
   open: boolean;
+  app: AppKind;
+  username: string;
   locale: LocaleCode;
   token?: string;
   onClose: () => void;
@@ -29,16 +35,19 @@ export const stockPermissionMatrixColumns = [
   { code: "STOCK_ADJUST", labelKey: "stock.permissions.adjust" },
   { code: "STOCK_TRANSFER", labelKey: "stock.permissions.transfer" },
   { code: "WAREHOUSES_MANAGE", labelKey: "stock.permissions.warehouses" },
-  { code: "WAREHOUSE_INPUTS_READ", labelKey: "stock.permissions.inputsRead" },
-  { code: "WAREHOUSE_INPUTS_WRITE", labelKey: "stock.permissions.inputsWrite" },
-  { code: "WAREHOUSE_INPUTS_DELETE", labelKey: "stock.permissions.inputsDelete" },
-  { code: "WAREHOUSE_INPUTS_CONFIRM", labelKey: "stock.permissions.inputsConfirm" },
-  { code: "WAREHOUSE_OUTPUTS_READ", labelKey: "stock.permissions.outputsRead" },
-  { code: "WAREHOUSE_OUTPUTS_EDIT", labelKey: "stock.permissions.outputsEdit" },
-  { code: "WAREHOUSE_OUTPUTS_DELETE", labelKey: "stock.permissions.outputsDelete" },
-  { code: "WAREHOUSE_OUTPUTS_CONFIRM", labelKey: "stock.permissions.outputsConfirm" },
+  { code: "GESTION_ALMACEN", labelKey: "stock.permissions.warehouseManagement" },
   { code: "GESTION_PRODUCTO", labelKey: "stock.permissions.productManagement" }
 ] as const;
+
+export type StockPermissionTableColumnKey = "role" | (typeof stockPermissionMatrixColumns)[number]["code"];
+
+export const stockPermissionTableColumnDefinitions = [
+  { key: "role", defaultWidth: 160 },
+  ...stockPermissionMatrixColumns.map((permission) => ({
+    key: permission.code,
+    defaultWidth: 128
+  }))
+] satisfies readonly TableColumnDefinition<StockPermissionTableColumnKey>[];
 
 export function roleHasStockPermission(role: Pick<StockSecurityRole, "permissions">, code: string) {
   return role.permissions.includes("ALL") || role.permissions.includes(code);
@@ -89,6 +98,8 @@ export async function persistStockRolePermissions(roles: StockSecurityRole[], to
 
 export function StockPermissionsDialog({
   open,
+  app,
+  username,
   locale,
   token,
   onClose
@@ -99,6 +110,15 @@ export function StockPermissionsDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<StockPermissionsStatus | null>(null);
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken: open ? token : undefined,
+    tableKey: "stock.permissions.matrix",
+    definitions: stockPermissionTableColumnDefinitions
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableWidth = visibleColumns.reduce((sum, column) => sum + column.width, 0);
   const dirtyRoles = roles.filter((role) => {
     const savedRole = savedRoles.find((candidate) => candidate.id === role.id);
     return savedRole !== undefined && !rolesHaveSamePermissions(role, savedRole);
@@ -228,34 +248,57 @@ export function StockPermissionsDialog({
         </header>
 
         <div className="stock-permissions-table-scroll">
-          <table className="report-table stock-permissions-table">
+          <table
+            className="report-table stock-permissions-table"
+            style={{ tableLayout: "fixed", minWidth: tableWidth }}
+          >
             <thead>
               <tr>
-                <th>{t("stock.permissions.role")}</th>
-                {stockPermissionMatrixColumns.map((permission) => (
-                  <th key={permission.code}>{t(permission.labelKey)}</th>
-                ))}
+                {visibleColumns.map((column) => {
+                  const permission = stockPermissionMatrixColumns.find((candidate) => candidate.code === column.key);
+                  const label = column.key === "role"
+                    ? t("stock.permissions.role")
+                    : t(permission?.labelKey ?? column.key);
+                  return (
+                    <TableLayoutHeaderCell
+                      column={column}
+                      key={column.key}
+                      resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                      onReorder={tableLayout.reorderColumns}
+                      onMove={tableLayout.moveColumn}
+                      onResize={tableLayout.resizeColumn}
+                    >
+                      {label}
+                    </TableLayoutHeaderCell>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {roles.map((role) => (
                 <tr key={role.id}>
-                  <td>{role.name}</td>
-                  {stockPermissionMatrixColumns.map((permission) => (
-                    <td key={permission.code} aria-label={`${role.name}: ${permission.code}`}>
-                      <input
-                        type="checkbox"
-                        aria-label={`${role.name}: ${t(permission.labelKey)}`}
-                        checked={roleHasStockPermission(role, permission.code)}
-                        disabled={loading || saving || role.protectedRole || role.permissions.includes("ALL")}
-                        onChange={(event) => togglePermission(role.id, permission.code, event.target.checked)}
-                      />
-                    </td>
-                  ))}
+                  {visibleColumns.map((column) => {
+                    if (column.key === "role") {
+                      return <td key={column.key}>{role.name}</td>;
+                    }
+                    const permission = stockPermissionMatrixColumns.find((candidate) => candidate.code === column.key);
+                    if (!permission) return null;
+                    return (
+                      <td key={permission.code} aria-label={`${role.name}: ${permission.code}`}>
+                        <input
+                          type="checkbox"
+                          aria-label={`${role.name}: ${t(permission.labelKey)}`}
+                          checked={roleHasStockPermission(role, permission.code)}
+                          disabled={loading || saving || role.protectedRole || role.permissions.includes("ALL")}
+                          onChange={(event) => togglePermission(role.id, permission.code, event.target.checked)}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               {!loading && roles.length === 0 && (
-                <tr><td colSpan={stockPermissionMatrixColumns.length + 1}>{t("stock.permissions.empty")}</td></tr>
+                <tr><td colSpan={visibleColumns.length}>{t("stock.permissions.empty")}</td></tr>
               )}
             </tbody>
           </table>

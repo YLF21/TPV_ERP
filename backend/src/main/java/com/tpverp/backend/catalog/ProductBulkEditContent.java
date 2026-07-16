@@ -65,8 +65,23 @@ public final class ProductBulkEditContent {
                 }
                 validateSupplier(supplier, index, "suppliers");
             }
+            if (!row.principalSupplierChanged() && row.pendingPrincipalSupplierId() != null) {
+                throw invalid(index, "pendingPrincipalSupplierId requiere principalSupplierChanged");
+            }
             if (row.product() == null) {
+                if (row.principalSupplierChanged()) {
+                    throw invalid(index, "no se puede cambiar el proveedor principal sin producto");
+                }
                 continue;
+            }
+            if (row.principalSupplierChanged() && row.pendingPrincipalSupplierId() != null) {
+                boolean linked = row.suppliers().stream()
+                        .anyMatch(supplier -> supplier.id().equals(row.pendingPrincipalSupplierId()));
+                boolean pending = row.pendingSupplier() != null
+                        && row.pendingSupplier().id().equals(row.pendingPrincipalSupplierId());
+                if (!linked && !pending) {
+                    throw invalid(index, "el proveedor principal debe estar vinculado o pendiente");
+                }
             }
             if (!productIds.add(row.product().productId())) {
                 throw invalid(index, "producto duplicado: " + row.product().productId());
@@ -104,6 +119,8 @@ public final class ProductBulkEditContent {
         }
         percentage(product.purchaseDiscountPercent(), rowIndex, "purchaseDiscountPercent");
         percentage(product.offerDiscountPercent(), rowIndex, "offerDiscountPercent");
+        nonNegative(product.packageQuantity(), rowIndex, "packageQuantity", false);
+        booleanValue(product.active(), rowIndex, "active");
         date(product.offerFrom(), rowIndex, "offerFrom");
         date(product.offerUntil(), rowIndex, "offerUntil");
 
@@ -216,6 +233,15 @@ public final class ProductBulkEditContent {
         return blank(value) ? null : LocalDate.parse(value.trim());
     }
 
+    private static void booleanValue(String value, int rowIndex, String field) {
+        String normalized = normalized(value);
+        if (normalized != null && !Set.of(
+                "TRUE", "FALSE", "YES", "NO", "SI", "1", "0", "COMMON.YES", "COMMON.NO")
+                .contains(normalized)) {
+            throw invalid(rowIndex, field + " no es un booleano valido");
+        }
+    }
+
     private static long estimatedSize(Row row) {
         long size = 256 + textSize(row.id(), row.query())
                 + estimatedSize(row.product()) + estimatedSize(row.draft());
@@ -239,7 +265,7 @@ public final class ProductBulkEditContent {
                 product.subfamilyId(), product.subfamilyName(), product.taxId(), product.taxName(),
                 product.taxesIncluded(), product.offerActive(), product.offerFrom(),
                 product.offerUntil(), product.warehouseName(), product.quantity(),
-                product.totalQuantity(), product.stockMin(), product.stockMax());
+                product.totalQuantity(), product.stockMin(), product.stockMax(), product.active());
     }
 
     private static long estimatedSize(SupplierData supplier) {
@@ -281,7 +307,20 @@ public final class ProductBulkEditContent {
             @Valid ProductData product,
             @NotNull @Valid ProductData draft,
             List<@Valid SupplierData> suppliers,
-            @Valid SupplierData pendingSupplier) {
+            @Valid SupplierData pendingSupplier,
+            Boolean principalSupplierChanged,
+            UUID pendingPrincipalSupplierId) {
+
+        public Row(
+                String id,
+                boolean selected,
+                String query,
+                ProductData product,
+                ProductData draft,
+                List<SupplierData> suppliers,
+                SupplierData pendingSupplier) {
+            this(id, selected, query, product, draft, suppliers, pendingSupplier, false, null);
+        }
 
         public Row {
             if (id == null || id.isBlank()) {
@@ -291,6 +330,7 @@ public final class ProductBulkEditContent {
             query = query == null ? "" : query.trim();
             draft = draft == null ? ProductData.empty() : draft;
             suppliers = suppliers == null ? List.of() : List.copyOf(suppliers);
+            principalSupplierChanged = Boolean.TRUE.equals(principalSupplierChanged);
         }
 
         public ProductData effectiveProduct() {
@@ -334,7 +374,53 @@ public final class ProductBulkEditContent {
             String quantity,
             String totalQuantity,
             String stockMin,
-            String stockMax) {
+            String stockMax,
+            String active,
+            String packageQuantity) {
+
+        public ProductData(
+                UUID productId,
+                Long version,
+                String imageId,
+                String warehouseId,
+                String code,
+                String barcode,
+                String barcode2,
+                String name,
+                String description,
+                String comments,
+                String purchasePrice,
+                String purchaseDiscountPercent,
+                String salePrice,
+                String memberPrice,
+                String wholesalePrice,
+                String offerPrice,
+                String offerDiscountPercent,
+                String productType,
+                String discountType,
+                String backendDiscountType,
+                String familyId,
+                String familyName,
+                String subfamilyId,
+                String subfamilyName,
+                String taxId,
+                String taxName,
+                String taxesIncluded,
+                String offerActive,
+                String offerFrom,
+                String offerUntil,
+                String warehouseName,
+                String quantity,
+                String totalQuantity,
+                String stockMin,
+                String stockMax) {
+            this(productId, version, imageId, warehouseId, code, barcode, barcode2, name, description,
+                    comments, purchasePrice, purchaseDiscountPercent, salePrice, memberPrice, wholesalePrice,
+                    offerPrice, offerDiscountPercent, productType, discountType, backendDiscountType,
+                    familyId, familyName, subfamilyId, subfamilyName, taxId, taxName, taxesIncluded,
+                    offerActive, offerFrom, offerUntil, warehouseName, quantity, totalQuantity,
+                    stockMin, stockMax, null, null);
+        }
 
         public ProductData(
                 UUID productId,
@@ -374,7 +460,8 @@ public final class ProductBulkEditContent {
                     comments, purchasePrice, purchaseDiscountPercent, salePrice, memberPrice, wholesalePrice,
                     offerPrice, offerDiscountPercent, productType, discountType, backendDiscountType,
                     familyId, familyName, subfamilyId, subfamilyName, taxId, taxName, taxesIncluded,
-                    offerActive, offerFrom, offerUntil, warehouseName, quantity, totalQuantity, null, null);
+                    offerActive, offerFrom, offerUntil, warehouseName, quantity, totalQuantity,
+                    null, null, null, null);
         }
 
         public static ProductData empty() {
@@ -382,7 +469,7 @@ public final class ProductBulkEditContent {
                     null, null, null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, null, null, null,
                     null, null, null, null, null, null, null, null, null, null, null,
-                    null, null);
+                    null, null, null, null);
         }
 
         public ProductData overlay(ProductData changes) {
@@ -424,7 +511,9 @@ public final class ProductBulkEditContent {
                     pick(changes.quantity, quantity),
                     pick(changes.totalQuantity, totalQuantity),
                     pick(changes.stockMin, stockMin),
-                    pick(changes.stockMax, stockMax));
+                    pick(changes.stockMax, stockMax),
+                    pick(changes.active, active),
+                    pick(changes.packageQuantity, packageQuantity));
         }
 
         public ProductData withPersistenceState(long actualVersion, UUID actualImageId) {
@@ -435,6 +524,17 @@ public final class ProductBulkEditContent {
 
         public ProductData withoutPersistenceState() {
             return copyWithPersistenceState(null, null);
+        }
+
+        public ProductData withActive(String nextActive) {
+            return new ProductData(
+                    productId, version, imageId, warehouseId, code, barcode, barcode2,
+                    name, description, comments, purchasePrice, purchaseDiscountPercent,
+                    salePrice, memberPrice, wholesalePrice, offerPrice, offerDiscountPercent,
+                    productType, discountType, backendDiscountType, familyId, familyName,
+                    subfamilyId, subfamilyName, taxId, taxName, taxesIncluded, offerActive,
+                    offerFrom, offerUntil, warehouseName, quantity, totalQuantity,
+                    stockMin, stockMax, nextActive, packageQuantity);
         }
 
         private ProductData copyWithPersistenceState(Long actualVersion, String actualImageId) {
@@ -473,7 +573,9 @@ public final class ProductBulkEditContent {
                     quantity,
                     totalQuantity,
                     stockMin,
-                    stockMax);
+                    stockMax,
+                    active,
+                    packageQuantity);
         }
 
         private static <T> T pick(T preferred, T fallback) {
@@ -496,5 +598,22 @@ public final class ProductBulkEditContent {
             String purchaseDiscount,
             String netPurchasePrice,
             Instant lastEntryAt) {
+
+        public SupplierData withPrincipal(boolean nextPrincipal) {
+            return new SupplierData(
+                    id,
+                    supplierCode,
+                    legalName,
+                    tradeName,
+                    documentNumber,
+                    active,
+                    supplierReference,
+                    nextPrincipal,
+                    lastSupplier,
+                    grossPurchasePrice,
+                    purchaseDiscount,
+                    netPurchasePrice,
+                    lastEntryAt);
+        }
     }
 }

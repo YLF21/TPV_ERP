@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyStockBulkPriceRulePreview,
   cloneStockBulkPriceRuleDraft,
   newStockBulkPriceRuleAction,
   newStockBulkPriceRuleCondition,
@@ -12,6 +13,7 @@ import {
   stockBulkRuleReferenceFieldsForScope,
   stockBulkPriceRuleDeletePath,
   stockBulkPriceRuleExecutionBody,
+  stockBulkPriceRulePreviewPath,
   stockBulkPriceRuleRequest,
   validateStockBulkPriceRuleDraft
 } from "./stockBulkPriceRules";
@@ -37,9 +39,41 @@ describe("stock bulk price rule contract", () => {
     const draft = newStockBulkPriceRuleDraft();
     draft.name = "Tarifa";
     expect(stockBulkPriceRuleRequest(draft, 7)).toEqual(expect.objectContaining({ version: 7, name: "Tarifa" }));
-    expect(stockBulkPriceRuleExecutionBody(7)).toEqual({ ruleVersion: 7 });
+    expect(stockBulkPriceRuleExecutionBody(7, ["product-1", "product-2", "product-1"])).toEqual({
+      ruleVersion: 7,
+      productIds: ["product-1", "product-2"]
+    });
     expect(stockBulkPriceRuleDeletePath("rule/1", 7)).toBe("/product-price-rules/rule%2F1?version=7");
+    expect(stockBulkPriceRulePreviewPath("rule/1")).toBe("/product-price-rules/rule%2F1/preview");
     expect(validateStockBulkPriceRuleDraft(draft)).toBeNull();
+  });
+
+  it("applies a preview only to selected rows already present in the list", () => {
+    const selected = { selected: true, product: { productId: "product-1" }, draft: { salePrice: "10" } };
+    const unselected = { selected: false, product: { productId: "product-2" }, draft: { salePrice: "20" } };
+    const rows = applyStockBulkPriceRulePreview([selected, unselected], {
+      ruleId: "rule-1",
+      ruleVersion: 1,
+      matchedProducts: 3,
+      products: [
+        { productId: "product-1", productName: "Uno", changes: [
+          { field: "SALE_PRICE", before: 10, after: 15.5, formIndexes: [0] },
+          { field: "OFFER_ACTIVE", before: false, after: true, formIndexes: [0] }
+        ] },
+        { productId: "product-2", productName: "Dos", changes: [
+          { field: "SALE_PRICE", before: 20, after: 25, formIndexes: [0] }
+        ] },
+        { productId: "outside-list", productName: "Externo", changes: [
+          { field: "SALE_PRICE", before: 1, after: 99, formIndexes: [0] }
+        ] }
+      ]
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({ draft: { salePrice: "15.5", offerActive: "common.yes" } }),
+      unselected
+    ]);
+    expect(rows).toHaveLength(2);
   });
 
   it("normalizes numeric values returned by the backend before validation", () => {

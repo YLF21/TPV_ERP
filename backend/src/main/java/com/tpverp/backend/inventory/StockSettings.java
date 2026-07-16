@@ -31,6 +31,9 @@ public class StockSettings {
     @Column(name = "alertas_habilitadas", nullable = false)
     private boolean alertsEnabled = true;
 
+    @Column(name = "permitir_venta_producto_desactivado", nullable = false)
+    private boolean allowInactiveProductSales;
+
     @Version
     private long version;
 
@@ -46,11 +49,26 @@ public class StockSettings {
             UUID defaultWarehouseId,
             boolean allowNegativeStock,
             BigDecimal defaultMinimumStock,
-            boolean alertsEnabled) {
+            boolean alertsEnabled,
+            boolean allowInactiveProductSales) {
         this.defaultWarehouseId = Objects.requireNonNull(defaultWarehouseId, "defaultWarehouseId");
         this.allowNegativeStock = allowNegativeStock;
         this.defaultMinimumStock = minimum(defaultMinimumStock);
         this.alertsEnabled = alertsEnabled;
+        this.allowInactiveProductSales = allowInactiveProductSales;
+    }
+
+    public void update(
+            UUID defaultWarehouseId,
+            boolean allowNegativeStock,
+            BigDecimal defaultMinimumStock,
+            boolean alertsEnabled) {
+        update(
+                defaultWarehouseId,
+                allowNegativeStock,
+                defaultMinimumStock,
+                alertsEnabled,
+                allowInactiveProductSales);
     }
 
     public UUID getStoreId() {
@@ -71,6 +89,14 @@ public class StockSettings {
 
     public boolean isAlertsEnabled() {
         return alertsEnabled;
+    }
+
+    public boolean isAllowInactiveProductSales() {
+        return allowInactiveProductSales;
+    }
+
+    public void setAllowInactiveProductSales(boolean allowInactiveProductSales) {
+        this.allowInactiveProductSales = allowInactiveProductSales;
     }
 
     static BigDecimal minimum(BigDecimal value) {

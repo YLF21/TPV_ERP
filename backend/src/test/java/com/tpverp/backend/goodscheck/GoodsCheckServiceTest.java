@@ -129,6 +129,27 @@ class GoodsCheckServiceTest {
     }
 
     @Test
+    void importResumesTheOpenCheckForThePurchaseDocument() {
+        var productId = UUID.randomUUID();
+        var document = confirmed(CommercialDocumentType.FACTURA_COMPRA, line(productId, 4));
+        var openCheck = new GoodsCheck(document.getId(), store.getId(), user.getId(), NOW);
+        openCheck.addLine(productId, new BigDecimal("4"));
+        when(documents.findById(document.getId())).thenReturn(Optional.of(document));
+        when(checks.findByDocumentoIdAndEstadoAndTiendaId(
+                document.getId(), GoodsCheckStatus.ABIERTA, store.getId()))
+                .thenReturn(Optional.of(openCheck));
+
+        var view = service.importDocument(document.getId(), authentication());
+
+        assertThat(view.id()).isEqualTo(openCheck.getId());
+        assertThat(view.status()).isEqualTo(GoodsCheckStatus.ABIERTA);
+        assertThat(view.todos()).singleElement()
+                .extracting(GoodsCheckView.Item::expectedQuantity)
+                .isEqualTo(new BigDecimal("4.000"));
+        verify(checks, never()).save(any());
+    }
+
+    @Test
     void scanAddsAndSubtractsWithoutGoingNegative() {
         var productId = UUID.randomUUID();
         var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, line(productId, 12));

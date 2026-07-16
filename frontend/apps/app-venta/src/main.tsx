@@ -30,10 +30,15 @@ const SettingsScreen = lazy(() =>
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({ default: StockScreen }))
 );
+const WarehouseScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/WarehouseScreen").then(({ WarehouseScreen }) => ({
+    default: WarehouseScreen
+  }))
+);
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "settings" | "hardwareSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "settings" | "hardwareSettings">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
 
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
@@ -60,7 +65,11 @@ export function App() {
   }
 
   const canOpenSalesReport =
-    hasPermission(session, "GESTION_VENTAS") || hasPermission(session, "GESTION_CUENTAS");
+    hasPermission(session, "GESTION_VENTAS")
+    || hasPermission(session, "GESTION_PRODUCTO")
+    || hasPermission(session, "GESTION_ALMACEN")
+    || hasPermission(session, "GESTION_CUENTAS");
+  const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
 
   if (screen === "salesReport" && canOpenSalesReport) {
     return (
@@ -94,6 +103,20 @@ export function App() {
   if (screen === "stock") {
     return (
       <StockScreen
+        app="venta"
+        locale={locale}
+        session={session}
+        terminalContext={devTerminalContext}
+        onBack={() => setScreen("home")}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
+      />
+    );
+  }
+
+  if (screen === "warehouse" && canOpenWarehouse) {
+    return (
+      <WarehouseScreen
         app="venta"
         locale={locale}
         session={session}
@@ -145,6 +168,7 @@ export function App() {
       onLogout={handleLogout}
       onOpenSales={() => setScreen("sale")}
       onOpenStock={() => setScreen("stock")}
+      onOpenWarehouse={() => setScreen("warehouse")}
       onOpenSalesReport={() => setScreen("salesReport")}
       onOpenSettings={() => setScreen("settings")}
     />

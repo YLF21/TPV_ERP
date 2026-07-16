@@ -148,6 +148,7 @@ class CatalogServiceTest {
         assertThat(product.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("EAN");
         assertThat(product.price(PriceTier.VENTA)).isEqualByComparingTo("2.50");
         assertThat(product.isOfferActive()).isTrue();
+        assertThat(product.isActive()).isTrue();
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ProductPriceHistory>> history = ArgumentCaptor.forClass(List.class);
         verify(priceHistoryRepository).saveAll(history.capture());
@@ -183,6 +184,53 @@ class CatalogServiceTest {
 
         assertThat(updated.identifier(IdentifierType.CODIGO)).isEqualTo("2");
         assertThat(updated.identifier(IdentifierType.CODIGO_BARRAS)).isEqualTo("2");
+    }
+
+    @Test
+    void updateWithoutActiveFieldPreservesInactiveStateForLegacyClients() {
+        var request = productRequest("P-1", null);
+        var product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Producto", null, null, BigDecimal.ZERO, true);
+        product.deactivate();
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        service.updateProduct(product.getId(), request);
+
+        assertThat(product.isActive()).isFalse();
+    }
+
+    @Test
+    void fullProductUpdatePersistsActiveState() {
+        var base = productRequest("P-2", null);
+        var request = withActive(base, false);
+        var product = new Product(
+                storeId, request.familyId(), null, request.taxId(), ProductType.UNIT,
+                DiscountType.NORMAL, "Producto", null, null, BigDecimal.ZERO, true);
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        when(familyRepository.findById(request.familyId())).thenReturn(Optional.of(Family.general(storeId)));
+        when(taxRepository.findById(request.taxId()))
+                .thenReturn(Optional.of(new StoreTax(storeId, new BigDecimal("7"), true)));
+
+        service.updateProduct(product.getId(), request);
+
+        assertThat(product.isActive()).isFalse();
+    }
+
+    @Test
+    void patchStyleServiceOperationChangesOnlyActiveState() {
+        var product = new Product(
+                storeId, UUID.randomUUID(), null, UUID.randomUUID(),
+                "Producto", null, BigDecimal.ZERO, true);
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+
+        var updated = service.setProductActive(product.getId(), false);
+
+        assertThat(updated.isActive()).isFalse();
+        assertThat(updated.getName()).isEqualTo("PRODUCTO");
     }
 
     @Test
@@ -376,5 +424,17 @@ class CatalogServiceTest {
                 "Producto", null, null, BigDecimal.ZERO, true, code, barcode, null,
                 new BigDecimal("2.50"), null, null, new BigDecimal("1.50"),
                 null, null, true, java.time.LocalDate.of(2026, 6, 1), null);
+    }
+
+    private static CatalogService.ProductRequest withActive(
+            CatalogService.ProductRequest value, boolean active) {
+        return new CatalogService.ProductRequest(
+                value.familyId(), value.subfamilyId(), value.taxId(), value.productType(),
+                value.discountType(), value.priceUseMode(), value.name(), value.description(),
+                value.comments(), value.purchasePrice(), value.taxesIncluded(), value.code(),
+                value.barcode(), value.barcode2(), value.salePrice(), value.memberPrice(),
+                value.wholesalePrice(), value.offerPrice(), value.offerDiscountPercent(),
+                value.purchaseDiscountPercent(), value.offerActive(), value.offerFrom(),
+                value.offerUntil(), value.stockMin(), value.stockMax(), value.packageQuantity(), active);
     }
 }

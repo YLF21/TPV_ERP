@@ -3,17 +3,23 @@ package com.tpverp.backend.inventory;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
+import com.tpverp.backend.catalog.ProductView;
+import com.tpverp.backend.catalog.DiscountType;
+import com.tpverp.backend.catalog.PriceUseMode;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.shared.api.PagedResult;
 import java.time.Clock;
 import java.time.Instant;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +29,8 @@ public class InventoryService {
 
     private static final String NEGATIVE_STOCK_ERROR =
             "Stock insuficiente: la configuracion de la tienda no permite stock negativo";
+    private static final int DEFAULT_LIMIT = 500;
+    private static final int MAX_LIMIT = 500;
 
     private final CurrentOrganization organization;
     private final ProductRepository productRepository;
@@ -173,6 +181,61 @@ public class InventoryService {
         return stockLevel(productId, warehouseId, false);
     }
 
+    @Transactional(readOnly = true)
+    public PagedResult<StockPageItem> stockPage(
+            Integer requestedLimit,
+            String cursor,
+            String search,
+            String view,
+            String productType,
+            String priceUseMode,
+            UUID familyId,
+            UUID taxId,
+            Boolean offerActive,
+            boolean includePurchaseFields) {
+        UUID storeId = currentStore().getId();
+        var limit = normalizedLimit(requestedLimit);
+        var parsedCursor = parseCursor(cursor);
+        var filters = StockPageFilters.from(search, view, productType, priceUseMode, familyId, taxId, offerActive);
+        var products = productRepository.findPageByStoreId(
+                storeId,
+                filters.search(),
+                filters.productType(),
+                filters.priceUseMode(),
+                filters.discountType(),
+                filters.offersOnly(),
+                filters.familyId(),
+                filters.taxId(),
+                filters.offerActive(),
+                parsedCursor.name(),
+                parsedCursor.id(),
+                PageRequest.of(0, limit + 1));
+        var hasMore = products.size() > limit;
+        var pageProducts = hasMore ? new ArrayList<>(products.subList(0, limit)) : products;
+        pageProducts.forEach(InventoryService::initializeProductForApi);
+        var productIds = pageProducts.stream().map(Product::getId).toList();
+        var stockByProduct = stockRepository.findByProductIdIn(productIds).stream()
+                .collect(java.util.stream.Collectors.groupingBy(StockLevel::getProductId));
+        var items = pageProducts.stream()
+                .map(product -> new StockPageItem(
+                        includePurchaseFields ? ProductView.managementView(product) : ProductView.publicView(product),
+                        stockByProduct.getOrDefault(product.getId(), List.of()).stream()
+                                .map(StockItem::from)
+                                .toList()))
+                .toList();
+        return new PagedResult<>(items, hasMore ? cursorFor(pageProducts.get(pageProducts.size() - 1)) : null, hasMore);
+    }
+
+    private static void initializeProductForApi(Product product) {
+        product.getCode();
+        product.getBarcode();
+        product.getBarcode2();
+        product.getSalePrice();
+        product.getMemberPrice();
+        product.getWholesalePrice();
+        product.getOfferPrice();
+    }
+
     private StockLevel stockLevel(UUID productId, UUID warehouseId, boolean forUpdate) {
         var stock = forUpdate
                 ? stockRepository.findByProductIdAndWarehouseIdForUpdate(productId, warehouseId)
@@ -251,6 +314,9 @@ public class InventoryService {
         }
     }
 
+    public record StockPageItem(ProductView product, List<StockItem> stock) {
+    }
+
     public record TransferResult(
             UUID transferId,
             UUID productId,
@@ -258,5 +324,89 @@ public class InventoryService {
             UUID targetWarehouseId,
             BigDecimal sourceQuantity,
             BigDecimal targetQuantity) {
+    }
+
+    private static int normalizedLimit(Integer requestedLimit) {
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return DEFAULT_LIMIT;
+        }
+        return Math.min(requestedLimit, MAX_LIMIT);
+    }
+
+    private static Cursor parseCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return new Cursor("", new UUID(0L, 0L));
+        }
+        var separatorIndex = cursor.lastIndexOf('|');
+        if (separatorIndex <= 0 || separatorIndex >= cursor.length() - 1) {
+            throw new IllegalArgumentException("cursor invalido");
+        }
+        return new Cursor(cursor.substring(0, separatorIndex), UUID.fromString(cursor.substring(separatorIndex + 1)));
+    }
+
+    private static String cursorFor(Product product) {
+        return product.getName() + "|" + product.getId();
+    }
+
+    private record Cursor(String name, UUID id) {
+    }
+
+    private record StockPageFilters(
+            String search,
+            ProductType productType,
+            PriceUseMode priceUseMode,
+            DiscountType discountType,
+            boolean offersOnly,
+            UUID familyId,
+            UUID taxId,
+            Boolean offerActive) {
+
+        static StockPageFilters from(
+                String search,
+                String view,
+                String productType,
+                String priceUseMode,
+                UUID familyId,
+                UUID taxId,
+                Boolean offerActive) {
+            var normalizedView = optionalUpper(view);
+            var normalizedPriceUseMode = enumValue(PriceUseMode.class, priceUseMode);
+            DiscountType discountType = null;
+            if ("OFFERS".equals(normalizedView)) {
+                return new StockPageFilters(
+                        search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%",
+                        enumValue(ProductType.class, productType),
+                        normalizedPriceUseMode,
+                        null,
+                        true,
+                        familyId,
+                        taxId,
+                        offerActive);
+            } else if ("MEMBER_PRICE".equals(normalizedView)) {
+                normalizedPriceUseMode = PriceUseMode.MEMBER_PRICE;
+            } else if ("NO_DISCOUNT".equals(normalizedView)) {
+                discountType = DiscountType.NONE;
+            }
+            return new StockPageFilters(
+                    search == null || search.isBlank() ? null : "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%",
+                    enumValue(ProductType.class, productType),
+                    normalizedPriceUseMode,
+                    discountType,
+                    false,
+                    familyId,
+                    taxId,
+                    offerActive);
+        }
+    }
+
+    private static String optionalUpper(String value) {
+        return value == null || value.isBlank() ? null : value.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static <E extends Enum<E>> E enumValue(Class<E> type, String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Enum.valueOf(type, value.trim().toUpperCase(java.util.Locale.ROOT));
     }
 }

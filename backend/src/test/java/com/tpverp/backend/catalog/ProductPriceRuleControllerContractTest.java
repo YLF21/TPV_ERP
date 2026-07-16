@@ -30,8 +30,9 @@ class ProductPriceRuleControllerContractTest {
     @MockitoBean private ProductPriceRuleService service;
 
     @Test
-    void productManagersCanCreateTypedRulesAndExecuteThem() throws Exception {
+    void productManagersCanCreateTypedRulesAndPreviewThem() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
         String form = """
                 {"scope":"PRICES","conditions":[
                   {"type":"NUMBER","field":"GROSS_COST","comparator":"GTE","value":10}
@@ -49,12 +50,7 @@ class ProductPriceRuleControllerContractTest {
         mvc.perform(post("/api/v1/product-price-rules/{id}/preview", id)
                         .with(manager).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ruleVersion\":0}"))
-                .andExpect(status().isOk());
-        mvc.perform(post("/api/v1/product-price-rules/{id}/apply", id)
-                        .with(manager).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ruleVersion\":0}"))
+                        .content("{\"ruleVersion\":0,\"productIds\":[\"" + productId + "\"]}"))
                 .andExpect(status().isOk());
     }
 
@@ -79,7 +75,7 @@ class ProductPriceRuleControllerContractTest {
     }
 
     @Test
-    void previewAndApplyRequireRuleVersion() throws Exception {
+    void previewRequiresRuleVersion() throws Exception {
         UUID id = UUID.randomUUID();
         var manager = user("manager").authorities(() -> GESTION_PRODUCTO);
 
@@ -88,18 +84,35 @@ class ProductPriceRuleControllerContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/v1/product-price-rules/{id}/apply", id)
+    }
+
+    @Test
+    void previewRequiresSelectedProducts() throws Exception {
+        UUID id = UUID.randomUUID();
+        var manager = user("manager").authorities(() -> GESTION_PRODUCTO);
+
+        mvc.perform(post("/api/v1/product-price-rules/{id}/preview", id)
                         .with(manager).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"ruleVersion\":0,\"productIds\":[]}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void directRuleApplicationIsNotExposed() throws Exception {
+        mvc.perform(post("/api/v1/product-price-rules/{id}/apply", UUID.randomUUID())
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ruleVersion\":0,\"productIds\":[\"" + UUID.randomUUID() + "\"]}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
     void conflictResponseIncludesProductAndField() throws Exception {
         UUID id = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
-        when(service.preview(any(), any())).thenThrow(new ProductPriceRuleConflictException(
+        when(service.preview(any(), any(), any())).thenThrow(new ProductPriceRuleConflictException(
                 productId,
                 "Producto",
                 ProductPriceRulePreview.Field.SALE_PRICE,
@@ -109,7 +122,7 @@ class ProductPriceRuleControllerContractTest {
                         .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ruleVersion\":0}"))
+                        .content("{\"ruleVersion\":0,\"productIds\":[\"" + productId + "\"]}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("PRODUCT_PRICE_RULE_CONFLICT"))
                 .andExpect(jsonPath("$.productId").value(productId.toString()))

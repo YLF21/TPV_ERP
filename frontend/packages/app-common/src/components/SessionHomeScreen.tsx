@@ -5,6 +5,7 @@ import settingsIcon from "../assets/home-configuracion.png";
 import reportIcon from "../assets/home-informe.png";
 import saleIcon from "../assets/home-venta.png";
 import stockIcon from "../assets/home-stock.png";
+import warehouseIcon from "../assets/home-almacen.png";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 
@@ -18,6 +19,7 @@ type SessionHomeScreenProps = {
   onLogout?: () => void;
   onOpenSales?: () => void;
   onOpenStock?: () => void;
+  onOpenWarehouse?: () => void;
   onOpenSalesReport?: () => void;
   onOpenSettings?: () => void;
 };
@@ -32,6 +34,7 @@ export function SessionHomeScreen({
   onLogout,
   onOpenSales,
   onOpenStock,
+  onOpenWarehouse,
   onOpenSalesReport,
   onOpenSettings
 }: SessionHomeScreenProps) {
@@ -39,8 +42,10 @@ export function SessionHomeScreen({
   const canOpenSale = Boolean(onOpenSales) && hasPermission(session, "VENTA");
   const canOpenStock = Boolean(onOpenStock) && (
     hasPermission(session, "GESTION_PRODUCTO")
+    || hasPermission(session, "GESTION_VENTAS")
     || hasPermission(session, "STOCK_READ")
   );
+  const canOpenWarehouse = Boolean(onOpenWarehouse) && hasPermission(session, "GESTION_ALMACEN");
   const canOpenReport = Boolean(onOpenSalesReport) && canOpenSalesReport;
   const canOpenSettings = Boolean(onOpenSettings);
 
@@ -80,7 +85,13 @@ export function SessionHomeScreen({
           {canOpenStock && (
             <button type="button" className="home-action" onClick={onOpenStock}>
               <img className="home-action-icon" alt="" src={stockIcon} />
-              <span>{t("home.stock")}</span>
+              <span>{t("home.product")}</span>
+            </button>
+          )}
+          {canOpenWarehouse && (
+            <button type="button" className="home-action" onClick={onOpenWarehouse}>
+              <img className="home-action-icon" alt="" src={warehouseIcon} />
+              <span>{t("home.warehouse")}</span>
             </button>
           )}
           {canOpenReport && (
