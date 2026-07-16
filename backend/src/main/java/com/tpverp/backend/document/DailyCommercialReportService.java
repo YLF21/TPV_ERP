@@ -35,48 +35,39 @@ public class DailyCommercialReportService {
         var to = date.plusDays(1).atStartOfDay(zone).toInstant();
         var issued = documents.findAllByTiendaIdAndFecha(store.getId(), date);
         var collected = payments.findAllByStoreAndCreatedBetween(store.getId(), from, to);
-        var issuedTotal = issued.stream()
-                .filter(DailyCommercialReportService::isCommercialSummaryDocument)
+        var invoiced = issued.stream()
+                .filter(DailyCommercialReportService::isCustomerReceivableSale)
                 .map(CommercialDocument::getTotal)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var sameDayCollected = issued.stream()
-                .filter(DailyCommercialReportService::isCommercialSummaryDocument)
-                .flatMap(document -> document.getPagos().stream())
-                .filter(payment -> !payment.getCreadoEn().isBefore(from) && payment.getCreadoEn().isBefore(to))
+        var collectedCurrent = collected.stream()
+                .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
+                .filter(payment -> payment.getDocumento().getFecha().equals(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var collectedTotal = collected.stream()
-                .filter(payment -> isSalesDocument(payment.getDocumento()))
-                .map(DocumentPayment::getImporte)
-                .map(Money::euros)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var previousPendingCollected = collected.stream()
-                .filter(payment -> isSalesDocument(payment.getDocumento()))
+        var priorDebtCollected = collected.stream()
+                .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
                 .filter(payment -> payment.getDocumento().getFecha().isBefore(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var newPending = invoiced.subtract(collectedCurrent).max(BigDecimal.ZERO);
+        var cashInflow = collectedCurrent.add(priorDebtCollected);
         return new DailyCommercialReportView(
                 store.getId(),
                 date,
-                Money.euros(issuedTotal),
-                Money.euros(collectedTotal),
-                Money.euros(issuedTotal.subtract(sameDayCollected)),
-                Money.euros(previousPendingCollected));
+                Money.euros(invoiced),
+                Money.euros(collectedCurrent),
+                Money.euros(newPending),
+                Money.euros(priorDebtCollected),
+                Money.euros(cashInflow));
     }
 
-    private static boolean isCommercialSummaryDocument(CommercialDocument document) {
+    private static boolean isCustomerReceivableSale(CommercialDocument document) {
         return document.getEstado() != DocumentStatus.BORRADOR
                 && document.getEstado() != DocumentStatus.ANULADO
-                && isSalesDocument(document);
-    }
-
-    private static boolean isSalesDocument(CommercialDocument document) {
-        return document.getTipo() == CommercialDocumentType.TICKET
-                || document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
-                || document.getTipo() == CommercialDocumentType.FACTURA_VENTA
-                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA;
+                && (document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
+                || document.getTipo() == CommercialDocumentType.FACTURA_VENTA);
     }
 }

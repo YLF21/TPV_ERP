@@ -3,6 +3,8 @@ import { defaultHardwareConfig } from "../hardware/hardware";
 import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext } from "../types";
 import {
+  printCustomerReceivablePaymentReceipt,
+  printPendingCommercialDocument,
   printConfirmedTicketAutomatically,
   retryConfirmedTicketPrint
 } from "./ticketPrinting";
@@ -99,5 +101,75 @@ describe("confirmed ticket printing", () => {
     await expect(retryConfirmedTicketPrint(snapshot, terminal, hardware))
       .resolves.toEqual({ status: "PRINTED" });
     expect(printTicket).toHaveBeenCalledOnce();
+  });
+
+  it("prints a pending commercial sale as its authoritative A4 document", async () => {
+    const printA4Document = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      printA4Document
+    } as unknown as HardwareBridge;
+
+    await expect(printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-1",
+      issuedAt: "2026-07-16T10:00:00Z",
+      lines: snapshot.lines,
+      total: "100.00"
+    }, terminal, hardware)).resolves.toEqual({ status: "PRINTED" });
+
+    expect(printA4Document).toHaveBeenCalledWith(expect.objectContaining({
+      documentType: "INVOICE",
+      title: "Factura FV-1",
+      total: 100
+    }), expect.anything());
+  });
+
+  it("prints a later collection as a payment receipt and not as the original sale", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      printTicket
+    } as unknown as HardwareBridge;
+
+    await expect(printCustomerReceivablePaymentReceipt({
+      kind: "PAYMENT_RECEIPT",
+      paymentId: "pay-1",
+      documentNumber: "FV-1",
+      collectedAt: "2026-07-20T09:00:00Z",
+      method: "TRANSFERENCIA",
+      amount: "20.00",
+      remaining: "50.00"
+    }, terminal, hardware)).resolves.toEqual({ status: "PRINTED" });
+
+    expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      documentNumber: "COBRO FV-1 / pay-1",
+      issuedAt: "2026-07-20T09:00:00Z",
+      payments: [{ method: "TRANSFERENCIA", amount: 20 }],
+      total: 20
+    }), expect.anything());
+  });
+
+  it("localizes customer receivable print copy", async () => {
+    const printA4Document = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      printA4Document
+    } as unknown as HardwareBridge;
+
+    await printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-2",
+      issuedAt: "2026-07-16T10:00:00Z",
+      lines: snapshot.lines,
+      total: "7.00"
+    }, terminal, hardware, "en");
+
+    expect(printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Invoice FV-2" }),
+      expect.anything()
+    );
   });
 });

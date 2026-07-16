@@ -175,7 +175,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     localStorage.setItem(receivablePaymentAttemptKey("01", "doc-1"), JSON.stringify({ paymentId: "old-op", amount: "20.00", methodId: "old-card", status: "APPROVED" }));
     const request = vi.fn().mockResolvedValue(methods);
     render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" request={request as any} onCancel={vi.fn()} onPaid={vi.fn()} />);
-    const retry = await screen.findByRole("button", { name: "Reintentar confirmacion de tarjeta" }); fireEvent.click(retry);
+    const retry = await screen.findByRole("button", { name: "Reintentar confirmación de tarjeta" }); fireEvent.click(retry);
     expect(await screen.findByRole("alert")).toHaveTextContent("otro importe");
     expect(screen.getByRole("button", { name: "Consultar estado de tarjeta" })).toBeEnabled(); expect(retry).toBeEnabled();
     expect(JSON.parse(localStorage.getItem(receivablePaymentAttemptKey("01", "doc-1")) ?? "null")).toMatchObject({ paymentId: "old-op", amount: "20.00", methodId: "old-card" });
@@ -183,7 +183,7 @@ describe("CustomerReceivablePaymentDialog", () => {
 
   it("refuses an already paid document", async () => {
     render(<CustomerReceivablePaymentDialog receivable={{ ...receivable, pendingTotal: "0.00", status: "PAGADO" }} token="token" terminalCode="01" request={vi.fn().mockResolvedValue(methods)} onCancel={vi.fn()} onPaid={vi.fn()} />);
-    expect(screen.getByText("Este documento ya esta pagado")).toBeVisible();
+    expect(screen.getByText("Este documento ya está pagado")).toBeVisible();
     expect(screen.getByRole("button", { name: "Efectivo" })).toBeDisabled();
   });
 });

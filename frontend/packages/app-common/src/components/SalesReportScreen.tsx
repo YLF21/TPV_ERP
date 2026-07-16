@@ -38,6 +38,17 @@ type SalesReportScreenProps = {
   onBack: () => void;
   onLogout?: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
+  request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
+};
+
+type DailyCommercialReport = {
+  storeId: string;
+  date: string;
+  invoiced: number | string;
+  collectedCurrent: number | string;
+  newPending: number | string;
+  priorDebtCollected: number | string;
+  cashInflow: number | string;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -960,7 +971,7 @@ function filterOptionsFromRows(rows: Array<Record<string, string>>, attribute: s
   ];
 }
 
-export function SalesReportScreen({ app, locale, session, terminalContext, onBack, onLogout, onLocaleChange }: SalesReportScreenProps) {
+export function SalesReportScreen({ app, locale, session, terminalContext, onBack, onLogout, onLocaleChange, request = apiRequest }: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -980,6 +991,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [openFilterControl, setOpenFilterControl] = useState<keyof ReportFilters | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
+  const [dailyCommercialReport, setDailyCommercialReport] = useState<DailyCommercialReport | null>(null);
   const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
   const [reportReloadKey, setReportReloadKey] = useState(0);
   const [warehouseProducts, setWarehouseProducts] = useState<WarehouseImportProduct[]>([]);
@@ -1102,6 +1114,23 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
       cancelled = true;
     };
   }, [session, terminalContext, reportReloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session.accessToken || selectedReport !== "salesReport.dailySales" || !filters.dateFrom) {
+      setDailyCommercialReport(null);
+      return;
+    }
+    void request<DailyCommercialReport>(
+      `/commercial-reports/daily?date=${encodeURIComponent(filters.dateFrom)}`,
+      { token: session.accessToken }
+    ).then((report) => {
+      if (!cancelled) setDailyCommercialReport(report);
+    }).catch(() => {
+      if (!cancelled) setDailyCommercialReport(null);
+    });
+    return () => { cancelled = true; };
+  }, [filters.dateFrom, request, selectedReport, session.accessToken]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -1582,6 +1611,28 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   }
 
   function renderDailySalesSummary() {
+    if (dailyCommercialReport) {
+      const rows: Array<[string, number | string]> = [
+        ["salesReport.daily.invoiced", dailyCommercialReport.invoiced],
+        ["salesReport.daily.collectedCurrent", dailyCommercialReport.collectedCurrent],
+        ["salesReport.daily.newPending", dailyCommercialReport.newPending],
+        ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
+        ["salesReport.daily.cashInflow", dailyCommercialReport.cashInflow]
+      ];
+      return (
+        <div className="daily-summary-scroll">
+          <section className="daily-summary-card daily-authoritative-summary" aria-label={t("salesReport.daily.authoritativeSummary")}>
+            <h2>{t("salesReport.daily.totalAmount")}</h2>
+            {rows.map(([key, value]) => (
+              <div className={key === "salesReport.daily.cashInflow" ? "daily-final-total-line" : "daily-payment-line"} key={key}>
+                <span>{t(key)}</span>
+                <strong>{`${formatAmount(Number(value))}€`}</strong>
+              </div>
+            ))}
+          </section>
+        </div>
+      );
+    }
     return (
       <div className="daily-summary-scroll">
         <div className="daily-summary-layout">

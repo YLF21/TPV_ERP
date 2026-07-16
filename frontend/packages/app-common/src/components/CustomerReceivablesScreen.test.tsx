@@ -16,7 +16,7 @@ describe("CustomerReceivablesScreen", () => {
     render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} initialCustomerId="customer-1" request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByText("FV-1")).toBeVisible();
     expect(request).toHaveBeenCalledWith("/customer-receivables?customerId=customer-1", { token: "token" });
-    for (const heading of ["Documento", "Cliente", "Emision", "Vencimiento", "Total", "Pagado", "Pendiente", "Estado"]) expect(screen.getByRole("columnheader", { name: heading })).toBeVisible();
+    for (const heading of ["Documento", "Cliente", "Emisión", "Vencimiento", "Total", "Pagado", "Pendiente", "Estado"]) expect(screen.getByRole("columnheader", { name: heading })).toBeVisible();
   });
 
   it("sends text, status, type, overdue and due-date filters without any company id", async () => {

@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { buildDocumentReports, isWarehouseDocumentReport, SalesReportScreen } from "./SalesReportScreen";
@@ -124,5 +127,40 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Aceite oliva");
+  });
+
+  it("renders the five daily accounting buckets from the authoritative backend report", async () => {
+    const request = vi.fn().mockResolvedValue({
+      storeId: "store-1",
+      date: "2026-07-16",
+      invoiced: "100.00",
+      collectedCurrent: "30.00",
+      newPending: "70.00",
+      priorDebtCollected: "20.00",
+      cashInflow: "50.00"
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        onBack={vi.fn()}
+        onLogout={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/commercial-reports\/daily\?date=/),
+      { token: "token" }
+    ));
+    expect(screen.getByText("100.00€")).toBeVisible();
+    expect(screen.getByText("30.00€")).toBeVisible();
+    expect(screen.getByText("70.00€")).toBeVisible();
+    expect(screen.getByText("20.00€")).toBeVisible();
+    expect(screen.getByText("50.00€")).toBeVisible();
   });
 });

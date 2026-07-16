@@ -125,7 +125,7 @@ describe("CustomerPendingSaleDialog", () => {
     expect(request.mock.calls[1][0]).toBe("/pos/customer-pending-sales/card-charges");
     fireEvent.click(query);
 
-    expect(await screen.findByText(/tarjeta aprobada requiere anulacion/i)).toBeInTheDocument();
+    expect(await screen.findByText(/tarjeta aprobada requiere anulaci[oó]n/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /eliminar/i })).not.toBeInTheDocument();
     expect(request.mock.calls[2][0]).toContain(cardPayment.paymentTerminalOperationId);
   });
@@ -180,7 +180,7 @@ describe("CustomerPendingSaleDialog", () => {
     expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
 
     view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} disabled onCancel={onCancel} onSuccess={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent(/recuperacion/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/recuperaci[oó]n/i);
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
 
     view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);

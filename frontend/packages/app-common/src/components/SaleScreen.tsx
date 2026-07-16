@@ -1199,6 +1199,7 @@ export function SaleScreen({
 
       {pendingDraft && selectedCustomer && <CustomerPendingSaleDialog
         customerName={selectedCustomer.fiscalName ?? selectedCustomer.clientId ?? "Cliente"}
+        locale={locale}
         draft={pendingDraft}
         token={session.accessToken}
         disabled={paymentLocked}
