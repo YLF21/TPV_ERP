@@ -24,6 +24,7 @@ public class CustomerPendingSaleService {
 
     private final DocumentService documents;
     private final CustomerPendingSaleCheckoutRepository checkouts;
+    private final CustomerPendingSaleCheckoutReservation reservations;
     private final PaymentTerminalOperationService terminalOperations;
     private final CardTerminalConfigurationReader configurations;
     private final CurrentTerminal currentTerminal;
@@ -34,6 +35,7 @@ public class CustomerPendingSaleService {
     public CustomerPendingSaleService(
             DocumentService documents,
             CustomerPendingSaleCheckoutRepository checkouts,
+            CustomerPendingSaleCheckoutReservation reservations,
             PaymentTerminalOperationService terminalOperations,
             CardTerminalConfigurationReader configurations,
             CurrentTerminal currentTerminal,
@@ -42,6 +44,7 @@ public class CustomerPendingSaleService {
             Clock clock) {
         this.documents = documents;
         this.checkouts = checkouts;
+        this.reservations = reservations;
         this.terminalOperations = terminalOperations;
         this.configurations = configurations;
         this.currentTerminal = currentTerminal;
@@ -66,7 +69,11 @@ public class CustomerPendingSaleService {
         var terminalId = currentTerminal.terminalId(authentication);
         var total = authoritativeQuote(sale, authentication).getTotal();
         requireQuotedTotal(sale, total);
-        var hash = CustomerPendingSaleRequestHasher.hash(sale, amount, total);
+        var cardPayment = requireIntegratedCardPayment(sale);
+        if (Money.euros(cardPayment.amount()).compareTo(amount) != 0) {
+            throw new IllegalArgumentException("card_charge_amount_mismatch");
+        }
+        var hash = CustomerPendingSaleRequestHasher.hash(sale, total);
         var configuration = configurations.required(terminalId);
         if (!organization.currentStore().getId().equals(configuration.storeId())) {
             throw new IllegalStateException("payment_operation_scope_mismatch");
@@ -82,11 +89,10 @@ public class CustomerPendingSaleService {
         var terminalId = currentTerminal.terminalId(authentication);
         var storeId = organization.currentStore().getId();
         var userId = organization.currentUser(authentication).getId();
-        var cardAmount = cardAmount(request);
         var replayHash = CustomerPendingSaleRequestHasher.hash(
-                request, cardAmount, Objects.requireNonNull(request.quotedTotal(), "quotedTotal"));
+                request, Objects.requireNonNull(request.quotedTotal(), "quotedTotal"));
 
-        var existing = checkouts.findByTerminalIdAndCheckoutId(
+        var existing = reservations.find(
                 terminalId, request.checkoutId());
         if (existing.isPresent()) {
             return replayOrContinue(
@@ -95,34 +101,54 @@ public class CustomerPendingSaleService {
 
         var total = authoritativeQuote(request, authentication).getTotal();
         requireQuotedTotal(request, total);
-        var hash = CustomerPendingSaleRequestHasher.hash(request, cardAmount, total);
+        var hash = CustomerPendingSaleRequestHasher.hash(request, total);
+
+        var declaredCard = integratedCardPayment(request);
+        var associatedApproved = terminalOperations.find(request.checkoutId())
+                .filter(operation -> operation.getStatus() == PaymentTerminalOperationStatus.APPROVED);
+        if (associatedApproved.isPresent() && declaredCard.isEmpty()) {
+            throw new IllegalStateException("approved_card_payment_required");
+        }
+        PaymentTerminalOperation cardOperation = null;
+        if (declaredCard.isPresent()) {
+            requireExactCardAssociation(request, declaredCard.orElseThrow());
+            cardOperation = terminalOperations.requireFinalizableApprovedCharge(
+                    request.checkoutId());
+            var configuration = configurations.required(terminalId);
+            requireCardIdentity(cardOperation, configuration, hash,
+                    declaredCard.orElseThrow().amount(), terminalId, storeId);
+        }
 
         var checkout = CustomerPendingSaleCheckout.reserve(
                 UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
                 hash, Instant.now(clock));
-        checkouts.saveAndFlush(checkout);
+        try {
+            checkout = reservations.insert(checkout);
+        } catch (org.springframework.dao.DataIntegrityViolationException conflict) {
+            var winner = reservations.findAfterConflict(terminalId, request.checkoutId());
+            return replayOrContinue(winner, hash, storeId, userId, request);
+        }
 
-        PaymentTerminalOperation cardOperation = null;
-        if (cardAmount.signum() > 0) {
-            cardOperation = terminalOperations.requireFinalizableApprovedCharge(
-                    request.checkoutId());
-            requireCardIdentity(cardOperation, hash, cardAmount, terminalId, storeId);
+        try {
+            var commands = paymentCommands(request, cardOperation, terminalId);
+            var document = documents.createPendingSale(
+                    request.toCommand(), request.dueDate(), commands, authentication);
+            if (cardOperation != null) {
+                var payment = document.getPagos().stream()
+                        .filter(value -> request.checkoutId().equals(value.getRequestId()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException(
+                                "approved_card_payment_not_persisted"));
+                terminalOperations.linkDocument(
+                        cardOperation.getId(), document.getId(), payment.getId());
+            }
+            checkout.complete(document.getId(), Instant.now(clock));
+            checkouts.save(checkout);
+            return views.receivableView(document, request.date());
+        } catch (RuntimeException failure) {
+            reservations.release(checkout);
+            throw failure;
         }
-        var commands = paymentCommands(request, cardOperation, terminalId);
-        var document = documents.createPendingSale(
-                request.toCommand(), request.dueDate(), commands, authentication);
-        if (cardOperation != null) {
-            var payment = document.getPagos().stream()
-                    .filter(value -> request.checkoutId().equals(value.getRequestId()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "approved_card_payment_not_persisted"));
-            terminalOperations.linkDocument(
-                    cardOperation.getId(), document.getId(), payment.getId());
-        }
-        checkout.complete(document.getId());
-        checkouts.save(checkout);
-        return views.receivableView(document, request.date());
     }
 
     private CustomerReceivableView replayOrContinue(
@@ -159,30 +185,48 @@ public class CustomerPendingSaleService {
         }
     }
 
-    private static BigDecimal cardAmount(
+    private static Optional<CustomerPendingSaleController.PaymentItem> integratedCardPayment(
             CustomerPendingSaleController.CreateRequest request) {
-        return (request.payments() == null ? List.<CustomerPendingSaleController.PaymentItem>of()
-                : request.payments()).stream()
-                .filter(payment -> request.checkoutId().equals(paymentRequestId(request, payment)))
-                .map(CustomerPendingSaleController.PaymentItem::amount)
-                .map(Money::euros)
-                .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
+        var cards = payments(request).stream()
+                .filter(payment -> payment.kind()
+                        == CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD)
+                .toList();
+        if (cards.size() > 1) {
+            throw new IllegalArgumentException("single_integrated_card_payment_required");
+        }
+        return cards.stream().findFirst();
     }
 
-    private static UUID paymentRequestId(
+    private static CustomerPendingSaleController.PaymentItem requireIntegratedCardPayment(
+            CustomerPendingSaleController.CreateRequest request) {
+        var payment = integratedCardPayment(request)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "integrated_card_payment_required"));
+        requireExactCardAssociation(request, payment);
+        return payment;
+    }
+
+    private static void requireExactCardAssociation(
             CustomerPendingSaleController.CreateRequest request,
             CustomerPendingSaleController.PaymentItem payment) {
-        return payment.requestId();
+        if (!request.checkoutId().equals(payment.requestId())
+                || !request.checkoutId().equals(payment.paymentTerminalOperationId())) {
+            throw new IllegalStateException("approved_card_payment_required");
+        }
+    }
+
+    private static List<CustomerPendingSaleController.PaymentItem> payments(
+            CustomerPendingSaleController.CreateRequest request) {
+        return List.copyOf(request.payments() == null ? List.of() : request.payments());
     }
 
     private static List<PaymentCommand> paymentCommands(
             CustomerPendingSaleController.CreateRequest request,
             PaymentTerminalOperation operation,
             UUID terminalId) {
-        var payments = request.payments() == null
-                ? List.<CustomerPendingSaleController.PaymentItem>of() : request.payments();
-        return payments.stream().map(payment -> {
-            var integrated = request.checkoutId().equals(paymentRequestId(request, payment));
+        return payments(request).stream().map(payment -> {
+            var integrated = payment.kind()
+                    == CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD;
             if (integrated && operation == null) {
                 throw new IllegalStateException("payment_operation_not_finalizable");
             }
@@ -201,6 +245,7 @@ public class CustomerPendingSaleService {
 
     private static void requireCardIdentity(
             PaymentTerminalOperation operation,
+            com.tpverp.backend.terminal.CardTerminalConfiguration configuration,
             String hash,
             BigDecimal amount,
             UUID terminalId,
@@ -208,6 +253,9 @@ public class CustomerPendingSaleService {
         if (!operation.getTerminalId().equals(terminalId)
                 || !operation.getStoreId().equals(storeId)) {
             throw new IllegalStateException("payment_operation_scope_mismatch");
+        }
+        if (!operation.matchesConfigurationIdentity(configuration)) {
+            throw new IllegalStateException("payment_operation_configuration_mismatch");
         }
         if (!Objects.equals(operation.getRequestHash(), hash)
                 || operation.getAmount().compareTo(amount) != 0) {

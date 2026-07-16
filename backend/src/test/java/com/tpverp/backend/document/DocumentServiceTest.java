@@ -1039,6 +1039,30 @@ class DocumentServiceTest {
     }
 
     @Test
+    void directPosInvoiceAndDeliveryNoteApplyStockExactlyOnce() {
+        var customer = completeCustomer();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(stockGateway.confirm(any())).thenReturn(true);
+
+        var invoice = service.createPendingSale(
+                directCommand(CommercialDocumentType.FACTURA_VENTA, customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+        var note = service.createPendingSale(
+                directCommand(CommercialDocumentType.ALBARAN_VENTA, customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+
+        assertThat(invoice.isOrigenStock()).isTrue();
+        assertThat(note.isOrigenStock()).isTrue();
+        verify(stockGateway, times(1)).confirm(invoice);
+        verify(stockGateway, times(1)).confirm(note);
+    }
+
+    @Test
     void invoicePaymentRequiresOpenCashSessionAndRecordsCashOnly() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
@@ -1491,6 +1515,13 @@ class DocumentServiceTest {
         return new DocumentCommand(
                 base.almacenId(), base.tipo(), base.fecha(), customerId, null, null,
                 base.descuentoGlobal(), base.directo(), base.lineas());
+    }
+
+    private DocumentCommand directCommand(CommercialDocumentType type, UUID customerId) {
+        var base = command(type, lines(), customerId);
+        return new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), base.clienteId(), null, null,
+                base.descuentoGlobal(), true, base.lineas());
     }
 
     private List<DocumentLineCommand> lines() {

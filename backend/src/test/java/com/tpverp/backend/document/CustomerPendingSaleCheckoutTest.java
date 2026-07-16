@@ -14,15 +14,16 @@ class CustomerPendingSaleCheckoutTest {
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), "a".repeat(64), Instant.parse("2026-07-16T10:15:30Z"));
         var documentId = UUID.randomUUID();
+        var completedAt = Instant.parse("2026-07-16T10:16:30Z");
 
         assertThat(checkout.matchesHash("a".repeat(64))).isTrue();
         assertThat(checkout.matchesHash("b".repeat(64))).isFalse();
         assertThat(checkout.isCompleted()).isFalse();
 
-        checkout.complete(documentId);
+        checkout.complete(documentId, completedAt);
 
         assertThat(checkout.isCompleted()).isTrue();
         assertThat(checkout.getDocumentId()).isEqualTo(documentId);
-        assertThat(checkout.getCompletedAt()).isNotNull();
+        assertThat(checkout.getCompletedAt()).isEqualTo(completedAt);
     }
 }

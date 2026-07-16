@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +43,7 @@ class CustomerPendingSaleServiceTest {
 
     @Mock DocumentService documents;
     @Mock CustomerPendingSaleCheckoutRepository checkouts;
+    @Mock CustomerPendingSaleCheckoutReservation reservations;
     @Mock PaymentTerminalOperationService terminalOperations;
     @Mock CardTerminalConfigurationReader configurations;
     @Mock CurrentTerminal currentTerminal;
@@ -69,7 +71,7 @@ class CustomerPendingSaleServiceTest {
         org.mockito.Mockito.lenient().when(organization.currentUser(authentication)).thenReturn(user);
         org.mockito.Mockito.lenient().when(user.getId()).thenReturn(userId);
         service = new CustomerPendingSaleService(
-                documents, checkouts, terminalOperations, configurations,
+                documents, checkouts, reservations, terminalOperations, configurations,
                 currentTerminal, organization, views,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -100,7 +102,8 @@ class CustomerPendingSaleServiceTest {
 
     @Test
     void uncertainCardOperationNeverCreatesDocument() {
-        var request = request(List.of(), new BigDecimal("100.00"));
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
         stubQuote(request, new BigDecimal("100.00"));
         var configuration = configuration();
         when(configurations.required(terminalId)).thenReturn(configuration);
@@ -130,13 +133,16 @@ class CustomerPendingSaleServiceTest {
         when(saved.getPagos()).thenReturn(List.of(payment));
         when(documents.quotePendingSale(any(), eq(request.dueDate()), eq(authentication)))
                 .thenReturn(quoted);
-        when(checkouts.findByTerminalIdAndCheckoutId(terminalId, request.checkoutId()))
-                .thenReturn(Optional.empty());
-        when(checkouts.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
         when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
         var operation = approvedOperation(request, new BigDecimal("30.00"));
+        when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
         when(terminalOperations.requireFinalizableApprovedCharge(request.checkoutId()))
                 .thenReturn(operation);
+        var current = configuration();
+        when(configurations.required(terminalId)).thenReturn(current);
+        when(operation.matchesConfigurationIdentity(current)).thenReturn(true);
         when(documents.createPendingSale(any(), eq(request.dueDate()), any(), eq(authentication)))
                 .thenReturn(saved);
         var view = org.mockito.Mockito.mock(CustomerReceivableView.class);
@@ -157,13 +163,13 @@ class CustomerPendingSaleServiceTest {
     void completedCheckoutReplaysWithoutCreatingAgain() {
         var request = request(List.of(), new BigDecimal("100.00"));
         var hash = CustomerPendingSaleRequestHasher.hash(
-                request, BigDecimal.ZERO, new BigDecimal("100.00"));
+                request, new BigDecimal("100.00"));
         var checkout = CustomerPendingSaleCheckout.reserve(
                 UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
                 hash, NOW);
         var existing = document(new BigDecimal("100.00"));
-        checkout.complete(existing.getId());
-        when(checkouts.findByTerminalIdAndCheckoutId(terminalId, request.checkoutId()))
+        checkout.complete(existing.getId(), NOW);
+        when(reservations.find(terminalId, request.checkoutId()))
                 .thenReturn(Optional.of(checkout));
         when(documents.find(existing.getId())).thenReturn(existing);
         var view = org.mockito.Mockito.mock(CustomerReceivableView.class);
@@ -180,7 +186,7 @@ class CustomerPendingSaleServiceTest {
         var checkout = CustomerPendingSaleCheckout.reserve(
                 UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
                 "0".repeat(64), NOW);
-        when(checkouts.findByTerminalIdAndCheckoutId(terminalId, request.checkoutId()))
+        when(reservations.find(terminalId, request.checkoutId()))
                 .thenReturn(Optional.of(checkout));
 
         assertThatThrownBy(() -> service.create(request, authentication))
@@ -194,11 +200,10 @@ class CustomerPendingSaleServiceTest {
         var request = request(List.of(payment(new BigDecimal("30.00"))),
                 new BigDecimal("100.00"));
         stubQuote(request, new BigDecimal("100.00"));
-        when(checkouts.findByTerminalIdAndCheckoutId(terminalId, request.checkoutId()))
-                .thenReturn(Optional.empty());
-        when(checkouts.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
         var operation = approvedOperation(request, new BigDecimal("30.00"));
         when(operation.getStoreId()).thenReturn(UUID.randomUUID());
+        when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
         when(terminalOperations.requireFinalizableApprovedCharge(request.checkoutId()))
                 .thenReturn(operation);
 
@@ -208,23 +213,135 @@ class CustomerPendingSaleServiceTest {
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
     }
 
+    @Test
+    void approvedCheckoutCardCannotBeOmittedOrReidentifiedAtCreate() {
+        var omitted = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(omitted, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, omitted.checkoutId())).thenReturn(Optional.empty());
+        var approved = approvedOperationForHash(
+                omitted, new BigDecimal("30.00"), CustomerPendingSaleRequestHasher.hash(
+                        withIntegratedPayment(omitted, omitted.checkoutId(), omitted.checkoutId(),
+                                new BigDecimal("30.00")), new BigDecimal("100.00")));
+        when(terminalOperations.find(omitted.checkoutId())).thenReturn(Optional.of(approved));
+
+        assertThatThrownBy(() -> service.create(omitted, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("approved_card_payment_required");
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(reservations, never()).insert(any());
+
+        var changed = withIntegratedPayment(
+                omitted, UUID.randomUUID(), omitted.checkoutId(), new BigDecimal("30.00"));
+        assertThatThrownBy(() -> service.create(changed, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("approved_card_payment_required");
+    }
+
+    @Test
+    void finalizationRejectsChangedTerminalConfigurationIdentity() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        var operation = approvedOperation(request, new BigDecimal("30.00"));
+        when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
+        when(terminalOperations.requireFinalizableApprovedCharge(request.checkoutId()))
+                .thenReturn(operation);
+        var current = configuration();
+        when(configurations.required(terminalId)).thenReturn(current);
+        when(operation.matchesConfigurationIdentity(current)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("configuration");
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(reservations, never()).insert(any());
+    }
+
+    @Test
+    void uniqueReservationRaceRequeriesWinnerAsReplayConflictOrInProgress() {
+        var request = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenThrow(new DataIntegrityViolationException("race"));
+        var hash = CustomerPendingSaleRequestHasher.hash(request, new BigDecimal("100.00"));
+        var winner = CustomerPendingSaleCheckout.reserve(
+                UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId, hash, NOW);
+        when(reservations.findAfterConflict(terminalId, request.checkoutId()))
+                .thenReturn(winner);
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("in_progress");
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void documentFailureReleasesIndependentReservationForSafeRetry() {
+        var request = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.createPendingSale(any(), any(), any(), eq(authentication)))
+                .thenThrow(new IllegalStateException("document rollback"));
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("document rollback");
+
+        verify(reservations).release(any(CustomerPendingSaleCheckout.class));
+        verify(checkouts, never()).save(any());
+        verify(terminalOperations, never()).linkDocument(any(), any(), any());
+    }
+
+    @Test
+    void replayChangesToPaymentMethodAmountReferenceOrChangeConflict() {
+        var original = request(List.of(new CustomerPendingSaleController.PaymentItem(
+                CustomerPendingSaleController.PaymentKind.STANDARD,
+                UUID.randomUUID(), new BigDecimal("10.00"), true,
+                new BigDecimal("12.00"), new BigDecimal("2.00"), null, "REF",
+                UUID.randomUUID(), null)), new BigDecimal("100.00"));
+        var checkout = CustomerPendingSaleCheckout.reserve(
+                UUID.randomUUID(), original.checkoutId(), terminalId, storeId, userId,
+                CustomerPendingSaleRequestHasher.hash(original, new BigDecimal("100.00")), NOW);
+        when(reservations.find(terminalId, original.checkoutId())).thenReturn(Optional.of(checkout));
+
+        for (var changed : List.of(
+                replaceStandardPayment(original, UUID.randomUUID(), new BigDecimal("10.00"), "REF", new BigDecimal("2.00")),
+                replaceStandardPayment(original, original.payments().getFirst().methodId(), new BigDecimal("9.00"), "REF", new BigDecimal("2.00")),
+                replaceStandardPayment(original, original.payments().getFirst().methodId(), new BigDecimal("10.00"), "OTHER", new BigDecimal("2.00")),
+                replaceStandardPayment(original, original.payments().getFirst().methodId(), new BigDecimal("10.00"), "REF", new BigDecimal("1.00")))) {
+            assertThatThrownBy(() -> service.create(changed, authentication))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("idempotency_conflict");
+        }
+    }
+
     private PaymentTerminalOperation approvedOperation(
             CustomerPendingSaleController.CreateRequest request, BigDecimal amount) {
+        return approvedOperationForHash(
+                request, amount, CustomerPendingSaleRequestHasher.hash(
+                        request, request.quotedTotal()));
+    }
+
+    private PaymentTerminalOperation approvedOperationForHash(
+            CustomerPendingSaleController.CreateRequest request, BigDecimal amount, String hash) {
         var operation = org.mockito.Mockito.mock(PaymentTerminalOperation.class);
         org.mockito.Mockito.lenient().when(operation.getId()).thenReturn(request.checkoutId());
         org.mockito.Mockito.lenient().when(operation.getTerminalId()).thenReturn(terminalId);
         org.mockito.Mockito.lenient().when(operation.getStoreId()).thenReturn(storeId);
         org.mockito.Mockito.lenient().when(operation.getAmount()).thenReturn(amount);
-        org.mockito.Mockito.lenient().when(operation.getRequestHash()).thenReturn(CustomerPendingSaleRequestHasher.hash(
-                request, amount, request.quotedTotal()));
+        org.mockito.Mockito.lenient().when(operation.getRequestHash()).thenReturn(hash);
         org.mockito.Mockito.lenient().when(operation.getProvider()).thenReturn(PaymentTerminalProvider.REDSYS_TPV_PC);
         org.mockito.Mockito.lenient().when(operation.getAuthorizationCode()).thenReturn("AUTH");
+        org.mockito.Mockito.lenient().when(operation.getStatus())
+                .thenReturn(PaymentTerminalOperationStatus.APPROVED);
         return operation;
     }
 
     private CardTerminalConfiguration configuration() {
         var configuration = org.mockito.Mockito.mock(CardTerminalConfiguration.class);
-        when(configuration.storeId()).thenReturn(storeId);
+        org.mockito.Mockito.lenient().when(configuration.storeId()).thenReturn(storeId);
         return configuration;
     }
 
@@ -233,11 +350,12 @@ class CustomerPendingSaleServiceTest {
             BigDecimal quotedTotal) {
         var checkoutId = UUID.randomUUID();
         var identifiedPayments = payments.stream().map(payment ->
-                payment.requestId() == null
+                payment.kind() == CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD
+                        && payment.requestId() == null
                         ? new CustomerPendingSaleController.PaymentItem(
-                                payment.methodId(), payment.amount(), payment.principal(),
+                                payment.kind(), payment.methodId(), payment.amount(), payment.principal(),
                                 payment.delivered(), payment.change(), payment.voucherCode(),
-                                payment.reference(), checkoutId)
+                                payment.reference(), checkoutId, checkoutId)
                         : payment).toList();
         return new CustomerPendingSaleController.CreateRequest(
                 checkoutId, UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
@@ -252,7 +370,38 @@ class CustomerPendingSaleServiceTest {
 
     private CustomerPendingSaleController.PaymentItem payment(BigDecimal amount) {
         return new CustomerPendingSaleController.PaymentItem(
-                UUID.randomUUID(), amount, true, null, null, null, null);
+                CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
+                UUID.randomUUID(), amount, true, null, null, null, null, null, null);
+    }
+
+    private CustomerPendingSaleController.CreateRequest withIntegratedPayment(
+            CustomerPendingSaleController.CreateRequest base,
+            UUID requestId,
+            UUID operationId,
+            BigDecimal amount) {
+        return new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(), base.customerId(),
+                base.dueDate(), base.globalDiscount(), base.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
+                        UUID.randomUUID(), amount, true, null, null, null, null,
+                        requestId, operationId)), base.quotedTotal());
+    }
+
+    private CustomerPendingSaleController.CreateRequest replaceStandardPayment(
+            CustomerPendingSaleController.CreateRequest base,
+            UUID methodId,
+            BigDecimal amount,
+            String reference,
+            BigDecimal change) {
+        var old = base.payments().getFirst();
+        return new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(), base.customerId(),
+                base.dueDate(), base.globalDiscount(), base.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        old.kind(), methodId, amount, old.principal(), old.delivered(), change,
+                        old.voucherCode(), reference, old.requestId(), old.paymentTerminalOperationId())),
+                base.quotedTotal());
     }
 
     private CommercialDocument document(BigDecimal total) {

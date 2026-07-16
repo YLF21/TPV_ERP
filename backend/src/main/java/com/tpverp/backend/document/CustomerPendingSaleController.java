@@ -65,12 +65,13 @@ public class CustomerPendingSaleController {
         DocumentCommand toCommand() {
             return new DocumentCommand(
                     warehouseId, type, date, customerId, null, null,
-                    globalDiscount, type == CommercialDocumentType.ALBARAN_VENTA,
+                    globalDiscount, true,
                     lines.stream().map(DocumentRequest.LineRequest::toCommand).toList());
         }
     }
 
     public record PaymentItem(
+            @NotNull PaymentKind kind,
             @NotNull UUID methodId,
             @NotNull @DecimalMin(value = "0.01") BigDecimal amount,
             boolean principal,
@@ -78,7 +79,8 @@ public class CustomerPendingSaleController {
             BigDecimal change,
             String voucherCode,
             String reference,
-            UUID requestId) {
+            UUID requestId,
+            UUID paymentTerminalOperationId) {
 
         public PaymentItem(
                 UUID methodId,
@@ -88,8 +90,14 @@ public class CustomerPendingSaleController {
                 BigDecimal change,
                 String voucherCode,
                 String reference) {
-            this(methodId, amount, principal, delivered, change, voucherCode, reference, null);
+            this(PaymentKind.STANDARD, methodId, amount, principal, delivered, change,
+                    voucherCode, reference, null, null);
         }
+    }
+
+    public enum PaymentKind {
+        STANDARD,
+        INTEGRATED_CARD
     }
 
     public record CardChargeRequest(

@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,28 @@ class CustomerPendingSaleControllerContractTest {
         assertEndpoint("chargeCard", CustomerPendingSaleController.CardChargeRequest.class,
                 "/card-charges");
         assertEndpoint("create", CustomerPendingSaleController.CreateRequest.class, "");
+    }
+
+    @Test
+    void bothPosReceivableTypesAreDirectStockDocuments() {
+        var invoice = request(CommercialDocumentType.FACTURA_VENTA).toCommand();
+        var note = request(CommercialDocumentType.ALBARAN_VENTA).toCommand();
+
+        assertThat(invoice.directo()).isTrue();
+        assertThat(note.directo()).isTrue();
+    }
+
+    private static CustomerPendingSaleController.CreateRequest request(
+            CommercialDocumentType type) {
+        return new CustomerPendingSaleController.CreateRequest(
+                UUID.randomUUID(), UUID.randomUUID(), type,
+                java.time.LocalDate.of(2026, 7, 16), UUID.randomUUID(),
+                java.time.LocalDate.of(2026, 8, 16), java.math.BigDecimal.ZERO,
+                java.util.List.of(new DocumentRequest.LineRequest(
+                        UUID.randomUUID(), java.math.BigDecimal.ONE, "P", "Producto", null,
+                        java.math.BigDecimal.TEN, java.math.BigDecimal.ZERO, true, "IVA",
+                        new java.math.BigDecimal("21"), null, null, null, null)),
+                java.util.List.of(), java.math.BigDecimal.TEN);
     }
 
     private static void assertEndpoint(String name, Class<?> requestType, String path)

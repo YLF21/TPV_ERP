@@ -61,12 +61,12 @@ public class CustomerPendingSaleCheckout {
         return checkout;
     }
 
-    public void complete(UUID documentId) {
-        if (completedAt != null) {
+    public void complete(UUID documentId, Instant completedAt) {
+        if (this.completedAt != null) {
             throw new IllegalStateException("pending_sale_checkout_already_completed");
         }
         this.documentId = Objects.requireNonNull(documentId, "documentId");
-        completedAt = Instant.now();
+        this.completedAt = Objects.requireNonNull(completedAt, "completedAt");
     }
 
     public boolean matchesHash(String hash) {
