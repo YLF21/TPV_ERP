@@ -877,6 +877,94 @@ class DocumentServiceTest {
     }
 
     @Test
+    void createsPendingSaleWithZeroPartialOrFullActualPayments() {
+        var customer = completeCustomer();
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false, true, false);
+        var requestId = UUID.randomUUID();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        var pending = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+        assertThat(pending.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
+        assertThat(pending.getPagos()).isEmpty();
+
+        var partial = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("3.00"), true, null, null,
+                        null, "TR-1", null, null, null, null, null, requestId)),
+                authentication());
+        assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
+        assertThat(partial.getPendingTotal()).isEqualByComparingTo("7.00");
+        assertThat(partial.getPagos()).singleElement()
+                .extracting(DocumentPayment::getRequestId).isEqualTo(requestId);
+
+        var paid = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "TR-2", null, null, null, null, null, UUID.randomUUID())),
+                authentication());
+        assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+    }
+
+    @Test
+    void pendingSaleRejectsInvalidTypeMissingOrInactiveCustomerDueDateZeroDuplicateAndOverpayment() {
+        var customer = completeCustomer();
+        customer.deactivate();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.TICKET, lines(), customer.getId()),
+                LocalDate.now(), List.of(), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("type");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(), authentication()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("inactivo");
+
+        customer.activate();
+        var method = new PaymentMethod(store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        var id = UUID.randomUUID();
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                null, List.of(), authentication()))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(new PaymentCommand(
+                        method.getId(), BigDecimal.ZERO, true, null, null,
+                        null, null, null, null, null, null, null, id)), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("positivo");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(
+                        new PaymentCommand(method.getId(), BigDecimal.ONE, true, null, null,
+                                null, null, null, null, null, null, null, id),
+                        new PaymentCommand(method.getId(), BigDecimal.ONE, false, null, null,
+                                null, null, null, null, null, null, null, id)), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requestId");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("10.01"), true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("payment_exceeds_pending_total");
+    }
+
+    @Test
     void receivablePaymentCannotExceedPendingTotal() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
@@ -893,6 +981,61 @@ class DocumentServiceTest {
                 .hasMessageContaining("message.document.payment_exceeds_pending_total");
 
         verify(documentRepository, never()).save(invoice);
+    }
+
+    @Test
+    void receivablePaymentRejectsZeroAndDuplicateRequestIds() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        var requestId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        method.getId(), BigDecimal.ZERO, true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("positivo");
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(
+                        new PaymentCommand(
+                                method.getId(), BigDecimal.ONE, true, null, null,
+                                null, null, null, null, null, null, null, requestId),
+                        new PaymentCommand(
+                                method.getId(), BigDecimal.ONE, false, null, null,
+                                null, null, null, null, null, null, null, requestId)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requestId");
+    }
+
+    @Test
+    void pendingSaleCashPaymentRequiresOpenCashSession() {
+        var customer = completeCustomer();
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        org.mockito.Mockito.doThrow(new IllegalStateException("No hay una sesion de caja abierta"))
+                .when(cashPaymentRecorder).recordDocumentPayments(any(), any());
+
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true,
+                        new BigDecimal("10.00"), BigDecimal.ZERO)), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sesion de caja abierta");
     }
 
     @Test
@@ -1340,6 +1483,14 @@ class DocumentServiceTest {
                 BigDecimal.ZERO,
                 false,
                 lines);
+    }
+
+    private DocumentCommand command(
+            CommercialDocumentType type, List<DocumentLineCommand> lines, UUID customerId) {
+        var base = command(type, lines);
+        return new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), customerId, null, null,
+                base.descuentoGlobal(), base.directo(), base.lineas());
     }
 
     private List<DocumentLineCommand> lines() {

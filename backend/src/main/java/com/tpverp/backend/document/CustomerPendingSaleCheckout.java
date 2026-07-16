@@ -73,6 +73,10 @@ public class CustomerPendingSaleCheckout {
         return requestHash.equals(hash);
     }
 
+    boolean matchesScope(UUID storeId, UUID userId) {
+        return this.storeId.equals(storeId) && this.userId.equals(userId);
+    }
+
     boolean isCompleted() {
         return completedAt != null;
     }

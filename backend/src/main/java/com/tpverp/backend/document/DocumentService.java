@@ -158,6 +158,85 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    CommercialDocument quotePendingSale(
+            DocumentCommand command, LocalDate dueDate, Authentication authentication) {
+        requirePendingSaleType(command);
+        var customer = requireActiveCustomer(command.clienteId());
+        var context = promotionPricing.customerContext(
+                organization.currentCompany().getId(), customer.getId());
+        var document = createDraft(command, authentication, context);
+        applyDirectPromotions(document, promotionContext(document, context));
+        document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        return document;
+    }
+
+    @Transactional
+    CommercialDocument createPendingSale(
+            DocumentCommand command,
+            LocalDate dueDate,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        requirePendingSaleType(command);
+        var customer = requireActiveCustomer(command.clienteId());
+        var customerContext = promotionPricing.customerContext(
+                organization.currentCompany().getId(), customer.getId());
+        var document = createDraft(command, authentication, customerContext);
+        var promotions = promotionContext(document, customerContext);
+        applyDirectPromotions(document, promotions);
+        document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        var commands = List.copyOf(payments == null ? List.of() : payments);
+        requirePositiveUniquePayments(commands);
+        requirePaymentTotalAtMost(commands, document.getTotal());
+        var terminalId = currentTerminal.terminalId(authentication);
+        var resolved = commands.stream()
+                .map(payment -> resolvePayment(document, payment, terminalId))
+                .toList();
+        requirePaymentTotalAtMost(resolved, document.getTotal());
+        if (!resolved.isEmpty()) {
+            appendPayments(document, resolved);
+            if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
+                throw new IllegalArgumentException("se requiere un pago principal");
+            }
+        }
+        boolean appliesStock = requiresStock(document) || document.isOrigenStock();
+        document.confirm(nextNumber(document),
+                organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        documents.saveAndFlush(document);
+        document.setStockOrigin(appliesStock && stockGateway.confirm(document));
+        document.updatePaymentStatus();
+        var saved = documents.save(document);
+        cashPayments.recordDocumentPayments(terminalId, saved);
+        if (!resolved.isEmpty()) {
+            memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+                    saved, loyaltyAccrualCommandTotal(resolved)));
+        }
+        generatePromotionalCoupons(saved, promotions);
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, terminalId);
+        return saved;
+    }
+
+    private static void requirePendingSaleType(DocumentCommand command) {
+        Objects.requireNonNull(command, "command");
+        if (command.tipo() != CommercialDocumentType.ALBARAN_VENTA
+                && command.tipo() != CommercialDocumentType.FACTURA_VENTA) {
+            throw new IllegalArgumentException("message.document.invalid_pending_sale_type");
+        }
+    }
+
+    private com.tpverp.backend.party.Customer requireActiveCustomer(UUID customerId) {
+        var customer = customers.findByIdAndCompanyId(
+                        Objects.requireNonNull(customerId, "clienteId"),
+                        organization.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.document.active_customer_not_found"));
+        if (!customer.isActive()) {
+            throw new IllegalStateException("message.document.customer_inactivo");
+        }
+        return customer;
+    }
+
+    @Transactional(readOnly = true)
     public List<CommercialDocument> listDeliveryNotes() {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
                 organization.currentStore().getId(), DELIVERY_NOTES);
@@ -978,6 +1057,7 @@ public class DocumentService {
     private void addPayments(
             CommercialDocument document, List<PaymentCommand> commands, String mismatchMessage, UUID terminalId) {
         requirePaymentsPresent(commands);
+        requirePositiveUniquePayments(commands);
         requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
         var resolved = commands.stream()
                 .map(command -> resolvePayment(document, command, terminalId))
@@ -991,6 +1071,7 @@ public class DocumentService {
 
     private BigDecimal addPartialPayments(CommercialDocument document, List<PaymentCommand> commands, UUID terminalId) {
         requirePaymentsPresent(commands);
+        requirePositiveUniquePayments(commands);
         var pending = document.getPendingTotal();
         requirePaymentTotalAtMost(commands, pending);
         var resolved = commands.stream()
@@ -1017,7 +1098,8 @@ public class DocumentService {
                     command.entregado(), command.cambio(), command.voucherCode(),
                     command.reference(), Instant.now(clock), command.cardMode(),
                     command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                    command.cardAuthorizationCode(), command.paymentTerminalId()));
+                    command.cardAuthorizationCode(), command.paymentTerminalId(),
+                    command.requestId()));
             hasPrincipal = hasPrincipal || principal;
         }
     }
@@ -1025,6 +1107,19 @@ public class DocumentService {
     private static void requirePaymentsPresent(List<PaymentCommand> commands) {
         if (commands == null || commands.isEmpty()) {
             throw new IllegalArgumentException("se requiere al menos un pago");
+        }
+    }
+
+    private static void requirePositiveUniquePayments(List<PaymentCommand> commands) {
+        var requestIds = new java.util.HashSet<UUID>();
+        for (var command : commands) {
+            Objects.requireNonNull(command, "payment");
+            if (Money.euros(command.importe()).signum() <= 0) {
+                throw new IllegalArgumentException("payment debe ser positivo");
+            }
+            if (command.requestId() != null && !requestIds.add(command.requestId())) {
+                throw new IllegalArgumentException("duplicate payment requestId");
+            }
         }
     }
 
@@ -1065,7 +1160,8 @@ public class DocumentService {
             var consumed = memberLoyalty.consumeBalanceForPayment(document, command.importe());
             return new PaymentCommand(
                     command.metodoPagoId(), consumed, command.principal(),
-                    command.entregado(), command.cambio(), null, command.reference());
+                    command.entregado(), command.cambio(), null, command.reference(),
+                    null, null, null, null, null, command.requestId());
         }
         if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
@@ -1081,7 +1177,7 @@ public class DocumentService {
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), command.paymentTerminalId());
+                command.cardAuthorizationCode(), command.paymentTerminalId(), command.requestId());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
 
@@ -1214,7 +1310,7 @@ public class DocumentService {
                 command.metodoPagoId(), command.importe(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), currentTerminalId);
+                command.cardAuthorizationCode(), currentTerminalId, command.requestId());
     }
 
     private String nextNumber(CommercialDocument document) {
@@ -1230,7 +1326,7 @@ public class DocumentService {
         return number;
     }
 
-    private CommercialDocument find(UUID id) {
+    CommercialDocument find(UUID id) {
         var storeId = organization.currentStore().getId();
         return documents.findById(id)
                 .filter(document -> document.getTiendaId().equals(storeId))
