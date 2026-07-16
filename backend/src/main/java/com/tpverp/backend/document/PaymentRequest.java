@@ -28,7 +28,9 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
             PaymentTerminalProvider paymentTerminalProvider,
             PaymentTerminalOperationStatus paymentTerminalStatus,
             String cardAuthorizationCode,
-            UUID paymentTerminalId) {
+            UUID paymentTerminalId,
+            UUID requestId,
+            UUID paymentTerminalOperationId) {
 
         public Item(
                 UUID metodoPagoId,
@@ -38,7 +40,7 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
                 BigDecimal cambio,
                 String voucherCode) {
             this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, null,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         public Item(
@@ -50,14 +52,25 @@ public record PaymentRequest(@NotEmpty List<Item> pagos) {
                 String voucherCode,
                 String reference) {
             this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null, null);
+        }
+
+        public Item(
+                UUID metodoPagoId, BigDecimal importe, boolean principal,
+                BigDecimal entregado, BigDecimal cambio, String voucherCode, String reference,
+                PaymentCardMode cardMode, PaymentTerminalProvider paymentTerminalProvider,
+                PaymentTerminalOperationStatus paymentTerminalStatus,
+                String cardAuthorizationCode, UUID paymentTerminalId) {
+            this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
+                    cardMode, paymentTerminalProvider, paymentTerminalStatus,
+                    cardAuthorizationCode, paymentTerminalId, null, null);
         }
 
         PaymentCommand toCommand() {
             return new PaymentCommand(
                     metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
                     cardMode, paymentTerminalProvider, paymentTerminalStatus,
-                    cardAuthorizationCode, paymentTerminalId);
+                    cardAuthorizationCode, paymentTerminalId, requestId);
         }
     }
 }

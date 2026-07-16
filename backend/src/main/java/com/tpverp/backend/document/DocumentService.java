@@ -913,6 +913,22 @@ public class DocumentService {
         return saved;
     }
 
+    @Transactional
+    CommercialDocument collectReceivable(
+            CommercialDocument document,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        Objects.requireNonNull(document, "document");
+        if ((document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
+                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA)
+                || (document.getEstado() != DocumentStatus.PENDIENTE
+                && document.getEstado() != DocumentStatus.PARCIAL)) {
+            throw new IllegalStateException(
+                    "message.document.only_receivable_document_can_be_paid");
+        }
+        return payReceivable(document, payments, authentication);
+    }
+
     // Exceptionally edits a confirmed ticket or delivery note without stock or audit side effects.
     @Transactional
     public CommercialDocument adminEditConfirmed(

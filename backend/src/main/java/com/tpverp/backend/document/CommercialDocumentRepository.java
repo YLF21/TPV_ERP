@@ -20,6 +20,37 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     Optional<CommercialDocument> findLockedReceivable(
             @Param("id") UUID id, @Param("storeId") UUID storeId);
 
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL)
+            order by document.fechaVencimiento asc, document.fecha desc, document.numero desc
+            """)
+    List<CommercialDocument> findCustomerReceivables(@Param("storeId") UUID storeId);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.id = :id
+              and document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL)
+            """)
+    Optional<CommercialDocument> findCustomerReceivable(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
