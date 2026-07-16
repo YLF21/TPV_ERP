@@ -308,6 +308,27 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
+    void canonicalHashDistinguishesNullFromLiteralNullPaymentStrings() {
+        var absent = request(List.of(new CustomerPendingSaleController.PaymentItem(
+                CustomerPendingSaleController.PaymentKind.STANDARD,
+                UUID.randomUUID(), BigDecimal.TEN, true, null, null,
+                null, null, UUID.randomUUID(), null)), new BigDecimal("100.00"));
+        var payment = absent.payments().getFirst();
+        var literal = new CustomerPendingSaleController.CreateRequest(
+                absent.checkoutId(), absent.warehouseId(), absent.type(), absent.date(),
+                absent.customerId(), absent.dueDate(), absent.globalDiscount(), absent.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        payment.kind(), payment.methodId(), payment.amount(), payment.principal(),
+                        payment.delivered(), payment.change(), "null", "null",
+                        payment.requestId(), payment.paymentTerminalOperationId())),
+                absent.quotedTotal());
+
+        assertThat(CustomerPendingSaleRequestHasher.hash(absent, absent.quotedTotal()))
+                .isNotEqualTo(CustomerPendingSaleRequestHasher.hash(
+                        literal, literal.quotedTotal()));
+    }
+
+    @Test
     void finalizationRejectsChangedTerminalConfigurationIdentity() {
         var request = request(List.of(payment(new BigDecimal("30.00"))),
                 new BigDecimal("100.00"));

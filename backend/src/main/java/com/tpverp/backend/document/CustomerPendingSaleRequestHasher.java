@@ -46,7 +46,7 @@ final class CustomerPendingSaleRequestHasher {
     }
 
     private static String text(String value) {
-        return value == null ? "null" : value.trim();
+        return value == null ? null : value.trim();
     }
 
     private static String decimal(BigDecimal value) {
