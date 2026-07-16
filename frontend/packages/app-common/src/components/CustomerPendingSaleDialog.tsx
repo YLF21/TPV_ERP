@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import {
   centsFromInput,
   pendingCreateBody,
+  pendingHasCardEffect,
   pendingHasUncertainCard,
   pendingSummary,
   type PendingPaymentAllocation,
@@ -20,6 +21,7 @@ type Props = {
   draft: PendingSaleDraft;
   token?: string;
   paymentMethods?: PaymentMethods;
+  disabled?: boolean;
   request?: Request;
   onCancel: () => void;
   onSuccess: (result: PendingSaleResult) => void;
@@ -28,7 +30,7 @@ type Props = {
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 const money = (cents: number) => (cents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, token, paymentMethods, request = apiRequest, onCancel, onSuccess }: Props) {
+export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, onCancel, onSuccess }: Props) {
   const dialogRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState(initialDraft);
   const [quoteCents, setQuoteCents] = useState(0);
@@ -44,8 +46,7 @@ export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, t
   const [resolvedMethods, setResolvedMethods] = useState<PaymentMethods>(paymentMethods ?? {});
   const summary = useMemo(() => pendingSummary(quoteCents, payments), [payments, quoteCents]);
   const uncertain = pendingHasUncertainCard(payments);
-  const hasCardEffect = payments.some((payment) => payment.kind === "INTEGRATED_CARD"
-    && !["DECLINED", "ERROR", "CANCELLED"].includes(payment.status));
+  const hasCardEffect = pendingHasCardEffect(payments);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
@@ -83,8 +84,14 @@ export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, t
     return () => { current = false; };
   }, [paymentMethods, request, token]);
 
+  useEffect(() => {
+    if (!disabled) return;
+    if (!hasCardEffect) onCancel();
+    else setError("Existe un cobro anterior en recuperacion. Resuelvelo antes de confirmar esta venta.");
+  }, [disabled, hasCardEffect, onCancel]);
+
   const confirm = useCallback(async () => {
-    if (submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate) return;
+    if (disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate) return;
     setSubmitting(true);
     setError("");
     try {
@@ -98,7 +105,7 @@ export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, t
     } finally {
       setSubmitting(false);
     }
-  }, [draft, onSuccess, payments, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
+  }, [disabled, draft, onSuccess, payments, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -169,23 +176,23 @@ export function CustomerPendingSaleDialog({ customerName, draft: initialDraft, t
       <header><h2 id="customer-pending-title">Venta pendiente de cliente</h2><button type="button" aria-label="Cerrar" disabled={submitting || hasCardEffect} onClick={onCancel}>×</button></header>
       <p><strong>Cliente:</strong> {customerName}</p>
       <div className="pending-sale-fields">
-        <label>Tipo de documento<select value={draft.type} disabled={submitting} onChange={(event) => setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] }))}><option value="ALBARAN_VENTA">Albaran</option><option value="FACTURA_VENTA">Factura</option></select></label>
-        <label>Vencimiento<input type="date" value={draft.dueDate} disabled={submitting} onChange={(event) => setDraft((value) => ({ ...value, dueDate: event.target.value }))} /></label>
+        <label>Tipo de documento<select value={draft.type} disabled={disabled || submitting || hasCardEffect} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect) setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] })); }}><option value="ALBARAN_VENTA">Albaran</option><option value="FACTURA_VENTA">Factura</option></select></label>
+        <label>Vencimiento<input type="date" value={draft.dueDate} disabled={disabled || submitting || hasCardEffect} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect) setDraft((value) => ({ ...value, dueDate: event.target.value })); }} /></label>
       </div>
       <div className="pending-sale-summary" aria-live="polite">
         <div><span>Total</span><strong>{money(summary.totalCents)}</strong></div>
         <div><span>Pagado</span><strong>{money(summary.paidCents)}</strong></div>
         <div><span>Pendiente</span><strong>{money(summary.pendingCents)}</strong></div>
       </div>
-      {payments.length > 0 && <ul aria-label="Pagos iniciales">{payments.map((payment) => <li key={payment.id}><span>{payment.kind === "CASH" ? "Efectivo" : payment.kind === "TRANSFER" ? "Transferencia" : "Tarjeta"}: {money(payment.amountCents)} ({payment.status})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" onClick={() => void queryCard(payment)}>Consultar tarjeta</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>La tarjeta aprobada requiere anulacion</span> : <button type="button" onClick={() => removePayment(payment)}>Eliminar</button>}</li>)}</ul>}
+      {payments.length > 0 && <ul aria-label="Pagos iniciales">{payments.map((payment) => <li key={payment.id}><span>{payment.kind === "CASH" ? "Efectivo" : payment.kind === "TRANSFER" ? "Transferencia" : "Tarjeta"}: {money(payment.amountCents)} ({payment.status})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled} onClick={() => void queryCard(payment)}>Consultar tarjeta</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>La tarjeta aprobada requiere anulacion</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>Eliminar</button>}</li>)}</ul>}
       <div className="pending-sale-payment-actions">
-        <button type="button" disabled={!resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={() => setCashOpen(true)}>Añadir efectivo</button>
-        <button type="button" disabled={!resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>Añadir tarjeta</button>
-        <button type="button" disabled={!resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => setTransferOpen(true)}>Añadir transferencia</button>
+        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={() => setCashOpen(true)}>Añadir efectivo</button>
+        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>Añadir tarjeta</button>
+        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => setTransferOpen(true)}>Añadir transferencia</button>
       </div>
       {transferOpen && <fieldset aria-label="Transferencia"><legend>Transferencia</legend><label>Importe<input aria-label="Importe transferencia" inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>Referencia<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>Guardar transferencia</button><button type="button" onClick={() => setTransferOpen(false)}>Cancelar transferencia</button></fieldset>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
-      <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>Cancelar</button><button type="button" disabled={submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{submitting ? "Creando..." : "Confirmar venta pendiente"}</button></footer>
+      <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>Cancelar</button><button type="button" disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{submitting ? "Creando..." : "Confirmar venta pendiente"}</button></footer>
     </section>
     {cashOpen && <CashPaymentDialog totalCents={summary.pendingCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = summary.pendingCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setCashOpen(false); }} />}
   </div>;

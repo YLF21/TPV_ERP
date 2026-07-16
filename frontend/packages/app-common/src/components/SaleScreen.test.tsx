@@ -24,6 +24,7 @@ import {
   runGuardedCardOpening,
   saleMainMessage,
   saleMainProductCount,
+  pendingSaleDraftForCustomer,
   effectiveSaleLineDiscount,
   effectiveSaleProductPrice,
   filterSaleCustomers,
@@ -70,10 +71,11 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, trigge
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
-  const { forwardRef, useImperativeHandle } = await import("react");
+  const { forwardRef, useEffect, useImperativeHandle } = await import("react");
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
+      useEffect(() => { props.onLockedChange?.(false); }, []);
       useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
         prepareLogout,
@@ -457,9 +459,15 @@ describe("SaleScreen", () => {
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products")) return new Response(JSON.stringify([{ ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify(customers), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([{ ...customers[0], activeMember: true, memberDiscountPercent: 5 }, customers[1]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/warehouses")) return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/pos/customer-pending-sales/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales/quote")) {
+        const body = JSON.parse(String(options?.body));
+        expect(body.customerId).toBe("customer-1");
+        expect(body.lines[0].descuento).toBe("0.00");
+        expect(body.lines[0]).not.toHaveProperty("memberDiscountPercent");
+        return new Response(JSON.stringify({ total: "9.50" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([
         { id: "cash-method", name: "EFECTIVO", active: true },
         { id: "card-method", name: "TARJETA", active: true },
@@ -467,7 +475,8 @@ describe("SaleScreen", () => {
       ]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/customer-pending-sales")) {
         const body = JSON.parse(String(options?.body));
-        expect(body).toMatchObject({ customerId: "customer-1", dueDate: "2026-08-15", payments: [], quotedTotal: "10.00" });
+        expect(body).toMatchObject({ customerId: "customer-1", dueDate: "2026-08-15", payments: [], quotedTotal: "9.50" });
+        expect(body.lines[0].descuento).toBe("0.00");
         expect(body).not.toHaveProperty("paymentMethod");
         return new Response(JSON.stringify({ documentId: "doc-1", documentNumber: "AV-1" }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -482,10 +491,20 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "CAF-001" } });
     fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1000));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    act(() => checkoutProps.current?.onLockedChange?.(false));
     fireEvent.keyDown(window, { key: "F12" });
     fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
     expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
     expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-08-15");
+    expect(screen.getAllByText("9,50")).not.toHaveLength(0);
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1000));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    act(() => checkoutProps.current?.onLockedChange?.(false));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
     const confirm = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
     await waitFor(() => expect(confirm).toBeEnabled());
     fireEvent.click(confirm);
@@ -1116,6 +1135,17 @@ describe("SaleScreen", () => {
     const addedBeforeSelection = addSaleLine([], products[0]);
 
     expect(saleTotal(applyMemberDiscounts(addedBeforeSelection, bronze))).toBe(9.5);
+  });
+
+  it("keeps member pricing backend-authoritative and serializes only the manual discount", () => {
+    const member: SaleCustomer = { id: "member-customer", activeMember: true, memberDiscountPercent: 5 };
+    const lines = [{ ...addSaleLine([], memberDiscountProduct)[0], discountPercent: 3, memberDiscountPercent: 5 }];
+
+    const pending = pendingSaleDraftForCustomer(lines, member, "warehouse-1", new Date(2026, 6, 16), "checkout-1");
+
+    expect(pending.customerId).toBe("member-customer");
+    expect(pending.lines[0].discount).toBe("3.00");
+    expect(pending.lines[0]).not.toHaveProperty("memberDiscountPercent");
   });
 
   it("uses confirmed server amounts in the cash payment result", () => {

@@ -446,6 +446,28 @@ export function filterSaleCustomers(customers: SaleCustomer[], query: string, li
     .slice(0, limit);
 }
 
+export function pendingSaleDraftForCustomer(
+  lines: SaleLine[],
+  customer: SaleCustomer,
+  warehouseId: string,
+  now: Date,
+  checkoutId: string,
+): PendingSaleDraft {
+  return {
+    checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
+    customerId: customer.id, dueDate: addLocalDays(now, 30), globalDiscount: "0.00",
+    lines: lines.map((line) => ({
+      productId: line.product.id, quantity: line.quantity,
+      code: line.product.code ?? line.product.barcode ?? line.product.id,
+      name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
+      price: effectiveSaleProductPrice(line.product, customer.activeMember === true).toFixed(2),
+      // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
+      discount: line.discountPercent.toFixed(2), taxesIncluded: line.product.taxesIncluded !== false,
+      taxRegime: line.product.taxRegime ?? "GENERAL", taxPercentage: Number(line.product.taxPercentage ?? 0).toFixed(2),
+    })),
+  };
+}
+
 type SaleScreenProps = {
   app: AppKind;
   locale: LocaleCode;
@@ -503,6 +525,7 @@ export function SaleScreen({
   const [cardSubmitting, setCardSubmitting] = useState(false);
   const [cardOpening, setCardOpening] = useState(false);
   const [paymentLocked, setPaymentLocked] = useState(false);
+  const [paymentHydrated, setPaymentHydrated] = useState(false);
   const [reservedPaymentTotalCents, setReservedPaymentTotalCents] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
@@ -683,25 +706,14 @@ export function SaleScreen({
         ?? warehouses.find((candidate) => candidate.active !== false);
       if (!warehouse) throw new Error("No hay un almacen activo para registrar la venta");
       const now = new Date();
-      setPendingDraft({
-        checkoutId: newCheckoutId(), warehouseId: warehouse.id, type: "ALBARAN_VENTA",
-        date: addLocalDays(now, 0), customerId: customer.id, dueDate: addLocalDays(now, 30), globalDiscount: "0.00",
-        lines: lines.map((line) => ({
-          productId: line.product.id, quantity: line.quantity,
-          code: line.product.code ?? line.product.barcode ?? line.product.id,
-          name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
-          price: effectiveSaleProductPrice(line.product, customer.activeMember === true).toFixed(2),
-          discount: line.discountPercent.toFixed(2), taxesIncluded: line.product.taxesIncluded !== false,
-          taxRegime: line.product.taxRegime ?? "GENERAL", taxPercentage: Number(line.product.taxPercentage ?? 0).toFixed(2),
-        })),
-      });
+      setPendingDraft(pendingSaleDraftForCustomer(lines, customer, warehouse.id, now, newCheckoutId()));
     } catch (failure) {
       setPendingError(failure instanceof Error ? failure.message : "No se pudo preparar la venta pendiente");
     } finally { setPendingOpening(false); }
   }
 
   function openPendingSale() {
-    if (lines.length === 0 || total <= 0 || paymentLocked) return;
+    if (lines.length === 0 || total <= 0 || paymentLocked || !paymentHydrated) return;
     if (!selectedCustomer) { openCustomerDialog(true); return; }
     void beginPendingSale(selectedCustomer);
   }
@@ -913,7 +925,7 @@ export function SaleScreen({
           paymentCheckoutRef.current?.triggerCard();
           break;
         case "F12":
-          if (paymentActionsDisabled || paymentLocked) return;
+          if (paymentActionsDisabled || paymentLocked || !paymentHydrated) return;
           openPendingSale();
           break;
         default:
@@ -924,7 +936,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentLocked, selectedCustomer, selectedLine, selectedProductId]);
+  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1105,11 +1117,12 @@ export function SaleScreen({
               token={session.accessToken}
               permissions={session.permissions}
               terminal={terminalContext}
-              disabled={paymentActionsDisabled}
+              disabled={paymentActionsDisabled || !paymentHydrated}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onPending={openPendingSale}
               onLockedChange={(locked, reservedTotalCents) => {
+                setPaymentHydrated(true);
                 setPaymentLocked(locked);
                 setReservedPaymentTotalCents(
                   locked && reservedTotalCents != null ? reservedTotalCents : null,
@@ -1188,6 +1201,7 @@ export function SaleScreen({
         customerName={selectedCustomer.fiscalName ?? selectedCustomer.clientId ?? "Cliente"}
         draft={pendingDraft}
         token={session.accessToken}
+        disabled={paymentLocked}
         onCancel={() => { setPendingDraft(null); searchInputRef.current?.focus(); }}
         onSuccess={() => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);

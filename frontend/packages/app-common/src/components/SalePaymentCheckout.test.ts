@@ -19,7 +19,7 @@ import {
  stableAllocationAttempt,
  shouldOfferTestCashSession,
 } from "./SalePaymentCheckout";
-import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import { SalePaymentCheckout, type SalePaymentCheckoutHandle, type ServerSession } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
@@ -83,6 +83,23 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await act(async()=>{resolveActive(null);await activeResponse;});
   await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
  });
+ it("reports locked while active-session hydration is unresolved and stays locked for a recovered session",async()=>{
+  let resolveActive!:(value:ServerSession)=>void;
+  const activeResponse=new Promise<ServerSession>(resolve=>{resolveActive=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return activeResponse;
+   if(path.endsWith("/simulator-discard"))throw new ApiError("terminal live",409);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onLockedChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onLockedChange,onFinalized:vi.fn()}));
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active",expect.anything()));
+  expect(onLockedChange).toHaveBeenLastCalledWith(true,undefined);
+  const active={id:"active-slow",total:"12.10",status:"COLLECTING",allocations:[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};
+  await act(async()=>{resolveActive(active);await activeResponse;});
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(true,1210));
+ });
  it("auto-cancels a collecting session whose declined and errored allocations are safely terminal",async()=>{
   const storageKey="tpverp.payment-session.01";
   const attemptKey=`${storageKey}.allocation-attempt`;
@@ -129,7 +146,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await act(async()=>{resolveSecondActive(null);await secondActive;});
   await expect(secondRef.current!.prepareLogout()).resolves.toBe("READY");
   expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/cancel"))).toHaveLength(1);
-  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("cancels a safe empty collecting session before allowing logout",async()=>{
@@ -274,7 +291,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(sessionStorage.getItem(storageKey)).toBe(session.id));
   await expect(ref.current!.prepareApplicationClose()).resolves.toBe("READY");
   expect(sessionStorage.getItem(storageKey)).toBeNull();expect(localStorage.getItem(attemptKey)).toBeNull();
-  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
  });
  it("blocks logout when simulator discard is not confirmed CANCELLED",async()=>{
   const session={id:"session-logout-unsafe",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[]};

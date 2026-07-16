@@ -102,3 +102,7 @@ export function pendingHasUncertainCard(payments: PendingPaymentAllocation[]) {
   return payments.some((payment) => payment.kind === "INTEGRATED_CARD"
     && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status));
 }
+
+export function pendingHasCardEffect(payments: PendingPaymentAllocation[]) {
+  return payments.some((payment) => payment.kind === "INTEGRATED_CARD");
+}

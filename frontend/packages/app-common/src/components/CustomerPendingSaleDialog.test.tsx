@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addLocalDays,
   pendingCreateBody,
+  pendingHasCardEffect,
   pendingSummary,
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
@@ -34,6 +35,10 @@ describe("customer receivable checkout helpers", () => {
       { id: "cash", kind: "CASH", methodId: "m-cash", amountCents: 333, status: "APPROVED" },
       { id: "card", kind: "INTEGRATED_CARD", methodId: "m-card", amountCents: 200, status: "TIMEOUT" },
     ])).toEqual({ totalCents: 1001, paidCents: 333, pendingCents: 668 });
+  });
+
+  it.each(["PENDING", "SENT", "TIMEOUT", "APPROVED", "DECLINED", "ERROR", "CANCELLED"] as const)("treats %s as a durable card effect", (status) => {
+    expect(pendingHasCardEffect([{ id: "card", kind: "INTEGRATED_CARD", methodId: "m-card", amountCents: 100, operationId: "op", status }])).toBe(true);
   });
 
   it("serializes only real approved payments and never invents PENDIENTE", () => {
@@ -105,7 +110,7 @@ describe("CustomerPendingSaleDialog", () => {
       .mockResolvedValueOnce({ total: "10.00" })
       .mockRejectedValueOnce(new Error("Sin respuesta"))
       .mockResolvedValueOnce({ status: "APPROVED" });
-    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
+    const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
     await screen.findAllByText("10,00");
     fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
     const query = await screen.findByRole("button", { name: /consultar tarjeta/i });
@@ -152,5 +157,45 @@ describe("CustomerPendingSaleDialog", () => {
     render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}} request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Catalogo no disponible");
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+  });
+
+  it("freezes document identity after every durable card outcome until explicit removal", async () => {
+    const onCancel = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" }).mockResolvedValueOnce({ status: "DECLINED" });
+    const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
+    await screen.findAllByText("10,00");
+    fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
+    expect(await screen.findByText(/DECLINED/)).toBeInTheDocument();
+
+    const type = screen.getByLabelText(/tipo de documento/i);
+    const dueDate = screen.getByLabelText(/vencimiento/i);
+    expect(type).toBeDisabled();
+    expect(dueDate).toBeDisabled();
+    fireEvent.change(type, { target: { value: "FACTURA_VENTA" } });
+    fireEvent.change(dueDate, { target: { value: "2027-01-01" } });
+    expect(type).toHaveValue("ALBARAN_VENTA");
+    expect(dueDate).toHaveValue("2026-08-15");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+
+    view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} disabled onCancel={onCancel} onSuccess={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/recuperacion/i);
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+
+    view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+    expect(type).toBeEnabled();
+    expect(dueDate).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeEnabled();
+  });
+
+  it("closes on a recovered checkout lock before effects and blocks confirmation after effects", async () => {
+    const onCancel = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" });
+    const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
+    await screen.findAllByText("10,00");
+    view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} disabled onCancel={onCancel} onSuccess={vi.fn()} />);
+    expect(onCancel).toHaveBeenCalledOnce();
   });
 });
