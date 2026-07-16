@@ -8,6 +8,7 @@ export { PromotionPreviewPanel } from "./components/PromotionPreviewPanel";
 export { PromotionWizard } from "./components/PromotionWizard";
 export { SalesReportScreen } from "./components/SalesReportScreen";
 export { SaleScreen } from "./components/SaleScreen";
+export { CustomerPendingSaleDialog } from "./components/CustomerPendingSaleDialog";
 export { SettingsScreen } from "./components/SettingsScreen";
 export { SessionHomeScreen } from "./components/SessionHomeScreen";
 export { StockScreen } from "./components/StockScreen";
@@ -22,6 +23,8 @@ export {
 } from "./hardware/hardware";
 export { createTranslator, LocalizedMessages, messages } from "./i18n/LocalizedMessages";
 export type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "./types";
+export { addLocalDays, pendingCreateBody, pendingSummary } from "./sale/customerReceivables";
+export type { PendingPaymentAllocation, PendingSaleDraft } from "./sale/customerReceivables";
 export type {
   PromotionPreview,
   PromotionPreviewAppliedPromotion,

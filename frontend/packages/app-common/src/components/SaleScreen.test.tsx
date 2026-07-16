@@ -57,11 +57,12 @@ type CheckoutMockProps = {
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
-const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
+const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, triggerPending, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   triggerCash: vi.fn(),
   triggerCard: vi.fn(),
+  triggerPending: vi.fn(),
   checkoutHandle: { attached: true },
   checkoutProps: {
     current: null as CheckoutMockProps | null,
@@ -78,6 +79,7 @@ vi.mock("./SalePaymentCheckout", async () => {
         prepareLogout,
         triggerCash,
         triggerCard,
+        triggerPending,
       }) as unknown as SalePaymentCheckoutHandle);
       return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>;
     })
@@ -86,11 +88,13 @@ vi.mock("./SalePaymentCheckout", async () => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
   triggerCash.mockReset();
   triggerCard.mockReset();
+  triggerPending.mockReset();
   checkoutHandle.attached = true;
   checkoutProps.current = null;
   delete window.tpvDesktop;
@@ -445,6 +449,50 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens F12 through customer selection, uses local plus 30 days and clears only after create succeeds", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16, 12));
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) return new Response(JSON.stringify([{ ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify(customers), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/warehouses")) return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([
+        { id: "cash-method", name: "EFECTIVO", active: true },
+        { id: "card-method", name: "TARJETA", active: true },
+        { id: "transfer-method", name: "TRANSFERENCIA", active: true },
+      ]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales")) {
+        const body = JSON.parse(String(options?.body));
+        expect(body).toMatchObject({ customerId: "customer-1", dueDate: "2026-08-15", payments: [], quotedTotal: "10.00" });
+        expect(body).not.toHaveProperty("paymentMethod");
+        return new Response(JSON.stringify({ documentId: "doc-1", documentNumber: "AV-1" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/terminal-configuration/payment")) return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/payment-sessions/active")) return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F12" });
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-08-15");
+    const confirm = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Cafe molido.*1 x/s })).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("does not run global sale shortcuts from focused editable controls", async () => {

@@ -21,6 +21,8 @@ import {
   type TicketPrintOutcome,
 } from "../sale/ticketPrinting";
 import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
+import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
+import { addLocalDays, type PendingSaleDraft } from "../sale/customerReceivables";
 
 export type SaleProduct = {
   id: string;
@@ -37,6 +39,10 @@ export type SaleProduct = {
   offerActive?: boolean | null;
   offerFrom?: string | null;
   offerUntil?: string | null;
+  taxesIncluded?: boolean | null;
+  taxRegime?: string | null;
+  taxPercentage?: number | string | null;
+  rate?: string | null;
 };
 
 export type SaleLine = {
@@ -476,6 +482,10 @@ export function SaleScreen({
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
+  const [pendingCustomerContinuation, setPendingCustomerContinuation] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<PendingSaleDraft | null>(null);
+  const [pendingOpening, setPendingOpening] = useState(false);
+  const [pendingError, setPendingError] = useState("");
   const [cashDialogOpen, setCashDialogOpen] = useState(false);
   const [cashOpening, setCashOpening] = useState(false);
   const [cashQuoteCents, setCashQuoteCents] = useState(0);
@@ -651,7 +661,8 @@ export function SaleScreen({
     }
   }
 
-  function openCustomerDialog() {
+  function openCustomerDialog(continuePending = false) {
+    setPendingCustomerContinuation(continuePending);
     setActionDialog("customer");
     setCustomerQuery("");
     setCustomerLoading(true);
@@ -660,6 +671,39 @@ export function SaleScreen({
       .then(setCustomers)
       .catch(() => setCustomerError(true))
       .finally(() => setCustomerLoading(false));
+  }
+
+  async function beginPendingSale(customer: SaleCustomer) {
+    if (pendingOpening || lines.length === 0 || total <= 0) return;
+    setPendingOpening(true);
+    setPendingError("");
+    try {
+      const warehouses = await apiRequest<Array<{ id: string; active?: boolean; defaultWarehouse?: boolean; isDefaultWarehouse?: boolean }>>("/warehouses", { token: session.accessToken });
+      const warehouse = warehouses.find((candidate) => candidate.active !== false && (candidate.defaultWarehouse || candidate.isDefaultWarehouse))
+        ?? warehouses.find((candidate) => candidate.active !== false);
+      if (!warehouse) throw new Error("No hay un almacen activo para registrar la venta");
+      const now = new Date();
+      setPendingDraft({
+        checkoutId: newCheckoutId(), warehouseId: warehouse.id, type: "ALBARAN_VENTA",
+        date: addLocalDays(now, 0), customerId: customer.id, dueDate: addLocalDays(now, 30), globalDiscount: "0.00",
+        lines: lines.map((line) => ({
+          productId: line.product.id, quantity: line.quantity,
+          code: line.product.code ?? line.product.barcode ?? line.product.id,
+          name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
+          price: effectiveSaleProductPrice(line.product, customer.activeMember === true).toFixed(2),
+          discount: line.discountPercent.toFixed(2), taxesIncluded: line.product.taxesIncluded !== false,
+          taxRegime: line.product.taxRegime ?? "GENERAL", taxPercentage: Number(line.product.taxPercentage ?? 0).toFixed(2),
+        })),
+      });
+    } catch (failure) {
+      setPendingError(failure instanceof Error ? failure.message : "No se pudo preparar la venta pendiente");
+    } finally { setPendingOpening(false); }
+  }
+
+  function openPendingSale() {
+    if (lines.length === 0 || total <= 0 || paymentLocked) return;
+    if (!selectedCustomer) { openCustomerDialog(true); return; }
+    void beginPendingSale(selectedCustomer);
   }
 
   function confirmRemoveLine() {
@@ -868,6 +912,10 @@ export function SaleScreen({
           if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCard();
           break;
+        case "F12":
+          if (paymentActionsDisabled || paymentLocked) return;
+          openPendingSale();
+          break;
         default:
           handled = false;
       }
@@ -876,7 +924,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentLocked, selectedLine, selectedProductId]);
+  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentLocked, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1038,7 +1086,7 @@ export function SaleScreen({
               <span>{t("sale.main.discount")}</span>
               <kbd>F7</kbd>
             </button>
-            <button type="button" disabled={paymentLocked} onClick={openCustomerDialog}>
+            <button type="button" disabled={paymentLocked} onClick={() => openCustomerDialog()}>
               <span>{t("sale.main.customer")}</span>
               <kbd>F6</kbd>
             </button>
@@ -1060,6 +1108,7 @@ export function SaleScreen({
               disabled={paymentActionsDisabled}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
+              onPending={openPendingSale}
               onLockedChange={(locked, reservedTotalCents) => {
                 setPaymentLocked(locked);
                 setReservedPaymentTotalCents(
@@ -1083,6 +1132,7 @@ export function SaleScreen({
               }}
             />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
+            {pendingError && <p className="sale-payment-status" role="alert">{pendingError}</p>}
           </section>
         </section>
 
@@ -1134,6 +1184,17 @@ export function SaleScreen({
 
       {cardDialogOpen && <CardPaymentDialog totalCents={cardQuoteCents} status={cardStatus} submitting={cardSubmitting} message={cardMessage} onCancel={() => setCardDialogOpen(false)} onConsult={consultCardPayment} onNewOperation={retryCardPayment} />}
 
+      {pendingDraft && selectedCustomer && <CustomerPendingSaleDialog
+        customerName={selectedCustomer.fiscalName ?? selectedCustomer.clientId ?? "Cliente"}
+        draft={pendingDraft}
+        token={session.accessToken}
+        onCancel={() => { setPendingDraft(null); searchInputRef.current?.focus(); }}
+        onSuccess={() => {
+          setPendingDraft(null); setLines([]); setSelectedProductId(null);
+          setSelectedCustomer(null); setQuery(""); searchInputRef.current?.focus();
+        }}
+      />}
+
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
@@ -1161,7 +1222,7 @@ export function SaleScreen({
       )}
 
       {actionDialog === "customer" && (
-        <SaleActionDialog title="Seleccionar cliente" onClose={() => setActionDialog(null)} wide>
+        <SaleActionDialog title="Seleccionar cliente" onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }} wide>
           <label>
             <span>Buscar cliente</span>
             <input aria-label="Buscar cliente" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="Nombre, documento o codigo" />
@@ -1170,16 +1231,16 @@ export function SaleScreen({
           {customerError && <p className="sale-action-error">No se pudieron cargar los clientes</p>}
           {!customerLoading && !customerError && (
             <div className="sale-customer-results">
-              <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>Sin cliente</button>
+              {!pendingCustomerContinuation && <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>Sin cliente</button>}
               {customerResults.map((customer) => (
-                <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setLines((current) => applyMemberDiscounts(current, customer)); setActionDialog(null); }}>
+                <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setLines((current) => applyMemberDiscounts(current, customer)); setActionDialog(null); if (pendingCustomerContinuation) { setPendingCustomerContinuation(false); void beginPendingSale(customer); } }}>
                   <strong>{customer.fiscalName ?? "Cliente sin nombre"}</strong>
                   <span>{customer.clientId ?? customer.documentNumber ?? "Sin codigo"}</span>
                 </button>
               ))}
             </div>
           )}
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cerrar</button></div>
+          <div className="sale-action-buttons"><button type="button" onClick={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}>Cerrar</button></div>
         </SaleActionDialog>
       )}
 

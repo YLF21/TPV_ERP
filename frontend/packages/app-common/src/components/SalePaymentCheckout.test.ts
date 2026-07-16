@@ -424,7 +424,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(screen.getByRole("button",{name:/Efectivo/})).toBeVisible();
   expect(screen.getByRole("button",{name:/Tarjeta/})).toBeVisible();
-  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeDisabled();
+  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeEnabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it.each([
@@ -493,7 +493,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(await screen.findByRole("button",{name:/AvPág/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F11/})).toBeVisible();
-  expect(screen.getByRole("button",{name:/F12/})).toBeDisabled();
+  expect(screen.getByRole("button",{name:/F12/})).toBeEnabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("delegates the cash action exactly once when onCash is supplied",async()=>{

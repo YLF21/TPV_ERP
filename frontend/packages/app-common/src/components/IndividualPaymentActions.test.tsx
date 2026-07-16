@@ -9,7 +9,7 @@ import { IndividualPaymentActions } from "./IndividualPaymentActions";
 
 afterEach(cleanup);
 
-const callbacks = () => ({ onCash: vi.fn(), onCard: vi.fn() });
+const callbacks = () => ({ onCash: vi.fn(), onCard: vi.fn(), onPending: vi.fn() });
 const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 
 describe("IndividualPaymentActions", () => {
@@ -20,7 +20,7 @@ describe("IndividualPaymentActions", () => {
     expect(tpvCss).toMatch(/\.individual-payment-actions button kbd\s*{[^}]*grid-column:\s*3\s*!important;[^}]*justify-self:\s*end\s*!important;/s);
   });
 
-  it("renders accessible payment actions with shortcuts and the pending explanation", () => {
+  it("renders accessible enabled payment actions with shortcuts", () => {
     render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...callbacks()} />);
 
     const cash = screen.getByRole("button", { name: /Efectivo/ });
@@ -28,24 +28,23 @@ describe("IndividualPaymentActions", () => {
     const pending = screen.getByRole("button", { name: /Pendiente cliente/ });
     expect(cash).toBeEnabled();
     expect(card).toBeEnabled();
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
     expect(within(cash).getByText("AvPág")).toBeInTheDocument();
     expect(within(card).getByText("F11")).toBeInTheDocument();
     expect(within(pending).getByText("F12")).toBeInTheDocument();
-    expect(screen.getByTitle("Funcionalidad pendiente de definir")).toBe(
-      pending,
-    );
   });
 
-  it("dispatches cash and card callbacks through DOM click events", () => {
+  it("dispatches cash, card and pending callbacks through DOM click events", () => {
     const handlers = callbacks();
     render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...handlers} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Efectivo/ }));
     fireEvent.click(screen.getByRole("button", { name: /Tarjeta/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Pendiente cliente/ }));
 
     expect(handlers.onCash).toHaveBeenCalledOnce();
     expect(handlers.onCard).toHaveBeenCalledOnce();
+    expect(handlers.onPending).toHaveBeenCalledOnce();
   });
 
   it("disables cash and card when the action bar is disabled", () => {
@@ -54,12 +53,16 @@ describe("IndividualPaymentActions", () => {
 
     const cash = screen.getByRole("button", { name: /Efectivo/ });
     const card = screen.getByRole("button", { name: /Tarjeta/ });
+    const pending = screen.getByRole("button", { name: /Pendiente cliente/ });
     expect(cash).toBeDisabled();
     expect(card).toBeDisabled();
+    expect(pending).toBeDisabled();
     fireEvent.click(cash);
     fireEvent.click(card);
+    fireEvent.click(pending);
     expect(handlers.onCash).not.toHaveBeenCalled();
     expect(handlers.onCard).not.toHaveBeenCalled();
+    expect(handlers.onPending).not.toHaveBeenCalled();
   });
 
   it("disables cash and card while busy", () => {
@@ -67,6 +70,7 @@ describe("IndividualPaymentActions", () => {
 
     expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Pendiente cliente/ })).toBeDisabled();
   });
 
   it("keeps cash enabled but disables card when card payments are unavailable", () => {

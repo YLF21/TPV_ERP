@@ -12708,3 +12708,22 @@ textarea:focus,
   .party-member-loyalty .party-form { grid-template-columns: 1fr; }
   .party-member-admin-form { grid-template-columns: 1fr; }
 }
+.customer-pending-sale-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--panel, #fff);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 35%);
+}
+.customer-pending-sale-dialog > header,
+.customer-pending-sale-dialog > footer,
+.pending-sale-payment-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.pending-sale-fields, .pending-sale-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.pending-sale-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pending-sale-summary > div { display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #ccd3db); border-radius: 8px; }
+.customer-pending-sale-dialog label { display: grid; gap: 6px; }
+.customer-pending-sale-dialog input, .customer-pending-sale-dialog select { min-height: 40px; }
+.customer-pending-sale-dialog fieldset { display: grid; gap: 10px; margin-top: 16px; }
+@media (max-width: 640px) { .pending-sale-fields, .pending-sale-summary { grid-template-columns: 1fr; } }

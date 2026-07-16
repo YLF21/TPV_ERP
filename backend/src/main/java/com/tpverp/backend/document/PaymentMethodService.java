@@ -34,8 +34,11 @@ public class PaymentMethodService {
 
     @Transactional(readOnly = true)
     public List<PaymentMethod> list(UUID companyId) {
-        requireCurrentCompany(companyId);
-        return repository.findAllByEmpresaIdOrderByNombre(companyId);
+        var currentCompanyId = organization.currentCompany().getId();
+        if (companyId != null && !currentCompanyId.equals(companyId)) {
+            throw new IllegalArgumentException("empresa no encontrada");
+        }
+        return repository.findAllByEmpresaIdOrderByNombre(currentCompanyId);
     }
 
     // Activates or deactivates while respecting protected system methods.
