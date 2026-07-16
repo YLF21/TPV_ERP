@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { retryPrintSucceeded } from "../sale/printRetry";
 import {
   SaleScreen,
   addSaleLine,
@@ -101,6 +102,14 @@ afterEach(() => {
   checkoutHandle.attached = true;
   checkoutProps.current = null;
   delete window.tpvDesktop;
+});
+
+it("keeps sale print retry after two failures and clears only after success", async () => {
+  const retry = vi.fn().mockResolvedValueOnce({ status: "FAILED" })
+    .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ status: "PRINTED" });
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(true);
 });
 
 const session: UserSession = {
@@ -479,7 +488,10 @@ describe("SaleScreen", () => {
         expect(body).toMatchObject({ customerId: "customer-1", dueDate: "2026-08-15", payments: [], quotedTotal: "9.50" });
         expect(body.lines[0].descuento).toBe("0.00");
         expect(body).not.toHaveProperty("paymentMethod");
-        return new Response(JSON.stringify({ documentId: "doc-1", documentNumber: "AV-1" }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ receivable: { documentId: "doc-1", documentNumber: "AV-1" }, printDocument: {
+          documentId: "doc-1", documentType: "ALBARAN_VENTA", documentNumber: "AV-1",
+          issueDate: "2026-07-16", lines: [], baseTotal: "9.50", taxTotal: "0.00", total: "9.50"
+        } }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/terminal-configuration/payment")) return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/payment-sessions/active")) return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { buildDocumentReports, isWarehouseDocumentReport, SalesReportScreen } from "./SalesReportScreen";
@@ -162,5 +162,18 @@ describe("SalesReportScreen", () => {
     expect(screen.getByText("70.00€")).toBeVisible();
     expect(screen.getByText("20.00€")).toBeVisible();
     expect(screen.getByText("50.00€")).toBeVisible();
+  });
+
+  it("shows translated authoritative loading/error and retries without local totals", async () => {
+    const request = vi.fn().mockRejectedValueOnce(new Error("sin red")).mockResolvedValueOnce({
+      storeId: "store-1", date: "2026-07-16", invoiced: "1.00", collectedCurrent: "0.00",
+      newPending: "1.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+    });
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
+    expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
+    expect((await screen.findAllByText("1.00€")).length).toBeGreaterThanOrEqual(2);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });

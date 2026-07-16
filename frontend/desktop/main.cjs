@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, Menu, screen } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { renderA4DocumentHtml } = require("./a4-renderer.cjs");
+const { renderTicketHtml } = require("./ticket-renderer.cjs");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 const {
   executeEscposTicketPrint,
@@ -168,7 +170,7 @@ function formatMoney(value) {
   return Number(value || 0).toFixed(2);
 }
 
-function renderTicketHtml(ticket) {
+function legacyRenderTicketHtml(ticket) {
   const lineRows = (ticket.lines || [])
     .map(
       (line) => `
@@ -217,7 +219,7 @@ function renderTicketHtml(ticket) {
   </div>
   <table>
     <thead>
-      <tr><th>Articulo</th><th class="right">Cant.</th><th class="right">Precio</th><th class="right">Total</th></tr>
+      <tr><th>Item</th><th class="right">Qty.</th><th class="right">Price</th><th class="right">Total</th></tr>
     </thead>
     <tbody>${lineRows}</tbody>
   </table>
@@ -270,64 +272,6 @@ function renderCustomerDisplayHtml(state) {
 <body>
   <div class="line">${escapeHtml(state?.line1 || "")}</div>
   <div class="line">${escapeHtml(state?.line2 || "")}</div>
-</body>
-</html>`;
-}
-
-function renderA4DocumentHtml(document) {
-  const rows = (document.lines || [])
-    .map(
-      (line) => `
-        <tr>
-          <td>${escapeHtml(line.name)}</td>
-          <td class="right">${escapeHtml(line.quantity)}</td>
-          <td class="right">${formatMoney(line.price)}</td>
-          <td class="right">${formatMoney(line.total)}</td>
-        </tr>`
-    )
-    .join("");
-
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    @page { size: A4 portrait; margin: 14mm; }
-    body { margin: 0; color: #111827; font-family: Arial, "Segoe UI", sans-serif; font-size: 12px; }
-    header { display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 20px; }
-    h1 { margin: 0; font-size: 26px; }
-    .meta { text-align: right; line-height: 1.6; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
-    th { background: #e8eef7; text-align: left; }
-    th, td { border: 1px solid #c8d2e0; padding: 8px; }
-    .right { text-align: right; }
-    .totals { width: 260px; margin-left: auto; margin-top: 20px; }
-    .totals .row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #d5dce8; }
-    .totals .total { font-size: 18px; font-weight: 800; border-bottom: 0; }
-  </style>
-</head>
-<body>
-  <header>
-    <div>
-      <h1>${escapeHtml(document.title || "Documento")}</h1>
-      <div>${escapeHtml(document.storeName || "")}</div>
-    </div>
-    <div class="meta">
-      <div>Terminal ${escapeHtml(document.terminalCode || "")}</div>
-      <div>${escapeHtml(document.issuedAt || "")}</div>
-    </div>
-  </header>
-  <table>
-    <thead>
-      <tr><th>Descripcion</th><th class="right">Cantidad</th><th class="right">Precio</th><th class="right">Total</th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <section class="totals">
-    <div class="row"><span>Base</span><strong>${formatMoney(document.subtotal)}</strong></div>
-    <div class="row"><span>Impuestos incluidos</span><strong>${document.taxIncluded ? "Si" : "No"}</strong></div>
-    <div class="row total"><span>Total</span><strong>${formatMoney(document.total)}</strong></div>
-  </section>
 </body>
 </html>`;
 }

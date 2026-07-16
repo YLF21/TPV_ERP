@@ -76,6 +76,7 @@ export type TicketLinePrint = {
   quantity: number;
   price: number;
   total: number;
+  taxesIncluded?: boolean;
 };
 
 export type TicketPaymentPrint = {
@@ -91,6 +92,9 @@ export type TicketPrintRequest = {
   lines: TicketLinePrint[];
   payments: TicketPaymentPrint[];
   total: number;
+  labels?: { terminal: string; item: string; quantity: string; price: string; total: string };
+  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string };
+  escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
 };
 
 export type A4DocumentPrintRequest = {
@@ -101,8 +105,13 @@ export type A4DocumentPrintRequest = {
   issuedAt: string;
   lines: TicketLinePrint[];
   subtotal: number;
-  taxIncluded: boolean;
+  tax: number;
+  taxIncluded: boolean | "MIXED";
   total: number;
+  labels: {
+    terminal: string; description: string; quantity: string; unitPrice: string;
+    base: string; tax: string; taxIncluded: string; yes: string; no: string; mixed: string; total: string;
+  };
 };
 
 export type ScannerTestResult = {
@@ -236,8 +245,12 @@ export function createA4TestDocument(terminalContext: Pick<TerminalContext, "sto
     issuedAt: new Date().toISOString(),
     lines,
     subtotal: total,
+    tax: 0,
     taxIncluded: true,
-    total
+    total,
+    labels: { terminal: "Terminal", description: "Description", quantity: "Quantity",
+      unitPrice: "Unit price", base: "Base", tax: "Tax", taxIncluded: "Tax included",
+      yes: "Yes", no: "No", mixed: "Mixed", total: "Total" }
   };
 }
 

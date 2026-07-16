@@ -5,7 +5,14 @@ const ESC = 0x1b;
 const GS = 0x1d;
 
 function textBuffer(value = "") {
-  return Buffer.from(String(value), "latin1");
+  // Raw ESC/POS is configured for a single-byte Latin code page. Unsupported
+  // glyphs are replaced deterministically; deployments needing CJK must pass
+  // printable/transliterated labels supported by their configured printer page.
+  const printable = Array.from(String(value).normalize("NFD"))
+    .filter((character) => !/[\u0300-\u036f]/.test(character))
+    .map((character) => character.codePointAt(0) <= 0xff ? character : "?")
+    .join("");
+  return Buffer.from(printable, "latin1");
 }
 
 function line(value = "") {
@@ -28,29 +35,33 @@ function buildCashDrawerBuffer() {
 }
 
 function buildTicketBuffer(ticket) {
+  const suppliedLabels = ticket.escposLabels || ticket.labels;
+  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", total: "TOTAL", ...(suppliedLabels || {}) };
+  const raw = ticket.escposContent;
   const chunks = [
     Buffer.from([ESC, 0x40]),
     Buffer.from([ESC, 0x61, 0x01]),
-    line(ticket.storeName || "APP VENTA"),
-    line(ticket.documentNumber || ""),
-    line(`Terminal ${ticket.terminalCode || ""}`),
+    line(raw?.storeName || ticket.storeName || "APP VENTA"),
+    line(raw?.documentNumber || ticket.documentNumber || ""),
+    line(`${labels.terminal} ${raw?.terminalCode || ticket.terminalCode || ""}`),
     line(ticket.issuedAt || ""),
     Buffer.from([ESC, 0x61, 0x00]),
     line("------------------------------------------")
   ];
+  if (suppliedLabels) chunks.push(line(padColumns(`${labels.item} / ${labels.quantity} / ${labels.price}`, labels.total)));
 
-  for (const item of ticket.lines || []) {
-    chunks.push(line(String(item.name || "").slice(0, 42)));
+  for (const [index, item] of (ticket.lines || []).entries()) {
+    chunks.push(line(String(raw?.lineNames?.[index] || item.name || "").slice(0, 42)));
     chunks.push(line(padColumns(`${item.quantity} x ${money(item.price)}`, money(item.total))));
   }
 
   chunks.push(line("------------------------------------------"));
-  for (const payment of ticket.payments || []) {
-    chunks.push(line(padColumns(payment.method || "", money(payment.amount))));
+  for (const [index, payment] of (ticket.payments || []).entries()) {
+    chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
   }
   chunks.push(line("------------------------------------------"));
   chunks.push(Buffer.from([ESC, 0x45, 0x01]));
-  chunks.push(line(padColumns("TOTAL", money(ticket.total))));
+  chunks.push(line(padColumns(labels.total, money(ticket.total))));
   chunks.push(Buffer.from([ESC, 0x45, 0x00]));
   chunks.push(Buffer.from([0x0a, 0x0a, 0x0a]));
   chunks.push(Buffer.from([GS, 0x56, 0x00]));

@@ -4,11 +4,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CustomerReceivablesScreen } from "./CustomerReceivablesScreen";
 import type { UserSession } from "../types";
+import { retryPrintSucceeded } from "../sale/printRetry";
 
 const session: UserSession = { username: "cashier", displayName: "Caja", accessToken: "token", permissions: ["CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_PAY"] };
 const row = { documentId: "doc-1", documentType: "FACTURA_VENTA", documentNumber: "FV-1", customerId: "customer-1", customerName: "Cliente Uno", issueDate: "2026-07-01", dueDate: "2026-07-31", total: "100.00", paidTotal: "25.00", pendingTotal: "75.00", status: "PARCIAL", overdue: false } as const;
 
 afterEach(cleanup);
+
+it("keeps print retry after two failures and clears only after success", async () => {
+  const retry = vi.fn().mockResolvedValueOnce({ status: "FAILED" })
+    .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ status: "PRINTED" });
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(true);
+});
 
 describe("CustomerReceivablesScreen", () => {
   it("loads the tenant-scoped endpoint with the customer prefilter and renders the financial columns", async () => {
@@ -38,7 +47,10 @@ describe("CustomerReceivablesScreen", () => {
     const request = vi.fn(async (path: string) => {
       if (request.mock.calls.length === 1) throw new Error("sin red");
       if (path === "/payment-methods") return [{ id: "transfer", name: "TRANSFERENCIA", active: true }];
-      if (path.endsWith("/payments")) return { ...row, paidTotal: "50.00", pendingTotal: "50.00" };
+      if (path.endsWith("/payments")) return { receivable: { ...row, paidTotal: "50.00", pendingTotal: "50.00" }, paymentReceipt: {
+        paymentId: "payment-1", documentNumber: "FV-1", collectedAt: "2026-07-16T10:00:00Z",
+        method: "TRANSFERENCIA", amount: "25.00", remaining: "50.00"
+      } };
       return request.mock.calls.some(([called]) => String(called).endsWith("/payments")) ? [{ ...row, paidTotal: "50.00", pendingTotal: "50.00" }] : [row];
     });
     render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);

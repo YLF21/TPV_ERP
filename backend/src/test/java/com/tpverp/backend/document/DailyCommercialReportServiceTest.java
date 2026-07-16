@@ -85,6 +85,29 @@ class DailyCommercialReportServiceTest {
                 fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE));
     }
 
+    @Test
+    void excludesInvoicedDeliveryNoteAndItsPaymentsAcrossDates() {
+        var fixture = fixture();
+        var deliveryNote = receivable(CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
+        var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
+        var deliveryPayment = payment(fixture, deliveryNote, "20.00", start(REPORT_DATE).plusSeconds(1));
+        var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(2));
+        when(fixture.relations().findInvoicedOriginIds(fixture.store().getId()))
+                .thenReturn(java.util.Set.of(deliveryNote.getId()));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(invoice));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(deliveryPayment, invoicePayment));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
+        assertThat(report.priorDebtCollected()).isZero();
+        assertThat(report.cashInflow()).isEqualByComparingTo("30.00");
+    }
+
     private static DocumentPayment payment(
             Fixture fixture, CommercialDocument document, String amount, Instant createdAt) {
         var method = new PaymentMethod(
@@ -124,11 +147,12 @@ class DailyCommercialReportServiceTest {
         var store = store();
         var documents = mock(CommercialDocumentRepository.class);
         var payments = mock(DocumentPaymentRepository.class);
+        var relations = mock(DocumentRelationRepository.class);
         var organization = mock(CurrentOrganization.class);
         when(organization.currentStore()).thenReturn(store);
         return new Fixture(
-                new DailyCommercialReportService(documents, payments, organization),
-                documents, payments, store);
+                new DailyCommercialReportService(documents, payments, relations, organization),
+                documents, payments, relations, store);
     }
 
     private static Store store() {
@@ -145,6 +169,7 @@ class DailyCommercialReportServiceTest {
             DailyCommercialReportService service,
             CommercialDocumentRepository documents,
             DocumentPaymentRepository payments,
+            DocumentRelationRepository relations,
             Store store) {
     }
 }

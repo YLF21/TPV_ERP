@@ -53,6 +53,21 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     Optional<CommercialDocument> findCustomerReceivable(
             @Param("id") UUID id, @Param("storeId") UUID storeId);
 
+    @EntityGraph(attributePaths = {"lineas"})
+    @Query("""
+            select document from CommercialDocument document
+            where document.id = :id and document.tiendaId = :storeId
+              and document.clienteId is not null
+              and document.tipo in (
+                com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado not in (
+                com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                com.tpverp.backend.document.DocumentStatus.ANULADO)
+            """)
+    Optional<CommercialDocument> findCustomerDocumentForPrint(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})

@@ -21,6 +21,10 @@ class CustomerPendingSaleControllerContractTest {
         assertEndpoint("chargeCard", CustomerPendingSaleController.CardChargeRequest.class,
                 "/card-charges");
         assertEndpoint("create", CustomerPendingSaleController.CreateRequest.class, "");
+        var create = CustomerPendingSaleController.class.getDeclaredMethod("create",
+                CustomerPendingSaleController.CreateRequest.class,
+                org.springframework.security.core.Authentication.class);
+        assertThat(create.getReturnType()).isEqualTo(CustomerPendingSaleController.CreateResponse.class);
     }
 
     @Test

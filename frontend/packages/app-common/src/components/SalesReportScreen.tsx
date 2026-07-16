@@ -992,6 +992,10 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
   const [dailyCommercialReport, setDailyCommercialReport] = useState<DailyCommercialReport | null>(null);
+  const [dailyReportLoading, setDailyReportLoading] = useState(false);
+  const [dailyReportError, setDailyReportError] = useState("");
+  const [dailyReportReload, setDailyReportReload] = useState(0);
+  const dailyReportGeneration = useRef(0);
   const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
   const [reportReloadKey, setReportReloadKey] = useState(0);
   const [warehouseProducts, setWarehouseProducts] = useState<WarehouseImportProduct[]>([]);
@@ -1116,21 +1120,25 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   }, [session, terminalContext, reportReloadKey]);
 
   useEffect(() => {
-    let cancelled = false;
+    const generation = ++dailyReportGeneration.current;
     if (!session.accessToken || selectedReport !== "salesReport.dailySales" || !filters.dateFrom) {
       setDailyCommercialReport(null);
+      setDailyReportLoading(false); setDailyReportError("");
       return;
     }
+    setDailyCommercialReport(null); setDailyReportLoading(true); setDailyReportError("");
     void request<DailyCommercialReport>(
       `/commercial-reports/daily?date=${encodeURIComponent(filters.dateFrom)}`,
       { token: session.accessToken }
     ).then((report) => {
-      if (!cancelled) setDailyCommercialReport(report);
-    }).catch(() => {
-      if (!cancelled) setDailyCommercialReport(null);
+      if (generation === dailyReportGeneration.current) setDailyCommercialReport(report);
+    }).catch((failure) => {
+      if (generation === dailyReportGeneration.current) setDailyReportError(failure instanceof Error ? failure.message : t("salesReport.daily.loadError"));
+    }).finally(() => {
+      if (generation === dailyReportGeneration.current) setDailyReportLoading(false);
     });
-    return () => { cancelled = true; };
-  }, [filters.dateFrom, request, selectedReport, session.accessToken]);
+    return () => { if (generation === dailyReportGeneration.current) dailyReportGeneration.current += 1; };
+  }, [dailyReportReload, filters.dateFrom, request, selectedReport, session.accessToken]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -1611,6 +1619,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   }
 
   function renderDailySalesSummary() {
+    if (dailyReportLoading) return <p className="daily-summary-empty" aria-live="polite">{t("salesReport.daily.loading")}</p>;
+    if (dailyReportError) return <div className="daily-summary-error"><p role="alert">{dailyReportError}</p><button type="button" onClick={() => setDailyReportReload((value) => value + 1)}>{t("salesReport.daily.retry")}</button></div>;
     if (dailyCommercialReport) {
       const rows: Array<[string, number | string]> = [
         ["salesReport.daily.invoiced", dailyCommercialReport.invoiced],

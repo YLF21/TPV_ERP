@@ -26,6 +26,30 @@ describe("escpos command builder", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });
 
+  it("preserves the exact legacy layout when labels are absent", () => {
+    const text = buildTicketBuffer({ storeName: "Shop", terminalCode: "01", lines: [], payments: [], total: 0 }).toString("latin1");
+    expect(text).toContain("Terminal 01");
+    expect(text).toContain("TOTAL                                 0.00");
+    expect(text).not.toMatch(/Item|Qty\.|Price|Articulo|Cant\.|Precio/);
+  });
+
+  it.each([
+    [{ terminal: "Terminal", item: "Artículo", quantity: "Cant.", price: "Precio", total: "TOTAL" }, ["Terminal 01", "Artículo", "Cant.", "Precio", "TOTAL"]],
+    [{ terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", total: "Total" }, ["Terminal 01", "Item", "Qty.", "Price", "Total"]],
+    [{ terminal: "Zhongduan", item: "Shangpin", quantity: "Shuliang", price: "Jiage", total: "Heji" }, ["Zhongduan 01", "Shangpin", "Shuliang", "Jiage", "Heji"]]
+  ])("uses localized printable labels in raw buffers", (labels, expected) => {
+    const text = buildTicketBuffer({ storeName: "Shop", terminalCode: "01", lines: [], payments: [], total: 0, escposLabels: labels }).toString("latin1");
+    for (const label of expected) expect(text).toContain(label.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+    if (labels.item !== "Artículo") expect(text).not.toContain("Articulo");
+  });
+
+  it("replaces unsupported latin1 glyphs deterministically instead of corrupting raw output", () => {
+    const text = buildTicketBuffer({ terminalCode: "01", lines: [], payments: [], total: 0,
+      labels: { terminal: "终端", item: "商品", quantity: "数量", price: "价格", total: "合计" } }).toString("latin1");
+    expect(text).toContain("?? 01");
+    expect(text).not.toContain("Terminal 01");
+  });
+
   it("normalizes Windows COM ports for direct serial writes", () => {
     expect(normalizeSerialPath("COM3")).toBe("\\\\.\\COM3");
     expect(normalizeSerialPath("\\\\.\\COM4")).toBe("\\\\.\\COM4");

@@ -186,4 +186,26 @@ describe("CustomerReceivablePaymentDialog", () => {
     expect(screen.getByText("Este documento ya está pagado")).toBeVisible();
     expect(screen.getByRole("button", { name: "Efectivo" })).toBeDisabled();
   });
+
+  it("prints the authoritative receipt returned by its own mutation without a follow-up GET", async () => {
+    const printReceipt = vi.fn().mockResolvedValue({ status: "PRINTED" });
+    const receipt = { paymentId: "stable", documentId: "doc-1", documentNumber: "FV-1", collectedAt: "2026-07-20T09:00:00Z", method: "TRANSFERENCIA", amount: "20.00", remaining: "55.00" };
+    const key = `${receivablePaymentAttemptKey("01", "doc-1")}.standard`;
+    localStorage.setItem(key, JSON.stringify({ requestId: "stable", kind: "transfer", item: { metodoPagoId: "transfer", importe: "20.00", reference: "TR", requestId: "stable" } }));
+    const request = vi.fn(async (path: string) => path === "/payment-methods" ? methods : { receivable, paymentReceipt: receipt });
+    render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printReceipt={printReceipt} request={request as any} onCancel={vi.fn()} onPaid={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar cobro" }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(printReceipt).toHaveBeenCalledWith(receipt, { storeName: "Tienda", terminalCode: "01" }, undefined, "es");
+  });
+
+  it("clears the stable payment attempt and reports paid when printing fails", async () => {
+    const onPaid = vi.fn();
+    localStorage.setItem("tpverp.receivable.01.doc-1.card-attempt.standard", JSON.stringify({ requestId: "stable", kind: "cash", item: { metodoPagoId: "cash", importe: "75.00", principal: true, requestId: "stable" } }));
+    const request = vi.fn(async (path: string) => path === "/payment-methods" ? methods : { receivable, paymentReceipt: { paymentId: "stable" } });
+    render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printReceipt={vi.fn().mockResolvedValue({ status: "FAILED", technicalMessage: "printer offline" })} request={request as any} onCancel={vi.fn()} onPaid={onPaid} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reintentar cobro" }));
+    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(receivable, expect.any(Function)));
+    expect(localStorage.getItem("tpverp.receivable.01.doc-1.card-attempt.standard")).toBeNull();
+  });
 });

@@ -32,8 +32,11 @@ export type PendingCommercialDocumentPrintSnapshot = {
   kind: "COMMERCIAL_DOCUMENT";
   documentType: "ALBARAN_VENTA" | "FACTURA_VENTA";
   documentNumber: string;
-  issuedAt: string;
-  lines: ConfirmedTicketPrintSnapshot["lines"];
+  issuedAt?: string;
+  issueDate?: string;
+  lines: Array<{ name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean }>;
+  baseTotal?: NumericValue;
+  taxTotal?: NumericValue;
   total: NumericValue;
 };
 
@@ -137,16 +140,25 @@ export async function printPendingCommercialDocument(
       title,
       storeName: terminal.storeName,
       terminalCode: terminal.terminalCode,
-      issuedAt: snapshot.issuedAt,
+      issuedAt: snapshot.issuedAt ?? snapshot.issueDate ?? "",
       lines: snapshot.lines.map((line) => ({
         name: line.name,
         quantity: Number(line.quantity),
-        price: Number(line.price),
-        total: Number(line.total)
+        price: Number(line.unitPrice ?? line.price),
+        total: Number(line.total), taxesIncluded: line.taxesIncluded
       })),
-      subtotal: Number(snapshot.total),
-      taxIncluded: true,
-      total: Number(snapshot.total)
+      subtotal: Number(snapshot.baseTotal ?? snapshot.total),
+      tax: Number(snapshot.taxTotal ?? 0),
+      taxIncluded: snapshot.lines.every((line) => line.taxesIncluded !== false) ? true
+        : snapshot.lines.every((line) => line.taxesIncluded === false) ? false : "MIXED",
+      total: Number(snapshot.total),
+      labels: {
+        terminal: t("print.a4.terminal"), description: t("print.a4.description"),
+        quantity: t("print.a4.quantity"), unitPrice: t("print.a4.unitPrice"),
+        base: t("print.a4.base"), tax: t("print.a4.tax"),
+        taxIncluded: t("print.a4.taxIncluded"), yes: t("common.yes"), no: t("common.no"), mixed: t("print.a4.mixed"),
+        total: t("print.a4.total")
+      }
     }, config);
     return result.ok
       ? { status: "PRINTED" }
@@ -178,7 +190,18 @@ export async function printCustomerReceivablePaymentReceipt(
         total: amount
       }],
       payments: [{ method: snapshot.method, amount }],
-      total: amount
+      total: amount,
+      labels: { terminal: t("print.a4.terminal"), item: t("print.ticket.item"),
+        quantity: t("print.ticket.quantity"), price: t("print.ticket.price"), total: t("print.a4.total") },
+      escposLabels: locale === "zh"
+        ? { terminal: "Zhongduan", item: "Shangpin", quantity: "Shuliang", price: "Jiage", total: "Zongji" }
+        : { terminal: "Terminal", item: locale === "es" ? "Articulo" : "Item", quantity: locale === "es" ? "Cant." : "Qty.", price: locale === "es" ? "Precio" : "Price", total: locale === "es" ? "TOTAL" : "Total" },
+      escposContent: locale === "zh" ? {
+        storeName: "Dianpu", terminalCode: `terminal-${terminal.terminalCode.replace(/[^A-Za-z0-9_-]/g, "").replace(/^-+/, "") || "local"}`,
+        documentNumber: `Shoukuan ${snapshot.paymentId}`,
+        lineNames: [`Kehu ${snapshot.documentNumber.replace(/[^\x20-\x7e]/g, "") || snapshot.paymentId}`],
+        paymentMethods: ["Fangshi CARD"]
+      } : undefined
     }, config);
     return result.ok
       ? { status: "PRINTED" }

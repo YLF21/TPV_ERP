@@ -27,9 +27,11 @@ public class CustomerReceivableController {
             "hasRole('ADMIN') or hasAnyAuthority('CUSTOMER_RECEIVABLES_PAY','GESTION_VENTAS','VENTA')";
 
     private final CustomerReceivableService service;
+    private final CustomerReceivablePrintService printing;
 
-    public CustomerReceivableController(CustomerReceivableService service) {
+    public CustomerReceivableController(CustomerReceivableService service, CustomerReceivablePrintService printing) {
         this.service = service;
+        this.printing = printing;
     }
 
     @GetMapping("")
@@ -47,6 +49,18 @@ public class CustomerReceivableController {
         return service.detail(documentId, authentication);
     }
 
+    @GetMapping("/{documentId}/print-document")
+    @PreAuthorize(READ_PERMISSION)
+    public CustomerReceivablePrintService.CommercialDocumentPrint printDocument(
+            @PathVariable UUID documentId) { return printing.document(documentId); }
+
+    @GetMapping("/{documentId}/payments/{paymentId}/receipt")
+    @PreAuthorize(READ_PERMISSION)
+    public CustomerReceivablePrintService.PaymentReceipt paymentReceipt(
+            @PathVariable UUID documentId, @PathVariable UUID paymentId) {
+        return printing.paymentReceipt(documentId, paymentId);
+    }
+
     @PostMapping("/{documentId}/card-charges")
     @PreAuthorize(PAY_PERMISSION)
     public PaymentTerminalResult chargeCard(
@@ -58,12 +72,17 @@ public class CustomerReceivableController {
 
     @PostMapping("/{documentId}/payments")
     @PreAuthorize(PAY_PERMISSION)
-    public CustomerReceivableView pay(
+    public PaymentResponse pay(
             @PathVariable UUID documentId,
             @Valid @RequestBody PaymentRequest request,
             Authentication authentication) {
-        return service.pay(documentId, request, authentication);
+        var receivable = service.pay(documentId, request, authentication);
+        var paymentId = request.pagos().getFirst().requestId();
+        return new PaymentResponse(receivable, printing.paymentReceipt(documentId, paymentId));
     }
+
+    public record PaymentResponse(CustomerReceivableView receivable,
+            CustomerReceivablePrintService.PaymentReceipt paymentReceipt) {}
 
     public record CardChargeRequest(
             @NotNull UUID paymentId,

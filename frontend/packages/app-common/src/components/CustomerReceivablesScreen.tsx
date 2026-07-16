@@ -6,6 +6,7 @@ import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
+import { retryPrintSucceeded } from "../sale/printRetry";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 type Props = { locale: LocaleCode; session: UserSession; terminalContext: TerminalContext; initialCustomerId?: string; request?: Request; onBack: () => void; onLocaleChange: (locale: LocaleCode) => void; onLogout?: () => void };
@@ -17,6 +18,11 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [search, setSearch] = useState(""); const [status, setStatus] = useState(""); const [documentType, setDocumentType] = useState("");
   const [overdue, setOverdue] = useState(false); const [dueFrom, setDueFrom] = useState(""); const [dueTo, setDueTo] = useState("");
   const [loading, setLoading] = useState(false); const [error, setError] = useState(""); const [selected, setSelected] = useState<CustomerReceivable | null>(null);
+  const [retryPrint, setRetryPrint] = useState<(() => Promise<unknown>) | null>(null);
+  const retryFailedPrint = async () => {
+    if (!retryPrint) return;
+    if (await retryPrintSucceeded(retryPrint)) setRetryPrint(null);
+  };
   const loadGeneration = useRef(0);
   const canPay = hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
   const load = useCallback(async () => {
@@ -48,6 +54,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
       </div>
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
+      {retryPrint && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryFailedPrint()}>{t("payment.result.retryPrint")}</button></div>}
       <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
         <div role="row" className="receivable-row header">{columns.map((value) => <span role="columnheader" key={value}>{t(`receivables.column.${value}`)}</span>)}</div>
         {loading && <p>{t("common.loading")}</p>}
@@ -58,6 +65,6 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       </div>
     </section>
     <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
-    {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} request={request} onCancel={() => setSelected(null)} onPaid={(updated) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setSelected(null); void load(); }} />}
+    {selected && <CustomerReceivablePaymentDialog locale={locale} receivable={selected} token={session.accessToken} terminalCode={terminalContext.terminalCode} terminalContext={terminalContext} request={request} onCancel={() => setSelected(null)} onPaid={(updated, retry) => { setRows((current) => current.map((row) => row.documentId === updated.documentId ? updated : row)); setRetryPrint(() => retry ?? null); setSelected(null); void load(); }} />}
   </main>;
 }

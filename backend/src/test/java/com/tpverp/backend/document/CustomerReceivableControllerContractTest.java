@@ -22,9 +22,27 @@ class CustomerReceivableControllerContractTest {
 
         assertReadEndpoint("list", CustomerReceivableFilter.class, "");
         assertReadEndpoint("detail", UUID.class, "/{documentId}");
+        assertPrintEndpoint("printDocument", new Class<?>[] {UUID.class},
+                "/{documentId}/print-document");
+        assertPrintEndpoint("paymentReceipt", new Class<?>[] {UUID.class, UUID.class},
+                "/{documentId}/payments/{paymentId}/receipt");
         assertPayEndpoint("chargeCard", UUID.class,
                 CustomerReceivableController.CardChargeRequest.class, "/{documentId}/card-charges");
         assertPayEndpoint("pay", UUID.class, PaymentRequest.class, "/{documentId}/payments");
+        var pay = CustomerReceivableController.class.getDeclaredMethod("pay", UUID.class,
+                PaymentRequest.class, org.springframework.security.core.Authentication.class);
+        assertThat(pay.getReturnType()).isEqualTo(CustomerReceivableController.PaymentResponse.class);
+    }
+
+    private static void assertPrintEndpoint(
+            String name, Class<?>[] argumentTypes, String path)
+            throws Exception {
+        Method method = CustomerReceivableController.class.getDeclaredMethod(name, argumentTypes);
+        assertThat(method.getAnnotation(GetMapping.class).value()).containsExactly(path);
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("CUSTOMER_RECEIVABLES_READ")
+                .doesNotContain("CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY");
+        assertThat(method.getParameters()[0].getAnnotation(PathVariable.class)).isNotNull();
     }
 
     @Test

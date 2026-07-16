@@ -24,9 +24,12 @@ public class CustomerPendingSaleController {
             "hasRole('ADMIN') or hasAnyAuthority('CUSTOMER_RECEIVABLES_CREATE','GESTION_VENTAS','VENTA')";
 
     private final CustomerPendingSaleService service;
+    private final CustomerReceivablePrintService printing;
 
-    public CustomerPendingSaleController(CustomerPendingSaleService service) {
+    public CustomerPendingSaleController(CustomerPendingSaleService service,
+            CustomerReceivablePrintService printing) {
         this.service = service;
+        this.printing = printing;
     }
 
     @PostMapping("/quote")
@@ -45,10 +48,14 @@ public class CustomerPendingSaleController {
 
     @PostMapping("")
     @PreAuthorize(CREATE_PERMISSION)
-    public CustomerReceivableView create(
+    public CreateResponse create(
             @Valid @RequestBody CreateRequest request, Authentication authentication) {
-        return service.create(request, authentication);
+        var receivable = service.create(request, authentication);
+        return new CreateResponse(receivable, printing.document(receivable.documentId()));
     }
+
+    public record CreateResponse(CustomerReceivableView receivable,
+            CustomerReceivablePrintService.CommercialDocumentPrint printDocument) {}
 
     public record CreateRequest(
             @NotNull UUID checkoutId,

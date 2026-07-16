@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import type { TerminalContext } from "../types";
+import { printCustomerReceivablePaymentReceipt, type CustomerReceivablePaymentReceiptSnapshot } from "../sale/ticketPrinting";
 import { CashPaymentDialog } from "./CashPaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
@@ -13,17 +15,18 @@ export type CustomerReceivable = {
 };
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
-type Props = { locale?: LocaleCode; receivable: CustomerReceivable; token?: string; terminalCode: string; request?: Request; onCancel: () => void; onPaid: (value: CustomerReceivable) => void };
+type Props = { locale?: LocaleCode; receivable: CustomerReceivable; token?: string; terminalCode: string; terminalContext?: TerminalContext; printReceipt?: typeof printCustomerReceivablePaymentReceipt; request?: Request; onCancel: () => void; onPaid: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void };
 type Method = { id: string; name?: string; nombre?: string; active?: boolean };
 type Attempt = { paymentId: string; amount: string; methodId: string; status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED" };
 type StandardAttempt = { requestId: string; kind: "cash" | "transfer"; item: Record<string, unknown> };
+type PaymentMutationResult = { receivable: CustomerReceivable; paymentReceipt: CustomerReceivablePaymentReceiptSnapshot };
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 export const receivablePaymentAttemptKey = (terminalCode: string, documentId: string) => `tpverp.receivable.${terminalCode}.${documentId}.card-attempt`;
 const decimal = (value: number | string) => Number(value).toFixed(2);
 const cents = (value: string) => Math.round(Number(value.replace(",", ".")) * 100);
 
-export function CustomerReceivablePaymentDialog({ locale = "es", receivable, token, terminalCode, request = apiRequest, onCancel, onPaid }: Props) {
+export function CustomerReceivablePaymentDialog({ locale = "es", receivable, token, terminalCode, terminalContext, printReceipt = printCustomerReceivablePaymentReceipt, request = apiRequest, onCancel, onPaid }: Props) {
   const t = createTranslator(locale);
   const pendingCents = Math.round(Number(receivable.pendingTotal) * 100);
   const [amount, setAmount] = useState(decimal(receivable.pendingTotal));
@@ -66,7 +69,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
   }
 
   async function postPayment(item: Record<string, unknown>) {
-    return request<CustomerReceivable>(`/customer-receivables/${receivable.documentId}/payments`, { token, body: { pagos: [item] } });
+    return request<PaymentMutationResult>(`/customer-receivables/${receivable.documentId}/payments`, { token, body: { pagos: [item] } });
   }
 
   async function payStandard(kind: "cash" | "transfer", receivedCents?: number) {
@@ -82,10 +85,13 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
         reference: kind === "transfer" ? reference.trim() : null, requestId };
       const attempt = standardAttempt ?? { requestId, kind, item }; localStorage.setItem(standardKey, JSON.stringify(attempt)); setStandardAttempt(attempt);
       const result = await postPayment(item);
+      let retryPrint: (() => Promise<unknown>) | undefined;
+      if (terminalContext) { const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
+        try { if ((await retry()).status === "FAILED") retryPrint = retry; } catch { retryPrint = retry; } }
       localStorage.removeItem(standardKey); setStandardAttempt(null);
       setCashOpen(false); setTransferOpen(false);
       setBusy(false);
-      if (mounted.current) onPaid(result);
+      if (mounted.current) { if (retryPrint) onPaid(result.receivable, retryPrint); else onPaid(result.receivable); }
       return;
     } catch (failure) { if (mounted.current) { setError(failure instanceof Error ? failure.message : t("receivables.payment.saveError")); setBusy(false); } }
   }
@@ -94,10 +100,13 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
     const result = await postPayment({ metodoPagoId: attempt.methodId, importe: attempt.amount, principal: true,
       cardMode: "INTEGRATED", paymentTerminalStatus: "APPROVED", requestId: attempt.paymentId,
       paymentTerminalOperationId: attempt.paymentId });
+    let retryPrint: (() => Promise<unknown>) | undefined;
+    if (terminalContext) { const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
+      try { if ((await retry()).status === "FAILED") retryPrint = retry; } catch { retryPrint = retry; } }
     globalThis.localStorage?.removeItem(storageKey);
     setCardAttempt(null);
     setBusy(false);
-    if (mounted.current) onPaid(result);
+    if (mounted.current) { if (retryPrint) onPaid(result.receivable, retryPrint); else onPaid(result.receivable); }
   }
 
   async function payCard() {
@@ -118,7 +127,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
         attempt = { ...attempt, status: terminal.status as Attempt["status"] };
         globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
         setCardAttempt(attempt);
-        if (terminal.status !== "APPROVED") { setError(`${t("receivables.payment.cardState")}: ${terminal.status}. ${t("receivables.payment.queryBeforeRetry")}`); setBusy(false); return; }
+        if (terminal.status !== "APPROVED") { setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${terminal.status}`)}. ${t("receivables.payment.queryBeforeRetry")}`); setBusy(false); return; }
       }
       await finishApprovedCard(attempt); return;
     } catch (failure) { if (mounted.current) { setError(failure instanceof Error ? `${failure.message}. ${t("receivables.payment.retrySameId")}` : t("pendingSale.cardUncertain")); setBusy(false); } }
@@ -132,7 +141,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
       const next = { ...cardAttempt, status: terminal.status as Attempt["status"] };
       globalThis.localStorage?.setItem(storageKey, JSON.stringify(next)); setCardAttempt(next);
       if (next.status === "APPROVED") { await finishApprovedCard(next); return; }
-      else setError(`${t("receivables.payment.cardState")}: ${next.status}. ${t("receivables.payment.cardNotFinal")}`);
+      else setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${next.status}`)}. ${t("receivables.payment.cardNotFinal")}`);
     } catch (failure) { if (mounted.current) setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError")); }
     if (mounted.current) setBusy(false);
   }
@@ -152,7 +161,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
         <button type="button" disabled={!collectable || busy || unsafeCard || standardAttempt != null || !methods.transfer} onClick={() => { if (validate()) setTransferOpen(true); }}>{t("receivables.payment.transfer")}</button>
       </div>
       {transferOpen && <fieldset><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.transferReference")}<input aria-label={t("receivables.payment.transferReference")} autoFocus value={reference} onChange={(event) => setReference(event.target.value)} /></label><button type="button" disabled={busy} onClick={() => void payStandard("transfer")}>{t("receivables.payment.confirmTransfer")}</button><button type="button" disabled={busy} onClick={() => setTransferOpen(false)}>{t("receivables.payment.cancelTransfer")}</button></fieldset>}
-      {cardAttempt && <div className="receivable-card-recovery" aria-live="polite"><span>{t("receivables.payment.cardState")}: {cardAttempt.status}</span><button type="button" disabled={busy} onClick={() => void queryCard()}>{t("receivables.payment.queryCard")}</button>{cardAttempt.status === "APPROVED" && <button type="button" disabled={busy} onClick={() => void payCard()}>{t("receivables.payment.retryCard")}</button>}</div>}
+      {cardAttempt && <div className="receivable-card-recovery" aria-live="polite"><span>{t("receivables.payment.cardState")}: {t(`paymentTerminal.status.${cardAttempt.status}`)}</span><button type="button" disabled={busy} onClick={() => void queryCard()}>{t("receivables.payment.queryCard")}</button>{cardAttempt.status === "APPROVED" && <button type="button" disabled={busy} onClick={() => void payCard()}>{t("receivables.payment.retryCard")}</button>}</div>}
       {cardAttempt && ["DECLINED", "ERROR", "CANCELLED"].includes(cardAttempt.status) && <button type="button" onClick={() => { localStorage.removeItem(storageKey); setCardAttempt(null); }}>{t("receivables.payment.discardCard")}</button>}
       {standardAttempt && <div aria-live="polite"><p>{t(standardAttempt.kind === "cash" ? "receivables.payment.cash" : "receivables.payment.transfer")} · {String(standardAttempt.item.importe)}{standardAttempt.item.reference ? ` · ${String(standardAttempt.item.reference)}` : ""}. {t("receivables.payment.unknownResult")}</p><button type="button" disabled={busy} onClick={() => void payStandard(standardAttempt.kind)}>{t("receivables.payment.retry")}</button></div>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}

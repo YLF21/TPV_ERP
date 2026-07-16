@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
+import type { TerminalContext } from "../types";
+import { printPendingCommercialDocument, type PendingCommercialDocumentPrintSnapshot } from "../sale/ticketPrinting";
 import {
   centsFromInput,
   pendingCreateBody,
@@ -17,6 +19,7 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 type PaymentMethods = { cash?: string; card?: string; transfer?: string };
 type PendingSaleResult = { documentId: string; documentNumber?: string };
+type PendingSaleMutationResult = { receivable: PendingSaleResult; printDocument: PendingCommercialDocumentPrintSnapshot };
 type Props = {
   customerName: string;
   locale?: LocaleCode;
@@ -25,8 +28,10 @@ type Props = {
   paymentMethods?: PaymentMethods;
   disabled?: boolean;
   request?: Request;
+  terminalContext?: TerminalContext;
+  printDocument?: typeof printPendingCommercialDocument;
   onCancel: () => void;
-  onSuccess: (result: PendingSaleResult) => void;
+  onSuccess: (result: PendingSaleResult, retryPrint?: () => Promise<unknown>) => void;
 };
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -35,7 +40,7 @@ const money = (cents: number, locale: LocaleCode) => (cents / 100).toLocaleStrin
   { minimumFractionDigits: 2, maximumFractionDigits: 2 }
 );
 
-export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, onCancel, onSuccess }: Props) {
+export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, terminalContext, printDocument = printPendingCommercialDocument, onCancel, onSuccess }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState(initialDraft);
@@ -94,10 +99,16 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     if (disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate) return;
     setSubmitting(true); setError("");
     try {
-      const result = await request<PendingSaleResult>("/pos/customer-pending-sales", {
+      const result = await request<PendingSaleMutationResult>("/pos/customer-pending-sales", {
         token, body: pendingCreateBody(draft, payments, quoteCents),
       });
-      onSuccess(result);
+      let retryPrint: (() => Promise<unknown>) | undefined;
+      if (terminalContext) {
+        const retry = () => printDocument(result.printDocument, terminalContext, undefined, locale);
+        try { if ((await retry()).status === "FAILED") retryPrint = retry; }
+        catch { retryPrint = retry; }
+      }
+      if (retryPrint) onSuccess(result.receivable, retryPrint); else onSuccess(result.receivable);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : t("pendingSale.createError"));
     } finally { setSubmitting(false); }
@@ -174,7 +185,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
         <div><span>{t("pendingSale.paid")}</span><strong>{money(summary.paidCents, locale)}</strong></div>
         <div><span>{t("pendingSale.pending")}</span><strong>{money(summary.pendingCents, locale)}</strong></div>
       </div>
-      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({payment.status})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
+      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
       <div className="pending-sale-payment-actions">
         <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={() => setCashOpen(true)}>{t("pendingSale.addCash")}</button>
         <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>{t("pendingSale.addCard")}</button>

@@ -57,7 +57,7 @@ describe("CustomerPendingSaleDialog", () => {
   it("quotes authoritatively, edits type/due date and submits without a fake pending payment", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({ total: "10.01" })
-      .mockResolvedValueOnce({ documentId: "doc-1", documentNumber: "AV-1" });
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-1", documentNumber: "AV-1" }, printDocument: {} });
     const onSuccess = vi.fn();
     render(<CustomerPendingSaleDialog customerName="Cliente Pruebas" draft={draft} paymentMethods={{}} request={request} onCancel={vi.fn()} onSuccess={onSuccess} />);
 
@@ -165,7 +165,7 @@ describe("CustomerPendingSaleDialog", () => {
     const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
     await screen.findAllByText("10,00");
     fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
-    expect(await screen.findByText(/DECLINED/)).toBeInTheDocument();
+    expect(await screen.findByText(/Rechazada/)).toBeInTheDocument();
 
     const type = screen.getByLabelText(/tipo de documento/i);
     const dueDate = screen.getByLabelText(/vencimiento/i);
@@ -197,5 +197,27 @@ describe("CustomerPendingSaleDialog", () => {
     await screen.findAllByText("10,00");
     view.rerender(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} disabled onCancel={onCancel} onSuccess={vi.fn()} />);
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("prints the authoritative document returned by its own mutation without a follow-up GET", async () => {
+    const printDocument = vi.fn().mockResolvedValue({ status: "PRINTED" });
+    const authoritative = { documentId: "doc-1", documentType: "FACTURA_VENTA", documentNumber: "FV-1", issuedAt: "2026-07-16T10:00:00Z", lines: [], baseTotal: "100.00", taxTotal: "21.00", total: "121.00" };
+    const result = { receivable: { documentId: "doc-1" }, printDocument: authoritative };
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce(result);
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}} request={request} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printDocument={printDocument} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    await screen.findAllByText("10,00"); fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(printDocument).toHaveBeenCalledWith(authoritative, { storeName: "Tienda", terminalCode: "01" }, undefined, "es");
+  });
+
+  it("completes the financial mutation even when document printing fails", async () => {
+    const onSuccess = vi.fn();
+    const authoritative = { documentId: "doc-1", documentType: "FACTURA_VENTA", documentNumber: "FV-1", lines: [], baseTotal: "100.00", taxTotal: "21.00", total: "121.00" };
+    const request = vi.fn().mockResolvedValueOnce({ total: "121.00" })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-1" }, printDocument: authoritative });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}} request={request} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printDocument={vi.fn().mockResolvedValue({ status: "FAILED", technicalMessage: "printer offline" })} onCancel={vi.fn()} onSuccess={onSuccess} />);
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({ documentId: "doc-1" }, expect.any(Function)));
   });
 });

@@ -23,6 +23,7 @@ import {
 import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 import { addLocalDays, type PendingSaleDraft } from "../sale/customerReceivables";
+import { retryPrintSucceeded } from "../sale/printRetry";
 
 export type SaleProduct = {
   id: string;
@@ -508,6 +509,11 @@ export function SaleScreen({
   const [pendingDraft, setPendingDraft] = useState<PendingSaleDraft | null>(null);
   const [pendingOpening, setPendingOpening] = useState(false);
   const [pendingError, setPendingError] = useState("");
+  const [pendingPrintRetry, setPendingPrintRetry] = useState<(() => Promise<unknown>) | null>(null);
+  const retryPendingPrint = async () => {
+    if (!pendingPrintRetry) return;
+    if (await retryPrintSucceeded(pendingPrintRetry)) setPendingPrintRetry(null);
+  };
   const [cashDialogOpen, setCashDialogOpen] = useState(false);
   const [cashOpening, setCashOpening] = useState(false);
   const [cashQuoteCents, setCashQuoteCents] = useState(0);
@@ -956,6 +962,7 @@ export function SaleScreen({
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
       />
+      {pendingPrintRetry && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryPendingPrint()}>{t("payment.result.retryPrint")}</button></div>}
 
       <section className="work-shell" aria-label={t("sale.main.screen")}>
         <header className="work-topbar">
@@ -1200,12 +1207,14 @@ export function SaleScreen({
       {pendingDraft && selectedCustomer && <CustomerPendingSaleDialog
         customerName={selectedCustomer.fiscalName ?? selectedCustomer.clientId ?? "Cliente"}
         locale={locale}
+        terminalContext={terminalContext}
         draft={pendingDraft}
         token={session.accessToken}
         disabled={paymentLocked}
         onCancel={() => { setPendingDraft(null); searchInputRef.current?.focus(); }}
-        onSuccess={() => {
+        onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
+          setPendingPrintRetry(() => retry ?? null);
           setSelectedCustomer(null); setQuery(""); searchInputRef.current?.focus();
         }}
       />}
