@@ -1121,8 +1121,8 @@ export function SaleScreen({
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onPending={openPendingSale}
+              onHydrationChange={setPaymentHydrated}
               onLockedChange={(locked, reservedTotalCents) => {
-                setPaymentHydrated(true);
                 setPaymentLocked(locked);
                 setReservedPaymentTotalCents(
                   locked && reservedTotalCents != null ? reservedTotalCents : null,

@@ -54,6 +54,7 @@ type CheckoutMockProps = {
   testCashEnabled?: boolean;
   disabled?: boolean;
   onCash?: () => void;
+  onHydrationChange?: (hydrated: boolean) => void;
   onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
@@ -75,7 +76,7 @@ vi.mock("./SalePaymentCheckout", async () => {
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
-      useEffect(() => { props.onLockedChange?.(false); }, []);
+      useEffect(() => { props.onHydrationChange?.(true); props.onLockedChange?.(false); }, []);
       useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
         prepareLogout,
