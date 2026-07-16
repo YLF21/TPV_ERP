@@ -72,6 +72,15 @@ class CustomerReceivableServiceTest {
     }
 
     @Test
+    void excludesAnonymousSalesReceivablesFromList() {
+        var anonymous = receivable(null, LocalDate.of(2026, 7, 1), "100.00");
+        when(documents.findCustomerReceivables(store.getId())).thenReturn(List.of(anonymous));
+
+        assertThat(service.list(new CustomerReceivableFilter(
+                null, null, null, null, null, null, null), authentication)).isEmpty();
+    }
+
+    @Test
     void replayedPaymentReturnsSameStateWithoutSecondPayment() {
         var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
         var transfer = new PaymentMethod(store.getEmpresa().getId(), "TRANSFERENCIA", false, true, false);
@@ -178,7 +187,7 @@ class CustomerReceivableServiceTest {
                 PaymentTerminalOperationStatus.APPROVED, "APPROVED", "REF", "AUTH", "OK");
         var hash = cardHash(document.getId(), document.getPendingTotal(),
                 new BigDecimal("20.00"), PAYMENT_ID);
-        when(documents.findLockedReceivable(document.getId(), store.getId()))
+        when(documents.findCustomerReceivable(document.getId(), store.getId()))
                 .thenReturn(Optional.of(document));
         when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         when(configurations.required(terminalId)).thenReturn(configuration);
@@ -192,6 +201,48 @@ class CustomerReceivableServiceTest {
         assertThat(result).isEqualTo(expected);
         verify(terminalOperations).charge(
                 PAYMENT_ID, hash, new BigDecimal("20.00"), configuration);
+        verify(documents, org.mockito.Mockito.never())
+                .findLockedReceivable(document.getId(), store.getId());
+    }
+
+    @Test
+    void rejectsAnonymousReceivablePayment() {
+        var document = receivable(null, LocalDate.of(2026, 8, 1), "100.00");
+        when(documents.findLockedReceivable(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.pay(document.getId(),
+                transfer(UUID.randomUUID(), PAYMENT_ID, "20.00", "TR-1"), authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("customer_receivable_customer_required");
+    }
+
+    @Test
+    void integratedReplayRequiresExactDurableOperationLinkedToDocumentPayment() {
+        var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
+        var method = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", false);
+        var requestedOperationId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var persisted = new DocumentPayment(
+                document, method, 1, new BigDecimal("20.00"), true, null, null, null,
+                "CARD-REF", Instant.now(), PaymentCardMode.INTEGRATED,
+                PaymentTerminalProvider.PAYTEF, PaymentTerminalOperationStatus.APPROVED,
+                "AUTH", UUID.randomUUID(), PAYMENT_ID);
+        document.addPayment(persisted);
+        document.updatePaymentStatus();
+        var linked = mock(PaymentTerminalOperation.class);
+        when(linked.getId()).thenReturn(PAYMENT_ID);
+        when(documents.findLockedReceivable(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(payments.findByRequestId(PAYMENT_ID)).thenReturn(Optional.of(persisted));
+        when(terminalOperations.findByDocumentPaymentId(persisted.getId()))
+                .thenReturn(Optional.of(linked));
+        var request = new PaymentRequest(List.of(new PaymentRequest.Item(
+                method.getId(), new BigDecimal("20.00"), true, null, null, null,
+                null, null, null, null, null, null, PAYMENT_ID, requestedOperationId)));
+
+        assertThatThrownBy(() -> service.pay(document.getId(), request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_idempotency_conflict");
     }
 
     @Test

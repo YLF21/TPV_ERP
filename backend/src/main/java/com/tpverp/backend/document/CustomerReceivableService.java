@@ -69,6 +69,7 @@ public class CustomerReceivableService {
         var search = normalizedSearch == null
                 ? null : normalizedSearch.toLowerCase(Locale.ROOT);
         return documents.findCustomerReceivables(organization.currentStore().getId()).stream()
+                .filter(document -> document.getClienteId() != null)
                 .map(document -> views.receivableView(document, businessDate))
                 .filter(view -> effective.customerId() == null
                         || effective.customerId().equals(view.customerId()))
@@ -95,7 +96,6 @@ public class CustomerReceivableService {
         return views.receivableView(document, businessDate());
     }
 
-    @Transactional
     public PaymentTerminalResult chargeCard(
             UUID documentId,
             CustomerReceivableController.CardChargeRequest request,
@@ -103,7 +103,9 @@ public class CustomerReceivableService {
         Objects.requireNonNull(request, "request");
         var amount = positive(request.amount());
         var storeId = organization.currentStore().getId();
-        var document = locked(documentId, storeId);
+        var document = documents.findCustomerReceivable(
+                        Objects.requireNonNull(documentId, "documentId"), storeId)
+                .orElseThrow(() -> new IllegalArgumentException("customer_receivable_not_found"));
         requireCollectable(document);
         requireAtMostPending(amount, document.getPendingTotal());
         var terminalId = currentTerminal.terminalId(authentication);
@@ -196,7 +198,7 @@ public class CustomerReceivableService {
         }
     }
 
-    private static void requireReplayIdentity(
+    private void requireReplayIdentity(
             DocumentPayment existing,
             CommercialDocument requestedDocument,
             PaymentRequest.Item item) {
@@ -209,7 +211,12 @@ public class CustomerReceivableService {
         var sameReference = item.paymentTerminalOperationId() != null
                 ? existing.getCardMode() == PaymentCardMode.INTEGRATED
                 : Objects.equals(existing.getReferencia(), normalized(item.reference()));
-        if (!sameDocument || !sameCore || !sameReference) {
+        var sameOperation = item.paymentTerminalOperationId() == null
+                || terminalOperations.findByDocumentPaymentId(existing.getId())
+                        .map(PaymentTerminalOperation::getId)
+                        .filter(item.paymentTerminalOperationId()::equals)
+                        .isPresent();
+        if (!sameDocument || !sameCore || !sameReference || !sameOperation) {
             throw new IllegalStateException("payment_idempotency_conflict");
         }
     }
@@ -233,6 +240,9 @@ public class CustomerReceivableService {
                 && document.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
             throw new IllegalStateException(
                     "message.document.only_receivable_document_can_be_paid");
+        }
+        if (document.getClienteId() == null) {
+            throw new IllegalStateException("customer_receivable_customer_required");
         }
     }
 

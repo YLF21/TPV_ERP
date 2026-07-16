@@ -20,6 +20,7 @@ public class PaymentTerminalOperationService {
     private final List<CardTerminalGateway> gateways;
     private final Clock clock;
     private final TransactionTemplate transactions;
+    private final TransactionTemplate chargeTransactions;
 
     @org.springframework.beans.factory.annotation.Autowired
     public PaymentTerminalOperationService(PaymentTerminalOperationRepository operations,
@@ -27,15 +28,18 @@ public class PaymentTerminalOperationService {
             org.springframework.transaction.PlatformTransactionManager transactionManager){
         this.operations=operations;this.configurations=configurations;this.gateways=List.copyOf(gateways);this.clock=clock;
         this.transactions=new TransactionTemplate(transactionManager);
+        this.chargeTransactions=new TransactionTemplate(transactionManager);
+        this.chargeTransactions.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
     PaymentTerminalOperationService(PaymentTerminalOperationRepository operations,CardTerminalConfigurationReader configurations,
-            List<CardTerminalGateway> gateways,Clock clock){this.operations=operations;this.configurations=configurations;this.gateways=List.copyOf(gateways);this.clock=clock;this.transactions=null;}
+            List<CardTerminalGateway> gateways,Clock clock){this.operations=operations;this.configurations=configurations;this.gateways=List.copyOf(gateways);this.clock=clock;this.transactions=null;this.chargeTransactions=null;}
 
     public PaymentTerminalResult charge(UUID operationId,String requestHash,BigDecimal amount,
             CardTerminalConfiguration configuration){
         Reservation reserved;
-        try { reserved=tx(()->reserveAndMarkSent(operationId,requestHash,amount,configuration)); }
-        catch(org.springframework.dao.DataIntegrityViolationException race){reserved=tx(()->existingReservation(operationId,requestHash,configuration));}
+        try { reserved=chargeTx(()->reserveAndMarkSent(operationId,requestHash,amount,configuration)); }
+        catch(org.springframework.dao.DataIntegrityViolationException race){reserved=chargeTx(()->existingReservation(operationId,requestHash,configuration));}
         if(!reserved.send()) return toResult(reserved.operation());
         var gateway=resolve(configuration);
         PaymentTerminalResult result;
@@ -43,7 +47,7 @@ public class PaymentTerminalOperationService {
         catch(RuntimeException exception){ result=new PaymentTerminalResult(PaymentTerminalOperationStatus.TIMEOUT,
                 "TRANSPORT_TIMEOUT",null,null,"Resultado incierto del datafono; consulte el estado"); }
         var completed=result;
-        return tx(()->recordResult(operationId,completed));
+        return chargeTx(()->recordResult(operationId,completed));
     }
 
     public Reservation reserveAndMarkSent(UUID id,String requestHash,BigDecimal amount,CardTerminalConfiguration c){
@@ -128,6 +132,10 @@ public class PaymentTerminalOperationService {
     public PaymentTerminalOperation documentReview(UUID id,String diagnostic){return tx(()->{var operation=operations.findLockedById(id).orElseThrow();var now=clock.instant();
         operation.markDocumentReviewRequired("DOCUMENT_IDENTITY_INVALID",diagnostic,now);operation.releaseProcessing(now);return operations.save(operation);});}
     public java.util.Optional<PaymentTerminalOperation> find(UUID id){return operations.findById(id);}
+    @Transactional(readOnly=true)
+    public java.util.Optional<PaymentTerminalOperation> findByDocumentPaymentId(UUID paymentId){
+        return operations.findByDocumentPaymentId(paymentId);
+    }
     public PaymentTerminalOperation requireFinalizableApprovedCharge(UUID id){return tx(()->{var operation=operations.findLockedById(id).orElseThrow(()->new IllegalStateException("payment_operation_not_finalizable"));if(operation.getOperationType()!=PaymentTerminalOperationType.CHARGE||operation.getStatus()!=PaymentTerminalOperationStatus.APPROVED||operation.getRefundedAmount().signum()!=0||operation.getDocumentId()!=null)throw new IllegalStateException("payment_operation_not_finalizable");return operation;});}
     public void linkDocument(UUID operationId,UUID documentId,UUID paymentId){tx(()->{var operation=operations.findLockedById(operationId).orElseThrow();
         if(operation.getDocumentId()==null){var now=clock.instant();operation.linkDocument(documentId,paymentId,now);operation.releaseProcessing(now);operations.save(operation);}return operation;});}
@@ -145,5 +153,6 @@ public class PaymentTerminalOperationService {
     private static PaymentTerminalResult toResult(PaymentTerminalOperation op){return new PaymentTerminalResult(op.getStatus(),"REPLAY",
             op.getExternalReference(),op.getAuthorizationCode(),"Operacion recuperada por idempotencia");}
     private <T> T tx(java.util.function.Supplier<T> work){return transactions==null?work.get():transactions.execute(status->work.get());}
+    private <T> T chargeTx(java.util.function.Supplier<T> work){return chargeTransactions==null?work.get():chargeTransactions.execute(status->work.get());}
     public record Reservation(PaymentTerminalOperation operation,boolean send){}
 }

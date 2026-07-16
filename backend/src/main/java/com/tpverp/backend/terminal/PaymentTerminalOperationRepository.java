@@ -12,6 +12,7 @@ public interface PaymentTerminalOperationRepository extends JpaRepository<Paymen
     @Query(value="select 1 from (select pg_advisory_xact_lock(hashtextextended(:lockKey,0))) locked",nativeQuery=true)
     Integer lockIdempotencyKey(@Param("lockKey") String lockKey);
     Optional<PaymentTerminalOperation> findByTerminalIdAndIdempotencyKey(UUID terminalId, String idempotencyKey);
+    Optional<PaymentTerminalOperation> findByDocumentPaymentId(UUID documentPaymentId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select operation from PaymentTerminalOperation operation where operation.id = :id")

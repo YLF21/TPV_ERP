@@ -31,6 +31,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
+              and document.clienteId is not null
             order by document.fechaVencimiento asc, document.fecha desc, document.numero desc
             """)
     List<CommercialDocument> findCustomerReceivables(@Param("storeId") UUID storeId);
@@ -47,6 +48,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
+              and document.clienteId is not null
             """)
     Optional<CommercialDocument> findCustomerReceivable(
             @Param("id") UUID id, @Param("storeId") UUID storeId);

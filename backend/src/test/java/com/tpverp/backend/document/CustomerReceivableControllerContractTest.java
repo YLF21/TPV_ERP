@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.transaction.annotation.Transactional;
 
 class CustomerReceivableControllerContractTest {
 
@@ -36,6 +37,16 @@ class CustomerReceivableControllerContractTest {
 
         assertThat(item.requestId()).isEqualTo(paymentId);
         assertThat(item.paymentTerminalOperationId()).isEqualTo(operationId);
+    }
+
+    @Test
+    void cardChargeDoesNotHoldAnOuterTransactionAcrossTerminalIo() throws Exception {
+        var method = CustomerReceivableService.class.getDeclaredMethod(
+                "chargeCard", UUID.class,
+                CustomerReceivableController.CardChargeRequest.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(method.getAnnotation(Transactional.class)).isNull();
     }
 
     private static void assertReadEndpoint(String name, Class<?> argument, String path)
