@@ -10,14 +10,14 @@ import org.junit.jupiter.api.Test;
 class MigrationV63ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V63__producto_cantidad_por_paquete.sql";
+            "db/migration/V66__producto_cantidad_por_paquete.sql";
 
     @Test
     void addsDefaultPackageQuantityToProduct() throws IOException {
         String sql = migrationSql();
 
         assertThat(sql)
-                .contains("add column package_quantity numeric(19,3) default 1")
+                .contains("add column if not exists package_quantity numeric(19,3) default 1")
                 .contains("ck_producto_package_quantity")
                 .contains("package_quantity is null or package_quantity >= 0");
     }

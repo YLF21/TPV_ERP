@@ -28,7 +28,7 @@ public class SupplierController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_READ','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public List<SupplierService.SupplierView> list() {
         return service.list();
     }

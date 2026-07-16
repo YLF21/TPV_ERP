@@ -24,6 +24,7 @@ import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 
 export type SaleProduct = {
   id: string;
+  active?: boolean | null;
   code?: string | null;
   barcode?: string | null;
   barcode2?: string | null;
@@ -87,6 +88,10 @@ export function filterSaleProducts(products: SaleProduct[], query: string, limit
     .filter((product) => [product.code, product.barcode, product.barcode2, product.name]
       .some((value) => normalizedSearchValue(value).includes(normalizedQuery)))
     .slice(0, limit);
+}
+
+export function saleSelectableProducts(products: SaleProduct[], allowInactiveProductSales: boolean) {
+  return allowInactiveProductSales ? products : products.filter((product) => product.active !== false);
 }
 
 export function selectSaleProduct(products: SaleProduct[], query: string) {
@@ -464,6 +469,8 @@ export function SaleScreen({
   const t = createTranslator(locale);
   const [productCreateOpen, setProductCreateOpen] = useState(false);
   const [products, setProducts] = useState<SaleProduct[]>([]);
+  const [allowInactiveProductSales, setAllowInactiveProductSales] = useState(false);
+  const [pendingInactiveProduct, setPendingInactiveProduct] = useState<SaleProduct | null>(null);
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -508,7 +515,11 @@ export function SaleScreen({
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
   const logoutInProgressRef = useRef(false);
   const shutdownInProgressRef = useRef(false);
-  const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
+  const selectableProducts = useMemo(
+    () => saleSelectableProducts(products, allowInactiveProductSales),
+    [allowInactiveProductSales, products]
+  );
+  const results = useMemo(() => filterSaleProducts(selectableProducts, query), [query, selectableProducts]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const activeMember = selectedCustomer?.activeMember === true;
@@ -575,10 +586,15 @@ export function SaleScreen({
     let cancelled = false;
     setCatalogLoading(true);
     setCatalogError(false);
-    apiRequest<SaleProduct[]>("/products", { token: session.accessToken })
-      .then((loadedProducts) => {
+    Promise.all([
+      apiRequest<SaleProduct[]>("/products", { token: session.accessToken }),
+      apiRequest<{ allowInactiveProductSales?: boolean }>("/stock/settings", { token: session.accessToken })
+        .catch(() => ({ allowInactiveProductSales: false }))
+    ])
+      .then(([loadedProducts, stockSettings]) => {
         if (!cancelled) {
           setProducts(loadedProducts);
+          setAllowInactiveProductSales(Boolean(stockSettings.allowInactiveProductSales));
         }
       })
       .catch(() => {
@@ -614,6 +630,31 @@ export function SaleScreen({
     }
     if (actionDialog === "remove") removeConfirmButtonRef.current?.focus();
   }, [actionDialog]);
+
+  function requestAddProduct(product: SaleProduct) {
+    if (product.active === false) {
+      if (!allowInactiveProductSales) {
+        return;
+      }
+      setPendingInactiveProduct(product);
+      return;
+    }
+    addProduct(product);
+  }
+
+  function confirmInactiveProduct() {
+    if (!pendingInactiveProduct) {
+      return;
+    }
+    const product = pendingInactiveProduct;
+    setPendingInactiveProduct(null);
+    addProduct(product);
+  }
+
+  function cancelInactiveProduct() {
+    setPendingInactiveProduct(null);
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
 
   function openQuantityDialog() {
     if (!selectedLine) return;
@@ -682,9 +723,9 @@ export function SaleScreen({
   }
 
   function submitSearch() {
-    const selected = selectSaleProduct(products, query);
+    const selected = selectSaleProduct(selectableProducts, query);
     if (selected) {
-      addProduct(selected);
+      requestAddProduct(selected);
     }
   }
 
@@ -1014,11 +1055,14 @@ export function SaleScreen({
                 type="button"
                 disabled={paymentLocked}
                 key={product.id}
-                onClick={() => addProduct(product)}
+                onClick={() => requestAddProduct(product)}
               >
                 <span>
                   <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
-                  <small>{product.code ?? product.barcode ?? t("sale.main.missingCode")}</small>
+                  <small>
+                    {product.code ?? product.barcode ?? t("sale.main.missingCode")}
+                    {product.active === false ? ` · ${t("stock.status.inactive")}` : ""}
+                  </small>
                 </span>
                 <b>{formatSaleAmount(effectiveSaleProductPrice(product, activeMember))}</b>
               </button>
@@ -1189,17 +1233,53 @@ export function SaleScreen({
           <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
         </SaleActionDialog>
       )}
+
+      {pendingInactiveProduct && (
+        <SaleActionDialog
+          title={t("sale.inactiveProduct.title")}
+          onClose={cancelInactiveProduct}
+          onConfirm={confirmInactiveProduct}
+        >
+          <p>{saleMainMessage(t, "sale.inactiveProduct.warning", {
+            name: pendingInactiveProduct.name ?? t("sale.main.unnamedProduct")
+          })}</p>
+          <div className="sale-action-buttons">
+            <button type="button" onClick={cancelInactiveProduct}>{t("common.cancel")}</button>
+            <button type="button" autoFocus onClick={confirmInactiveProduct}>{t("sale.inactiveProduct.continue")}</button>
+          </div>
+        </SaleActionDialog>
+      )}
     </main>
   );
 }
 
-function SaleActionDialog({ title, children, onClose, onKeyDown, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void; wide?: boolean }) {
+function SaleActionDialog({
+  title,
+  children,
+  onClose,
+  onKeyDown,
+  onConfirm,
+  wide = false
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
+  onConfirm?: () => void;
+  wide?: boolean;
+}) {
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     onKeyDown?.(event);
-    if (event.defaultPrevented || event.repeat || event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    onClose();
+    if (event.defaultPrevented || event.repeat) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    } else if (event.key === "Enter" && onConfirm) {
+      event.preventDefault();
+      event.stopPropagation();
+      onConfirm();
+    }
   }
 
   return (

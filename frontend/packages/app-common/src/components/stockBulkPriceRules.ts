@@ -90,6 +90,12 @@ export type StockBulkPriceRulePreview = {
   }>;
 };
 
+export type StockBulkPriceRuleEditableRow = {
+  selected: boolean;
+  product?: { productId: string };
+  draft: object;
+};
+
 export type StockBulkPriceRuleDraft = {
   name: string;
   forms: StockBulkPriceRuleForm[];
@@ -312,6 +318,49 @@ export function stockBulkPriceRuleDeletePath(id: string, version: number) {
   return `/product-price-rules/${encodeURIComponent(id)}?version=${encodeURIComponent(String(version))}`;
 }
 
-export function stockBulkPriceRuleExecutionBody(ruleVersion: number) {
-  return { ruleVersion };
+export function stockBulkPriceRulePreviewPath(id: string) {
+  return `/product-price-rules/${encodeURIComponent(id)}/preview`;
+}
+
+export function stockBulkPriceRuleExecutionBody(ruleVersion: number, productIds: string[]) {
+  return { ruleVersion, productIds: [...new Set(productIds)] };
+}
+
+const previewFieldToDraftField: Record<string, string> = {
+  SALE_PRICE: "salePrice",
+  MEMBER_PRICE: "memberPrice",
+  WHOLESALE_PRICE: "wholesalePrice",
+  OFFER_PRICE: "offerPrice",
+  PRICE_USE_MODE: "discountType",
+  DISCOUNT_TYPE: "backendDiscountType",
+  OFFER_DISCOUNT_PERCENT: "offerDiscountPercent",
+  OFFER_ACTIVE: "offerActive",
+  OFFER_FROM: "offerFrom",
+  OFFER_UNTIL: "offerUntil"
+};
+
+function stockBulkPriceRuleDraftValue(field: string, value: unknown) {
+  if (field === "OFFER_ACTIVE") {
+    return value === true ? "common.yes" : "common.no";
+  }
+  return value === null || value === undefined ? "" : String(value);
+}
+
+export function applyStockBulkPriceRulePreview<Row extends StockBulkPriceRuleEditableRow>(
+  rows: Row[],
+  preview: StockBulkPriceRulePreview
+): Row[] {
+  const changesByProduct = new Map(preview.products.map((product) => [product.productId, product.changes]));
+  return rows.map((row) => {
+    if (!row.selected || !row.product) return row;
+    const changes = changesByProduct.get(row.product.productId);
+    if (!changes || changes.length === 0) return row;
+    const patch = Object.fromEntries(changes.flatMap((change) => {
+      const field = previewFieldToDraftField[change.field];
+      return field ? [[field, stockBulkPriceRuleDraftValue(change.field, change.after)]] : [];
+    }));
+    return Object.keys(patch).length === 0
+      ? row
+      : { ...row, draft: { ...row.draft, ...patch } };
+  });
 }

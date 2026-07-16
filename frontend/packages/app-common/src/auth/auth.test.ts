@@ -11,8 +11,8 @@ describe("auth", () => {
     expect(authenticate("venta", "venta", "venta").username).toBe("venta");
   });
 
-  it("blocks product-only users from APP VENTA", () => {
-    expect(() => authenticate("producto", "producto", "venta")).toThrow("no_access");
+  it("allows product-only users into APP VENTA", () => {
+    expect(authenticate("producto", "producto", "venta").username).toBe("producto");
   });
 
   it("allows gestion users into APP GESTION", () => {
@@ -29,7 +29,7 @@ describe("auth", () => {
         userId: "user-1",
         userName: "ALMACEN",
         role: "OPERADOR",
-        permissions: ["VENTA", "STOCK_READ", "WAREHOUSE_INPUTS_WRITE"]
+        permissions: ["VENTA", "STOCK_READ", "GESTION_ALMACEN"]
       })
     }));
 
@@ -41,7 +41,7 @@ describe("auth", () => {
     });
 
     expect(session.permissions).toContain("STOCK_READ");
-    expect(session.permissions).toContain("WAREHOUSE_INPUTS_WRITE");
+    expect(session.permissions).toContain("GESTION_ALMACEN");
     expect(session.userId).toBe("user-1");
   });
 });

@@ -1,5 +1,10 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apiRequest } from "../api/client";
+import { tableLayoutStorageKey, writeStoredTableLayout } from "./tableLayoutPreferences";
 import {
   WarehouseOperationsPanel,
   warehouseOperationsCanDelete,
@@ -9,11 +14,19 @@ import {
   warehouseOperationsFilter,
   warehouseOperationsLoad,
   warehouseOperationsNextId,
+  warehouseOperationsPagePath,
   warehouseOperationsResolvePermissions,
   warehouseOperationsTotalUnits,
   type WarehouseOperationView,
   type WarehouseOperationsPanelRequest
 } from "./WarehouseOperationsPanel";
+
+vi.mock("../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../api/client")>("../api/client");
+  return { ...actual, apiRequest: vi.fn() };
+});
+
+const apiRequestMock = vi.mocked(apiRequest);
 
 const products = [{ id: "product-1", code: "A001", name: "Cafe molido" }];
 const warehouses = [
@@ -63,14 +76,40 @@ const messages: Record<string, string> = {
 const t = (key: string) => messages[key] ?? key;
 
 describe("WarehouseOperationsPanel", () => {
-  it("loads the input and output collections from their existing GET endpoints", async () => {
-    const request = vi.fn().mockResolvedValue([draft]) as unknown as WarehouseOperationsPanelRequest;
+  beforeEach(() => {
+    apiRequestMock.mockReset();
+    localStorage.clear();
+  });
 
-    await expect(warehouseOperationsLoad("input", "token-1", request)).resolves.toEqual([draft]);
-    expect(request).toHaveBeenCalledWith("/warehouse-inputs", { token: "token-1" });
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+  });
+
+  it("loads paged input and output collections from their existing GET endpoints", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ items: [draft], nextCursor: "2026-07-15|input-1", hasMore: true })
+      .mockResolvedValueOnce({ items: [confirmed], nextCursor: null, hasMore: false })
+      .mockResolvedValueOnce({ items: [draft], nextCursor: null, hasMore: false }) as unknown as WarehouseOperationsPanelRequest;
+
+    await expect(warehouseOperationsLoad("input", "token-1", request)).resolves.toEqual([draft, confirmed]);
+    expect(request).toHaveBeenNthCalledWith(1, "/warehouse-inputs?limit=500", { token: "token-1" });
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "/warehouse-inputs?limit=500&cursor=2026-07-15%7Cinput-1",
+      { token: "token-1" }
+    );
 
     await warehouseOperationsLoad("output", "token-2", request);
-    expect(request).toHaveBeenLastCalledWith("/warehouse-outputs", { token: "token-2" });
+    expect(request).toHaveBeenLastCalledWith("/warehouse-outputs?limit=500", { token: "token-2" });
+    expect(warehouseOperationsPagePath("input")).toBe("/warehouse-inputs?limit=500");
+    expect(warehouseOperationsPagePath("output")).toBe("/warehouse-outputs?limit=500");
+  });
+
+  it("keeps compatibility with an array response while a backend is being upgraded", async () => {
+    const request = vi.fn().mockResolvedValue([draft]) as unknown as WarehouseOperationsPanelRequest;
+
+    await expect(warehouseOperationsLoad("input", "token", request)).resolves.toEqual([draft]);
   });
 
   it("filters by status and searches number, counterparty and warehouse labels", () => {
@@ -180,6 +219,99 @@ describe("WarehouseOperationsPanel", () => {
     expect(html).not.toContain("Imprimir");
     expect(html).toContain("erp-select__trigger");
     expect(html).not.toContain("<select");
+  });
+
+  it("keeps input document headers, colgroup and row cells in the persisted interactive order", async () => {
+    writeStoredTableLayout("venta", "ana", "warehouse.inputs.documents", [
+      { key: "status", width: 150, visible: true },
+      { key: "number", width: 170, visible: true },
+      { key: "date", width: 120, visible: true },
+      { key: "counterparty", width: 240, visible: true },
+      { key: "warehouse", width: 180, visible: true },
+      { key: "lines", width: 90, visible: true },
+      { key: "totalUnits", width: 140, visible: true }
+    ], localStorage);
+    apiRequestMock.mockResolvedValueOnce([draft]);
+
+    const { container } = render(
+      <WarehouseOperationsPanel
+        mode="input"
+        app="venta"
+        username="ana"
+        token="token"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        t={t}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector('[data-operation-id="input-1"]')).not.toBeNull());
+
+    const headerKeys = () => Array.from(container.querySelectorAll<HTMLElement>("thead [data-column-key]"))
+      .map((header) => header.dataset.columnKey);
+    const rowValues = () => Array.from(container.querySelectorAll('[data-operation-id="input-1"] td'))
+      .map((cell) => cell.textContent?.trim());
+
+    expect(headerKeys().slice(0, 2)).toEqual(["status", "number"]);
+    expect(rowValues().slice(0, 2)).toEqual(["BORRADOR", "Sin numero"]);
+    expect(Array.from(container.querySelectorAll("colgroup col")).map((col) => (col as HTMLElement).style.width).slice(0, 2))
+      .toEqual(["150px", "170px"]);
+    expect(Array.from(container.querySelectorAll<HTMLElement>("thead [data-column-key]")).every((header) => header.draggable))
+      .toBe(true);
+
+    const values = new Map<string, string>();
+    const dataTransfer = {
+      effectAllowed: "move",
+      dropEffect: "move",
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? ""
+    };
+    fireEvent.dragStart(container.querySelector('[data-column-key="warehouse"]') as HTMLElement, { dataTransfer });
+    fireEvent.dragOver(container.querySelector('[data-column-key="status"]') as HTMLElement, { dataTransfer });
+    fireEvent.drop(container.querySelector('[data-column-key="status"]') as HTMLElement, { dataTransfer });
+
+    expect(headerKeys()[0]).toBe("warehouse");
+    expect(rowValues()[0]).toBe("GENERAL");
+
+    fireEvent.keyDown(container.querySelector('[data-column-key="warehouse"]') as HTMLElement, {
+      key: "ArrowRight",
+      ctrlKey: true
+    });
+    expect(headerKeys().slice(0, 2)).toEqual(["status", "warehouse"]);
+    expect(rowValues().slice(0, 2)).toEqual(["BORRADOR", "GENERAL"]);
+
+    const warehouseHeader = container.querySelector('[data-column-key="warehouse"]') as HTMLElement;
+    fireEvent.keyDown(warehouseHeader.querySelector("button") as HTMLButtonElement, { key: "ArrowRight" });
+
+    const stored = JSON.parse(localStorage.getItem(
+      tableLayoutStorageKey("venta", "ana", "warehouse.inputs.documents")
+    ) ?? "[]") as Array<{ key: string; width: number }>;
+    expect(stored.map((column) => column.key).slice(0, 2)).toEqual(["status", "warehouse"]);
+    expect(stored.find((column) => column.key === "warehouse")?.width).toBe(188);
+  });
+
+  it("uses the independent output document preference key", () => {
+    writeStoredTableLayout("venta", "ana", "warehouse.outputs.documents", [
+      { key: "totalUnits", width: 140, visible: true },
+      { key: "number", width: 170, visible: true }
+    ], localStorage);
+
+    const html = renderToStaticMarkup(
+      <WarehouseOperationsPanel
+        mode="output"
+        app="venta"
+        username="ana"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        t={t}
+      />
+    );
+
+    expect(html.indexOf('data-column-key="totalUnits"')).toBeLessThan(html.indexOf('data-column-key="number"'));
   });
 
   it("does not expose low-level write errors in the operations list", () => {

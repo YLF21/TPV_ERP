@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { apiRequest } from "../api/client";
-import type { UserSession } from "../types";
+import type { AppKind, UserSession } from "../types";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import type {
+  TableColumnDefinition,
+  TableColumnMoveDirection,
+  TableLayout
+} from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 export type MemberLoyaltyRequest = typeof apiRequest;
 
@@ -36,6 +45,120 @@ export type MemberCardDelivery = {
 
 type Translate = (key: string) => string;
 type Tab = "detail" | "categories" | "settings" | "channels" | "deliveries";
+export type MemberMovementColumnKey = "date" | "movement" | "amount" | "reason";
+export type MemberCategoryColumnKey = "code" | "name" | "minPoints" | "discount" | "status";
+export type CommercialChannelColumnKey = "code" | "name" | "status";
+export type MemberCardDeliveryColumnKey = "email" | "status" | "date";
+
+export const memberLoyaltyTableKeys = {
+  movements: "party.members.movements",
+  categories: "party.memberCategories",
+  channels: "party.commercialChannels",
+  deliveries: "party.memberCardDeliveries"
+} as const;
+
+export const memberMovementColumnDefinitions = [
+  { key: "date", defaultWidth: 180 },
+  { key: "movement", defaultWidth: 160 },
+  { key: "amount", defaultWidth: 120 },
+  { key: "reason", defaultWidth: 280 }
+] as const satisfies readonly TableColumnDefinition<MemberMovementColumnKey>[];
+
+export const memberCategoryColumnDefinitions = [
+  { key: "code", defaultWidth: 120 },
+  { key: "name", defaultWidth: 220 },
+  { key: "minPoints", defaultWidth: 120 },
+  { key: "discount", defaultWidth: 120 },
+  { key: "status", defaultWidth: 110 }
+] as const satisfies readonly TableColumnDefinition<MemberCategoryColumnKey>[];
+
+export const commercialChannelColumnDefinitions = [
+  { key: "code", defaultWidth: 140 },
+  { key: "name", defaultWidth: 260 },
+  { key: "status", defaultWidth: 110 }
+] as const satisfies readonly TableColumnDefinition<CommercialChannelColumnKey>[];
+
+export const memberCardDeliveryColumnDefinitions = [
+  { key: "email", defaultWidth: 280 },
+  { key: "status", defaultWidth: 140 },
+  { key: "date", defaultWidth: 180 }
+] as const satisfies readonly TableColumnDefinition<MemberCardDeliveryColumnKey>[];
+
+export type MemberLoyaltyPanelProps = {
+  app?: AppKind;
+  memberId: string;
+  session: UserSession;
+  t?: Translate;
+  request?: MemberLoyaltyRequest;
+};
+
+type TableLayoutController<Key extends string> = {
+  layout: TableLayout<Key>;
+  reorderColumns: (draggedKey: Key, targetKey: Key) => void;
+  moveColumn: (columnKey: Key, direction: TableColumnMoveDirection) => void;
+  resizeColumn: (columnKey: Key, width: number) => void;
+};
+
+type OperationalColumn<Key extends string, Row> = {
+  key: Key;
+  label: string;
+  render: (row: Row) => ReactNode;
+};
+
+function MemberOperationalTable<Key extends string, Row extends { id: string }>({
+  columns,
+  layoutController,
+  rows,
+  resizeLabel,
+  actionLabel,
+  actionWidth = 0,
+  renderActions
+}: {
+  columns: readonly OperationalColumn<Key, Row>[];
+  layoutController: TableLayoutController<Key>;
+  rows: readonly Row[];
+  resizeLabel: string;
+  actionLabel?: string;
+  actionWidth?: number;
+  renderActions?: (row: Row) => ReactNode;
+}) {
+  const visibleColumns = visibleTableColumns(layoutController.layout);
+  const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const tableWidth = visibleColumns.reduce((total, column) => total + column.width, actionWidth);
+
+  return <div style={{ overflowX: "auto" }}>
+    <table style={{ tableLayout: "fixed", minWidth: tableWidth }}>
+      <colgroup>
+        {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+        {renderActions && <col style={{ width: actionWidth }} />}
+      </colgroup>
+      <thead><tr>
+        {visibleColumns.map((column) => {
+          const definition = columnsByKey.get(column.key);
+          if (!definition) return null;
+          return <TableLayoutHeaderCell
+            column={column}
+            key={column.key}
+            resizeLabel={`${resizeLabel} ${definition.label}`}
+            onReorder={layoutController.reorderColumns}
+            onMove={layoutController.moveColumn}
+            onResize={layoutController.resizeColumn}
+          >
+            {definition.label}
+          </TableLayoutHeaderCell>;
+        })}
+        {renderActions && <th data-fixed-column="actions">{actionLabel}</th>}
+      </tr></thead>
+      <tbody>{rows.map((row) => <tr key={row.id}>
+        {visibleColumns.map((column) => {
+          const definition = columnsByKey.get(column.key);
+          return <td data-column-key={column.key} key={column.key}>{definition?.render(row)}</td>;
+        })}
+        {renderActions && <td data-fixed-column="actions">{renderActions(row)}</td>}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
 
 export function memberLoyaltyPermissions(session: UserSession) {
   const admin = session.permissions.includes("ADMIN");
@@ -67,10 +190,9 @@ export async function loadMemberLoyalty(memberId: string, token: string, request
 
 const fallback: Translate = (key) => key;
 
-export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = apiRequest }: {
-  memberId: string; session: UserSession; t?: Translate; request?: MemberLoyaltyRequest;
-}) {
+export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallback, request = apiRequest }: MemberLoyaltyPanelProps) {
   const [tab, setTab] = useState<Tab>("detail");
+  const [visitedTabs, setVisitedTabs] = useState<Set<Tab>>(() => new Set(["detail"]));
   const [member, setMember] = useState<MemberView | null>(null);
   const [movements, setMovements] = useState<MemberMovement[]>([]);
   const [categories, setCategories] = useState<MemberCategory[]>([]);
@@ -86,6 +208,39 @@ export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = 
   const [error, setError] = useState("");
   const permissions = memberLoyaltyPermissions(session);
   const options = useMemo(() => ({ token: session.accessToken }), [session.accessToken]);
+  const movementTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: visitedTabs.has("detail") ? session.accessToken : undefined,
+    tableKey: memberLoyaltyTableKeys.movements,
+    definitions: memberMovementColumnDefinitions
+  });
+  const categoryTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: visitedTabs.has("categories") ? session.accessToken : undefined,
+    tableKey: memberLoyaltyTableKeys.categories,
+    definitions: memberCategoryColumnDefinitions
+  });
+  const channelTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: visitedTabs.has("channels") ? session.accessToken : undefined,
+    tableKey: memberLoyaltyTableKeys.channels,
+    definitions: commercialChannelColumnDefinitions
+  });
+  const deliveryTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: visitedTabs.has("deliveries") ? session.accessToken : undefined,
+    tableKey: memberLoyaltyTableKeys.deliveries,
+    definitions: memberCardDeliveryColumnDefinitions
+  });
+
+  function selectTab(nextTab: Tab) {
+    setTab(nextTab);
+    setVisitedTabs((current) => current.has(nextTab) ? current : new Set([...current, nextTab]));
+  }
 
   const reload = useCallback(async () => {
     setBusy(true); setError("");
@@ -165,12 +320,35 @@ export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = 
     }, false);
   }
 
+  const movementColumns: readonly OperationalColumn<MemberMovementColumnKey, MemberMovement>[] = [
+    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString() },
+    { key: "movement", label: t("party.members.movement"), render: (item) => item.type },
+    { key: "amount", label: t("party.members.amount"), render: (item) => item.pointsAmount || String(item.balanceAmount) },
+    { key: "reason", label: t("party.members.reason"), render: (item) => item.reason || "—" }
+  ];
+  const categoryColumns: readonly OperationalColumn<MemberCategoryColumnKey, MemberCategory>[] = [
+    { key: "code", label: t("party.code"), render: (item) => item.code },
+    { key: "name", label: t("party.name"), render: (item) => item.name },
+    { key: "minPoints", label: t("party.members.minPoints"), render: (item) => item.minPoints },
+    { key: "discount", label: t("party.members.discount"), render: (item) => `${String(item.discountPercent)}%` },
+    { key: "status", label: t("party.status"), render: (item) => t(item.active ? "party.active" : "party.inactive") }
+  ];
+  const channelColumns: readonly OperationalColumn<CommercialChannelColumnKey, CommercialChannel>[] = [
+    { key: "code", label: t("party.code"), render: (item) => item.code },
+    { key: "name", label: t("party.name"), render: (item) => item.name },
+    { key: "status", label: t("party.status"), render: (item) => t(item.active ? "party.active" : "party.inactive") }
+  ];
+  const deliveryColumns: readonly OperationalColumn<MemberCardDeliveryColumnKey, MemberCardDelivery>[] = [
+    { key: "email", label: t("party.email"), render: (item) => item.email },
+    { key: "status", label: t("party.status"), render: (item) => item.status },
+    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString() }
+  ];
   const tabs: Tab[] = ["detail", "categories", "settings", "channels", "deliveries"];
   return <section className="stock-section party-member-loyalty" aria-label={t("party.members.loyaltyTitle")}>
     <div className="stock-section__header">
       <h3>{t("party.members.loyaltyTitle")}</h3>
       <div className="stock-toolbar" role="tablist">{tabs.map((item) =>
-        <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{t(`party.members.tab.${item}`)}</button>
+        <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "is-active" : ""} onClick={() => selectTab(item)}>{t(`party.members.tab.${item}`)}</button>
       )}</div>
     </div>
     {error && <p role="alert" className="form-error">{t(error)}</p>}
@@ -199,9 +377,12 @@ export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = 
         <input aria-label={t("party.members.reason")} value={adjustment.reason} onChange={(event) => setAdjustment((value) => ({ ...value, reason: event.target.value }))} />
         <button disabled={busy}>{t("party.members.adjust")}</button>
       </form>}
-      <table><thead><tr><th>{t("party.members.date")}</th><th>{t("party.members.movement")}</th><th>{t("party.members.amount")}</th><th>{t("party.members.reason")}</th></tr></thead>
-        <tbody>{movements.map((item) => <tr key={item.id}><td>{new Date(item.createdAt).toLocaleString()}</td><td>{item.type}</td><td>{item.pointsAmount || String(item.balanceAmount)}</td><td>{item.reason || "—"}</td></tr>)}</tbody>
-      </table>
+      <MemberOperationalTable
+        columns={movementColumns}
+        layoutController={movementTableLayout}
+        rows={movements}
+        resizeLabel={t("stock.columns.resize")}
+      />
     </>}
 
     {tab === "categories" && <>
@@ -213,7 +394,15 @@ export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = 
         <label className="party-member-check"><input type="checkbox" checked={categoryDraft.discountEnabled} onChange={(event) => setCategoryDraft({ ...categoryDraft, discountEnabled: event.target.checked })} />{t("party.members.discountEnabled")}</label>
         <button disabled={busy}>{t(categoryDraft.id ? "party.members.updateCategory" : "party.members.createCategory")}</button>
       </form>}
-      <table><thead><tr><th>{t("party.code")}</th><th>{t("party.name")}</th><th>{t("party.members.minPoints")}</th><th>{t("party.members.discount")}</th><th>{t("party.status")}</th><th /></tr></thead><tbody>{categories.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{item.minPoints}</td><td>{String(item.discountPercent)}%</td><td>{t(item.active ? "party.active" : "party.inactive")}</td><td>{permissions.canWrite && <div className="party-member-row-actions"><button type="button" onClick={() => setCategoryDraft({ id: item.id, name: item.name, minPoints: String(item.minPoints), discountPercent: String(item.discountPercent), discountEnabled: item.discountEnabled, sortOrder: String(item.sortOrder) })}>{t("party.members.edit")}</button>{item.active && <button type="button" onClick={() => void deactivateCategory(item.id)}>{t("party.action.deactivate")}</button>}</div>}</td></tr>)}</tbody></table>
+      <MemberOperationalTable
+        columns={categoryColumns}
+        layoutController={categoryTableLayout}
+        rows={categories}
+        resizeLabel={t("stock.columns.resize")}
+        actionLabel={t("common.actions")}
+        actionWidth={220}
+        renderActions={(item) => permissions.canWrite && <div className="party-member-row-actions"><button type="button" onClick={() => setCategoryDraft({ id: item.id, name: item.name, minPoints: String(item.minPoints), discountPercent: String(item.discountPercent), discountEnabled: item.discountEnabled, sortOrder: String(item.sortOrder) })}>{t("party.members.edit")}</button>{item.active && <button type="button" onClick={() => void deactivateCategory(item.id)}>{t("party.action.deactivate")}</button>}</div>}
+      />
     </>}
 
     {tab === "settings" && settings && <form className="party-form" onSubmit={saveSettings}>
@@ -230,13 +419,29 @@ export function MemberLoyaltyPanel({ memberId, session, t = fallback, request = 
 
     {tab === "channels" && <>
       {permissions.canWrite && <form className="party-member-admin-form" onSubmit={saveChannel}><label>{t("party.code")}<input value={channelDraft.code} onChange={(event) => setChannelDraft({ ...channelDraft, code: event.target.value })} /></label><label>{t("party.name")}<input value={channelDraft.name} onChange={(event) => setChannelDraft({ ...channelDraft, name: event.target.value })} /></label><label className="party-member-check"><input type="checkbox" checked={channelDraft.active} onChange={(event) => setChannelDraft({ ...channelDraft, active: event.target.checked })} />{t("party.active")}</label><button disabled={busy}>{t(channelDraft.id ? "party.members.updateChannel" : "party.members.createChannel")}</button></form>}
-      <table><thead><tr><th>{t("party.code")}</th><th>{t("party.name")}</th><th>{t("party.status")}</th><th /></tr></thead><tbody>{channels.map((item) => <tr key={item.id}><td>{item.code}</td><td>{item.name}</td><td>{t(item.active ? "party.active" : "party.inactive")}</td><td>{permissions.canWrite && <button type="button" onClick={() => setChannelDraft({ id: item.id, code: item.code, name: item.name, active: item.active })}>{t("party.members.edit")}</button>}</td></tr>)}</tbody></table>
+      <MemberOperationalTable
+        columns={channelColumns}
+        layoutController={channelTableLayout}
+        rows={channels}
+        resizeLabel={t("stock.columns.resize")}
+        actionLabel={t("common.actions")}
+        actionWidth={120}
+        renderActions={(item) => permissions.canWrite && <button type="button" onClick={() => setChannelDraft({ id: item.id, code: item.code, name: item.name, active: item.active })}>{t("party.members.edit")}</button>}
+      />
     </>}
 
-    {tab === "deliveries" && <table><thead><tr><th>{t("party.email")}</th><th>{t("party.status")}</th><th>{t("party.members.date")}</th><th /></tr></thead><tbody>{deliveries.map((item) => <tr key={item.id}><td>{item.email}</td><td>{item.status}</td><td>{new Date(item.createdAt).toLocaleString()}</td><td>{permissions.canWrite && ["FAILED", "PENDING"].includes(item.status) && <button disabled={busy} onClick={() => void mutate(async () => {
-      const updated = await request<MemberCardDelivery>(`/member-card-deliveries/${item.id}/retry`, { ...options, method: "PATCH" });
-      setDeliveries((rows) => rows.map((row) => row.id === updated.id ? updated : row));
-    }, false)}>{t("party.members.retry")}</button>}</td></tr>)}</tbody></table>}
+    {tab === "deliveries" && <MemberOperationalTable
+      columns={deliveryColumns}
+      layoutController={deliveryTableLayout}
+      rows={deliveries}
+      resizeLabel={t("stock.columns.resize")}
+      actionLabel={t("common.actions")}
+      actionWidth={120}
+      renderActions={(item) => permissions.canWrite && ["FAILED", "PENDING"].includes(item.status) && <button disabled={busy} onClick={() => void mutate(async () => {
+        const updated = await request<MemberCardDelivery>(`/member-card-deliveries/${item.id}/retry`, { ...options, method: "PATCH" });
+        setDeliveries((rows) => rows.map((row) => row.id === updated.id ? updated : row));
+      }, false)}>{t("party.members.retry")}</button>}
+    />}
   </section>;
 }
 

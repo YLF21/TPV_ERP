@@ -1,12 +1,16 @@
 package com.tpverp.backend.catalog;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,7 +44,34 @@ class ProductControllerContractTest {
     private ProductImageService images;
 
     @Test
-    void createsProductAndWritesAJsonResponseForSalesUsers() throws Exception {
+    void publicProductReadDoesNotExposePurchaseFields() throws Exception {
+        var product = productWithPurchasePrice();
+        when(service.product(product.getId())).thenReturn(product);
+
+        mvc.perform(get("/api/v1/products/{productId}", product.getId())
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purchasePrice").doesNotExist())
+                .andExpect(jsonPath("$.purchaseDiscountPercent").doesNotExist())
+                .andExpect(jsonPath("$.salePrice").value(2.40));
+    }
+
+    @Test
+    void managementProductReadExposesPurchaseFieldsForProductManagers() throws Exception {
+        var product = productWithPurchasePrice();
+        product.configurePurchaseDiscount(new BigDecimal("10.00"));
+        when(service.product(product.getId())).thenReturn(product);
+
+        mvc.perform(get("/api/v1/products/management/{productId}", product.getId())
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.purchasePrice").value(1.20))
+                .andExpect(jsonPath("$.purchaseDiscountPercent").value(10.00))
+                .andExpect(jsonPath("$.salePrice").value(2.40));
+    }
+
+    @Test
+    void createsProductAndWritesAJsonResponseForProductManagers() throws Exception {
         var product = new Product(
                 UUID.randomUUID(),
                 FAMILY_ID,
@@ -62,7 +93,7 @@ class ProductControllerContractTest {
         when(service.createProduct(any(CatalogService.ProductRequest.class))).thenReturn(product);
 
         mvc.perform(post("/api/v1/products")
-                        .with(user("seller").authorities(() -> VENTA))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -94,7 +125,7 @@ class ProductControllerContractTest {
     }
 
     @Test
-    void uploadsProductImageAndWritesAJsonResponseForSalesUsers() throws Exception {
+    void uploadsProductImageAndWritesAJsonResponseForProductManagers() throws Exception {
         UUID productId = UUID.randomUUID();
         var product = new Product(
                 UUID.randomUUID(),
@@ -122,7 +153,7 @@ class ProductControllerContractTest {
                             request.setMethod("PUT");
                             return request;
                         })
-                        .with(user("seller").authorities(() -> VENTA))
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(product.getId().toString()))
@@ -130,7 +161,55 @@ class ProductControllerContractTest {
                 .andExpect(jsonPath("$.imageSize").value(120));
     }
 
+    @Test
+    void changesProductActiveStateWithProductManagementPermission() throws Exception {
+        UUID productId = UUID.randomUUID();
+        var product = new Product(
+                UUID.randomUUID(), FAMILY_ID, null, TAX_ID,
+                "Cafe", null, BigDecimal.ZERO, true);
+        product.deactivate();
+        when(service.setProductActive(productId, false)).thenReturn(product);
+
+        mvc.perform(patch("/api/v1/products/{productId}/active", productId)
+                        .with(user("manager").authorities(() -> GESTION_PRODUCTO))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
+
+        verify(service).setProductActive(productId, false);
+    }
+
+    @Test
+    void salesPermissionAloneCannotChangeProductActiveState() throws Exception {
+        mvc.perform(patch("/api/v1/products/{productId}/active", UUID.randomUUID())
+                        .with(user("seller").authorities(() -> VENTA))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(status().isForbidden());
+    }
+
     @EnableMethodSecurity
     static class MethodSecurityConfiguration {
+    }
+
+    private static Product productWithPurchasePrice() {
+        var product = new Product(
+                UUID.randomUUID(),
+                FAMILY_ID,
+                null,
+                TAX_ID,
+                ProductType.UNIT,
+                DiscountType.NORMAL,
+                "Cafe",
+                "Descripcion",
+                "Comentario",
+                new BigDecimal("1.20"),
+                true);
+        product.replaceIdentifier(IdentifierType.CODIGO, "A001");
+        product.setPrice(PriceTier.VENTA, new BigDecimal("2.40"));
+        return product;
     }
 }

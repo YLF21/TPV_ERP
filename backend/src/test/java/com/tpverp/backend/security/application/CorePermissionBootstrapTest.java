@@ -30,11 +30,8 @@ class CorePermissionBootstrapTest {
                 "PRODUCTS_WRITE",
                 "PRODUCTS_DELETE",
                 "GESTION_PRODUCTO",
+                "GESTION_ALMACEN",
                 "STOCK_ADJUST",
-                "WAREHOUSE_INPUTS_READ",
-                "WAREHOUSE_INPUTS_WRITE",
-                "WAREHOUSE_INPUTS_DELETE",
-                "WAREHOUSE_INPUTS_CONFIRM",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_WRITE",
                 "VENTA",
@@ -54,5 +51,14 @@ class CorePermissionBootstrapTest {
                 "PAYMENT_TERMINAL_VOID",
                 "PAYMENT_TERMINAL_REFUND",
                 "PAYMENT_TERMINAL_SECRETS");
+        assertThat(saved).extracting(Permission::getCodigo).doesNotContain(
+                "WAREHOUSE_INPUTS_READ",
+                "WAREHOUSE_INPUTS_WRITE",
+                "WAREHOUSE_INPUTS_DELETE",
+                "WAREHOUSE_INPUTS_CONFIRM",
+                "WAREHOUSE_OUTPUTS_READ",
+                "WAREHOUSE_OUTPUTS_EDIT",
+                "WAREHOUSE_OUTPUTS_DELETE",
+                "WAREHOUSE_OUTPUTS_CONFIRM");
     }
 }

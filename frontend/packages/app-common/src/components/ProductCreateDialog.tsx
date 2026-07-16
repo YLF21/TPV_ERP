@@ -22,6 +22,7 @@ export type DiscountTypeCode = "NONE" | "NORMAL" | "MEMBER_PRICE" | "DISCOUNT_PR
 export type PriceUseModeCode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
 
 export type ProductCreateFormState = {
+  active: boolean;
   familyId: string;
   subfamilyId: string;
   taxId: string;
@@ -48,6 +49,7 @@ export type ProductCreateFormState = {
 
 export type ProductCreateEditProduct = {
   id: string;
+  imageId?: string | null;
   form: Partial<ProductCreateFormState>;
   initialData?: ProductCreateInitialData;
 };
@@ -61,6 +63,7 @@ export type ProductCreateInitialData = {
 };
 
 export type ProductCreateFieldName =
+  | "active"
   | "familyId"
   | "subfamilyId"
   | "taxId"
@@ -113,6 +116,21 @@ type ProductSelectOption = {
   label: string;
 };
 
+export type ProductSupplierView = {
+  supplierId: string;
+  legalName: string;
+  documentType?: string | null;
+  documentNumber?: string | null;
+  active: boolean;
+  supplierReference?: string | null;
+  principal: boolean;
+  lastSupplier: boolean;
+  grossPurchasePrice?: number | string | null;
+  purchaseDiscount?: number | string | null;
+  netPurchasePrice?: number | string | null;
+  lastEntryAt?: string | null;
+};
+
 export type ProductCreateResponse = {
   id: string;
   code?: string | null;
@@ -154,8 +172,19 @@ export function productImageUploadPath(productId: string) {
   return `/products/${encodeURIComponent(productId)}/image`;
 }
 
+export function productImageReadPath(productId: string) {
+  return productImageUploadPath(productId);
+}
+
+export function preferredProductSupplier(suppliers: ProductSupplierView[]) {
+  return suppliers.find((supplier) => supplier.principal)
+    ?? suppliers.find((supplier) => supplier.lastSupplier)
+    ?? null;
+}
+
 export function createDefaultProductForm(): ProductCreateFormState {
   return {
+    active: true,
     familyId: "",
     subfamilyId: "",
     taxId: "",
@@ -233,6 +262,7 @@ export function buildCreateProductRequest(
     ? priceFromOfferDiscount(form.salePrice, form.offerDiscountPercent) || form.offerPrice
     : form.offerPrice;
   return {
+    active: form.active,
     familyId: form.familyId,
     subfamilyId: emptyToNull(form.subfamilyId),
     taxId: form.taxId,
@@ -574,7 +604,7 @@ async function uploadProductImage(productId: string, file: File, token: string) 
 }
 
 async function createProductRequest(body: ReturnType<typeof buildCreateProductRequest>, token: string) {
-  return apiRequest<ProductCreateResponse>("/products", {
+  return apiRequest<ProductCreateResponse>("/products/management", {
     method: "POST",
     token,
     body
@@ -582,7 +612,7 @@ async function createProductRequest(body: ReturnType<typeof buildCreateProductRe
 }
 
 async function updateProductRequest(productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) {
-  return apiRequest<ProductCreateResponse>(`/products/${encodeURIComponent(productId)}`, {
+  return apiRequest<ProductCreateResponse>(`/products/management/${encodeURIComponent(productId)}`, {
     method: "PUT",
     token,
     body
@@ -680,6 +710,12 @@ export function ProductCreateDialog({
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [existingImagePreview, setExistingImagePreview] = useState("");
+  const [deletingImage, setDeletingImage] = useState(false);
+  const [productSuppliers, setProductSuppliers] = useState<ProductSupplierView[]>([]);
+  const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
+  const [selectedPrincipalSupplierId, setSelectedPrincipalSupplierId] = useState("");
+  const [supplierSaving, setSupplierSaving] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
   const selectedFamily = useMemo(() => families.find((family) => family.id === form.familyId), [families, form.familyId]);
   const selectedSubfamily = useMemo(() => subfamilies.find((subfamily) => subfamily.id === form.subfamilyId), [subfamilies, form.subfamilyId]);
@@ -688,6 +724,7 @@ export function ProductCreateDialog({
   const offerActive = isOfferPriceUseMode(selectedPriceUseMode);
   const calendarTitle = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", { month: "long", year: "numeric" }).format(calendarMonth);
   const editingProduct = Boolean(editProduct?.id);
+  const displayedSupplier = preferredProductSupplier(productSuppliers);
   const validationErrors = productCreateValidationErrors(form, products, editProduct?.id);
   const invalidFields = new Set(validationErrors);
 
@@ -702,6 +739,11 @@ export function ProductCreateDialog({
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
+    setProductSuppliers([]);
+    setSupplierPickerOpen(false);
+    setSelectedPrincipalSupplierId("");
+    setSupplierSaving(false);
+    setDeletingImage(false);
     changeImage(null);
   }
 
@@ -716,6 +758,11 @@ export function ProductCreateDialog({
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
+    setProductSuppliers([]);
+    setSupplierPickerOpen(false);
+    setSelectedPrincipalSupplierId("");
+    setSupplierSaving(false);
+    setDeletingImage(false);
     changeImage(null);
     onClose();
   }
@@ -737,8 +784,62 @@ export function ProductCreateDialog({
     setOfferPickerOpen(false);
     setOfferRangeStart(null);
     setCalendarMonth(startOfMonth(new Date()));
+    setProductSuppliers([]);
+    setSupplierPickerOpen(false);
+    setSelectedPrincipalSupplierId("");
+    setSupplierSaving(false);
+    setDeletingImage(false);
     changeImage(null);
   }, [open, editProduct?.id, initialFormSignature]);
+
+  useEffect(() => {
+    if (!open || !token || !editProduct?.id || !editProduct.imageId) {
+      setExistingImagePreview("");
+      return;
+    }
+    let active = true;
+    let objectUrl = "";
+    void fetch(`${apiBaseUrl}${productImageReadPath(editProduct.id)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then((response) => {
+      if (!response.ok) throw new Error("product_image_unavailable");
+      return response.blob();
+    }).then((blob) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setExistingImagePreview(objectUrl);
+    }).catch(() => {
+      if (active) setExistingImagePreview("");
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [editProduct?.id, editProduct?.imageId, open, token]);
+
+  useEffect(() => {
+    if (!open || !token || !editProduct?.id) {
+      setProductSuppliers([]);
+      return;
+    }
+
+    let cancelled = false;
+    apiRequest<ProductSupplierView[]>(`/products/${encodeURIComponent(editProduct.id)}/suppliers`, { token })
+      .then((nextSuppliers) => {
+        if (!cancelled) {
+          setProductSuppliers(nextSuppliers);
+          setSelectedPrincipalSupplierId(nextSuppliers.find((supplier) => supplier.principal)?.supplierId ?? "");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus(productCreateErrorMessage(error, t("product.supplier.loadError")));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, editProduct?.id, locale]);
 
   useEffect(() => {
     if (!open || !token) {
@@ -801,6 +902,19 @@ export function ProductCreateDialog({
       }
       event.preventDefault();
       if (action === "close") {
+        if (supplierPickerOpen) {
+          setSupplierPickerOpen(false);
+          return;
+        }
+        if (familyPickerOpen) {
+          setFamilyPickerOpen(false);
+          return;
+        }
+        if (offerPickerOpen || openDropdown) {
+          setOfferPickerOpen(false);
+          setOpenDropdown("");
+          return;
+        }
         closeProductDialog();
         return;
       }
@@ -809,7 +923,7 @@ export function ProductCreateDialog({
 
     window.addEventListener("keydown", handleProductShortcut);
     return () => window.removeEventListener("keydown", handleProductShortcut);
-  }, [open, form, token, imageFile, saving]);
+  }, [open, form, token, imageFile, saving, supplierPickerOpen, familyPickerOpen, offerPickerOpen, openDropdown]);
 
   useEffect(() => {
     if (!open || (!openDropdown && !offerPickerOpen)) {
@@ -1250,13 +1364,90 @@ export function ProductCreateDialog({
     }
   }
 
-  function removeSelectedImage() {
-    if (!imageFile) {
+  async function removeSelectedImage() {
+    if ((!imageFile && !existingImagePreview) || deletingImage) {
       return;
     }
     const confirmed = window.confirm(t("product.image.removeConfirm"));
-    if (confirmed) {
+    if (!confirmed) {
+      return;
+    }
+    if (imageFile) {
       changeImage(null);
+      return;
+    }
+    if (!token || !editProduct?.id) {
+      return;
+    }
+    setDeletingImage(true);
+    setStatus("");
+    try {
+      const product = await apiRequest<ProductCreateResponse>(productImageReadPath(editProduct.id), {
+        method: "DELETE",
+        token
+      });
+      setExistingImagePreview("");
+      onCreated?.(product);
+    } catch (error) {
+      setStatus(productCreateErrorMessage(error, t("product.image.removeError")));
+    } finally {
+      setDeletingImage(false);
+    }
+  }
+
+  function openPrincipalSupplierPicker() {
+    setSelectedPrincipalSupplierId(productSuppliers.find((supplier) => supplier.principal)?.supplierId ?? "");
+    setSupplierPickerOpen(true);
+  }
+
+  async function applyPrincipalSupplier(supplierId = selectedPrincipalSupplierId) {
+    if (!token || !editProduct?.id || supplierSaving) {
+      return;
+    }
+    const currentPrincipal = productSuppliers.find((supplier) => supplier.principal) ?? null;
+    if ((currentPrincipal?.supplierId ?? "") === supplierId) {
+      setSupplierPickerOpen(false);
+      return;
+    }
+
+    setSupplierSaving(true);
+    setStatus("");
+    try {
+      if (supplierId) {
+        const selected = productSuppliers.find((supplier) => supplier.supplierId === supplierId);
+        if (!selected || !selected.active) {
+          return;
+        }
+        await apiRequest<ProductSupplierView>(
+          `/products/${encodeURIComponent(editProduct.id)}/suppliers/${encodeURIComponent(supplierId)}`,
+          {
+            method: "PUT",
+            token,
+            body: { supplierReference: selected.supplierReference ?? null, principal: true }
+          }
+        );
+      } else if (currentPrincipal) {
+        await apiRequest<ProductSupplierView>(
+          `/products/${encodeURIComponent(editProduct.id)}/suppliers/${encodeURIComponent(currentPrincipal.supplierId)}`,
+          {
+            method: "PUT",
+            token,
+            body: { supplierReference: currentPrincipal.supplierReference ?? null, principal: false }
+          }
+        );
+      }
+      const nextSuppliers = await apiRequest<ProductSupplierView[]>(
+        `/products/${encodeURIComponent(editProduct.id)}/suppliers`,
+        { token }
+      );
+      setProductSuppliers(nextSuppliers);
+      setSelectedPrincipalSupplierId(nextSuppliers.find((supplier) => supplier.principal)?.supplierId ?? "");
+      setSupplierPickerOpen(false);
+      setStatus(t("product.supplier.saved"));
+    } catch (error) {
+      setStatus(productCreateErrorMessage(error, t("product.supplier.saveError")));
+    } finally {
+      setSupplierSaving(false);
     }
   }
 
@@ -1330,6 +1521,18 @@ export function ProductCreateDialog({
                 <input data-product-field data-product-field-name="taxesIncluded" type="checkbox" checked={form.taxesIncluded} onChange={(event) => updateField("taxesIncluded", event.target.checked)} />
                 <span>{t("product.field.taxesIncluded")}</span>
               </label>
+              {editingProduct && (
+                <label className="product-create-check">
+                  <input
+                    data-product-field
+                    data-product-field-name="active"
+                    type="checkbox"
+                    checked={form.active}
+                    onChange={(event) => updateField("active", event.target.checked)}
+                  />
+                  <span>{t(form.active ? "product.status.active" : "product.status.inactive")}</span>
+                </label>
+              )}
             </div>
             <div className="product-create-row product-create-row-prices">
               <label className={fieldClass("purchasePrice")}>
@@ -1526,7 +1729,9 @@ export function ProductCreateDialog({
           </div>
           <aside className="product-create-media">
             <div className="product-image-preview">
-              {imagePreview ? <img alt="" src={imagePreview} /> : <span>{t("product.image.empty")}</span>}
+              {imagePreview || existingImagePreview
+                ? <img alt={form.name} src={imagePreview || existingImagePreview} />
+                : <span>{t("product.image.empty")}</span>}
             </div>
             <div className="product-image-actions">
               <label className="product-file-button">
@@ -1536,9 +1741,9 @@ export function ProductCreateDialog({
               <button
                 type="button"
                 className="product-image-delete-button"
-                disabled={!imageFile}
+                disabled={(!imageFile && !existingImagePreview) || deletingImage}
                 aria-label={t("product.image.remove")}
-                onClick={removeSelectedImage}
+                onClick={() => void removeSelectedImage()}
               >
                 <img alt="" src={deleteImageIcon} />
                 <span>{t("product.image.remove")}</span>
@@ -1548,6 +1753,24 @@ export function ProductCreateDialog({
               <span>{t("stock.column.barcode2")}</span>
               <input data-product-field data-product-field-name="barcode2" value={form.barcode2} onChange={(event) => updateField("barcode2", event.target.value)} />
             </label>
+            {editingProduct && (
+              <div className="product-principal-supplier">
+                <span>{t("product.supplier.principal")}</span>
+                <button type="button" onClick={openPrincipalSupplierPicker}>
+                  <strong>
+                    {displayedSupplier?.legalName
+                      ?? t(productSuppliers.length > 0 ? "product.supplier.noPrimary" : "product.supplier.none")}
+                  </strong>
+                  {displayedSupplier && (
+                    <small>
+                      {displayedSupplier.principal
+                        ? t("product.supplier.manual")
+                        : t("product.supplier.lastFallback")}
+                    </small>
+                  )}
+                </button>
+              </div>
+            )}
           </aside>
         </div>
 
@@ -1656,6 +1879,67 @@ export function ProductCreateDialog({
             <footer className="filter-actions">
               <button type="button" onClick={() => setSelectedProductFamily({ familyId: "", subfamilyId: "" })}>{t("salesReport.filter.clear")}</button>
               <button type="button" onClick={applyProductFamilySelection}>{t("stock.filter.apply")}</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {supplierPickerOpen && (
+        <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="product-principal-supplier-title">
+          <section className="filter-dialog bulk-supplier-dialog">
+            <header className="filter-header">
+              <div>
+                <h2 id="product-principal-supplier-title">{t("product.supplier.selectPrincipal")}</h2>
+                <span>{editProduct?.form.name ?? ""}</span>
+              </div>
+              <button type="button" onClick={() => setSupplierPickerOpen(false)}>{t("common.close")}</button>
+            </header>
+            <div className="bulk-supplier-list" role="listbox" aria-label={t("product.supplier.selectPrincipal")}>
+              {productSuppliers.length === 0 && <p>{t("product.supplier.noLinks")}</p>}
+              {productSuppliers.map((supplier) => {
+                const selected = selectedPrincipalSupplierId === supplier.supplierId;
+                const flags = [
+                  supplier.principal ? t("product.supplier.manual") : "",
+                  supplier.lastSupplier ? t("product.supplier.last") : ""
+                ].filter(Boolean).join(" · ");
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={selected ? "selected" : ""}
+                    disabled={!supplier.active || supplierSaving}
+                    key={supplier.supplierId}
+                    onClick={() => setSelectedPrincipalSupplierId(supplier.supplierId)}
+                    onDoubleClick={() => void applyPrincipalSupplier(supplier.supplierId)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void applyPrincipalSupplier(supplier.supplierId);
+                      }
+                    }}
+                  >
+                    <strong>{supplier.legalName}</strong>
+                    <span>{supplier.supplierReference || supplier.documentNumber || t("product.supplier.noReference")}</span>
+                    {flags && <em>{flags}</em>}
+                  </button>
+                );
+              })}
+            </div>
+            <footer className="filter-actions">
+              <button
+                type="button"
+                disabled={supplierSaving}
+                onClick={() => setSelectedPrincipalSupplierId("")}
+              >
+                {t("product.supplier.useLast")}
+              </button>
+              <button
+                type="button"
+                disabled={supplierSaving}
+                onClick={() => void applyPrincipalSupplier()}
+              >
+                {supplierSaving ? t("product.supplier.saving") : t("stock.filter.apply")}
+              </button>
             </footer>
           </section>
         </div>

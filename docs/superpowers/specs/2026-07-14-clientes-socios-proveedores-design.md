@@ -61,6 +61,8 @@ Cada apartado utilizará:
 - navegación por teclado, foco inicial y cierre seguro;
 - mensajes de carga, vacío, error y guardado dentro del panel.
 
+Los tres directorios tendrán una barra simplificada: un único buscador general, un filtro de estado (`Todos`, `Activos`, `Desactivados`) y el contador de resultados. El buscador también cubrirá población/provincia en clientes y proveedores, y códigos, número y categoría en socios. Los filtros específicos por documento, ubicación o consentimiento no se mostrarán en la barra principal.
+
 APP VENTA y APP GESTIÓN mostrarán exactamente los mismos componentes. Las acciones visibles dependerán de los permisos del usuario.
 
 ## Cliente
@@ -79,11 +81,8 @@ Columnas iniciales:
 
 Filtros:
 
-- búsqueda libre por código, nombre, documento, teléfono o email;
-- activo/desactivado;
-- tipo de documento;
-- población o provincia;
-- con/sin consentimiento comercial.
+- búsqueda libre por código, nombre, documento, teléfono, email, población o provincia;
+- activo/desactivado.
 
 ### Ficha
 
@@ -118,6 +117,7 @@ Campos informativos no editables:
 - El documento será único por empresa y tipo.
 - El código se genera automáticamente con formato `C-{tienda}-{secuencia}`.
 - El código no se acepta en peticiones de alta o edición.
+- El alta de cliente no puede crear simultáneamente la relación de socio; debe persistirse primero el cliente y después activar su fidelización.
 - Consentimiento comercial activo requiere un canal preferido activo.
 - Desactivar conserva documentos e historial.
 - Reactivar reutiliza el mismo registro y código.
@@ -129,7 +129,10 @@ Campos informativos no editables:
 
 - Un cliente puede no ser socio.
 - Un cliente puede tener como máximo una relación de miembro.
-- Puede crearse un cliente directamente como socio o activarse como socio posteriormente.
+- Un socio solo puede crearse a partir de un cliente activo ya existente.
+- `Nuevo socio` abre un selector de clientes; nunca una ficha personal vacía.
+- Si el cliente tuvo anteriormente una relación de socio desactivada, se reactiva conservando código, fecha e historial.
+- Un cliente desactivado debe reactivarse antes de poder activar su relación de socio.
 - Desactivar socio no desactiva automáticamente al cliente.
 - Desactivar cliente impide su uso operativo, aunque su historial de socio se conserva.
 
@@ -150,11 +153,8 @@ Columnas iniciales:
 
 Filtros:
 
-- búsqueda libre por código de socio, número manual, cliente o documento;
-- activo/desactivado;
-- categoría;
-- con/sin saldo;
-- con/sin email.
+- búsqueda libre por código de socio, número manual, código o nombre de cliente, documento, teléfono, email o categoría;
+- activo/desactivado según el estado propio de la relación de socio.
 
 ### Ficha
 
@@ -333,6 +333,7 @@ El endpoint `DELETE` existente no se utilizará desde estas pantallas.
 
 Se reutilizan:
 
+- `GET /api/v1/members` para el directorio separado, incluyendo estado del socio y estado del cliente.
 - `GET /api/v1/members/{id}`.
 - `GET /api/v1/members/{id}/movements`.
 - `POST /api/v1/members/{id}/balance-adjustments`.
@@ -340,7 +341,7 @@ Se reutilizan:
 - `PUT /api/v1/members/{id}/category`.
 - endpoints de categorías, settings, canales y entregas de tarjeta ya existentes.
 
-El listado separado se obtiene inicialmente desde `GET /customers` filtrando relaciones de miembro. Si el volumen o la paginación lo requiere, se añadirá `GET /api/v1/members` sin duplicar datos personales.
+El listado separado se obtiene desde `GET /api/v1/members`. La respuesta contiene los datos propios de fidelización y solo un resumen de identidad/contacto del cliente, sin duplicarlos en el modelo de miembro. Este contrato permitirá incorporar búsqueda y paginación en backend cuando el volumen lo requiera.
 
 ### Proveedor
 
@@ -410,6 +411,8 @@ Frontend:
 ## Criterios de aceptación
 
 - APP VENTA y APP GESTIÓN muestran los tres apartados separados con el mismo UI.
+- Los tres listados muestran un buscador general, filtro de estado y contador, sin filtros redundantes en la barra principal.
+- `Nuevo socio` obliga a seleccionar un cliente activo existente y nunca crea datos personales desde cero.
 - Un usuario autorizado puede crear, consultar, editar, activar y desactivar clientes, socios y proveedores.
 - Ninguna pantalla ofrece eliminación.
 - Reactivar conserva códigos e historial.

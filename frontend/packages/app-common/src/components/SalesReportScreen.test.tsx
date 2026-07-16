@@ -1,6 +1,27 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { buildDocumentReports, isWarehouseDocumentReport, SalesReportScreen } from "./SalesReportScreen";
+import {
+  buildDocumentReports,
+  buildReportColumnDefinitions,
+  isPurchaseDocumentReport,
+  isWarehouseDocumentReport,
+  moveReportColumnBeforeTotal,
+  moveVisibleReportColumn,
+  normalizeRequiredTotal,
+  reportTableKey,
+  salesReportAccess,
+  visibleSalesReports,
+  SalesReportScreen
+} from "./SalesReportScreen";
+import {
+  moveTableColumnByKeyboard,
+  reorderTableColumns,
+  resizeTableColumn,
+  toggleTableColumnVisibility,
+  visibleTableColumns
+} from "./tableLayoutPreferences";
+import type { TableLayout } from "./tableLayoutPreferences";
+import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import type { TerminalContext, UserSession } from "../types";
 
 const session: UserSession = {
@@ -13,6 +34,30 @@ const terminalContext: TerminalContext = {
   storeName: "Tienda Principal",
   terminalCode: "01"
 };
+
+function createTableLayoutController(
+  initialLayout: TableLayout<string>
+): UseTableLayoutPreferenceResult<string> {
+  let layout = initialLayout;
+  return {
+    get layout() {
+      return layout;
+    },
+    ready: true,
+    reorderColumns(draggedKey, targetKey) {
+      layout = reorderTableColumns(layout, draggedKey, targetKey);
+    },
+    moveColumn(columnKey, direction) {
+      layout = moveTableColumnByKeyboard(layout, columnKey, direction);
+    },
+    resizeColumn(columnKey, width) {
+      layout = resizeTableColumn(layout, columnKey, width);
+    },
+    toggleColumnVisibility(columnKey) {
+      layout = toggleTableColumnVisibility(layout, columnKey);
+    }
+  };
+}
 
 describe("SalesReportScreen", () => {
   it("maps existing warehouse endpoints into output and input warehouse reports", () => {
@@ -86,13 +131,123 @@ describe("SalesReportScreen", () => {
     ]);
   });
 
-  it("enables document creation for warehouse and purchase input reports", () => {
+  it("separates warehouse and purchase document creation reports", () => {
     expect(isWarehouseDocumentReport("salesReport.warehouseOutputs")).toBe(true);
     expect(isWarehouseDocumentReport("salesReport.inputWarehouse")).toBe(true);
-    expect(isWarehouseDocumentReport("salesReport.inputInvoices")).toBe(true);
-    expect(isWarehouseDocumentReport("salesReport.inputDeliveryNotes")).toBe(true);
+    expect(isWarehouseDocumentReport("salesReport.inputInvoices")).toBe(false);
+    expect(isWarehouseDocumentReport("salesReport.inputDeliveryNotes")).toBe(false);
     expect(isWarehouseDocumentReport("salesReport.dailySales")).toBe(false);
     expect(isWarehouseDocumentReport("salesReport.invoices")).toBe(false);
+    expect(isPurchaseDocumentReport("salesReport.inputInvoices")).toBe(true);
+    expect(isPurchaseDocumentReport("salesReport.inputDeliveryNotes")).toBe(true);
+    expect(isPurchaseDocumentReport("salesReport.inputWarehouse")).toBe(false);
+  });
+
+  it("keeps accounts read-only and grants purchase creation to product and warehouse", () => {
+    expect(salesReportAccess({ permissions: ["GESTION_PRODUCTO"] }).purchaseWrite).toBe(true);
+    expect(salesReportAccess({ permissions: ["GESTION_ALMACEN"] }).purchaseWrite).toBe(true);
+    expect(salesReportAccess({ permissions: ["GESTION_CUENTAS"] }).purchaseWrite).toBe(false);
+    expect(salesReportAccess({ permissions: ["GESTION_VENTAS"] }).purchases).toBe(false);
+    expect(visibleSalesReports({ permissions: ["GESTION_PRODUCTO"] }).all).toEqual([
+      "salesReport.inputInvoices",
+      "salesReport.inputDeliveryNotes"
+    ]);
+  });
+
+  it("maps enriched invoice and delivery-note report data by purchase and sale type", () => {
+    const reports = buildDocumentReports(
+      [],
+      [
+        {
+          tipo: "FACTURA_VENTA",
+          estado: "PENDIENTE",
+          numero: "FV-1",
+          numeroExterno: "Pedido web",
+          fecha: "2026-07-10",
+          total: "121.00",
+          pendiente: "21.00",
+          clienteCodigo: "C-1",
+          clienteNombre: "Cliente Uno"
+        },
+        {
+          tipo: "FACTURA_COMPRA",
+          estado: "PARCIAL",
+          numero: "FC-1",
+          numeroExterno: "Proveedor ref",
+          fecha: "2026-07-11",
+          fechaVencimiento: "2026-08-11",
+          total: "50.00",
+          pendiente: "12.50",
+          proveedorCodigo: "P-1",
+          proveedorNombre: "Proveedor Uno",
+          almacenNombre: "GENERAL"
+        }
+      ],
+      [
+        {
+          tipo: "ALBARAN_VENTA",
+          estado: "CONFIRMADO",
+          numero: "AV-1",
+          fecha: "2026-07-12",
+          total: "10.00",
+          clienteCodigo: "C-2",
+          clienteNombre: "Cliente Dos"
+        },
+        {
+          tipo: "ALBARAN_COMPRA",
+          estado: "CONFIRMADO",
+          numero: "AC-1",
+          fecha: "2026-07-13",
+          total: "20.00",
+          proveedorCodigo: "P-2",
+          proveedorNombre: "Proveedor Dos",
+          almacenNombre: "GENERAL",
+          lineas: 3
+        }
+      ],
+      [],
+      [],
+      [],
+      session,
+      terminalContext
+    );
+
+    expect(reports["salesReport.invoices"]?.rows).toEqual([
+      expect.objectContaining({
+        invoice: "FV-1",
+        customer: "C-1",
+        customerName: "Cliente Uno",
+        pending: "21.00",
+        comment: "Pedido web"
+      })
+    ]);
+    expect(reports["salesReport.inputInvoices"]?.rows).toEqual([
+      expect.objectContaining({
+        invoice: "FC-1",
+        supplier: "P-1",
+        supplierName: "Proveedor Uno",
+        warehouse: "GENERAL",
+        dueDate: "11/08/2026",
+        pending: "12.50",
+        comment: "Proveedor ref"
+      })
+    ]);
+    expect(reports["salesReport.deliveryNotes"]?.rows).toEqual([
+      expect.objectContaining({
+        deliveryNote: "AV-1",
+        customer: "C-2",
+        customerName: "Cliente Dos"
+      })
+    ]);
+    expect(reports["salesReport.inputDeliveryNotes"]?.rows).toEqual([
+      expect.objectContaining({
+        deliveryNote: "AC-1",
+        supplier: "P-2",
+        supplierName: "Proveedor Dos",
+        warehouse: "GENERAL",
+        productCount: "3"
+      })
+    ]);
   });
 
   it("renders the formal report layout chrome", () => {
@@ -124,5 +279,60 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Aceite oliva");
+  });
+
+  it("shows purchase creation from reports to product management", () => {
+    const html = renderToStaticMarkup(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ username: "product", displayName: "PRODUCTO", permissions: ["GESTION_PRODUCTO"] }}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("Entrada factura");
+    expect(html).toContain("Crear documento de compra");
+    expect(html).not.toContain("Entrada almacén");
+  });
+
+  it("builds V67-compatible report table definitions with sensible defaults", () => {
+    expect(reportTableKey("salesReport.tickets")).toBe("reports.salesReport.tickets");
+    expect(buildReportColumnDefinitions({
+      availableAttributes: ["date", "customerName", "unknown", "total"],
+      defaultVisibleAttributes: ["date", "total"],
+      rows: [],
+      totals: {}
+    })).toEqual([
+      { key: "date", defaultWidth: 112, defaultVisible: true },
+      { key: "customerName", defaultWidth: 200, defaultVisible: false },
+      { key: "unknown", defaultWidth: 144, defaultVisible: false },
+      { key: "total", defaultWidth: 112, defaultVisible: true }
+    ]);
+  });
+
+  it("keeps total required and applies Visualization ordering to the generic layout", () => {
+    const tableLayout = createTableLayoutController([
+      { key: "total", width: 112, visible: false },
+      { key: "date", width: 112, visible: true },
+      { key: "time", width: 80, visible: false },
+      { key: "customerName", width: 200, visible: true }
+    ]);
+
+    normalizeRequiredTotal(tableLayout);
+    expect(tableLayout.layout.map((column) => column.key))
+      .toEqual(["date", "time", "customerName", "total"]);
+    expect(visibleTableColumns(tableLayout.layout).map((column) => column.key))
+      .toEqual(["date", "customerName", "total"]);
+
+    moveVisibleReportColumn(tableLayout, "date", 1);
+    expect(visibleTableColumns(tableLayout.layout).map((column) => column.key))
+      .toEqual(["customerName", "date", "total"]);
+
+    moveReportColumnBeforeTotal(tableLayout, "time");
+    expect(visibleTableColumns(tableLayout.layout).map((column) => column.key))
+      .toEqual(["customerName", "date", "time", "total"]);
   });
 });

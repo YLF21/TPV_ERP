@@ -227,9 +227,12 @@ class ProductBulkEditServiceTest {
 
     @Test
     void appliesSupplierAssignmentsEvenWithoutProductFieldChanges() {
-        ProductBulkEdit edit = editCreatedBy(userId);
         UUID supplierId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision proveedor",
+                List.of(row("row-1", productId)), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
         when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
 
         service.apply(
@@ -246,6 +249,40 @@ class ProductBulkEditServiceTest {
     }
 
     @Test
+    void appliesAndFinalizesAManualPrincipalSupplierChange() {
+        UUID supplierId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ProductBulkEditContent.Row pendingRow = rowWithPrincipalChange(
+                "row-1", productId, supplierId);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId,
+                "20260711001",
+                "Revision proveedor",
+                List.of(pendingRow),
+                userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        ProductBulkEditView applied = service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(),
+                        List.of(),
+                        List.of(),
+                        List.of(new ProductBulkEditService.BulkSupplierPrincipalAssignment(
+                                productId, supplierId)),
+                        List.of(pendingRow)),
+                managerAuthentication());
+
+        verify(productSuppliers).setPrincipal(productId, supplierId);
+        ProductBulkEditContent.Row stored = applied.content().getFirst();
+        assertThat(stored.principalSupplierChanged()).isFalse();
+        assertThat(stored.pendingPrincipalSupplierId()).isNull();
+        assertThat(stored.suppliers()).singleElement()
+                .satisfies(supplier -> assertThat(supplier.principal()).isTrue());
+    }
+
+    @Test
     void rejectsApplyWithoutProductOrSupplierChanges() {
         ProductBulkEdit edit = editCreatedBy(userId);
         when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
@@ -253,11 +290,42 @@ class ProductBulkEditServiceTest {
         assertThatThrownBy(() -> service.apply(
                 edit.getId(),
                 new ProductBulkEditService.ProductBulkApplyRequest(
-                        edit.getVersion(), List.of(), List.of(), List.of(row(
-                                "row-1", UUID.randomUUID()))),
+                        edit.getVersion(), List.of(), List.of(), edit.getContenido()),
                 managerAuthentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No hay cambios");
+    }
+
+    @Test
+    void rejectsAnyProductOutsideThePersistedBulkEditList() {
+        UUID listedProductId = UUID.randomUUID();
+        UUID externalProductId = UUID.randomUUID();
+        ProductBulkEditContent.Row listedRow = row("row-1", listedProductId);
+        ProductBulkEditContent.Row externalRow = row("row-2", externalProductId);
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision limitada",
+                List.of(listedRow), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        ProductBulkEditContent.ProductData external = externalRow.effectiveProduct();
+        CatalogService.BulkProductUpdate externalUpdate = new CatalogService.BulkProductUpdate(
+                externalProductId, 0L, request(external, external.name()));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(),
+                        List.of(externalUpdate),
+                        List.of(new ProductBulkEditService.BulkSupplierAssignment(
+                                UUID.randomUUID(), List.of(externalProductId))),
+                        List.of(listedRow, externalRow)),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no coincide con los productos guardados en la lista");
+
+        verify(catalog, never()).updateProducts(org.mockito.ArgumentMatchers.any());
+        verify(productSuppliers, never()).linkProducts(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -303,7 +371,10 @@ class ProductBulkEditServiceTest {
     void refreshesVersionAndImageIdAfterAProductUpdateFlush() {
         UUID productId = UUID.randomUUID();
         UUID imageId = UUID.randomUUID();
-        ProductBulkEditContent.Row row = row("row-1", productId);
+        ProductBulkEditContent.Row base = row("row-1", productId);
+        ProductBulkEditContent.Row row = new ProductBulkEditContent.Row(
+                base.id(), base.selected(), base.query(), base.product().withActive("false"),
+                base.draft(), base.suppliers(), base.pendingSupplier());
         ProductBulkEdit edit = new ProductBulkEdit(
                 storeId,
                 "20260711001",
@@ -330,6 +401,8 @@ class ProductBulkEditServiceTest {
         ProductBulkEditContent.ProductData applied = edit.getContenido().getFirst().effectiveProduct();
         assertThat(applied.version()).isEqualTo(5L);
         assertThat(applied.imageId()).isEqualTo(imageId.toString());
+        assertThat(applied.active()).isEqualTo("false");
+        assertThat(update.product().active()).isFalse();
         verify(products).flush();
     }
 
@@ -476,8 +549,71 @@ class ProductBulkEditServiceTest {
         verify(catalog, never()).updateProducts(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void rejectsProductActiveStateThatDiffersFromEffectiveContent() {
+        UUID productId = UUID.randomUUID();
+        ProductBulkEditContent.Row base = row("row-1", productId);
+        ProductBulkEditContent.Row row = new ProductBulkEditContent.Row(
+                base.id(), base.selected(), base.query(), base.product().withActive("false"),
+                base.draft(), base.suppliers(), base.pendingSupplier());
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision", List.of(row), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        ProductBulkEditContent.ProductData value = row.effectiveProduct();
+
+        assertThatThrownBy(() -> service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(),
+                        List.of(new CatalogService.BulkProductUpdate(
+                                productId, 0L, request(value, value.name(), true))),
+                        List.of(), List.of(row)),
+                managerAuthentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("product.active")
+                .hasMessageContaining("no coincide");
+
+        verify(catalog, never()).updateProducts(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void acceptsActiveProductsFromLegacyContentWithoutActiveState() {
+        UUID productId = UUID.randomUUID();
+        ProductBulkEditContent.Row base = row("row-1", productId);
+        ProductBulkEditContent.Row legacyRow = new ProductBulkEditContent.Row(
+                base.id(), base.selected(), base.query(), base.product().withActive(null),
+                base.draft(), base.suppliers(), base.pendingSupplier());
+        ProductBulkEdit edit = new ProductBulkEdit(
+                storeId, "20260711001", "Revision anterior", List.of(legacyRow), userId,
+                Instant.parse("2026-07-11T09:00:00Z"));
+        ProductBulkEditContent.ProductData value = legacyRow.effectiveProduct();
+        CatalogService.BulkProductUpdate update = new CatalogService.BulkProductUpdate(
+                productId, 0L, request(value, value.name(), true));
+        Product product = org.mockito.Mockito.mock(Product.class);
+        when(repository.findByIdAndStoreId(edit.getId(), storeId)).thenReturn(Optional.of(edit));
+        when(catalog.updateProducts(List.of(update))).thenReturn(List.of(product));
+        when(product.getId()).thenReturn(productId);
+        when(product.getVersion()).thenReturn(1L);
+
+        service.apply(
+                edit.getId(),
+                new ProductBulkEditService.ProductBulkApplyRequest(
+                        edit.getVersion(), List.of(update), List.of(), List.of(legacyRow)),
+                managerAuthentication());
+
+        verify(catalog).updateProducts(List.of(update));
+        assertThat(edit.getEstado()).isEqualTo(ProductBulkEditStatus.APPLIED);
+    }
+
     private static CatalogService.ProductRequest request(
             ProductBulkEditContent.ProductData value, String name) {
+        Boolean active = value.active() == null ? null : Boolean.valueOf(value.active());
+        return request(value, name, active);
+    }
+
+    private static CatalogService.ProductRequest request(
+            ProductBulkEditContent.ProductData value, String name, Boolean active) {
         return new CatalogService.ProductRequest(
                 UUID.fromString(value.familyId()),
                 value.subfamilyId() == null ? null : UUID.fromString(value.subfamilyId()),
@@ -498,7 +634,11 @@ class ProductBulkEditServiceTest {
                 new BigDecimal(value.purchaseDiscountPercent()),
                 Boolean.parseBoolean(value.offerActive()),
                 value.offerFrom() == null ? null : LocalDate.parse(value.offerFrom()),
-                value.offerUntil() == null ? null : LocalDate.parse(value.offerUntil()));
+                value.offerUntil() == null ? null : LocalDate.parse(value.offerUntil()),
+                value.stockMin() == null ? null : new BigDecimal(value.stockMin()),
+                value.stockMax() == null ? null : new BigDecimal(value.stockMax()),
+                null,
+                active);
     }
 
     private static ProductBulkEditContent.Row row(String id, UUID productId) {
@@ -550,6 +690,35 @@ class ProductBulkEditServiceTest {
                 "image/png",
                 "a".repeat(64),
                 new byte[] {(byte) (position + 1)});
+    }
+
+    private static ProductBulkEditContent.Row rowWithPrincipalChange(
+            String id, UUID productId, UUID supplierId) {
+        ProductBulkEditContent.Row base = row(id, productId);
+        ProductBulkEditContent.SupplierData supplier = new ProductBulkEditContent.SupplierData(
+                supplierId,
+                "PROV-1",
+                "Proveedor Uno",
+                null,
+                "B12345678",
+                true,
+                null,
+                false,
+                true,
+                "10.00",
+                "0.00",
+                "10.00",
+                Instant.parse("2026-07-10T09:00:00Z"));
+        return new ProductBulkEditContent.Row(
+                base.id(),
+                base.selected(),
+                base.query(),
+                base.product(),
+                base.draft(),
+                List.of(supplier),
+                null,
+                true,
+                supplierId);
     }
 
     private UsernamePasswordAuthenticationToken managerAuthentication() {

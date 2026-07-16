@@ -27,35 +27,30 @@ describe("StockPermissionsDialog", () => {
     apiRequestMock.mockReset();
   });
 
-  it("includes granular warehouse input and output permissions", () => {
-    expect(stockPermissionMatrixColumns.map((column) => column.code)).toEqual(expect.arrayContaining([
-      "WAREHOUSE_INPUTS_READ",
-      "WAREHOUSE_INPUTS_WRITE",
-      "WAREHOUSE_INPUTS_DELETE",
-      "WAREHOUSE_INPUTS_CONFIRM",
-      "WAREHOUSE_OUTPUTS_READ",
-      "WAREHOUSE_OUTPUTS_EDIT",
-      "WAREHOUSE_OUTPUTS_DELETE",
-      "WAREHOUSE_OUTPUTS_CONFIRM"
-    ]));
+  it("uses the unified warehouse management permission", () => {
+    const codes = stockPermissionMatrixColumns.map((column) => column.code);
+
+    expect(codes).toContain("GESTION_ALMACEN");
+    expect(codes.some((code) => code.startsWith("WAREHOUSE_INPUTS_") || code.startsWith("WAREHOUSE_OUTPUTS_")))
+      .toBe(false);
   });
 
   it("recognizes explicit permissions and the ALL role permission", () => {
-    expect(roleHasStockPermission({ permissions: ["WAREHOUSE_INPUTS_READ"] }, "WAREHOUSE_INPUTS_READ")).toBe(true);
-    expect(roleHasStockPermission({ permissions: ["ALL"] }, "WAREHOUSE_INPUTS_CONFIRM")).toBe(true);
-    expect(roleHasStockPermission({ permissions: [] }, "WAREHOUSE_OUTPUTS_READ")).toBe(false);
+    expect(roleHasStockPermission({ permissions: ["GESTION_ALMACEN"] }, "GESTION_ALMACEN")).toBe(true);
+    expect(roleHasStockPermission({ permissions: ["ALL"] }, "GESTION_ALMACEN")).toBe(true);
+    expect(roleHasStockPermission({ permissions: [] }, "GESTION_ALMACEN")).toBe(false);
   });
 
   it("edits stock permissions without losing unrelated role permissions", () => {
-    const granted = setRoleStockPermission(editableRole, "WAREHOUSE_INPUTS_READ", true);
+    const granted = setRoleStockPermission(editableRole, "GESTION_ALMACEN", true);
     const revoked = setRoleStockPermission(granted, "STOCK_READ", false);
 
     expect(granted.permissions).toEqual([
+      "GESTION_ALMACEN",
       "GESTION_VENTAS",
-      "STOCK_READ",
-      "WAREHOUSE_INPUTS_READ"
+      "STOCK_READ"
     ]);
-    expect(revoked.permissions).toEqual(["GESTION_VENTAS", "WAREHOUSE_INPUTS_READ"]);
+    expect(revoked.permissions).toEqual(["GESTION_ALMACEN", "GESTION_VENTAS"]);
     expect(rolesHaveSamePermissions(
       { permissions: ["STOCK_READ", "GESTION_VENTAS"] },
       { permissions: ["GESTION_VENTAS", "STOCK_READ"] }
@@ -74,7 +69,7 @@ describe("StockPermissionsDialog", () => {
   });
 
   it("persists the complete role assignment through the real role endpoint", async () => {
-    const changedRole = setRoleStockPermission(editableRole, "WAREHOUSE_INPUTS_CONFIRM", true);
+    const changedRole = setRoleStockPermission(editableRole, "GESTION_ALMACEN", true);
     apiRequestMock.mockResolvedValueOnce(changedRole);
 
     await expect(persistStockRolePermissions([changedRole], "admin-token"))
@@ -84,20 +79,22 @@ describe("StockPermissionsDialog", () => {
       method: "PUT",
       token: "admin-token",
       body: {
-        codes: ["GESTION_VENTAS", "STOCK_READ", "WAREHOUSE_INPUTS_CONFIRM"]
+        codes: ["GESTION_ALMACEN", "GESTION_VENTAS", "STOCK_READ"]
       }
     });
   });
 
-  it("renders the formal role matrix with input labels", () => {
+  it("renders the formal role matrix with unified warehouse management", () => {
     const html = renderToStaticMarkup(
-      <StockPermissionsDialog open locale="es" onClose={vi.fn()} />
+      <StockPermissionsDialog open app="venta" username="admin" locale="es" onClose={vi.fn()} />
     );
 
     expect(html).toContain('class="filter-dialog stock-settings-dialog stock-permissions-dialog"');
-    expect(html).toContain("Leer entradas");
-    expect(html).toContain("Confirmar entradas");
-    expect(html).toContain("Leer salidas");
+    expect(html).toContain("Gestión almacén");
+    expect(html).not.toContain("Leer entradas");
+    expect(html).not.toContain("Leer salidas");
     expect(html).toContain("Guardar");
+    expect(html).toContain('data-column-key="role"');
+    expect(html).toContain('class="table-layout-column-resizer"');
   });
 });

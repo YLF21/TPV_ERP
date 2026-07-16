@@ -73,6 +73,7 @@ class StockSettingsServiceTest {
         assertThat(view.allowNegativeStock()).isTrue();
         assertThat(view.defaultMinimumStock()).isEqualByComparingTo("5.000");
         assertThat(view.alertsEnabled()).isTrue();
+        assertThat(view.allowInactiveProductSales()).isFalse();
         verify(settings).save(any(StockSettings.class));
     }
 
@@ -90,6 +91,32 @@ class StockSettingsServiceTest {
         assertThat(view.allowNegativeStock()).isFalse();
         assertThat(view.defaultMinimumStock()).isEqualByComparingTo("2.500");
         assertThat(view.alertsEnabled()).isFalse();
+        assertThat(view.allowInactiveProductSales()).isFalse();
+    }
+
+    @Test
+    void updatesAndReadsInactiveProductSalePolicy() {
+        var current = new StockSettings(store.getId(), general.getId());
+        when(settings.findById(store.getId())).thenReturn(Optional.of(current));
+
+        var view = service.updateInactiveProductSales(
+                new InactiveProductSalesCommand(true));
+
+        assertThat(view.allowInactiveProductSales()).isTrue();
+        assertThat(service.allowsInactiveProductSales(store.getId())).isTrue();
+    }
+
+    @Test
+    void generalSettingsUpdatePreservesInactiveProductSalePolicy() {
+        var current = new StockSettings(store.getId(), general.getId());
+        current.setAllowInactiveProductSales(true);
+        when(warehouses.findById(general.getId())).thenReturn(Optional.of(general));
+        when(settings.findById(store.getId())).thenReturn(Optional.of(current));
+
+        var view = service.updateSettings(new StockSettingsCommand(
+                general.getId(), false, new BigDecimal("3.000"), false));
+
+        assertThat(view.allowInactiveProductSales()).isTrue();
     }
 
     @Test

@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { enterNavigationIntent } from "./keyboardNavigation";
 import { ErpSelect } from "./ErpSelect";
+import {
+  roleHasStockPermission,
+  stockPermissionMatrixColumns,
+  stockPermissionTableColumnDefinitions
+} from "./StockPermissionsDialog";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
+
+export { roleHasStockPermission, stockPermissionMatrixColumns } from "./StockPermissionsDialog";
 
 export type StockSettingsView = {
   defaultWarehouseId: string;
   allowNegativeStock: boolean;
+  allowInactiveProductSales: boolean;
   defaultMinimumStock: number;
   alertsEnabled: boolean;
 };
@@ -31,6 +42,8 @@ export type StockSettingsMode = "configuration" | "permissions";
 type StockSettingsDialogProps = {
   open: boolean;
   mode: StockSettingsMode;
+  app: AppKind;
+  username: string;
   locale: LocaleCode;
   token?: string;
   warehouses: StockSettingsWarehouse[];
@@ -38,35 +51,21 @@ type StockSettingsDialogProps = {
   selectedWarehouseId?: string;
   isAdmin: boolean;
   canEdit: boolean;
+  canManageProducts?: boolean;
   onClose: () => void;
   onSaved?: (settings: StockSettingsView) => void;
 };
 
-export const stockPermissionMatrixColumns = [
-  { code: "STOCK_READ", labelKey: "stock.permissions.read" },
-  { code: "STOCK_ADJUST", labelKey: "stock.permissions.adjust" },
-  { code: "STOCK_TRANSFER", labelKey: "stock.permissions.transfer" },
-  { code: "WAREHOUSES_MANAGE", labelKey: "stock.permissions.warehouses" },
-  { code: "WAREHOUSE_OUTPUTS_READ", labelKey: "stock.permissions.outputsRead" },
-  { code: "WAREHOUSE_OUTPUTS_EDIT", labelKey: "stock.permissions.outputsEdit" },
-  { code: "WAREHOUSE_OUTPUTS_DELETE", labelKey: "stock.permissions.outputsDelete" },
-  { code: "WAREHOUSE_OUTPUTS_CONFIRM", labelKey: "stock.permissions.outputsConfirm" },
-  { code: "GESTION_PRODUCTO", labelKey: "stock.permissions.productManagement" }
-] as const;
-
 const emptySettings: StockSettingsView = {
   defaultWarehouseId: "",
   allowNegativeStock: false,
+  allowInactiveProductSales: false,
   defaultMinimumStock: 0,
   alertsEnabled: true
 };
 
 export function stockMinimumPath(productId: string, warehouseId: string) {
   return `/stock/minimums/${encodeURIComponent(productId)}/${encodeURIComponent(warehouseId)}`;
-}
-
-export function roleHasStockPermission(role: Pick<StockSecurityRole, "permissions">, code: string) {
-  return role.permissions.includes("ALL") || role.permissions.includes(code);
 }
 
 export function normalizeStockMinimum(value: unknown) {
@@ -81,9 +80,55 @@ export function normalizeStockMinimum(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+type StockSettingsRequest = <T>(
+  path: string,
+  options: { token: string; method: string; body: unknown }
+) => Promise<T>;
+
+export async function persistStockSettings(
+  settings: StockSettingsView,
+  previousAllowInactiveProductSales: boolean,
+  canManageInactiveProductSales: boolean,
+  token: string,
+  request: StockSettingsRequest = apiRequest
+) {
+  const {
+    allowInactiveProductSales: requestedAllowInactiveProductSales,
+    ...generalSettings
+  } = settings;
+  const savedGeneral = await request<StockSettingsView>("/stock/settings", {
+    token,
+    method: "PUT",
+    body: generalSettings
+  });
+  let allowInactiveProductSales = previousAllowInactiveProductSales;
+  if (
+    canManageInactiveProductSales
+    && requestedAllowInactiveProductSales !== previousAllowInactiveProductSales
+  ) {
+    const savedInactiveSetting = await request<Partial<StockSettingsView>>(
+      "/stock/settings/inactive-product-sales",
+      {
+        token,
+        method: "PATCH",
+        body: { allowInactiveProductSales: requestedAllowInactiveProductSales }
+      }
+    );
+    allowInactiveProductSales = typeof savedInactiveSetting.allowInactiveProductSales === "boolean"
+      ? savedInactiveSetting.allowInactiveProductSales
+      : requestedAllowInactiveProductSales;
+  }
+  return {
+    ...savedGeneral,
+    allowInactiveProductSales
+  };
+}
+
 export function StockSettingsDialog({
   open,
   mode,
+  app,
+  username,
   locale,
   token,
   warehouses,
@@ -91,6 +136,7 @@ export function StockSettingsDialog({
   selectedWarehouseId,
   isAdmin,
   canEdit,
+  canManageProducts = false,
   onClose,
   onSaved
 }: StockSettingsDialogProps) {
@@ -103,12 +149,24 @@ export function StockSettingsDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const permissionTableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken: open && mode === "permissions" ? token : undefined,
+    tableKey: "stock.permissions.matrix",
+    definitions: stockPermissionTableColumnDefinitions
+  });
+  const visiblePermissionColumns = visibleTableColumns(permissionTableLayout.layout);
+  const permissionTableWidth = visiblePermissionColumns.reduce((sum, column) => sum + column.width, 0);
   const defaultMinimumRef = useRef<HTMLInputElement | null>(null);
   const allowNegativeRef = useRef<HTMLInputElement | null>(null);
+  const allowInactiveSalesRef = useRef<HTMLInputElement | null>(null);
   const alertsRef = useRef<HTMLInputElement | null>(null);
   const minimumRef = useRef<HTMLInputElement | null>(null);
   const settingsSaveRef = useRef<HTMLButtonElement | null>(null);
+  const loadedInactiveProductSalesRef = useRef(false);
   const minimumWarehouseId = selectedWarehouseId || settings.defaultWarehouseId;
+  const canManageInactiveProductSales = isAdmin || canManageProducts;
 
   useEffect(() => {
     if (!open) {
@@ -163,12 +221,15 @@ export function StockSettingsDialog({
     void apiRequest<StockSettingsView>("/stock/settings", { token })
       .then((result) => {
         if (!cancelled) {
-          setSettings({
+          const loadedSettings = {
             defaultWarehouseId: result.defaultWarehouseId || activeWarehouses[0]?.id || "",
             allowNegativeStock: Boolean(result.allowNegativeStock),
+            allowInactiveProductSales: Boolean(result.allowInactiveProductSales),
             defaultMinimumStock: Number(result.defaultMinimumStock) || 0,
             alertsEnabled: Boolean(result.alertsEnabled)
-          });
+          };
+          loadedInactiveProductSalesRef.current = loadedSettings.allowInactiveProductSales;
+          setSettings(loadedSettings);
         }
       })
       .catch((error) => {
@@ -233,11 +294,13 @@ export function StockSettingsDialog({
     setSaving(true);
     setStatus(t("stock.settings.saving"));
     try {
-      const saved = await apiRequest<StockSettingsView>("/stock/settings", {
-        token,
-        method: "PUT",
-        body: settings
-      });
+      const saved = await persistStockSettings(
+        settings,
+        loadedInactiveProductSalesRef.current,
+        canManageInactiveProductSales,
+        token
+      );
+      loadedInactiveProductSalesRef.current = saved.allowInactiveProductSales;
       setSettings(saved);
       setStatus(t("stock.settings.saved"));
       onSaved?.(saved);
@@ -352,7 +415,8 @@ export function StockSettingsDialog({
                     event.preventDefault();
                     if (intent === "next") {
                       event.currentTarget.click();
-                      alertsRef.current?.focus();
+                      if (canManageInactiveProductSales) allowInactiveSalesRef.current?.focus();
+                      else alertsRef.current?.focus();
                     } else {
                       defaultMinimumRef.current?.focus();
                     }
@@ -360,6 +424,29 @@ export function StockSettingsDialog({
                 />
                 <span>{t("stock.settings.allowNegative")}</span>
               </label>
+              {canManageInactiveProductSales && (
+                <label className="stock-settings-check">
+                  <input
+                    ref={allowInactiveSalesRef}
+                    type="checkbox"
+                    checked={settings.allowInactiveProductSales}
+                    disabled={!canEdit}
+                    onChange={(event) => setSettings((current) => ({ ...current, allowInactiveProductSales: event.target.checked }))}
+                    onKeyDown={(event) => {
+                      const intent = enterNavigationIntent(event.key, event);
+                      if (!intent) return;
+                      event.preventDefault();
+                      if (intent === "next") {
+                        event.currentTarget.click();
+                        alertsRef.current?.focus();
+                      } else {
+                        allowNegativeRef.current?.focus();
+                      }
+                    }}
+                  />
+                  <span>{t("stock.settings.allowInactiveProductSales")}</span>
+                </label>
+              )}
               <label className="stock-settings-check">
                 <input
                   ref={alertsRef}
@@ -376,7 +463,8 @@ export function StockSettingsDialog({
                       if (minimumRef.current && !minimumRef.current.disabled) minimumRef.current.focus();
                       else settingsSaveRef.current?.focus();
                     } else {
-                      allowNegativeRef.current?.focus();
+                      if (canManageInactiveProductSales) allowInactiveSalesRef.current?.focus();
+                      else allowNegativeRef.current?.focus();
                     }
                   }}
                 />
@@ -426,28 +514,51 @@ export function StockSettingsDialog({
           </div>
         ) : (
           <div className="stock-permissions-table-scroll">
-            <table className="report-table stock-permissions-table">
+            <table
+              className="report-table stock-permissions-table"
+              style={{ tableLayout: "fixed", minWidth: permissionTableWidth }}
+            >
               <thead>
                 <tr>
-                  <th>{t("stock.permissions.role")}</th>
-                  {stockPermissionMatrixColumns.map((permission) => (
-                    <th key={permission.code}>{t(permission.labelKey)}</th>
-                  ))}
+                  {visiblePermissionColumns.map((column) => {
+                    const permission = stockPermissionMatrixColumns.find((candidate) => candidate.code === column.key);
+                    const label = column.key === "role"
+                      ? t("stock.permissions.role")
+                      : t(permission?.labelKey ?? column.key);
+                    return (
+                      <TableLayoutHeaderCell
+                        column={column}
+                        key={column.key}
+                        resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                        onReorder={permissionTableLayout.reorderColumns}
+                        onMove={permissionTableLayout.moveColumn}
+                        onResize={permissionTableLayout.resizeColumn}
+                      >
+                        {label}
+                      </TableLayoutHeaderCell>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {roles.map((role) => (
                   <tr key={role.id}>
-                    <td>{role.name}</td>
-                    {stockPermissionMatrixColumns.map((permission) => (
-                      <td key={permission.code} aria-label={`${role.name}: ${permission.code}`}>
-                        {roleHasStockPermission(role, permission.code) ? t("common.yes") : t("common.no")}
-                      </td>
-                    ))}
+                    {visiblePermissionColumns.map((column) => {
+                      if (column.key === "role") {
+                        return <td key={column.key}>{role.name}</td>;
+                      }
+                      const permission = stockPermissionMatrixColumns.find((candidate) => candidate.code === column.key);
+                      if (!permission) return null;
+                      return (
+                        <td key={permission.code} aria-label={`${role.name}: ${permission.code}`}>
+                          {roleHasStockPermission(role, permission.code) ? t("common.yes") : t("common.no")}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
                 {!loading && isAdmin && roles.length === 0 && (
-                  <tr><td colSpan={stockPermissionMatrixColumns.length + 1}>{t("stock.permissions.empty")}</td></tr>
+                  <tr><td colSpan={visiblePermissionColumns.length}>{t("stock.permissions.empty")}</td></tr>
                 )}
               </tbody>
             </table>

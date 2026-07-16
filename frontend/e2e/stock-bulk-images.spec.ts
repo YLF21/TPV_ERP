@@ -18,12 +18,20 @@ const tinyPng = Buffer.from(
 );
 
 test("empareja una imagen por código, la guarda y la aplica al producto", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
   const session = await loginApi(request);
   const marker = uniqueMarker("E2E-IMAGE");
   const listName = `E2E IMAGEN ${marker}`;
   const product = await createProductFixture(request, session.accessToken, marker);
 
   try {
+    const stockPageResponse = await request.get(`${apiUrl}/stock/page?limit=250`, {
+      headers: authorization(session.accessToken)
+    });
+    expect(stockPageResponse.ok(), await stockPageResponse.text()).toBeTruthy();
+    const stockPage = await stockPageResponse.json() as { items: Array<{ product: { id: string } }> };
+    expect(stockPage.items.some((item) => item.product.id === product.id)).toBeTruthy();
+
     await loginUi(page, "venta");
     await openStock(page, "venta");
     await openBulkEdit(page);
@@ -67,6 +75,29 @@ test("empareja una imagen por código, la guarda y la aplica al producto", async
     );
     expect(imageResponse.ok()).toBeTruthy();
     expect((await imageResponse.body()).byteLength).toBeGreaterThan(0);
+
+    await page.getByRole("button", { name: "Volver a listas", exact: true }).click();
+    await page.getByRole("button", { name: "Stock", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Buscar artículo" }).fill(marker);
+    const stockRow = page.locator(".stock-row").filter({ hasText: marker });
+    await expect(stockRow).toBeVisible();
+    await stockRow.dblclick();
+
+    const detailDialog = page.getByRole("dialog").filter({ hasText: product.name });
+    await expect(detailDialog.getByRole("heading", { name: "Información del producto" })).toBeVisible();
+    await expect(detailDialog.getByRole("button", { name: "Stock por almacén" })).toBeVisible();
+    await expect(detailDialog.locator(".stock-product-information-image img")).toBeVisible();
+    const detailScreenshotPath = testInfo.outputPath("detalle-producto.png");
+    await page.screenshot({ fullPage: true, path: detailScreenshotPath });
+    await testInfo.attach("detalle-producto", { path: detailScreenshotPath, contentType: "image/png" });
+
+    await detailDialog.getByRole("button", { name: "Historial de venta" }).click();
+    await expect(detailDialog.getByRole("heading", { name: "Información del producto" })).toBeVisible();
+
+    await detailDialog.getByRole("button", { name: "Modificar producto" }).click();
+    const editDialog = page.getByRole("dialog", { name: "Modificar producto" });
+    await expect(editDialog).toBeVisible();
+    await expect(editDialog.locator(".product-image-preview img")).toBeVisible();
   } finally {
     await cleanupBulkDrafts(request, session.accessToken, listName);
     await deleteProductFixture(request, session.accessToken, product.id);

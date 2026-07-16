@@ -142,6 +142,20 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
     }
 
     @Transactional
+    public ProductSupplierView setPrincipal(UUID productId, UUID supplierId) {
+        ProductSupplier link = link(productId, supplierId);
+        makePrincipal(productId, supplierId, link);
+        return ProductSupplierView.from(link);
+    }
+
+    @Transactional
+    public void clearPrincipal(UUID productId) {
+        Product product = product(productId);
+        links.lockProduct(product.getId());
+        links.clearPrincipal(product.getId());
+    }
+
+    @Transactional
     public void unlink(UUID productId, UUID supplierId) {
         links.delete(link(productId, supplierId));
     }
@@ -164,7 +178,6 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
         for (Product product : uniqueProducts) {
             PurchaseLine line = lastLineByProduct.get(product.getId());
             links.lockProduct(product.getId());
-            boolean makePrincipal = !links.existsByProduct_IdAndPrincipalTrue(product.getId());
             Instant latestEntryAt = links.findLatestEntryAtForProduct(product.getId());
             boolean makeLastSupplier = latestEntryAt == null || !confirmedAt.isBefore(latestEntryAt);
             if (makeLastSupplier) {
@@ -173,7 +186,7 @@ public class ProductSupplierService implements ConfirmedPurchaseRecorder {
             links.upsertPurchase(
                     UUID.randomUUID(), product.getId(), supplier.getId(),
                     normalizeReference(line.supplierReference()),
-                    makePrincipal,
+                    false,
                     makeLastSupplier,
                     line.grossPurchasePrice(),
                     line.purchaseDiscount(),

@@ -21,7 +21,7 @@ Completar los maestros compartidos de Clientes, Socios y Proveedores sobre los c
 
 [ ] **6. Terminar Proveedores.** Implementar filtros, detalle, alta, edición y activar/desactivar únicamente para datos fiscales/contacto; excluir explícitamente productos, precios, entradas y representantes de la ficha; aplicar `SUPPLIERS_READ/WRITE`.
 
-[ ] **7. Terminar el listado y ficha de Socios.** Mostrar códigos, cliente, categoría, puntos, saldo, fecha y estado; permitir alta conjunta cliente+socio, conversión de cliente existente, activar/desactivar conservando histórico y acceso a datos de identidad del cliente sin duplicarlos.
+[ ] **7. Terminar el listado y ficha de Socios.** Mostrar códigos, cliente, categoría, puntos, saldo, fecha y estado mediante `GET /api/v1/members`; crear o reactivar la relación únicamente seleccionando un cliente activo existente; activar/desactivar conservando histórico y acceder a los datos de identidad del cliente sin duplicarlos.
 
 [ ] **8. Implementar fidelización dentro de Socios.** Integrar movimientos, ajustes de puntos/saldo con motivo, cambio y bloqueo de categoría, CRUD lógico de categorías, settings, canales comerciales y entregas/reintentos de tarjeta mediante los endpoints existentes.
 

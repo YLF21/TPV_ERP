@@ -16,6 +16,7 @@ import {
   serializeStockBulkPriceRuleDraft,
   stockBulkPriceRuleDeletePath,
   stockBulkPriceRuleExecutionBody,
+  stockBulkPriceRulePreviewPath,
   stockBulkPriceRuleRequest,
   stockBulkRuleNumericComparators,
   stockBulkRuleActionTypes,
@@ -55,7 +56,7 @@ type StockBulkPriceRulesDialogProps = {
   families: StockTopSalesFamilyNode[];
   suppliers: RuleOption[];
   warehouses: RuleOption[];
-  onApplied: () => void;
+  onApplied: (preview: StockBulkPriceRulePreview) => void;
   onClose: () => void;
 };
 
@@ -220,11 +221,15 @@ export function StockBulkPriceRulesDialog({
     setConfirmAction(null);
     try {
       const result = await apiRequest<StockBulkPriceRulePreview>(
-        `/product-price-rules/${encodeURIComponent(saved.id)}/${apply ? "apply" : "preview"}`,
-        { method: "POST", token, body: stockBulkPriceRuleExecutionBody(saved.version) }
+        stockBulkPriceRulePreviewPath(saved.id),
+        {
+          method: "POST",
+          token,
+          body: stockBulkPriceRuleExecutionBody(saved.version, products.map((product) => product.productId))
+        }
       );
       setPreview(result);
-      if (apply) onApplied();
+      if (apply) onApplied(result);
     } catch (caught) {
       operationError(
         caught,

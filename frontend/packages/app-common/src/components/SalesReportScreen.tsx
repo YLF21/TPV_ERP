@@ -14,9 +14,19 @@ import {
   type WarehouseOption,
   type WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
+import {
+  PurchaseDocumentDialog,
+  type PurchaseDocumentMode,
+  type PurchaseDocumentProduct,
+  type PurchaseDocumentTax
+} from "./PurchaseDocumentDialog";
 import { TopDateTime } from "./TopDateTime";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
-import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import languageIcon from "../assets/language.png";
 import lockIcon from "../assets/lock.png";
 import deliveryNoteIcon from "../assets/reports/delivery-note.png";
@@ -77,6 +87,39 @@ const inputReports = [
 
 const allReports = [...outputReports, ...inputReports];
 
+export function salesReportAccess(session: Pick<UserSession, "permissions">) {
+  const admin = session.permissions.includes("ADMIN");
+  const sales = admin
+    || session.permissions.includes("GESTION_VENTAS")
+    || session.permissions.includes("GESTION_CUENTAS");
+  const purchases = admin
+    || session.permissions.includes("GESTION_PRODUCTO")
+    || session.permissions.includes("GESTION_ALMACEN")
+    || session.permissions.includes("GESTION_CUENTAS");
+  const warehouse = admin || session.permissions.includes("GESTION_ALMACEN");
+  const purchaseWrite = admin
+    || session.permissions.includes("GESTION_PRODUCTO")
+    || session.permissions.includes("GESTION_ALMACEN");
+  return { sales, purchases, purchaseWrite, warehouse };
+}
+
+export function visibleSalesReports(session: Pick<UserSession, "permissions">) {
+  const access = salesReportAccess(session);
+  const visibleOutputReports = [
+    ...(access.sales ? outputReports.filter((report) => report !== "salesReport.warehouseOutputs") : []),
+    ...(access.warehouse ? ["salesReport.warehouseOutputs"] : [])
+  ];
+  const visibleInputReports = [
+    ...(access.purchases ? ["salesReport.inputInvoices", "salesReport.inputDeliveryNotes"] : []),
+    ...(access.warehouse ? ["salesReport.inputWarehouse"] : [])
+  ];
+  return { visibleOutputReports, visibleInputReports, all: [...visibleOutputReports, ...visibleInputReports] };
+}
+
+export function isPurchaseDocumentReport(report: string) {
+  return report === "salesReport.inputInvoices" || report === "salesReport.inputDeliveryNotes";
+}
+
 const reportIcon: Record<string, string> = {
   "salesReport.dailySales": dailySalesIcon,
   "salesReport.tickets": ticketIcon,
@@ -116,6 +159,34 @@ const attributeLabelKey: Record<string, string> = {
   tickets: "salesReport.column.tickets"
 };
 
+const attributeDefaultWidth: Record<string, number> = {
+  date: 112,
+  time: 80,
+  ticket: 128,
+  invoice: 128,
+  invoiced: 104,
+  deliveryNote: 144,
+  terminal: 112,
+  user: 144,
+  productCount: 120,
+  customer: 128,
+  customerName: 200,
+  supplier: 128,
+  supplierName: 200,
+  comment: 240,
+  warehouse: 160,
+  input: 128,
+  output: 128,
+  total: 112,
+  pending: 112,
+  payment: 152,
+  status: 128,
+  reason: 184,
+  origin: 184,
+  dueDate: 112,
+  tickets: 88
+};
+
 type ReportSample = {
   availableAttributes: string[];
   defaultVisibleAttributes: string[];
@@ -123,6 +194,77 @@ type ReportSample = {
   totals: Record<string, string>;
   dailySummaries?: Record<string, DailySalesSummary>;
 };
+
+type ReportTableLayout = UseTableLayoutPreferenceResult<string>;
+
+export function buildReportColumnDefinitions(report: ReportSample): TableColumnDefinition[] {
+  const defaultVisible = new Set(report.defaultVisibleAttributes);
+  return report.availableAttributes.map((attribute) => ({
+    key: attribute,
+    defaultWidth: attributeDefaultWidth[attribute] ?? 144,
+    defaultVisible: defaultVisible.has(attribute)
+  }));
+}
+
+export function reportTableKey(reportKey: string) {
+  return `reports.${reportKey}`;
+}
+
+export function moveVisibleReportColumn(
+  tableLayout: ReportTableLayout,
+  attribute: string,
+  direction: -1 | 1
+) {
+  const movableColumns = visibleTableColumns(tableLayout.layout)
+    .filter((column) => column.key !== "total");
+  const visibleIndex = movableColumns.findIndex((column) => column.key === attribute);
+  const target = movableColumns[visibleIndex + direction];
+  if (visibleIndex < 0 || !target) {
+    return;
+  }
+
+  const layoutIndex = tableLayout.layout.findIndex((column) => column.key === attribute);
+  const targetLayoutIndex = tableLayout.layout.findIndex((column) => column.key === target.key);
+  const moveCount = Math.abs(targetLayoutIndex - layoutIndex);
+  for (let index = 0; index < moveCount; index += 1) {
+    tableLayout.moveColumn(attribute, direction);
+  }
+}
+
+export function moveReportColumnBeforeTotal(tableLayout: ReportTableLayout, attribute: string) {
+  if (attribute === "total") {
+    return;
+  }
+  const columnIndex = tableLayout.layout.findIndex((column) => column.key === attribute);
+  const totalIndex = tableLayout.layout.findIndex((column) => column.key === "total");
+  if (columnIndex < 0 || totalIndex < 0) {
+    return;
+  }
+
+  if (!tableLayout.layout[columnIndex].visible) {
+    tableLayout.toggleColumnVisibility(attribute);
+  }
+
+  const direction: -1 | 1 = columnIndex < totalIndex ? 1 : -1;
+  const targetIndex = columnIndex < totalIndex ? totalIndex - 1 : totalIndex;
+  const moveCount = Math.abs(targetIndex - columnIndex);
+  for (let index = 0; index < moveCount; index += 1) {
+    tableLayout.moveColumn(attribute, direction);
+  }
+}
+
+export function normalizeRequiredTotal(tableLayout: ReportTableLayout) {
+  const totalIndex = tableLayout.layout.findIndex((column) => column.key === "total");
+  if (totalIndex < 0) {
+    return;
+  }
+  if (!tableLayout.layout[totalIndex].visible) {
+    tableLayout.toggleColumnVisibility("total");
+  }
+  for (let index = totalIndex; index < tableLayout.layout.length - 1; index += 1) {
+    tableLayout.moveColumn("total", 1);
+  }
+}
 
 type DocumentPaymentView = {
   methodName?: string;
@@ -136,15 +278,34 @@ type DocumentView = {
   tipo?: string;
   estado?: string;
   numero?: string;
+  numeroExterno?: string | null;
   fecha?: string;
+  fechaVencimiento?: string | null;
+  pendiente?: number | string;
+  descuentoGlobal?: number | string;
   total?: number | string;
   numTicket?: string | null;
   origenStock?: boolean;
+  clienteId?: string | null;
+  clienteCodigo?: string | null;
+  clienteNombre?: string | null;
+  proveedorId?: string | null;
+  proveedorCodigo?: string | null;
+  proveedorNombre?: string | null;
+  almacenId?: string | null;
+  almacenNombre?: string | null;
+  lineas?: number | string;
   payments?: DocumentPaymentView[];
   usuario?: string;
   user?: string;
   userName?: string;
   vendedor?: string;
+};
+
+type PagedResult<T> = {
+  items: T[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
 };
 
 type WarehouseOutputView = {
@@ -183,12 +344,6 @@ type WarehouseInputView = {
   lines?: Array<{ productId?: string; productoId?: string; quantity?: number | string; cantidad?: number | string }>;
 };
 
-type StockItemView = {
-  productId: string;
-  warehouseId: string;
-  quantity: number | string;
-};
-
 type StockMovementView = {
   id?: string;
   productId?: string;
@@ -205,6 +360,8 @@ type StockMovementView = {
   documentId?: string | null;
   warehouseOutputId?: string | null;
 };
+
+const REPORT_PAGE_LIMIT = 500;
 
 type DailyPaymentLine = {
   method: string;
@@ -632,6 +789,9 @@ function paidAmount(document: DocumentView) {
 }
 
 function pendingAmount(document: DocumentView) {
+  if (document.pendiente !== undefined) {
+    return Number(document.pendiente ?? 0);
+  }
   return Math.max(0, Number(document.total ?? 0) - paidAmount(document));
 }
 
@@ -806,11 +966,11 @@ export function buildDocumentReports(
     invoice: document.numero || "",
     terminal,
     user,
-    customer: "",
-    customerName: "",
+    customer: document.clienteCodigo || document.clienteId || "",
+    customerName: document.clienteNombre || "",
     payment: paymentText(document),
     pending: formatAmount(pendingAmount(document)),
-    comment: "",
+    comment: document.numeroExterno || "",
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({
@@ -819,12 +979,12 @@ export function buildDocumentReports(
     invoice: document.numero || "",
     terminal,
     user,
-    supplier: "",
-    supplierName: "",
-    warehouse: "",
+    supplier: document.proveedorCodigo || document.proveedorId || "",
+    supplierName: document.proveedorNombre || "",
+    warehouse: document.almacenNombre || document.almacenId || "",
     pending: formatAmount(pendingAmount(document)),
-    dueDate: "",
-    comment: "",
+    dueDate: formatBackendDate(document.fechaVencimiento ?? ""),
+    comment: document.numeroExterno || "",
     status: documentStatus(document),
     total: formatAmount(Number(document.total ?? 0))
   }));
@@ -834,9 +994,9 @@ export function buildDocumentReports(
     deliveryNote: document.numero || "",
     terminal,
     user,
-    customer: "",
-    customerName: "",
-    comment: "",
+    customer: document.clienteCodigo || document.clienteId || "",
+    customerName: document.clienteNombre || "",
+    comment: document.numeroExterno || "",
     status: documentStatus(document),
     total: formatAmount(Number(document.total ?? 0))
   }));
@@ -846,12 +1006,12 @@ export function buildDocumentReports(
     deliveryNote: document.numero || "",
     terminal,
     user,
-    supplier: "",
-    supplierName: "",
-    warehouse: "",
-    productCount: "",
+    supplier: document.proveedorCodigo || document.proveedorId || "",
+    supplierName: document.proveedorNombre || "",
+    warehouse: document.almacenNombre || document.almacenId || "",
+    productCount: formatWholeNumber(Number(document.lineas ?? 0)),
     pending: formatAmount(pendingAmount(document)),
-    comment: "",
+    comment: document.numeroExterno || "",
     total: formatAmount(Number(document.total ?? 0))
   }));
   const warehouseOutputRows = warehouseOutputs.map((output) => ({
@@ -897,9 +1057,7 @@ export function buildDocumentReports(
 export function isWarehouseDocumentReport(reportKey: string) {
   return [
     "salesReport.warehouseOutputs",
-    "salesReport.inputWarehouse",
-    "salesReport.inputInvoices",
-    "salesReport.inputDeliveryNotes"
+    "salesReport.inputWarehouse"
   ].includes(reportKey);
 }
 
@@ -909,6 +1067,38 @@ async function optionalApiRequest<T>(path: string, token: string, fallback: T): 
   } catch {
     return fallback;
   }
+}
+
+type ReportPageKey = "invoices" | "deliveryNotes" | "warehouseOutputs" | "warehouseInputs";
+
+function reportPageKey(reportKey: string): ReportPageKey | "" {
+  if (reportKey === "salesReport.invoices" || reportKey === "salesReport.inputInvoices") {
+    return "invoices";
+  }
+  if (reportKey === "salesReport.deliveryNotes" || reportKey === "salesReport.inputDeliveryNotes") {
+    return "deliveryNotes";
+  }
+  if (reportKey === "salesReport.warehouseOutputs") {
+    return "warehouseOutputs";
+  }
+  if (reportKey === "salesReport.inputWarehouse") {
+    return "warehouseInputs";
+  }
+  return "";
+}
+
+function reportPagePath(pageKey: ReportPageKey, cursor?: string | null) {
+  const paths: Record<ReportPageKey, string> = {
+    invoices: "/document-reports/invoices",
+    deliveryNotes: "/document-reports/delivery-notes",
+    warehouseOutputs: "/warehouse-outputs",
+    warehouseInputs: "/warehouse-inputs"
+  };
+  const params = new URLSearchParams({ limit: String(REPORT_PAGE_LIMIT) });
+  if (cursor) {
+    params.set("cursor", cursor);
+  }
+  return `${paths[pageKey]}?${params.toString()}`;
 }
 
 function buildDailySalesRows(
@@ -962,6 +1152,9 @@ function filterOptionsFromRows(rows: Array<Record<string, string>>, attribute: s
 
 export function SalesReportScreen({ app, locale, session, terminalContext, onBack, onLogout, onLocaleChange }: SalesReportScreenProps) {
   const t = createTranslator(locale);
+  const reportAccess = salesReportAccess(session);
+  const availableReports = visibleSalesReports(session);
+  const initialReport = availableReports.all[0] ?? outputReports[0];
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -980,14 +1173,19 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [openFilterControl, setOpenFilterControl] = useState<keyof ReportFilters | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
+  const [reportPages, setReportPages] = useState<Record<string, { nextCursor: string | null; hasMore: boolean }>>({});
+  const [reportLoadingMore, setReportLoadingMore] = useState(false);
   const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
+  const [purchaseDocumentOpen, setPurchaseDocumentOpen] = useState(false);
+  const [purchaseDocumentMode, setPurchaseDocumentMode] = useState<PurchaseDocumentMode>("invoice");
   const [reportReloadKey, setReportReloadKey] = useState(0);
-  const [warehouseProducts, setWarehouseProducts] = useState<WarehouseImportProduct[]>([]);
+  const [warehouseProducts, setWarehouseProducts] = useState<PurchaseDocumentProduct[]>([]);
   const [warehouseMasterOptions, setWarehouseMasterOptions] = useState<WarehouseOption[]>([]);
   const [warehouseCustomers, setWarehouseCustomers] = useState<WarehouseCustomerOption[]>([]);
   const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplierOption[]>([]);
-  const [selectedReport, setSelectedReport] = useState(outputReports[0]);
-  const [visualReport, setVisualReport] = useState(outputReports[0]);
+  const [purchaseTaxes, setPurchaseTaxes] = useState<PurchaseDocumentTax[]>([]);
+  const [selectedReport, setSelectedReport] = useState(initialReport);
+  const [visualReport, setVisualReport] = useState(initialReport);
   const [dragAttribute, setDragAttribute] = useState<string | null>(null);
   const [selectedRowByReport, setSelectedRowByReport] = useState<Record<string, number>>(() =>
     Object.fromEntries(allReports.map((reportKey) => [reportKey, 0]))
@@ -997,16 +1195,42 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   );
   const reports: Record<string, ReportSample> = { ...reportSamples, ...(remoteReports as Record<string, ReportSample>) };
   const sample = reports[selectedReport] ?? reportSamples["salesReport.dailySales"];
+  const visualSample = reports[visualReport] ?? reportSamples["salesReport.dailySales"];
   const isDailySalesReport = selectedReport === "salesReport.dailySales";
-  const visibleAttributes = visibleAttributesByReport[selectedReport];
+  const isDailyVisualReport = visualReport === "salesReport.dailySales";
+  const selectedColumnDefinitions = buildReportColumnDefinitions(sample);
+  const selectedReportTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: isDailySalesReport ? undefined : session.accessToken,
+    tableKey: reportTableKey(selectedReport),
+    definitions: selectedColumnDefinitions
+  });
+  const visualColumnDefinitions = buildReportColumnDefinitions(visualSample);
+  const inactiveVisualTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: visualReport !== selectedReport && !isDailyVisualReport ? session.accessToken : undefined,
+    tableKey: reportTableKey(visualReport),
+    definitions: visualColumnDefinitions,
+    debounceMs: 0
+  });
+  const visualTableLayout = visualReport === selectedReport
+    ? selectedReportTableLayout
+    : inactiveVisualTableLayout;
+  const visibleColumnLayout = isDailySalesReport
+    ? []
+    : visibleTableColumns(selectedReportTableLayout.layout);
+  const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
   const filteredRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
   const filteredTotals = buildFilteredTotals(sample, filteredRows);
   const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredRows, filteredTotals);
   const selectedDailySummary = sample.dailySummaries?.[filters.dateFrom] ?? emptyDailySalesSummary(filters.dateFrom);
   const selectedRowIndex = selectedRowByReport[selectedReport] ?? 0;
   const dbLabel = apiServerLabel();
-  const visualSample = reports[visualReport] ?? reportSamples["salesReport.dailySales"];
-  const visualVisibleAttributes = visibleAttributesByReport[visualReport];
+  const visualVisibleAttributes = isDailyVisualReport
+    ? visibleAttributesByReport[visualReport]
+    : visibleTableColumns(visualTableLayout.layout).map((column) => column.key);
   const visualAvailableAttributes = visualSample.availableAttributes.filter(
     (attribute) => attribute !== "total" && !visualVisibleAttributes.includes(attribute)
   );
@@ -1021,10 +1245,23 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const hasStatusFilter = !isDailySalesReport && selectedReport !== "salesReport.tickets" && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
   const warehouseDocumentMode = selectedReport === "salesReport.warehouseOutputs" ? "output" : "input";
+  const selectedReportPage = reportPages[reportPageKey(selectedReport)];
 
   useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
+
+  useEffect(() => {
+    if (!isDailySalesReport) {
+      normalizeRequiredTotal(selectedReportTableLayout);
+    }
+  }, [isDailySalesReport, selectedReport, selectedReportTableLayout.layout]);
+
+  useEffect(() => {
+    if (visualReport !== selectedReport && !isDailyVisualReport) {
+      normalizeRequiredTotal(inactiveVisualTableLayout);
+    }
+  }, [inactiveVisualTableLayout.layout, isDailyVisualReport, selectedReport, visualReport]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1062,37 +1299,50 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         return;
       }
       try {
-        const [tickets, invoices, deliveryNotes, warehouseOutputs, warehouseInputs, stockItems] = await Promise.all([
-          apiRequest<DocumentView[]>("/tickets", { token }),
-          apiRequest<DocumentView[]>("/invoices", { token }),
-          apiRequest<DocumentView[]>("/delivery-notes", { token }),
-          apiRequest<WarehouseOutputView[]>("/warehouse-outputs", { token }),
-          optionalApiRequest<WarehouseInputView[]>("/warehouse-inputs", token, []),
-          apiRequest<StockItemView[]>("/stock", { token })
+        const [tickets, invoices, deliveryNotes, warehouseOutputs, warehouseInputs] = await Promise.all([
+          optionalApiRequest<DocumentView[]>("/tickets", token, []),
+          optionalApiRequest<PagedResult<DocumentView>>(reportPagePath("invoices"), token, { items: [], nextCursor: null, hasMore: false }),
+          optionalApiRequest<PagedResult<DocumentView>>(reportPagePath("deliveryNotes"), token, { items: [], nextCursor: null, hasMore: false }),
+          optionalApiRequest<PagedResult<WarehouseOutputView>>(reportPagePath("warehouseOutputs"), token, { items: [], nextCursor: null, hasMore: false }),
+          optionalApiRequest<PagedResult<WarehouseInputView>>(reportPagePath("warehouseInputs"), token, { items: [], nextCursor: null, hasMore: false })
         ]);
-        const [products, warehouses, customers, suppliers] = await Promise.all([
-          optionalApiRequest<WarehouseImportProduct[]>("/products", token, []),
+        const productPath = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_PRODUCTO")
+          ? "/products/management"
+          : "/products";
+        const [products, warehouses, customers, suppliers, taxes] = await Promise.all([
+          optionalApiRequest<PurchaseDocumentProduct[]>(productPath, token, []),
           optionalApiRequest<WarehouseOption[]>("/warehouses", token, []),
-          optionalApiRequest<WarehouseCustomerOption[]>("/customers", token, []),
-          optionalApiRequest<WarehouseSupplierOption[]>("/suppliers", token, [])
+          optionalApiRequest<WarehouseCustomerOption[]>("/customers/sale-options", token, []),
+          optionalApiRequest<WarehouseSupplierOption[]>("/suppliers", token, []),
+          optionalApiRequest<PurchaseDocumentTax[]>("/taxes/selectable", token, [])
         ]);
-        const productIds = Array.from(new Set(stockItems.map((item) => item.productId).filter(Boolean)));
-        const movementGroups = await Promise.all(
-          productIds.map((productId) =>
-            apiRequest<StockMovementView[]>(`/stock/movements?productId=${encodeURIComponent(productId)}`, { token })
-          )
-        );
-        const stockMovements = movementGroups.flat();
         if (!cancelled) {
           setWarehouseProducts(products);
           setWarehouseMasterOptions(warehouses);
           setWarehouseCustomers(customers);
           setWarehouseSuppliers(suppliers);
-          setRemoteReports(buildDocumentReports(tickets, invoices, deliveryNotes, warehouseOutputs, stockMovements, warehouseInputs, session, terminalContext));
+          setPurchaseTaxes(taxes);
+          setReportPages({
+            invoices: { nextCursor: invoices.nextCursor ?? null, hasMore: Boolean(invoices.hasMore) },
+            deliveryNotes: { nextCursor: deliveryNotes.nextCursor ?? null, hasMore: Boolean(deliveryNotes.hasMore) },
+            warehouseOutputs: { nextCursor: warehouseOutputs.nextCursor ?? null, hasMore: Boolean(warehouseOutputs.hasMore) },
+            warehouseInputs: { nextCursor: warehouseInputs.nextCursor ?? null, hasMore: Boolean(warehouseInputs.hasMore) }
+          });
+          setRemoteReports(buildDocumentReports(
+            tickets,
+            invoices.items,
+            deliveryNotes.items,
+            warehouseOutputs.items,
+            [],
+            warehouseInputs.items,
+            session,
+            terminalContext
+          ));
         }
       } catch {
         if (!cancelled) {
           setRemoteReports({});
+          setReportPages({});
         }
       }
     }
@@ -1161,6 +1411,59 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   function updateReportSearch(value: string) {
     setReportSearch(value);
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+  }
+
+  async function loadMoreReportRows() {
+    const pageKey = reportPageKey(selectedReport);
+    const page = pageKey ? reportPages[pageKey] : undefined;
+    if (!pageKey || !page?.hasMore || !page.nextCursor || !session.accessToken || reportLoadingMore) {
+      return;
+    }
+    setReportLoadingMore(true);
+    try {
+      const nextPage = await apiRequest<PagedResult<DocumentView | WarehouseOutputView | WarehouseInputView>>(
+        reportPagePath(pageKey, page.nextCursor),
+        { token: session.accessToken }
+      );
+      const partialReports = buildDocumentReports(
+        [],
+        pageKey === "invoices" ? nextPage.items as DocumentView[] : [],
+        pageKey === "deliveryNotes" ? nextPage.items as DocumentView[] : [],
+        pageKey === "warehouseOutputs" ? nextPage.items as WarehouseOutputView[] : [],
+        [],
+        pageKey === "warehouseInputs" ? nextPage.items as WarehouseInputView[] : [],
+        session,
+        terminalContext
+      );
+      const affectedReportsByPageKey: Record<ReportPageKey, string[]> = {
+        invoices: ["salesReport.invoices", "salesReport.inputInvoices"],
+        deliveryNotes: ["salesReport.deliveryNotes", "salesReport.inputDeliveryNotes"],
+        warehouseOutputs: ["salesReport.warehouseOutputs"],
+        warehouseInputs: ["salesReport.inputWarehouse"]
+      };
+
+      setRemoteReports((current) => {
+        const next = { ...current };
+        affectedReportsByPageKey[pageKey].forEach((reportKey) => {
+          const currentReport = next[reportKey] ?? reportSamples[reportKey];
+          const loadedReport = partialReports[reportKey];
+          next[reportKey] = {
+            ...currentReport,
+            rows: [...currentReport.rows, ...(loadedReport?.rows ?? [])]
+          };
+        });
+        return next;
+      });
+      setReportPages((current) => ({
+        ...current,
+        [pageKey]: {
+          nextCursor: nextPage.nextCursor ?? null,
+          hasMore: Boolean(nextPage.hasMore)
+        }
+      }));
+    } finally {
+      setReportLoadingMore(false);
+    }
   }
 
   function clearFilters() {
@@ -1444,7 +1747,17 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
     selectRow(nextIndex);
   }
 
-  function updateVisibleAttributes(reportKey: string, buildNext: (current: string[]) => string[]) {
+  function genericTableLayout(reportKey: string): ReportTableLayout | null {
+    if (reportKey === "salesReport.dailySales") {
+      return null;
+    }
+    if (reportKey === selectedReport) {
+      return selectedReportTableLayout;
+    }
+    return reportKey === visualReport ? inactiveVisualTableLayout : null;
+  }
+
+  function updateLegacyVisibleAttributes(reportKey: string, buildNext: (current: string[]) => string[]) {
     const nextAttributes = buildNext(visibleAttributesByReport[reportKey]);
     setVisibleAttributesByReport((current) => {
       return { ...current, [reportKey]: nextAttributes };
@@ -1459,7 +1772,12 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
     if (attribute === "total") {
       return;
     }
-    updateVisibleAttributes(reportKey, (current) => {
+    const tableLayout = genericTableLayout(reportKey);
+    if (tableLayout) {
+      moveReportColumnBeforeTotal(tableLayout, attribute);
+      return;
+    }
+    updateLegacyVisibleAttributes(reportKey, (current) => {
       const currentVisible = current.filter((item) => item !== attribute && item !== "total");
       const next = [...currentVisible];
       next.splice(Math.min(targetIndex, next.length), 0, attribute);
@@ -1474,14 +1792,27 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
     if (attribute === "total") {
       return;
     }
-    updateVisibleAttributes(reportKey, (current) => current.filter((item) => item !== attribute));
+    const tableLayout = genericTableLayout(reportKey);
+    if (tableLayout) {
+      const column = tableLayout.layout.find((candidate) => candidate.key === attribute);
+      if (column?.visible) {
+        tableLayout.toggleColumnVisibility(attribute);
+      }
+      return;
+    }
+    updateLegacyVisibleAttributes(reportKey, (current) => current.filter((item) => item !== attribute));
   }
 
   function moveAttributeStep(reportKey: string, attribute: string, direction: -1 | 1) {
     if (attribute === "total") {
       return;
     }
-    updateVisibleAttributes(reportKey, (current) => {
+    const tableLayout = genericTableLayout(reportKey);
+    if (tableLayout) {
+      moveVisibleReportColumn(tableLayout, attribute, direction);
+      return;
+    }
+    updateLegacyVisibleAttributes(reportKey, (current) => {
       const movable = current.filter((item) => item !== "total");
       const from = movable.indexOf(attribute);
       const to = from + direction;
@@ -1635,7 +1966,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           <img alt="" className="report-action-icon" src={filterIcon} />
           {t("salesReport.filter")}
         </button>
-        {isWarehouseDocumentReport(selectedReport) && (
+        {reportAccess.warehouse && isWarehouseDocumentReport(selectedReport) && (
           <button
             type="button"
             onClick={() => {
@@ -1644,6 +1975,28 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             }}
           >
             {t("warehouseDocument.create")}
+          </button>
+        )}
+        {reportAccess.purchaseWrite && isPurchaseDocumentReport(selectedReport) && (
+          <button
+            type="button"
+            onClick={() => {
+              setPurchaseDocumentMode(selectedReport === "salesReport.inputInvoices" ? "invoice" : "deliveryNote");
+              setPurchaseDocumentOpen(true);
+            }}
+          >
+            {t("purchaseDocument.create")}
+          </button>
+        )}
+        {selectedReportPage?.hasMore && (
+          <button
+            type="button"
+            disabled={reportLoadingMore}
+            onClick={() => {
+              void loadMoreReportRows();
+            }}
+          >
+            {reportLoadingMore ? t("salesReport.loadingMore") : t("salesReport.loadMore")}
           </button>
         )}
         <button
@@ -1764,8 +2117,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           <h1 className="report-title">{t("home.salesReport")}</h1>
         </header>
         <aside className="report-nav">
-          <strong>{t("salesReport.output")}</strong>
-          {outputReports.map((reportKey) => (
+          {availableReports.visibleOutputReports.length > 0 && <strong>{t("salesReport.output")}</strong>}
+          {availableReports.visibleOutputReports.map((reportKey) => (
             <button
               type="button"
               className={selectedReport === reportKey ? "selected" : ""}
@@ -1777,8 +2130,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             </button>
           ))}
 
-          <strong className="report-nav-section">{t("salesReport.input")}</strong>
-          {inputReports.map((reportKey) => (
+          {availableReports.visibleInputReports.length > 0 && <strong className="report-nav-section">{t("salesReport.input")}</strong>}
+          {availableReports.visibleInputReports.map((reportKey) => (
             <button
               type="button"
               className={selectedReport === reportKey ? "selected" : ""}
@@ -1820,11 +2173,35 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             <div className="report-data">
               {renderReportToolbar()}
               <div className="report-table-scroll">
-                <table className="report-table">
+                <table
+                  className="report-table"
+                  style={{ width: `${reportTableWidth}px`, minWidth: "100%" }}
+                >
+                  <colgroup>
+                    {visibleColumnLayout.map((column) => (
+                      <col key={column.key} style={{ width: column.width }} />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr>
-                      {visibleAttributes.map((attribute) => (
-                        <th key={attribute}>{t(attributeLabelKey[attribute])}</th>
+                      {visibleColumnLayout.map((column) => (
+                        <TableLayoutHeaderCell
+                          column={column}
+                          key={column.key}
+                          movable={column.key !== "total"}
+                          resizeLabel={`${t("stock.columns.resize")} ${t(attributeLabelKey[column.key] ?? column.key)}`}
+                          onReorder={(draggedKey, targetKey) => {
+                            if (draggedKey !== "total" && targetKey !== "total") {
+                              selectedReportTableLayout.reorderColumns(draggedKey, targetKey);
+                            }
+                          }}
+                          onMove={(attribute, direction) => {
+                            moveVisibleReportColumn(selectedReportTableLayout, attribute, direction);
+                          }}
+                          onResize={selectedReportTableLayout.resizeColumn}
+                        >
+                          {t(attributeLabelKey[column.key] ?? column.key)}
+                        </TableLayoutHeaderCell>
                       ))}
                     </tr>
                   </thead>
@@ -1848,8 +2225,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
                           }
                         }}
                       >
-                        {visibleAttributes.map((attribute) => (
-                          <td key={attribute}>{t(row[attribute] ?? "")}</td>
+                        {visibleColumnLayout.map((column) => (
+                          <td key={column.key}>{t(row[column.key] ?? "")}</td>
                         ))}
                       </tr>
                     ))}
@@ -1887,7 +2264,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             </header>
             <div className="visualization-layout">
               <aside className="visualization-reports">
-                {allReports.map((reportKey) => (
+                {availableReports.all.map((reportKey) => (
                   <button
                     type="button"
                     className={visualReport === reportKey ? "selected" : ""}
@@ -1987,6 +2364,9 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
       <WarehouseDocumentDialog
         mode={warehouseDocumentMode}
         open={warehouseDocumentOpen}
+        app={app}
+        username={session.username}
+        accessToken={session.accessToken}
         title={t(selectedReport)}
         token={session.accessToken}
         products={warehouseProducts}
@@ -1996,16 +2376,27 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         terminalContext={terminalContext}
         canConfirm={
           session.permissions.includes("ADMIN")
-          || session.permissions.includes("GESTION_PRODUCTO")
-          || session.permissions.includes(
-            warehouseDocumentMode === "input"
-              ? "WAREHOUSE_INPUTS_CONFIRM"
-              : "WAREHOUSE_OUTPUTS_CONFIRM"
-          )
+          || session.permissions.includes("GESTION_ALMACEN")
         }
         onClose={() => setWarehouseDocumentOpen(false)}
         onConfirmed={() => {
           setWarehouseDocumentOpen(false);
+          setReportReloadKey((value) => value + 1);
+        }}
+      />
+
+      <PurchaseDocumentDialog
+        open={purchaseDocumentOpen}
+        mode={purchaseDocumentMode}
+        token={session.accessToken}
+        products={warehouseProducts}
+        warehouses={warehouseMasterOptions}
+        suppliers={warehouseSuppliers}
+        taxes={purchaseTaxes}
+        t={t}
+        onClose={() => setPurchaseDocumentOpen(false)}
+        onConfirmed={() => {
+          setPurchaseDocumentOpen(false);
           setReportReloadKey((value) => value + 1);
         }}
       />

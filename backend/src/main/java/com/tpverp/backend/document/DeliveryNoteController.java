@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.application.PermissionChecks;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -27,13 +28,17 @@ public class DeliveryNoteController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_READ','VENTA')")
-    public List<DocumentView> list() {
-        return service.listDeliveryNotes().stream().map(DocumentView::from).toList();
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_READ','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN','GESTION_CUENTAS')")
+    public List<DocumentView> list(Authentication authentication) {
+        return service.listDeliveryNotes(
+                        PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ"),
+                        PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
+                .map(DocumentView::from)
+                .toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_WRITE','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_WRITE','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
@@ -41,8 +46,17 @@ public class DeliveryNoteController {
                 request.toCommand(), authentication));
     }
 
+    @PostMapping("/confirmed")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_WRITE','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
+    public DocumentView createAndConfirm(
+            @Valid @RequestBody DocumentRequest request,
+            Authentication authentication) {
+        return DocumentView.from(service.createAndConfirmDeliveryNote(
+                request.toCommand(), authentication));
+    }
+
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_CONFIRM','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_CONFIRM','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {

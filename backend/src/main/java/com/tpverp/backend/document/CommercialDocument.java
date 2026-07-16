@@ -196,6 +196,14 @@ public class CommercialDocument {
         return numTicket;
     }
 
+    public String getNumeroExterno() {
+        return numeroExterno;
+    }
+
+    public LocalDate getFechaVencimiento() {
+        return fechaVencimiento;
+    }
+
     public UUID getStockUserId() {
         if (anuladoPor != null) {
             return anuladoPor;

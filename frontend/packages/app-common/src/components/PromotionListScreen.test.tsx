@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   promotionActionDisabled,
   promotionActionRequest,
-  promotionDateRange
+  promotionDateRange,
+  promotionListColumnDefinitions,
+  promotionListTableKey
 } from "./PromotionListScreen";
 import type { PromotionView } from "./PromotionWizard";
 
@@ -63,5 +65,11 @@ describe("PromotionListScreen", () => {
     expect(promotionDateRange(promotion())).toBe("2026-07-11");
     expect(promotionDateRange(promotion({ endDate: "2026-07-31" })))
       .toBe("2026-07-11 - 2026-07-31");
+  });
+
+  it("defines the persisted promotion data columns without the fixed actions column", () => {
+    expect(promotionListTableKey).toBe("promotions.list");
+    expect(promotionListColumnDefinitions.map((column) => column.key))
+      .toEqual(["name", "status", "type", "date", "segment"]);
   });
 });

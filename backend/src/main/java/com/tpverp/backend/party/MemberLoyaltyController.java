@@ -27,6 +27,12 @@ public class MemberLoyaltyController {
         this.service = service;
     }
 
+    @GetMapping("/api/v1/members")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    public List<MemberLoyaltyService.MemberDirectoryView> list() {
+        return service.list();
+    }
+
     @GetMapping("/api/v1/members/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
     public MemberLoyaltyService.MemberView get(@PathVariable UUID id) {

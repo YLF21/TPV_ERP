@@ -1,12 +1,36 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import type { LocaleCode, UserSession } from "../types";
+import type { AppKind, LocaleCode, UserSession } from "../types";
 import type { StockBulkDraftView } from "./stockBulkEdit";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
+
+const stockBulkWorkspaceColumns = [
+  { key: "code", labelKey: "stock.bulkEdit.workspace.code", defaultWidth: 128 },
+  { key: "name", labelKey: "stock.bulkEdit.listName", defaultWidth: 190 },
+  { key: "version", labelKey: "stock.bulkEdit.workspace.version", defaultWidth: 72 },
+  { key: "comment", labelKey: "stock.bulkEdit.draft.comment", defaultWidth: 240 },
+  { key: "createdBy", labelKey: "stock.bulkEdit.draft.createdBy", defaultWidth: 120 },
+  { key: "createdAt", labelKey: "stock.bulkEdit.draft.createdAt", defaultWidth: 148 },
+  { key: "updatedBy", labelKey: "stock.bulkEdit.draft.updatedBy", defaultWidth: 120 },
+  { key: "updatedAt", labelKey: "stock.bulkEdit.draft.updatedAt", defaultWidth: 148 },
+  { key: "status", labelKey: "stock.bulkEdit.workspace.status", defaultWidth: 104 }
+] as const;
+
+type StockBulkWorkspaceColumnKey = typeof stockBulkWorkspaceColumns[number]["key"];
+
+const stockBulkWorkspaceColumnByKey = new Map(
+  stockBulkWorkspaceColumns.map((column) => [column.key, column] as const)
+);
 
 type StockBulkWorkspaceListProps = {
   locale: LocaleCode;
   session: UserSession;
+  app?: AppKind;
+  username?: string;
+  accessToken?: string;
   drafts: StockBulkDraftView[];
   selectedId: string | null;
   busy: boolean;
@@ -39,6 +63,9 @@ export function canDeleteStockBulkDraft(draft: StockBulkDraftView, session: User
 export function StockBulkWorkspaceList({
   locale,
   session,
+  app = "venta",
+  username = "",
+  accessToken,
   drafts,
   selectedId,
   busy,
@@ -50,6 +77,14 @@ export function StockBulkWorkspaceList({
   onDelete
 }: StockBulkWorkspaceListProps) {
   const t = createTranslator(locale);
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: "stock.bulkEdit.workspaces",
+    definitions: stockBulkWorkspaceColumns
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const selectedDraft = drafts.find((draft) => draft.id === selectedId) ?? null;
   const canDelete = selectedDraft ? canDeleteStockBulkDraft(selectedDraft, session) : false;
@@ -63,6 +98,9 @@ export function StockBulkWorkspaceList({
   }, [selectedId]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
       const nextId = nextStockBulkDraftId(drafts, selectedId, event.key === "ArrowDown" ? 1 : -1);
@@ -72,6 +110,48 @@ export function StockBulkWorkspaceList({
     if (event.key === "Enter" && selectedDraft) {
       event.preventDefault();
       onOpen(selectedDraft);
+    }
+  }
+
+  function renderDraftCell(
+    draft: StockBulkDraftView,
+    columnKey: StockBulkWorkspaceColumnKey,
+    latestComment: string
+  ) {
+    switch (columnKey) {
+      case "code":
+        return <td key={columnKey} data-column-key={columnKey}><strong>{draft.code}</strong></td>;
+      case "name":
+        return <td key={columnKey} data-column-key={columnKey}>{draft.name}</td>;
+      case "version":
+        return <td key={columnKey} data-column-key={columnKey}>V{draft.versionNumber}</td>;
+      case "comment":
+        return (
+          <td
+            key={columnKey}
+            data-column-key={columnKey}
+            className="stock-bulk-workspace-comment"
+            title={latestComment}
+          >
+            {latestComment}
+          </td>
+        );
+      case "createdBy":
+        return <td key={columnKey} data-column-key={columnKey}>{draft.createdBy}</td>;
+      case "createdAt":
+        return <td key={columnKey} data-column-key={columnKey}>{dateFormatter.format(new Date(draft.createdAt))}</td>;
+      case "updatedBy":
+        return <td key={columnKey} data-column-key={columnKey}>{draft.updatedBy}</td>;
+      case "updatedAt":
+        return <td key={columnKey} data-column-key={columnKey}>{dateFormatter.format(new Date(draft.updatedAt))}</td>;
+      case "status":
+        return (
+          <td key={columnKey} data-column-key={columnKey}>
+            <span className={`stock-bulk-workspace-status ${draft.status.toLowerCase()}`}>
+              {t(`stock.bulkEdit.status.${draft.status}`)}
+            </span>
+          </td>
+        );
     }
   }
 
@@ -109,17 +189,27 @@ export function StockBulkWorkspaceList({
         aria-label={t("stock.bulkEdit.workspace.table")}
       >
         <table className="report-table stock-bulk-workspace-table">
+          <colgroup>
+            {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+          </colgroup>
           <thead>
             <tr>
-              <th>{t("stock.bulkEdit.workspace.code")}</th>
-              <th>{t("stock.bulkEdit.listName")}</th>
-              <th>{t("stock.bulkEdit.workspace.version")}</th>
-              <th>{t("stock.bulkEdit.draft.comment")}</th>
-              <th>{t("stock.bulkEdit.draft.createdBy")}</th>
-              <th>{t("stock.bulkEdit.draft.createdAt")}</th>
-              <th>{t("stock.bulkEdit.draft.updatedBy")}</th>
-              <th>{t("stock.bulkEdit.draft.updatedAt")}</th>
-              <th>{t("stock.bulkEdit.workspace.status")}</th>
+              {visibleColumns.map((column) => {
+                const definition = stockBulkWorkspaceColumnByKey.get(column.key);
+                const label = t(definition?.labelKey ?? column.key);
+                return (
+                  <TableLayoutHeaderCell
+                    column={column}
+                    key={column.key}
+                    resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                    onReorder={tableLayout.reorderColumns}
+                    onMove={tableLayout.moveColumn}
+                    onResize={tableLayout.resizeColumn}
+                  >
+                    {label}
+                  </TableLayoutHeaderCell>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -137,21 +227,13 @@ export function StockBulkWorkspaceList({
                   onClick={() => onSelect(draft.id)}
                   onDoubleClick={() => onOpen(draft)}
                 >
-                  <td><strong>{draft.code}</strong></td>
-                  <td>{draft.name}</td>
-                  <td>V{draft.versionNumber}</td>
-                  <td className="stock-bulk-workspace-comment" title={latestComment}>{latestComment}</td>
-                  <td>{draft.createdBy}</td>
-                  <td>{dateFormatter.format(new Date(draft.createdAt))}</td>
-                  <td>{draft.updatedBy}</td>
-                  <td>{dateFormatter.format(new Date(draft.updatedAt))}</td>
-                  <td><span className={`stock-bulk-workspace-status ${draft.status.toLowerCase()}`}>{t(`stock.bulkEdit.status.${draft.status}`)}</span></td>
+                  {visibleColumns.map((column) => renderDraftCell(draft, column.key, latestComment))}
                 </tr>
               );
             })}
             {drafts.length === 0 && (
               <tr>
-                <td colSpan={9} className="stock-empty-state">{t("stock.bulkEdit.noDrafts")}</td>
+                <td colSpan={visibleColumns.length} className="stock-empty-state">{t("stock.bulkEdit.noDrafts")}</td>
               </tr>
             )}
           </tbody>

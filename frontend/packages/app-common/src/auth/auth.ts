@@ -10,7 +10,7 @@ const localUsers: LocalUser[] = [
     username: "admin",
     password: "admin",
     displayName: "ADMIN",
-    permissions: ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS"]
+    permissions: ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"]
   },
   {
     username: "venta",
@@ -29,6 +29,12 @@ const localUsers: LocalUser[] = [
     password: "producto",
     displayName: "PRODUCTO",
     permissions: ["GESTION_PRODUCTO"]
+  },
+  {
+    username: "almacen",
+    password: "almacen",
+    displayName: "ALMACEN",
+    permissions: ["GESTION_ALMACEN"]
   }
 ];
 
@@ -49,9 +55,15 @@ export function canAccessApp(permissions: Permission[], app: AppKind): boolean {
     return true;
   }
   if (app === "venta") {
-    return permissions.includes("VENTA");
+    return permissions.includes("VENTA")
+      || permissions.includes("GESTION_VENTAS")
+      || permissions.includes("GESTION_PRODUCTO")
+      || permissions.includes("GESTION_ALMACEN")
+      || permissions.includes("GESTION_CUENTAS");
   }
-  return permissions.includes("GESTION_VENTAS") || permissions.includes("GESTION_PRODUCTO");
+  return permissions.includes("GESTION_VENTAS")
+    || permissions.includes("GESTION_PRODUCTO")
+    || permissions.includes("GESTION_ALMACEN");
 }
 
 export function hasPermission(session: UserSession, permission: Permission): boolean {
@@ -102,7 +114,7 @@ export async function authenticateRemote(
 function permissionsFromRole(role: string): Permission[] {
   const normalized = role.toUpperCase();
   if (normalized === "ADMIN") {
-    return ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS"];
+    return ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"];
   }
 
   const permissions: Permission[] = [];
@@ -114,6 +126,9 @@ function permissionsFromRole(role: string): Permission[] {
   }
   if (normalized.includes("GESTION_PRODUCTO")) {
     permissions.push("GESTION_PRODUCTO");
+  }
+  if (normalized.includes("GESTION_ALMACEN")) {
+    permissions.push("GESTION_ALMACEN");
   }
   if (normalized.includes("GESTION_CUENTAS")) {
     permissions.push("GESTION_CUENTAS");

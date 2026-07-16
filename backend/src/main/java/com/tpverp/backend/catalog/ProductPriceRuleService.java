@@ -133,33 +133,20 @@ public class ProductPriceRuleService {
     }
 
     @Transactional(readOnly = true)
-    public ProductPriceRulePreview preview(UUID id, Long ruleVersion) {
+    public ProductPriceRulePreview preview(UUID id, Long ruleVersion, List<UUID> productIds) {
         UUID companyId = organization.currentCompany().getId();
         ProductPriceRule rule = find(id, companyId);
         requireVersion(rule, ruleVersion);
-        return evaluate(rule).preview();
+        return evaluate(rule, productIds).preview();
     }
 
-    @Transactional
-    public ProductPriceRulePreview apply(UUID id, Long ruleVersion) {
-        UUID companyId = organization.currentCompany().getId();
-        ProductPriceRule rule = find(id, companyId);
-        requireVersion(rule, ruleVersion);
-        Evaluation evaluation = evaluate(rule);
-        if (!evaluation.updates().isEmpty()) {
-            catalog.updateProducts(evaluation.updates());
-        }
-        return evaluation.preview();
-    }
-
-    private Evaluation evaluate(ProductPriceRule rule) {
+    private Evaluation evaluate(ProductPriceRule rule, List<UUID> requestedProductIds) {
         UUID storeId = organization.currentStore().getId();
         List<ProductPriceRuleForm.Definition> forms =
                 ProductPriceRuleForm.validateAndCopy(rule.getForms());
-        List<Product> productList = products.findByStoreIdOrderByNombre(storeId);
+        List<Product> productList = selectedProducts(storeId, requestedProductIds);
         EvaluationContext context = context(forms, storeId, productList);
         List<ProductPriceRulePreview.ProductChange> changedProducts = new ArrayList<>();
-        List<CatalogService.BulkProductUpdate> updates = new ArrayList<>();
         int matchedProducts = 0;
 
         for (Product product : productList) {
@@ -171,14 +158,25 @@ public class ProductPriceRuleService {
                 catalog.validateProductUpdate(product.getId(), productEvaluation.request());
                 changedProducts.add(new ProductPriceRulePreview.ProductChange(
                         product.getId(), product.getName(), productEvaluation.changes()));
-                updates.add(new CatalogService.BulkProductUpdate(
-                        product.getId(), product.getVersion(), productEvaluation.request()));
             }
         }
-        return new Evaluation(
-                new ProductPriceRulePreview(
-                        rule.getId(), rule.getVersion(), matchedProducts, List.copyOf(changedProducts)),
-                List.copyOf(updates));
+        return new Evaluation(new ProductPriceRulePreview(
+                rule.getId(), rule.getVersion(), matchedProducts, List.copyOf(changedProducts)));
+    }
+
+    private List<Product> selectedProducts(UUID storeId, List<UUID> requestedProductIds) {
+        if (requestedProductIds == null || requestedProductIds.isEmpty()) {
+            throw new IllegalArgumentException("Selecciona al menos un producto para ejecutar la regla");
+        }
+        LinkedHashSet<UUID> targetIds = new LinkedHashSet<>(requestedProductIds);
+        List<Product> found = products.findAllByStoreIdAndIdIn(storeId, targetIds);
+        Map<UUID, Product> productsById = found.stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        if (productsById.size() != targetIds.size()) {
+            throw new IllegalArgumentException(
+                    "La regla contiene productos no encontrados en la tienda actual");
+        }
+        return targetIds.stream().map(productsById::get).toList();
     }
 
     private ProductEvaluation evaluateProduct(
@@ -665,15 +663,14 @@ public class ProductPriceRuleService {
     }
 
     public record ProductPriceRuleExecutionRequest(
-            @NotNull Long ruleVersion) {
+            @NotNull Long ruleVersion,
+            @NotEmpty @Size(max = 5_000) List<@NotNull UUID> productIds) {
     }
 
     private record Assignment(Object value, Set<Integer> formIndexes) {
     }
 
-    private record Evaluation(
-            ProductPriceRulePreview preview,
-            List<CatalogService.BulkProductUpdate> updates) {
+    private record Evaluation(ProductPriceRulePreview preview) {
     }
 
     private record ProductEvaluation(

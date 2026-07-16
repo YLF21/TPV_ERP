@@ -38,7 +38,7 @@ public class CustomerController {
     }
 
     @GetMapping("/sale-options")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','VENTA','GESTION_ALMACEN')")
     public List<SaleCustomerOption> saleOptions() {
         return service.list().stream()
                 .map(SaleCustomerOption::from)

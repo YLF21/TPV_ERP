@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  assignStockBulkImageSource,
   applyStockBulkImageSnapshot,
   cloneStockBulkImageSnapshot,
   createStockBulkImageSnapshot,
@@ -8,6 +9,8 @@ import {
   StockBulkImagePanel,
   stockBulkImagePendingAssignments,
   stockBulkImageRows,
+  stockBulkImageSources,
+  replaceStockBulkImageFolder,
   syncStockBulkDraftImages,
   uploadStockBulkImage
 } from "./StockBulkImagePanel";
@@ -38,6 +41,70 @@ describe("StockBulkImagePanel helpers", () => {
     expect(cloned.rows[0].file).toBe(file);
     expect(source.rows[0].productId).toBe("");
     expect(source.rows[0].selected).toBe(false);
+  });
+
+  it("assigns one imported image to several products without duplicating the source", () => {
+    const rows = stockBulkImageRows([new File(["image"], "shared.png", { type: "image/png" })]);
+    const assigned = assignStockBulkImageSource(
+      rows,
+      rows[0].sourceId,
+      ["product-1", "product-2", "product-3"]
+    );
+
+    expect(assigned.map((row) => row.productId)).toEqual(["product-1", "product-2", "product-3"]);
+    expect(stockBulkImageSources(assigned)).toHaveLength(1);
+    expect(stockBulkImageSources(assigned)[0].productIds).toEqual(["product-1", "product-2", "product-3"]);
+  });
+
+  it("replaces only unassigned folder images and preserves previous assignments", () => {
+    const firstFolder = stockBulkImageRows([
+      new File(["assigned"], "assigned.png", { type: "image/png" }),
+      new File(["unused"], "unused.png", { type: "image/png" })
+    ]);
+    const assigned = assignStockBulkImageSource(firstFolder, firstFolder[0].sourceId, ["product-1"]);
+    const secondFolder = stockBulkImageRows([new File(["new"], "new.png", { type: "image/png" })]);
+
+    const replaced = replaceStockBulkImageFolder(assigned, secondFolder);
+
+    expect(replaced.map((row) => row.fileName)).toEqual(["assigned.png", "new.png"]);
+    expect(replaced[0].productId).toBe("product-1");
+  });
+
+  it("uploads a reused source once while creating one manifest assignment per product", async () => {
+    const rows = stockBulkImageRows([new File(["shared"], "shared.png", { type: "image/png" })]);
+    const assigned = assignStockBulkImageSource(rows, rows[0].sourceId, ["product-1", "product-2"]);
+    let sentBody: FormData | undefined;
+    const request = vi.fn(async (_input: RequestInfo | URL, options?: RequestInit) => {
+      sentBody = options?.body as FormData;
+      return new Response(JSON.stringify({
+        version: 2,
+        images: assigned.map((row, index) => ({
+          id: `staged-${index}`,
+          productId: row.productId,
+          position: index,
+          fileName: row.fileName,
+          contentType: row.fileType,
+          size: row.file.size,
+          sha256: "a"
+        }))
+      }), { headers: { "Content-Type": "application/json" } });
+    });
+
+    await syncStockBulkDraftImages(
+      "draft-1",
+      1,
+      { rows: assigned },
+      "token",
+      request as typeof fetch,
+      "/api/v1"
+    );
+
+    expect(sentBody?.getAll("files")).toHaveLength(1);
+    const manifest = JSON.parse(await (sentBody?.get("manifest") as File).text());
+    expect(manifest.images).toEqual([
+      { productId: "product-1", fileIndex: 0 },
+      { productId: "product-2", fileIndex: 0 }
+    ]);
   });
 
   it("persists new image files and keeps existing staged image ids", async () => {
@@ -230,10 +297,29 @@ describe("StockBulkImagePanel helpers", () => {
     expect(html).toContain("Abrir carpeta");
     expect(html).toContain("Comparar por nombre");
     expect(html).toContain("Comparar por código");
-    expect(html).toContain("erp-select__trigger");
     expect(html).not.toContain("<select");
-    expect(html).toContain("Tipo de archivo");
-    expect(html).toContain("Asignación manual");
+    expect(html).toContain("Imágenes importadas");
+    expect(html).toContain("0 productos seleccionados");
+    expect(html).toContain('draggable="true"');
     expect(html).not.toContain("Subir");
+  });
+
+  it("renders a compact draggable image source list without a product dropdown", () => {
+    const file = new File(["image"], "P-001.png", { type: "image/png" });
+    const html = renderToStaticMarkup(
+      <StockBulkImagePanel
+        locale="es"
+        products={[]}
+        snapshot={createStockBulkImageSnapshot(stockBulkImageRows([file]))}
+        onStatus={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('<label class="bulk-check"><input data-image-entry="true"');
+    expect(html.match(/data-image-entry="true"/g)).toHaveLength(2);
+    expect(html.match(/data-image-source-entry="true"/g)).toHaveLength(1);
+    expect(html.match(/draggable="true"/g)).toHaveLength(1);
+    expect(html).not.toContain("Producto asignado");
+    expect(html).not.toContain("erp-select__trigger");
   });
 });
