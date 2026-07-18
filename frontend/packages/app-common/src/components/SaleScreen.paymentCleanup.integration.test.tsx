@@ -22,7 +22,17 @@ const oldSession = {
   allocations: [{ id: "old-allocation", idempotencyKey: "old-allocation", kind: "INTEGRATED_CARD", amount: "12.10", status: "PENDING" }]
 };
 const configuration = { rules: { cardManualEnabled: false, integratedCardEnabled: true }, providerDescriptors: [{ provider: "REDSYS_TPV_PC", capabilities: [] }], configuration: { provider: "REDSYS_TPV_PC", enabled: true } };
-const product = { id: "coffee", code: "CAF-001", barcode: "8410000000011", name: "Cafe molido", salePrice: 10 };
+const product = {
+  id: "coffee",
+  code: "CAF-001",
+  barcode: "8410000000011",
+  name: "Cafe molido",
+  salePrice: 10,
+  taxId: "tax-iva-21",
+  taxesIncluded: true,
+  taxRegime: "IVA" as const,
+  taxPercentage: 21,
+};
 
 function mount(onLogout = vi.fn()) {
   return render(<SaleScreen app="venta" locale="es" session={session} terminalContext={terminal} onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={onLogout} />);
@@ -41,7 +51,7 @@ describe("SaleScreen payment cleanup across restart", () => {
     let resolveActive!: (value: null) => void;
     const activeResponse = new Promise<null>((resolve) => { resolveActive = resolve; });
     apiRequestMock.mockImplementation(async (path: string) => {
-      if (path === "/products") return [product];
+      if (path === "/products/sale") return [product];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return activeResponse;
       if (path === "/pos/payment-sessions") return { id: "new-card-session", total: "10.00", status: "COLLECTING", allocations: [] };
@@ -88,7 +98,7 @@ describe("SaleScreen payment cleanup across restart", () => {
     localStorage.setItem(`${storageKey}.allocation-attempt`, "old-attempt");
     let activeCalls = 0;
     apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
-      if (path === "/products") return [];
+      if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return activeCalls++ === 0 ? oldSession : null;
       if (path.endsWith("/simulator-discard")) {
@@ -124,7 +134,7 @@ describe("SaleScreen payment cleanup across restart", () => {
     const pendingCleanup = new Promise<typeof oldSession & { status: string }>((resolve) => { resolveCleanup = resolve; });
     const liveSession = { ...oldSession, id: "task-4-live-session" };
     apiRequestMock.mockImplementation(async (path: string) => {
-      if (path === "/products") return [];
+      if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return liveSession;
       if (path.endsWith("/simulator-discard")) {
