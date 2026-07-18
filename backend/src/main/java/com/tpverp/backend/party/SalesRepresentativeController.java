@@ -26,26 +26,26 @@ public class SalesRepresentativeController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_READ','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public List<SalesRepresentativeService.SalesRepresentativeView> list() {
         return service.list();
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_READ','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SalesRepresentativeService.SalesRepresentativeView get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SalesRepresentativeService.SalesRepresentativeView create(
             @Valid @RequestBody SalesRepresentativeRequest request) {
         return service.create(request.command());
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_WRITE','GESTION_CLIENTE_PROVEEDOR','GESTION_ALMACEN')")
     public SalesRepresentativeService.SalesRepresentativeView update(
             @PathVariable UUID id,
             @Valid @RequestBody SalesRepresentativeRequest request) {
@@ -53,7 +53,7 @@ public class SalesRepresentativeController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SUPPLIERS_DELETE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('SUPPLIERS_DELETE','GESTION_CLIENTE_PROVEEDOR')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();

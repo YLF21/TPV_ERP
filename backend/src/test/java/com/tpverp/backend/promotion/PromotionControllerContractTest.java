@@ -17,13 +17,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 class PromotionControllerContractTest {
 
     private static final String READ_PERMISSION =
-            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','STOCK_READ')";
-    private static final String MANAGE_PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','STOCK_READ')";
+    private static final String MANAGE_PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_PRODUCTO')";
     private static final String SALES_PERMISSION =
-            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')";
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_VENTAS','VENTA')";
 
     @Test
-    void exposesPromotionManagementApiWithSalesManagementPermission() throws Exception {
+    void exposesPromotionManagementApiWithProductManagementPermission() throws Exception {
         assertThat(PromotionController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/promotions");
 

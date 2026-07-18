@@ -162,9 +162,10 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
 
 export function memberLoyaltyPermissions(session: UserSession) {
   const admin = session.permissions.includes("ADMIN");
+  const partyManager = session.permissions.includes("GESTION_CLIENTE_PROVEEDOR");
   return {
-    canWrite: admin || session.permissions.includes("CUSTOMERS_WRITE"),
-    canSetCategory: admin
+    canWrite: admin || partyManager || session.permissions.includes("CUSTOMERS_WRITE"),
+    canSetCategory: admin || partyManager || session.permissions.includes("CUSTOMERS_WRITE")
   };
 }
 

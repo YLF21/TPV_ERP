@@ -707,8 +707,10 @@ describe("StockScreen", () => {
     expect(userCanReadStock({ permissions: ["STOCK_READ"] })).toBe(true);
     expect(userCanReadStock({ permissions: ["GESTION_VENTAS"] })).toBe(true);
     expect(userCanReadStock({ permissions: ["GESTION_PRODUCTO"] })).toBe(true);
+    expect(userCanReadStock({ permissions: ["GESTION_ALMACEN"] })).toBe(true);
     expect(userCanReadStock({ permissions: ["VENTA"] })).toBe(false);
     expect(userCanManageWarehouses({ permissions: ["WAREHOUSES_MANAGE"] })).toBe(true);
+    expect(userCanManageWarehouses({ permissions: ["GESTION_ALMACEN"] })).toBe(true);
     expect(userCanManageWarehouses({ permissions: ["GESTION_PRODUCTO"] })).toBe(false);
     expect(userCanReadStock({ permissions: ["ADMIN"] })).toBe(true);
   });

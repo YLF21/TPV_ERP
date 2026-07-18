@@ -4,7 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.CA
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.CASH_OPERATE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.CASH_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_CUENTAS;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -40,7 +40,7 @@ public class CashController {
 
     @GetMapping("/status")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
-            + GESTION_VENTAS + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+            + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
     public CashSessionView status(
             @RequestParam UUID terminalId,
             Authentication authentication) {
@@ -48,7 +48,7 @@ public class CashController {
     }
 
     @PostMapping("/sessions/open")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_VENTAS + "','" + CASH_OPERATE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashSessionView open(
             @RequestBody CashOpenRequest request,
             Authentication authentication) {
@@ -56,7 +56,7 @@ public class CashController {
     }
 
     @PostMapping("/sessions/close")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_VENTAS + "','" + CASH_OPERATE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashSessionView close(
             @RequestBody CloseRequest request,
             Authentication authentication) {
@@ -64,7 +64,7 @@ public class CashController {
     }
 
     @PostMapping("/movements/entry")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_VENTAS + "','" + CASH_OPERATE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashMovementView entry(
             @RequestBody EntryRequest request,
             Authentication authentication) {
@@ -72,7 +72,7 @@ public class CashController {
     }
 
     @PostMapping("/movements/withdrawal")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + GESTION_VENTAS + "','" + CASH_OPERATE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashMovementView withdrawal(
             @RequestBody WithdrawalRequest request,
             Authentication authentication) {
@@ -89,7 +89,7 @@ public class CashController {
 
     @GetMapping("/receipts/withdrawals/{movementId}")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
-            + GESTION_VENTAS + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+            + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
     public CashReceiptView withdrawalReceipt(
             @PathVariable UUID movementId,
             Authentication authentication) {
@@ -98,7 +98,7 @@ public class CashController {
 
     @GetMapping("/receipts/sessions/{sessionId}")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
-            + GESTION_VENTAS + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
+            + VENTA + "','" + CASH_OPERATE + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
     public CashReceiptView sessionReceipt(
             @PathVariable UUID sessionId,
             Authentication authentication) {

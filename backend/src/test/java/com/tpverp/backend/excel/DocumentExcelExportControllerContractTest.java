@@ -14,12 +14,15 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(DocumentExcelExportController.class)
+@Import(DocumentExcelExportControllerContractTest.MethodSecurityConfiguration.class)
 class DocumentExcelExportControllerContractTest {
 
     private static final MediaType XLSX = MediaType.parseMediaType(
@@ -53,5 +56,23 @@ class DocumentExcelExportControllerContractTest {
                         .content("{\"documentIds\":[\"" + id + "\"]}"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(XLSX));
+    }
+
+    @Test
+    void salesManagementCanExportButPosSalesCannot() throws Exception {
+        var id = UUID.randomUUID();
+        when(service.export(id)).thenReturn(new byte[] {1});
+
+        mvc.perform(get("/api/v1/excel/documents/{id}/export", id)
+                        .with(user("manager").authorities(() -> "GESTION_VENTAS")))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/excel/documents/{id}/export", id)
+                        .with(user("seller").authorities(() -> "VENTA")))
+                .andExpect(status().isForbidden());
+    }
+
+    @EnableMethodSecurity
+    static class MethodSecurityConfiguration {
     }
 }

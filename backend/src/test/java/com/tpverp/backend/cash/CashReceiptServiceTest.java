@@ -84,7 +84,7 @@ class CashReceiptServiceTest {
     }
 
     @Test
-    void sellerCloseReceiptDoesNotExposeRetainedFundWithDiscrepancy() {
+    void sellerCloseReceiptDoesNotExposeAccountingTotals() {
         var fixture = fixture();
         var session = closedSession(fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId());
         when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
@@ -92,7 +92,7 @@ class CashReceiptServiceTest {
         var receipt = fixture.service.closeReceipt(session.getId(), salesAuthentication(fixture.user));
 
         assertThat(receipt.retainedFund()).isNull();
-        assertThat(receipt.discrepancy()).isEqualByComparingTo("-5.00");
+        assertThat(receipt.discrepancy()).isNull();
         assertThat(receipt.expectedCash()).isNull();
         assertThat(receipt.giverSignatureLabel()).isEmpty();
         assertThat(receipt.receiverSignatureLabel()).isEmpty();
@@ -151,7 +151,7 @@ class CashReceiptServiceTest {
 
     private static UsernamePasswordAuthenticationToken salesAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
-                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
+                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.VENTA)));
     }
 
     private static UsernamePasswordAuthenticationToken accountingAuthentication(UserAccount user) {

@@ -4,7 +4,7 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.CA
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.CASH_OPERATE;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.CASH_READ;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_CUENTAS;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_VENTAS;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -67,21 +67,21 @@ class CashControllerContractTest {
         assertThat(root.value()).containsExactly("/api/v1/cash");
 
         assertEndpoint("status", GetMapping.class, new String[] {"/status"},
-                "GESTION_VENTAS", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
+                "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("open", PostMapping.class, new String[] {"/sessions/open"},
-                "GESTION_VENTAS", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("close", PostMapping.class, new String[] {"/sessions/close"},
-                "GESTION_VENTAS", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("entry", PostMapping.class, new String[] {"/movements/entry"},
-                "GESTION_VENTAS", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("withdrawal", PostMapping.class, new String[] {"/movements/withdrawal"},
-                "GESTION_VENTAS", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("betweenSessions", PostMapping.class, new String[] {"/movements/between-sessions"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
         assertEndpoint("withdrawalReceipt", GetMapping.class, new String[] {"/receipts/withdrawals/{movementId}"},
-                "GESTION_VENTAS", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
+                "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("sessionReceipt", GetMapping.class, new String[] {"/receipts/sessions/{sessionId}"},
-                "GESTION_VENTAS", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
+                "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("report", GetMapping.class, new String[] {"/reports"},
                 "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("config", GetMapping.class, new String[] {"/config"},
@@ -98,7 +98,7 @@ class CashControllerContractTest {
 
         mvc.perform(get("/api/v1/cash/status")
                         .param("terminalId", TERMINAL_ID.toString())
-                        .with(user("seller").authorities(() -> GESTION_VENTAS)))
+                        .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.openingFund").value(40.00))
                 .andExpect(jsonPath("$.expectedCash").doesNotExist())
@@ -130,7 +130,7 @@ class CashControllerContractTest {
         mvc.perform(get("/api/v1/cash/reports")
                         .param("from", "2026-06-25T00:00:00Z")
                         .param("to", "2026-06-26T00:00:00Z")
-                        .with(user("seller").authorities(() -> GESTION_VENTAS)))
+                        .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isForbidden());
     }
 

@@ -23,7 +23,7 @@ class MemberLoyaltyControllerContractTest {
                 .contains("CUSTOMERS_WRITE");
         assertThat(method("setCategory", MemberLoyaltyController.SetCategoryRequest.class)
                 .getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasRole('ADMIN')");
+                .contains("CUSTOMERS_WRITE", "GESTION_CLIENTE_PROVEEDOR");
         assertThat(method("settings").getAnnotation(GetMapping.class).value())
                 .containsExactly("/api/v1/member-settings");
         assertThat(method("updateSettings", MemberLoyaltyController.SettingsRequest.class)

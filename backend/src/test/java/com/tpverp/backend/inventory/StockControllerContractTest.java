@@ -63,7 +63,7 @@ class StockControllerContractTest {
         assertThat(method.getGenericReturnType().getTypeName())
                 .contains("PagedResult", "StockPageItem");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
                 .hasSize(9);
@@ -103,11 +103,11 @@ class StockControllerContractTest {
         assertThat(getSettings.getAnnotation(GetMapping.class).value())
                 .containsExactly("/settings");
         assertThat(getSettings.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "hasRole('ADMIN')");
         assertThat(putSettings.getAnnotation(PutMapping.class).value())
                 .containsExactly("/settings");
         assertThat(putSettings.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSES_MANAGE", "hasRole('ADMIN')")
+                .contains("WAREHOUSES_MANAGE", "GESTION_ALMACEN", "hasRole('ADMIN')")
                 .doesNotContain("GESTION_PRODUCTO");
         assertThat(patchInactiveSales.getAnnotation(PatchMapping.class).value())
                 .containsExactly("/settings/inactive-product-sales");
@@ -121,8 +121,24 @@ class StockControllerContractTest {
         assertThat(deleteMinimum.getAnnotation(DeleteMapping.class).value())
                 .containsExactly("/minimums/{productId}/{warehouseId}");
         assertThat(putMinimum.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSES_MANAGE");
+                .contains("WAREHOUSES_MANAGE", "GESTION_ALMACEN");
         assertThat(deleteMinimum.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSES_MANAGE");
+                .contains("WAREHOUSES_MANAGE", "GESTION_ALMACEN");
+    }
+
+    @Test
+    void warehouseManagementCanAdjustAndTransferStockWithoutTechnicalRebuild() throws NoSuchMethodException {
+        assertThat(StockController.class.getDeclaredMethod(
+                        "adjust", StockController.AdjustmentRequest.class, Authentication.class)
+                .getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_ADJUST", "GESTION_ALMACEN");
+        assertThat(StockController.class.getDeclaredMethod(
+                        "transfer", StockController.TransferRequest.class, Authentication.class)
+                .getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_TRANSFER", "GESTION_ALMACEN");
+        assertThat(StockController.class.getDeclaredMethod("rebuildSnapshots")
+                .getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_ADJUST")
+                .doesNotContain("GESTION_ALMACEN");
     }
 }
