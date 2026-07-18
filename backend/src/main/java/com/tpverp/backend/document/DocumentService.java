@@ -967,7 +967,9 @@ public class DocumentService {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
         }
         var origin = locked.origin();
+        validateRelationTypes(type, invoice, origin);
         validateRelationOrigin(type, origin);
+        requireOneToOneInvoiceRelation(type, invoice, origin);
         requireNoActiveCollection(type, invoice, origin);
         validateSalesDeliveryNoteInvoice(type, invoice, origin);
         relations.save(new DocumentRelation(invoice, origin, type));
@@ -1049,6 +1051,38 @@ public class DocumentService {
     private static void validateRelationOrigin(DocumentRelationType type, CommercialDocument origin) {
         if (type == DocumentRelationType.FACTURA_DE && INVOICES.contains(origin.getTipo())) {
             throw new IllegalStateException("origen incompatible para factura agrupada");
+        }
+    }
+
+    private static void validateRelationTypes(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE) {
+            return;
+        }
+        if (invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
+            throw new IllegalStateException(
+                    "el destino de FACTURA_DE debe ser FACTURA_VENTA");
+        }
+        if (origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            throw new IllegalStateException(
+                    "el origen de FACTURA_DE debe ser ALBARAN_VENTA");
+        }
+    }
+
+    private void requireOneToOneInvoiceRelation(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE) {
+            return;
+        }
+        if (relations.existsByOrigen_IdAndTipo(origin.getId(), type)) {
+            throw new IllegalStateException("el albaran ya esta relacionado con una factura");
+        }
+        if (relations.existsByDocumento_IdAndTipo(invoice.getId(), type)) {
+            throw new IllegalStateException("la factura ya esta relacionada con un albaran");
         }
     }
 

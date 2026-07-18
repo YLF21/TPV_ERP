@@ -1280,6 +1280,89 @@ class DocumentServiceTest {
     }
 
     @Test
+    void facturaDeRejectsPurchaseAndRectificationDestinations() {
+        var purchaseInvoice = draft(CommercialDocumentType.FACTURA_COMPRA);
+        var purchaseNote = draft(CommercialDocumentType.ALBARAN_COMPRA);
+        stubLocked(purchaseInvoice, purchaseNote);
+
+        assertThatThrownBy(() -> service.relate(
+                purchaseInvoice.getId(), purchaseNote.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FACTURA_VENTA");
+
+        var rectification = draft(CommercialDocumentType.RECTIFICATIVA_VENTA);
+        var salesNote = draft(CommercialDocumentType.ALBARAN_VENTA);
+        stubLocked(rectification, salesNote);
+
+        assertThatThrownBy(() -> service.relate(
+                rectification.getId(), salesNote.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FACTURA_VENTA");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsNonDeliveryNoteSalesOrigin() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        stubLocked(invoice, ticket);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), ticket.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ALBARAN_VENTA");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsSecondInvoiceForSameDeliveryNoteAfterDocumentLocks() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                origin.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("albaran");
+
+        var order = inOrder(documentRepository, relationRepository);
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        order.verify(documentRepository).findLockedDocument(firstId, store.getId());
+        order.verify(documentRepository).findLockedDocument(secondId, store.getId());
+        order.verify(relationRepository).existsByOrigen_IdAndTipo(
+                origin.getId(), DocumentRelationType.FACTURA_DE);
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsSecondDeliveryNoteForSameInvoice() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        when(relationRepository.existsByDocumento_IdAndTipo(
+                invoice.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("factura");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
     void salesDeliveryNoteWithPartialPaymentCannotBecomeInvoiceOrigin() {
         var customerId = UUID.randomUUID();
         var invoice = confirmedSales(
