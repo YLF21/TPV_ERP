@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionHomeScreen } from "./SessionHomeScreen";
 import type { TerminalContext, UserSession } from "../types";
+
+const moduleFilename = (import.meta as ImportMeta & { filename: string }).filename;
+const tpvStyles = readFileSync(new URL("../styles/tpv.css", pathToFileURL(moduleFilename)), "utf8");
 
 const session: UserSession = {
   username: "admin",
@@ -66,6 +71,28 @@ describe("SessionHomeScreen", () => {
     expect(within(screen.getByRole("button", { name: /informe/i })).getByText("F3")).toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: /configuraci|ajustes/i })).getByText("F4")).toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: /deudas clientes/i })).getByText("F5")).toBeInTheDocument();
+
+    const sale = screen.getByRole("button", { name: /venta/i });
+    expect(sale).toHaveAttribute("data-home-action", "sale");
+    expect(sale.querySelector(".home-action-icon-panel")).not.toBeNull();
+    expect(sale.querySelector(".home-action-label")).not.toBeNull();
+    expect(sale.querySelector(".home-action-shortcut")).not.toBeNull();
+  });
+
+  it("keeps the single-column launcher reachable at narrow widths", () => {
+    const narrowStyles = tpvStyles.slice(tpvStyles.lastIndexOf("@media (max-width: 1023px)"));
+
+    expect(narrowStyles).toMatch(/body:has\(\.home-screen\)\s*\{[^}]*min-width: 0;/s);
+    expect(narrowStyles).toMatch(/\.home-screen\s*\{[^}]*overflow-y: auto;/s);
+    expect(narrowStyles).toMatch(/\.home-screen \.home-actions\s*\{[^}]*position: relative !important;[^}]*transform: none !important;/s);
+    expect(narrowStyles).toMatch(/\.home-screen \.home-action-sale\s*\{[^}]*height: auto !important;/s);
+  });
+
+  it("wins the legacy span cascade for launcher panels and labels", () => {
+    const finalStyles = tpvStyles.slice(tpvStyles.lastIndexOf("/* APP VENTA home launcher:"));
+
+    expect(finalStyles).toMatch(/\.home-screen \.home-action-side \.home-action \.home-action-icon-panel\s*\{[^}]*align-self: stretch !important;[^}]*justify-self: stretch !important;/s);
+    expect(finalStyles).toMatch(/\.home-screen \.home-action \.home-action-label\s*\{[^}]*justify-self: start !important;[^}]*font-size: clamp\(22px, 2\.2vw, 36px\) !important;/s);
   });
 
   it("wires product and warehouse actions to their callbacks", () => {
