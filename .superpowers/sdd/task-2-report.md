@@ -53,3 +53,25 @@
 ## Concerns
 
 None for this task. The build emits pre-existing Vite warnings about large chunks/dynamic import chunking; it succeeds and these warnings are unrelated to the change.
+
+## Review fix
+
+### RED/GREEN evidence
+
+- RED: `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.test.tsx`
+  - Result: 92 passed, 2 failed.
+  - Expected failures: an empty tax percentage did not throw, and a whitespace percentage reached the pending-sale quote flow instead of rendering the fiscal catalog error.
+- GREEN: the same command after validating the raw percentage before `Number(...)` conversion.
+  - Result: 94 passed, 0 failed.
+- Final verification: `cd frontend && npm.cmd run build`
+  - Result: both `@tpverp/app-gestion` and `@tpverp/app-venta` completed TypeScript checks and production builds successfully.
+
+### Changes
+
+- Rejects `null`, `undefined`, non-number/non-string values, and blank strings before numeric fiscal normalization.
+- Adds regression coverage for empty string, whitespace, and `null` tax percentages.
+- Adds an integration-style SaleScreen test that confirms invalid catalog fiscal data renders the validation alert and does not open `CustomerPendingSaleDialog`.
+
+### Commit
+
+- `179665b77d2daa80dfe9d9a06b8f83af818ac46d` — `fix: reject blank pending sale tax rates`
