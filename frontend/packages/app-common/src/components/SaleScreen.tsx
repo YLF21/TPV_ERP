@@ -49,9 +49,10 @@ export type SaleProduct = {
   offerActive?: boolean | null;
   offerFrom?: string | null;
   offerUntil?: string | null;
-  taxesIncluded?: boolean | null;
-  taxRegime?: string | null;
-  taxPercentage?: number | string | null;
+  taxId: string;
+  taxesIncluded: boolean;
+  taxRegime: "IVA" | "IGIC";
+  taxPercentage: number | string;
   rate?: string | null;
 };
 
@@ -460,6 +461,21 @@ export function filterSaleCustomers(customers: SaleCustomer[], query: string, li
     .slice(0, limit);
 }
 
+export function saleProductFiscalSnapshot(product: SaleProduct) {
+  const percentage = Number(product.taxPercentage);
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+    throw new Error("Producto sin porcentaje fiscal válido");
+  }
+  if (product.taxRegime !== "IVA" && product.taxRegime !== "IGIC") {
+    throw new Error("Producto sin régimen fiscal válido");
+  }
+  return {
+    taxesIncluded: product.taxesIncluded,
+    taxPercentage: percentage.toFixed(2),
+    taxRegime: product.taxRegime,
+  };
+}
+
 export function pendingSaleDraftForCustomer(
   lines: SaleLine[],
   customer: SaleCustomer,
@@ -476,8 +492,7 @@ export function pendingSaleDraftForCustomer(
       name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
       price: effectiveSaleProductPrice(line.product, customer.activeMember === true).toFixed(2),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
-      discount: line.discountPercent.toFixed(2), taxesIncluded: line.product.taxesIncluded !== false,
-      taxRegime: line.product.taxRegime ?? "GENERAL", taxPercentage: Number(line.product.taxPercentage ?? 0).toFixed(2),
+      discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
     })),
   };
 }
@@ -641,7 +656,7 @@ export function SaleScreen({
     setCatalogLoading(true);
     setCatalogError(false);
     Promise.all([
-      apiRequest<SaleProduct[]>("/products", { token: session.accessToken }),
+      apiRequest<SaleProduct[]>("/products/sale", { token: session.accessToken }),
       apiRequest<{ allowInactiveProductSales?: boolean }>("/stock/settings", { token: session.accessToken })
         .catch(() => ({ allowInactiveProductSales: false }))
     ])

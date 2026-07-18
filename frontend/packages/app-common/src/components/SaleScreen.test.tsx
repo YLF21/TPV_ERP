@@ -146,9 +146,9 @@ function installTicketHardware(printTicket: ReturnType<typeof vi.fn>) {
 }
 
 const products: SaleProduct[] = [
-  { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10 },
-  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50" },
-  { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75 }
+  { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10, taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" },
+  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50", taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" },
+  { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75, taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" }
 ];
 
 const memberDiscountProduct: SaleProduct = {
@@ -156,7 +156,11 @@ const memberDiscountProduct: SaleProduct = {
   code: "MEM-CAFE",
   name: "Cafe socio",
   salePrice: 10,
-  discountType: "MEMBER_DISCOUNT"
+  discountType: "MEMBER_DISCOUNT",
+  taxId: "tax-iva-21",
+  taxesIncluded: true,
+  taxPercentage: 21,
+  taxRegime: "IVA",
 };
 
 const customers: SaleCustomer[] = [
@@ -466,12 +470,39 @@ describe("SaleScreen", () => {
     expect(triggerCash).toHaveBeenCalledTimes(1);
   });
 
+  it("loads the sale catalog from the fiscal sale endpoint", async () => {
+    const apiPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      apiPaths.push(path.replace("/api/v1", ""));
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([{
+          ...products[0],
+          taxId: "tax-iva-21",
+          taxesIncluded: true,
+          taxPercentage: 21,
+          taxRegime: "IVA",
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+
+    await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(apiPaths).toContain("/products/sale"));
+    expect(apiPaths).not.toContain("/products");
+  });
+
   it("opens F12 through customer selection, uses local plus 30 days and clears only after create succeeds", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 6, 16, 12));
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([{ ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([{ ...customers[0], activeMember: true, memberDiscountPercent: 5 }, customers[1]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/warehouses")) return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/customer-pending-sales/quote")) {
@@ -532,7 +563,7 @@ describe("SaleScreen", () => {
 
   it("auto-opens the same uncertain pending checkout after unmount and reload without requoting", async () => {
     const recoveredDraft = pendingSaleDraftForCustomer([
-      { product: { ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }, quantity: 1, discountPercent: 0 },
+      { product: products[0], quantity: 1, discountPercent: 0 },
     ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-reload");
     savePendingSaleRecovery(localStorage, {
       version: 2,
@@ -547,7 +578,7 @@ describe("SaleScreen", () => {
     });
     const fetchMock = vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([{ id: "card-method", name: "TARJETA", active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
       throw new Error(`unexpected request ${path}`);
     });
@@ -564,7 +595,7 @@ describe("SaleScreen", () => {
 
   it("auto-reopens and byte-replays a READY_TO_CREATE sale without card after a lost response", async () => {
     const recoveredDraft = pendingSaleDraftForCustomer([
-      { product: { ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }, quantity: 1, discountPercent: 0 },
+      { product: products[0], quantity: 1, discountPercent: 0 },
     ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-ready");
     savePendingSaleRecovery(localStorage, {
       version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
@@ -575,7 +606,7 @@ describe("SaleScreen", () => {
     let creates = 0;
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products") || path.endsWith("/payment-methods")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale") || path.endsWith("/payment-methods")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/customer-pending-sales")) {
         bodies.push(String(options?.body)); creates += 1;
         if (creates === 1) throw new Error("response lost");
@@ -1019,7 +1050,7 @@ describe("SaleScreen", () => {
     const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -1041,7 +1072,7 @@ describe("SaleScreen", () => {
     const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -1071,6 +1102,7 @@ describe("SaleScreen", () => {
 
   it("limits visible search results", () => {
     const manyProducts = Array.from({ length: 12 }, (_, index) => ({
+      ...products[0],
       id: String(index),
       code: `CODE-${index}`,
       name: `Product ${index}`,
@@ -1082,7 +1114,7 @@ describe("SaleScreen", () => {
 
   it("prioritizes an exact code or barcode when selecting with Enter", () => {
     const ambiguous: SaleProduct[] = [
-      { id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 },
+      { ...products[0], id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 },
       ...products
     ];
 
@@ -1156,29 +1188,33 @@ describe("SaleScreen", () => {
 
   it("uses a valid member price only for an active member", () => {
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 8.5,
       discountType: "MEMBER_PRICE"
     }, true)).toBe(8.5);
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 8.5,
       discountType: "MEMBER_PRICE"
     }, false)).toBe(10);
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 0,
       discountType: "MEMBER_PRICE"
     }, true)).toBe(10);
-    expect(effectiveSaleProductPrice({ id: "normal", salePrice: 10 }, true)).toBe(10);
+    expect(effectiveSaleProductPrice({ ...products[0], id: "normal", salePrice: 10 }, true)).toBe(10);
   });
 
   it("displays a current offer price and falls back after expiry", () => {
 
     const offered: SaleProduct = {
+      ...products[0],
       id: "offer",
       salePrice: 10,
       offerPrice: 7.5,
@@ -1329,6 +1365,25 @@ describe("SaleScreen", () => {
     expect(pending.lines[0]).not.toHaveProperty("memberDiscountPercent");
   });
 
+  it("requires a valid fiscal percentage and regime for every pending-sale line", () => {
+    const validLines = addSaleLine([], products[0]);
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+
+    expect(pendingSaleDraftForCustomer(validLines, customer, "warehouse-1", now, "checkout-1")
+      .lines[0]).toMatchObject({ taxPercentage: "21.00", taxRegime: "IVA" });
+
+    expect(() => pendingSaleDraftForCustomer(
+      [{ ...validLines[0], product: { ...validLines[0].product, taxPercentage: undefined as never } }],
+      customer, "warehouse-1", now, "checkout-1",
+    )).toThrow("Producto sin porcentaje fiscal válido");
+
+    expect(() => pendingSaleDraftForCustomer(
+      [{ ...validLines[0], product: { ...validLines[0].product, taxRegime: "GENERAL" as never } }],
+      customer, "warehouse-1", now, "checkout-1",
+    )).toThrow("Producto sin régimen fiscal válido");
+  });
+
   it("uses confirmed server amounts in the cash payment result", () => {
     expect(resolveCashPaymentResult(
       { number: "T-42", total: "12.34", received: "50.00", change: "7.66" },
@@ -1411,7 +1466,7 @@ describe("SaleScreen", () => {
     };
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([activeMember]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash")) {
@@ -1465,7 +1520,7 @@ describe("SaleScreen", () => {
     const pendingQuote = new Promise<Response>((resolve) => { resolveQuote = resolve; });
     const fetchMock = vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return pendingQuote;
       throw new Error(`unexpected request ${path}`);
     });
@@ -1494,7 +1549,7 @@ describe("SaleScreen", () => {
     const pendingQuote = new Promise<Response>((_resolve, reject) => { rejectQuote = reject; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return pendingQuote;
       throw new Error(`unexpected request ${path}`);
     }));
