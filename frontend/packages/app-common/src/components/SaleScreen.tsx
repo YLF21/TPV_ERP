@@ -462,7 +462,16 @@ export function filterSaleCustomers(customers: SaleCustomer[], query: string, li
 }
 
 export function saleProductFiscalSnapshot(product: SaleProduct) {
-  const percentage = Number(product.taxPercentage);
+  const rawPercentage: unknown = product.taxPercentage;
+  if (
+    rawPercentage === null
+    || rawPercentage === undefined
+    || (typeof rawPercentage !== "number" && typeof rawPercentage !== "string")
+    || (typeof rawPercentage === "string" && rawPercentage.trim() === "")
+  ) {
+    throw new Error("Producto sin porcentaje fiscal válido");
+  }
+  const percentage = Number(rawPercentage);
   if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
     throw new Error("Producto sin porcentaje fiscal válido");
   }

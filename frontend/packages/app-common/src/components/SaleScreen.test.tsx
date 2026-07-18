@@ -561,6 +561,36 @@ describe("SaleScreen", () => {
     vi.useRealTimers();
   });
 
+  it("shows the fiscal catalog error instead of opening a pending-sale dialog", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([{ ...products[0], taxPercentage: " " }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customers/sale-options")) {
+        return new Response(JSON.stringify([customers[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/warehouses")) {
+        return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.keyDown(window, { key: "F12" });
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Producto sin porcentaje fiscal válido");
+    expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument();
+  });
+
   it("auto-opens the same uncertain pending checkout after unmount and reload without requoting", async () => {
     const recoveredDraft = pendingSaleDraftForCustomer([
       { product: products[0], quantity: 1, discountPercent: 0 },
@@ -1382,6 +1412,19 @@ describe("SaleScreen", () => {
       [{ ...validLines[0], product: { ...validLines[0].product, taxRegime: "GENERAL" as never } }],
       customer, "warehouse-1", now, "checkout-1",
     )).toThrow("Producto sin régimen fiscal válido");
+  });
+
+  it("rejects empty, blank, and null fiscal percentages", () => {
+    const validLine = addSaleLine([], products[0])[0];
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+
+    for (const taxPercentage of ["", " ", null]) {
+      expect(() => pendingSaleDraftForCustomer(
+        [{ ...validLine, product: { ...validLine.product, taxPercentage: taxPercentage as never } }],
+        customer, "warehouse-1", now, "checkout-1",
+      )).toThrow("Producto sin porcentaje fiscal válido");
+    }
   });
 
   it("uses confirmed server amounts in the cash payment result", () => {
