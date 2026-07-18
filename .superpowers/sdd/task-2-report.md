@@ -97,3 +97,21 @@ None for this task. The build emits pre-existing Vite warnings about large chunk
 ### Commit
 
 - `5d03529ea9647bf2d09b3095130a4b62fa551dce` — `fix: validate pending sale tax inclusion`
+
+## Task 3 integration-test regression fix
+
+### RED/GREEN evidence
+
+- RED: `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.paymentCleanup.integration.test.tsx`
+  - Result: 2 passed, 1 failed.
+  - Expected failure: the stale `/products` mock left the sale catalog unloaded, so the test could not find the coffee search option.
+- GREEN: the same command after changing the integration mock to `/products/sale` and adding the required fiscal fixture fields.
+  - Result: 3 passed, 0 failed.
+- Full frontend verification: `cd frontend && npm.cmd test`
+  - Result: 72 test files passed; 741 tests passed.
+- Build verification: `cd frontend && npm.cmd run build`
+  - Result: both `@tpverp/app-gestion` and `@tpverp/app-venta` completed TypeScript checks and production builds successfully.
+
+### Commit
+
+- `f0ee2bcd409a218c7dca314914d72edf496b17cd` — `test: use fiscal sale catalog in payment cleanup`
