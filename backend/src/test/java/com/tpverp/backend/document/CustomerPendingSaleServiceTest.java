@@ -235,7 +235,7 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("approved_card_payment_required");
         verify(reservations, org.mockito.Mockito.times(2)).insert(any());
-        verify(reservations, org.mockito.Mockito.times(2)).release(any());
+        verify(reservations, never()).release(any(UUID.class), any(UUID.class));
     }
 
     @Test
@@ -261,7 +261,7 @@ class CustomerPendingSaleServiceTest {
         }
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
         verify(reservations, org.mockito.Mockito.times(5)).insert(any());
-        verify(reservations, org.mockito.Mockito.times(5)).release(any());
+        verify(reservations, never()).release(any(UUID.class), any(UUID.class));
     }
 
     @Test
@@ -347,7 +347,7 @@ class CustomerPendingSaleServiceTest {
                 .hasMessageContaining("configuration");
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
         verify(reservations).insert(any());
-        verify(reservations).release(any());
+        verify(reservations, never()).release(any(UUID.class), any(UUID.class));
     }
 
     @Test
@@ -361,6 +361,9 @@ class CustomerPendingSaleServiceTest {
                 UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId, hash, NOW);
         when(reservations.findAfterConflict(terminalId, request.checkoutId()))
                 .thenReturn(winner);
+        when(reservations.claim(eq(terminalId), eq(request.checkoutId()), eq(storeId),
+                eq(userId), eq(hash), any(UUID.class), any(Instant.class), any(Instant.class)))
+                .thenThrow(new IllegalStateException("pending_sale_checkout_in_progress"));
 
         assertThatThrownBy(() -> service.create(request, authentication))
                 .isInstanceOf(IllegalStateException.class)
@@ -369,7 +372,7 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
-    void documentFailureReleasesIndependentReservationForSafeRetry() {
+    void documentFailureKeepsLeasedReservationForFencedRetryAfterRollback() {
         var request = request(List.of(), new BigDecimal("100.00"));
         stubQuote(request, new BigDecimal("100.00"));
         when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
@@ -381,7 +384,7 @@ class CustomerPendingSaleServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("document rollback");
 
-        verify(reservations).release(any(CustomerPendingSaleCheckout.class));
+        verify(reservations, never()).release(any(UUID.class), any(UUID.class));
         verify(checkouts, never()).save(any());
         verify(terminalOperations, never()).linkDocument(any(), any(), any());
     }

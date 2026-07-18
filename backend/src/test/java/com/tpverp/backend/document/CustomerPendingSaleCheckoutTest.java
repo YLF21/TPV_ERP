@@ -9,6 +9,20 @@ import org.junit.jupiter.api.Test;
 class CustomerPendingSaleCheckoutTest {
 
     @Test
+    void expiredOwnerLeaseCanBeClaimedButLiveLeaseCannotBeStolen() {
+        var now = Instant.parse("2026-07-16T10:15:30Z");
+        var originalOwner = UUID.randomUUID();
+        var nextOwner = UUID.randomUUID();
+        var checkout = CustomerPendingSaleCheckout.reserve(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), "a".repeat(64), originalOwner, now.plusSeconds(30), now);
+
+        assertThat(checkout.claim(nextOwner, now.plusSeconds(20), now.plusSeconds(5))).isFalse();
+        assertThat(checkout.claim(nextOwner, now.plusSeconds(61), now.plusSeconds(31))).isTrue();
+        assertThat(checkout.isOwnedBy(nextOwner)).isTrue();
+    }
+
+    @Test
     void reservationMatchesItsPayloadHashAndCompletesWithTheCreatedDocument() {
         var checkout = CustomerPendingSaleCheckout.reserve(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),

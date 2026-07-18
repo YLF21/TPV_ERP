@@ -11,6 +11,7 @@ import com.tpverp.backend.terminal.PaymentTerminalResult;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -21,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CustomerPendingSaleService {
+
+    private static final Duration CHECKOUT_LEASE = Duration.ofSeconds(30);
 
     private final DocumentService documents;
     private final CustomerPendingSaleCheckoutRepository checkouts;
@@ -89,31 +92,45 @@ public class CustomerPendingSaleService {
         var terminalId = currentTerminal.terminalId(authentication);
         var storeId = organization.currentStore().getId();
         var userId = organization.currentUser(authentication).getId();
+        var owner = UUID.randomUUID();
         var replayHash = CustomerPendingSaleRequestHasher.hash(
                 request, Objects.requireNonNull(request.quotedTotal(), "quotedTotal"));
 
         var existing = reservations.find(
                 terminalId, request.checkoutId());
+        CustomerPendingSaleCheckout checkout = null;
         if (existing.isPresent()) {
-            return replayOrContinue(
-                    existing.orElseThrow(), replayHash, storeId, userId, request);
+            var current = existing.orElseThrow();
+            var replay = replayIfCompleted(
+                    current, replayHash, storeId, userId, request);
+            if (replay.isPresent()) return replay.orElseThrow();
+            checkout = reservations.claim(terminalId, request.checkoutId(), storeId, userId,
+                    replayHash, owner, Instant.now(clock).plus(CHECKOUT_LEASE),
+                    Instant.now(clock));
         }
 
         var total = authoritativeQuote(request, authentication).getTotal();
         requireQuotedTotal(request, total);
         var hash = CustomerPendingSaleRequestHasher.hash(request, total);
 
-        var checkout = CustomerPendingSaleCheckout.reserve(
-                UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
-                hash, Instant.now(clock));
-        try {
-            checkout = reservations.insert(checkout);
-        } catch (org.springframework.dao.DataIntegrityViolationException conflict) {
-            var winner = reservations.findAfterConflict(terminalId, request.checkoutId());
-            return replayOrContinue(winner, hash, storeId, userId, request);
+        if (existing.isEmpty()) {
+            checkout = CustomerPendingSaleCheckout.reserve(
+                    UUID.randomUUID(), request.checkoutId(), terminalId, storeId, userId,
+                    hash, owner, Instant.now(clock).plus(CHECKOUT_LEASE), Instant.now(clock));
+            try {
+                reservations.insert(checkout);
+            } catch (org.springframework.dao.DataIntegrityViolationException conflict) {
+                var winner = reservations.findAfterConflict(terminalId, request.checkoutId());
+                var replay = replayIfCompleted(winner, hash, storeId, userId, request);
+                if (replay.isPresent()) return replay.orElseThrow();
+                checkout = reservations.claim(terminalId, request.checkoutId(), storeId, userId,
+                        hash, owner, Instant.now(clock).plus(CHECKOUT_LEASE),
+                        Instant.now(clock));
+            }
         }
 
         try {
+            reservations.lockOwned(checkout.getId(), owner);
             var declaredCard = integratedCardPayment(request);
             var durableCharge = terminalOperations.find(request.checkoutId())
                     .filter(CustomerPendingSaleService::isDurableCharge);
@@ -145,7 +162,6 @@ public class CustomerPendingSaleService {
             checkouts.save(checkout);
             return views.receivableView(document, request.date());
         } catch (RuntimeException failure) {
-            reservations.release(checkout);
             throw failure;
         }
     }
@@ -161,7 +177,7 @@ public class CustomerPendingSaleService {
                 : new IllegalStateException("payment_operation_resolution_required");
     }
 
-    private CustomerReceivableView replayOrContinue(
+    private Optional<CustomerReceivableView> replayIfCompleted(
             CustomerPendingSaleCheckout checkout,
             String hash,
             UUID storeId,
@@ -173,10 +189,9 @@ public class CustomerPendingSaleService {
         if (!checkout.matchesHash(hash)) {
             throw new IllegalStateException("pending_sale_checkout_idempotency_conflict");
         }
-        if (!checkout.isCompleted()) {
-            throw new IllegalStateException("pending_sale_checkout_in_progress");
-        }
-        return views.receivableView(documents.find(checkout.getDocumentId()), request.date());
+        if (!checkout.isCompleted()) return Optional.empty();
+        return Optional.of(views.receivableView(
+                documents.find(checkout.getDocumentId()), request.date()));
     }
 
     private CommercialDocument authoritativeQuote(

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CardTerminalConfiguration;
 import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
 import com.tpverp.backend.terminal.CurrentTerminal;
@@ -43,16 +44,53 @@ class CustomerReceivableServiceTest {
     private final CurrentTerminal currentTerminal = mock(CurrentTerminal.class);
     private final CurrentOrganization organization = mock(CurrentOrganization.class);
     private final DocumentViewAssembler views = mock(DocumentViewAssembler.class);
+    private final CustomerReceivablePaymentReservationCoordinator paymentReservations =
+            mock(CustomerReceivablePaymentReservationCoordinator.class);
+    private final CustomerReceivablePaymentReservationRepository paymentReservationRepository =
+            mock(CustomerReceivablePaymentReservationRepository.class);
+    private final CustomerReceivableTransactionRunner transactions =
+            mock(CustomerReceivableTransactionRunner.class);
     private final Authentication authentication = mock(Authentication.class);
+    private final UserAccount user = mock(UserAccount.class);
     private final Store store = store();
     private CustomerReceivableService service;
 
     @BeforeEach
     void setUp() {
         when(organization.currentStore()).thenReturn(store);
+        when(organization.currentUser(authentication)).thenReturn(user);
+        org.mockito.Mockito.lenient().when(user.getId()).thenReturn(UUID.randomUUID());
+        org.mockito.Mockito.lenient().when(currentTerminal.terminalId(authentication))
+                .thenReturn(UUID.randomUUID());
+        when(transactions.run(any())).thenAnswer(invocation ->
+                ((java.util.function.Supplier<?>) invocation.getArgument(0)).get());
+        org.mockito.Mockito.lenient().when(paymentReservations.acquire(
+                any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class),
+                any(UUID.class), any(String.class), any(BigDecimal.class),
+                any(CustomerReceivablePaymentReservation.Kind.class), any(UUID.class)))
+                .thenAnswer(invocation -> {
+                    var owner = invocation.getArgument(8, UUID.class);
+                    var kind = invocation.getArgument(
+                            7, CustomerReceivablePaymentReservation.Kind.class);
+                    var reservation = CustomerReceivablePaymentReservation.reserve(
+                            invocation.getArgument(0), invocation.getArgument(1),
+                            invocation.getArgument(2), invocation.getArgument(3),
+                            invocation.getArgument(4), invocation.getArgument(5),
+                            invocation.getArgument(6), kind, owner,
+                            Instant.parse("2026-07-16T10:00:30Z"),
+                            Instant.parse("2026-07-16T10:00:00Z"));
+                    if (kind == CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD) {
+                        reservation.markDispatching(owner, Instant.parse("2026-07-16T10:00:01Z"));
+                        reservation.recordTerminalResult(PaymentTerminalOperationStatus.APPROVED,
+                                Instant.parse("2026-07-16T10:00:02Z"));
+                    }
+                    return new CustomerReceivablePaymentReservationCoordinator.Acquisition(
+                            reservation, true, false);
+                });
         service = new CustomerReceivableService(
                 documents, payments, documentService, terminalOperations, configurations,
-                currentTerminal, organization, views,
+                currentTerminal, organization, views, paymentReservations,
+                paymentReservationRepository, transactions,
                 Clock.fixed(Instant.parse("2026-07-16T10:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -116,6 +154,9 @@ class CustomerReceivableServiceTest {
         when(documents.findLockedReceivable(document.getId(), store.getId()))
                 .thenReturn(Optional.of(document));
         when(payments.findByRequestId(PAYMENT_ID)).thenReturn(Optional.empty());
+        when(paymentReservations.acquire(any(), any(), any(), any(), any(), any(),
+                any(), any(), any())).thenThrow(new IllegalArgumentException(
+                        "message.document.payment_exceeds_pending_total"));
 
         assertThatThrownBy(() -> service.pay(
                 document.getId(), transfer(UUID.randomUUID(), PAYMENT_ID, "100.01", "TR-1"), authentication))
@@ -143,7 +184,7 @@ class CustomerReceivableServiceTest {
         when(operation.getStoreId()).thenReturn(store.getId());
         when(operation.matchesConfigurationIdentity(configuration)).thenReturn(true);
         when(operation.getRequestHash()).thenReturn(cardHash(
-                document.getId(), document.getPendingTotal(), new BigDecimal("20.00"), PAYMENT_ID));
+                document.getId(), new BigDecimal("20.00"), PAYMENT_ID));
         when(operation.getAmount()).thenReturn(new BigDecimal("20.00"));
         when(operation.getProvider()).thenReturn(PaymentTerminalProvider.PAYTEF);
         when(operation.getExternalReference()).thenReturn("PAYTEF-1");
@@ -185,8 +226,7 @@ class CustomerReceivableServiceTest {
                 "c".repeat(64), Map.of());
         var expected = new PaymentTerminalResult(
                 PaymentTerminalOperationStatus.APPROVED, "APPROVED", "REF", "AUTH", "OK");
-        var hash = cardHash(document.getId(), document.getPendingTotal(),
-                new BigDecimal("20.00"), PAYMENT_ID);
+        var hash = cardHash(document.getId(), new BigDecimal("20.00"), PAYMENT_ID);
         when(documents.findCustomerReceivable(document.getId(), store.getId()))
                 .thenReturn(Optional.of(document));
         when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
@@ -210,6 +250,9 @@ class CustomerReceivableServiceTest {
         var document = receivable(null, LocalDate.of(2026, 8, 1), "100.00");
         when(documents.findLockedReceivable(document.getId(), store.getId()))
                 .thenReturn(Optional.of(document));
+        when(paymentReservations.acquire(any(), any(), any(), any(), any(), any(),
+                any(), any(), any())).thenThrow(new IllegalStateException(
+                        "customer_receivable_customer_required"));
 
         assertThatThrownBy(() -> service.pay(document.getId(),
                 transfer(UUID.randomUUID(), PAYMENT_ID, "20.00", "TR-1"), authentication))
@@ -294,10 +337,9 @@ class CustomerReceivableServiceTest {
                 reference, null, null, null, null, null, paymentId, null)));
     }
 
-    private static String cardHash(
-            UUID documentId, BigDecimal pending, BigDecimal amount, UUID paymentId) {
-        var canonical = documentId + "|" + Money.euros(pending).toPlainString() + "|"
-                + Money.euros(amount).toPlainString() + "|" + paymentId;
+    private static String cardHash(UUID documentId, BigDecimal amount, UUID paymentId) {
+        var canonical = documentId + "|" + Money.euros(amount).toPlainString()
+                + "|" + paymentId;
         try {
             return java.util.HexFormat.of().formatHex(java.security.MessageDigest
                     .getInstance("SHA-256").digest(canonical.getBytes(

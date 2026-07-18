@@ -128,6 +128,28 @@ documento. Repetir un cobro con igual `requestId` y contenido devuelve el mismo
 resultado. La misma clave con datos distintos produce conflicto: investigue el
 intento original en lugar de cambiarla a ciegas.
 
+### Reservas, concurrencia y recuperacion
+
+Antes de enviar un importe a un datafono o registrar un cobro manual, el
+backend crea una reserva persistente bajo bloqueo del documento. Las reservas
+activas descuentan saldo disponible, por lo que dos cajas no pueden cobrar a
+la vez el mismo saldo aunque utilicen efectivo y tarjeta distintos.
+
+El cobro integrado conserva un `paymentTerminalOperationId` estable y avanza
+por `RESERVED`, `DISPATCHING`, `APPROVED` y `COMPLETED`. Un rechazo o
+cancelacion final libera la reserva. Un timeout o una respuesta incierta no la
+libera: se debe consultar o repetir la misma operacion para reconciliarla; no
+se debe crear otro identificador porque el efecto fisico podria haberse
+producido.
+
+Las reservas de creacion y cobro tienen propietario y lease de 30 segundos.
+Tras una caida, solo el mismo ambito y el mismo hash de solicitud pueden
+reclamar una reserva vencida. La fila se vuelve a bloquear y el propietario se
+comprueba dentro de la transaccion que crea el documento, de modo que un
+proceso antiguo no puede confirmar despues de que otro haya recuperado el
+checkout. La idempotencia del identificador estable evita repetir el efecto
+externo durante la recuperacion.
+
 ### Fallo de impresion
 
 Una venta o cobro confirmado sigue siendo valido si falla la impresora. Pulse

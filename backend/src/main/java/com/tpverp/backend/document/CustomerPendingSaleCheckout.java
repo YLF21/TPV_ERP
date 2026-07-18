@@ -33,6 +33,10 @@ public class CustomerPendingSaleCheckout {
     private Instant createdAt;
     @Column(name = "completed_at")
     private Instant completedAt;
+    @Column(name = "processing_owner", nullable = false)
+    private UUID processingOwner;
+    @Column(name = "processing_lease_until", nullable = false)
+    private Instant processingLeaseUntil;
     @Version
     private long version;
 
@@ -47,6 +51,20 @@ public class CustomerPendingSaleCheckout {
             UUID userId,
             String requestHash,
             Instant createdAt) {
+        return reserve(id, checkoutId, terminalId, storeId, userId, requestHash,
+                UUID.randomUUID(), createdAt.plusSeconds(30), createdAt);
+    }
+
+    public static CustomerPendingSaleCheckout reserve(
+            UUID id,
+            UUID checkoutId,
+            UUID terminalId,
+            UUID storeId,
+            UUID userId,
+            String requestHash,
+            UUID processingOwner,
+            Instant processingLeaseUntil,
+            Instant createdAt) {
         if (requestHash == null || !requestHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("requestHash must be a lowercase SHA-256 hash");
         }
@@ -58,7 +76,31 @@ public class CustomerPendingSaleCheckout {
         checkout.userId = Objects.requireNonNull(userId, "userId");
         checkout.requestHash = requestHash;
         checkout.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+        checkout.processingOwner = Objects.requireNonNull(processingOwner, "processingOwner");
+        checkout.processingLeaseUntil = Objects.requireNonNull(
+                processingLeaseUntil, "processingLeaseUntil");
+        if (!processingLeaseUntil.isAfter(createdAt)) {
+            throw new IllegalArgumentException("processing lease must end after creation");
+        }
         return checkout;
+    }
+
+    public boolean claim(UUID owner, Instant leaseUntil, Instant now) {
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(leaseUntil, "leaseUntil");
+        Objects.requireNonNull(now, "now");
+        if (!leaseUntil.isAfter(now)) {
+            throw new IllegalArgumentException("processing lease must end in the future");
+        }
+        if (completedAt != null) return false;
+        if (processingLeaseUntil != null && processingLeaseUntil.isAfter(now)) return false;
+        processingOwner = owner;
+        processingLeaseUntil = leaseUntil;
+        return true;
+    }
+
+    boolean isOwnedBy(UUID owner) {
+        return processingOwner.equals(owner);
     }
 
     public void complete(UUID documentId, Instant completedAt) {
@@ -83,6 +125,10 @@ public class CustomerPendingSaleCheckout {
 
     UUID getDocumentId() {
         return documentId;
+    }
+
+    UUID getId() {
+        return id;
     }
 
     Instant getCompletedAt() {

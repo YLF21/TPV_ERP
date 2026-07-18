@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HexFormat;
@@ -35,6 +36,9 @@ public class CustomerReceivableService {
     private final CurrentTerminal currentTerminal;
     private final CurrentOrganization organization;
     private final DocumentViewAssembler views;
+    private final CustomerReceivablePaymentReservationCoordinator paymentReservations;
+    private final CustomerReceivablePaymentReservationRepository paymentReservationRepository;
+    private final CustomerReceivableTransactionRunner transactions;
     private final Clock clock;
 
     public CustomerReceivableService(
@@ -46,6 +50,9 @@ public class CustomerReceivableService {
             CurrentTerminal currentTerminal,
             CurrentOrganization organization,
             DocumentViewAssembler views,
+            CustomerReceivablePaymentReservationCoordinator paymentReservations,
+            CustomerReceivablePaymentReservationRepository paymentReservationRepository,
+            CustomerReceivableTransactionRunner transactions,
             Clock clock) {
         this.documents = documents;
         this.payments = payments;
@@ -55,6 +62,9 @@ public class CustomerReceivableService {
         this.currentTerminal = currentTerminal;
         this.organization = organization;
         this.views = views;
+        this.paymentReservations = paymentReservations;
+        this.paymentReservationRepository = paymentReservationRepository;
+        this.transactions = transactions;
         this.clock = clock;
     }
 
@@ -102,50 +112,106 @@ public class CustomerReceivableService {
             Authentication authentication) {
         Objects.requireNonNull(request, "request");
         var amount = positive(request.amount());
+        documentId = Objects.requireNonNull(documentId, "documentId");
         var storeId = organization.currentStore().getId();
-        var document = documents.findCustomerReceivable(
-                        Objects.requireNonNull(documentId, "documentId"), storeId)
-                .orElseThrow(() -> new IllegalArgumentException("customer_receivable_not_found"));
-        requireCollectable(document);
-        requireAtMostPending(amount, document.getPendingTotal());
         var terminalId = currentTerminal.terminalId(authentication);
+        var userId = organization.currentUser(authentication).getId();
         var configuration = configurations.required(terminalId);
         requireConfigurationScope(configuration, terminalId, storeId);
-        return terminalOperations.charge(
-                request.paymentId(), paymentHash(document, request.paymentId(), amount),
-                amount, configuration);
+        var hash = paymentHash(documentId, request.paymentId(), amount);
+        var owner = UUID.randomUUID();
+        var acquired = paymentReservations.acquire(
+                request.paymentId(), documentId, storeId, terminalId, userId, hash, amount,
+                CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD, owner);
+        var status = acquired.reservation().getStatus();
+        if (status == CustomerReceivablePaymentReservation.Status.RESERVED) {
+            paymentReservations.markDispatching(request.paymentId(), owner);
+        }
+        var result = terminalOperations.charge(
+                request.paymentId(), hash, amount, configuration);
+        if (status != CustomerReceivablePaymentReservation.Status.APPROVED
+                && status != CustomerReceivablePaymentReservation.Status.COMPLETED) {
+            paymentReservations.recordTerminalResult(request.paymentId(), result.status());
+        }
+        return result;
     }
 
-    @Transactional
     public CustomerReceivableView pay(
             UUID documentId, PaymentRequest request, Authentication authentication) {
         var item = singlePayment(request);
         var paymentId = Objects.requireNonNull(item.requestId(), "paymentId");
         var storeId = organization.currentStore().getId();
+        var amount = positive(item.importe());
+        var terminalId = currentTerminal.terminalId(authentication);
+        var userId = organization.currentUser(authentication).getId();
+        if (payments.findByRequestId(paymentId).isPresent()) {
+            return transactions.run(() -> finalizeReservedPayment(
+                    documentId, storeId, terminalId, item, paymentId, authentication, null));
+        }
+        var kind = item.paymentTerminalOperationId() == null
+                ? CustomerReceivablePaymentReservation.Kind.STANDARD
+                : CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD;
+        var owner = UUID.randomUUID();
+        var acquisition = paymentReservations.acquire(
+                paymentId, documentId, storeId, terminalId, userId,
+                paymentHash(documentId, paymentId, amount), amount, kind, owner);
+        try {
+            return transactions.run(() -> finalizeReservedPayment(
+                    documentId, storeId, terminalId, item, paymentId,
+                    authentication, acquisition.reservation()));
+        } catch (RuntimeException failure) {
+            paymentReservations.release(paymentId, owner);
+            throw failure;
+        }
+    }
+
+    private CustomerReceivableView finalizeReservedPayment(
+            UUID documentId, UUID storeId, UUID terminalId, PaymentRequest.Item item,
+            UUID paymentId, Authentication authentication,
+            CustomerReceivablePaymentReservation reservation) {
         var document = locked(documentId, storeId);
         requireReceivableType(document);
-
         var replay = payments.findByRequestId(paymentId);
         if (replay.isPresent()) {
             requireReplayIdentity(replay.orElseThrow(), document, item);
+            if (reservation != null
+                    && reservation.getStatus()
+                    != CustomerReceivablePaymentReservation.Status.COMPLETED) {
+                reservation.complete(replay.orElseThrow().getId(), Instant.now(clock));
+                paymentReservationRepository.save(reservation);
+            }
             return views.receivableView(document, businessDate());
         }
 
         requireCollectable(document);
         var amount = positive(item.importe());
         requireAtMostPending(amount, document.getPendingTotal());
-        var terminalId = currentTerminal.terminalId(authentication);
+        if (item.paymentTerminalOperationId() != null
+                && (reservation == null || reservation.getStatus()
+                != CustomerReceivablePaymentReservation.Status.APPROVED)) {
+            throw new IllegalStateException("payment_operation_not_finalizable");
+        }
         var command = paymentCommand(document, item, paymentId, terminalId, storeId);
         var saved = documentService.collectReceivable(document, List.of(command), authentication);
 
+        DocumentPayment persisted = null;
         if (item.paymentTerminalOperationId() != null) {
-            var payment = saved.getPagos().stream()
+            persisted = saved.getPagos().stream()
                     .filter(value -> paymentId.equals(value.getRequestId()))
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException(
                             "approved_card_payment_not_persisted"));
             terminalOperations.linkDocument(
-                    item.paymentTerminalOperationId(), saved.getId(), payment.getId());
+                    item.paymentTerminalOperationId(), saved.getId(), persisted.getId());
+        } else {
+            persisted = saved.getPagos().stream()
+                    .filter(value -> paymentId.equals(value.getRequestId()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("receivable_payment_not_persisted"));
+        }
+        if (reservation != null) {
+            reservation.complete(persisted.getId(), Instant.now(clock));
+            paymentReservationRepository.save(reservation);
         }
         return views.receivableView(saved, businessDate());
     }
@@ -192,7 +258,8 @@ public class CustomerReceivableService {
             throw new IllegalStateException("payment_operation_configuration_mismatch");
         }
         var normalizedAmount = Money.euros(amount);
-        if (!operation.getRequestHash().equals(paymentHash(document, paymentId, normalizedAmount))
+        if (!operation.getRequestHash().equals(
+                paymentHash(document.getId(), paymentId, normalizedAmount))
                 || operation.getAmount().compareTo(normalizedAmount) != 0) {
             throw new IllegalStateException("payment_operation_identity_mismatch");
         }
@@ -285,10 +352,8 @@ public class CustomerReceivableService {
                 ZoneId.of(organization.currentStore().getTimezone())));
     }
 
-    private static String paymentHash(
-            CommercialDocument document, UUID paymentId, BigDecimal amount) {
-        var canonical = document.getId() + "|" + Money.euros(document.getPendingTotal()).toPlainString()
-                + "|" + Money.euros(amount).toPlainString() + "|" + paymentId;
+    private static String paymentHash(UUID documentId, UUID paymentId, BigDecimal amount) {
+        var canonical = documentId + "|" + Money.euros(amount).toPlainString() + "|" + paymentId;
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(canonical.getBytes(StandardCharsets.UTF_8)));
