@@ -1,47 +1,55 @@
-# Task 2 report — Frontend cleanup policy
+# Task 2 report: authoritative sale catalog and fail-closed fiscal data
 
-## Implementation commit
+## Outcome
 
-- Original implementation: `d4b328a feat(payment): clear stale simulator checkout safely`.
-- Review corrections: included in the current task commit.
+`SaleScreen` now loads the fiscal sale catalog from `GET /products/sale`. Pending-sale drafts carry a validated fiscal snapshot for each line and reject invalid fiscal percentages or regimes before a dialog can open. The existing pending-sale preparation `try/catch` displays the thrown validation message through `pendingError` and does not set a draft when validation fails.
 
-## Files
+## RED/GREEN evidence
 
-- `frontend/packages/app-common/src/components/SalePaymentCheckout.tsx`
-- `frontend/packages/app-common/src/components/SalePaymentCheckout.test.ts`
-- `frontend/packages/app-common/src/i18n/MessagesEs.ts`
-- `frontend/packages/app-common/src/i18n/MessagesEn.ts`
-- `frontend/packages/app-common/src/i18n/MessagesZh.ts`
+### Catalog endpoint
 
-`SessionTopControls` was not modified.
+- RED: `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.test.tsx`
+  - Result: 90 passed, 1 failed.
+  - Expected failure: `apiPaths` contained `/api/v1/products` rather than `/products/sale`.
+- GREEN: the same command after changing the request and mocks.
+  - Result: 91 passed, 0 failed.
 
-## Implemented behavior
+### Fiscal draft validation
 
-- Added `prepareApplicationClose(): Promise<"READY" | "BLOCKED">`.
-- Logout and application shutdown share the same strict exit preparation policy.
-- Uncertain sessions use audited `simulator-discard`; shutdown/logout send `application_shutdown` and entry recovery sends `sale_entry_cleanup`.
-- `READY` is returned only after authoritative hydration shows no active session, or a cancellation/discard response confirms `CANCELLED`; the common local cleanup then removes both storage keys, guards, dialogs, operation state and the server lock.
-- A normal cancellation has three explicit outcomes. Only `CANCELLED` permits exit; both a successful non-`CANCELLED` response and any HTTP/network exception return `BLOCKED` immediately and cannot issue a second cleanup request.
-- Every stale active session hydrated on sale entry, including empty sessions and sessions containing only `DECLINED`, `ERROR` or `CANCELLED` allocations, is sent once to audited `simulator-discard` with `sale_entry_cleanup`. A live-mode rejection preserves recovery state, reserved total and lock.
-- Entry cleanup is scoped to the ID returned by authoritative entry hydration, so sessions created later during the current sale are never mistaken for stale sessions.
-- The once-per-ID guard is covered by a real unmount/remount test; rejected cleanup does not duplicate requests or loop.
-- Added localized blocked/cleanup feedback in Spanish, English and Chinese.
-- No delete endpoint is called and payment audit data is untouched.
+- RED: `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.test.tsx`
+  - Result: 91 passed, 1 failed.
+  - Expected failure: malformed `taxPercentage` did not throw; the old fallback generated a draft.
+- GREEN: the same command after adding `saleProductFiscalSnapshot`.
+  - Result: 92 passed, 0 failed.
 
-## TDD and verification
+### Final verification
 
-- Review RED: `npm.cmd test -- SalePaymentCheckout.test.ts` — 6 expected failures: forbidden fallback after cancellation error, four stale `AUTO_CANCEL` variants skipped on entry, and missing real-remount coverage.
-- Review regression caught during GREEN: broad entry cleanup also targeted a newly created payment session; scoping cleanup to the authoritatively hydrated ID removed that regression.
-- Review GREEN/final focused suite: `npm.cmd test -- SalePaymentCheckout.test.ts` — 63/63 passing, exit 0.
-- Critical re-review RED: shared logout/application-close cases returned `READY` after `NOT_CANCELLED` because they invoked simulator fallback.
-- Critical re-review GREEN: shared exit preparation accepts only `CANCELLED`; unit and HTTP-level tests cover `NOT_CANCELLED` for both callers, verifying exactly one cancel call and no subsequent discard. Final focused suite: 67/67 passing.
+- `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.test.tsx`
+  - Result: 92 passed, 0 failed.
+- `cd frontend && npm.cmd run build`
+  - Result: both `@tpverp/app-gestion` and `@tpverp/app-venta` completed TypeScript checks and production builds successfully.
+- `git diff --check`
+  - Result: clean.
 
-- RED: `npm.cmd test -- SalePaymentCheckout.test.ts` — 4 expected failures (missing close handle, missing auto cleanup and missing translations), 53 passing.
-- GREEN/final: `npm.cmd test -- SalePaymentCheckout.test.ts` — 57/57 passing, exit 0.
-- `git diff --check` — exit 0; only Git's existing LF-to-CRLF notices were printed.
-- Diff scope check found no `SessionTopControls` changes.
+## Changed files
 
-## Concerns / handoff
+- `frontend/packages/app-common/src/components/SaleScreen.tsx`
+  - Requires the sale-catalog fiscal fields, requests `/products/sale`, and validates the pending draft's tax percentage/regime without silent defaults.
+- `frontend/packages/app-common/src/components/SaleScreen.test.tsx`
+  - Covers the new endpoint and fail-closed fiscal behavior; updates endpoint mocks and typed fixtures to the authoritative catalog contract.
 
-- Task 3 still needs to wire `prepareApplicationClose()` into `SaleScreen`/`SessionTopControls`; this task intentionally does not initiate navigation or window closing.
-- The in-memory once-per-ID entry-attempt set resets on a full application reload, which is intentional: a new process may retry a stale simulated session, while a rejected live-terminal session is never retried in a render/remount loop within the current loaded application.
+## Commit
+
+- `98abd4c34dcf3787c1a2f6baca3fad68e54d7495` — `feat: validate pending sale fiscal catalog`
+
+## Self-review
+
+- Confirmed `SaleProduct` makes `taxId`, `taxesIncluded`, `taxRegime`, and `taxPercentage` required.
+- Confirmed the runtime fiscal guard rejects non-finite/out-of-range percentage values and regimes outside `IVA`/`IGIC`.
+- Confirmed fiscal snapshot values are spread into every pending-draft line, with no `0.00` or `GENERAL` fallback remaining in that path.
+- Confirmed the already-existing pending-sale error handler catches draft-construction errors, preserves the lack of a new draft, and renders `pendingError` as an alert.
+- Kept payment checkout, debt behavior, member discounts, and backend code unchanged.
+
+## Concerns
+
+None for this task. The build emits pre-existing Vite warnings about large chunks/dynamic import chunking; it succeeds and these warnings are unrelated to the change.
