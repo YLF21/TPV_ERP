@@ -13733,6 +13733,11 @@ textarea:focus,
   align-items: stretch !important;
 }
 
+.home-screen .home-actions-sale-only,
+.home-screen .home-actions-side-only {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
 .home-screen .home-action-side {
   display: flex !important;
   flex-direction: column;
@@ -13840,5 +13845,33 @@ textarea:focus,
   .home-screen .home-action-side .home-action {
     min-height: 118px !important;
     grid-template-columns: 110px minmax(0, 1fr) 70px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-screen .home-actions {
+    width: calc(100vw - 24px) !important;
+  }
+
+  .home-screen .home-action-side .home-action {
+    grid-template-columns: 72px minmax(0, 1fr) 54px !important;
+  }
+
+  .home-screen .home-action-side .home-action .home-action-icon {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  .home-screen .home-action .home-action-label {
+    min-width: 0;
+    padding: 0 10px;
+    font-size: clamp(16px, 4.6vw, 20px) !important;
+    line-height: 1.1 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .home-screen .home-action-shortcut {
+    padding: 7px 8px;
   }
 }

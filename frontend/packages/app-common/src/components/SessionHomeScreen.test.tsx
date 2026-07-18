@@ -95,6 +95,38 @@ describe("SessionHomeScreen", () => {
     expect(finalStyles).toMatch(/\.home-screen \.home-action \.home-action-label\s*\{[^}]*justify-self: start !important;[^}]*font-size: clamp\(22px, 2\.2vw, 36px\) !important;/s);
   });
 
+  it("uses the full launcher width when Venta is the only visible action", () => {
+    render(<SessionHomeScreen app="venta" locale="es"
+      session={{ ...session, permissions: ["VENTA"] }} terminalContext={terminalContext}
+      onLocaleChange={vi.fn()} onOpenSales={vi.fn()} />);
+
+    expect(screen.getByRole("region", { name: /inicio|home/i })).toHaveClass("home-actions-sale-only");
+    expect(screen.getByRole("button", { name: /venta/i })).toBeInTheDocument();
+    expect(document.querySelector(".home-action-side")).not.toBeInTheDocument();
+  });
+
+  it("uses the full launcher width when only secondary actions are visible", () => {
+    render(<SessionHomeScreen app="venta" locale="es"
+      session={{ ...session, permissions: [] }} terminalContext={terminalContext}
+      onLocaleChange={vi.fn()} onOpenSales={vi.fn()} onOpenSettings={vi.fn()} />);
+
+    expect(screen.getByRole("region", { name: /inicio|home/i })).toHaveClass("home-actions-side-only");
+    expect(screen.queryByRole("button", { name: /venta/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /configuraci|ajustes/i })).toBeInTheDocument();
+    expect(document.querySelector(".home-action-side")).toBeInTheDocument();
+  });
+
+  it("defines full-width partial layouts and a collision-safe mobile card contract", () => {
+    const finalStyles = tpvStyles.slice(tpvStyles.lastIndexOf("/* APP VENTA home launcher:"));
+    const mobileStyles = finalStyles.slice(finalStyles.lastIndexOf("@media (max-width: 480px)"));
+
+    expect(finalStyles).toMatch(/\.home-screen \.home-actions-sale-only,\s*\.home-screen \.home-actions-side-only\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) !important;/s);
+    expect(mobileStyles).toMatch(/\.home-screen \.home-action-side \.home-action\s*\{[^}]*grid-template-columns: 72px minmax\(0, 1fr\) 54px !important;/s);
+    expect(mobileStyles).toMatch(/\.home-screen \.home-action \.home-action-label\s*\{[^}]*min-width: 0;[^}]*padding: 0 10px;[^}]*font-size: clamp\(16px, 4\.6vw, 20px\) !important;[^}]*overflow-wrap: anywhere;/s);
+    expect(mobileStyles).toMatch(/\.home-screen \.home-action-side \.home-action \.home-action-icon\s*\{[^}]*width: 52px !important;[^}]*height: 52px !important;/s);
+    expect(mobileStyles).toMatch(/\.home-screen \.home-action-shortcut\s*\{[^}]*padding: 7px 8px;/s);
+  });
+
   it("wires product and warehouse actions to their callbacks", () => {
     const onOpenStock = vi.fn();
     const onOpenWarehouse = vi.fn();
