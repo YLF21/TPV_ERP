@@ -16,7 +16,22 @@ import org.springframework.data.repository.query.Param;
 
 public interface CommercialDocumentRepository extends JpaRepository<CommercialDocument, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select d from CommercialDocument d left join fetch d.pagos where d.id=:id and d.tiendaId=:storeId")
+    @Query("""
+            select document
+            from CommercialDocument document
+            left join fetch document.pagos
+            where document.id = :id
+              and document.tiendaId = :storeId
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            """)
     Optional<CommercialDocument> findLockedReceivable(
             @Param("id") UUID id, @Param("storeId") UUID storeId);
 
@@ -32,6 +47,15 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
               and document.clienteId is not null
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
             order by document.fechaVencimiento asc, document.fecha desc, document.numero desc
             """)
     List<CommercialDocument> findCustomerReceivables(@Param("storeId") UUID storeId);
@@ -49,6 +73,15 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
               and document.clienteId is not null
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
             """)
     Optional<CommercialDocument> findCustomerReceivable(
             @Param("id") UUID id, @Param("storeId") UUID storeId);

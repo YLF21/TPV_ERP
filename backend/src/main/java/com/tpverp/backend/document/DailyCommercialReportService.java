@@ -38,7 +38,7 @@ public class DailyCommercialReportService {
         var to = date.plusDays(1).atStartOfDay(zone).toInstant();
         var issued = documents.findAllByTiendaIdAndFecha(store.getId(), date);
         var collected = payments.findAllByStoreAndCreatedBetween(store.getId(), from, to);
-        var invoicedOrigins = relations.findInvoicedOriginIds(store.getId());
+        var invoicedOrigins = relations.findInvoicedOriginIds(store.getId(), date);
         var invoiced = issued.stream()
                 .filter(DailyCommercialReportService::isCustomerReceivableSale)
                 .filter(document -> !invoicedOrigins.contains(document.getId()))
@@ -47,14 +47,12 @@ public class DailyCommercialReportService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var collectedCurrent = collected.stream()
                 .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
-                .filter(payment -> !invoicedOrigins.contains(payment.getDocumento().getId()))
                 .filter(payment -> payment.getDocumento().getFecha().equals(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var priorDebtCollected = collected.stream()
                 .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
-                .filter(payment -> !invoicedOrigins.contains(payment.getDocumento().getId()))
                 .filter(payment -> payment.getDocumento().getFecha().isBefore(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)

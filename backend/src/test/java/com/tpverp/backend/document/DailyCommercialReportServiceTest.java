@@ -86,13 +86,13 @@ class DailyCommercialReportServiceTest {
     }
 
     @Test
-    void excludesInvoicedDeliveryNoteAndItsPaymentsAcrossDates() {
+    void excludesInvoicedDeliveryNoteButKeepsItsRealPaymentOnThePaymentDate() {
         var fixture = fixture();
         var deliveryNote = receivable(CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
         var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
         var deliveryPayment = payment(fixture, deliveryNote, "20.00", start(REPORT_DATE).plusSeconds(1));
         var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(2));
-        when(fixture.relations().findInvoicedOriginIds(fixture.store().getId()))
+        when(fixture.relations().findInvoicedOriginIds(fixture.store().getId(), REPORT_DATE))
                 .thenReturn(java.util.Set.of(deliveryNote.getId()));
         when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
                 .thenReturn(List.of(invoice));
@@ -104,8 +104,33 @@ class DailyCommercialReportServiceTest {
 
         assertThat(report.invoiced()).isEqualByComparingTo("100.00");
         assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
-        assertThat(report.priorDebtCollected()).isZero();
-        assertThat(report.cashInflow()).isEqualByComparingTo("30.00");
+        assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("50.00");
+    }
+
+    @Test
+    void invoicingLaterDoesNotEraseDeliveryNoteFromItsHistoricalIssueDate() throws Exception {
+        var method = DocumentRelationRepository.class.getDeclaredMethod(
+                "findInvoicedOriginIds", UUID.class, LocalDate.class);
+        var query = method.getAnnotation(org.springframework.data.jpa.repository.Query.class).value();
+
+        assertThat(query).contains("relation.documento.fecha <= :asOfDate");
+
+        var fixture = fixture();
+        var deliveryNote = receivable(
+                CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
+        when(fixture.relations().findInvoicedOriginIds(
+                fixture.store().getId(), deliveryNote.getFecha())).thenReturn(java.util.Set.of());
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), deliveryNote.getFecha())).thenReturn(List.of(deliveryNote));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(deliveryNote.getFecha()), end(deliveryNote.getFecha())))
+                .thenReturn(List.of());
+
+        var historical = fixture.service().report(deliveryNote.getFecha());
+
+        assertThat(historical.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(historical.newPending()).isEqualByComparingTo("100.00");
     }
 
     private static DocumentPayment payment(
