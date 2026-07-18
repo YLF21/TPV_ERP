@@ -1,51 +1,47 @@
-# Task 1 report — Payment actions vertical layout
+# Task 1 report: authoritative backend sale catalog
 
-## Result
+## Commit
 
-- Implementation commit: `a68a56c6d46c8d53891f72aaaa8746156f1345dc`
-- Changed the individual payment action container to one column.
-- Made every action button full width and used a symmetric internal grid so the label remains visually centered while the `kbd` shortcut stays at the right edge.
-- Preserved component markup, callbacks, permissions, disabled states, keyboard shortcut text, and touch-mode sizing.
+- Implementation commit: `dccd43162975e9f64a36a6b73afbc8b0e985a057` (`feat: expose authoritative sale tax catalog`)
 
 ## TDD evidence
 
 ### RED
 
-Command:
+1. `cd backend; mvn.cmd -Dtest=SaleProductCatalogServiceTest test`
+   - After dependencies were made available, compilation failed as expected: `cannot find symbol: class SaleProductCatalogService`.
+2. `cd backend; mvn.cmd -Dtest=ProductControllerContractTest test`
+   - The sale endpoint contract failed as expected: `GET /api/v1/products/sale` was handled by `get(UUID)` and returned HTTP 400 (`Failed to convert 'productId' with value: 'sale'`).
 
-`npm.cmd test -- --run packages/app-common/src/components/IndividualPaymentActions.test.tsx`
-
-Expected result observed before production CSS was changed:
-
-- `1 failed | 5 passed` across 6 tests.
-- The new CSS contract failed because `.individual-payment-actions` still declared `grid-template-columns: repeat(3, minmax(0, 1fr)) !important` instead of one column.
-- An earlier invocation did not count as RED because PowerShell blocked `npm.ps1`; another setup attempt did not count because `import.meta.url` was not a file URL in jsdom. Both were corrected before recording RED.
+The first attempt to run Maven was blocked by the sandbox while downloading an uncached parent POM; the identical command was then rerun with approved dependency access, producing the expected RED compilation failure.
 
 ### GREEN
 
-Command:
+1. `cd backend; mvn.cmd -Dtest=SaleProductCatalogServiceTest test`
+   - `BUILD SUCCESS`, 7 tests run, 0 failures, 0 errors.
+2. `cd backend; mvn.cmd '-Dtest=SaleProductCatalogServiceTest,ProductControllerContractTest' test`
+   - `BUILD SUCCESS`, 14 tests run, 0 failures, 0 errors.
 
-`npm.cmd test -- --run packages/app-common/src/components/IndividualPaymentActions.test.tsx`
+The final focused run was performed after the full validation-path coverage was added.
 
-Result:
+## Files changed
 
-- `1 passed` test file.
-- `6 passed` tests.
-- Exit code 0.
+- `backend/src/main/java/com/tpverp/backend/catalog/SaleProductView.java`
+- `backend/src/main/java/com/tpverp/backend/catalog/SaleProductCatalogService.java`
+- `backend/src/main/java/com/tpverp/backend/catalog/ProductController.java`
+- `backend/src/test/java/com/tpverp/backend/catalog/SaleProductCatalogServiceTest.java`
+- `backend/src/test/java/com/tpverp/backend/catalog/ProductControllerContractTest.java`
 
-## Final verification
+## Self-review
 
-- `npm.cmd test` from `frontend`: 49 test files passed, 409 tests passed, exit code 0.
-- `npm.cmd run build` from `frontend`: `@tpverp/app-gestion` and `@tpverp/app-venta` production builds completed, exit code 0.
-- `git diff --check`: exit code 0; only Git line-ending conversion warnings were emitted.
-
-## Files
-
-- `frontend/packages/app-common/src/components/IndividualPaymentActions.test.tsx`
-- `frontend/packages/app-common/src/styles/tpv.css`
-- `.superpowers/sdd/task-1-report.md`
+- `SaleProductCatalogService` reads the authenticated store and catalog once, de-duplicates tax IDs and loads them in one repository call.
+- It maps every requested sale field and supplies the authoritative tax percentage and active-license tax regime.
+- It rejects missing, inactive, or foreign-store tax data and foreign-store products/licenses.
+- License selection respects repository newest-first ordering and skips inactive entries.
+- `/api/v1/products/sale` is limited to the required read/sales authorities and has MVC contract coverage.
+- `PromotionCatalogGateway` was not changed.
+- `git diff --check` reported no whitespace errors before commit.
 
 ## Concerns
 
-- No correctness concerns found.
-- Visual inspection in a running Electron window was not part of the required automated command set; the CSS contract covers the approved layout properties and the production APP VENTA build succeeds.
+None. Maven emits pre-existing JDK/Mockito dynamic-agent and deprecated-API warnings during test execution, but the focused suite is green.
