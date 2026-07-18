@@ -13875,3 +13875,52 @@ textarea:focus,
     padding: 7px 8px;
   }
 }
+
+.customer-pending-sale-dialog .pending-sale-payment-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button,
+.customer-pending-sale-dialog .pending-sale-confirm-button {
+  min-height: 46px;
+  border: 1px solid #2f70b7;
+  border-radius: 7px;
+  background: #2f78bd;
+  color: #fff;
+  font-weight: 800;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button:hover:not(:disabled),
+.customer-pending-sale-dialog .pending-sale-payment-button:focus-visible,
+.customer-pending-sale-dialog .pending-sale-confirm-button:hover:not(:disabled),
+.customer-pending-sale-dialog .pending-sale-confirm-button:focus-visible {
+  background: #255f99;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button:disabled,
+.customer-pending-sale-dialog .pending-sale-confirm-button:disabled {
+  border-color: #cbd4df;
+  background: #e7ecf2;
+  color: #8b97a6;
+  cursor: not-allowed;
+}
+.customer-pending-sale-dialog > .pending-sale-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  align-items: stretch;
+}
+.customer-pending-sale-dialog .pending-sale-cancel-button {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding-inline: 18px;
+}
+.customer-pending-sale-dialog .pending-sale-confirm-button {
+  flex: 1 1 auto;
+}
+@media (max-width: 640px) {
+  .customer-pending-sale-dialog .pending-sale-payment-actions { grid-template-columns: 1fr; }
+  .customer-pending-sale-dialog > .pending-sale-footer { flex-direction: column-reverse; }
+  .customer-pending-sale-dialog .pending-sale-cancel-button,
+  .customer-pending-sale-dialog .pending-sale-confirm-button { width: 100%; }
+}

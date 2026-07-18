@@ -74,6 +74,28 @@ describe("customer receivable checkout helpers", () => {
 });
 
 describe("CustomerPendingSaleDialog", () => {
+  it("uses primary payment actions and a flexible confirmation footer", async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith("/quote")) return { total: "10.00" };
+      if (path === "/payment-methods") return [
+        { id: "cash", name: "EFECTIVO", active: true },
+        { id: "card", name: "TARJETA", active: true },
+        { id: "transfer", name: "TRANSFERENCIA", active: true },
+      ];
+      throw new Error(`unexpected ${path}`);
+    });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft}
+      request={request as never} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    const cash = await screen.findByRole("button", { name: /a\u00f1adir efectivo/i });
+    const card = screen.getByRole("button", { name: /a\u00f1adir tarjeta/i });
+    const transfer = screen.getByRole("button", { name: /a\u00f1adir transferencia/i });
+    [cash, card, transfer].forEach((button) => expect(button).toHaveClass("pending-sale-payment-button"));
+    expect(screen.getByRole("button", { name: /^cancelar$/i })).toHaveClass("pending-sale-cancel-button");
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toHaveClass("pending-sale-confirm-button");
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i }).parentElement).toHaveClass("pending-sale-footer");
+  });
+
   it("persists the exact draft and pending card operation before the terminal side effect", async () => {
     const persist = vi.fn();
     const request = vi.fn(async (path: string) => {
