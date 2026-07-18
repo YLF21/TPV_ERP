@@ -1122,6 +1122,7 @@ export class MessagesEn {
     "pendingSale.approvedCardRequiresVoid": "Approved card requires a void",
     "pendingSale.removePayment": "Remove",
     "pendingSale.confirm": "Confirm pending sale",
+    "pendingSale.retryCreate": "Retry / finalize",
     "pendingSale.creating": "Creating...",
     "pendingSale.quoteError": "Could not calculate the sale",
     "pendingSale.createError": "Could not create the pending sale",

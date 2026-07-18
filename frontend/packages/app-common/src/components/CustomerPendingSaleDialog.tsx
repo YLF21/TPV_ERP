@@ -70,6 +70,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   const [transferReference, setTransferReference] = useState("");
   const [resolvedMethods, setResolvedMethods] = useState<PaymentMethods>(paymentMethods ?? {});
   const [queryingOperationId, setQueryingOperationId] = useState<string | null>(null);
+  const [createDurable, setCreateDurable] = useState(recovery?.phase === "READY_TO_CREATE");
   const summary = useMemo(() => pendingSummary(quoteCents, payments), [payments, quoteCents]);
   const uncertain = pendingHasUncertainCard(payments);
   const hasCardEffect = pendingHasCardEffect(payments);
@@ -79,10 +80,13 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
     : undefined, []);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    queryGenerationRef.current += 1;
-    queryingOperationRef.current = null;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queryGenerationRef.current += 1;
+      queryingOperationRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -129,15 +133,16 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
 
   useEffect(() => {
     if (!disabled) return;
-    if (!hasCardEffect) onCancel();
+    if (!hasCardEffect && !createDurable) onCancel();
     else setError(t("pendingSale.recoveryError"));
-  }, [disabled, hasCardEffect, onCancel]);
+  }, [createDurable, disabled, hasCardEffect, onCancel]);
 
   const confirm = useCallback(async () => {
     if (disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate) return;
     setSubmitting(true); setError("");
     try {
       persistRecovery(draft, payments);
+      setCreateDurable(true);
       const result = await request<PendingSaleMutationResult>("/pos/customer-pending-sales", {
         token, body: pendingCreateBody(draft, payments, quoteCents),
       });
@@ -158,12 +163,12 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (cashOpen || transferOpen) return;
-      if (event.key === "Escape" && (!submitting || Boolean(error)) && !hasCardEffect) { event.preventDefault(); onCancel(); }
+      if (event.key === "Escape" && (!submitting || Boolean(error)) && !hasCardEffect && !createDurable) { event.preventDefault(); onCancel(); }
       else if (event.key === "Enter" && !event.repeat && !(event.target instanceof HTMLButtonElement)) { event.preventDefault(); void confirm(); }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [cashOpen, confirm, error, hasCardEffect, onCancel, submitting, transferOpen]);
+  }, [cashOpen, confirm, createDurable, error, hasCardEffect, onCancel, submitting, transferOpen]);
 
   function saveTransfer() {
     const amountCents = centsFromInput(transferAmount);
@@ -265,7 +270,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
 
   return <div className="sale-action-overlay pending-sale-overlay" role="presentation">
     <section ref={dialogRef} className="customer-pending-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-pending-title" aria-busy={submitting || quoteLoading} aria-hidden={cashOpen ? true : undefined}>
-      <header><h2 id="customer-pending-title">{t("pendingSale.title")}</h2><button type="button" aria-label={t("common.close")} disabled={submitting || hasCardEffect} onClick={onCancel}>×</button></header>
+      <header><h2 id="customer-pending-title">{t("pendingSale.title")}</h2><button type="button" aria-label={t("common.close")} disabled={submitting || hasCardEffect || createDurable} onClick={onCancel}>×</button></header>
       <p><strong>{t("pendingSale.customer")}:</strong> {customerName}</p>
       <div className="pending-sale-fields">
         <label>{t("pendingSale.documentType")}<select value={draft.type} disabled={disabled || submitting || hasCardEffect} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect) setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] })); }}><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
@@ -285,7 +290,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       </div>
       {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
-      <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>{t("common.cancel")}</button><button type="button" disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : "pendingSale.confirm")}</button></footer>
+      <footer><button type="button" disabled={submitting || hasCardEffect || createDurable} onClick={onCancel}>{t("common.cancel")}</button><button type="button" aria-label={createDurable && !submitting ? `${t("pendingSale.retryCreate")} · ${t("pendingSale.confirm")}` : undefined} disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : createDurable ? "pendingSale.retryCreate" : "pendingSale.confirm")}</button></footer>
     </section>
     {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
   </div>;

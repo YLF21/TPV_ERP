@@ -1249,7 +1249,11 @@ export function SaleScreen({
           clearPendingSaleRecovery(localStorage, terminalContext.terminalCode);
           setPendingRecovery({ status: "empty" });
         }}
-        onCancel={() => { setPendingDraft(null); searchInputRef.current?.focus(); }}
+        onCancel={() => {
+          if (recoveredPendingSale) return;
+          setPendingDraft(null);
+          searchInputRef.current?.focus();
+        }}
         onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
           setPendingPrintRetry(() => retry ?? null);

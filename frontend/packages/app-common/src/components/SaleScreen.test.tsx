@@ -588,6 +588,11 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
     expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).not.toBeNull();
+    const durableDialog = screen.getByRole("dialog", { name: /venta pendiente/i });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(durableDialog).toBeVisible();
+    expect(durableDialog).not.toHaveAttribute("aria-hidden", "true");
     cleanup();
     renderSaleScreen();
     fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));

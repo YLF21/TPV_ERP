@@ -78,11 +78,15 @@ function validEnvelopeShape(value: unknown): value is PendingSaleRecoveryEnvelop
   if (!isRecord(value) || value.version !== 2 || !isPhase(value.phase) || !nonBlank(value.terminalCode)) return false;
   if (!isRecord(value.customer) || !nonBlank(value.customer.id) || !nonBlank(value.customer.name)) return false;
   if (!validDraft(value.draft)) return false;
-  if (!Number.isInteger(value.quoteCents) || value.quoteCents < 0 || value.quoteReady !== true) return false;
+  if (!safePositiveInteger(value.quoteCents) || value.quoteReady !== true) return false;
   if (typeof value.savedAt !== "string" || !Number.isFinite(Date.parse(value.savedAt))) return false;
   if (!Array.isArray(value.payments) || !value.payments.every(validAllocation)) return false;
   if (new Set(value.payments.map((payment) => payment.id)).size !== value.payments.length) return false;
-  if (value.payments.reduce((sum, payment) => sum + payment.amountCents, 0) > value.quoteCents) return false;
+  let allocatedCents = 0;
+  for (const payment of value.payments) {
+    allocatedCents += payment.amountCents;
+    if (!Number.isSafeInteger(allocatedCents) || allocatedCents > value.quoteCents) return false;
+  }
   return validPhasePayments(value.phase, value.payments);
 }
 
@@ -92,7 +96,7 @@ function validDraft(value: unknown): value is PendingSaleDraft {
   if (!['ALBARAN_VENTA', 'FACTURA_VENTA'].includes(String(value.type)) || !percentage(value.globalDiscount)) return false;
   return Array.isArray(value.lines) && value.lines.length > 0 && value.lines.every((line) => {
     if (!isRecord(line) || !nonBlank(line.productId) || typeof line.code !== "string" || typeof line.name !== "string") return false;
-    if (typeof line.quantity !== "number" || !Number.isFinite(line.quantity) || line.quantity <= 0) return false;
+    if (!safePositiveInteger(line.quantity)) return false;
     if (!money(line.price) || !percentage(line.discount) || typeof line.taxesIncluded !== "boolean") return false;
     if (!nonBlank(line.taxRegime) || !percentage(line.taxPercentage)) return false;
     return line.rate === undefined || line.rate === null || typeof line.rate === "string";
@@ -101,10 +105,10 @@ function validDraft(value: unknown): value is PendingSaleDraft {
 
 function validAllocation(value: unknown): value is PendingPaymentAllocation {
   if (!isRecord(value) || !nonBlank(value.id) || !nonBlank(value.methodId)) return false;
-  if (!Number.isInteger(value.amountCents) || value.amountCents <= 0 || !ALL_STATUSES.has(String(value.status))) return false;
+  if (!safePositiveInteger(value.amountCents) || !ALL_STATUSES.has(String(value.status))) return false;
   if (value.kind === "CASH") return value.status === "APPROVED"
-    && Number.isInteger(value.deliveredCents) && value.deliveredCents >= value.amountCents
-    && Number.isInteger(value.changeCents) && value.changeCents === value.deliveredCents - value.amountCents
+    && safePositiveInteger(value.deliveredCents) && value.deliveredCents >= value.amountCents
+    && safeNonNegativeInteger(value.changeCents) && value.changeCents === value.deliveredCents - value.amountCents
     && value.reference === undefined && value.operationId === undefined;
   if (value.kind === "TRANSFER") return value.status === "APPROVED" && nonBlank(value.reference)
     && value.deliveredCents === undefined && value.changeCents === undefined && value.operationId === undefined;
@@ -124,6 +128,8 @@ function validPhasePayments(phase: PendingSaleRecoveryPhase, payments: PendingPa
 
 function money(value: unknown) { return typeof value === "string" && MONEY.test(value) && Number.isFinite(Number(value)); }
 function percentage(value: unknown) { return money(value) && Number(value) <= 100; }
+function safePositiveInteger(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) > 0; }
+function safeNonNegativeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0; }
 function validDate(value: unknown) {
   if (typeof value !== "string" || !DATE.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);

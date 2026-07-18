@@ -1125,6 +1125,7 @@ export class MessagesEs {
     "pendingSale.approvedCardRequiresVoid": "La tarjeta aprobada requiere anulación",
     "pendingSale.removePayment": "Eliminar",
     "pendingSale.confirm": "Confirmar venta pendiente",
+    "pendingSale.retryCreate": "Reintentar / finalizar",
     "pendingSale.creating": "Creando...",
     "pendingSale.quoteError": "No se pudo calcular la venta",
     "pendingSale.createError": "No se pudo crear la venta pendiente",

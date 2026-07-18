@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
+import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -172,14 +173,45 @@ describe("CustomerPendingSaleDialog", () => {
       payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
     };
     const persist = vi.fn();
-    const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+    const view = render(<StrictMode><CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
       terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={vi.fn().mockReturnValue(deferred)}
-      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} /></StrictMode>);
     fireEvent.click(screen.getByRole("button", { name: /consultar tarjeta/i }));
     view.unmount();
     resolve({ status: "APPROVED" });
     await Promise.resolve(); await Promise.resolve();
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("applies an approved card query while mounted under StrictMode", async () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2, phase: "CARD_IN_FLIGHT", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
+    };
+    const persist = vi.fn();
+    render(<StrictMode><CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={vi.fn().mockResolvedValue({ status: "APPROVED" })}
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} /></StrictMode>);
+    fireEvent.click(screen.getByRole("button", { name: /consultar tarjeta/i }));
+    expect(await screen.findByText(/tarjeta aprobada/i)).toBeInTheDocument();
+    expect(persist).toHaveBeenCalledWith(expect.objectContaining({ phase: "READY_TO_CREATE" }));
+  });
+
+  it("keeps a create with a lost response visible and non-cancellable for exact replay", async () => {
+    const onCancel = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" }).mockRejectedValueOnce(new Error("response lost"));
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request}
+      onPersistRecovery={vi.fn()} onClearRecovery={vi.fn()} onCancel={onCancel} onSuccess={vi.fn()} />);
+    await screen.findAllByText("10,00");
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /reintentar.*finalizar/i })).toBeEnabled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
   });
 
   it("creates an already approved recovered checkout exactly once with its original identifiers", async () => {
@@ -415,12 +447,14 @@ describe("CustomerPendingSaleDialog", () => {
     expect(create[1].body).not.toHaveProperty("paymentMethod");
   });
 
-  it("retains the draft after create failure and supports Escape before effects", async () => {
+  it("allows Escape before create but locks the retained draft after a create response is lost", async () => {
     const onCancel = vi.fn();
     const request = vi.fn().mockResolvedValueOnce({ total: "10.00" }).mockRejectedValueOnce(new Error("Servidor no disponible"));
     render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
     await screen.findAllByText("10,00");
     fireEvent.change(screen.getByLabelText(/vencimiento/i), { target: { value: "2026-09-03" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Servidor no disponible");
     expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-09-03");

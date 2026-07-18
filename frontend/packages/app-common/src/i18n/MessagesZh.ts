@@ -1120,6 +1120,7 @@ export class MessagesZh {
     "pendingSale.approvedCardRequiresVoid": "已批准的银行卡付款必须先撤销",
     "pendingSale.removePayment": "删除",
     "pendingSale.confirm": "确认挂账销售",
+    "pendingSale.retryCreate": "重试 / 完成",
     "pendingSale.creating": "正在创建...",
     "pendingSale.quoteError": "无法计算销售金额",
     "pendingSale.createError": "无法创建挂账销售",
