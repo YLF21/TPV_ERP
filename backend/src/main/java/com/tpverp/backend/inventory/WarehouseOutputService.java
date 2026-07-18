@@ -7,14 +7,18 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.document.DocumentCounter;
 import com.tpverp.backend.document.DocumentCounterRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.shared.api.PagedResult;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +28,8 @@ public class WarehouseOutputService {
 
     private static final String NEGATIVE_STOCK_ERROR =
             "Stock insuficiente: la configuracion de la tienda no permite stock negativo";
+    private static final int DEFAULT_LIMIT = 500;
+    private static final int MAX_LIMIT = 500;
 
     private final WarehouseOutputRepository outputs;
     private final DocumentCounterRepository counters;
@@ -63,6 +69,21 @@ public class WarehouseOutputService {
     public List<WarehouseOutput> list() {
         return outputs.findByStoreIdOrderByFechaDesc(
                 organization.currentStore().getId());
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<WarehouseOutputView> listPage(Integer requestedLimit, String cursor) {
+        var limit = normalizedLimit(requestedLimit);
+        var parsedCursor = parseCursor(cursor);
+        var values = outputs.findPageByStoreId(
+                organization.currentStore().getId(),
+                parsedCursor.date(),
+                parsedCursor.id(),
+                PageRequest.of(0, limit + 1));
+        var hasMore = values.size() > limit;
+        var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
+        var items = pageValues.stream().map(WarehouseOutputView::from).toList();
+        return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }
 
     // Creates an editable output and validates that every product belongs to the store.
@@ -220,5 +241,30 @@ public class WarehouseOutputService {
         return outputs.findById(id)
                 .filter(output -> output.getStoreId().equals(storeId))
                 .orElseThrow(() -> new IllegalArgumentException("Salida no encontrada"));
+    }
+
+    private static int normalizedLimit(Integer requestedLimit) {
+        if (requestedLimit == null || requestedLimit <= 0) {
+            return DEFAULT_LIMIT;
+        }
+        return Math.min(requestedLimit, MAX_LIMIT);
+    }
+
+    private static Cursor parseCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return new Cursor(null, null);
+        }
+        var parts = cursor.split("\\|", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("cursor invalido");
+        }
+        return new Cursor(LocalDate.parse(parts[0]), UUID.fromString(parts[1]));
+    }
+
+    private static String cursorFor(WarehouseOutput output) {
+        return output.getDate() + "|" + output.getId();
+    }
+
+    private record Cursor(LocalDate date, UUID id) {
     }
 }

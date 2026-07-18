@@ -77,30 +77,37 @@ class CustomerServiceTest {
     }
 
     @Test
-    void activaMemberYAsignaCodigoFechaYNumeroLibre() {
-        when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
-                PartyTestData.id(company), DocumentType.NIF, "99Z"))
-                .thenReturn(Optional.empty());
-        when(members.findByCompanyIdAndNumMember(PartyTestData.id(company), "EXT/2026 #1"))
-                .thenReturn(Optional.empty());
-        when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(members.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(codes.nextClient(store)).thenReturn("C-001-000001");
-        when(codes.nextMember(store)).thenReturn("M-001-000001");
-
-        var created = service().create(new CustomerService.CustomerCommand(
+    void rejectsCreatingCustomerAndMemberInTheSameOperation() {
+        var command = new CustomerService.CustomerCommand(
                 "Member", DocumentType.NIF, "99z", null,
-                null, null, null, BigDecimal.ZERO, true, " EXT/2026 #1 "));
+                null, null, null, BigDecimal.ZERO, true, " EXT/2026 #1 ");
 
-        assertThat(created.isMember()).isTrue();
-        assertThat(created.memberId()).isEqualTo("M-001-000001");
-        assertThat(created.numMember()).isEqualTo("EXT/2026 #1");
-        assertThat(created.memberSince()).isEqualTo(java.time.LocalDate.of(2026, 6, 8));
-        assertThat(created.rate()).isEqualTo(CustomerRate.MEMBER);
+        assertThatThrownBy(() -> service().create(command))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.member.customer_must_exist");
+        verify(customers, never()).save(any());
+        verify(members, never()).save(any());
+    }
+
+    @Test
+    void activatesMemberFromAnExistingActiveCustomer() {
+        var customer = new Customer(
+                company, "Member", DocumentType.NIF, "99Z", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.assignClientCode(store.getId(), "C-001-000001");
+        when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(customer));
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.empty());
+        when(codes.nextMember(store)).thenReturn("M-001-000001");
+        when(members.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var activated = service().activateMember(customer.getId());
+
+        assertThat(activated.memberId()).isEqualTo("M-001-000001");
+        assertThat(activated.id()).isEqualTo(customer.getId());
         var member = ArgumentCaptor.forClass(Member.class);
         verify(members).save(member.capture());
-        assertThat(member.getValue().getCustomer()).isNotNull();
-        assertThat(member.getValue().getMemberId()).isEqualTo("M-001-000001");
         verify(memberLoyalty).activateMember(member.getValue());
     }
 
@@ -225,6 +232,21 @@ class CustomerServiceTest {
         assertThat(customer.isActive()).isTrue();
         assertThat(customer.getClientId()).isEqualTo("C-001-000001");
         verify(codes, never()).nextClient(any());
+    }
+
+    @Test
+    void rejectsMemberActivationWhenCustomerIsInactive() {
+        var customer = new Customer(
+                company, "Cliente", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.deactivate();
+        when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(customer));
+
+        assertThatThrownBy(() -> service().activateMember(customer.getId()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.member.customer_inactive");
+        verify(members, never()).findByCustomerIdAndCompanyId(any(), any());
     }
 
     private CustomerService service() {

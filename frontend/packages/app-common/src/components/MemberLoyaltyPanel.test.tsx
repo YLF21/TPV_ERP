@@ -1,6 +1,16 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { loadMemberLoyalty, memberLoyaltyAdjustmentBody, memberLoyaltyPermissions, MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
+import {
+  commercialChannelColumnDefinitions,
+  loadMemberLoyalty,
+  memberCardDeliveryColumnDefinitions,
+  memberCategoryColumnDefinitions,
+  memberLoyaltyAdjustmentBody,
+  memberLoyaltyPermissions,
+  memberLoyaltyTableKeys,
+  memberMovementColumnDefinitions,
+  MemberLoyaltyPanel
+} from "./MemberLoyaltyPanel";
 
 const session = { accessToken: "token", refreshToken: "refresh", userId: "u", username: "user", displayName: "User", roles: [], permissions: ["CUSTOMERS_READ", "CUSTOMERS_WRITE"] } as any;
 
@@ -30,5 +40,18 @@ describe("MemberLoyaltyPanel", () => {
     const html = renderToStaticMarkup(<MemberLoyaltyPanel memberId="m1" session={session} t={(key) => key} request={request} />);
     expect(html).toContain('aria-label="party.members.loyaltyTitle"');
     expect(html).toContain('role="tablist"');
+  });
+
+  it("defines the four loyalty preference namespaces and their data columns", () => {
+    expect(memberLoyaltyTableKeys).toEqual({
+      movements: "party.members.movements",
+      categories: "party.memberCategories",
+      channels: "party.commercialChannels",
+      deliveries: "party.memberCardDeliveries"
+    });
+    expect(memberMovementColumnDefinitions.map((column) => column.key)).toEqual(["date", "movement", "amount", "reason"]);
+    expect(memberCategoryColumnDefinitions.map((column) => column.key)).toEqual(["code", "name", "minPoints", "discount", "status"]);
+    expect(commercialChannelColumnDefinitions.map((column) => column.key)).toEqual(["code", "name", "status"]);
+    expect(memberCardDeliveryColumnDefinitions.map((column) => column.key)).toEqual(["email", "status", "date"]);
   });
 });

@@ -125,14 +125,6 @@ public class DevSampleDataSeeder {
         grant(ROLE, "CUSTOMERS_WRITE");
         grant(ROLE, "SUPPLIERS_READ");
         grant(ROLE, "SUPPLIERS_WRITE");
-        grant(ROLE, "WAREHOUSE_INPUTS_READ");
-        grant(ROLE, "WAREHOUSE_INPUTS_WRITE");
-        grant(ROLE, "WAREHOUSE_INPUTS_DELETE");
-        grant(ROLE, "WAREHOUSE_INPUTS_CONFIRM");
-        grant(ROLE, "WAREHOUSE_OUTPUTS_READ");
-        grant(ROLE, "WAREHOUSE_OUTPUTS_EDIT");
-        grant(ROLE, "WAREHOUSE_OUTPUTS_DELETE");
-        grant(ROLE, "WAREHOUSE_OUTPUTS_CONFIRM");
         grant(ROLE, "DELIVERY_NOTES_READ");
         grant(ROLE, "DELIVERY_NOTES_WRITE");
         grant(ROLE, "INVOICES_READ");

@@ -14,6 +14,7 @@ import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
+import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -119,6 +120,8 @@ class DocumentPromotionIntegrationTest {
     private AuthoritativePromotionPricing promotionPricing;
     @Mock
     private PromotionCatalogGateway promotionCatalog;
+    @Mock
+    private StockSettingsService stockSettings;
 
     private DocumentService service;
     private Store store;
@@ -188,6 +191,7 @@ class DocumentPromotionIntegrationTest {
                 promotionalCoupons,
                 promotionPricing,
                 promotionCatalog,
+                stockSettings,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -389,6 +393,7 @@ class DocumentPromotionIntegrationTest {
         lenient().when(product.getSubfamilyId()).thenReturn(subfamilyId);
         lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
         lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        lenient().when(product.isActive()).thenReturn(true);
         return product;
     }
 
@@ -455,6 +460,7 @@ class DocumentPromotionIntegrationTest {
     }
 
     private UsernamePasswordAuthenticationToken authentication() {
-        return new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+        return UsernamePasswordAuthenticationToken.authenticated(
+                "ADMIN", "n/a", List.of(() -> "ROLE_ADMIN"));
     }
 }

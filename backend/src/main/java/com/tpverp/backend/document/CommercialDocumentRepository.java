@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -116,6 +117,26 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndTipoInOrderByFechaDesc(
             UUID tiendaId, Collection<CommercialDocumentType> tipos);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in :types
+              and (
+                  :cursorDate is null
+                  or document.fecha < :cursorDate
+                  or (document.fecha = :cursorDate and document.id < :cursorId)
+              )
+            order by document.fecha desc, document.id desc
+            """)
+    List<CommercialDocument> findReportDocuments(
+            @Param("storeId") UUID storeId,
+            @Param("types") Collection<CommercialDocumentType> types,
+            @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorId") UUID cursorId,
+            Pageable pageable);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndFecha(UUID tiendaId, LocalDate fecha);

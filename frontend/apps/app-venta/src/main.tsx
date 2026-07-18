@@ -33,10 +33,15 @@ const SettingsScreen = lazy(() =>
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({ default: StockScreen }))
 );
+const WarehouseScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/WarehouseScreen").then(({ WarehouseScreen }) => ({
+    default: WarehouseScreen
+  }))
+);
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
 
@@ -64,8 +69,12 @@ export function App() {
   }
 
   const canOpenSalesReport =
-    hasPermission(session, "GESTION_VENTAS") || hasPermission(session, "GESTION_CUENTAS");
+    hasPermission(session, "GESTION_VENTAS")
+    || hasPermission(session, "GESTION_PRODUCTO")
+    || hasPermission(session, "GESTION_ALMACEN")
+    || hasPermission(session, "GESTION_CUENTAS");
   const canOpenCustomerReceivables = hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
+  const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
 
   if (screen === "customerReceivables" && canOpenCustomerReceivables) {
     return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={devTerminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen("home"); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
@@ -115,6 +124,20 @@ export function App() {
     );
   }
 
+  if (screen === "warehouse" && canOpenWarehouse) {
+    return (
+      <WarehouseScreen
+        app="venta"
+        locale={locale}
+        session={session}
+        terminalContext={devTerminalContext}
+        onBack={() => setScreen("home")}
+        onLogout={handleLogout}
+        onLocaleChange={handleLocaleChange}
+      />
+    );
+  }
+
   if (screen === "hardwareSettings") {
     return (
       <HardwareSettingsScreen
@@ -155,6 +178,7 @@ export function App() {
       onLogout={handleLogout}
       onOpenSales={() => setScreen("sale")}
       onOpenStock={() => setScreen("stock")}
+      onOpenWarehouse={() => setScreen("warehouse")}
       onOpenSalesReport={() => setScreen("salesReport")}
       onOpenCustomerReceivables={() => { setReceivablesCustomerId(undefined); setScreen("customerReceivables"); }}
       onOpenSettings={() => setScreen("settings")}

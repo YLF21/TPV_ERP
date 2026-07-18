@@ -11,9 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 class GoodsCheckControllerContractTest {
 
-    private static final String PERMISSION = "hasRole('ADMIN') or hasAnyAuthority("
-            + "'GESTION_PRODUCTO','DELIVERY_NOTES_READ','DELIVERY_NOTES_WRITE',"
-            + "'INVOICES_READ','INVOICES_WRITE')";
+    private static final String PERMISSION = "hasRole('ADMIN') or hasAuthority('GESTION_ALMACEN')";
 
     @Test
     void exposesGoodsCheckEndpointsWithDocumentPermissions() throws Exception {
@@ -21,6 +19,7 @@ class GoodsCheckControllerContractTest {
                 .containsExactly("/api/v1/goods-checks");
 
         assertPost("start", "/documents/{documentId}/start");
+        assertPost("importDocument", "/documents/{documentId}/import");
         assertGet("get", "/{id}");
         assertPost("scan", "/{id}/scan");
         assertPost("close", "/{id}/close");

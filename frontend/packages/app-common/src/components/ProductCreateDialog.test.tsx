@@ -14,7 +14,9 @@ import {
   productDiscountTypeOptions,
   productCreateValidationErrors,
   duplicatedProductIdentifierFields,
+  productImageReadPath,
   productImageUploadPath,
+  preferredProductSupplier,
   saveProductWithOptionalImage,
   ProductCreateDialog
 } from "./ProductCreateDialog";
@@ -49,6 +51,7 @@ describe("ProductCreateDialog", () => {
     };
 
     expect(buildCreateProductRequest(form)).toEqual({
+      active: true,
       familyId: "family-1",
       subfamilyId: "subfamily-1",
       taxId: "tax-1",
@@ -181,6 +184,7 @@ describe("ProductCreateDialog", () => {
     });
 
     expect(Object.keys(request)).toEqual([
+      "active",
       "familyId",
       "subfamilyId",
       "taxId",
@@ -484,6 +488,45 @@ describe("ProductCreateDialog", () => {
     expect(html).not.toContain("Register product and close F9");
   });
 
+  it("exposes the primary supplier selector when modifying an existing product", () => {
+    const html = renderToStaticMarkup(
+      <ProductCreateDialog
+        open
+        locale="es"
+        token="token"
+        editProduct={{ id: "product-1", form: { name: "Cafe" } }}
+        onClose={() => undefined}
+      />
+    );
+
+    expect(html).toContain("Proveedor principal");
+    expect(html).toContain("Sin proveedores vinculados");
+  });
+
+  it("creates products active by default and exposes the state only while editing", () => {
+    const createHtml = renderToStaticMarkup(
+      <ProductCreateDialog open locale="es" token="token" onClose={() => undefined} />
+    );
+    const editHtml = renderToStaticMarkup(
+      <ProductCreateDialog
+        open
+        locale="es"
+        token="token"
+        editProduct={{ id: "product-1", form: { name: "Cafe", active: false } }}
+        onClose={() => undefined}
+      />
+    );
+
+    expect(createDefaultProductForm().active).toBe(true);
+    expect(createHtml).not.toContain('data-product-field-name="active"');
+    expect(editHtml).toContain('data-product-field-name="active"');
+    expect(editHtml).toContain("Desactivado");
+    expect(buildCreateProductRequest(createProductFormFromEditProduct({
+      id: "product-1",
+      form: { active: false }
+    }))).toMatchObject({ active: false });
+  });
+
   it("does not expose the deprecated none or member discount options", () => {
     expect(productDiscountTypeOptions).toEqual(["NORMAL", "MEMBER_PRICE", "OFFER_PRICE", "OFFER_DISCOUNT"]);
     expect(productDiscountTypeOptions).not.toContain("NONE");
@@ -492,6 +535,30 @@ describe("ProductCreateDialog", () => {
 
   it("builds the product image upload path", () => {
     expect(productImageUploadPath("product-1")).toBe("/products/product-1/image");
+    expect(productImageReadPath("product-1")).toBe("/products/product-1/image");
+  });
+
+  it("shows a manually selected primary supplier before the latest supplier", () => {
+    const suppliers = [
+      {
+        supplierId: "supplier-last",
+        legalName: "Proveedor ultimo",
+        active: true,
+        principal: false,
+        lastSupplier: true
+      },
+      {
+        supplierId: "supplier-primary",
+        legalName: "Proveedor principal",
+        active: true,
+        principal: true,
+        lastSupplier: false
+      }
+    ];
+
+    expect(preferredProductSupplier(suppliers)?.supplierId).toBe("supplier-primary");
+    expect(preferredProductSupplier(suppliers.slice(0, 1))?.supplierId).toBe("supplier-last");
+    expect(preferredProductSupplier([])).toBeNull();
   });
 
   it("does not expose low-level network write errors in product dialog status", () => {

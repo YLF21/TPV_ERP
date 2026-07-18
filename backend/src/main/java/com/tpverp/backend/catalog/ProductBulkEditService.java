@@ -136,9 +136,10 @@ public class ProductBulkEditService {
         List<ProductBulkEditImage> stagedImages =
                 images.findByEdicion_IdOrderByPosicionAsc(edit.getId());
         List<ProductBulkEditContent.Row> content =
-                validateApplyRequest(storeId, request, stagedImages);
+                validateApplyRequest(storeId, edit, request, stagedImages);
         if (request.updates().isEmpty()
                 && request.supplierAssignments().isEmpty()
+                && request.supplierPrincipalAssignments().isEmpty()
                 && stagedImages.isEmpty()) {
             throw new IllegalArgumentException("No hay cambios para aplicar");
         }
@@ -149,11 +150,19 @@ public class ProductBulkEditService {
         }
         request.supplierAssignments().forEach(assignment ->
                 productSuppliers.linkProducts(assignment.supplierId(), assignment.productIds()));
+        request.supplierPrincipalAssignments().forEach(assignment -> {
+            if (assignment.supplierId() == null) {
+                productSuppliers.clearPrincipal(assignment.productId());
+            } else {
+                productSuppliers.setPrincipal(assignment.productId(), assignment.supplierId());
+            }
+        });
         for (ProductBulkEditImage stagedImage : stagedImages) {
             Product product = productImages.upload(
                     stagedImage.getProductId(), stagedImage.getContent());
             modifiedProducts.put(product.getId(), product);
         }
+        content = finalizeSupplierState(content);
         if (!modifiedProducts.isEmpty()) {
             products.flush();
             content = refreshPersistenceState(content, modifiedProducts);
@@ -206,10 +215,12 @@ public class ProductBulkEditService {
 
     private List<ProductBulkEditContent.Row> validateApplyRequest(
             UUID storeId,
+            ProductBulkEdit edit,
             ProductBulkApplyRequest request,
             List<ProductBulkEditImage> stagedImages) {
         Objects.requireNonNull(request.updates(), "updates");
         Objects.requireNonNull(request.supplierAssignments(), "supplierAssignments");
+        Objects.requireNonNull(request.supplierPrincipalAssignments(), "supplierPrincipalAssignments");
         List<ProductBulkEditContent.Row> content = ProductBulkEditContent.validateAndCopy(request.content());
         Map<UUID, ProductBulkEditContent.ProductData> contentProducts = content.stream()
                 .map(ProductBulkEditContent.Row::effectiveProduct)
@@ -217,6 +228,15 @@ public class ProductBulkEditService {
                 .collect(Collectors.toMap(
                         ProductBulkEditContent.ProductData::productId,
                         Function.identity()));
+        Set<UUID> persistedProductIds = edit.getContenido().stream()
+                .map(ProductBulkEditContent.Row::effectiveProduct)
+                .filter(Objects::nonNull)
+                .map(ProductBulkEditContent.ProductData::productId)
+                .collect(Collectors.toSet());
+        if (!persistedProductIds.equals(contentProducts.keySet())) {
+            throw new IllegalArgumentException(
+                    "content no coincide con los productos guardados en la lista de edicion masiva");
+        }
         Set<UUID> updatedProductIds = new HashSet<>();
         for (int index = 0; index < request.updates().size(); index++) {
             CatalogService.BulkProductUpdate update = request.updates().get(index);
@@ -264,6 +284,41 @@ public class ProductBulkEditService {
                 }
                 requireContentProduct(
                         contentProducts.keySet(), productId, "supplierAssignments[" + index + "]");
+            }
+        }
+        if (request.supplierPrincipalAssignments().size() > 5_000) {
+            throw new IllegalArgumentException(
+                    "supplierPrincipalAssignments no puede superar 5000 productos");
+        }
+        Map<UUID, ProductBulkEditContent.Row> contentRows = content.stream()
+                .filter(row -> row.product() != null)
+                .collect(Collectors.toMap(row -> row.product().productId(), Function.identity()));
+        Set<UUID> principalProducts = new HashSet<>();
+        for (int index = 0; index < request.supplierPrincipalAssignments().size(); index++) {
+            BulkSupplierPrincipalAssignment assignment = request.supplierPrincipalAssignments().get(index);
+            if (assignment == null || assignment.productId() == null) {
+                throw new IllegalArgumentException(
+                        "supplierPrincipalAssignments[" + index + "] no es valido");
+            }
+            if (!principalProducts.add(assignment.productId())) {
+                throw new IllegalArgumentException(
+                        "supplierPrincipalAssignments contiene el producto duplicado "
+                                + assignment.productId());
+            }
+            ProductBulkEditContent.Row row = contentRows.get(assignment.productId());
+            if (row == null || !row.principalSupplierChanged()
+                    || !Objects.equals(row.pendingPrincipalSupplierId(), assignment.supplierId())) {
+                throw new IllegalArgumentException(
+                        "supplierPrincipalAssignments[" + index
+                                + "] no coincide con content");
+            }
+        }
+        for (ProductBulkEditContent.Row row : contentRows.values()) {
+            if (row.principalSupplierChanged()
+                    && !principalProducts.contains(row.product().productId())) {
+                throw new IllegalArgumentException(
+                        "content contiene un cambio de proveedor principal sin asignacion para "
+                                + row.product().productId());
             }
         }
         validateStagedImages(storeId, stagedImages, contentProducts);
@@ -328,7 +383,38 @@ public class ProductBulkEditService {
                     row.product().withPersistenceState(product.getVersion(), product.getImageId()),
                     row.draft().withoutPersistenceState(),
                     row.suppliers(),
-                    row.pendingSupplier());
+                    row.pendingSupplier(),
+                    row.principalSupplierChanged(),
+                    row.pendingPrincipalSupplierId());
+        }).toList();
+    }
+
+    private static List<ProductBulkEditContent.Row> finalizeSupplierState(
+            List<ProductBulkEditContent.Row> content) {
+        return content.stream().map(row -> {
+            if (row.pendingSupplier() == null && !row.principalSupplierChanged()) {
+                return row;
+            }
+            var suppliers = new java.util.ArrayList<>(row.suppliers());
+            if (row.pendingSupplier() != null) {
+                suppliers.removeIf(supplier -> supplier.id().equals(row.pendingSupplier().id()));
+                suppliers.add(row.pendingSupplier());
+            }
+            if (row.principalSupplierChanged()) {
+                UUID principalId = row.pendingPrincipalSupplierId();
+                suppliers.replaceAll(supplier -> supplier.withPrincipal(
+                        principalId != null && principalId.equals(supplier.id())));
+            }
+            return new ProductBulkEditContent.Row(
+                    row.id(),
+                    row.selected(),
+                    row.query(),
+                    row.product(),
+                    row.draft(),
+                    List.copyOf(suppliers),
+                    null,
+                    false,
+                    null);
         }).toList();
     }
 
@@ -368,6 +454,9 @@ public class ProductBulkEditService {
         requireSame(path, "offerUntil", date(content.offerUntil()), product.offerUntil());
         requireSame(path, "stockMin", decimal(content.stockMin()), product.stockMin());
         requireSame(path, "stockMax", decimal(content.stockMax()), product.stockMax());
+        requireSame(path, "packageQuantity", decimal(content.packageQuantity()), product.packageQuantity());
+        requireSame(path, "active", content.active() == null ? Boolean.TRUE : bool(content.active()),
+                product.active());
     }
 
     private static void requireSame(String path, String field, Object expected, Object actual) {
@@ -516,13 +605,34 @@ public class ProductBulkEditService {
             @jakarta.validation.constraints.NotNull List<CatalogService.BulkProductUpdate> updates,
             @jakarta.validation.constraints.NotNull
             List<@jakarta.validation.Valid BulkSupplierAssignment> supplierAssignments,
+            @jakarta.validation.constraints.NotNull
+            List<@jakarta.validation.Valid BulkSupplierPrincipalAssignment> supplierPrincipalAssignments,
             @jakarta.validation.constraints.NotNull @jakarta.validation.Valid
             List<ProductBulkEditContent.Row> content) {
+
+        public ProductBulkApplyRequest {
+            supplierPrincipalAssignments = supplierPrincipalAssignments == null
+                    ? List.of()
+                    : List.copyOf(supplierPrincipalAssignments);
+        }
+
+        public ProductBulkApplyRequest(
+                Long version,
+                List<CatalogService.BulkProductUpdate> updates,
+                List<BulkSupplierAssignment> supplierAssignments,
+                List<ProductBulkEditContent.Row> content) {
+            this(version, updates, supplierAssignments, List.of(), content);
+        }
     }
 
     public record BulkSupplierAssignment(
             @jakarta.validation.constraints.NotNull UUID supplierId,
             @jakarta.validation.constraints.NotEmpty List<UUID> productIds) {
+    }
+
+    public record BulkSupplierPrincipalAssignment(
+            @jakarta.validation.constraints.NotNull UUID productId,
+            UUID supplierId) {
     }
 
     public record ProductBulkCommentRequest(

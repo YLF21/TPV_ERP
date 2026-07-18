@@ -91,6 +91,18 @@ class ProductBulkEditTest {
                 .hasMessageContaining("100 elementos");
     }
 
+    @Test
+    void contentRejectsInvalidProductActiveValue() {
+        ProductBulkEditContent.Row base = row("row-1", UUID.randomUUID());
+        ProductBulkEditContent.Row invalid = new ProductBulkEditContent.Row(
+                base.id(), base.selected(), base.query(), base.product().withActive("maybe"),
+                base.draft(), base.suppliers(), base.pendingSupplier());
+
+        assertThatThrownBy(() -> ProductBulkEditContent.validateAndCopy(List.of(invalid)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("active no es un booleano valido");
+    }
+
     private static ProductBulkEditContent.Row row(String id, UUID productId) {
         ProductBulkEditContent.ProductData product = new ProductBulkEditContent.ProductData(
                 productId,

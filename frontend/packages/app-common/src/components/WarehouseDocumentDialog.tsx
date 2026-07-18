@@ -5,6 +5,9 @@ import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavig
 import { ErpSelect } from "./ErpSelect";
 import { SharedExcelImportDialog, type SharedExcelImportAcceptedRow } from "./SharedExcelImportDialog";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
   applyProductRequiredDefaults,
   buildCreateProductRequest,
@@ -13,7 +16,7 @@ import {
   type ProductCreateFormState,
   type ProductCreateResponse
 } from "./ProductCreateDialog";
-import type { LocaleCode, TerminalContext } from "../types";
+import type { AppKind, LocaleCode, TerminalContext } from "../types";
 import type { ExcelImportClassifiedRow, ExcelImportProductDraft, ExcelImportProductIdentity } from "./excelImport";
 import {
   type WarehouseDocumentLineDraft,
@@ -64,6 +67,9 @@ export type WarehouseDocumentView = {
 type WarehouseDocumentDialogProps = {
   mode: WarehouseDocumentMode;
   open: boolean;
+  app?: AppKind;
+  username?: string;
+  accessToken?: string;
   title?: string;
   canConfirm?: boolean;
   locale?: LocaleCode;
@@ -90,21 +96,16 @@ export type WarehouseDocumentDraft = {
 };
 
 const warehouseDocumentColumns = [
-  { key: "code", label: "Codigo", width: 180 },
-  { key: "barcode", label: "Codigo de barra", width: 200 },
-  { key: "name", label: "Nombre", width: 260 },
-  { key: "discount", label: "Descuento", width: 150 },
-  { key: "price", label: "Precio", width: 120 },
-  { key: "quantity", labelKey: "warehouseDocument.quantity", width: 170 },
-  { key: "total", label: "Importe total", width: 160 }
+  { key: "code", label: "Codigo", defaultWidth: 180 },
+  { key: "barcode", label: "Codigo de barra", defaultWidth: 200 },
+  { key: "name", label: "Nombre", defaultWidth: 260 },
+  { key: "discount", label: "Descuento", defaultWidth: 150 },
+  { key: "price", label: "Precio", defaultWidth: 120 },
+  { key: "quantity", labelKey: "warehouseDocument.quantity", defaultWidth: 170 },
+  { key: "total", label: "Importe total", defaultWidth: 160 }
 ] as const;
 
 type WarehouseDocumentColumnKey = typeof warehouseDocumentColumns[number]["key"];
-type WarehouseDocumentColumnWidths = Record<WarehouseDocumentColumnKey, number>;
-
-const initialWarehouseDocumentColumnWidths = Object.fromEntries(
-  warehouseDocumentColumns.map((column) => [column.key, column.width])
-) as WarehouseDocumentColumnWidths;
 
 export function warehouseDocumentPath(mode: WarehouseDocumentMode) {
   return mode === "input" ? "/warehouse-inputs" : "/warehouse-outputs";
@@ -207,6 +208,9 @@ function createWarehouseDocumentLine(
 export function WarehouseDocumentDialog({
   mode,
   open,
+  app = "venta",
+  username = "",
+  accessToken,
   title: titleOverride,
   canConfirm = false,
   locale = "es",
@@ -246,7 +250,14 @@ export function WarehouseDocumentDialog({
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [priceMenuOpen, setPriceMenuOpen] = useState(false);
   const [documentPriceMode, setDocumentPriceMode] = useState<"sale" | "minor">("sale");
-  const [columnWidths, setColumnWidths] = useState<WarehouseDocumentColumnWidths>(initialWarehouseDocumentColumnWidths);
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: mode === "input" ? "warehouse.inputs.lines" : "warehouse.outputs.lines",
+    definitions: warehouseDocumentColumns
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
   const newLineCodeRef = useRef<HTMLInputElement | null>(null);
   const newLineDiscountRef = useRef<HTMLInputElement | null>(null);
   const newLineQuantityRef = useRef<HTMLInputElement | null>(null);
@@ -305,6 +316,8 @@ export function WarehouseDocumentDialog({
   const readOnly = documentStatus !== "BORRADOR";
   const isEditing = Boolean(documentId);
   const importProducts = [...products, ...excelCreatedProducts];
+  const manualProduct = importProducts.find((product) => product.id === manualProductId);
+  const manualProductPrice = documentProductPrice(manualProduct, documentPriceMode);
   const documentTypeLabel = title;
   const totalUnits = lines.reduce((total, line) => total + (Number.isFinite(line.quantity) ? line.quantity : 0), 0);
   const selectedPartner = partnerId ? partnerOptions.find((option) => option.id === partnerId) : null;
@@ -333,7 +346,7 @@ export function WarehouseDocumentDialog({
     const created: ExcelImportProductIdentity[] = [];
     for (const row of rows) {
       const form = applyProductRequiredDefaults(productFormFromExcelDraft(row.draft), defaults.families, defaults.taxes);
-      const product = await apiRequest<ProductCreateResponse>("/products", {
+      const product = await apiRequest<ProductCreateResponse>("/products/management", {
         token,
         method: "POST",
         body: buildCreateProductRequest(form, { purchaseDiscountPercent: row.draft.purchaseDiscountPercent })
@@ -531,19 +544,151 @@ export function WarehouseDocumentDialog({
     focusNextDocumentRow(index);
   }
 
-  function startDocumentColumnResize(columnKey: WarehouseDocumentColumnKey, startWidth: number, startX: number) {
-    function moveColumn(event: PointerEvent) {
-      const nextWidth = Math.max(80, startWidth + event.clientX - startX);
-      setColumnWidths((current) => ({ ...current, [columnKey]: nextWidth }));
-    }
+  function renderDocumentLineCell(
+    columnKey: WarehouseDocumentColumnKey,
+    line: WarehouseDocumentLineDraft,
+    index: number
+  ) {
+    const lineProduct = importProducts.find((product) => product.id === line.productId);
+    const price = documentProductPrice(lineProduct, documentPriceMode);
+    const discountPercent = line.discountPercent ?? "0";
 
-    function stopResize() {
-      window.removeEventListener("pointermove", moveColumn);
-      window.removeEventListener("pointerup", stopResize);
+    switch (columnKey) {
+      case "code":
+        return readOnly ? <span className="product-name-text">{line.productLabel}</span> : (
+          <input
+            ref={(element) => { rowCodeRefs.current[index] = element; }}
+            value={lineProduct?.code ?? line.importedProduct}
+            onChange={(event) => updateLineCode(index, event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                rowDiscountRefs.current[index]?.focus();
+                rowDiscountRefs.current[index]?.select();
+              }
+            }}
+          />
+        );
+      case "barcode":
+        return lineProduct?.barcode ?? "-";
+      case "name":
+        return <span className="product-name-text">{lineProduct?.name ?? line.productLabel}</span>;
+      case "discount":
+        return readOnly ? formatDocumentDiscount(discountPercent) : (
+          <input
+            ref={(element) => { rowDiscountRefs.current[index] = element; }}
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={discountPercent}
+            onChange={(event) => updateLineDiscount(index, event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                rowQuantityRefs.current[index]?.focus();
+                rowQuantityRefs.current[index]?.select();
+              }
+            }}
+          />
+        );
+      case "price":
+        return formatDocumentAmount(price);
+      case "quantity":
+        return readOnly ? line.quantity : (
+          <input
+            ref={(element) => { rowQuantityRefs.current[index] = element; }}
+            type="number"
+            min="0"
+            step="1"
+            value={line.quantity}
+            onChange={(event) => updateLine(index, line.productId, Number(event.target.value))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                confirmLineQuantity(index, Number(event.currentTarget.value));
+              }
+            }}
+          />
+        );
+      case "total":
+        return formatDocumentAmount(documentLineTotal(price, line.quantity, discountPercent));
     }
+  }
 
-    window.addEventListener("pointermove", moveColumn);
-    window.addEventListener("pointerup", stopResize);
+  function renderNewDocumentLineCell(columnKey: WarehouseDocumentColumnKey) {
+    switch (columnKey) {
+      case "code":
+        return (
+          <input
+            ref={newLineCodeRef}
+            value={manualProductCode}
+            onChange={(event) => selectProductByCode(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                newLineDiscountRef.current?.focus();
+                newLineDiscountRef.current?.select();
+              }
+            }}
+          />
+        );
+      case "barcode":
+        return manualProduct?.barcode ?? "-";
+      case "name":
+        return <span className="product-name-text">{manualProduct?.name ?? ""}</span>;
+      case "discount":
+        return (
+          <input
+            ref={newLineDiscountRef}
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={manualDiscountPercent}
+            onChange={(event) => setManualDiscountPercent(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                newLineQuantityRef.current?.focus();
+                newLineQuantityRef.current?.select();
+              }
+            }}
+          />
+        );
+      case "price":
+        return formatDocumentAmount(manualProductPrice);
+      case "quantity":
+        return (
+          <input
+            ref={newLineQuantityRef}
+            data-warehouse-add-line
+            type="number"
+            min="0"
+            step="1"
+            value={manualQuantity}
+            onChange={(event) => setManualQuantity(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation();
+                event.preventDefault();
+                addManualLineFromTable();
+              }
+            }}
+          />
+        );
+      case "total":
+        return formatDocumentAmount(documentLineTotal(
+          manualProductPrice,
+          Number(manualQuantity || 0),
+          manualDiscountPercent
+        ));
+    }
   }
 
   async function persistDraft() {
@@ -785,163 +930,48 @@ export function WarehouseDocumentDialog({
             <div className="warehouse-document-table-scroll">
               <table className="report-table warehouse-document-table">
                 <colgroup>
-                  {warehouseDocumentColumns.map((column) => (
-                    <col key={column.key} style={{ width: `${columnWidths[column.key]}px` }} />
+                  {visibleColumns.map((column) => (
+                    <col key={column.key} style={{ width: `${column.width}px` }} />
                   ))}
                 </colgroup>
                 <thead>
                   <tr>
-                    {warehouseDocumentColumns.map((column) => (
-                      <th key={column.key}>
-                        {"labelKey" in column ? t(column.labelKey) : column.label}
-                        <button
-                          type="button"
-                          className="warehouse-document-column-resizer"
-                          aria-label={`Ajustar columna ${"labelKey" in column ? t(column.labelKey) : column.label}`}
-                          onPointerDown={(event) => {
-                            event.preventDefault();
-                            startDocumentColumnResize(column.key, columnWidths[column.key], event.clientX);
-                          }}
-                        />
-                      </th>
-                    ))}
+                    {visibleColumns.map((column) => {
+                      const definition = warehouseDocumentColumns.find((candidate) => candidate.key === column.key);
+                      const label = definition && "labelKey" in definition ? t(definition.labelKey) : definition?.label ?? column.key;
+                      return (
+                        <TableLayoutHeaderCell
+                          column={column}
+                          key={column.key}
+                          resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                          onReorder={tableLayout.reorderColumns}
+                          onMove={tableLayout.moveColumn}
+                          onResize={tableLayout.resizeColumn}
+                        >
+                          {label}
+                        </TableLayoutHeaderCell>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line, index) => {
-                    const lineProduct = importProducts.find((product) => product.id === line.productId);
-                    const price = documentProductPrice(lineProduct, documentPriceMode);
-                    const discountPercent = line.discountPercent ?? "0";
-                    const total = documentLineTotal(price, line.quantity, discountPercent);
-                    return (
-                      <tr className={line.valid ? "" : "warehouse-document-line-error"} key={`${line.rowNumber}-${index}`}>
-                        <td>
-                          {readOnly ? <span className="product-name-text">{line.productLabel}</span> : (
-                            <input
-                              ref={(element) => { rowCodeRefs.current[index] = element; }}
-                              value={lineProduct?.code ?? line.importedProduct}
-                              onChange={(event) => updateLineCode(index, event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.stopPropagation();
-                                  event.preventDefault();
-                                  rowDiscountRefs.current[index]?.focus();
-                                  rowDiscountRefs.current[index]?.select();
-                                }
-                              }}
-                            />
-                          )}
-                        </td>
-                        <td>{lineProduct?.barcode ?? "-"}</td>
-                        <td><span className="product-name-text">{lineProduct?.name ?? line.productLabel}</span></td>
-                        <td>
-                          {readOnly ? formatDocumentDiscount(discountPercent) : (
-                            <input
-                              ref={(element) => { rowDiscountRefs.current[index] = element; }}
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              value={discountPercent}
-                              onChange={(event) => updateLineDiscount(index, event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.stopPropagation();
-                                  event.preventDefault();
-                                  rowQuantityRefs.current[index]?.focus();
-                                  rowQuantityRefs.current[index]?.select();
-                                }
-                              }}
-                            />
-                          )}
-                        </td>
-                        <td>{formatDocumentAmount(price)}</td>
-                        <td>
-                          {readOnly ? line.quantity : (
-                            <input
-                              ref={(element) => { rowQuantityRefs.current[index] = element; }}
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={line.quantity}
-                              onChange={(event) => updateLine(index, line.productId, Number(event.target.value))}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.stopPropagation();
-                                  event.preventDefault();
-                                  confirmLineQuantity(index, Number(event.currentTarget.value));
-                                }
-                              }}
-                            />
-                          )}
-                        </td>
-                        <td>{formatDocumentAmount(total)}</td>
-                      </tr>
-                    );
-                  })}
+                  {lines.map((line, index) => (
+                    <tr className={line.valid ? "" : "warehouse-document-line-error"} key={`${line.rowNumber}-${index}`}>
+                      {visibleColumns.map((column) => (
+                        <td key={column.key}>{renderDocumentLineCell(column.key, line, index)}</td>
+                      ))}
+                    </tr>
+                  ))}
                   {!readOnly && (
                     <tr className="warehouse-document-new-row">
-                      <td>
-                        <input
-                          ref={newLineCodeRef}
-                          value={manualProductCode}
-                          onChange={(event) => selectProductByCode(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.stopPropagation();
-                              event.preventDefault();
-                              newLineDiscountRef.current?.focus();
-                              newLineDiscountRef.current?.select();
-                            }
-                          }}
-                        />
-                      </td>
-                      <td>{importProducts.find((product) => product.id === manualProductId)?.barcode ?? "-"}</td>
-                      <td><span className="product-name-text">{importProducts.find((product) => product.id === manualProductId)?.name ?? ""}</span></td>
-                      <td>
-                        <input
-                          ref={newLineDiscountRef}
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          value={manualDiscountPercent}
-                          onChange={(event) => setManualDiscountPercent(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.stopPropagation();
-                              event.preventDefault();
-                              newLineQuantityRef.current?.focus();
-                              newLineQuantityRef.current?.select();
-                            }
-                          }}
-                        />
-                      </td>
-                      <td>{formatDocumentAmount(documentProductPrice(importProducts.find((product) => product.id === manualProductId), documentPriceMode))}</td>
-                      <td>
-                        <input
-                          ref={newLineQuantityRef}
-                          data-warehouse-add-line
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={manualQuantity}
-                          onChange={(event) => setManualQuantity(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.stopPropagation();
-                              event.preventDefault();
-                              addManualLineFromTable();
-                            }
-                          }}
-                        />
-                      </td>
-                      <td>{formatDocumentAmount(documentLineTotal(documentProductPrice(importProducts.find((product) => product.id === manualProductId), documentPriceMode), Number(manualQuantity || 0), manualDiscountPercent))}</td>
+                      {visibleColumns.map((column) => (
+                        <td key={column.key}>{renderNewDocumentLineCell(column.key)}</td>
+                      ))}
                     </tr>
                   )}
                   {lines.length === 0 && (
                     <tr>
-                      <td colSpan={7}>{t("warehouseDocument.emptyLines")}</td>
+                      <td colSpan={visibleColumns.length}>{t("warehouseDocument.emptyLines")}</td>
                     </tr>
                   )}
                 </tbody>

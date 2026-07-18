@@ -19,19 +19,12 @@ public class CorePermissionBootstrap {
     public static final String PRODUCTS_WRITE = "PRODUCTS_WRITE";
     public static final String PRODUCTS_DELETE = "PRODUCTS_DELETE";
     public static final String GESTION_PRODUCTO = "GESTION_PRODUCTO";
+    public static final String GESTION_ALMACEN = "GESTION_ALMACEN";
     public static final String TAXES_MANAGE = "TAXES_MANAGE";
     public static final String WAREHOUSES_MANAGE = "WAREHOUSES_MANAGE";
     public static final String STOCK_READ = "STOCK_READ";
     public static final String STOCK_ADJUST = "STOCK_ADJUST";
     public static final String STOCK_TRANSFER = "STOCK_TRANSFER";
-    public static final String WAREHOUSE_OUTPUTS_READ = "WAREHOUSE_OUTPUTS_READ";
-    public static final String WAREHOUSE_OUTPUTS_EDIT = "WAREHOUSE_OUTPUTS_EDIT";
-    public static final String WAREHOUSE_OUTPUTS_DELETE = "WAREHOUSE_OUTPUTS_DELETE";
-    public static final String WAREHOUSE_OUTPUTS_CONFIRM = "WAREHOUSE_OUTPUTS_CONFIRM";
-    public static final String WAREHOUSE_INPUTS_READ = "WAREHOUSE_INPUTS_READ";
-    public static final String WAREHOUSE_INPUTS_WRITE = "WAREHOUSE_INPUTS_WRITE";
-    public static final String WAREHOUSE_INPUTS_DELETE = "WAREHOUSE_INPUTS_DELETE";
-    public static final String WAREHOUSE_INPUTS_CONFIRM = "WAREHOUSE_INPUTS_CONFIRM";
     public static final String CUSTOMERS_READ = "CUSTOMERS_READ";
     public static final String CUSTOMERS_WRITE = "CUSTOMERS_WRITE";
     public static final String CUSTOMERS_DELETE = "CUSTOMERS_DELETE";
@@ -83,19 +76,12 @@ public class CorePermissionBootstrap {
                 permission(PRODUCTS_WRITE, "catalog.permissions.write", "CATALOG"),
                 permission(PRODUCTS_DELETE, "catalog.permissions.delete", "CATALOG"),
                 permission(GESTION_PRODUCTO, "catalog.permissions.productManagement", "CATALOG"),
+                permission(GESTION_ALMACEN, "inventory.permissions.warehouseManagement", "INVENTORY"),
                 permission(TAXES_MANAGE, "catalog.permissions.taxes", "CATALOG"),
                 permission(WAREHOUSES_MANAGE, "inventory.permissions.warehouses", "INVENTORY"),
                 permission(STOCK_READ, "inventory.permissions.read", "INVENTORY"),
                 permission(STOCK_ADJUST, "inventory.permissions.adjust", "INVENTORY"),
                 permission(STOCK_TRANSFER, "inventory.permissions.transfer", "INVENTORY"),
-                permission(WAREHOUSE_OUTPUTS_READ, "inventory.permissions.outputs.read", "INVENTORY"),
-                permission(WAREHOUSE_OUTPUTS_EDIT, "inventory.permissions.outputs.edit", "INVENTORY"),
-                permission(WAREHOUSE_OUTPUTS_DELETE, "inventory.permissions.outputs.delete", "INVENTORY"),
-                permission(WAREHOUSE_OUTPUTS_CONFIRM, "inventory.permissions.outputs.confirm", "INVENTORY"),
-                permission(WAREHOUSE_INPUTS_READ, "inventory.permissions.inputs.read", "INVENTORY"),
-                permission(WAREHOUSE_INPUTS_WRITE, "inventory.permissions.inputs.write", "INVENTORY"),
-                permission(WAREHOUSE_INPUTS_DELETE, "inventory.permissions.inputs.delete", "INVENTORY"),
-                permission(WAREHOUSE_INPUTS_CONFIRM, "inventory.permissions.inputs.confirm", "INVENTORY"),
                 permission(CUSTOMERS_READ, "party.permissions.customers.read", "PARTY"),
                 permission(CUSTOMERS_WRITE, "party.permissions.customers.write", "PARTY"),
                 permission(CUSTOMERS_DELETE, "party.permissions.customers.delete", "PARTY"),

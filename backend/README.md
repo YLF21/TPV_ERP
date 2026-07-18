@@ -121,5 +121,5 @@ API principal:
 Los permisos son `CUSTOMER_RECEIVABLES_READ`,
 `CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`; `ADMIN` incluye
 los tres. La migracion de esta funcion es
-`V67__customer_pending_sales.sql`. Consulte el procedimiento de operacion y
+`V72__customer_pending_sales.sql`. Consulte el procedimiento de operacion y
 recuperacion en `../docs/customer-pending-sales-operations.md`.

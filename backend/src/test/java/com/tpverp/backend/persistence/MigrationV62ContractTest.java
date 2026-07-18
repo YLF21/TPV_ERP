@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class MigrationV62ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V62__contador_documento_entrada_almacen.sql";
+            "db/migration/V65__contador_documento_entrada_almacen.sql";
 
     @Test
     void allowsWarehouseInputDocumentCounterType() throws IOException {

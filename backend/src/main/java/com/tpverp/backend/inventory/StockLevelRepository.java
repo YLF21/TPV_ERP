@@ -2,6 +2,7 @@ package com.tpverp.backend.inventory;
 
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +29,8 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
     List<StockLevel> findByWarehouseId(UUID warehouseId);
 
     List<StockLevel> findByProductId(UUID productId);
+
+    List<StockLevel> findByProductIdIn(Collection<UUID> productIds);
 
     boolean existsByProductId(UUID productId);
 

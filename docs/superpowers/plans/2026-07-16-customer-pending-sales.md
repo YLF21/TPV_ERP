@@ -27,7 +27,7 @@
 
 **Persistencia y dominio**
 
-- `V67__customer_pending_sales.sql`: idempotencia de checkout/pagos e indices de deuda.
+- `V72__customer_pending_sales.sql`: idempotencia de checkout/pagos e indices de deuda.
 - `CustomerPendingSaleCheckout*`: reserva/replay de la creacion POS.
 - `CommercialDocument`, `DocumentPayment`, repositorios: vencimiento, request id y bloqueos.
 
@@ -50,14 +50,14 @@
 ### Task 1: Persistencia idempotente y estado financiero
 
 **Files:**
-- Create: `backend/src/main/resources/db/migration/V67__customer_pending_sales.sql`
+- Create: `backend/src/main/resources/db/migration/V72__customer_pending_sales.sql`
 - Create: `backend/src/main/java/com/tpverp/backend/document/CustomerPendingSaleCheckout.java`
 - Create: `backend/src/main/java/com/tpverp/backend/document/CustomerPendingSaleCheckoutRepository.java`
 - Modify: `backend/src/main/java/com/tpverp/backend/document/CommercialDocument.java`
 - Modify: `backend/src/main/java/com/tpverp/backend/document/DocumentPayment.java`
 - Modify: `backend/src/main/java/com/tpverp/backend/document/DocumentPaymentRepository.java`
 - Modify: `backend/src/main/java/com/tpverp/backend/document/CommercialDocumentRepository.java`
-- Create: `backend/src/test/java/com/tpverp/backend/persistence/MigrationV67ContractTest.java`
+- Create: `backend/src/test/java/com/tpverp/backend/persistence/MigrationV72ContractTest.java`
 - Create: `backend/src/test/java/com/tpverp/backend/document/CustomerPendingSaleCheckoutTest.java`
 - Create: `backend/src/test/java/com/tpverp/backend/document/CommercialDocumentTest.java`
 
@@ -70,7 +70,7 @@
 
 ```java
 @Test void migrationAddsIdempotencyWithoutInventingPendingPaymentMethod() throws Exception {
-    var sql = Files.readString(Path.of("src/main/resources/db/migration/V67__customer_pending_sales.sql"));
+    var sql = Files.readString(Path.of("src/main/resources/db/migration/V72__customer_pending_sales.sql"));
     assertThat(sql).contains("customer_pending_sale_checkout", "request_hash", "documento_pago", "request_id");
     assertThat(sql).contains("unique (terminal_id, checkout_id)", "unique (request_id)");
     assertThat(sql.toUpperCase()).doesNotContain("'PENDIENTE'");
@@ -90,7 +90,7 @@
 Run:
 
 ```powershell
-mvn.cmd "-Dtest=MigrationV67ContractTest,CustomerPendingSaleCheckoutTest,CommercialDocumentTest" test
+mvn.cmd "-Dtest=MigrationV72ContractTest,CustomerPendingSaleCheckoutTest,CommercialDocumentTest" test
 ```
 
 Expected: FAIL because V67, checkout entity and due-date accessors do not exist.
@@ -135,7 +135,7 @@ Optional<CommercialDocument> findLockedReceivable(UUID id, UUID storeId);
 - [ ] **Step 4: Run GREEN and migration integration**
 
 ```powershell
-mvn.cmd "-Dtest=MigrationV67ContractTest,CustomerPendingSaleCheckoutTest,CommercialDocumentTest,PostgreSqlMigrationTest" test
+mvn.cmd "-Dtest=MigrationV72ContractTest,CustomerPendingSaleCheckoutTest,CommercialDocumentTest,PostgreSqlMigrationTest" test
 ```
 
 Expected: all tests PASS on empty and upgraded PostgreSQL schemas.
@@ -143,7 +143,7 @@ Expected: all tests PASS on empty and upgraded PostgreSQL schemas.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add backend/src/main/resources/db/migration/V67__customer_pending_sales.sql backend/src/main/java/com/tpverp/backend/document backend/src/test/java/com/tpverp/backend/document backend/src/test/java/com/tpverp/backend/persistence/MigrationV67ContractTest.java
+git add backend/src/main/resources/db/migration/V72__customer_pending_sales.sql backend/src/main/java/com/tpverp/backend/document backend/src/test/java/com/tpverp/backend/document backend/src/test/java/com/tpverp/backend/persistence/MigrationV72ContractTest.java
 git commit -m "feat(receivables): add pending sale persistence"
 ```
 
@@ -510,7 +510,7 @@ Document: creating fully pending and mixed sales; collecting later; resolving te
 - [ ] **Step 2: Run backend focused suites**
 
 ```powershell
-mvn.cmd "-Dtest=MigrationV67ContractTest,PostgreSqlMigrationTest,CustomerPendingSaleCheckoutTest,CustomerPendingSaleServiceTest,CustomerPendingSaleControllerContractTest,CustomerReceivableServiceTest,CustomerReceivableControllerContractTest,DocumentServiceTest,DocumentPromotionIntegrationTest,PaymentTerminalOperationServiceTest,DailyCommercialReportServiceTest" test
+mvn.cmd "-Dtest=MigrationV72ContractTest,PostgreSqlMigrationTest,CustomerPendingSaleCheckoutTest,CustomerPendingSaleServiceTest,CustomerPendingSaleControllerContractTest,CustomerReceivableServiceTest,CustomerReceivableControllerContractTest,DocumentServiceTest,DocumentPromotionIntegrationTest,PaymentTerminalOperationServiceTest,DailyCommercialReportServiceTest" test
 ```
 
 Expected: 0 failures/errors/skips unless a test is explicitly platform-gated.

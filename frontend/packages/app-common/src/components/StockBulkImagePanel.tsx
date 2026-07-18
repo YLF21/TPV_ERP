@@ -7,14 +7,13 @@ import {
   useRef,
   useState
 } from "react";
-import type { InputHTMLAttributes, KeyboardEvent } from "react";
+import type { DragEvent, InputHTMLAttributes, KeyboardEvent } from "react";
 import type { LocaleCode } from "../types";
 import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
 import { matchStockBulkImageFiles } from "./stockBulkAdvanced";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
-import { ErpSelect } from "./ErpSelect";
 
 export type StockBulkImageStatus =
   | "pending"
@@ -28,6 +27,7 @@ export type StockBulkImageStatus =
 
 export type StockBulkImageFileRow = {
   id: string;
+  sourceId: string;
   persistedId?: string;
   selected: boolean;
   file: File;
@@ -94,11 +94,14 @@ export type StockBulkImagePanelHandle = {
   hasChanges: () => boolean;
   getPendingAssignments: () => StockBulkImageAssignment[];
   applyPending: (token: string) => Promise<StockBulkImageApplyResult>;
+  assignImageToProducts: (sourceId: string, productIds: string[]) => void;
+  unassignProduct: (productId: string) => void;
 };
 
 export type StockBulkImagePanelProps = {
   locale: LocaleCode;
   products: StockInventoryRow[];
+  selectedProductIds?: string[];
   snapshot?: StockBulkImageSnapshot;
   onSnapshotChange?: (snapshot: StockBulkImageSnapshot) => void;
   onPendingImagesChange?: (assignments: Array<{ productId: string; file: File }>) => void;
@@ -116,20 +119,130 @@ const directoryInputAttributes = {
 export function stockBulkImageRows(files: File[]) {
   return files
     .filter((file) => file.type.startsWith("image/") || /\.(avif|bmp|gif|jpe?g|png|webp)$/i.test(file.name))
-    .map((file, index): StockBulkImageFileRow => ({
-      id: `${file.webkitRelativePath || file.name}-${file.size}-${index}`,
+    .map((file, index): StockBulkImageFileRow => {
+      const sourceId = `${file.webkitRelativePath || file.name}-${file.size}-${file.lastModified}-${index}`;
+      return {
+        id: sourceId,
+        sourceId,
+        selected: false,
+        file,
+        fileName: file.name,
+        fileType: file.type || file.name.split(".").at(-1)?.toLocaleUpperCase() || "-",
+        relativePath: file.webkitRelativePath || file.name,
+        productId: "",
+        status: "pending"
+      };
+    });
+}
+
+export type StockBulkImageSource = {
+  sourceId: string;
+  representative: StockBulkImageFileRow;
+  productIds: string[];
+  selected: boolean;
+  status: StockBulkImageStatus;
+  error?: string;
+};
+
+export function stockBulkImageSources(rows: readonly StockBulkImageFileRow[]): StockBulkImageSource[] {
+  const grouped = new Map<string, StockBulkImageFileRow[]>();
+  rows.forEach((row) => grouped.set(row.sourceId, [...(grouped.get(row.sourceId) ?? []), row]));
+  return Array.from(grouped.entries()).map(([sourceId, sourceRows]) => {
+    const representative = sourceRows[0];
+    const productIds = Array.from(new Set(sourceRows.map((row) => row.productId).filter(Boolean)));
+    const failed = sourceRows.find((row) => row.status === "error");
+    const unresolved = sourceRows.find((row) => ["multipleMatches", "productAlreadyMatched", "noMatch"].includes(row.status));
+    return {
+      sourceId,
+      representative,
+      productIds,
+      selected: sourceRows.some((row) => row.selected),
+      status: failed?.status ?? (productIds.length > 0 ? "matched" : unresolved?.status ?? representative.status),
+      error: failed?.error ?? unresolved?.error
+    };
+  });
+}
+
+function nextAssignmentId(rows: readonly StockBulkImageFileRow[], sourceId: string, productId: string) {
+  const prefix = `${sourceId}::${productId}`;
+  let candidate = prefix;
+  let suffix = 1;
+  const existing = new Set(rows.map((row) => row.id));
+  while (existing.has(candidate)) candidate = `${prefix}::${suffix++}`;
+  return candidate;
+}
+
+export function assignStockBulkImageSource(
+  rows: readonly StockBulkImageFileRow[],
+  sourceId: string,
+  productIds: readonly string[]
+) {
+  const targets = Array.from(new Set(productIds.filter(Boolean)));
+  const representative = rows.find((row) => row.sourceId === sourceId);
+  if (!representative || targets.length === 0) return rows.map((row) => ({ ...row }));
+
+  let next = rows
+    .filter((row) => !row.productId || !targets.includes(row.productId) || row.sourceId === sourceId)
+    .map((row) => ({ ...row }));
+
+  targets.forEach((productId) => {
+    if (next.some((row) => row.sourceId === sourceId && row.productId === productId)) return;
+    const unassignedIndex = next.findIndex((row) => row.sourceId === sourceId && !row.productId);
+    if (unassignedIndex >= 0) {
+      next[unassignedIndex] = {
+        ...next[unassignedIndex],
+        productId,
+        selected: false,
+        status: "matched",
+        error: undefined
+      };
+      return;
+    }
+    next.push({
+      ...representative,
+      id: nextAssignmentId(next, sourceId, productId),
+      persistedId: undefined,
+      productId,
       selected: false,
-      file,
-      fileName: file.name,
-      fileType: file.type || file.name.split(".").at(-1)?.toLocaleUpperCase() || "-",
-      relativePath: file.webkitRelativePath || file.name,
-      productId: "",
-      status: "pending"
-    }));
+      status: "matched",
+      error: undefined
+    });
+  });
+  return next;
+}
+
+export function unassignStockBulkImageProduct(
+  rows: readonly StockBulkImageFileRow[],
+  productId: string
+) {
+  const assigned = rows.find((row) => row.productId === productId);
+  if (!assigned) return rows.map((row) => ({ ...row }));
+  const sameSource = rows.filter((row) => row.sourceId === assigned.sourceId);
+  if (sameSource.length > 1) {
+    return rows.filter((row) => row.id !== assigned.id).map((row) => ({ ...row }));
+  }
+  return rows.map((row) => row.id === assigned.id
+    ? { ...row, productId: "", status: "pending" as const, error: undefined }
+    : { ...row });
+}
+
+export function replaceStockBulkImageFolder(
+  currentRows: readonly StockBulkImageFileRow[],
+  folderRows: readonly StockBulkImageFileRow[]
+) {
+  return [
+    ...currentRows.filter((row) => Boolean(row.productId)).map((row) => ({ ...row, selected: false })),
+    ...folderRows.map((row) => ({ ...row }))
+  ];
 }
 
 export function createStockBulkImageSnapshot(rows: readonly StockBulkImageFileRow[]): StockBulkImageSnapshot {
-  return { rows: rows.map((row) => ({ ...row })) };
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      sourceId: row.sourceId || row.id
+    }))
+  };
 }
 
 export function cloneStockBulkImageSnapshot(snapshot: StockBulkImageSnapshot): StockBulkImageSnapshot {
@@ -166,6 +279,7 @@ export async function syncStockBulkDraftImages(
   apiRoot = apiBaseUrl
 ) {
   const files: File[] = [];
+  const fileIndexes = new Map<string, number>();
   const manifest = {
     version,
     images: snapshot.rows.map((row) => {
@@ -175,7 +289,12 @@ export async function syncStockBulkDraftImages(
       if (row.persistedId) {
         item.id = row.persistedId;
       } else {
-        item.fileIndex = files.push(row.file) - 1;
+        let fileIndex = fileIndexes.get(row.sourceId);
+        if (fileIndex === undefined) {
+          fileIndex = files.push(row.file) - 1;
+          fileIndexes.set(row.sourceId, fileIndex);
+        }
+        item.fileIndex = fileIndex;
       }
       return item;
     })
@@ -233,6 +352,7 @@ export async function loadStockBulkDraftImages(
     const file = new File([blob], image.fileName, { type: image.contentType });
     return {
       id: `bulk-image-${image.id}`,
+      sourceId: `stored-${image.sha256}`,
       persistedId: image.id,
       selected: false,
       file,
@@ -341,6 +461,7 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
   function StockBulkImagePanel({
     locale,
     products,
+    selectedProductIds = [],
     snapshot: controlledSnapshot,
     onSnapshotChange,
     onPendingImagesChange,
@@ -363,6 +484,7 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
       () => new Map(products.map((product) => [product.productId, product])),
       [products]
     );
+    const sources = useMemo(() => stockBulkImageSources(rows), [rows]);
 
     useEffect(() => {
       rowsRef.current = createStockBulkImageSnapshot(rows).rows;
@@ -386,44 +508,56 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
     }, [onPendingImagesChange, rows]);
 
     const compare = useCallback((mode: "code" | "name") => {
-      const currentRows = rowsRef.current;
-      const selectedRows = currentRows.filter((row) => row.selected);
-      const comparedRows = selectedRows.length > 0 ? selectedRows : currentRows;
+      const currentSources = stockBulkImageSources(rowsRef.current);
+      const unassignedSources = currentSources.filter((source) => source.productIds.length === 0);
+      const selectedSources = unassignedSources.filter((source) => source.selected);
+      const comparedSources = selectedSources.length > 0 ? selectedSources : unassignedSources;
       const result = matchStockBulkImageFiles(
-        comparedRows.map((row) => ({ name: row.fileName, file: row.file })),
+        comparedSources.map(({ representative }) => ({
+          name: representative.fileName,
+          file: representative.file
+        })),
         products,
         mode
       );
-      const comparedFiles = new Set(comparedRows.map((row) => row.file));
       const matches = new Map(result.matches.map((match) => [match.file, match]));
       const unresolved = new Map(result.unresolved.map((value) => [value.file, value]));
-      commitRows((current) => current.map((row) => {
-        if (!comparedFiles.has(row.file)) {
-          return row;
-        }
-        const match = matches.get(row.file);
-        if (match) {
-          return { ...row, productId: match.productId, status: "matched", error: undefined };
-        }
-        const pending = unresolved.get(row.file);
-        return {
-          ...row,
-          productId: "",
-          status: pending?.reason ?? "noMatch",
-          error: undefined
-        };
-      }));
+      commitRows((current) => {
+        let next = current;
+        comparedSources.forEach((source) => {
+          const match = matches.get(source.representative.file);
+          if (match) {
+            next = assignStockBulkImageSource(next, source.sourceId, [match.productId]);
+            return;
+          }
+          const pending = unresolved.get(source.representative.file);
+          next = next.map((row) => row.sourceId === source.sourceId
+            ? { ...row, productId: "", status: pending?.reason ?? "noMatch", error: undefined }
+            : row);
+        });
+        return next;
+      });
       setError("");
       onStatus(t("stock.bulkEdit.images.compared")
         .replace("{matched}", String(result.matches.length))
         .replace("{pending}", String(result.unresolved.length)));
     }, [commitRows, onStatus, products, t]);
 
-    const assign = (rowId: string, productId: string) => {
-      commitRows((current) => current.map((row) => row.id === rowId
-        ? { ...row, productId, status: productId ? "matched" : "pending", error: undefined }
-        : row));
-    };
+    const assignToProducts = useCallback((sourceId: string, productIds: string[]) => {
+      const targets = Array.from(new Set(productIds.filter(Boolean)));
+      if (targets.length === 0) {
+        setError(t("stock.bulkEdit.images.selectProductsFirst"));
+        return;
+      }
+      commitRows((current) => assignStockBulkImageSource(current, sourceId, targets));
+      setError("");
+      onStatus(t("stock.bulkEdit.images.assigned").replace("{count}", String(targets.length)));
+    }, [commitRows, onStatus, t]);
+
+    const unassignProduct = useCallback((productId: string) => {
+      commitRows((current) => unassignStockBulkImageProduct(current, productId));
+      setError("");
+    }, [commitRows]);
 
     const applyPending = useCallback(async (token: string) => {
       if (busyRef.current) {
@@ -489,16 +623,41 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
       getPendingAssignments: () => stockBulkImagePendingAssignments(
         createStockBulkImageSnapshot(rowsRef.current)
       ),
-      applyPending
-    }), [applyPending, commitRows, compare]);
+      applyPending,
+      assignImageToProducts: assignToProducts,
+      unassignProduct
+    }), [applyPending, assignToProducts, commitRows, compare, unassignProduct]);
 
-    const assignedProducts = new Map<string, string>();
-    rows.forEach((row) => {
-      if (row.productId) assignedProducts.set(row.productId, row.id);
-    });
-    const allRowsSelected = rows.length > 0 && rows.every((row) => row.selected);
+    const allSourcesSelected = sources.length > 0 && sources.every((source) => source.selected);
 
-    function handleEntryKeyDown(event: KeyboardEvent<HTMLElement>) {
+    function toggleSourceSelection(sourceId: string, selected: boolean) {
+      commitRows((current) => current.map((row) => row.sourceId === sourceId
+        ? { ...row, selected }
+        : row));
+    }
+
+    function startSourceDrag(event: DragEvent<HTMLElement>, sourceId: string) {
+      event.dataTransfer.effectAllowed = "copy";
+      event.dataTransfer.setData("application/x-tpv-bulk-image", sourceId);
+      event.dataTransfer.setData("text/plain", sourceId);
+    }
+
+    function sourceProductText(productIds: string[]) {
+      return productIds
+        .map((productId) => productById.get(productId)?.name)
+        .filter(Boolean)
+        .join(", ");
+    }
+
+    function sourceStatus(source: StockBulkImageSource) {
+      if (source.productIds.length > 0) {
+        return t("stock.bulkEdit.images.assignedCount")
+          .replace("{count}", String(source.productIds.length));
+      }
+      return t(`stock.bulkEdit.images.status.${source.status}`);
+    }
+
+    function handleSourceKeyDown(event: KeyboardEvent<HTMLElement>, sourceId: string) {
       const intent = enterNavigationIntent(event.key, {
         shiftKey: event.shiftKey,
         ctrlKey: event.ctrlKey,
@@ -508,25 +667,34 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
       });
       if (!intent) return;
       event.preventDefault();
-      if (intent === "next" && event.currentTarget.matches("input[type='checkbox']")) {
-        (event.currentTarget as HTMLInputElement).click();
+      if (intent === "next") {
+        assignToProducts(sourceId, selectedProductIds);
+        return;
       }
       focusRelativeEnterTarget(
         panelRef.current,
         event.currentTarget,
-        intent,
-        "[data-image-entry]:not(:disabled), .stock-bulk-image-product-select .erp-select__trigger:not(:disabled)"
+        "previous",
+        "[data-image-source-entry]:not([aria-disabled='true'])"
       );
     }
 
-    function moveFromActiveProductSelect(intent: "next" | "previous") {
-      const current = document.activeElement;
-      if (!(current instanceof HTMLElement)) return;
+    function handleCheckboxKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+      const intent = enterNavigationIntent(event.key, {
+        shiftKey: event.shiftKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        isComposing: event.nativeEvent.isComposing
+      });
+      if (!intent) return;
+      event.preventDefault();
+      if (intent === "next") event.currentTarget.click();
       focusRelativeEnterTarget(
         panelRef.current,
-        current,
+        event.currentTarget,
         intent,
-        "[data-image-entry]:not(:disabled), .stock-bulk-image-product-select .erp-select__trigger:not(:disabled)"
+        "[data-image-entry]:not(:disabled), [data-image-source-entry]:not([aria-disabled='true'])"
       );
     }
 
@@ -541,7 +709,7 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
           multiple
           onChange={(event) => {
             const next = stockBulkImageRows(Array.from(event.target.files ?? []));
-            commitRows(() => next);
+            commitRows((current) => replaceStockBulkImageFolder(current, next));
             setError(next.length ? "" : t("stock.bulkEdit.images.noFiles"));
             onStatus(t("stock.bulkEdit.images.loaded").replace("{count}", String(next.length)));
             event.currentTarget.value = "";
@@ -550,12 +718,22 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
         {showToolbar && (
           <header className="stock-bulk-image-actions">
             <strong>{t("stock.bulkEdit.images.files")}</strong>
-            <span>{t("stock.bulkEdit.images.count").replace("{count}", String(rows.length))}</span>
+            <span>{t("stock.bulkEdit.images.count").replace("{count}", String(sources.length))}</span>
             <button type="button" disabled={busy} onClick={() => inputRef.current?.click()}>{t("stock.bulkEdit.openFolder")}</button>
             <button type="button" disabled={busy || rows.length === 0} onClick={() => compare("name")}>{t("stock.bulkEdit.compareName")}</button>
             <button type="button" disabled={busy || rows.length === 0} onClick={() => compare("code")}>{t("stock.bulkEdit.compareCode")}</button>
           </header>
         )}
+        <header className="stock-bulk-image-panel-heading">
+          <div>
+            <strong>{t("stock.bulkEdit.images.imported")}</strong>
+            <span>{t("stock.bulkEdit.images.count").replace("{count}", String(sources.length))}</span>
+          </div>
+          <small>
+            {t("stock.bulkEdit.images.selectedProducts")
+              .replace("{count}", String(selectedProductIds.length))}
+          </small>
+        </header>
         {error && <p className="stock-bulk-dialog-error" role="alert">{error}</p>}
         <div className="stock-bulk-image-table" role="table">
           <div className="stock-bulk-image-row head" role="row">
@@ -564,62 +742,50 @@ export const StockBulkImagePanel = forwardRef<StockBulkImagePanelHandle, StockBu
                 data-image-entry
                 type="checkbox"
                 aria-label={t("stock.bulkEdit.selectAll")}
-                checked={allRowsSelected}
-                disabled={rows.length === 0}
+                checked={allSourcesSelected}
+                disabled={sources.length === 0}
                 onChange={(event) => commitRows((current) => current.map((row) => ({ ...row, selected: event.target.checked })))}
-                onKeyDown={handleEntryKeyDown}
+                onKeyDown={handleCheckboxKeyDown}
               />
             </label>
             <span>{t("stock.bulkEdit.images.preview")}</span>
             <span>{t("stock.bulkEdit.images.file")}</span>
-            <span>{t("stock.bulkEdit.images.fileType")}</span>
-            <span>{t("stock.bulkEdit.images.product")}</span>
-            <span style={{ gridColumn: "span 2" }}>{t("stock.bulkEdit.images.state")}</span>
           </div>
-          {rows.length === 0 && <p className="stock-empty-state">{t("stock.bulkEdit.images.empty")}</p>}
-          {rows.map((row) => {
-            const product = productById.get(row.productId);
+          {sources.length === 0 && <p className="stock-empty-state">{t("stock.bulkEdit.images.empty")}</p>}
+          {sources.map((source) => {
+            const row = source.representative;
+            const assignedNames = sourceProductText(source.productIds);
             return (
-              <div className={`stock-bulk-image-row ${row.status}`} key={row.id} role="row">
+              <div
+                className={`stock-bulk-image-row ${source.status} ${source.productIds.length > 0 ? "assigned" : ""}`}
+                key={source.sourceId}
+                role="row"
+                tabIndex={busy ? -1 : 0}
+                aria-disabled={busy}
+                data-image-source-entry
+                draggable={!busy}
+                onDragStart={(event) => startSourceDrag(event, source.sourceId)}
+                onDoubleClick={() => assignToProducts(source.sourceId, selectedProductIds)}
+                onKeyDown={(event) => handleSourceKeyDown(event, source.sourceId)}
+              >
                 <label className="bulk-check">
                   <input
                     data-image-entry
                     type="checkbox"
                     aria-label={`${t("stock.bulkEdit.images.file")}: ${row.fileName}`}
-                    checked={row.selected}
+                    checked={source.selected}
                     disabled={busy}
-                    onChange={(event) => commitRows((current) => current.map((value) => value.id === row.id
-                      ? { ...value, selected: event.target.checked }
-                      : value))}
-                    onKeyDown={handleEntryKeyDown}
+                    onChange={(event) => toggleSourceSelection(source.sourceId, event.target.checked)}
+                    onKeyDown={handleCheckboxKeyDown}
                   />
                 </label>
                 <span className="stock-bulk-file-preview"><ImagePreview file={row.file} /></span>
-                <span title={row.relativePath}><strong>{row.fileName}</strong><small>{row.relativePath}</small></span>
-                <span>{row.fileType}</span>
-                <div>
-                  <ErpSelect
-                    className="stock-bulk-image-product-select"
-                    aria-label={t("stock.bulkEdit.images.product")}
-                    value={row.productId}
-                    disabled={busy || row.status === "uploaded"}
-                    options={[
-                      { value: "", label: t("stock.bulkEdit.images.manual") },
-                      ...products.map((option) => ({
-                        value: option.productId,
-                        label: `${option.code || option.barcode || option.barcode2 || "-"} - ${option.name}`,
-                        disabled: Boolean(assignedProducts.get(option.productId) && assignedProducts.get(option.productId) !== row.id)
-                      }))
-                    ]}
-                    onChange={(value) => assign(row.id, value)}
-                    onCommit={() => moveFromActiveProductSelect("next")}
-                    onNavigatePrevious={() => moveFromActiveProductSelect("previous")}
-                  />
-                </div>
-                <span className="stock-bulk-image-state" style={{ gridColumn: "span 2" }}>
-                  {t(`stock.bulkEdit.images.status.${row.status}`)}
-                  {product && <small className="product-name-text">{product.name}</small>}
-                  {row.error && <small>{row.error}</small>}
+                <span className="stock-bulk-image-file" title={row.relativePath}>
+                  <strong>{row.fileName}</strong>
+                  <small>{row.fileType}</small>
+                  <small className="stock-bulk-image-state">{sourceStatus(source)}</small>
+                  {assignedNames && <small className="product-name-text">{assignedNames}</small>}
+                  {source.error && <small className="stock-bulk-image-error">{source.error}</small>}
                 </span>
               </div>
             );

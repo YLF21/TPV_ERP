@@ -19,6 +19,7 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
+import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
@@ -124,6 +125,8 @@ class DocumentServiceTest {
     private PromotionCatalogGateway promotionCatalog;
     @Mock
     private CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
+    @Mock
+    private StockSettingsService stockSettings;
 
     private DocumentService service;
     private Store store;
@@ -203,6 +206,7 @@ class DocumentServiceTest {
                 promotionalCoupons,
                 promotionPricing,
                 promotionCatalog,
+                stockSettings,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -214,11 +218,41 @@ class DocumentServiceTest {
 
         var created = service.createDeliveryNote(
                 command(CommercialDocumentType.ALBARAN_VENTA),
-                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                        "ADMIN", "n/a"));
+                authentication());
 
         assertThat(created.getTiendaId()).isEqualTo(store.getId());
         assertThat(created.getStockUserId()).isEqualTo(user.getId());
+    }
+
+    @Test
+    void productAndWarehouseManagersCanCreatePurchaseDocuments() {
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        var invoice = service.createInvoice(
+                command(CommercialDocumentType.FACTURA_COMPRA),
+                authentication("GESTION_PRODUCTO"));
+        var deliveryNote = service.createDeliveryNote(
+                command(CommercialDocumentType.ALBARAN_COMPRA),
+                authentication("GESTION_ALMACEN"));
+
+        assertThat(invoice.getTipo()).isEqualTo(CommercialDocumentType.FACTURA_COMPRA);
+        assertThat(deliveryNote.getTipo()).isEqualTo(CommercialDocumentType.ALBARAN_COMPRA);
+    }
+
+    @Test
+    void purchasePermissionsCannotCreateSalesDocumentsAndAccountsCannotWritePurchases() {
+        assertThatThrownBy(() -> service.createInvoice(
+                command(CommercialDocumentType.FACTURA_VENTA),
+                authentication("GESTION_PRODUCTO")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> service.createDeliveryNote(
+                command(CommercialDocumentType.ALBARAN_VENTA),
+                authentication("GESTION_ALMACEN")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> service.createInvoice(
+                command(CommercialDocumentType.FACTURA_COMPRA),
+                authentication("GESTION_CUENTAS")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
 
     @Test
@@ -524,8 +558,10 @@ class DocumentServiceTest {
         when(eligible.getId()).thenReturn(eligibleId);
         when(eligible.getProductType()).thenReturn(ProductType.UNIT);
         when(eligible.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        when(eligible.isActive()).thenReturn(true);
         when(excluded.getProductType()).thenReturn(ProductType.UNIT);
         when(excluded.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(excluded.isActive()).thenReturn(true);
         doReturn(Map.of(
                 eligibleId, productSnapshot(eligible),
                 excludedId, productSnapshot(excluded)))
@@ -1568,6 +1604,41 @@ class DocumentServiceTest {
     }
 
     @Test
+    void rejectsInactiveProductWhenConfirmingASaleAndPolicyIsDisabled() {
+        var note = draft(CommercialDocumentType.ALBARAN_VENTA);
+        var productId = note.getLineas().getFirst().getProductoId();
+        var inactive = product(productId, DiscountType.NORMAL);
+        when(inactive.isActive()).thenReturn(false);
+        doReturn(Map.of(productId, productSnapshot(inactive)))
+                .when(promotionCatalog).products(store.getId(), List.of(productId));
+        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
+
+        assertThatThrownBy(() -> service.confirm(note.getId(), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.product.inactive_sale_not_allowed");
+
+        verify(counterRepository, never())
+                .findByTiendaIdAndTipoAndPeriodo(any(), any(), any());
+        verify(stockGateway, never()).confirm(any());
+    }
+
+    @Test
+    void allowsInactiveProductWhenStorePolicyIsEnabled() {
+        var productId = UUID.randomUUID();
+        var inactive = product(productId, DiscountType.NORMAL);
+        doReturn(Map.of(productId, productSnapshot(inactive)))
+                .when(promotionCatalog).products(store.getId(), List.of(productId));
+        when(stockSettings.allowsInactiveProductSales(store.getId())).thenReturn(true);
+
+        var quoted = service.quoteTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "P-1", "Producto", new BigDecimal("10.00")))),
+                authentication());
+
+        assertThat(quoted.getLineas()).hasSize(1);
+    }
+
+    @Test
     void purchaseDeliveryNoteRequiresSupplierBeforeNumberingOrStock() {
         var note = draft(CommercialDocumentType.ALBARAN_COMPRA);
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
@@ -1747,6 +1818,7 @@ class DocumentServiceTest {
         lenient().when(product.getStoreId()).thenReturn(store.getId());
         lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
         lenient().when(product.getDiscountType()).thenReturn(discountType);
+        lenient().when(product.isActive()).thenReturn(true);
         return product;
     }
 
@@ -1802,6 +1874,12 @@ class DocumentServiceTest {
     }
 
     private UsernamePasswordAuthenticationToken authentication() {
-        return new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+        return UsernamePasswordAuthenticationToken.authenticated(
+                "ADMIN", "n/a", List.of(() -> "ROLE_ADMIN"));
+    }
+
+    private UsernamePasswordAuthenticationToken authentication(String authority) {
+        return UsernamePasswordAuthenticationToken.authenticated(
+                "USER", "n/a", List.of(() -> authority));
     }
 }

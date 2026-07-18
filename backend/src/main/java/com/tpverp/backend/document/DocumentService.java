@@ -19,6 +19,7 @@ import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
+import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
@@ -39,6 +40,8 @@ import com.tpverp.backend.promotion.PromotionTargetType;
 import com.tpverp.backend.promotion.PromotionType;
 import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionalCouponService;
+import com.tpverp.backend.security.application.PermissionChecks;
+import com.tpverp.backend.security.application.CorePermissionBootstrap;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -58,9 +61,21 @@ public class DocumentService {
 
     private static final EnumSet<CommercialDocumentType> DELIVERY_NOTES = EnumSet.of(
             CommercialDocumentType.ALBARAN_VENTA, CommercialDocumentType.ALBARAN_COMPRA);
+    private static final EnumSet<CommercialDocumentType> SALES_DELIVERY_NOTES = EnumSet.of(
+            CommercialDocumentType.ALBARAN_VENTA);
     private static final EnumSet<CommercialDocumentType> INVOICES = EnumSet.of(
             CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.FACTURA_COMPRA,
             CommercialDocumentType.RECTIFICATIVA_VENTA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
+    private static final EnumSet<CommercialDocumentType> SALES_INVOICES = EnumSet.of(
+            CommercialDocumentType.FACTURA_VENTA, CommercialDocumentType.RECTIFICATIVA_VENTA);
+    private static final EnumSet<CommercialDocumentType> PURCHASE_DELIVERY_NOTES = EnumSet.of(
+            CommercialDocumentType.ALBARAN_COMPRA);
+    private static final EnumSet<CommercialDocumentType> PURCHASE_INVOICES = EnumSet.of(
+            CommercialDocumentType.FACTURA_COMPRA, CommercialDocumentType.RECTIFICATIVA_COMPRA);
+    private static final EnumSet<CommercialDocumentType> PURCHASE_DOCUMENTS = EnumSet.of(
+            CommercialDocumentType.ALBARAN_COMPRA,
+            CommercialDocumentType.FACTURA_COMPRA,
+            CommercialDocumentType.RECTIFICATIVA_COMPRA);
     private static final EnumSet<CommercialDocumentType> PROMOTION_SALES_DOCUMENTS = EnumSet.of(
             CommercialDocumentType.TICKET,
             CommercialDocumentType.FACTURA_VENTA,
@@ -94,6 +109,7 @@ public class DocumentService {
     private final PromotionalCouponService promotionalCoupons;
     private final AuthoritativePromotionPricing promotionPricing;
     private final PromotionCatalogGateway promotionCatalog;
+    private final StockSettingsService stockSettings;
     private final Clock clock;
 
     public DocumentService(
@@ -123,6 +139,7 @@ public class DocumentService {
             PromotionalCouponService promotionalCoupons,
             AuthoritativePromotionPricing promotionPricing,
             PromotionCatalogGateway promotionCatalog,
+            StockSettingsService stockSettings,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -150,6 +167,7 @@ public class DocumentService {
         this.promotionalCoupons = promotionalCoupons;
         this.promotionPricing = promotionPricing;
         this.promotionCatalog = promotionCatalog;
+        this.stockSettings = stockSettings;
         this.clock = clock;
     }
 
@@ -157,7 +175,16 @@ public class DocumentService {
     public CommercialDocument createDeliveryNote(
             DocumentCommand command, Authentication authentication) {
         requireType(command, DELIVERY_NOTES);
+        requireDocumentWritePermission(
+                command.tipo(), authentication, CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
         return documents.save(createDraft(command, authentication));
+    }
+
+    @Transactional
+    public CommercialDocument createAndConfirmDeliveryNote(
+            DocumentCommand command, Authentication authentication) {
+        var draft = createDeliveryNote(command, authentication);
+        return confirm(draft.getId(), authentication);
     }
 
     @Transactional(readOnly = true)
@@ -241,18 +268,35 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public List<CommercialDocument> listDeliveryNotes() {
+        return listDeliveryNotes(true);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CommercialDocument> listDeliveryNotes(boolean includePurchaseDocuments) {
+        return listDeliveryNotes(true, includePurchaseDocuments);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CommercialDocument> listDeliveryNotes(
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments) {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
-                organization.currentStore().getId(), DELIVERY_NOTES);
+                organization.currentStore().getId(),
+                documentTypes(includeSalesDocuments, includePurchaseDocuments,
+                        SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
     }
 
     // Confirms, numbers, and records stock/purchase in one transaction.
     @Transactional
     public CommercialDocument confirm(UUID id, Authentication authentication) {
         var document = find(id);
+        requireDocumentWritePermission(
+                document.getTipo(), authentication, confirmPermission(document.getTipo()));
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
         var promotionContext = promotionContext(document);
         applyDirectPromotions(document, promotionContext);
+        validateInactiveSaleProducts(document);
         // Confirmation resets stockOrigin; this flag must be read first.
         boolean recordsPurchase = document.getTipo() == CommercialDocumentType.ALBARAN_COMPRA
                 || (document.getTipo() == CommercialDocumentType.FACTURA_COMPRA
@@ -307,6 +351,7 @@ public class DocumentService {
         var customer = pricingCustomer(command);
         var ticket = createDraft(command, authentication, customer);
         applyDirectPromotions(ticket, promotionContext(ticket, customer));
+        validateInactiveSaleProducts(ticket);
         return ticket;
     }
 
@@ -323,6 +368,7 @@ public class DocumentService {
         var ticket = createDraft(command, authentication, customer);
         var promotionContext = promotionContext(ticket, customer);
         applyDirectPromotions(ticket, promotionContext);
+        validateInactiveSaleProducts(ticket);
         if (ticket.getTotal().signum() >= 0) {
             requirePaymentsPresent(payments);
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
@@ -368,6 +414,7 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(), snapshot.globalDiscount());
         ticket.setParties(snapshot.customerId(), null, null);
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        validateInactiveSaleProducts(ticket);
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
                 || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
@@ -875,13 +922,36 @@ public class DocumentService {
     public CommercialDocument createInvoice(
             DocumentCommand command, Authentication authentication) {
         requireType(command, INVOICES);
+        requireDocumentWritePermission(
+                command.tipo(), authentication, CorePermissionBootstrap.INVOICES_WRITE);
         return documents.save(createDraft(command, authentication));
+    }
+
+    @Transactional
+    public CommercialDocument createAndConfirmInvoice(
+            DocumentCommand command, Authentication authentication) {
+        var draft = createInvoice(command, authentication);
+        return confirm(draft.getId(), authentication);
     }
 
     @Transactional(readOnly = true)
     public List<CommercialDocument> listInvoices() {
+        return listInvoices(true);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CommercialDocument> listInvoices(boolean includePurchaseDocuments) {
+        return listInvoices(true, includePurchaseDocuments);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CommercialDocument> listInvoices(
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments) {
         return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
-                organization.currentStore().getId(), INVOICES);
+                organization.currentStore().getId(),
+                documentTypes(includeSalesDocuments, includePurchaseDocuments,
+                        SALES_INVOICES, PURCHASE_INVOICES));
     }
 
     // Records payments only when they exactly cover the pending total.
@@ -891,6 +961,7 @@ public class DocumentService {
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalArgumentException("el documento no es una factura");
         }
+        requirePurchaseDocumentWritePermission(invoice.getTipo(), authentication);
         return payReceivable(invoice, payments, authentication);
     }
 
@@ -900,6 +971,7 @@ public class DocumentService {
         if (!DELIVERY_NOTES.contains(deliveryNote.getTipo())) {
             throw new IllegalArgumentException("message.document.only_delivery_note_can_be_paid");
         }
+        requirePurchaseDocumentWritePermission(deliveryNote.getTipo(), authentication);
         return payReceivable(deliveryNote, payments, authentication);
     }
     // Records actual delivery-note payments without applying stock again.
@@ -1135,6 +1207,7 @@ public class DocumentService {
         var snapshots = promotionCatalog.products(
                 storeId, values.stream().map(DocumentLineCommand::productoId).toList());
         var salesDocument = PROMOTION_SALES_DOCUMENTS.contains(documentType);
+        validateInactiveSaleProducts(storeId, documentType, snapshots);
         if (salesDocument && globalDiscount.signum() > 0
                 && snapshots.values().stream()
                 .anyMatch(snapshot -> snapshot.product().getDiscountType() == DiscountType.NONE)) {
@@ -1164,6 +1237,42 @@ public class DocumentService {
                 && line.cantidad().stripTrailingZeros().scale() > 0) {
             throw new IllegalArgumentException("message.product.unit_quantity_must_be_integer");
         }
+    }
+
+    private void validateInactiveSaleProducts(CommercialDocument document) {
+        if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
+            return;
+        }
+        var productIds = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .map(DocumentLine::getProductoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return;
+        }
+        validateInactiveSaleProducts(
+                document.getTiendaId(),
+                document.getTipo(),
+                promotionCatalog.products(document.getTiendaId(), productIds));
+    }
+
+    private void validateInactiveSaleProducts(
+            UUID storeId,
+            CommercialDocumentType documentType,
+            Map<UUID, PromotionCatalogGateway.ProductSnapshot> snapshots) {
+        if (!PROMOTION_SALES_DOCUMENTS.contains(documentType)
+                || stockSettings.allowsInactiveProductSales(storeId)) {
+            return;
+        }
+        snapshots.values().stream()
+                .map(PromotionCatalogGateway.ProductSnapshot::product)
+                .filter(product -> !product.isActive())
+                .findFirst()
+                .ifPresent(product -> {
+                    throw new IllegalStateException("message.product.inactive_sale_not_allowed");
+                });
     }
     // Enforces product quantity semantics before creating the fiscal line snapshot.
 
@@ -1506,5 +1615,54 @@ public class DocumentService {
         if (!allowedTypes.contains(command.tipo())) {
             throw new IllegalArgumentException("message.document.invalid_document_type");
         }
+    }
+
+    private static void requirePurchaseDocumentWritePermission(
+            CommercialDocumentType type,
+            Authentication authentication) {
+        if (PURCHASE_DOCUMENTS.contains(type) && !PermissionChecks.hasPurchaseDocumentWrite(authentication)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Los documentos de compra requieren permiso de gestion de producto o almacen");
+        }
+    }
+
+    private static void requireDocumentWritePermission(
+            CommercialDocumentType type,
+            Authentication authentication,
+            String salesPermission) {
+        if (PURCHASE_DOCUMENTS.contains(type)) {
+            requirePurchaseDocumentWritePermission(type, authentication);
+            return;
+        }
+        if (!PermissionChecks.hasRole(authentication, "ADMIN")
+                && !PermissionChecks.hasAnyAuthority(
+                        authentication,
+                        CorePermissionBootstrap.GESTION_VENTAS,
+                        CorePermissionBootstrap.VENTA,
+                        salesPermission)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "El documento de venta requiere permiso de ventas");
+        }
+    }
+
+    private static String confirmPermission(CommercialDocumentType type) {
+        return DELIVERY_NOTES.contains(type)
+                ? CorePermissionBootstrap.DELIVERY_NOTES_CONFIRM
+                : CorePermissionBootstrap.INVOICES_CONFIRM;
+    }
+
+    private static EnumSet<CommercialDocumentType> documentTypes(
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments,
+            EnumSet<CommercialDocumentType> salesTypes,
+            EnumSet<CommercialDocumentType> purchaseTypes) {
+        var result = EnumSet.noneOf(CommercialDocumentType.class);
+        if (includeSalesDocuments) {
+            result.addAll(salesTypes);
+        }
+        if (includePurchaseDocuments) {
+            result.addAll(purchaseTypes);
+        }
+        return result;
     }
 }

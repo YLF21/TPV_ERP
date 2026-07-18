@@ -69,14 +69,7 @@ public class ProductPriceRuleController {
     public ProductPriceRulePreview preview(
             @PathVariable UUID id,
             @Valid @RequestBody ProductPriceRuleService.ProductPriceRuleExecutionRequest request) {
-        return service.preview(id, request.ruleVersion());
-    }
-
-    @PostMapping("/{id}/apply")
-    public ProductPriceRulePreview apply(
-            @PathVariable UUID id,
-            @Valid @RequestBody ProductPriceRuleService.ProductPriceRuleExecutionRequest request) {
-        return service.apply(id, request.ruleVersion());
+        return service.preview(id, request.ruleVersion(), request.productIds());
     }
 
     @ExceptionHandler(ProductPriceRuleConflictException.class)

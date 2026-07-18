@@ -14,6 +14,8 @@ class MemberLoyaltyControllerContractTest {
 
     @Test
     void exposesMemberLoyaltyEndpointsWithCustomerPermissions() throws Exception {
+        assertThat(method("list").getAnnotation(GetMapping.class).value())
+                .containsExactly("/api/v1/members");
         assertThat(method("get").getAnnotation(GetMapping.class).value())
                 .containsExactly("/api/v1/members/{id}");
         assertThat(method("createCategory", MemberLoyaltyController.CategoryRequest.class)

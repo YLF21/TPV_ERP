@@ -67,6 +67,15 @@ public class GoodsCheckService {
         enqueue(saved, SyncOperation.CREAR, null);
         return view(saved, document);
     }
+
+    @Transactional
+    public GoodsCheckView importDocument(UUID documentId, Authentication authentication) {
+        var document = purchaseDocument(documentId);
+        return checks.findByDocumentoIdAndEstadoAndTiendaId(
+                        documentId, GoodsCheckStatus.ABIERTA, organization.currentStore().getId())
+                .map(check -> view(check, document))
+                .orElseGet(() -> start(documentId, authentication));
+    }
     // Starts one open goods check from a confirmed purchase document.
 
     @Transactional(readOnly = true)

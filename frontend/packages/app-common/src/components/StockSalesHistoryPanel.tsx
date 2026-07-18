@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 export type StockSalesHistoryRow = {
   documentId: string;
@@ -30,10 +33,29 @@ type StockSalesHistoryPanelProps = {
   productId: string;
   productName: string;
   locale: LocaleCode;
+  app?: AppKind;
+  username?: string;
+  accessToken?: string;
   token?: string;
   onClose: () => void;
   onOpenDocument?: (documentId: string, documentType: string) => void | Promise<void>;
 };
+
+const stockSalesHistoryColumnDefinitions = [
+  { key: "occurredAt", defaultWidth: 160 },
+  { key: "document", defaultWidth: 180 },
+  { key: "status", defaultWidth: 130 },
+  { key: "customer", defaultWidth: 200 },
+  { key: "quantity", defaultWidth: 110 },
+  { key: "unitPrice", defaultWidth: 130 },
+  { key: "discount", defaultWidth: 110 },
+  { key: "total", defaultWidth: 130 },
+  { key: "user", defaultWidth: 150 },
+  { key: "store", defaultWidth: 160 },
+  { key: "warehouse", defaultWidth: 160 }
+] as const;
+
+type StockSalesHistoryColumnKey = typeof stockSalesHistoryColumnDefinitions[number]["key"];
 
 function localIsoDate(date: Date) {
   const year = date.getFullYear();
@@ -68,6 +90,9 @@ export function StockSalesHistoryPanel({
   productId,
   productName,
   locale,
+  app = "venta",
+  username = "",
+  accessToken,
   token,
   onClose,
   onOpenDocument
@@ -85,6 +110,14 @@ export function StockSalesHistoryPanel({
   const [documentNotice, setDocumentNotice] = useState("");
   const historyToolbarRef = useRef<HTMLDivElement | null>(null);
   const applyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: "stock.productSalesHistory",
+    definitions: stockSalesHistoryColumnDefinitions
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
 
   useEffect(() => {
     function handleKeyDown(event: globalThis.KeyboardEvent) {
@@ -138,6 +171,19 @@ export function StockSalesHistoryPanel({
     dateStyle: "short",
     timeStyle: "short"
   });
+  const columnLabels: Record<StockSalesHistoryColumnKey, string> = {
+    occurredAt: t("stock.history.occurredAt"),
+    document: t("stock.history.document"),
+    status: t("salesReport.column.status"),
+    customer: t("salesReport.column.customer"),
+    quantity: t("stock.history.quantity"),
+    unitPrice: t("stock.history.unitPrice"),
+    discount: t("stock.history.discount"),
+    total: t("salesReport.column.total"),
+    user: t("salesReport.column.user"),
+    store: t("stock.history.store"),
+    warehouse: t("stock.column.warehouse")
+  };
 
   function applyFilters() {
     const from = dateFrom || dateTo;
@@ -223,19 +269,25 @@ export function StockSalesHistoryPanel({
 
       <div className="stock-history-table-scroll">
         <table className="report-table stock-history-table">
+          <colgroup>
+            {visibleColumns.map((column) => (
+              <col key={column.key} style={{ width: `${column.width}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th>{t("stock.history.occurredAt")}</th>
-              <th>{t("stock.history.document")}</th>
-              <th>{t("salesReport.column.status")}</th>
-              <th>{t("salesReport.column.customer")}</th>
-              <th>{t("stock.history.quantity")}</th>
-              <th>{t("stock.history.unitPrice")}</th>
-              <th>{t("stock.history.discount")}</th>
-              <th>{t("salesReport.column.total")}</th>
-              <th>{t("salesReport.column.user")}</th>
-              <th>{t("stock.history.store")}</th>
-              <th>{t("stock.column.warehouse")}</th>
+              {visibleColumns.map((column) => (
+                <TableLayoutHeaderCell
+                  column={column}
+                  key={column.key}
+                  resizeLabel={`${t("stock.columns.resize")} ${columnLabels[column.key]}`}
+                  onReorder={tableLayout.reorderColumns}
+                  onMove={tableLayout.moveColumn}
+                  onResize={tableLayout.resizeColumn}
+                >
+                  {columnLabels[column.key]}
+                </TableLayoutHeaderCell>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -250,22 +302,26 @@ export function StockSalesHistoryPanel({
                   }
                 }}
               >
-                <td>{formatOccurredAt(row.occurredAt, dateFormatter)}</td>
-                <td>{stockSalesDocumentLabel(row)}</td>
-                <td>{row.status}</td>
-                <td>{row.customerName || row.customerId || "-"}</td>
-                <td>{numberFormatter.format(Number(row.quantity) || 0)}</td>
-                <td>{numberFormatter.format(Number(row.unitPrice) || 0)}</td>
-                <td>{numberFormatter.format(Number(row.discountPercent) || 0)}%</td>
-                <td>{numberFormatter.format(Number(row.lineTotal) || 0)}</td>
-                <td>{row.userName || row.userId || "-"}</td>
-                <td>{row.storeName || row.storeId || "-"}</td>
-                <td>{row.warehouseName || row.warehouseId || "-"}</td>
+                {visibleColumns.map((column) => (
+                  <td key={column.key}>
+                    {column.key === "occurredAt" && formatOccurredAt(row.occurredAt, dateFormatter)}
+                    {column.key === "document" && stockSalesDocumentLabel(row)}
+                    {column.key === "status" && row.status}
+                    {column.key === "customer" && (row.customerName || row.customerId || "-")}
+                    {column.key === "quantity" && numberFormatter.format(Number(row.quantity) || 0)}
+                    {column.key === "unitPrice" && numberFormatter.format(Number(row.unitPrice) || 0)}
+                    {column.key === "discount" && `${numberFormatter.format(Number(row.discountPercent) || 0)}%`}
+                    {column.key === "total" && numberFormatter.format(Number(row.lineTotal) || 0)}
+                    {column.key === "user" && (row.userName || row.userId || "-")}
+                    {column.key === "store" && (row.storeName || row.storeId || "-")}
+                    {column.key === "warehouse" && (row.warehouseName || row.warehouseId || "-")}
+                  </td>
+                ))}
               </tr>
             ))}
             {!loading && !error && visibleRows.length === 0 && (
               <tr>
-                <td colSpan={11}>{t("stock.history.empty")}</td>
+                <td colSpan={visibleColumns.length}>{t("stock.history.empty")}</td>
               </tr>
             )}
           </tbody>

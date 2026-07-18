@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.application.PermissionChecks;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -31,21 +32,33 @@ public class InvoiceController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_READ','VENTA')")
-    public List<DocumentView> list() {
-        return service.listInvoices().stream().map(this::view).toList();
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_READ','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN','GESTION_CUENTAS')")
+    public List<DocumentView> list(Authentication authentication) {
+        return service.listInvoices(
+                        PermissionChecks.hasSalesDocumentRead(authentication, "INVOICES_READ"),
+                        PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
+                .map(this::view)
+                .toList();
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_WRITE','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_WRITE','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
         return view(service.createInvoice(request.toCommand(), authentication));
     }
 
+    @PostMapping("/confirmed")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_WRITE','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
+    public DocumentView createAndConfirm(
+            @Valid @RequestBody DocumentRequest request,
+            Authentication authentication) {
+        return view(service.createAndConfirmInvoice(request.toCommand(), authentication));
+    }
+
     @PostMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_CONFIRM','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_CONFIRM','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {

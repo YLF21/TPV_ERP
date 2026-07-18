@@ -1,5 +1,7 @@
 package com.tpverp.backend.goodscheck;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
+
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,9 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/goods-checks")
 public class GoodsCheckController {
 
-    private static final String CHECK_PERMISSION = "hasRole('ADMIN') or hasAnyAuthority("
-            + "'GESTION_PRODUCTO','DELIVERY_NOTES_READ','DELIVERY_NOTES_WRITE',"
-            + "'INVOICES_READ','INVOICES_WRITE')";
+    private static final String CHECK_PERMISSION =
+            "hasRole('ADMIN') or hasAuthority('" + GESTION_ALMACEN + "')";
 
     private final GoodsCheckService service;
 
@@ -29,6 +30,12 @@ public class GoodsCheckController {
     @PreAuthorize(CHECK_PERMISSION)
     public GoodsCheckView start(@PathVariable UUID documentId, Authentication authentication) {
         return service.start(documentId, authentication);
+    }
+
+    @PostMapping("/documents/{documentId}/import")
+    @PreAuthorize(CHECK_PERMISSION)
+    public GoodsCheckView importDocument(@PathVariable UUID documentId, Authentication authentication) {
+        return service.importDocument(documentId, authentication);
     }
 
     @GetMapping("/{id}")

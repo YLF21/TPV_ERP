@@ -39,6 +39,16 @@ public interface ProductSupplierRepository extends JpaRepository<ProductSupplier
     @Modifying(flushAutomatically = true)
     @Query(value = """
             update producto_proveedor
+            set principal = false,
+                version = version + 1
+            where producto_id = :productId
+              and principal = true
+            """, nativeQuery = true)
+    int clearPrincipal(@Param("productId") UUID productId);
+
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            update producto_proveedor
             set ultimo_proveedor = false,
                 version = version + 1
             where producto_id = :productId

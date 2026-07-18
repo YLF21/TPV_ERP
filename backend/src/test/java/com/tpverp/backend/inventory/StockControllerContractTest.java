@@ -7,11 +7,13 @@ import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -51,6 +53,23 @@ class StockControllerContractTest {
     }
 
     @Test
+    void exposesPagedStockEndpoint() throws NoSuchMethodException {
+        var method = StockController.class.getDeclaredMethod(
+                "page", Integer.class, String.class, String.class, String.class, String.class, String.class,
+                UUID.class, UUID.class, Boolean.class, Authentication.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/page");
+        assertThat(method.getGenericReturnType().getTypeName())
+                .contains("PagedResult", "StockPageItem");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
+        assertThat(Arrays.stream(method.getParameters())
+                .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
+                .hasSize(9);
+    }
+
+    @Test
     void exposesProductSalesHistoryWithOptionalDateRange() throws NoSuchMethodException {
         var method = StockController.class.getDeclaredMethod(
                 "salesHistory", UUID.class, LocalDate.class, LocalDate.class);
@@ -72,6 +91,8 @@ class StockControllerContractTest {
         var getSettings = StockController.class.getDeclaredMethod("settings");
         var putSettings = StockController.class.getDeclaredMethod(
                 "updateSettings", StockSettingsCommand.class);
+        var patchInactiveSales = StockController.class.getDeclaredMethod(
+                "updateInactiveProductSales", InactiveProductSalesCommand.class);
         var getMinimum = StockController.class.getDeclaredMethod(
                 "minimum", UUID.class, UUID.class);
         var putMinimum = StockController.class.getDeclaredMethod(
@@ -86,7 +107,13 @@ class StockControllerContractTest {
         assertThat(putSettings.getAnnotation(PutMapping.class).value())
                 .containsExactly("/settings");
         assertThat(putSettings.getAnnotation(PreAuthorize.class).value())
-                .contains("WAREHOUSES_MANAGE", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+                .contains("WAREHOUSES_MANAGE", "hasRole('ADMIN')")
+                .doesNotContain("GESTION_PRODUCTO");
+        assertThat(patchInactiveSales.getAnnotation(PatchMapping.class).value())
+                .containsExactly("/settings/inactive-product-sales");
+        assertThat(patchInactiveSales.getAnnotation(PreAuthorize.class).value())
+                .contains("GESTION_PRODUCTO", "hasRole('ADMIN')")
+                .doesNotContain("WAREHOUSES_MANAGE");
         assertThat(getMinimum.getAnnotation(GetMapping.class).value())
                 .containsExactly("/minimums/{productId}/{warehouseId}");
         assertThat(putMinimum.getAnnotation(PutMapping.class).value())

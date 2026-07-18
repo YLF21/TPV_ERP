@@ -7,5 +7,6 @@ public record StockSettingsView(
         UUID defaultWarehouseId,
         boolean allowNegativeStock,
         BigDecimal defaultMinimumStock,
-        boolean alertsEnabled) {
+        boolean alertsEnabled,
+        boolean allowInactiveProductSales) {
 }

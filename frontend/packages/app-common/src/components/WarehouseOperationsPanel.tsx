@@ -6,7 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
 import { apiRequest } from "../api/client";
-import type { LocaleCode, TerminalContext } from "../types";
+import type { AppKind, LocaleCode, TerminalContext } from "../types";
 import {
   WarehouseDocumentDialog,
   warehouseDocumentPath,
@@ -18,7 +18,10 @@ import {
 } from "./WarehouseDocumentDialog";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
 import { ErpSelect } from "./ErpSelect";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent } from "./keyboardNavigation";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 export type {
   WarehouseCustomerOption,
@@ -51,8 +54,17 @@ export type WarehouseOperationsPanelResolvedPermissions = {
 
 export type WarehouseOperationsPanelRequest = typeof apiRequest;
 
+export type WarehouseOperationsPage = {
+  items: WarehouseOperationView[];
+  nextCursor?: string | null;
+  hasMore?: boolean;
+};
+
 export type WarehouseOperationsPanelProps = {
   mode: WarehouseDocumentMode;
+  app?: AppKind;
+  username?: string;
+  accessToken?: string;
   token?: string;
   products: WarehouseImportProduct[];
   warehouses: WarehouseOption[];
@@ -72,6 +84,18 @@ export type WarehouseOperationsPanelProps = {
   onClose?: () => void | Promise<void>;
   onError?: (error: unknown) => void;
 };
+
+const warehouseOperationsColumnDefinitions = [
+  { key: "number", defaultWidth: 170 },
+  { key: "date", defaultWidth: 120 },
+  { key: "counterparty", defaultWidth: 240 },
+  { key: "warehouse", defaultWidth: 180 },
+  { key: "status", defaultWidth: 130 },
+  { key: "lines", defaultWidth: 90 },
+  { key: "totalUnits", defaultWidth: 140 }
+] as const;
+
+type WarehouseOperationsColumnKey = typeof warehouseOperationsColumnDefinitions[number]["key"];
 
 export type WarehouseOperationsFilterOptions = {
   mode: WarehouseDocumentMode;
@@ -94,12 +118,41 @@ export function warehouseOperationsPath(mode: WarehouseDocumentMode) {
   return warehouseDocumentPath(mode);
 }
 
+const WAREHOUSE_OPERATIONS_PAGE_LIMIT = 500;
+
+export function warehouseOperationsPagePath(mode: WarehouseDocumentMode, cursor?: string | null) {
+  const params = new URLSearchParams({ limit: String(WAREHOUSE_OPERATIONS_PAGE_LIMIT) });
+  if (cursor) {
+    params.set("cursor", cursor);
+  }
+  return `${warehouseOperationsPath(mode)}?${params.toString()}`;
+}
+
 export async function warehouseOperationsLoad(
   mode: WarehouseDocumentMode,
   token: string,
   request: WarehouseOperationsPanelRequest = apiRequest
 ) {
-  return request<WarehouseOperationView[]>(warehouseOperationsPath(mode), { token });
+  const documents: WarehouseOperationView[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+
+  while (true) {
+    const response: WarehouseOperationsPage | WarehouseOperationView[] = await request<WarehouseOperationsPage | WarehouseOperationView[]>(
+      warehouseOperationsPagePath(mode, cursor),
+      { token }
+    );
+    if (Array.isArray(response)) {
+      return [...documents, ...response];
+    }
+    documents.push(...(Array.isArray(response.items) ? response.items : []));
+    const nextCursor: string | null = response.nextCursor?.trim() || null;
+    if (!response.hasMore || !nextCursor || seenCursors.has(nextCursor)) {
+      return documents;
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
 }
 
 export async function warehouseOperationsDelete(
@@ -241,6 +294,9 @@ export function warehouseOperationsNextId(
 
 export function WarehouseOperationsPanel({
   mode,
+  app = "venta",
+  username = "",
+  accessToken,
   token,
   products,
   warehouses,
@@ -278,6 +334,23 @@ export function WarehouseOperationsPanel({
   const onErrorRef = useRef(onError);
 
   const labels = warehouseOperationsLabels(t, mode);
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: mode === "input" ? "warehouse.inputs.documents" : "warehouse.outputs.documents",
+    definitions: warehouseOperationsColumnDefinitions
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const columnLabels: Record<WarehouseOperationsColumnKey, string> = {
+    number: labels.number,
+    date: labels.date,
+    counterparty: labels.counterparty,
+    warehouse: labels.warehouse,
+    status: labels.status,
+    lines: labels.lines,
+    totalUnits: labels.totalUnits
+  };
   const visibleDocuments = useMemo(() => warehouseOperationsFilter(documents, {
     mode,
     query,
@@ -598,15 +671,25 @@ export function WarehouseOperationsPanel({
 
       <div className="stock-history-table-scroll">
         <table className="report-table warehouse-document-table">
+          <colgroup>
+            {visibleColumns.map((column) => (
+              <col key={column.key} style={{ width: `${column.width}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th>{labels.number}</th>
-              <th>{labels.date}</th>
-              <th>{labels.counterparty}</th>
-              <th>{labels.warehouse}</th>
-              <th>{labels.status}</th>
-              <th>{labels.lines}</th>
-              <th>{labels.totalUnits}</th>
+              {visibleColumns.map((column) => (
+                <TableLayoutHeaderCell
+                  column={column}
+                  key={column.key}
+                  resizeLabel={`${t("stock.columns.resize")} ${columnLabels[column.key]}`}
+                  onReorder={tableLayout.reorderColumns}
+                  onMove={tableLayout.moveColumn}
+                  onResize={tableLayout.resizeColumn}
+                >
+                  {columnLabels[column.key]}
+                </TableLayoutHeaderCell>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -632,24 +715,28 @@ export function WarehouseOperationsPanel({
                   onDoubleClick={() => openDocument(document)}
                   onKeyDown={(event) => handleRowKeyDown(event, document)}
                 >
-                  <td>{document.number || labels.unnumbered}</td>
-                  <td>{warehouseOperationsFormatDate(document.date, dateFormatter)}</td>
-                  <td>{counterparty || "-"}</td>
-                  <td>{warehouseOperationsWarehouseLabel(document, warehouses) || "-"}</td>
-                  <td>{document.status}</td>
-                  <td>{document.lines.length}</td>
-                  <td>{numberFormatter.format(warehouseOperationsTotalUnits(document))}</td>
+                  {visibleColumns.map((column) => (
+                    <td key={column.key}>
+                      {column.key === "number" && (document.number || labels.unnumbered)}
+                      {column.key === "date" && warehouseOperationsFormatDate(document.date, dateFormatter)}
+                      {column.key === "counterparty" && (counterparty || "-")}
+                      {column.key === "warehouse" && (warehouseOperationsWarehouseLabel(document, warehouses) || "-")}
+                      {column.key === "status" && document.status}
+                      {column.key === "lines" && document.lines.length}
+                      {column.key === "totalUnits" && numberFormatter.format(warehouseOperationsTotalUnits(document))}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
             {!loading && !error && visibleDocuments.length === 0 && (
               <tr>
-                <td colSpan={7}>{labels.empty}</td>
+                <td colSpan={visibleColumns.length}>{labels.empty}</td>
               </tr>
             )}
             {!loading && error && visibleDocuments.length === 0 && (
               <tr>
-                <td colSpan={7}>{error}</td>
+                <td colSpan={visibleColumns.length}>{error}</td>
               </tr>
             )}
           </tbody>
@@ -659,6 +746,9 @@ export function WarehouseOperationsPanel({
       <WarehouseDocumentDialog
         mode={mode}
         open={dialogOpen}
+        app={app}
+        username={username}
+        accessToken={accessToken}
         locale={locale}
         token={token}
         products={products}

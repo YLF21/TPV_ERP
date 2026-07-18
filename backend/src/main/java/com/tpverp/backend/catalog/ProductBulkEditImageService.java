@@ -104,6 +104,7 @@ public class ProductBulkEditImageService {
         current.forEach(image -> currentById.put(image.getId(), image));
         Set<UUID> retainedIds = new HashSet<>();
         Set<Integer> usedFiles = new HashSet<>();
+        Map<Integer, ValidatedUpload> validatedFiles = new HashMap<>();
         Set<UUID> assignedProducts = new HashSet<>();
         List<ResolvedImage> resolved = new ArrayList<>(requested.size());
         long totalBytes = 0;
@@ -133,10 +134,11 @@ public class ProductBulkEditImageService {
                 if (fileIndex < 0 || fileIndex >= received.size()) {
                     throw invalid(position, "fileIndex fuera de rango: " + fileIndex);
                 }
-                if (!usedFiles.add(fileIndex)) {
-                    throw invalid(position, "fileIndex duplicado: " + fileIndex);
-                }
-                upload = validateUpload(received.get(fileIndex), position);
+                usedFiles.add(fileIndex);
+                int imagePosition = position;
+                upload = validatedFiles.computeIfAbsent(
+                        fileIndex,
+                        ignored -> validateUpload(received.get(fileIndex), imagePosition));
             } else if (existing == null) {
                 throw invalid(position, "una imagen nueva necesita fileIndex");
             }

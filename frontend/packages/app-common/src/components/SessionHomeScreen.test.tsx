@@ -111,11 +111,12 @@ describe("SessionHomeScreen", () => {
     expect(html).toContain("DB:");
     expect(html).toContain("Conexión");
     expect(html).toContain("ADMIN");
-    expect(html).toContain("AJUSTE");
+    expect(html).toContain("CONFIGURACIÓN");
   });
 
-  it("wires stock action to its callback", () => {
+  it("wires product and warehouse actions to their callbacks", () => {
     const onOpenStock = vi.fn();
+    const onOpenWarehouse = vi.fn();
 
     const tree = SessionHomeScreen({
       app: "venta",
@@ -123,11 +124,14 @@ describe("SessionHomeScreen", () => {
       session,
       terminalContext,
       onLocaleChange: vi.fn(),
-      onOpenStock
+      onOpenStock,
+      onOpenWarehouse
     });
-    const stockButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "STOCK");
+    const productButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "PRODUCTO");
+    const warehouseButton = buttonsIn(tree).find((button) => directButtonText(button.props.children).trim().toUpperCase() === "ALMACÉN");
 
-    expect(stockButton?.props.onClick).toBe(onOpenStock);
+    expect(productButton?.props.onClick).toBe(onOpenStock);
+    expect(warehouseButton?.props.onClick).toBe(onOpenWarehouse);
   });
 
   it("shows customer receivables only with CUSTOMER_RECEIVABLES_READ", () => {

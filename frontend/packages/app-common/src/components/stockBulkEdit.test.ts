@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readSheet } from "read-excel-file/browser";
 import {
+  buildStockBulkSupplierPrincipalAssignments,
   buildStockBulkSupplierAssignments,
   buildStockBulkUpdates,
   finalizeStockBulkSupplierAssignments,
@@ -9,6 +10,8 @@ import {
   mergeStockBulkPurchaseDocumentProducts,
   mergeStockBulkSupplierProducts,
   requestStockBulkXlsx,
+  stageStockBulkPrincipalSupplier,
+  stockBulkDisplayedSupplier,
   stockBulkEffectiveProduct,
   stockOfferPriceFromDiscount,
   stockBulkExportFileName,
@@ -26,6 +29,7 @@ const readSheetMock = vi.mocked(readSheet);
 
 const product: StockInventoryRow = {
   productId: "product-1",
+  active: "common.yes",
   version: 4,
   warehouseId: "warehouse-1",
   code: "A001",
@@ -142,9 +146,22 @@ describe("stock bulk edit", () => {
         priceUseMode: "NORMAL",
         salePrice: 1.2,
         purchaseDiscountPercent: 5,
-        taxesIncluded: true
+        taxesIncluded: true,
+        active: true
       })
     })]);
+  });
+
+  it("persists product activation changes", () => {
+    const rows = [{
+      id: "row-1",
+      selected: true,
+      query: "A001",
+      product,
+      draft: { ...product, active: "common.no" }
+    }];
+
+    expect(buildStockBulkUpdates(rows)[0].product.active).toBe(false);
   });
 
   it("preserves product concurrency data when a persisted draft contains nulls", () => {
@@ -462,6 +479,88 @@ describe("stock bulk edit", () => {
     const finalized = finalizeStockBulkSupplierAssignments(rows);
     expect(finalized).toEqual([expect.objectContaining({ suppliers: [supplier] })]);
     expect(finalized[0]).not.toHaveProperty("pendingSupplier");
+  });
+
+  it("stages a manual principal supplier and otherwise displays the latest supplier", () => {
+    const latest = {
+      id: "supplier-latest",
+      supplierCode: "P-002",
+      legalName: "Proveedor reciente",
+      documentNumber: "B00000002",
+      active: true,
+      lastSupplier: true,
+      principal: false
+    };
+    const preferred = {
+      id: "supplier-preferred",
+      supplierCode: "P-001",
+      legalName: "Proveedor principal",
+      documentNumber: "B00000001",
+      active: true,
+      lastSupplier: false,
+      principal: false
+    };
+    const row = {
+      id: "row-1",
+      selected: false,
+      query: "A001",
+      product,
+      draft: {},
+      suppliers: [latest, preferred],
+      principalSupplierChanged: true,
+      pendingPrincipalSupplierId: preferred.id
+    };
+
+    expect(stockBulkRowsChanged([row])).toBe(true);
+    expect(stockBulkDisplayedSupplier(row)).toEqual(preferred);
+    expect(buildStockBulkSupplierPrincipalAssignments([row])).toEqual([{
+      productId: product.productId,
+      supplierId: preferred.id
+    }]);
+
+    const finalized = finalizeStockBulkSupplierAssignments([row]);
+    expect(finalized[0].suppliers?.find((supplier) => supplier.id === preferred.id)?.principal).toBe(true);
+    expect(finalized[0]).not.toHaveProperty("principalSupplierChanged");
+    expect(finalized[0]).not.toHaveProperty("pendingPrincipalSupplierId");
+  });
+
+  it("links and marks a principal supplier across the selected bulk rows", () => {
+    const supplier = {
+      id: "supplier-principal",
+      supplierCode: "P-003",
+      legalName: "Proveedor masivo",
+      documentNumber: "B00000003",
+      active: true,
+      lastSupplier: false,
+      principal: false
+    };
+    const rows = [
+      { id: "row-1", selected: true, query: "A001", product, draft: {}, suppliers: [] },
+      { id: "row-2", selected: true, query: "A002", product: { ...product, productId: "product-2" }, draft: {}, suppliers: [supplier] },
+      { id: "row-3", selected: false, query: "A003", product: { ...product, productId: "product-3" }, draft: {}, suppliers: [] }
+    ];
+
+    const staged = stageStockBulkPrincipalSupplier(rows, ["row-1", "row-2"], supplier);
+
+    expect(staged[0]).toEqual(expect.objectContaining({
+      pendingSupplier: supplier,
+      principalSupplierChanged: true,
+      pendingPrincipalSupplierId: supplier.id
+    }));
+    expect(staged[1]).toEqual(expect.objectContaining({
+      pendingSupplier: undefined,
+      principalSupplierChanged: true,
+      pendingPrincipalSupplierId: supplier.id
+    }));
+    expect(staged[2]).toEqual(rows[2]);
+    expect(buildStockBulkSupplierAssignments(staged)).toEqual([{
+      supplierId: supplier.id,
+      productIds: [product.productId]
+    }]);
+    expect(buildStockBulkSupplierPrincipalAssignments(staged)).toEqual([
+      { productId: product.productId, supplierId: supplier.id },
+      { productId: "product-2", supplierId: supplier.id }
+    ]);
   });
 
   it("imports all products linked to a supplier without duplicating existing rows", () => {

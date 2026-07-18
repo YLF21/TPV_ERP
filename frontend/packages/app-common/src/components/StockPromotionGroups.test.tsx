@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PromotionView } from "./PromotionForm";
+import { writeStoredTableLayout } from "./tableLayoutPreferences";
 import {
   buildStockPromotionGroups,
   StockPromotionGroups,
@@ -56,6 +57,22 @@ const messages: Record<string, string> = {
 };
 
 const t = (key: string) => messages[key] ?? key;
+
+function createMemoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => values.set(key, value)
+  };
+}
+
+function renderedColumnKeys(html: string) {
+  return Array.from(html.matchAll(/data-column-key="([^"]+)"/g), (match) => match[1]);
+}
 
 const productRows: StockPromotionProductRow[] = [
   {
@@ -119,6 +136,15 @@ function promotion(overrides: Partial<PromotionView> = {}): PromotionView {
 }
 
 describe("StockPromotionGroups", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = createMemoryStorage();
+    vi.stubGlobal("localStorage", storage);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
   it("keeps only ACTIVE promotions, one group per promotion, and deduplicates warehouse rows", () => {
     const active = promotion();
     const groups = buildStockPromotionGroups([
@@ -210,5 +236,60 @@ describe("StockPromotionGroups", () => {
     expect(stockPromotionNavigationIndex(2, "Home", 3)).toBe(0);
     expect(stockPromotionNavigationIndex(0, "End", 3)).toBe(2);
     expect(stockPromotionNavigationIndex(0, "End", 0)).toBe(-1);
+  });
+
+  it("hydrates group-column layout and keeps the expand control outside the movable columns", () => {
+    writeStoredTableLayout("gestion", "maria", "stock.promotions.groups", [
+      { key: "status", width: 98, visible: true },
+      { key: "type", width: 172, visible: true },
+      { key: "promotion", width: 236, visible: true }
+    ], storage);
+    const html = renderToStaticMarkup(
+      <StockPromotionGroups
+        locale="en"
+        promotions={[promotion()]}
+        productRows={productRows}
+        t={t}
+        app="gestion"
+        username="maria"
+      />
+    );
+
+    const keys = renderedColumnKeys(html);
+    expect(keys.slice(0, 6)).toEqual(["status", "type", "promotion", "validity", "scope", "products"]);
+    expect(keys.slice(6, 12)).toEqual(keys.slice(0, 6));
+    expect(html).toContain('grid-template-columns:38px 98px 172px 236px');
+    expect(html).toContain('<span aria-hidden="true"></span><span class="table-layout-header-cell');
+    expect(html.match(/draggable="true"/g)).toHaveLength(6);
+    expect(html.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(6);
+    expect(html.match(/table-layout-column-resizer/g)).toHaveLength(6);
+  });
+
+  it("hydrates product-column layout and renders product cells in the same order", () => {
+    writeStoredTableLayout("venta", "admin", "stock.promotions.products", [
+      { key: "stock", width: 94, visible: true },
+      { key: "name", width: 218, visible: true },
+      { key: "code", width: 120, visible: true }
+    ], storage);
+    const html = renderToStaticMarkup(
+      <StockPromotionGroups
+        locale="en"
+        promotions={[promotion()]}
+        productRows={productRows}
+        t={t}
+        app="venta"
+        username="admin"
+        defaultExpandedPromotionIds={["promotion-1"]}
+      />
+    );
+
+    const tableHtml = html.slice(html.indexOf('<table class="report-table">'));
+    const keys = renderedColumnKeys(tableHtml);
+    expect(keys.slice(0, 5)).toEqual(["stock", "name", "code", "family", "subfamily"]);
+    expect(keys.slice(5, 10)).toEqual(keys.slice(0, 5));
+    expect(tableHtml).toContain('style="width:94px"');
+    expect(tableHtml.match(/draggable="true"/g)).toHaveLength(5);
+    expect(tableHtml.match(/aria-keyshortcuts="Control\+ArrowLeft Control\+ArrowRight"/g)).toHaveLength(5);
+    expect(tableHtml.match(/table-layout-column-resizer/g)).toHaveLength(5);
   });
 });

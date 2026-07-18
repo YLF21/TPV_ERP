@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { HardwareSettingsScreen } from "./HardwareSettingsScreen";
+import { hardwareRouteColumnDefinitions, HardwareSettingsScreen } from "./HardwareSettingsScreen";
 import type { TerminalContext, UserSession } from "../types";
 
 const session: UserSession = {
@@ -15,6 +15,19 @@ const terminalContext: TerminalContext = {
 };
 
 describe("HardwareSettingsScreen", () => {
+  it("defines a persistent configurable layout for every print route field", () => {
+    expect(hardwareRouteColumnDefinitions.map((column) => column.key)).toEqual([
+      "document",
+      "target",
+      "printer",
+      "paper",
+      "orientation",
+      "copies",
+      "auto",
+      "dialog"
+    ]);
+  });
+
   it("renders the shared user controls and context footer", () => {
     const html = renderToStaticMarkup(
       <HardwareSettingsScreen

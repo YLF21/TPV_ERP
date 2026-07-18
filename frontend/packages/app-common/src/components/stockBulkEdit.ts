@@ -11,6 +11,8 @@ export type StockBulkEditRowData = {
   draft: Partial<StockInventoryRow>;
   suppliers?: StockBulkSupplierInfo[];
   pendingSupplier?: StockBulkSupplierInfo;
+  principalSupplierChanged?: boolean;
+  pendingPrincipalSupplierId?: string | null;
 };
 
 export type StockBulkSupplierInfo = {
@@ -87,6 +89,11 @@ export type StockBulkSupplierAssignment = {
   productIds: string[];
 };
 
+export type StockBulkSupplierPrincipalAssignment = {
+  productId: string;
+  supplierId: string | null;
+};
+
 export type StockBulkPurchaseDocumentLine = {
   productId: string;
   grossPurchasePrice: number | string;
@@ -160,6 +167,7 @@ export type StockBulkProductUpdate = {
   productId: string;
   expectedVersion: number;
   product: {
+    active: boolean;
     familyId: string;
     subfamilyId: string | null;
     taxId: string;
@@ -225,7 +233,7 @@ type StockBulkNamedReference = {
 };
 
 export function stockBulkRowsChanged(rows: StockBulkEditRowData[]) {
-  return rows.some((row) => row.pendingSupplier || (row.product && Object.keys(row.draft).some((key) => {
+  return rows.some((row) => row.pendingSupplier || row.principalSupplierChanged || (row.product && Object.keys(row.draft).some((key) => {
     const field = key as keyof StockInventoryRow;
     return text(row.draft[field]) !== text(row.product?.[field]);
   })));
@@ -337,20 +345,90 @@ export function buildStockBulkSupplierAssignments(
   }));
 }
 
+export function buildStockBulkSupplierPrincipalAssignments(
+  rows: StockBulkEditRowData[]
+): StockBulkSupplierPrincipalAssignment[] {
+  return rows.flatMap((row) => (
+    row.product && row.principalSupplierChanged
+      ? [{
+          productId: row.product.productId,
+          supplierId: row.pendingPrincipalSupplierId ?? null
+        }]
+      : []
+  ));
+}
+
+export function stageStockBulkPrincipalSupplier(
+  rows: StockBulkEditRowData[],
+  rowIds: Iterable<string>,
+  supplier: StockBulkSupplierInfo | null
+): StockBulkEditRowData[] {
+  const targetIds = new Set(rowIds);
+  return rows.map((row) => {
+    if (!row.product || !targetIds.has(row.id)) {
+      return row;
+    }
+    const alreadyLinked = !supplier
+      || row.pendingSupplier?.id === supplier.id
+      || row.suppliers?.some((linked) => linked.id === supplier.id);
+    return {
+      ...row,
+      pendingSupplier: supplier && !alreadyLinked ? { ...supplier } : row.pendingSupplier,
+      principalSupplierChanged: true,
+      pendingPrincipalSupplierId: supplier?.id ?? null
+    };
+  });
+}
+
 export function finalizeStockBulkSupplierAssignments(
   rows: StockBulkEditRowData[]
 ): StockBulkEditRowData[] {
   return rows.map((row) => {
-    if (!row.pendingSupplier) {
+    if (!row.pendingSupplier && !row.principalSupplierChanged) {
       return row;
     }
-    const suppliers = [
-      ...(row.suppliers ?? []).filter((supplier) => supplier.id !== row.pendingSupplier?.id),
-      row.pendingSupplier
-    ];
-    const { pendingSupplier: _pendingSupplier, ...finalized } = row;
-    return { ...finalized, suppliers };
+    const suppliers = [...(row.suppliers ?? [])];
+    if (row.pendingSupplier) {
+      const existing = suppliers.findIndex((supplier) => supplier.id === row.pendingSupplier?.id);
+      if (existing >= 0) {
+        suppliers[existing] = row.pendingSupplier;
+      } else {
+        suppliers.push(row.pendingSupplier);
+      }
+    }
+    const finalizedSuppliers = row.principalSupplierChanged
+      ? suppliers.map((supplier) => ({
+          ...supplier,
+          principal: Boolean(row.pendingPrincipalSupplierId)
+            && supplier.id === row.pendingPrincipalSupplierId
+        }))
+      : suppliers;
+    const {
+      pendingSupplier: _pendingSupplier,
+      principalSupplierChanged: _principalSupplierChanged,
+      pendingPrincipalSupplierId: _pendingPrincipalSupplierId,
+      ...finalized
+    } = row;
+    return { ...finalized, suppliers: finalizedSuppliers };
   });
+}
+
+export function stockBulkDisplayedSupplier(row: StockBulkEditRowData) {
+  const suppliers = row.suppliers ?? [];
+  if (row.principalSupplierChanged) {
+    if (!row.pendingPrincipalSupplierId) {
+      return suppliers.find((supplier) => supplier.lastSupplier)
+        ?? row.pendingSupplier
+        ?? suppliers.at(-1);
+    }
+    return row.pendingSupplier?.id === row.pendingPrincipalSupplierId
+      ? row.pendingSupplier
+      : suppliers.find((supplier) => supplier.id === row.pendingPrincipalSupplierId);
+  }
+  return suppliers.find((supplier) => supplier.principal)
+    ?? suppliers.find((supplier) => supplier.lastSupplier)
+    ?? row.pendingSupplier
+    ?? suppliers.at(-1);
 }
 
 export function mergeStockBulkSupplierProducts(
@@ -484,6 +562,7 @@ export function buildStockBulkUpdates(rows: StockBulkEditRowData[]): StockBulkPr
       productId: row.product!.productId,
       expectedVersion: Number(row.product!.version ?? 0),
       product: {
+        active: value("active") === undefined ? true : booleanValue(value("active")),
         familyId: requiredText(value("familyId"), "familyId"),
         subfamilyId: nullableText(value("subfamilyId")),
         taxId: requiredText(value("taxId"), "taxId"),

@@ -4,6 +4,10 @@ import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types
 import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
   createA4TestDocument,
   createTestTicket,
@@ -23,6 +27,22 @@ import type {
 
 type HardwareDiagnosticKey = "electron" | "printers" | "ticket" | "a4" | "drawer" | "customerDisplay";
 type HardwareSectionKey = "printer" | "cashDrawer" | "scanner" | "escpos" | "a4" | "customerDisplay" | "diagnostics";
+type HardwareRouteColumnKey = "document" | "target" | "printer" | "paper" | "orientation" | "copies" | "auto" | "dialog";
+
+type HardwareRouteColumnDefinition = TableColumnDefinition<HardwareRouteColumnKey> & {
+  labelKey: string;
+};
+
+export const hardwareRouteColumnDefinitions = [
+  { key: "document", labelKey: "hardware.route.document", defaultWidth: 120 },
+  { key: "target", labelKey: "hardware.route.target", defaultWidth: 150 },
+  { key: "printer", labelKey: "hardware.route.printer", defaultWidth: 190 },
+  { key: "paper", labelKey: "hardware.route.paper", defaultWidth: 96 },
+  { key: "orientation", labelKey: "hardware.route.orientation", defaultWidth: 120 },
+  { key: "copies", labelKey: "hardware.route.copies", defaultWidth: 72 },
+  { key: "auto", labelKey: "hardware.route.auto", defaultWidth: 100 },
+  { key: "dialog", labelKey: "hardware.route.dialog", defaultWidth: 108 }
+] satisfies readonly HardwareRouteColumnDefinition[];
 
 type HardwareDiagnosticResult = {
   ok: boolean;
@@ -61,6 +81,20 @@ export function HardwareSettingsScreen({
 }: HardwareSettingsScreenProps) {
   const t = createTranslator(locale);
   const hardware = useMemo(() => getHardwareBridge(), []);
+  const routeTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: session.accessToken,
+    tableKey: "hardware.printRoutes",
+    definitions: hardwareRouteColumnDefinitions
+  });
+  const visibleRouteColumns = visibleTableColumns(routeTableLayout.layout);
+  const routeTableWidth = visibleRouteColumns.reduce((sum, column) => sum + column.width, 0)
+    + Math.max(0, visibleRouteColumns.length - 1) * 10;
+  const routeGridStyle = {
+    gridTemplateColumns: tableLayoutGridTemplate(visibleRouteColumns),
+    minWidth: routeTableWidth
+  };
   const [config, setConfig] = useState<HardwareConfig>(defaultHardwareConfig);
   const [printers, setPrinters] = useState<HardwarePrinter[]>([]);
   const [customerDisplays, setCustomerDisplays] = useState<CustomerDisplayScreen[]>([]);
@@ -230,6 +264,110 @@ export function HardwareSettingsScreen({
         route.documentType === documentType ? { ...route, ...values } : route
       )
     });
+  }
+
+  function renderDocumentRouteCell(route: DocumentPrintRoute, columnKey: HardwareRouteColumnKey) {
+    if (columnKey === "document") {
+      return <strong key={columnKey}>{t(`hardware.document.${route.documentType}`)}</strong>;
+    }
+    if (columnKey === "target") {
+      return (
+        <ErpSelect
+          key={columnKey}
+          aria-label={t("hardware.route.target")}
+          value={route.printerTarget}
+          onChange={(value) =>
+            updateDocumentRoute(route.documentType, {
+              printerTarget: value as DocumentPrintRoute["printerTarget"],
+              paperSize: value === "A4_PRINTER" ? "A4" : "TICKET_80"
+            })
+          }
+          options={[
+            { value: "TICKET_PRINTER", label: t("hardware.route.ticketPrinter") },
+            { value: "A4_PRINTER", label: t("hardware.route.a4Printer") }
+          ] satisfies readonly ErpSelectOption[]}
+        />
+      );
+    }
+    if (columnKey === "printer") {
+      return (
+        <ErpSelect
+          key={columnKey}
+          aria-label={t("hardware.route.printer")}
+          value={route.printerName}
+          onChange={(value) => updateDocumentRoute(route.documentType, { printerName: value })}
+          options={[
+            { value: "", label: t("hardware.route.useDefault") },
+            ...printers.map((printer) => ({ value: printer.name, label: printer.displayName }))
+          ] satisfies readonly ErpSelectOption[]}
+        />
+      );
+    }
+    if (columnKey === "paper") {
+      return (
+        <ErpSelect
+          key={columnKey}
+          aria-label={t("hardware.route.paper")}
+          value={route.paperSize}
+          onChange={(value) => updateDocumentRoute(route.documentType, { paperSize: value as DocumentPrintRoute["paperSize"] })}
+          options={[
+            { value: "TICKET_80", label: "Ticket 80" },
+            { value: "A4", label: "A4" }
+          ] satisfies readonly ErpSelectOption[]}
+        />
+      );
+    }
+    if (columnKey === "orientation") {
+      return (
+        <ErpSelect
+          key={columnKey}
+          aria-label={t("hardware.route.orientation")}
+          value={route.orientation}
+          onChange={(value) =>
+            updateDocumentRoute(route.documentType, { orientation: value as DocumentPrintRoute["orientation"] })
+          }
+          options={[
+            { value: "PORTRAIT", label: t("hardware.route.portrait") },
+            { value: "LANDSCAPE", label: t("hardware.route.landscape") }
+          ] satisfies readonly ErpSelectOption[]}
+        />
+      );
+    }
+    if (columnKey === "copies") {
+      return (
+        <input
+          key={columnKey}
+          aria-label={t("hardware.route.copies")}
+          type="number"
+          min={1}
+          max={9}
+          value={route.copies}
+          onChange={(event) => updateDocumentRoute(route.documentType, { copies: Math.max(1, Number(event.target.value) || 1) })}
+        />
+      );
+    }
+    if (columnKey === "auto") {
+      return (
+        <label className="hardware-route-check" key={columnKey}>
+          <input
+            type="checkbox"
+            checked={route.printAutomatically}
+            onChange={(event) => updateDocumentRoute(route.documentType, { printAutomatically: event.target.checked })}
+          />
+          <span>{t("hardware.route.autoShort")}</span>
+        </label>
+      );
+    }
+    return (
+      <label className="hardware-route-check" key={columnKey}>
+        <input
+          type="checkbox"
+          checked={route.showPrintDialog}
+          onChange={(event) => updateDocumentRoute(route.documentType, { showPrintDialog: event.target.checked })}
+        />
+        <span>{t("hardware.route.dialogShort")}</span>
+      </label>
+    );
   }
 
   function toggleCashDrawerPaymentMethod(method: CashDrawerPaymentMethod, enabled: boolean) {
@@ -513,85 +651,28 @@ export function HardwareSettingsScreen({
             </div>
           </div>
           <div className="hardware-route-table">
-            <div className="hardware-route-header">
-              <span>{t("hardware.route.document")}</span>
-              <span>{t("hardware.route.target")}</span>
-              <span>{t("hardware.route.printer")}</span>
-              <span>{t("hardware.route.paper")}</span>
-              <span>{t("hardware.route.orientation")}</span>
-              <span>{t("hardware.route.copies")}</span>
-              <span>{t("hardware.route.auto")}</span>
-              <span>{t("hardware.route.dialog")}</span>
+            <div className="hardware-route-header" style={routeGridStyle}>
+              {visibleRouteColumns.map((column) => {
+                const definition = hardwareRouteColumnDefinitions.find((candidate) => candidate.key === column.key);
+                const label = t(definition?.labelKey ?? column.key);
+                return (
+                  <TableLayoutHeaderCell
+                    as="span"
+                    column={column}
+                    key={column.key}
+                    resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                    onReorder={routeTableLayout.reorderColumns}
+                    onMove={routeTableLayout.moveColumn}
+                    onResize={routeTableLayout.resizeColumn}
+                  >
+                    {label}
+                  </TableLayoutHeaderCell>
+                );
+              })}
             </div>
             {config.documentPrintRoutes.map((route) => (
-              <div className="hardware-route-row" key={route.documentType}>
-                <strong>{t(`hardware.document.${route.documentType}`)}</strong>
-                <ErpSelect
-                  aria-label={t("hardware.route.target")}
-                  value={route.printerTarget}
-                  onChange={(value) =>
-                    updateDocumentRoute(route.documentType, {
-                      printerTarget: value as DocumentPrintRoute["printerTarget"],
-                      paperSize: value === "A4_PRINTER" ? "A4" : "TICKET_80"
-                    })
-                  }
-                  options={[
-                    { value: "TICKET_PRINTER", label: t("hardware.route.ticketPrinter") },
-                    { value: "A4_PRINTER", label: t("hardware.route.a4Printer") }
-                  ] satisfies readonly ErpSelectOption[]}
-                />
-                <ErpSelect
-                  aria-label={t("hardware.route.printer")}
-                  value={route.printerName}
-                  onChange={(value) => updateDocumentRoute(route.documentType, { printerName: value })}
-                  options={[
-                    { value: "", label: t("hardware.route.useDefault") },
-                    ...printers.map((printer) => ({ value: printer.name, label: printer.displayName }))
-                  ] satisfies readonly ErpSelectOption[]}
-                />
-                <ErpSelect
-                  aria-label={t("hardware.route.paper")}
-                  value={route.paperSize}
-                  onChange={(value) => updateDocumentRoute(route.documentType, { paperSize: value as DocumentPrintRoute["paperSize"] })}
-                  options={[
-                    { value: "TICKET_80", label: "Ticket 80" },
-                    { value: "A4", label: "A4" }
-                  ] satisfies readonly ErpSelectOption[]}
-                />
-                <ErpSelect
-                  aria-label={t("hardware.route.orientation")}
-                  value={route.orientation}
-                  onChange={(value) =>
-                    updateDocumentRoute(route.documentType, { orientation: value as DocumentPrintRoute["orientation"] })
-                  }
-                  options={[
-                    { value: "PORTRAIT", label: t("hardware.route.portrait") },
-                    { value: "LANDSCAPE", label: t("hardware.route.landscape") }
-                  ] satisfies readonly ErpSelectOption[]}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={route.copies}
-                  onChange={(event) => updateDocumentRoute(route.documentType, { copies: Math.max(1, Number(event.target.value) || 1) })}
-                />
-                <label className="hardware-route-check">
-                  <input
-                    type="checkbox"
-                    checked={route.printAutomatically}
-                    onChange={(event) => updateDocumentRoute(route.documentType, { printAutomatically: event.target.checked })}
-                  />
-                  <span>{t("hardware.route.autoShort")}</span>
-                </label>
-                <label className="hardware-route-check">
-                  <input
-                    type="checkbox"
-                    checked={route.showPrintDialog}
-                    onChange={(event) => updateDocumentRoute(route.documentType, { showPrintDialog: event.target.checked })}
-                  />
-                  <span>{t("hardware.route.dialogShort")}</span>
-                </label>
+              <div className="hardware-route-row" key={route.documentType} style={routeGridStyle}>
+                {visibleRouteColumns.map((column) => renderDocumentRouteCell(route, column.key))}
               </div>
             ))}
           </div>

@@ -19,6 +19,7 @@ import {
   stockTopSalesPeriodLabel,
   stockTopSalesPeriodRange,
   stockInventoryStatus,
+  stockInventoryStatusClass,
   stockLoadStatus,
   stockFilterButtonLabelKey,
   loadStockSubfamilies,
@@ -28,25 +29,25 @@ import {
   stockDetailKeyAction,
   nextStockSelectedIndex,
   normalizeStockBulkContent,
+  hydrateStockBulkProductActivation,
   backendDiscountTypeForPriceUse,
   stockRowToProductEdit,
   stockBulkProductRowIds,
+  selectedStockBulkProductIds,
   setAllStockBulkRowsSelected,
   stockBulkEditExactProduct,
   stockBulkShortcutAction,
   stockBulkFileMenuItems,
   stockBulkImportMenuItems,
   stockBulkSelectedActionsByTab,
+  stockBulkQuickEditFieldsByTab,
   stockBenefitPercent,
   stockPriceFromBenefit,
   stockPriceBelowCost,
   selectStockInventoryRows,
-  userCanCreateWarehouseInput,
-  userCanCreateWarehouseOutput,
   userCanManageStockProducts,
   userCanManageWarehouses,
   userCanReadStock,
-  stockNavigationStateForWarehouseMode,
   stockViewIsSelected,
   StockScreen
 } from "./StockScreen";
@@ -175,21 +176,9 @@ describe("StockScreen", () => {
     expect(stockViews).not.toContain("stock.empty");
   });
 
-  it("clears party directory selection when opening warehouse document sections", () => {
-    expect(stockNavigationStateForWarehouseMode("input")).toEqual({
-      partyDirectory: null,
-      warehouseDocumentMode: "input"
-    });
-    expect(stockNavigationStateForWarehouseMode("output")).toEqual({
-      partyDirectory: null,
-      warehouseDocumentMode: "output"
-    });
-  });
-
   it("does not keep stock selected while a party directory is open", () => {
-    expect(stockViewIsSelected("stock.current", "stock.current", null, "customers")).toBe(false);
-    expect(stockViewIsSelected("stock.current", "stock.current", "input", null)).toBe(false);
-    expect(stockViewIsSelected("stock.current", "stock.current", null, null)).toBe(true);
+    expect(stockViewIsSelected("stock.current", "stock.current", "customers")).toBe(false);
+    expect(stockViewIsSelected("stock.current", "stock.current", null)).toBe(true);
   });
 
   it("groups every import action inside the Archivo import submenu", () => {
@@ -214,9 +203,7 @@ describe("StockScreen", () => {
   });
 
   it("shows only the relevant bulk actions for each edit tab", () => {
-    expect(stockBulkSelectedActionsByTab.main).toEqual(expect.arrayContaining([
-      "supplier",
-      "family",
+    expect(stockBulkSelectedActionsByTab.main).toEqual([
       "purchasePrice",
       "salePrice",
       "memberPrice",
@@ -224,22 +211,49 @@ describe("StockScreen", () => {
       "offerPrice",
       "offerDiscountPercent",
       "priceUse",
+      "offerActive",
       "offerDates",
       "tax",
-      "taxesIncludedYes",
-      "taxesIncludedNo"
-    ]));
-    expect(stockBulkSelectedActionsByTab.info).toEqual([
-      "family",
-      "tax",
-      "taxesIncludedYes",
-      "taxesIncludedNo"
+      "taxesIncluded",
+      "productActive",
+      "supplier",
+      "principalSupplier",
+      "family"
     ]);
-    expect(stockBulkSelectedActionsByTab.offer).toContain("activateOffer");
-    expect(stockBulkSelectedActionsByTab.offer).toContain("benefit");
+    expect(stockBulkSelectedActionsByTab.info).toEqual([
+      "tax",
+      "taxesIncluded",
+      "productActive",
+      "supplier",
+      "principalSupplier",
+      "family"
+    ]);
+    expect(stockBulkSelectedActionsByTab.offer).toContain("offerActive");
+    expect(stockBulkSelectedActionsByTab.salePrice).toContain("benefit");
     expect(stockBulkSelectedActionsByTab.memberPrice).toContain("benefit");
+    expect(stockBulkSelectedActionsByTab.wholesalePrice).toContain("benefit");
+    expect(stockBulkSelectedActionsByTab.offer).toContain("benefit");
     expect(stockBulkSelectedActionsByTab.salePrice).not.toContain("offerPrice");
-    expect(stockBulkSelectedActionsByTab.image).toEqual(["supplier"]);
+    expect(stockBulkSelectedActionsByTab.image).toEqual(["productActive", "supplier", "principalSupplier"]);
+  });
+
+  it("offers quick editing only for editable fields visible in each tab", () => {
+    expect(stockBulkQuickEditFieldsByTab.main).toEqual([
+      "name",
+      "description",
+      "purchasePrice",
+      "salePrice",
+      "memberPrice",
+      "wholesalePrice",
+      "offerPrice",
+      "offerDiscountPercent"
+    ]);
+    expect(stockBulkQuickEditFieldsByTab.salePrice).toEqual(["purchasePrice", "salePrice", "benefit"]);
+    expect(stockBulkQuickEditFieldsByTab.memberPrice).toEqual(["purchasePrice", "memberPrice", "benefit"]);
+    expect(stockBulkQuickEditFieldsByTab.wholesalePrice).toEqual(["purchasePrice", "wholesalePrice", "benefit"]);
+    expect(stockBulkQuickEditFieldsByTab.offer).toEqual(["purchasePrice", "offerPrice", "benefit", "offerDiscountPercent"]);
+    expect(stockBulkQuickEditFieldsByTab.info).toEqual(["name", "description"]);
+    expect(stockBulkQuickEditFieldsByTab.image).toEqual([]);
   });
 
   it("keeps backend products with no stock visible in inventory rows", () => {
@@ -689,21 +703,20 @@ describe("StockScreen", () => {
     expect(userCanManageStockProducts({ permissions: ["VENTA"] })).toBe(false);
   });
 
-  it("uses granular stock and warehouse document permissions with legacy manager fallbacks", () => {
+  it("separates product management, sales stock reading and warehouse configuration", () => {
     expect(userCanReadStock({ permissions: ["STOCK_READ"] })).toBe(true);
+    expect(userCanReadStock({ permissions: ["GESTION_VENTAS"] })).toBe(true);
+    expect(userCanReadStock({ permissions: ["GESTION_PRODUCTO"] })).toBe(true);
     expect(userCanReadStock({ permissions: ["VENTA"] })).toBe(false);
-    expect(userCanCreateWarehouseInput({ permissions: ["WAREHOUSE_INPUTS_WRITE"] })).toBe(true);
-    expect(userCanCreateWarehouseInput({ permissions: ["WAREHOUSE_INPUTS_READ"] })).toBe(false);
-    expect(userCanCreateWarehouseOutput({ permissions: ["WAREHOUSE_OUTPUTS_EDIT"] })).toBe(true);
-    expect(userCanCreateWarehouseOutput({ permissions: ["WAREHOUSE_OUTPUTS_READ"] })).toBe(false);
     expect(userCanManageWarehouses({ permissions: ["WAREHOUSES_MANAGE"] })).toBe(true);
-    expect(userCanManageWarehouses({ permissions: ["GESTION_PRODUCTO"] })).toBe(true);
+    expect(userCanManageWarehouses({ permissions: ["GESTION_PRODUCTO"] })).toBe(false);
     expect(userCanReadStock({ permissions: ["ADMIN"] })).toBe(true);
   });
 
   it("builds an edit product form from the selected stock row", () => {
     expect(stockRowToProductEdit({
       productId: "product-1",
+      imageId: "image-1",
       warehouseId: "warehouse-1",
       code: "A001",
       barcode: "8430000000011",
@@ -733,6 +746,7 @@ describe("StockScreen", () => {
       totalQuantity: 18
     })).toEqual(expect.objectContaining({
       id: "product-1",
+      imageId: "image-1",
       form: expect.objectContaining({
         code: "A001",
         name: "Cafe molido",
@@ -779,7 +793,12 @@ describe("StockScreen", () => {
       id: "row-1",
       selected: false,
       query: "A001",
-      product: row,
+      product: {
+        ...row,
+        packageQuantity: "6",
+        supplierName: "Proveedor visual",
+        promotionNames: "Promocion visual"
+      },
       draft: { discountType: "OFFER_PRICE" }
     }, {
       id: "row-empty",
@@ -787,9 +806,35 @@ describe("StockScreen", () => {
       query: "",
       draft: {}
     }];
-    expect(normalizeStockBulkContent(rows)[0].draft.backendDiscountType).toBe("DISCOUNT_PRICE");
+    const [normalized] = normalizeStockBulkContent(rows);
+    expect(normalized.draft.backendDiscountType).toBe("DISCOUNT_PRICE");
+    expect(normalized.product).toEqual(expect.objectContaining({ packageQuantity: "6" }));
+    expect(normalized.product).toEqual(expect.objectContaining({ quantity: "0", totalQuantity: "0" }));
+    expect(normalized.product).not.toHaveProperty("supplierName");
+    expect(normalized.product).not.toHaveProperty("promotionNames");
     expect(stockBulkProductRowIds(rows)).toEqual(["row-1"]);
+    expect(selectedStockBulkProductIds(rows)).toEqual([]);
+    expect(selectedStockBulkProductIds(setAllStockBulkRowsSelected(rows, true))).toEqual([row.productId]);
     expect(setAllStockBulkRowsSelected(rows, true).map((value) => value.selected)).toEqual([true, false]);
+  });
+
+  it("hydrates activation in legacy bulk drafts from the current product", () => {
+    const [liveProduct] = buildStockInventoryRows(
+      [{ id: "product-legacy", active: false, name: "Producto desactivado" }],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true }],
+      []
+    );
+    const legacyProduct = { ...liveProduct, active: undefined };
+    const [hydrated] = hydrateStockBulkProductActivation([{
+      id: "legacy-row",
+      selected: false,
+      query: "",
+      product: legacyProduct,
+      draft: { ...legacyProduct, active: undefined }
+    }], [liveProduct]);
+
+    expect(hydrated.product?.active).toBe("common.no");
+    expect(hydrated.draft.active).toBe("common.no");
   });
 
   it("moves the selected stock row with arrow keys", () => {
@@ -882,6 +927,26 @@ describe("StockScreen", () => {
     expect(stockInventoryStatus(3)).toBe("stock.status.low");
     expect(stockInventoryStatus(0)).toBe("stock.status.empty");
     expect(stockInventoryStatus(-1)).toBe("stock.status.empty");
+    expect(stockInventoryStatus(12, false)).toBe("stock.status.inactive");
+  });
+
+  it("maps inactive backend products to an inactive stock row", () => {
+    const [row] = buildStockInventoryRows(
+      [{ id: "product-inactive", active: false, name: "Producto desactivado" }],
+      [{ id: "warehouse-1", name: "GENERAL", defaultWarehouse: true, active: true }],
+      []
+    );
+
+    expect(row.active).toBe("common.no");
+    expect(stockInventoryStatus(row.quantity, row.active !== "common.no")).toBe("stock.status.inactive");
+  });
+
+  it("derives the visual stock status class from quantity", () => {
+    expect(stockInventoryStatusClass(12)).toBe("stock-status-correcto");
+    expect(stockInventoryStatusClass(3)).toBe("stock-status-bajo");
+    expect(stockInventoryStatusClass(0)).toBe("stock-status-critico");
+    expect(stockInventoryStatusClass(-1)).toBe("stock-status-critico");
+    expect(stockInventoryStatusClass(12, false)).toBe("stock-status-desactivado");
   });
 
   it("does not expose low-level network write errors in inventory status", () => {
@@ -1120,7 +1185,7 @@ describe("StockScreen", () => {
     expect(html).toContain('class="language-button"');
     expect(html).toContain('class="shutdown-button"');
     expect(html).toContain('class="report-footer-context"');
-    expect(html).toContain("STOCK");
+    expect(html).toContain("PRODUCTO");
     expect(html).toContain("Top ventas");
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Filtrar");

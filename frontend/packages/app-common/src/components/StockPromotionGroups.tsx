@@ -5,10 +5,18 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type ReactNode
 } from "react";
-import type { LocaleCode } from "../types";
+import type { AppKind, LocaleCode } from "../types";
 import type { PromotionTargetType, PromotionView } from "./PromotionForm";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import {
+  tableLayoutGridTemplate,
+  visibleTableColumns
+} from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 
 export const stockPromotionGroupsMessageKeys = {
   tableLabel: "stock.promotions",
@@ -92,6 +100,9 @@ export type StockPromotionGroupsProps = {
   promotions: readonly PromotionView[];
   productRows: readonly StockPromotionProductRow[];
   t: (key: string) => string;
+  app?: AppKind;
+  username?: string;
+  accessToken?: string;
   className?: string;
   defaultExpandedPromotionIds?: readonly string[];
   hideEmptyGroups?: boolean;
@@ -110,10 +121,34 @@ type PromotionDetailItem = {
 
 export type StockPromotionNavigationKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
 
-const promotionRowStyle: CSSProperties = {
-  gridTemplateColumns: "38px minmax(190px, 1.5fr) minmax(150px, 1fr) minmax(150px, 0.9fr) minmax(120px, 0.8fr) 90px 90px",
-  cursor: "pointer"
-};
+const stockPromotionGroupColumns = [
+  { key: "promotion", labelKey: stockPromotionGroupsMessageKeys.columns.promotion, defaultWidth: 228 },
+  { key: "type", labelKey: stockPromotionGroupsMessageKeys.columns.type, defaultWidth: 164 },
+  { key: "validity", labelKey: stockPromotionGroupsMessageKeys.columns.validity, defaultWidth: 164 },
+  { key: "scope", labelKey: stockPromotionGroupsMessageKeys.columns.scope, defaultWidth: 132 },
+  { key: "products", labelKey: stockPromotionGroupsMessageKeys.columns.products, defaultWidth: 90 },
+  { key: "status", labelKey: stockPromotionGroupsMessageKeys.columns.status, defaultWidth: 90 }
+] as const;
+
+type StockPromotionGroupColumnKey = typeof stockPromotionGroupColumns[number]["key"];
+
+const stockPromotionGroupColumnByKey = new Map(
+  stockPromotionGroupColumns.map((column) => [column.key, column] as const)
+);
+
+const stockPromotionProductColumns = [
+  { key: "code", labelKey: stockPromotionGroupsMessageKeys.columns.code, defaultWidth: 112 },
+  { key: "name", labelKey: stockPromotionGroupsMessageKeys.columns.name, defaultWidth: 210 },
+  { key: "family", labelKey: stockPromotionGroupsMessageKeys.columns.family, defaultWidth: 130 },
+  { key: "subfamily", labelKey: stockPromotionGroupsMessageKeys.columns.subfamily, defaultWidth: 130 },
+  { key: "stock", labelKey: stockPromotionGroupsMessageKeys.columns.stock, defaultWidth: 86 }
+] as const;
+
+type StockPromotionProductColumnKey = typeof stockPromotionProductColumns[number]["key"];
+
+const stockPromotionProductColumnByKey = new Map(
+  stockPromotionProductColumns.map((column) => [column.key, column] as const)
+);
 
 const groupListStyle: CSSProperties = {
   display: "grid",
@@ -139,7 +174,7 @@ const detailSectionStyle: CSSProperties = {
  * StockScreen integration contract:
  * - pass the raw `/promotions` result in `promotions` and either ProductView[] or
  *   StockInventoryRow[] in `productRows`;
- * - pass StockScreen's current `locale` and `t` translator;
+ * - pass StockScreen's current `locale`, `t`, `app`, username, and access token;
  * - add the three `stock.promotions.groups.*` keys above to each message catalog;
  * - export this component from app-common's index when the screen is wired.
  */
@@ -148,10 +183,31 @@ export function StockPromotionGroups({
   promotions,
   productRows,
   t,
+  app = "venta",
+  username = "",
+  accessToken,
   className = "",
   defaultExpandedPromotionIds = [],
   hideEmptyGroups = false
 }: StockPromotionGroupsProps) {
+  const groupTableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: "stock.promotions.groups",
+    definitions: stockPromotionGroupColumns
+  });
+  const productTableLayout = useTableLayoutPreference({
+    app,
+    username,
+    accessToken,
+    tableKey: "stock.promotions.products",
+    definitions: stockPromotionProductColumns
+  });
+  const visibleGroupColumns = visibleTableColumns(groupTableLayout.layout);
+  const promotionGridStyle: CSSProperties = {
+    gridTemplateColumns: `38px ${tableLayoutGridTemplate(visibleGroupColumns)}`
+  };
   const groups = useMemo(
     () => buildStockPromotionGroups(promotions, productRows, !hideEmptyGroups),
     [hideEmptyGroups, productRows, promotions]
@@ -227,14 +283,26 @@ export function StockPromotionGroups({
 
   return (
     <section className={rootClassName} aria-label={t(stockPromotionGroupsMessageKeys.tableLabel)}>
-      <div className="stock-row stock-row-head" style={promotionRowStyle} aria-hidden="true">
-        <span />
-        <span>{t(stockPromotionGroupsMessageKeys.columns.promotion)}</span>
-        <span>{t(stockPromotionGroupsMessageKeys.columns.type)}</span>
-        <span>{t(stockPromotionGroupsMessageKeys.columns.validity)}</span>
-        <span>{t(stockPromotionGroupsMessageKeys.columns.scope)}</span>
-        <span>{t(stockPromotionGroupsMessageKeys.columns.products)}</span>
-        <span>{t(stockPromotionGroupsMessageKeys.columns.status)}</span>
+      <div className="stock-row stock-row-head" style={promotionGridStyle} role="row">
+        <span aria-hidden="true" />
+        {visibleGroupColumns.map((column) => {
+          const definition = stockPromotionGroupColumnByKey.get(column.key);
+          const label = t(definition?.labelKey ?? column.key);
+          return (
+            <TableLayoutHeaderCell
+              as="span"
+              className="stock-header-cell"
+              column={column}
+              key={column.key}
+              resizeLabel={`${t("stock.columns.resize")} ${label}`}
+              onReorder={groupTableLayout.reorderColumns}
+              onMove={groupTableLayout.moveColumn}
+              onResize={groupTableLayout.resizeColumn}
+            >
+              {label}
+            </TableLayoutHeaderCell>
+          );
+        })}
       </div>
 
       {groups.length === 0 ? (
@@ -252,6 +320,36 @@ export function StockPromotionGroups({
             const conditions = promotionConditionItems(promotion, locale, t);
             const benefits = promotionBenefitItems(promotion, locale, t);
             const rules = promotionRuleItems(promotion, products, locale, t);
+            const cellsByKey: Record<StockPromotionGroupColumnKey, ReactNode> = {
+              promotion: (
+                <span key="promotion" data-column-key="promotion" className="stock-cell">
+                  <strong id={nameId}>{promotion.name}</strong>
+                </span>
+              ),
+              type: (
+                <span key="type" data-column-key="type" className="stock-cell">
+                  {translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.type, promotion.type, t)}
+                </span>
+              ),
+              validity: (
+                <span key="validity" data-column-key="validity" className="stock-cell">
+                  {promotionValidity(promotion, locale, t)}
+                </span>
+              ),
+              scope: (
+                <span key="scope" data-column-key="scope" className="stock-cell">
+                  {translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, promotion.scope, t)}
+                </span>
+              ),
+              products: (
+                <span key="products" data-column-key="products" className="stock-cell"><b>{products.length}</b></span>
+              ),
+              status: (
+                <span key="status" data-column-key="status" className="stock-cell">
+                  {t(`promotion.status.${promotion.status}`)}
+                </span>
+              )
+            };
 
             return (
               <article key={promotion.id} role="listitem" style={groupStyle}>
@@ -264,7 +362,7 @@ export function StockPromotionGroups({
                     }
                   }}
                   className={`stock-row ${selected ? "selected" : ""}`}
-                  style={promotionRowStyle}
+                  style={{ ...promotionGridStyle, cursor: "pointer" }}
                   role="button"
                   tabIndex={selected ? 0 : -1}
                   aria-expanded={expanded}
@@ -284,12 +382,7 @@ export function StockPromotionGroups({
                   onKeyDown={(event) => handleRowKeyDown(event, groupIndex, promotion.id)}
                 >
                   <span className="stock-cell" aria-hidden="true"><strong>{expanded ? "-" : "+"}</strong></span>
-                  <span className="stock-cell"><strong id={nameId}>{promotion.name}</strong></span>
-                  <span className="stock-cell">{translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.type, promotion.type, t)}</span>
-                  <span className="stock-cell">{promotionValidity(promotion, locale, t)}</span>
-                  <span className="stock-cell">{translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, promotion.scope, t)}</span>
-                  <span className="stock-cell"><b>{products.length}</b></span>
-                  <span className="stock-cell">{t(`promotion.status.${promotion.status}`)}</span>
+                  {visibleGroupColumns.map((column) => cellsByKey[column.key])}
                 </div>
 
                 {expanded && (
@@ -298,7 +391,12 @@ export function StockPromotionGroups({
                       <h3>{t(stockPromotionGroupsMessageKeys.sections.products)}</h3>
                       <span>{products.length}</span>
                     </div>
-                    <PromotionProductsTable products={products} locale={locale} t={t} />
+                    <PromotionProductsTable
+                      products={products}
+                      locale={locale}
+                      t={t}
+                      tableLayout={productTableLayout}
+                    />
                     <div style={detailSectionsStyle}>
                       <PromotionDetailSection
                         title={t(stockPromotionGroupsMessageKeys.sections.conditions)}
@@ -443,38 +541,81 @@ function promotionIncludesProduct(promotion: PromotionView, product: StockPromot
 function PromotionProductsTable({
   products,
   locale,
-  t
+  t,
+  tableLayout
 }: {
   products: readonly StockPromotionProduct[];
   locale: LocaleCode;
   t: (key: string) => string;
+  tableLayout: UseTableLayoutPreferenceResult<StockPromotionProductColumnKey>;
 }) {
   if (products.length === 0) {
     return <p className="promotion-empty">{t(stockPromotionGroupsMessageKeys.noProducts)}</p>;
   }
 
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
+
   return (
     <div className="report-table-scroll">
       <table className="report-table">
+        <colgroup>
+          {visibleColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+        </colgroup>
         <thead>
           <tr>
-            <th scope="col">{t(stockPromotionGroupsMessageKeys.columns.code)}</th>
-            <th scope="col">{t(stockPromotionGroupsMessageKeys.columns.name)}</th>
-            <th scope="col">{t(stockPromotionGroupsMessageKeys.columns.family)}</th>
-            <th scope="col">{t(stockPromotionGroupsMessageKeys.columns.subfamily)}</th>
-            <th scope="col">{t(stockPromotionGroupsMessageKeys.columns.stock)}</th>
+            {visibleColumns.map((column) => {
+              const definition = stockPromotionProductColumnByKey.get(column.key);
+              const label = t(definition?.labelKey ?? column.key);
+              return (
+                <TableLayoutHeaderCell
+                  column={column}
+                  key={column.key}
+                  resizeLabel={`${t("stock.columns.resize")} ${label}`}
+                  onReorder={tableLayout.reorderColumns}
+                  onMove={tableLayout.moveColumn}
+                  onResize={tableLayout.resizeColumn}
+                >
+                  {label}
+                </TableLayoutHeaderCell>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {products.map((product) => (
-            <tr key={product.productId}>
-              <td><strong>{product.code || "-"}</strong></td>
-              <td><span className="product-name-text">{product.name}</span></td>
-              <td>{product.familyName || product.familyId || "-"}</td>
-              <td>{product.subfamilyName || product.subfamilyId || "-"}</td>
-              <td>{formatNumber(product.stock, locale)}</td>
-            </tr>
-          ))}
+          {products.map((product) => {
+            const cellsByKey: Record<StockPromotionProductColumnKey, ReactNode> = {
+              code: (
+                <td key="code" data-column-key="code" style={{ textAlign: "left" }}>
+                  <strong>{product.code || "-"}</strong>
+                </td>
+              ),
+              name: (
+                <td key="name" data-column-key="name" style={{ textAlign: "left" }}>
+                  <span className="product-name-text">{product.name}</span>
+                </td>
+              ),
+              family: (
+                <td key="family" data-column-key="family" style={{ textAlign: "left" }}>
+                  {product.familyName || product.familyId || "-"}
+                </td>
+              ),
+              subfamily: (
+                <td key="subfamily" data-column-key="subfamily" style={{ textAlign: "left" }}>
+                  {product.subfamilyName || product.subfamilyId || "-"}
+                </td>
+              ),
+              stock: (
+                <td key="stock" data-column-key="stock" style={{ textAlign: "right" }}>
+                  {formatNumber(product.stock, locale)}
+                </td>
+              )
+            };
+            return (
+              <tr key={product.productId}>
+                {visibleColumns.map((column) => cellsByKey[column.key])}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

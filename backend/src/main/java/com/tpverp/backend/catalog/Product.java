@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "producto")
@@ -72,6 +73,9 @@ public class Product {
     @Column(name = "package_quantity", precision = 19, scale = 3)
     private BigDecimal packageQuantity = BigDecimal.ONE;
 
+    @Column(nullable = false)
+    private boolean activo = true;
+
     @Column(name = "impuestos_incluidos", nullable = false)
     private boolean taxesIncluded;
 
@@ -101,10 +105,12 @@ public class Product {
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "producto_id", insertable = false, updatable = false)
+    @BatchSize(size = 100)
     private List<ProductIdentifier> identifiers = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "producto_id", insertable = false, updatable = false)
+    @BatchSize(size = 100)
     private List<ProductPrice> prices = new ArrayList<>();
 
     @Version
@@ -250,6 +256,10 @@ public class Product {
 
     public BigDecimal getPackageQuantity() {
         return packageQuantity;
+    }
+
+    public boolean isActive() {
+        return activo;
     }
 
     public boolean isTaxesIncluded() {
@@ -421,6 +431,18 @@ public class Product {
             throw new IllegalArgumentException("packageQuantity no puede ser negativo");
         }
         packageQuantity = quantity;
+    }
+
+    public void activate() {
+        activo = true;
+    }
+
+    public void deactivate() {
+        activo = false;
+    }
+
+    public void setActive(boolean active) {
+        activo = active;
     }
 
     private static BigDecimal nonNegative(BigDecimal value, String field) {

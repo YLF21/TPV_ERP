@@ -272,6 +272,13 @@ public class CatalogService {
         return product;
     }
 
+    @Transactional
+    public Product setProductActive(UUID productId, boolean active) {
+        Product product = product(productId);
+        product.setActive(active);
+        return product;
+    }
+
     @Transactional(readOnly = true)
     public void validateProductUpdate(UUID productId, ProductRequest request) {
         Product product = product(productId);
@@ -325,6 +332,9 @@ public class CatalogService {
         product.configurePurchaseDiscount(request.purchaseDiscountPercent());
         product.configureStockLimits(request.stockMin(), request.stockMax());
         product.configurePackageQuantity(request.packageQuantity());
+        if (request.active() != null) {
+            product.setActive(request.active());
+        }
         product.configureOffer(offerActive(request), request.offerFrom(), request.offerUntil());
     }
 
@@ -652,7 +662,8 @@ public class CatalogService {
             LocalDate offerUntil,
             BigDecimal stockMin,
             BigDecimal stockMax,
-            BigDecimal packageQuantity) {
+            BigDecimal packageQuantity,
+            Boolean active) {
 
         public ProductRequest {
             priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
@@ -686,7 +697,7 @@ public class CatalogService {
             this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
                     comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
                     wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
-                    offerFrom, offerUntil, null, null, null);
+                    offerFrom, offerUntil, null, null, null, null);
         }
 
         public ProductRequest(
@@ -718,7 +729,40 @@ public class CatalogService {
             this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
                     comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
                     wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
-                    offerFrom, offerUntil, stockMin, stockMax, null);
+                    offerFrom, offerUntil, stockMin, stockMax, null, null);
+        }
+
+        public ProductRequest(
+                UUID familyId,
+                UUID subfamilyId,
+                UUID taxId,
+                ProductType productType,
+                DiscountType discountType,
+                PriceUseMode priceUseMode,
+                String name,
+                String description,
+                String comments,
+                BigDecimal purchasePrice,
+                boolean taxesIncluded,
+                String code,
+                String barcode,
+                String barcode2,
+                BigDecimal salePrice,
+                BigDecimal memberPrice,
+                BigDecimal wholesalePrice,
+                BigDecimal offerPrice,
+                BigDecimal offerDiscountPercent,
+                BigDecimal purchaseDiscountPercent,
+                boolean offerActive,
+                LocalDate offerFrom,
+                LocalDate offerUntil,
+                BigDecimal stockMin,
+                BigDecimal stockMax,
+                BigDecimal packageQuantity) {
+            this(familyId, subfamilyId, taxId, productType, discountType, priceUseMode, name, description,
+                    comments, purchasePrice, taxesIncluded, code, barcode, barcode2, salePrice, memberPrice,
+                    wholesalePrice, offerPrice, offerDiscountPercent, purchaseDiscountPercent, offerActive,
+                    offerFrom, offerUntil, stockMin, stockMax, packageQuantity, null);
         }
     }
 

@@ -6,6 +6,10 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { PromotionWizard } from "./PromotionWizard";
 import type { PromotionView } from "./PromotionWizard";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 type PromotionListScreenProps = {
   app: AppKind;
@@ -18,6 +22,16 @@ type PromotionListScreenProps = {
 };
 
 type PromotionAction = "duplicate" | "activate" | "deactivate" | "delete";
+export type PromotionListColumnKey = "name" | "status" | "type" | "date" | "segment";
+
+export const promotionListTableKey = "promotions.list";
+export const promotionListColumnDefinitions = [
+  { key: "name", defaultWidth: 220 },
+  { key: "status", defaultWidth: 100 },
+  { key: "type", defaultWidth: 180 },
+  { key: "date", defaultWidth: 190 },
+  { key: "segment", defaultWidth: 150 }
+] as const satisfies readonly TableColumnDefinition<PromotionListColumnKey>[];
 
 export function promotionActionRequest(action: PromotionAction, promotionId: string) {
   const basePath = `/promotions/${encodeURIComponent(promotionId)}`;
@@ -55,6 +69,31 @@ export function PromotionListScreen({
   const [status, setStatus] = useState("");
   const [pendingAction, setPendingAction] = useState("");
   const token = session.accessToken;
+  const tableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: token,
+    tableKey: promotionListTableKey,
+    definitions: promotionListColumnDefinitions
+  });
+  const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const gridStyle = {
+    gridTemplateColumns: `${tableLayoutGridTemplate(tableLayout.layout)} minmax(330px, auto)`
+  };
+
+  function columnLabel(column: PromotionListColumnKey): string {
+    return t(`promotion.column.${column}`);
+  }
+
+  function renderCell(column: PromotionListColumnKey, promotion: PromotionView) {
+    if (column === "name") {
+      return <button type="button" data-column-key={column} key={column} onClick={() => setSelectedId(promotion.id)}>{promotion.name}</button>;
+    }
+    if (column === "status") return <span data-column-key={column} key={column}>{t(`promotion.status.${promotion.status}`)}</span>;
+    if (column === "type") return <span data-column-key={column} key={column}>{t(`promotion.type.${promotion.type}`)}</span>;
+    if (column === "date") return <span data-column-key={column} key={column}>{promotionDateRange(promotion)}</span>;
+    return <span data-column-key={column} key={column}>{t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`)}</span>;
+  }
 
   const selectedPromotion = useMemo(
     () => promotions.find((promotion) => promotion.id === selectedId) ?? null,
@@ -135,22 +174,26 @@ export function PromotionListScreen({
           </header>
 
           <div className="promotion-table">
-            <div className="promotion-row promotion-row-head">
-              <span>{t("promotion.column.name")}</span>
-              <span>{t("promotion.column.status")}</span>
-              <span>{t("promotion.column.type")}</span>
-              <span>{t("promotion.column.date")}</span>
-              <span>{t("promotion.column.segment")}</span>
-              <span>{t("promotion.column.actions")}</span>
+            <div className="promotion-row promotion-row-head" style={gridStyle}>
+              {visibleColumns.map((column) => (
+                <TableLayoutHeaderCell
+                  as="span"
+                  column={column}
+                  key={column.key}
+                  resizeLabel={`${t("stock.columns.resize")} ${columnLabel(column.key)}`}
+                  onReorder={tableLayout.reorderColumns}
+                  onMove={tableLayout.moveColumn}
+                  onResize={tableLayout.resizeColumn}
+                >
+                  {columnLabel(column.key)}
+                </TableLayoutHeaderCell>
+              ))}
+              <span data-fixed-column="actions">{t("promotion.column.actions")}</span>
             </div>
             {promotions.map((promotion) => (
-              <div className={`promotion-row ${selectedId === promotion.id ? "selected" : ""}`} key={promotion.id}>
-                <button type="button" onClick={() => setSelectedId(promotion.id)}>{promotion.name}</button>
-                <span>{t(`promotion.status.${promotion.status}`)}</span>
-                <span>{t(`promotion.type.${promotion.type}`)}</span>
-                <span>{promotionDateRange(promotion)}</span>
-                <span>{t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`)}</span>
-                <span className="promotion-row-actions">
+              <div className={`promotion-row ${selectedId === promotion.id ? "selected" : ""}`} style={gridStyle} key={promotion.id}>
+                {visibleColumns.map((column) => renderCell(column.key, promotion))}
+                <span className="promotion-row-actions" data-fixed-column="actions">
                   {(["duplicate", "activate", "deactivate", "delete"] as const).map((action) => (
                     <button
                       type="button"
