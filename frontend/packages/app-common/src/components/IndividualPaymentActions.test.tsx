@@ -79,4 +79,12 @@ describe("IndividualPaymentActions", () => {
     expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
   });
+
+  it("disables only pending-customer sale without the receivables-create permission", () => {
+    render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled pendingEnabled={false} {...callbacks()} />);
+
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Pendiente cliente/ })).toBeDisabled();
+  });
 });

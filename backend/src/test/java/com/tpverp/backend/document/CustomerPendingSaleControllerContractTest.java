@@ -56,7 +56,6 @@ class CustomerPendingSaleControllerContractTest {
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("CUSTOMER_RECEIVABLES_CREATE")
-                .contains("GESTION_VENTAS")
-                .contains("VENTA");
+                .doesNotContain("GESTION_VENTAS", "VENTA");
     }
 }

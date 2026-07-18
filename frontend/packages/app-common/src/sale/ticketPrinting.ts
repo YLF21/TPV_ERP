@@ -5,6 +5,11 @@ import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 
 type NumericValue = number | string;
+type FiscalPartySnapshot = {
+  name: string;
+  taxId: string;
+  address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string };
+};
 
 export type ConfirmedTicketPrintSnapshot = {
   documentId: string;
@@ -34,11 +39,26 @@ export type PendingCommercialDocumentPrintSnapshot = {
   documentNumber: string;
   issuedAt?: string;
   issueDate?: string;
+  issuer?: FiscalPartySnapshot;
+  customer?: FiscalPartySnapshot;
   lines: Array<{ name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean }>;
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
   total: NumericValue;
 };
+
+function printableAddress(address: FiscalPartySnapshot["address"] | undefined) {
+  if (!address) return "";
+  return [address.line1, [address.postalCode, address.city].filter(Boolean).join(" "), address.province, address.country]
+    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+    .join(", ");
+}
+
+function partyLabels(locale: LocaleCode) {
+  if (locale === "en") return { issuer: "Issuer", customer: "Customer", taxId: "Tax ID" };
+  if (locale === "zh") return { issuer: "Fang", customer: "Kehu", taxId: "Shuihao" };
+  return { issuer: "Emisor", customer: "Cliente", taxId: "NIF" };
+}
 
 export type CustomerReceivablePaymentReceiptSnapshot = {
   kind: "PAYMENT_RECEIPT";
@@ -135,12 +155,33 @@ export async function printPendingCommercialDocument(
     const config = await hardware.getHardwareConfig();
     const documentType = snapshot.documentType === "FACTURA_VENTA" ? "INVOICE" : "DELIVERY_NOTE";
     const title = `${t(snapshot.documentType === "FACTURA_VENTA" ? "receivables.type.invoice" : "receivables.type.deliveryNote")} ${snapshot.documentNumber}`;
+    const route = config.documentPrintRoutes.find((item) => item.documentType === documentType);
+    const parties = partyLabels(locale);
+    if (route?.printerTarget === "TICKET_PRINTER" && config.ticketPrinterDriver === "ESCPOS_RAW") {
+      const result = await hardware.printTicket({
+        documentNumber: snapshot.documentNumber,
+        storeName: terminal.storeName,
+        terminalCode: terminal.terminalCode,
+        issuedAt: snapshot.issuedAt ?? snapshot.issueDate ?? "",
+        issuer: snapshot.issuer ? { ...snapshot.issuer, address: printableAddress(snapshot.issuer.address) } : undefined,
+        customer: snapshot.customer ? { ...snapshot.customer, address: printableAddress(snapshot.customer.address) } : undefined,
+        partyLabels: parties,
+        lines: snapshot.lines.map((line) => ({
+          name: line.name, quantity: Number(line.quantity), price: Number(line.unitPrice ?? line.price),
+          total: Number(line.total), taxesIncluded: line.taxesIncluded
+        })),
+        payments: [], total: Number(snapshot.total)
+      }, config);
+      return result.ok ? { status: "PRINTED" } : { status: "FAILED", technicalMessage: result.message };
+    }
     const result = await hardware.printA4Document({
       documentType,
       title,
       storeName: terminal.storeName,
       terminalCode: terminal.terminalCode,
       issuedAt: snapshot.issuedAt ?? snapshot.issueDate ?? "",
+      issuer: snapshot.issuer,
+      customer: snapshot.customer,
       lines: snapshot.lines.map((line) => ({
         name: line.name,
         quantity: Number(line.quantity),
@@ -157,7 +198,7 @@ export async function printPendingCommercialDocument(
         quantity: t("print.a4.quantity"), unitPrice: t("print.a4.unitPrice"),
         base: t("print.a4.base"), tax: t("print.a4.tax"),
         taxIncluded: t("print.a4.taxIncluded"), yes: t("common.yes"), no: t("common.no"), mixed: t("print.a4.mixed"),
-        total: t("print.a4.total")
+        total: t("print.a4.total"), ...parties
       }
     }, config);
     return result.ok

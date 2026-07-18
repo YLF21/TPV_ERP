@@ -48,6 +48,14 @@ function buildTicketBuffer(ticket) {
     Buffer.from([ESC, 0x61, 0x00]),
     line("------------------------------------------")
   ];
+  const partyLabels = { issuer: "Emisor", customer: "Cliente", taxId: "NIF", ...(ticket.partyLabels || {}) };
+  for (const [label, party] of [[partyLabels.issuer, ticket.issuer], [partyLabels.customer, ticket.customer]]) {
+    if (!party) continue;
+    chunks.push(line(`${label}: ${party.name || ""}`));
+    chunks.push(line(`${partyLabels.taxId}: ${party.taxId || ""}`));
+    if (party.address) chunks.push(line(party.address));
+  }
+  if (ticket.issuer || ticket.customer) chunks.push(line("------------------------------------------"));
   if (suppliedLabels) chunks.push(line(padColumns(`${labels.item} / ${labels.quantity} / ${labels.price}`, labels.total)));
 
   for (const [index, item] of (ticket.lines || []).entries()) {

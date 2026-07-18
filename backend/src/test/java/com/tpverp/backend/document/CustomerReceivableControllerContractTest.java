@@ -82,7 +82,8 @@ class CustomerReceivableControllerContractTest {
                 name, idType, requestType, org.springframework.security.core.Authentication.class);
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("CUSTOMER_RECEIVABLES_PAY");
+                .contains("CUSTOMER_RECEIVABLES_PAY")
+                .doesNotContain("GESTION_VENTAS", "VENTA");
         assertThat(method.getParameters()[0].getAnnotation(PathVariable.class)).isNotNull();
     }
 }

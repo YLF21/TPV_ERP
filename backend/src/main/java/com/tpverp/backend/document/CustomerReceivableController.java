@@ -24,7 +24,7 @@ public class CustomerReceivableController {
     private static final String READ_PERMISSION =
             "hasRole('ADMIN') or hasAuthority('CUSTOMER_RECEIVABLES_READ')";
     private static final String PAY_PERMISSION =
-            "hasRole('ADMIN') or hasAnyAuthority('CUSTOMER_RECEIVABLES_PAY','GESTION_VENTAS','VENTA')";
+            "hasRole('ADMIN') or hasAuthority('CUSTOMER_RECEIVABLES_PAY')";
 
     private final CustomerReceivableService service;
     private final CustomerReceivablePrintService printing;

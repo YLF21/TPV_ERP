@@ -22,6 +22,22 @@ describe("escpos command builder", () => {
     expect([...buffer.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
   });
 
+  it("prints issuer and customer fiscal identities on raw commercial documents", () => {
+    const text = buildTicketBuffer({
+      documentNumber: "FV-1", storeName: "Tienda", terminalCode: "01", issuedAt: "2026-07-16",
+      issuer: { name: "TPV ERP SL", taxId: "B12345678", address: "Calle Mayor 1, 28001 Madrid, ES" },
+      customer: { name: "Cliente Fiscal SL", taxId: "B87654321", address: "Avenida Sur 2, 41001 Sevilla, ES" },
+      lines: [], payments: [], total: 0
+    }).toString("latin1");
+
+    expect(text).toContain("TPV ERP SL");
+    expect(text).toContain("B12345678");
+    expect(text).toContain("Calle Mayor 1, 28001 Madrid, ES");
+    expect(text).toContain("Cliente Fiscal SL");
+    expect(text).toContain("B87654321");
+    expect(text).toContain("Avenida Sur 2, 41001 Sevilla, ES");
+  });
+
   it("builds the standard cash drawer pulse command", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });

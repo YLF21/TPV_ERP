@@ -118,6 +118,8 @@ describe("confirmed ticket printing", () => {
       documentType: "FACTURA_VENTA",
       documentNumber: "FV-1",
       issuedAt: "2026-07-16T10:00:00Z",
+      issuer: { name: "TPV ERP SL", taxId: "B12345678", address: { line1: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES" } },
+      customer: { name: "Cliente Fiscal SL", taxId: "B87654321", address: { line1: "Avenida Sur 2", postalCode: "41001", city: "Sevilla", province: "Sevilla", country: "ES" } },
       lines: snapshot.lines,
       baseTotal: "100.00",
       taxTotal: "21.00",
@@ -130,8 +132,35 @@ describe("confirmed ticket printing", () => {
       subtotal: 100,
       tax: 21,
       total: 100,
+      issuer: expect.objectContaining({ name: "TPV ERP SL", taxId: "B12345678" }),
+      customer: expect.objectContaining({ name: "Cliente Fiscal SL", taxId: "B87654321" }),
       labels: expect.objectContaining({ description: "Descripción", quantity: "Cantidad", tax: "Impuesto" })
     }), expect.anything());
+  });
+
+  it("routes invoice parties through ESC/POS when the document route uses the raw ticket printer", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    const config = {
+      ...defaultHardwareConfig,
+      ticketPrinterDriver: "ESCPOS_RAW" as const,
+      documentPrintRoutes: defaultHardwareConfig.documentPrintRoutes.map((route) => route.documentType === "INVOICE"
+        ? { ...route, printerTarget: "TICKET_PRINTER" as const, paperSize: "TICKET_80" as const }
+        : route)
+    };
+    const hardware = { getHardwareConfig: vi.fn().mockResolvedValue(config), printTicket } as unknown as HardwareBridge;
+
+    await printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT", documentType: "FACTURA_VENTA", documentNumber: "FV-RAW",
+      issuer: { name: "TPV ERP SL", taxId: "B12345678", address: { line1: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES" } },
+      customer: { name: "Cliente Fiscal SL", taxId: "B87654321", address: { line1: "Avenida Sur 2", postalCode: "41001", city: "Sevilla", province: "Sevilla", country: "ES" } },
+      lines: snapshot.lines, total: 7
+    }, terminal, hardware);
+
+    expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      documentNumber: "FV-RAW",
+      issuer: expect.objectContaining({ name: "TPV ERP SL", taxId: "B12345678" }),
+      customer: expect.objectContaining({ name: "Cliente Fiscal SL", taxId: "B87654321" })
+    }), config);
   });
 
   it("preserves authoritative per-line tax inclusion for mixed documents", async () => {

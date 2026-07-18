@@ -522,11 +522,26 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return null;
    throw new Error(`unexpected request ${path}`);
   });
-  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["CUSTOMER_RECEIVABLES_CREATE"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(screen.getByRole("button",{name:/Efectivo/})).toBeVisible();
   expect(screen.getByRole("button",{name:/Tarjeta/})).toBeVisible();
   expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeEnabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
+ });
+ it("keeps the pending action disabled and ignores F12 without receivables-create permission",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onPending=vi.fn();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onPending,onFinalized:vi.fn()}));
+
+  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeDisabled();
+  act(()=>ref.current?.triggerPending());
+
+  expect(onPending).not.toHaveBeenCalled();
  });
  it.each([
   ["COLLECTING","Cancelar sesión de cobro"],
@@ -591,7 +606,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return declined;
    throw new Error(`unexpected request ${path}`);
   });
-  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["CUSTOMER_RECEIVABLES_CREATE"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(await screen.findByRole("button",{name:/AvPág/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F11/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F12/})).toBeEnabled();

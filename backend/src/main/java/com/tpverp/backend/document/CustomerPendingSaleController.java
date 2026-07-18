@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerPendingSaleController {
 
     private static final String CREATE_PERMISSION =
-            "hasRole('ADMIN') or hasAnyAuthority('CUSTOMER_RECEIVABLES_CREATE','GESTION_VENTAS','VENTA')";
+            "hasRole('ADMIN') or hasAuthority('CUSTOMER_RECEIVABLES_CREATE')";
 
     private final CustomerPendingSaleService service;
     private final CustomerReceivablePrintService printing;
