@@ -70,6 +70,14 @@ public class CustomerReceivableController {
         return service.chargeCard(documentId, request, authentication);
     }
 
+    @PostMapping("/{documentId}/card-charges/{paymentId}/query")
+    @PreAuthorize(PAY_PERMISSION)
+    public PaymentTerminalResult queryCard(
+            @PathVariable UUID documentId, @PathVariable UUID paymentId,
+            Authentication authentication) {
+        return service.queryCard(documentId, paymentId, authentication);
+    }
+
     @PostMapping("/{documentId}/payments")
     @PreAuthorize(PAY_PERMISSION)
     public PaymentResponse pay(

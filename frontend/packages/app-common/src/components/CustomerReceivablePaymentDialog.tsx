@@ -17,7 +17,7 @@ export type CustomerReceivable = {
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 type Props = { locale?: LocaleCode; receivable: CustomerReceivable; token?: string; terminalCode: string; terminalContext?: TerminalContext; printReceipt?: typeof printCustomerReceivablePaymentReceipt; request?: Request; onCancel: () => void; onPaid: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void };
 type Method = { id: string; name?: string; nombre?: string; active?: boolean };
-type Attempt = { paymentId: string; amount: string; methodId: string; status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED" };
+type Attempt = { paymentId: string; amount: string; methodId: string; status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED"; finalOutcome?: boolean };
 type StandardAttempt = { requestId: string; kind: "cash" | "transfer"; item: Record<string, unknown> };
 type PaymentMutationResult = { receivable: CustomerReceivable; paymentReceipt: CustomerReceivablePaymentReceiptSnapshot };
 
@@ -47,7 +47,8 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
   });
   const amountCents = useMemo(() => cents(amount), [amount]);
   const collectable = receivable.status !== "PAGADO" && pendingCents > 0;
-  const unsafeCard = cardAttempt != null && ["CREATED", "PENDING", "SENT", "TIMEOUT", "APPROVED"].includes(cardAttempt.status);
+  const unsafeCard = cardAttempt != null && (["CREATED", "PENDING", "SENT", "TIMEOUT", "APPROVED"].includes(cardAttempt.status)
+    || (cardAttempt.status === "ERROR" && cardAttempt.finalOutcome !== true));
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => dialogRef.current ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document) : undefined, []);
@@ -123,8 +124,8 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
       globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
       setCardAttempt(attempt);
       if (attempt.status !== "APPROVED") {
-        const terminal = await request<{ status: string }>(`/customer-receivables/${receivable.documentId}/card-charges`, { token, body: { paymentId: attempt.paymentId, amount: attempt.amount } });
-        attempt = { ...attempt, status: terminal.status as Attempt["status"] };
+        const terminal = await request<{ status: string; finalOutcome?: boolean }>(`/customer-receivables/${receivable.documentId}/card-charges`, { token, body: { paymentId: attempt.paymentId, amount: attempt.amount } });
+        attempt = { ...attempt, status: terminal.status as Attempt["status"], finalOutcome: terminal.finalOutcome };
         globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
         setCardAttempt(attempt);
         if (terminal.status !== "APPROVED") { setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${terminal.status}`)}. ${t("receivables.payment.queryBeforeRetry")}`); setBusy(false); return; }
@@ -137,8 +138,8 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
     if (!cardAttempt) return;
     setBusy(true); setError("");
     try {
-      const terminal = await request<{ status: string }>(`/payment-terminal/operations/${cardAttempt.paymentId}/query`, { method: "POST", token });
-      const next = { ...cardAttempt, status: terminal.status as Attempt["status"] };
+      const terminal = await request<{ status: string; finalOutcome?: boolean }>(`/customer-receivables/${receivable.documentId}/card-charges/${cardAttempt.paymentId}/query`, { method: "POST", token });
+      const next = { ...cardAttempt, status: terminal.status as Attempt["status"], finalOutcome: terminal.finalOutcome };
       globalThis.localStorage?.setItem(storageKey, JSON.stringify(next)); setCardAttempt(next);
       if (next.status === "APPROVED") { await finishApprovedCard(next); return; }
       else setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${next.status}`)}. ${t("receivables.payment.cardNotFinal")}`);
@@ -162,7 +163,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
       </div>
       {transferOpen && <fieldset><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.transferReference")}<input aria-label={t("receivables.payment.transferReference")} autoFocus value={reference} onChange={(event) => setReference(event.target.value)} /></label><button type="button" disabled={busy} onClick={() => void payStandard("transfer")}>{t("receivables.payment.confirmTransfer")}</button><button type="button" disabled={busy} onClick={() => setTransferOpen(false)}>{t("receivables.payment.cancelTransfer")}</button></fieldset>}
       {cardAttempt && <div className="receivable-card-recovery" aria-live="polite"><span>{t("receivables.payment.cardState")}: {t(`paymentTerminal.status.${cardAttempt.status}`)}</span><button type="button" disabled={busy} onClick={() => void queryCard()}>{t("receivables.payment.queryCard")}</button>{cardAttempt.status === "APPROVED" && <button type="button" disabled={busy} onClick={() => void payCard()}>{t("receivables.payment.retryCard")}</button>}</div>}
-      {cardAttempt && ["DECLINED", "ERROR", "CANCELLED"].includes(cardAttempt.status) && <button type="button" onClick={() => { localStorage.removeItem(storageKey); setCardAttempt(null); }}>{t("receivables.payment.discardCard")}</button>}
+      {cardAttempt && (["DECLINED", "CANCELLED"].includes(cardAttempt.status) || (cardAttempt.status === "ERROR" && cardAttempt.finalOutcome === true)) && <button type="button" onClick={() => { localStorage.removeItem(storageKey); setCardAttempt(null); }}>{t("receivables.payment.discardCard")}</button>}
       {standardAttempt && <div aria-live="polite"><p>{t(standardAttempt.kind === "cash" ? "receivables.payment.cash" : "receivables.payment.transfer")} · {String(standardAttempt.item.importe)}{standardAttempt.item.reference ? ` · ${String(standardAttempt.item.reference)}` : ""}. {t("receivables.payment.unknownResult")}</p><button type="button" disabled={busy} onClick={() => void payStandard(standardAttempt.kind)}>{t("receivables.payment.retry")}</button></div>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
       <footer><button type="button" disabled={busy || unsafeCard} onClick={onCancel}>{t("common.close")}</button></footer>

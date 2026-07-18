@@ -1,6 +1,8 @@
 package com.tpverp.backend.document;
 
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalOperation;
+import com.tpverp.backend.terminal.PaymentTerminalOperationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -116,6 +118,11 @@ public class CustomerReceivablePaymentReservation {
     }
 
     public void recordTerminalResult(PaymentTerminalOperationStatus result, Instant now) {
+        recordTerminalResult(result, result != PaymentTerminalOperationStatus.ERROR, now);
+    }
+
+    public void recordTerminalResult(
+            PaymentTerminalOperationStatus result, boolean finalOutcome, Instant now) {
         if (kind != Kind.INTEGRATED_CARD || status != Status.DISPATCHING) {
             throw new IllegalStateException("receivable_payment_not_dispatching");
         }
@@ -124,7 +131,8 @@ public class CustomerReceivablePaymentReservation {
             leaseOwner = null;
             leaseUntil = null;
         } else if (result == PaymentTerminalOperationStatus.DECLINED
-                || result == PaymentTerminalOperationStatus.CANCELLED) {
+                || result == PaymentTerminalOperationStatus.CANCELLED
+                || (result == PaymentTerminalOperationStatus.ERROR && finalOutcome)) {
             release(now);
             return;
         }
@@ -157,6 +165,22 @@ public class CustomerReceivablePaymentReservation {
                 && this.terminalId.equals(terminalId) && this.userId.equals(userId)
                 && this.requestHash.equals(requestHash)
                 && this.amount.compareTo(Money.euros(amount)) == 0 && this.kind == kind;
+    }
+
+    boolean matchesRecoveryScope(UUID documentId, UUID storeId, UUID terminalId) {
+        return this.documentId.equals(documentId) && this.storeId.equals(storeId)
+                && this.terminalId.equals(terminalId) && kind == Kind.INTEGRATED_CARD;
+    }
+
+    boolean matchesOperation(PaymentTerminalOperation operation) {
+        return id.equals(operation.getId())
+                && operation.getOperationType() == PaymentTerminalOperationType.CHARGE
+                && terminalId.equals(operation.getTerminalId())
+                && storeId.equals(operation.getStoreId())
+                && requestHash.equals(operation.getRequestHash())
+                && amount.compareTo(operation.getAmount()) == 0
+                && (operation.getDocumentId() == null
+                    || documentId.equals(operation.getDocumentId()));
     }
 
     boolean hasExpiredReservedLease(Instant now) {

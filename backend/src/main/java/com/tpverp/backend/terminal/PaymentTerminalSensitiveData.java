@@ -25,5 +25,5 @@ final class PaymentTerminalSensitiveData {
                 ||lower.contains("pan")||lower.contains("cvv")||lower.contains("cvc")
                 ||lower.contains("pin")||lower.contains("authorization");}
     static PaymentTerminalResult safe(PaymentTerminalResult result){return new PaymentTerminalResult(result.status(),result.code(),
-            mask(result.reference()),mask(result.authorization()),mask(result.message()));}
+            mask(result.reference()),mask(result.authorization()),mask(result.message()),result.finalOutcome());}
 }

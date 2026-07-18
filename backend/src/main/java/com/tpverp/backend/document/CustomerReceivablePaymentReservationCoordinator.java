@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import com.tpverp.backend.document.CustomerReceivablePaymentReservation.Kind;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalOperation;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -83,10 +84,59 @@ public class CustomerReceivablePaymentReservationCoordinator {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordTerminalResult(
             UUID paymentId, PaymentTerminalOperationStatus status) {
+        recordTerminalResult(paymentId, status, status != PaymentTerminalOperationStatus.ERROR);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordTerminalResult(
+            UUID paymentId, PaymentTerminalOperationStatus status, boolean finalOutcome) {
         var reservation = reservations.findLockedById(paymentId)
                 .orElseThrow(() -> new IllegalStateException("receivable_payment_reservation_missing"));
-        reservation.recordTerminalResult(status, Instant.now(clock));
+        reservation.recordTerminalResult(status, finalOutcome, Instant.now(clock));
         reservations.save(reservation);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void validateRecoveryScope(
+            UUID paymentId, UUID documentId, UUID storeId, UUID terminalId) {
+        var reservation = reservations.findLockedById(paymentId)
+                .orElseThrow(() -> new IllegalStateException("receivable_payment_reservation_missing"));
+        if (!reservation.matchesRecoveryScope(documentId, storeId, terminalId)) {
+            throw new IllegalStateException("payment_operation_identity_mismatch");
+        }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void synchronize(
+            UUID documentId, UUID storeId, UUID terminalId,
+            PaymentTerminalOperation operation) {
+        var reservation = reservations.findLockedById(operation.getId())
+                .orElseThrow(() -> new IllegalStateException("receivable_payment_reservation_missing"));
+        if (!reservation.matchesRecoveryScope(documentId, storeId, terminalId)
+                || !reservation.matchesOperation(operation)) {
+            throw new IllegalStateException("payment_operation_identity_mismatch");
+        }
+        var status = operation.getStatus();
+        if (reservation.getStatus() == CustomerReceivablePaymentReservation.Status.DISPATCHING) {
+            reservation.recordTerminalResult(
+                    status, operation.isFinalOutcome(), Instant.now(clock));
+            reservations.save(reservation);
+            return;
+        }
+        var consistentApproved = reservation.getStatus()
+                == CustomerReceivablePaymentReservation.Status.APPROVED
+                && status == PaymentTerminalOperationStatus.APPROVED;
+        var consistentReleased = reservation.getStatus()
+                == CustomerReceivablePaymentReservation.Status.RELEASED
+                && operation.isFinalOutcome()
+                && (status == PaymentTerminalOperationStatus.DECLINED
+                    || status == PaymentTerminalOperationStatus.CANCELLED
+                    || status == PaymentTerminalOperationStatus.ERROR);
+        if (!consistentApproved && !consistentReleased
+                && reservation.getStatus()
+                != CustomerReceivablePaymentReservation.Status.COMPLETED) {
+            throw new IllegalStateException("payment_operation_reservation_state_mismatch");
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

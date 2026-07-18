@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +14,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.tpverp.backend.terminal.PaymentTerminalMode;
+import com.tpverp.backend.terminal.PaymentTerminalOperation;
+import com.tpverp.backend.terminal.PaymentTerminalOperationType;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
 
 class CustomerReceivablePaymentReservationCoordinatorTest {
 
@@ -70,6 +75,73 @@ class CustomerReceivablePaymentReservationCoordinatorTest {
                 .hasMessageContaining("customer_required");
 
         verify(reservations, org.mockito.Mockito.never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void authoritativeQueryApprovalSynchronizesTheReservationBeforeDocumentPayment() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var reservations = mock(CustomerReceivablePaymentReservationRepository.class);
+        var now = Instant.parse("2026-07-16T10:00:00Z");
+        var coordinator = new CustomerReceivablePaymentReservationCoordinator(
+                documents, reservations, Clock.fixed(now, ZoneOffset.UTC));
+        var paymentId = UUID.randomUUID();
+        var documentId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var hash = "c".repeat(64);
+        var reservation = CustomerReceivablePaymentReservation.reserve(
+                paymentId, documentId, storeId, terminalId, UUID.randomUUID(), hash,
+                new BigDecimal("20.00"),
+                CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD,
+                UUID.randomUUID(), now.plusSeconds(30), now);
+        reservation.markDispatching(reservation.getLeaseOwner(), now.plusSeconds(1));
+        var operation = PaymentTerminalOperation.reserve(
+                paymentId, terminalId, storeId, PaymentTerminalProvider.PAYTEF,
+                PaymentTerminalMode.SIMULATED, PaymentTerminalOperationType.CHARGE, null,
+                paymentId.toString(), hash, new BigDecimal("20.00"),
+                "d".repeat(64), 1, now);
+        operation.markSent("SEND", now.plusSeconds(1));
+        operation.timeout("TIMEOUT", "unknown", now.plusSeconds(2));
+        operation.approveFromQuery("REF", "AUTH", now.plusSeconds(3));
+        when(reservations.findLockedById(paymentId)).thenReturn(Optional.of(reservation));
+
+        coordinator.synchronize(documentId, storeId, terminalId, operation);
+
+        assertThat(reservation.getStatus())
+                .isEqualTo(CustomerReceivablePaymentReservation.Status.APPROVED);
+        verify(reservations).save(reservation);
+    }
+
+    @Test
+    void synchronizationRejectsAnOperationWhoseHashDoesNotBelongToTheReceivable() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var reservations = mock(CustomerReceivablePaymentReservationRepository.class);
+        var now = Instant.parse("2026-07-16T10:00:00Z");
+        var coordinator = new CustomerReceivablePaymentReservationCoordinator(
+                documents, reservations, Clock.fixed(now, ZoneOffset.UTC));
+        var paymentId = UUID.randomUUID();
+        var documentId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var reservation = CustomerReceivablePaymentReservation.reserve(
+                paymentId, documentId, storeId, terminalId, UUID.randomUUID(), "a".repeat(64),
+                new BigDecimal("20.00"),
+                CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD,
+                UUID.randomUUID(), now.plusSeconds(30), now);
+        reservation.markDispatching(reservation.getLeaseOwner(), now.plusSeconds(1));
+        var operation = PaymentTerminalOperation.reserve(
+                paymentId, terminalId, storeId, PaymentTerminalProvider.PAYTEF,
+                PaymentTerminalMode.SIMULATED, PaymentTerminalOperationType.CHARGE, null,
+                paymentId.toString(), "b".repeat(64), new BigDecimal("20.00"),
+                "d".repeat(64), 1, now);
+        operation.markSent("SEND", now.plusSeconds(1));
+        operation.timeout("TIMEOUT", "unknown", now.plusSeconds(2));
+        when(reservations.findLockedById(paymentId)).thenReturn(Optional.of(reservation));
+
+        assertThatThrownBy(() -> coordinator.synchronize(
+                documentId, storeId, terminalId, operation))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_operation_identity_mismatch");
     }
 
     private static CommercialDocument receivable(UUID storeId, String total) {

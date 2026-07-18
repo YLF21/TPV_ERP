@@ -38,12 +38,36 @@ class CustomerReceivablePaymentReservationTest {
         declined.recordTerminalResult(PaymentTerminalOperationStatus.DECLINED, NOW.plusSeconds(2));
         assertThat(declined.reservesBalance()).isFalse();
 
+        var cancelled = reservation();
+        cancelled.markDispatching(cancelled.getLeaseOwner(), NOW.plusSeconds(1));
+        cancelled.recordTerminalResult(PaymentTerminalOperationStatus.CANCELLED, NOW.plusSeconds(2));
+        assertThat(cancelled.reservesBalance()).isFalse();
+
         var approved = reservation();
         approved.markDispatching(approved.getLeaseOwner(), NOW.plusSeconds(1));
         approved.recordTerminalResult(PaymentTerminalOperationStatus.APPROVED, NOW.plusSeconds(2));
         assertThat(approved.reservesBalance()).isTrue();
         approved.complete(UUID.randomUUID(), NOW.plusSeconds(3));
         assertThat(approved.reservesBalance()).isFalse();
+    }
+
+    @Test
+    void finalErrorReleasesBalanceButUncertainErrorKeepsTheSamePaymentIdReserved() {
+        var uncertain = reservation();
+        uncertain.markDispatching(uncertain.getLeaseOwner(), NOW.plusSeconds(1));
+        uncertain.recordTerminalResult(
+                PaymentTerminalOperationStatus.ERROR, false, NOW.plusSeconds(2));
+        assertThat(uncertain.getStatus())
+                .isEqualTo(CustomerReceivablePaymentReservation.Status.DISPATCHING);
+        assertThat(uncertain.reservesBalance()).isTrue();
+
+        var finalError = reservation();
+        finalError.markDispatching(finalError.getLeaseOwner(), NOW.plusSeconds(1));
+        finalError.recordTerminalResult(
+                PaymentTerminalOperationStatus.ERROR, true, NOW.plusSeconds(2));
+        assertThat(finalError.getStatus())
+                .isEqualTo(CustomerReceivablePaymentReservation.Status.RELEASED);
+        assertThat(finalError.reservesBalance()).isFalse();
     }
 
     @Test

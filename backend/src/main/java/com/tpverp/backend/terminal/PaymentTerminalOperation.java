@@ -115,12 +115,14 @@ public class PaymentTerminalOperation {
         externalReference = PaymentTerminalSensitiveData.storageIdentifier(reference,128);
         authorizationCode = PaymentTerminalSensitiveData.storageIdentifier(authorization,64);
         transition(PaymentTerminalOperationStatus.APPROVED, "QUERY_APPROVED", null, Map.of(), at,
-                PaymentTerminalOperationStatus.PENDING, PaymentTerminalOperationStatus.SENT, PaymentTerminalOperationStatus.TIMEOUT);
+                PaymentTerminalOperationStatus.PENDING, PaymentTerminalOperationStatus.SENT,
+                PaymentTerminalOperationStatus.TIMEOUT, PaymentTerminalOperationStatus.ERROR);
     }
 
     public void declineFromQuery(String code, String diagnostic, Instant at) {
         transition(PaymentTerminalOperationStatus.DECLINED, code, diagnostic, Map.of(), at,
-                PaymentTerminalOperationStatus.PENDING, PaymentTerminalOperationStatus.SENT, PaymentTerminalOperationStatus.TIMEOUT);
+                PaymentTerminalOperationStatus.PENDING, PaymentTerminalOperationStatus.SENT,
+                PaymentTerminalOperationStatus.TIMEOUT, PaymentTerminalOperationStatus.ERROR);
     }
 
     public void decline(String code, String diagnostic, Instant at) {
@@ -191,9 +193,14 @@ public class PaymentTerminalOperation {
     }
 
     public void fail(String code, String diagnostic, Instant at) {
-        transition(PaymentTerminalOperationStatus.ERROR, code, diagnostic, Map.of(), at,
+        fail(code, diagnostic, false, at);
+    }
+
+    public void fail(String code, String diagnostic, boolean finalOutcome, Instant at) {
+        transition(PaymentTerminalOperationStatus.ERROR, code, diagnostic,
+                Map.of("finalOutcome", finalOutcome), at,
                 PaymentTerminalOperationStatus.PENDING, PaymentTerminalOperationStatus.SENT,
-                PaymentTerminalOperationStatus.TIMEOUT);
+                PaymentTerminalOperationStatus.TIMEOUT, PaymentTerminalOperationStatus.ERROR);
     }
 
     public boolean claimProcessing(UUID owner, Instant leaseUntil, Instant now) {
@@ -249,7 +256,8 @@ public class PaymentTerminalOperation {
         if (target == PaymentTerminalOperationStatus.DECLINED
                 || target == PaymentTerminalOperationStatus.CANCELLED
                 || target == PaymentTerminalOperationStatus.REFUNDED
-                || target == PaymentTerminalOperationStatus.ERROR) completedAt = at;
+                || (target == PaymentTerminalOperationStatus.ERROR
+                    && Boolean.TRUE.equals(metadata.get("finalOutcome")))) completedAt = at;
         append(previous, target, code, diagnostic, metadata, at);
     }
 
@@ -279,6 +287,14 @@ public class PaymentTerminalOperation {
     public String getRequestHash() { return requestHash; }
     public BigDecimal getAmount() { return amount; }
     public PaymentTerminalOperationStatus getStatus() { return status; }
+    public boolean isFinalOutcome() {
+        if (status == PaymentTerminalOperationStatus.ERROR) return completedAt != null;
+        return status == PaymentTerminalOperationStatus.APPROVED
+                || status == PaymentTerminalOperationStatus.DECLINED
+                || status == PaymentTerminalOperationStatus.CANCELLED
+                || status == PaymentTerminalOperationStatus.REFUNDED
+                || status == PaymentTerminalOperationStatus.PARTIALLY_REFUNDED;
+    }
     public String getCurrency() { return currency; }
     public BigDecimal getRefundedAmount() { return refundedAmount; }
     public String getConfigurationHash() { return configurationHash; }

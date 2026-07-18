@@ -73,7 +73,7 @@ describe("CustomerReceivablePaymentDialog", () => {
     const query = await screen.findByRole("button", { name: "Consultar estado de tarjeta" }); await waitFor(() => expect(query).toBeEnabled());
     const retained = JSON.parse(localStorage.getItem(receivablePaymentAttemptKey("01", "doc-1")) ?? "null");
     fireEvent.click(query);
-    await waitFor(() => expect((request.mock.calls as any[]).some(([path]) => path === `/payment-terminal/operations/${retained.paymentId}/query`)).toBe(true));
+    await waitFor(() => expect((request.mock.calls as any[]).some(([path]) => path === `/customer-receivables/doc-1/card-charges/${retained.paymentId}/query`)).toBe(true));
     const payment = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"))?.[1].body.pagos[0];
     expect(payment.requestId).toBe(retained.paymentId);
   });
@@ -117,6 +117,22 @@ describe("CustomerReceivablePaymentDialog", () => {
     await screen.findByRole("button", { name: "Consultar estado de tarjeta" }); fireEvent.keyDown(window, { key: "Escape" }); expect(onCancel).not.toHaveBeenCalled(); expect(screen.getByLabelText("Cerrar")).toBeDisabled();
     status = "DECLINED"; localStorage.clear(); firstView.unmount(); render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="02" request={request as any} onCancel={onCancel} onPaid={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Tarjeta" })).toBeEnabled()); fireEvent.click(screen.getByRole("button", { name: "Tarjeta" })); expect(await screen.findByRole("button", { name: "Descartar intento rechazado" })).toBeVisible();
+  });
+
+  it("keeps an uncertain ERROR locked to the same id and only allows discarding a final ERROR", async () => {
+    const key = receivablePaymentAttemptKey("01", "doc-1");
+    localStorage.setItem(key, JSON.stringify({ paymentId: "op-error", amount: "75.00", methodId: "card", status: "ERROR", finalOutcome: false }));
+    const request = vi.fn().mockResolvedValue(methods);
+    const first = render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" request={request as any} onCancel={vi.fn()} onPaid={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Efectivo" })).toBeDisabled());
+    expect(screen.queryByRole("button", { name: "Descartar intento rechazado" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Cerrar")).toBeDisabled();
+
+    first.unmount();
+    localStorage.setItem(key, JSON.stringify({ paymentId: "op-error", amount: "75.00", methodId: "card", status: "ERROR", finalOutcome: true }));
+    render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" request={request as any} onCancel={vi.fn()} onPaid={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Descartar intento rechazado" })).toBeVisible();
+    expect(screen.getByLabelText("Cerrar")).toBeEnabled();
   });
 
   it("hydrates methods in StrictMode and traps focus, restoring it after safe close", async () => {

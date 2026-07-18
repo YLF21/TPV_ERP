@@ -131,9 +131,24 @@ public class CustomerReceivableService {
                 request.paymentId(), hash, amount, configuration);
         if (status != CustomerReceivablePaymentReservation.Status.APPROVED
                 && status != CustomerReceivablePaymentReservation.Status.COMPLETED) {
-            paymentReservations.recordTerminalResult(request.paymentId(), result.status());
+            paymentReservations.recordTerminalResult(
+                    request.paymentId(), result.status(), result.finalOutcome());
         }
         return result;
+    }
+
+    public PaymentTerminalResult queryCard(
+            UUID documentId, UUID paymentId, Authentication authentication) {
+        var storeId = organization.currentStore().getId();
+        var terminalId = currentTerminal.terminalId(authentication);
+        paymentReservations.validateRecoveryScope(
+                paymentId, documentId, storeId, terminalId);
+        var operation = terminalOperations.recover(paymentId, UUID.randomUUID());
+        paymentReservations.synchronize(documentId, storeId, terminalId, operation);
+        return new PaymentTerminalResult(
+                operation.getStatus(), "QUERY_RESULT", operation.getExternalReference(),
+                operation.getAuthorizationCode(), "Estado consultado en el datafono",
+                operation.isFinalOutcome());
     }
 
     public CustomerReceivableView pay(

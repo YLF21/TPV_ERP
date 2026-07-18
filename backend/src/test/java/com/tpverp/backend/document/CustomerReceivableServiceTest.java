@@ -246,6 +246,29 @@ class CustomerReceivableServiceTest {
     }
 
     @Test
+    void queryApprovedSynchronizesReservationBeforeReturningSoTheSameIdCanBePaid() {
+        var document = receivable(UUID.randomUUID(), LocalDate.of(2026, 8, 1), "100.00");
+        var terminalId = UUID.randomUUID();
+        var operation = mock(PaymentTerminalOperation.class);
+        when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
+        when(terminalOperations.recover(org.mockito.Mockito.eq(PAYMENT_ID), any(UUID.class)))
+                .thenReturn(operation);
+        when(operation.getStatus()).thenReturn(PaymentTerminalOperationStatus.APPROVED);
+        when(operation.getExternalReference()).thenReturn("REF");
+        when(operation.getAuthorizationCode()).thenReturn("AUTH");
+        when(operation.isFinalOutcome()).thenReturn(true);
+
+        var result = service.queryCard(document.getId(), PAYMENT_ID, authentication);
+
+        assertThat(result.status()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);
+        assertThat(result.finalOutcome()).isTrue();
+        verify(paymentReservations).validateRecoveryScope(
+                PAYMENT_ID, document.getId(), store.getId(), terminalId);
+        verify(paymentReservations).synchronize(
+                document.getId(), store.getId(), terminalId, operation);
+    }
+
+    @Test
     void rejectsAnonymousReceivablePayment() {
         var document = receivable(null, LocalDate.of(2026, 8, 1), "100.00");
         when(documents.findLockedReceivable(document.getId(), store.getId()))
