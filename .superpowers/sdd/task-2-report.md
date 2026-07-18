@@ -75,3 +75,25 @@ None for this task. The build emits pre-existing Vite warnings about large chunk
 ### Commit
 
 - `179665b77d2daa80dfe9d9a06b8f83af818ac46d` — `fix: reject blank pending sale tax rates`
+
+## Review fix: tax inclusion flag
+
+### RED/GREEN evidence
+
+- RED: `cd frontend && npm.cmd test -- --run packages/app-common/src/components/SaleScreen.test.tsx`
+  - Result: 93 passed, 2 failed.
+  - Expected failures: missing/`undefined`, `null`, and string `taxesIncluded` values produced a draft, and the visible pending-sale test reached the quote flow rather than displaying the fiscal error.
+- GREEN: the same command after adding the boolean guard.
+  - Result: 95 passed, 0 failed.
+- Final verification: `cd frontend && npm.cmd run build`
+  - Result: both `@tpverp/app-gestion` and `@tpverp/app-venta` completed TypeScript checks and production builds successfully.
+
+### Changes
+
+- Fails closed unless `taxesIncluded` is strictly a boolean, with `Producto sin configuración de impuestos válida`.
+- Covers missing, `undefined`, `null`, and non-boolean tax-inclusion values.
+- Exercises the visible alert/no-dialog behavior with `taxesIncluded: null`.
+
+### Commit
+
+- `5d03529ea9647bf2d09b3095130a4b62fa551dce` — `fix: validate pending sale tax inclusion`
