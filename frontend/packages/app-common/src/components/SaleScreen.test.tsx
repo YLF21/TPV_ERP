@@ -50,6 +50,7 @@ import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import { defaultHardwareConfig } from "../hardware/hardware";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
+import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
@@ -101,6 +102,7 @@ afterEach(() => {
   triggerPending.mockReset();
   checkoutHandle.attached = true;
   checkoutProps.current = null;
+  localStorage.clear();
   delete window.tpvDesktop;
 });
 
@@ -525,6 +527,52 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x/s })).not.toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("auto-opens the same uncertain pending checkout after unmount and reload without requoting", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: { ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }, quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-reload");
+    savePendingSaleRecovery(localStorage, {
+      version: 1,
+      terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" },
+      draft: recoveredDraft,
+      quoteCents: 1_000,
+      quoteReady: true,
+      payments: [{ id: "checkout-reload", operationId: "checkout-reload", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 300, status: "TIMEOUT" }],
+      savedAt: "2026-07-18T08:00:00.000Z",
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([{ id: "card-method", name: "TARJETA", active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /consultar tarjeta/i })).toBeEnabled();
+    cleanup();
+    renderSaleScreen();
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
+  });
+
+  it("fails closed on corrupt recovery data and exposes its recoverable identifier without deleting it", async () => {
+    const raw = '{"checkoutId":"checkout-corrupt","broken":';
+    localStorage.setItem(pendingSaleRecoveryKey(terminalContext.terminalCode), raw);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    renderSaleScreen();
+    expect(await screen.findByRole("dialog", { name: /recuperaci[oó]n de cobro bloqueada/i })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(/no se han eliminado/i);
+    expect(screen.getByText("checkout-corrupt")).toBeInTheDocument();
+    expect(screen.getByLabelText(/datos t[eé]cnicos guardados/i)).toHaveValue(raw);
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBe(raw);
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(screen.queryByRole("dialog", { name: /seleccionar cliente/i })).not.toBeInTheDocument();
   });
 
   it("does not run global sale shortcuts from focused editable controls", async () => {

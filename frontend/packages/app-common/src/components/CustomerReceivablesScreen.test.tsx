@@ -32,6 +32,7 @@ describe("CustomerReceivablesScreen", () => {
     const request = vi.fn().mockResolvedValue([]);
     render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText("Estado")).not.toHaveTextContent("Pagado");
     fireEvent.change(screen.getByLabelText("Buscar deuda"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "PARCIAL" } });
     fireEvent.change(screen.getByLabelText("Tipo de documento"), { target: { value: "FACTURA_VENTA" } });

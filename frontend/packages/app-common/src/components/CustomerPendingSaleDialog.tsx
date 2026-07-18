@@ -6,6 +6,7 @@ import type { TerminalContext } from "../types";
 import { printPendingCommercialDocument, type PendingCommercialDocumentPrintSnapshot } from "../sale/ticketPrinting";
 import {
   centsFromInput,
+  pendingAllocationCents,
   pendingCreateBody,
   pendingHasCardEffect,
   pendingHasUncertainCard,
@@ -13,6 +14,7 @@ import {
   type PendingPaymentAllocation,
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
+import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import { CashPaymentDialog } from "./CashPaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
@@ -29,6 +31,9 @@ type Props = {
   disabled?: boolean;
   request?: Request;
   terminalContext?: TerminalContext;
+  recovery?: PendingSaleRecoveryEnvelope;
+  onPersistRecovery?: (envelope: PendingSaleRecoveryEnvelope) => void;
+  onClearRecovery?: () => void;
   printDocument?: typeof printPendingCommercialDocument;
   onCancel: () => void;
   onSuccess: (result: PendingSaleResult, retryPrint?: () => Promise<unknown>) => void;
@@ -40,17 +45,19 @@ const money = (cents: number, locale: LocaleCode) => (cents / 100).toLocaleStrin
   { minimumFractionDigits: 2, maximumFractionDigits: 2 }
 );
 
-export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, terminalContext, printDocument = printPendingCommercialDocument, onCancel, onSuccess }: Props) {
+export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, terminalContext, recovery, onPersistRecovery, onClearRecovery, printDocument = printPendingCommercialDocument, onCancel, onSuccess }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
-  const [draft, setDraft] = useState(initialDraft);
-  const [quoteCents, setQuoteCents] = useState(0);
-  const [quoteLoading, setQuoteLoading] = useState(true);
-  const [quoteReady, setQuoteReady] = useState(false);
-  const [payments, setPayments] = useState<PendingPaymentAllocation[]>([]);
+  const [draft, setDraft] = useState(recovery?.draft ?? initialDraft);
+  const [quoteCents, setQuoteCents] = useState(recovery?.quoteCents ?? 0);
+  const [quoteLoading, setQuoteLoading] = useState(!recovery);
+  const [quoteReady, setQuoteReady] = useState(recovery?.quoteReady ?? false);
+  const [payments, setPayments] = useState<PendingPaymentAllocation[]>(recovery?.payments ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [cashOpen, setCashOpen] = useState(false);
+  const [cashAmountCents, setCashAmountCents] = useState(0);
+  const [allocationAmount, setAllocationAmount] = useState("");
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferReference, setTransferReference] = useState("");
@@ -64,6 +71,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     : undefined, []);
 
   useEffect(() => {
+    if (recovery) return;
     let current = true;
     setQuoteLoading(true); setQuoteReady(false); setError("");
     request<{ total: number | string }>("/pos/customer-pending-sales/quote", {
@@ -75,6 +83,20 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     }).finally(() => { if (current) setQuoteLoading(false); });
     return () => { current = false; };
   }, []);
+
+  const persistRecovery = useCallback((nextDraft: PendingSaleDraft, nextPayments: PendingPaymentAllocation[]) => {
+    if (!onPersistRecovery || !terminalContext?.terminalCode || !quoteReady) return;
+    onPersistRecovery({
+      version: 1,
+      terminalCode: terminalContext.terminalCode,
+      customer: { id: nextDraft.customerId, name: customerName },
+      draft: nextDraft,
+      quoteCents,
+      quoteReady: true,
+      payments: nextPayments,
+      savedAt: new Date().toISOString(),
+    });
+  }, [customerName, onPersistRecovery, quoteCents, quoteReady, terminalContext?.terminalCode]);
 
   useEffect(() => {
     if (paymentMethods !== undefined) return;
@@ -102,6 +124,8 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       const result = await request<PendingSaleMutationResult>("/pos/customer-pending-sales", {
         token, body: pendingCreateBody(draft, payments, quoteCents),
       });
+      try { onClearRecovery?.(); }
+      catch { /* The confirmed idempotent checkout remains safe to replay. */ }
       let retryPrint: (() => Promise<unknown>) | undefined;
       if (terminalContext) {
         const retry = () => printDocument(result.printDocument, terminalContext, undefined, locale);
@@ -112,7 +136,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : t("pendingSale.createError"));
     } finally { setSubmitting(false); }
-  }, [disabled, draft, onSuccess, payments, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
+  }, [disabled, draft, onClearRecovery, onSuccess, payments, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -132,24 +156,53 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     setTransferOpen(false); setTransferAmount(""); setTransferReference(""); setError("");
   }
 
+  function selectedAllocationCents() {
+    const amountCents = pendingAllocationCents(allocationAmount, summary.pendingCents);
+    if (amountCents === 0) setError(t("pendingSale.paymentAmountError"));
+    return amountCents;
+  }
+
+  function openCash() {
+    const amountCents = selectedAllocationCents();
+    if (amountCents === 0) return;
+    setError("");
+    setCashAmountCents(amountCents);
+    setCashOpen(true);
+  }
+
   async function chargeCard() {
     if (!resolvedMethods.card || summary.pendingCents <= 0 || uncertain) return;
+    const amountCents = selectedAllocationCents();
+    if (amountCents === 0) return;
     const priorCard = payments.some((payment) => payment.kind === "INTEGRATED_CARD");
     const operationId = priorCard ? uuid() : draft.checkoutId;
     const chargeDraft = priorCard ? { ...draft, checkoutId: operationId } : draft;
     if (priorCard) setDraft(chargeDraft);
-    const allocation: PendingPaymentAllocation = { id: operationId, operationId, kind: "INTEGRATED_CARD", methodId: resolvedMethods.card, amountCents: summary.pendingCents, status: "PENDING" };
+    const allocation: PendingPaymentAllocation = { id: operationId, operationId, kind: "INTEGRATED_CARD", methodId: resolvedMethods.card, amountCents, status: "PENDING" };
     const retainedPayments = payments.filter((payment) => payment.kind !== "INTEGRATED_CARD");
-    setPayments([...retainedPayments, allocation]); setError("");
+    const pendingPayments = [...retainedPayments, allocation];
+    try { persistRecovery(chargeDraft, pendingPayments); }
+    catch {
+      setError(t("pendingSale.recoveryError"));
+      return;
+    }
+    setPayments(pendingPayments); setError("");
     try {
       const result = await request<{ status: PendingPaymentAllocation["status"]; message?: string }>("/pos/customer-pending-sales/card-charges", {
         token,
-        body: { sale: pendingCreateBody(chargeDraft, [...retainedPayments, { ...allocation, status: "APPROVED" }], quoteCents), amount: (summary.pendingCents / 100).toFixed(2) },
+        body: { sale: pendingCreateBody(chargeDraft, [...retainedPayments, { ...allocation, status: "APPROVED" }], quoteCents), amount: (amountCents / 100).toFixed(2) },
       });
-      setPayments((current) => current.map((payment) => payment.id === operationId ? { ...payment, status: result.status } : payment));
+      const next = pendingPayments.map((payment) => payment.id === operationId ? { ...payment, status: result.status } : payment);
+      try { persistRecovery(chargeDraft, next); }
+      catch { setError(t("pendingSale.recoveryError")); }
+      setPayments(next);
+      setAllocationAmount("");
       if (result.message && result.status !== "APPROVED") setError(result.message);
     } catch (failure) {
-      setPayments((current) => current.map((payment) => payment.id === operationId ? { ...payment, status: "TIMEOUT" } : payment));
+      const next = pendingPayments.map((payment) => payment.id === operationId ? { ...payment, status: "TIMEOUT" as const } : payment);
+      try { persistRecovery(chargeDraft, next); }
+      catch { /* The already persisted PENDING state remains recoverable. */ }
+      setPayments(next);
       setError(failure instanceof Error ? failure.message : t("pendingSale.cardUncertain"));
     }
   }
@@ -158,13 +211,19 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     if (!payment.operationId) return;
     try {
       const result = await request<{ status: PendingPaymentAllocation["status"] }>(`/payment-terminal/operations/${payment.operationId}/query`, { method: "POST", token });
-      setPayments((current) => current.map((candidate) => candidate.id === payment.id ? { ...candidate, status: result.status } : candidate));
-      setError("");
+      const next = payments.map((candidate) => candidate.id === payment.id ? { ...candidate, status: result.status } : candidate);
+      try { persistRecovery(draft, next); setError(""); }
+      catch { setError(t("pendingSale.recoveryError")); }
+      setPayments(next);
     } catch (failure) { setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError")); }
   }
 
   function removePayment(payment: PendingPaymentAllocation) {
-    if (payment.kind === "INTEGRATED_CARD") setDraft((current) => ({ ...current, checkoutId: uuid() }));
+    if (payment.kind === "INTEGRATED_CARD") {
+      try { onClearRecovery?.(); }
+      catch { setError(t("pendingSale.recoveryError")); return; }
+      setDraft((current) => ({ ...current, checkoutId: uuid() }));
+    }
     setPayments((current) => current.filter((candidate) => candidate.id !== payment.id));
   }
 
@@ -186,8 +245,9 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
         <div><span>{t("pendingSale.pending")}</span><strong>{money(summary.pendingCents, locale)}</strong></div>
       </div>
       {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
+      <label className="pending-sale-allocation-amount">{t("pendingSale.paymentAmount")}<input aria-label={t("pendingSale.paymentAmount")} inputMode="decimal" value={allocationAmount} disabled={disabled || hasCardEffect || summary.pendingCents <= 0 || uncertain} placeholder={money(summary.pendingCents, locale)} onChange={(event) => setAllocationAmount(event.target.value)} /></label>
       <div className="pending-sale-payment-actions">
-        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={() => setCashOpen(true)}>{t("pendingSale.addCash")}</button>
+        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={openCash}>{t("pendingSale.addCash")}</button>
         <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>{t("pendingSale.addCard")}</button>
         <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => setTransferOpen(true)}>{t("pendingSale.addTransfer")}</button>
       </div>
@@ -195,6 +255,6 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       {error && <p className="sale-action-error" role="alert">{error}</p>}
       <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>{t("common.cancel")}</button><button type="button" disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : "pendingSale.confirm")}</button></footer>
     </section>
-    {cashOpen && <CashPaymentDialog totalCents={summary.pendingCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = summary.pendingCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setCashOpen(false); }} />}
+    {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
   </div>;
 }

@@ -12724,6 +12724,7 @@ textarea:focus,
 .pending-sale-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pending-sale-summary > div { display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #ccd3db); border-radius: 8px; }
 .customer-pending-sale-dialog label { display: grid; gap: 6px; }
+.pending-sale-allocation-amount { margin: 16px 0 10px; }
 .customer-pending-sale-dialog input, .customer-pending-sale-dialog select { min-height: 40px; }
 .customer-pending-sale-dialog fieldset { display: grid; gap: 10px; margin-top: 16px; }
 @media (max-width: 640px) { .pending-sale-fields, .pending-sale-summary { grid-template-columns: 1fr; } }

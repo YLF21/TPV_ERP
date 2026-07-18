@@ -58,6 +58,13 @@ export function centsFromInput(value: string) {
   return Math.round(Number(normalized) * 100);
 }
 
+export function pendingAllocationCents(value: string, remainingCents: number) {
+  const amountCents = centsFromInput(value);
+  return amountCents > 0 && Number.isInteger(remainingCents) && amountCents <= remainingCents
+    ? amountCents
+    : 0;
+}
+
 export function centsAsMoney(cents: number) {
   return (cents / 100).toFixed(2);
 }

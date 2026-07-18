@@ -44,7 +44,9 @@ En APP VENTA, `F12` o el boton **Pendiente cliente** abre el flujo para crear
 un albaran o una factura con saldo pendiente. Si no hay cliente seleccionado,
 se abre primero el selector. El vencimiento comienza en la fecha local mas 30
 dias, puede editarse antes del primer efecto de tarjeta y el backend vuelve a
-calcular el total.
+calcular el total. Efectivo y tarjeta aceptan un importe inicial parcial mayor
+que cero y no superior al saldo; efectivo conserva recibido/cambio y tarjeta
+envia exactamente ese importe al terminal.
 
 El acceso **DEUDAS CLIENTES** de la pantalla inicial permite filtrar albaranes
 y facturas y cobrar posteriormente por efectivo, tarjeta o transferencia. La
@@ -52,11 +54,14 @@ misma vista se abre prefiltrada desde **Ver deudas** en la ficha del cliente.
 Estas opciones dependen de `CUSTOMER_RECEIVABLES_READ`,
 `CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`.
 
-En el cobro posterior de deuda, la UI conserva identificadores idempotentes de
-un intento cuyo resultado no se conoce. Tras un timeout de tarjeta se debe usar
-**Consultar estado de tarjeta**; no se debe iniciar otro cargo. Un fallo de
-impresion no revierte la venta o el cobro: **Reintentar impresion** usa el
-snapshot autoritativo del backend.
+Tanto al crear una venta pendiente como al cobrar una deuda, la UI conserva
+identificadores idempotentes de un intento cuyo resultado no se conoce. La
+creacion guarda por terminal el borrador, cotizacion, pagos y claves antes del
+cargo; tras recargar autoabre el mismo checkout sin volver a cotizar. Ante un
+timeout use **Consultar estado de tarjeta** y no inicie otro cargo. Datos
+corruptos o incompatibles bloquean nuevos cobros y se muestran para soporte sin
+borrarlos. Un fallo de impresion no revierte la venta o el cobro: **Reintentar
+impresion** usa el snapshot autoritativo del backend.
 
 El manual completo esta en
 `../docs/customer-pending-sales-operations.md`.

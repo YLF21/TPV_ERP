@@ -50,18 +50,15 @@ El dialogo combina pagos reales y deja pendiente la diferencia. Revise siempre
 el resumen **Total / Pagado / Pendiente**.
 
 - **Transferencia:** pulse **Añadir transferencia**, escriba importe y
-  referencia no vacia y guarde. Es la asignacion que permite elegir libremente
-  un importe parcial.
-- **Efectivo:** **Añadir efectivo** abre la calculadora tactil y, en la version
-  actual, cubre todo el saldo restante.
-- **Tarjeta:** **Añadir tarjeta** carga el saldo restante completo y espera el
-  resultado del terminal.
+  referencia no vacia y guarde.
+- **Efectivo:** escriba primero el **Importe inicial** y pulse **Añadir
+  efectivo**. La calculadora usa ese total y conserva dinero recibido y cambio.
+- **Tarjeta:** escriba primero el **Importe inicial** y pulse **Añadir tarjeta**.
+  El terminal recibe exactamente ese importe.
 
-Por tanto, la UI actual permite crear una venta inicialmente parcial indicando
-un importe menor mediante **Transferencia**. Todavia no permite introducir una
-asignacion inicial parcial de efectivo o tarjeta: esos botones cubren el saldo
-restante. El cobro posterior si admite escribir un importe parcial para los
-tres medios.
+El importe debe ser mayor que cero y no superar el saldo pendiente. Se pueden
+combinar varias asignaciones estandar mientras quede saldo; una operacion de
+tarjeta con efecto duradero bloquea nuevas asignaciones hasta resolverla.
 
 Solo una asignacion `APPROVED` cuenta como cobrada. Confirme el documento: sera
 `PARCIAL` si queda saldo y `PAGADO` si los pagos cubren el total.
@@ -70,7 +67,7 @@ Solo una asignacion `APPROVED` cuenta como cobrada. Confirme el documento: sera
 
 1. En la pantalla inicial abra **DEUDAS CLIENTES**. Desde la ficha de un
    cliente, **Ver deudas** abre la misma pantalla prefiltrada.
-2. Filtre por texto, estado (`PENDIENTE`, `PARCIAL`, `PAGADO`), tipo, solo
+2. Filtre por texto, estado operativo (`PENDIENTE`, `PARCIAL`), tipo, solo
    vencidos o rango de vencimiento.
 3. Pulse **Cobrar**. El importe comienza con el saldo total; escriba una cifra
    menor para cobrar parcialmente.
@@ -103,17 +100,23 @@ cobros posteriores no cambian lineas, cliente, precios, impuestos ni stock.
 
 ### Reinicio de APP VENTA o backend
 
-En el cobro posterior de una deuda, la UI conserva en almacenamiento local los
-identificadores estables de intentos de efectivo, transferencia o tarjeta que
-no terminaron. Tras reiniciar, vuelva a la deuda, consulte la operacion de
-tarjeta cuando corresponda y reintente con el mismo identificador.
+La UI conserva en almacenamiento local, separado por terminal, un sobre
+versionado con cliente, borrador exacto, cotizacion autoritativa, pagos y los
+identificadores estables. En una tarjeta inicial se guarda `PENDING` antes de
+enviar el cargo al terminal y despues se actualiza su estado.
 
-El dialogo de creacion de una venta pendiente todavia no persiste su borrador
-ni su `checkoutId` en almacenamiento local. No cierre ni reinicie APP VENTA si
-su tarjeta inicial queda incierta: resuelva el intento en el mismo dialogo. La
-recuperacion automatica de ese caso despues de reiniciar requiere una mejora
-adicional. Nunca genere manualmente otro `checkoutId`, `requestId` u operacion
-para el mismo efecto.
+Tras reiniciar APP VENTA, una creacion inicial `PENDING`, `SENT`, `TIMEOUT` o
+`APPROVED` se abre automaticamente sin volver a cotizar. Consulte o confirme
+con los mismos `checkoutId`, `requestId` y `paymentTerminalOperationId`. Si se
+pierde la respuesta de creacion, el replay usa exactamente el mismo cuerpo.
+Los datos se limpian solo cuando el backend confirma la creacion o cuando el
+operador descarta explicitamente un resultado final `DECLINED`, `ERROR` o
+`CANCELLED`; el siguiente intento recibe identificadores nuevos.
+
+Si el sobre esta corrupto, pertenece a otro terminal o no coinciden cliente e
+identificadores, la aplicacion falla de forma cerrada: bloquea edicion y nuevos
+cobros, muestra los identificadores recuperables y los datos tecnicos para
+soporte, y no elimina automaticamente el original.
 
 Repetir la creacion con igual `checkoutId` y contenido devuelve el mismo
 documento. Repetir un cobro con igual `requestId` y contenido devuelve el mismo
@@ -200,14 +203,14 @@ backend y siga las reglas PCI y del proveedor antes de cobrar dinero real.
 - [ ] Albaran 100 % pendiente: un documento, `PENDIENTE`, cero pagos.
 - [ ] Factura 100 % pendiente con el mismo resultado financiero.
 - [ ] Venta mixta inicial por transferencia: `PARCIAL` y saldo correcto.
-- [ ] Si se exige efectivo o tarjeta inicial parcial, implementar primero la
-      entrada de importe; hoy esos botones cubren todo el saldo restante.
+- [ ] Venta mixta inicial por efectivo y tarjeta parciales: importe exacto,
+      recibido/cambio correcto y saldo restante correcto.
 - [ ] Cobro posterior parcial y total por cada medio permitido.
 - [ ] Timeout consultado y resuelto sin segundo cargo.
 - [ ] Reinicio y replay de un cobro posterior con las mismas claves devuelven
       el mismo resultado.
-- [ ] No reiniciar una venta pendiente con tarjeta inicial incierta hasta
-      implementar persistencia y recuperacion de su borrador.
+- [ ] Reinicio con tarjeta inicial incierta: autoapertura, consulta y replay con
+      las mismas claves sin segundo cargo ni segundo documento.
 - [ ] Documento y justificante son distintos; reimprimir no repite la mutacion.
 - [ ] Stock cambia una vez, al confirmar el documento.
 - [ ] El informe muestra las cinco magnitudes esperadas.

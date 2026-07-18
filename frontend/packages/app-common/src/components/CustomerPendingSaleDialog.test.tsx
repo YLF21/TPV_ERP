@@ -5,11 +5,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addLocalDays,
+  pendingAllocationCents,
   pendingCreateBody,
   pendingHasCardEffect,
   pendingSummary,
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
+import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 
 afterEach(cleanup);
@@ -29,6 +31,18 @@ const draft: PendingSaleDraft = {
 };
 
 describe("customer receivable checkout helpers", () => {
+  it.each([
+    ["30.00", 10_000, 3_000],
+    ["30,25", 10_000, 3_025],
+    ["0", 10_000, 0],
+    ["-1", 10_000, 0],
+    ["100.01", 10_000, 0],
+    ["1.001", 10_000, 0],
+    ["texto", 10_000, 0],
+  ])("validates allocation %s against the remaining cents", (input, remaining, expected) => {
+    expect(pendingAllocationCents(input, remaining)).toBe(expected);
+  });
+
   it("uses local calendar days and integer cents", () => {
     expect(addLocalDays(new Date(2026, 6, 16, 23, 30), 30)).toBe("2026-08-15");
     expect(pendingSummary(1001, [
@@ -54,6 +68,215 @@ describe("customer receivable checkout helpers", () => {
 });
 
 describe("CustomerPendingSaleDialog", () => {
+  it("persists the exact draft and pending card operation before the terminal side effect", async () => {
+    const persist = vi.fn();
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith("/quote")) return { total: "100.00" };
+      if (path.endsWith("/card-charges")) {
+        expect(persist).toHaveBeenCalledWith(expect.objectContaining({
+          draft: expect.objectContaining({ checkoutId: "checkout-1" }),
+          quoteCents: 10_000,
+          payments: [expect.objectContaining({ id: "checkout-1", operationId: "checkout-1", amountCents: 3_000, status: "PENDING" })],
+        }));
+        return { status: "APPROVED" };
+      }
+      throw new Error(`unexpected ${path}`);
+    });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request as never}
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    await screen.findByText(/tarjeta aprobada/i);
+    expect(persist).toHaveBeenLastCalledWith(expect.objectContaining({
+      payments: [expect.objectContaining({ status: "APPROVED" })],
+    }));
+  });
+
+  it("does not call the payment terminal when durable persistence fails", async () => {
+    const request = vi.fn().mockResolvedValueOnce({ total: "100.00" });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request}
+      onPersistRecovery={() => { throw new Error("storage unavailable"); }} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/recuperaci[oó]n/i);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores an uncertain card without requoting and reuses its identifiers through query and creation", async () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 1,
+      terminalCode: "T-1",
+      customer: { id: "customer-1", name: "Cliente" },
+      draft,
+      quoteCents: 10_000,
+      quoteReady: true,
+      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
+      savedAt: "2026-07-18T08:00:00.000Z",
+    };
+    const clear = vi.fn();
+    const persist = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ status: "APPROVED" })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-recovered" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery}
+      paymentMethods={{ card: "card-method" }} terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }}
+      request={request} onPersistRecovery={persist} onClearRecovery={clear} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /consultar tarjeta/i }));
+    await screen.findByText(/tarjeta aprobada/i);
+    expect(request.mock.calls[0][0]).toContain("checkout-1");
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(clear).toHaveBeenCalledOnce());
+    expect(request.mock.calls[1][1].body).toMatchObject({ checkoutId: "checkout-1", quotedTotal: "100.00", payments: [
+      { requestId: "checkout-1", paymentTerminalOperationId: "checkout-1", amount: "30.00" },
+    ] });
+  });
+
+  it("creates an already approved recovered checkout exactly once with its original identifiers", async () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
+    };
+    const clear = vi.fn();
+    const request = vi.fn().mockResolvedValue({ receivable: { documentId: "doc-approved" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request} onClearRecovery={clear} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    expect(request.mock.calls[0][0]).toBe("/pos/customer-pending-sales");
+    expect(request.mock.calls[0][1].body).toMatchObject({ checkoutId: "checkout-1", payments: [
+      { requestId: "checkout-1", paymentTerminalOperationId: "checkout-1", amount: "30.00" },
+    ] });
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it("replays the same recovered create body after a lost response and clears only after confirmation", async () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
+    };
+    const clear = vi.fn();
+    const firstRequest = vi.fn().mockRejectedValue(new Error("response lost"));
+    const first = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={firstRequest} onClearRecovery={clear} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+    expect(clear).not.toHaveBeenCalled();
+    const firstBody = firstRequest.mock.calls[0][1].body;
+    first.unmount();
+
+    const secondRequest = vi.fn().mockResolvedValue({ receivable: { documentId: "doc-replayed" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={secondRequest} onClearRecovery={clear} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(clear).toHaveBeenCalledOnce());
+    expect(secondRequest.mock.calls[0][1].body).toEqual(firstBody);
+  });
+
+  it.each(["DECLINED", "ERROR", "CANCELLED"] as const)("requires explicit discard for recovered %s and rotates the next card operation", async (status) => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status }],
+    };
+    const clear = vi.fn();
+    const persist = vi.fn();
+    const request = vi.fn().mockResolvedValue({ status: "APPROVED" });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request}
+      onPersistRecovery={persist} onClearRecovery={clear} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    expect(clear).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+    expect(clear).toHaveBeenCalledOnce();
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledOnce());
+    const body = request.mock.calls[0][1].body;
+    expect(body.sale.checkoutId).not.toBe("checkout-1");
+    expect(body.sale.payments[0].requestId).toBe(body.sale.checkoutId);
+    expect(body.sale.payments[0].paymentTerminalOperationId).toBe(body.sale.checkoutId);
+  });
+
+  it("allocates 30 cash from a 100 invoice and keeps 70 pending with received/change", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "100.00" })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-cash" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={{ ...draft, type: "FACTURA_VENTA" }}
+      paymentMethods={{ cash: "cash-method" }} request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    const amount = await screen.findByLabelText(/importe inicial/i);
+    fireEvent.change(amount, { target: { value: "30,00" } });
+    fireEvent.click(screen.getByRole("button", { name: /efectivo/i }));
+    const cashDialog = screen.getByRole("dialog", { name: /cobro en efectivo/i });
+    expect(within(cashDialog).getAllByText("30,00").length).toBeGreaterThan(0);
+    fireEvent.change(within(cashDialog).getByRole("textbox", { name: /dinero recibido/i }), { target: { value: "50" } });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /confirmar cobro/i }));
+
+    expect(await screen.findByText("70,00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body).toMatchObject({ quotedTotal: "100.00", payments: [
+      { methodId: "cash-method", amount: "30.00", delivered: "50.00", change: "20.00" },
+    ] });
+  });
+
+  it("charges exactly 30 by card from a 100 delivery note and confirms 70 pending", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "100.00" })
+      .mockResolvedValueOnce({ status: "APPROVED" })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-card" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft}
+      paymentMethods={{ card: "card-method" }} request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), { target: { value: "30.00" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    await screen.findByText(/tarjeta aprobada/i);
+
+    expect(request.mock.calls[1][0]).toBe("/pos/customer-pending-sales/card-charges");
+    expect(request.mock.calls[1][1].body).toMatchObject({ amount: "30.00", sale: { quotedTotal: "100.00", payments: [
+      { amount: "30.00", requestId: "checkout-1", paymentTerminalOperationId: "checkout-1" },
+    ] } });
+    expect(screen.getByText("70,00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(request.mock.calls[2][1].body.payments[0].amount).toBe("30.00");
+  });
+
+  it("supports multiple partial allocations and rejects zero or overpayment", async () => {
+    const request = vi.fn().mockResolvedValueOnce({ total: "100.00" });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft}
+      paymentMethods={{ cash: "cash-method", card: "card-method", transfer: "transfer-method" }}
+      request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    const amount = await screen.findByLabelText(/importe inicial/i);
+    fireEvent.change(amount, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/importe/i);
+    fireEvent.change(amount, { target: { value: "100.01" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    expect(request).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(amount, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: /efectivo/i }));
+    const cashDialog = screen.getByRole("dialog", { name: /cobro en efectivo/i });
+    fireEvent.change(within(cashDialog).getByRole("textbox", { name: /dinero recibido/i }), { target: { value: "20" } });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /confirmar cobro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transferencia/i }));
+    const transfer = screen.getByRole("group", { name: /transferencia/i });
+    fireEvent.change(within(transfer).getByLabelText(/importe/i), { target: { value: "30" } });
+    fireEvent.change(within(transfer).getByLabelText(/referencia/i), { target: { value: "TR-30" } });
+    fireEvent.click(within(transfer).getByRole("button", { name: /guardar transferencia/i }));
+    expect(screen.getAllByText("50,00")).toHaveLength(2);
+  });
+
   it("quotes authoritatively, edits type/due date and submits without a fake pending payment", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({ total: "10.01" })
@@ -112,6 +335,7 @@ describe("CustomerPendingSaleDialog", () => {
       .mockResolvedValueOnce({ status: "APPROVED" });
     const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
     await screen.findAllByText("10,00");
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
     const query = await screen.findByRole("button", { name: /consultar tarjeta/i });
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
@@ -143,10 +367,11 @@ describe("CustomerPendingSaleDialog", () => {
     });
     render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} request={request as never} onCancel={vi.fn()} onSuccess={vi.fn()} />);
 
-    const cash = screen.getByRole("button", { name: /añadir efectivo/i });
+    const cash = screen.getByRole("button", { name: /efectivo/i });
     await waitFor(() => expect(cash).toBeEnabled());
-    expect(screen.getByRole("button", { name: /añadir tarjeta/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /añadir transferencia/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /tarjeta/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /transferencia/i })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "10" } });
     fireEvent.click(cash);
     expect(screen.getByRole("dialog", { name: /cobro en efectivo/i })).toBeInTheDocument();
     expect(request).toHaveBeenCalledWith("/payment-methods", expect.objectContaining({ token: undefined }));
@@ -164,6 +389,7 @@ describe("CustomerPendingSaleDialog", () => {
     const request = vi.fn().mockResolvedValueOnce({ total: "10.00" }).mockResolvedValueOnce({ status: "DECLINED" });
     const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ card: "card-method" }} request={request} onCancel={onCancel} onSuccess={vi.fn()} />);
     await screen.findAllByText("10,00");
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
     expect(await screen.findByText(/Rechazada/)).toBeInTheDocument();
 

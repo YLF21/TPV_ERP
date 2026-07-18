@@ -23,6 +23,13 @@ import {
 import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 import { addLocalDays, type PendingSaleDraft } from "../sale/customerReceivables";
+import {
+  clearPendingSaleRecovery,
+  loadPendingSaleRecovery,
+  savePendingSaleRecovery,
+  type PendingSaleRecoveryEnvelope,
+  type PendingSaleRecoveryLoadResult,
+} from "../sale/pendingSaleRecovery";
 import { retryPrintSucceeded } from "../sale/printRetry";
 
 export type SaleProduct = {
@@ -506,7 +513,13 @@ export function SaleScreen({
   const [customerError, setCustomerError] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
   const [pendingCustomerContinuation, setPendingCustomerContinuation] = useState(false);
-  const [pendingDraft, setPendingDraft] = useState<PendingSaleDraft | null>(null);
+  const [pendingRecovery, setPendingRecovery] = useState<PendingSaleRecoveryLoadResult>(() => {
+    try { return loadPendingSaleRecovery(localStorage, terminalContext.terminalCode); }
+    catch { return { status: "empty" }; }
+  });
+  const recoveredPendingSale = pendingRecovery.status === "valid" ? pendingRecovery.envelope : undefined;
+  const pendingRecoveryBlocked = pendingRecovery.status === "blocked";
+  const [pendingDraft, setPendingDraft] = useState<PendingSaleDraft | null>(recoveredPendingSale?.draft ?? null);
   const [pendingOpening, setPendingOpening] = useState(false);
   const [pendingError, setPendingError] = useState("");
   const [pendingPrintRetry, setPendingPrintRetry] = useState<(() => Promise<unknown>) | null>(null);
@@ -719,7 +732,7 @@ export function SaleScreen({
   }
 
   function openPendingSale() {
-    if (lines.length === 0 || total <= 0 || paymentLocked || !paymentHydrated) return;
+    if (pendingRecoveryBlocked || recoveredPendingSale || lines.length === 0 || total <= 0 || paymentLocked || !paymentHydrated) return;
     if (!selectedCustomer) { openCustomerDialog(true); return; }
     void beginPendingSale(selectedCustomer);
   }
@@ -891,6 +904,7 @@ export function SaleScreen({
   useEffect(() => {
     function handleSaleShortcut(event: KeyboardEvent) {
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (pendingRecoveryBlocked) return;
       if (saleShortcutTargetIsEditable(event.target)) return;
 
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -942,7 +956,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, selectedCustomer, selectedLine, selectedProductId]);
+  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1204,13 +1218,22 @@ export function SaleScreen({
 
       {cardDialogOpen && <CardPaymentDialog totalCents={cardQuoteCents} status={cardStatus} submitting={cardSubmitting} message={cardMessage} onCancel={() => setCardDialogOpen(false)} onConsult={consultCardPayment} onNewOperation={retryCardPayment} />}
 
-      {pendingDraft && selectedCustomer && <CustomerPendingSaleDialog
-        customerName={selectedCustomer.fiscalName ?? selectedCustomer.clientId ?? "Cliente"}
+      {pendingDraft && (selectedCustomer || recoveredPendingSale) && <CustomerPendingSaleDialog
+        customerName={selectedCustomer?.fiscalName ?? selectedCustomer?.clientId ?? recoveredPendingSale?.customer.name ?? "Cliente"}
         locale={locale}
         terminalContext={terminalContext}
         draft={pendingDraft}
+        recovery={recoveredPendingSale}
         token={session.accessToken}
         disabled={paymentLocked}
+        onPersistRecovery={(envelope: PendingSaleRecoveryEnvelope) => {
+          savePendingSaleRecovery(localStorage, envelope);
+          setPendingRecovery({ status: "valid", envelope });
+        }}
+        onClearRecovery={() => {
+          clearPendingSaleRecovery(localStorage, terminalContext.terminalCode);
+          setPendingRecovery({ status: "empty" });
+        }}
         onCancel={() => { setPendingDraft(null); searchInputRef.current?.focus(); }}
         onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
@@ -1218,6 +1241,16 @@ export function SaleScreen({
           setSelectedCustomer(null); setQuery(""); searchInputRef.current?.focus();
         }}
       />}
+
+      {pendingRecovery.status === "blocked" && <div className="sale-action-overlay pending-sale-overlay" role="presentation">
+        <section className="customer-pending-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="pending-recovery-blocked-title">
+          <header><h2 id="pending-recovery-blocked-title">{t("pendingSale.recoveryBlockedTitle")}</h2></header>
+          <p className="sale-action-error" role="alert">{t("pendingSale.recoveryBlockedMessage")}</p>
+          {pendingRecovery.identifiers.length > 0 && <div><strong>{t("pendingSale.recoveryIdentifiers")}</strong><ul>{pendingRecovery.identifiers.map((identifier) => <li key={identifier}><code>{identifier}</code></li>)}</ul></div>}
+          <label>{t("pendingSale.recoveryRaw")}<textarea readOnly value={pendingRecovery.raw} rows={8} /></label>
+          <footer><button type="button" onClick={() => void navigator.clipboard?.writeText(pendingRecovery.raw)}>{t("pendingSale.recoveryCopy")}</button></footer>
+        </section>
+      </div>}
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
