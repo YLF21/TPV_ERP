@@ -462,6 +462,9 @@ export function filterSaleCustomers(customers: SaleCustomer[], query: string, li
 }
 
 export function saleProductFiscalSnapshot(product: SaleProduct) {
+  if (typeof product.taxesIncluded !== "boolean") {
+    throw new Error("Producto sin configuración de impuestos válida");
+  }
   const rawPercentage: unknown = product.taxPercentage;
   if (
     rawPercentage === null

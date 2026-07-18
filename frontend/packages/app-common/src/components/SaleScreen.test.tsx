@@ -565,7 +565,7 @@ describe("SaleScreen", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
-        return new Response(JSON.stringify([{ ...products[0], taxPercentage: " " }]), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify([{ ...products[0], taxesIncluded: null as never }]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
         return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -587,7 +587,7 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F12" });
     fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Producto sin porcentaje fiscal válido");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Producto sin configuración de impuestos válida");
     expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument();
   });
 
@@ -1424,6 +1424,25 @@ describe("SaleScreen", () => {
         [{ ...validLine, product: { ...validLine.product, taxPercentage: taxPercentage as never } }],
         customer, "warehouse-1", now, "checkout-1",
       )).toThrow("Producto sin porcentaje fiscal válido");
+    }
+  });
+
+  it("rejects missing, null, and non-boolean tax inclusion flags", () => {
+    const validLine = addSaleLine([], products[0])[0];
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+    const { taxesIncluded: _taxesIncluded, ...withoutTaxesIncluded } = validLine.product;
+
+    for (const product of [
+      withoutTaxesIncluded,
+      { ...validLine.product, taxesIncluded: undefined as never },
+      { ...validLine.product, taxesIncluded: null as never },
+      { ...validLine.product, taxesIncluded: "true" as never },
+    ]) {
+      expect(() => pendingSaleDraftForCustomer(
+        [{ ...validLine, product: product as SaleProduct }],
+        customer, "warehouse-1", now, "checkout-1",
+      )).toThrow("Producto sin configuración de impuestos válida");
     }
   });
 
