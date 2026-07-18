@@ -95,3 +95,31 @@ conciliacion sin contactar ningun servicio externo. El modo `LIVE` permanece
 bloqueado con `SDK_NOT_INSTALLED` hasta instalar y certificar el SDK oficial
 del proveedor. No se deben introducir credenciales reales, PAN, PIN o CVV en
 `provider_parameters` ni en archivos versionados.
+
+## Ventas pendientes de cliente
+
+APP VENTA puede confirmar albaranes y facturas de venta con cobro inicial
+completo, parcial o inexistente. El documento comercial es la fuente de verdad:
+el saldo se calcula como total menos pagos reales y `PENDIENTE` nunca es una
+forma de pago ni crea una fila en `documento_pago`.
+
+API principal:
+
+- `POST /api/v1/pos/customer-pending-sales/quote`: total autoritativo antes de
+  cobrar o confirmar.
+- `POST /api/v1/pos/customer-pending-sales/card-charges`: inicia el cargo
+  integrado de la venta pendiente.
+- `POST /api/v1/pos/customer-pending-sales`: confirma el albaran o factura de
+  forma idempotente mediante `checkoutId`.
+- `GET /api/v1/customer-receivables`: lista deudas con filtros.
+- `POST /api/v1/customer-receivables/{documentId}/payments`: registra un cobro
+  posterior idempotente mediante `requestId`.
+- `GET /api/v1/commercial-reports/daily?date=AAAA-MM-DD`: separa facturado,
+  cobrado en ventas actuales, nuevo pendiente, cobros de deuda anterior y
+  entrada real.
+
+Los permisos son `CUSTOMER_RECEIVABLES_READ`,
+`CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`; `ADMIN` incluye
+los tres. La migracion de esta funcion es
+`V67__customer_pending_sales.sql`. Consulte el procedimiento de operacion y
+recuperacion en `../docs/customer-pending-sales-operations.md`.
