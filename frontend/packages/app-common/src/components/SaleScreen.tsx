@@ -31,6 +31,7 @@ import {
   type PendingSaleRecoveryLoadResult,
 } from "../sale/pendingSaleRecovery";
 import { retryPrintSucceeded } from "../sale/printRetry";
+import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 export type SaleProduct = {
   id: string;
@@ -558,6 +559,7 @@ export function SaleScreen({
   const cardSubmissionRef = useRef(false);
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
+  const blockedRecoveryDialogRef = useRef<HTMLElement>(null);
   const logoutInProgressRef = useRef(false);
   const shutdownInProgressRef = useRef(false);
   const results = useMemo(() => filterSaleProducts(products, query), [products, query]);
@@ -647,6 +649,19 @@ export function SaleScreen({
       cancelled = true;
     };
   }, [catalogReload, session.accessToken]);
+
+  useEffect(() => {
+    if (!pendingRecoveryBlocked || !blockedRecoveryDialogRef.current) return;
+    const root = blockedRecoveryDialogRef.current;
+    const deactivate = activateModalFocusTrap(root as unknown as ModalFocusRoot, document);
+    const blockEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    root.addEventListener("keydown", blockEscape);
+    return () => { root.removeEventListener("keydown", blockEscape); deactivate(); };
+  }, [pendingRecoveryBlocked]);
 
   function addProduct(product: SaleProduct) {
     setLines((current) => applyMemberDiscounts(addSaleLine(current, product), selectedCustomer));
@@ -960,7 +975,7 @@ export function SaleScreen({
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
-      <SessionTopControls
+      <div aria-hidden={pendingRecoveryBlocked || undefined} style={{ display: "contents" }}><SessionTopControls
         locale={locale}
         session={session}
         languageLabel={t("login.language")}
@@ -975,10 +990,10 @@ export function SaleScreen({
         onLogout={() => void handleSaleLogout()}
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
-      />
-      {pendingPrintRetry && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryPendingPrint()}>{t("payment.result.retryPrint")}</button></div>}
+      /></div>
+      {pendingPrintRetry && <div className="receivables-error" aria-hidden={pendingRecoveryBlocked || undefined}><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryPendingPrint()}>{t("payment.result.retryPrint")}</button></div>}
 
-      <section className="work-shell" aria-label={t("sale.main.screen")}>
+      <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || undefined}>
         <header className="work-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
@@ -1243,7 +1258,7 @@ export function SaleScreen({
       />}
 
       {pendingRecovery.status === "blocked" && <div className="sale-action-overlay pending-sale-overlay" role="presentation">
-        <section className="customer-pending-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="pending-recovery-blocked-title">
+        <section ref={blockedRecoveryDialogRef} className="customer-pending-sale-dialog" role="dialog" aria-modal="true" aria-labelledby="pending-recovery-blocked-title">
           <header><h2 id="pending-recovery-blocked-title">{t("pendingSale.recoveryBlockedTitle")}</h2></header>
           <p className="sale-action-error" role="alert">{t("pendingSale.recoveryBlockedMessage")}</p>
           {pendingRecovery.identifiers.length > 0 && <div><strong>{t("pendingSale.recoveryIdentifiers")}</strong><ul>{pendingRecovery.identifiers.map((identifier) => <li key={identifier}><code>{identifier}</code></li>)}</ul></div>}

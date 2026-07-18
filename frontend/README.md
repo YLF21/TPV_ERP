@@ -56,8 +56,10 @@ Estas opciones dependen de `CUSTOMER_RECEIVABLES_READ`,
 
 Tanto al crear una venta pendiente como al cobrar una deuda, la UI conserva
 identificadores idempotentes de un intento cuyo resultado no se conoce. La
-creacion guarda por terminal el borrador, cotizacion, pagos y claves antes del
-cargo; tras recargar autoabre el mismo checkout sin volver a cotizar. Ante un
+creacion guarda por terminal un sobre v2 validado con fase, borrador,
+cotizacion, pagos y claves. La tarjeta se guarda antes del cargo y toda venta se
+guarda como `READY_TO_CREATE` antes del POST; tras recargar autoabre el mismo
+checkout sin volver a cotizar. Ante un
 timeout use **Consultar estado de tarjeta** y no inicie otro cargo. Datos
 corruptos o incompatibles bloquean nuevos cobros y se muestran para soporte sin
 borrarlos. Un fallo de impresion no revierte la venta o el cobro: **Reintentar

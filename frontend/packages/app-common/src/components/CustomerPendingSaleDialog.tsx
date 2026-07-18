@@ -14,7 +14,7 @@ import {
   type PendingPaymentAllocation,
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
-import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
+import { pendingSaleRecoveryPhase, type PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import { CashPaymentDialog } from "./CashPaymentDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
@@ -45,9 +45,16 @@ const money = (cents: number, locale: LocaleCode) => (cents / 100).toLocaleStrin
   { minimumFractionDigits: 2, maximumFractionDigits: 2 }
 );
 
+export function cardQueryResultStatus(current: PendingPaymentAllocation["status"], incoming: PendingPaymentAllocation["status"]) {
+  return current === "APPROVED" && incoming !== "APPROVED" ? "APPROVED" : incoming;
+}
+
 export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: initialDraft, token, paymentMethods, disabled = false, request = apiRequest, terminalContext, recovery, onPersistRecovery, onClearRecovery, printDocument = printPendingCommercialDocument, onCancel, onSuccess }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
+  const mountedRef = useRef(true);
+  const queryGenerationRef = useRef(0);
+  const queryingOperationRef = useRef<string | null>(null);
   const [draft, setDraft] = useState(recovery?.draft ?? initialDraft);
   const [quoteCents, setQuoteCents] = useState(recovery?.quoteCents ?? 0);
   const [quoteLoading, setQuoteLoading] = useState(!recovery);
@@ -62,13 +69,21 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   const [transferAmount, setTransferAmount] = useState("");
   const [transferReference, setTransferReference] = useState("");
   const [resolvedMethods, setResolvedMethods] = useState<PaymentMethods>(paymentMethods ?? {});
+  const [queryingOperationId, setQueryingOperationId] = useState<string | null>(null);
   const summary = useMemo(() => pendingSummary(quoteCents, payments), [payments, quoteCents]);
   const uncertain = pendingHasUncertainCard(payments);
   const hasCardEffect = pendingHasCardEffect(payments);
+  const cardFinalFailure = payments.some((payment) => payment.kind === "INTEGRATED_CARD" && ["DECLINED", "ERROR", "CANCELLED"].includes(payment.status));
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
     : undefined, []);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    queryGenerationRef.current += 1;
+    queryingOperationRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (recovery) return;
@@ -87,7 +102,8 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   const persistRecovery = useCallback((nextDraft: PendingSaleDraft, nextPayments: PendingPaymentAllocation[]) => {
     if (!onPersistRecovery || !terminalContext?.terminalCode || !quoteReady) return;
     onPersistRecovery({
-      version: 1,
+      version: 2,
+      phase: pendingSaleRecoveryPhase(nextPayments),
       terminalCode: terminalContext.terminalCode,
       customer: { id: nextDraft.customerId, name: customerName },
       draft: nextDraft,
@@ -118,9 +134,10 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }, [disabled, hasCardEffect, onCancel]);
 
   const confirm = useCallback(async () => {
-    if (disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate) return;
+    if (disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate) return;
     setSubmitting(true); setError("");
     try {
+      persistRecovery(draft, payments);
       const result = await request<PendingSaleMutationResult>("/pos/customer-pending-sales", {
         token, body: pendingCreateBody(draft, payments, quoteCents),
       });
@@ -136,17 +153,17 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : t("pendingSale.createError"));
     } finally { setSubmitting(false); }
-  }, [disabled, draft, onClearRecovery, onSuccess, payments, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
+  }, [cardFinalFailure, disabled, draft, onClearRecovery, onSuccess, payments, persistRecovery, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (cashOpen || transferOpen) return;
-      if (event.key === "Escape" && !submitting && !hasCardEffect) { event.preventDefault(); onCancel(); }
+      if (event.key === "Escape" && (!submitting || Boolean(error)) && !hasCardEffect) { event.preventDefault(); onCancel(); }
       else if (event.key === "Enter" && !event.repeat && !(event.target instanceof HTMLButtonElement)) { event.preventDefault(); void confirm(); }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [cashOpen, confirm, hasCardEffect, onCancel, submitting, transferOpen]);
+  }, [cashOpen, confirm, error, hasCardEffect, onCancel, submitting, transferOpen]);
 
   function saveTransfer() {
     const amountCents = centsFromInput(transferAmount);
@@ -178,7 +195,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     const operationId = priorCard ? uuid() : draft.checkoutId;
     const chargeDraft = priorCard ? { ...draft, checkoutId: operationId } : draft;
     if (priorCard) setDraft(chargeDraft);
-    const allocation: PendingPaymentAllocation = { id: operationId, operationId, kind: "INTEGRATED_CARD", methodId: resolvedMethods.card, amountCents, status: "PENDING" };
+    const allocation: PendingPaymentAllocation = { id: operationId, operationId, mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: resolvedMethods.card, amountCents, status: "PENDING" };
     const retainedPayments = payments.filter((payment) => payment.kind !== "INTEGRATED_CARD");
     const pendingPayments = [...retainedPayments, allocation];
     try { persistRecovery(chargeDraft, pendingPayments); }
@@ -208,14 +225,29 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }
 
   async function queryCard(payment: PendingPaymentAllocation) {
-    if (!payment.operationId) return;
+    if (!payment.operationId || queryingOperationRef.current) return;
+    const operationId = payment.operationId;
+    const generation = ++queryGenerationRef.current;
+    queryingOperationRef.current = operationId;
+    setQueryingOperationId(operationId);
     try {
-      const result = await request<{ status: PendingPaymentAllocation["status"] }>(`/payment-terminal/operations/${payment.operationId}/query`, { method: "POST", token });
-      const next = payments.map((candidate) => candidate.id === payment.id ? { ...candidate, status: result.status } : candidate);
+      const result = await request<{ status: PendingPaymentAllocation["status"] }>(`/payment-terminal/operations/${operationId}/query`, { method: "POST", token });
+      if (!mountedRef.current || generation !== queryGenerationRef.current || queryingOperationRef.current !== operationId) return;
+      const currentPayment = payments.find((candidate) => candidate.id === payment.id && candidate.operationId === operationId);
+      if (!currentPayment || currentPayment.operationId !== draft.checkoutId) return;
+      const status = cardQueryResultStatus(currentPayment.status, result.status);
+      const next = payments.map((candidate) => candidate.id === payment.id && candidate.operationId === operationId ? { ...candidate, status } : candidate);
       try { persistRecovery(draft, next); setError(""); }
       catch { setError(t("pendingSale.recoveryError")); }
       setPayments(next);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError")); }
+    } catch (failure) {
+      if (mountedRef.current && generation === queryGenerationRef.current) setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError"));
+    } finally {
+      if (mountedRef.current && generation === queryGenerationRef.current) {
+        queryingOperationRef.current = null;
+        setQueryingOperationId(null);
+      }
+    }
   }
 
   function removePayment(payment: PendingPaymentAllocation) {
@@ -244,7 +276,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
         <div><span>{t("pendingSale.paid")}</span><strong>{money(summary.paidCents, locale)}</strong></div>
         <div><span>{t("pendingSale.pending")}</span><strong>{money(summary.pendingCents, locale)}</strong></div>
       </div>
-      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
+      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled || queryingOperationId === payment.operationId} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
       <label className="pending-sale-allocation-amount">{t("pendingSale.paymentAmount")}<input aria-label={t("pendingSale.paymentAmount")} inputMode="decimal" value={allocationAmount} disabled={disabled || hasCardEffect || summary.pendingCents <= 0 || uncertain} placeholder={money(summary.pendingCents, locale)} onChange={(event) => setAllocationAmount(event.target.value)} /></label>
       <div className="pending-sale-payment-actions">
         <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={openCash}>{t("pendingSale.addCash")}</button>
@@ -253,7 +285,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       </div>
       {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
-      <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>{t("common.cancel")}</button><button type="button" disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : "pendingSale.confirm")}</button></footer>
+      <footer><button type="button" disabled={submitting || hasCardEffect} onClick={onCancel}>{t("common.cancel")}</button><button type="button" disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : "pendingSale.confirm")}</button></footer>
     </section>
     {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
   </div>;

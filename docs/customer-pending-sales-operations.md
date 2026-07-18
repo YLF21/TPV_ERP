@@ -100,10 +100,13 @@ cobros posteriores no cambian lineas, cliente, precios, impuestos ni stock.
 
 ### Reinicio de APP VENTA o backend
 
-La UI conserva en almacenamiento local, separado por terminal, un sobre
-versionado con cliente, borrador exacto, cotizacion autoritativa, pagos y los
-identificadores estables. En una tarjeta inicial se guarda `PENDING` antes de
-enviar el cargo al terminal y despues se actualiza su estado.
+La UI conserva en almacenamiento local, separado por terminal, un sobre v2
+validado en profundidad con cliente, borrador exacto, cotizacion autoritativa,
+pagos y los identificadores estables. Las fases son `CARD_IN_FLIGHT`,
+`CARD_FINAL_FAILURE` y `READY_TO_CREATE`. En una tarjeta inicial se guarda
+`CARD_IN_FLIGHT/PENDING` antes de enviar el cargo al terminal. Antes de toda
+creacion —100 % pendiente, efectivo, transferencia o tarjeta aprobada— se
+guarda `READY_TO_CREATE` antes del `POST`.
 
 Tras reiniciar APP VENTA, una creacion inicial `PENDING`, `SENT`, `TIMEOUT` o
 `APPROVED` se abre automaticamente sin volver a cotizar. Consulte o confirme
@@ -113,10 +116,12 @@ Los datos se limpian solo cuando el backend confirma la creacion o cuando el
 operador descarta explicitamente un resultado final `DECLINED`, `ERROR` o
 `CANCELLED`; el siguiente intento recibe identificadores nuevos.
 
-Si el sobre esta corrupto, pertenece a otro terminal o no coinciden cliente e
+Si el sobre esta corrupto, incompleto, excede la cotizacion, contiene una fase
+incompatible, pertenece a otro terminal o no coinciden cliente e
 identificadores, la aplicacion falla de forma cerrada: bloquea edicion y nuevos
-cobros, muestra los identificadores recuperables y los datos tecnicos para
-soporte, y no elimina automaticamente el original.
+cobros, mantiene el foco dentro del aviso, muestra los identificadores
+recuperables y los datos tecnicos para soporte, y no elimina automaticamente el
+original.
 
 Repetir la creacion con igual `checkoutId` y contenido devuelve el mismo
 documento. Repetir un cobro con igual `requestId` y contenido devuelve el mismo

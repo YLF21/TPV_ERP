@@ -35,6 +35,7 @@ export type PendingPaymentAllocation = {
   changeCents?: number;
   reference?: string;
   operationId?: string;
+  mode?: "INTEGRATED";
 };
 
 export function pendingSummary(totalCents: number, payments: PendingPaymentAllocation[]) {

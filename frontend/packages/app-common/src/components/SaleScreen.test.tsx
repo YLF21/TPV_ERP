@@ -534,13 +534,14 @@ describe("SaleScreen", () => {
       { product: { ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }, quantity: 1, discountPercent: 0 },
     ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-reload");
     savePendingSaleRecovery(localStorage, {
-      version: 1,
+      version: 2,
+      phase: "CARD_IN_FLIGHT",
       terminalCode: terminalContext.terminalCode,
       customer: { id: "customer-1", name: "Cliente Pruebas SL" },
       draft: recoveredDraft,
       quoteCents: 1_000,
       quoteReady: true,
-      payments: [{ id: "checkout-reload", operationId: "checkout-reload", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 300, status: "TIMEOUT" }],
+      payments: [{ id: "checkout-reload", operationId: "checkout-reload", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 300, status: "TIMEOUT" }],
       savedAt: "2026-07-18T08:00:00.000Z",
     });
     const fetchMock = vi.fn(async (url: string) => {
@@ -560,19 +561,71 @@ describe("SaleScreen", () => {
     expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
   });
 
+  it("auto-reopens and byte-replays a READY_TO_CREATE sale without card after a lost response", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: { ...products[0], taxRegime: "GENERAL", taxPercentage: 21, taxesIncluded: true }, quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-ready");
+    savePendingSaleRecovery(localStorage, {
+      version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" }, draft: recoveredDraft,
+      quoteCents: 1_000, quoteReady: true, payments: [], savedAt: "2026-07-18T08:00:00.000Z",
+    });
+    const bodies: string[] = [];
+    let creates = 0;
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products") || path.endsWith("/payment-methods")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales")) {
+        bodies.push(String(options?.body)); creates += 1;
+        if (creates === 1) throw new Error("response lost");
+        return new Response(JSON.stringify({ receivable: { documentId: "doc-ready" }, printDocument: {} }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).not.toBeNull();
+    cleanup();
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
+  });
+
   it("fails closed on corrupt recovery data and exposes its recoverable identifier without deleting it", async () => {
     const raw = '{"checkoutId":"checkout-corrupt","broken":';
     localStorage.setItem(pendingSaleRecoveryKey(terminalContext.terminalCode), raw);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })));
+    const previous = document.createElement("button");
+    document.body.appendChild(previous);
+    previous.focus();
 
     renderSaleScreen();
-    expect(await screen.findByRole("dialog", { name: /recuperaci[oó]n de cobro bloqueada/i })).toBeVisible();
+    const dialog = await screen.findByRole("dialog", { name: /recuperaci[oó]n de cobro bloqueada/i });
+    expect(dialog).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent(/no se han eliminado/i);
     expect(screen.getByText("checkout-corrupt")).toBeInTheDocument();
-    expect(screen.getByLabelText(/datos t[eé]cnicos guardados/i)).toHaveValue(raw);
+    const rawField = screen.getByLabelText(/datos t[eé]cnicos guardados/i);
+    const copy = screen.getByRole("button", { name: /copiar datos/i });
+    expect(rawField).toHaveValue(raw);
+    expect(rawField).toHaveFocus();
+    copy.focus(); fireEvent.keyDown(copy, { key: "Tab" }); expect(rawField).toHaveFocus();
+    fireEvent.keyDown(rawField, { key: "Tab", shiftKey: true }); expect(copy).toHaveFocus();
+    fireEvent.keyDown(copy, { key: "Escape" });
+    expect(dialog).toBeVisible();
+    expect(document.querySelector(".work-shell")).toHaveAttribute("aria-hidden", "true");
     expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBe(raw);
     fireEvent.keyDown(window, { key: "F12" });
     expect(screen.queryByRole("dialog", { name: /seleccionar cliente/i })).not.toBeInTheDocument();
+    cleanup();
+    expect(previous).toHaveFocus();
+    previous.remove();
   });
 
   it("does not run global sale shortcuts from focused editable controls", async () => {

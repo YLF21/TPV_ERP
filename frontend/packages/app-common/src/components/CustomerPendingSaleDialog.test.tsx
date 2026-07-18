@@ -12,7 +12,7 @@ import {
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
-import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
+import { cardQueryResultStatus, CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
 
 afterEach(cleanup);
 
@@ -31,6 +31,11 @@ const draft: PendingSaleDraft = {
 };
 
 describe("customer receivable checkout helpers", () => {
+  it("never downgrades an approved card from a stale query response", () => {
+    expect(cardQueryResultStatus("APPROVED", "TIMEOUT")).toBe("APPROVED");
+    expect(cardQueryResultStatus("APPROVED", "DECLINED")).toBe("APPROVED");
+    expect(cardQueryResultStatus("TIMEOUT", "APPROVED")).toBe("APPROVED");
+  });
   it.each([
     ["30.00", 10_000, 3_000],
     ["30,25", 10_000, 3_025],
@@ -107,13 +112,14 @@ describe("CustomerPendingSaleDialog", () => {
 
   it("restores an uncertain card without requoting and reuses its identifiers through query and creation", async () => {
     const recovery: PendingSaleRecoveryEnvelope = {
-      version: 1,
+      version: 2,
+      phase: "CARD_IN_FLIGHT",
       terminalCode: "T-1",
       customer: { id: "customer-1", name: "Cliente" },
       draft,
       quoteCents: 10_000,
       quoteReady: true,
-      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
       savedAt: "2026-07-18T08:00:00.000Z",
     };
     const clear = vi.fn();
@@ -136,11 +142,51 @@ describe("CustomerPendingSaleDialog", () => {
     ] });
   });
 
+  it("runs card query single-flight and disables its action until the response arrives", async () => {
+    let resolve!: (value: { status: "APPROVED" }) => void;
+    const deferred = new Promise<{ status: "APPROVED" }>((done) => { resolve = done; });
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2, phase: "CARD_IN_FLIGHT", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
+    };
+    const request = vi.fn().mockReturnValue(deferred);
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request}
+      onPersistRecovery={vi.fn()} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    const query = screen.getByRole("button", { name: /consultar tarjeta/i });
+    fireEvent.click(query);
+    fireEvent.click(query);
+    expect(request).toHaveBeenCalledOnce();
+    expect(query).toBeDisabled();
+    resolve({ status: "APPROVED" });
+    expect(await screen.findByText(/tarjeta aprobada/i)).toBeInTheDocument();
+  });
+
+  it("ignores a late card query response after unmount", async () => {
+    let resolve!: (value: { status: "APPROVED" }) => void;
+    const deferred = new Promise<{ status: "APPROVED" }>((done) => { resolve = done; });
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2, phase: "CARD_IN_FLIGHT", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "TIMEOUT" }],
+    };
+    const persist = vi.fn();
+    const view = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{ card: "card-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={vi.fn().mockReturnValue(deferred)}
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /consultar tarjeta/i }));
+    view.unmount();
+    resolve({ status: "APPROVED" });
+    await Promise.resolve(); await Promise.resolve();
+    expect(persist).not.toHaveBeenCalled();
+  });
+
   it("creates an already approved recovered checkout exactly once with its original identifiers", async () => {
     const recovery: PendingSaleRecoveryEnvelope = {
-      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      version: 2, phase: "READY_TO_CREATE", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
       quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
-      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
     };
     const clear = vi.fn();
     const request = vi.fn().mockResolvedValue({ receivable: { documentId: "doc-approved" }, printDocument: {} });
@@ -158,9 +204,9 @@ describe("CustomerPendingSaleDialog", () => {
 
   it("replays the same recovered create body after a lost response and clears only after confirmation", async () => {
     const recovery: PendingSaleRecoveryEnvelope = {
-      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      version: 2, phase: "READY_TO_CREATE", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
       quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
-      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status: "APPROVED" }],
     };
     const clear = vi.fn();
     const firstRequest = vi.fn().mockRejectedValue(new Error("response lost"));
@@ -182,9 +228,9 @@ describe("CustomerPendingSaleDialog", () => {
 
   it.each(["DECLINED", "ERROR", "CANCELLED"] as const)("requires explicit discard for recovered %s and rotates the next card operation", async (status) => {
     const recovery: PendingSaleRecoveryEnvelope = {
-      version: 1, terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
+      version: 2, phase: "CARD_FINAL_FAILURE", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,
       quoteCents: 10_000, quoteReady: true, savedAt: "2026-07-18T08:00:00.000Z",
-      payments: [{ id: "checkout-1", operationId: "checkout-1", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status }],
+      payments: [{ id: "checkout-1", operationId: "checkout-1", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 3_000, status }],
     };
     const clear = vi.fn();
     const persist = vi.fn();
@@ -203,6 +249,75 @@ describe("CustomerPendingSaleDialog", () => {
     expect(body.sale.checkoutId).not.toBe("checkout-1");
     expect(body.sale.payments[0].requestId).toBe(body.sale.checkoutId);
     expect(body.sale.payments[0].paymentTerminalOperationId).toBe(body.sale.checkoutId);
+  });
+
+  it("persists a fully pending exact create request before POST", async () => {
+    const persist = vi.fn();
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith("/quote")) return { total: "100.00" };
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({ version: 2, phase: "READY_TO_CREATE", payments: [], quoteCents: 10_000 }));
+      return { receivable: { documentId: "doc-pending" }, printDocument: {} };
+    });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request as never}
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    await screen.findAllByText("100,00");
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  });
+
+  it("persists exact cash and transfer allocations before their create POST", async () => {
+    const persist = vi.fn();
+    const request = vi.fn(async (path: string) => {
+      if (path.endsWith("/quote")) return { total: "100.00" };
+      expect(persist).toHaveBeenLastCalledWith(expect.objectContaining({
+        phase: "READY_TO_CREATE",
+        payments: [
+          expect.objectContaining({ kind: "CASH", amountCents: 2_000, deliveredCents: 5_000, changeCents: 3_000 }),
+          expect.objectContaining({ kind: "TRANSFER", amountCents: 3_000, reference: "TR-50" }),
+        ],
+      }));
+      return { receivable: { documentId: "doc-standard" }, printDocument: {} };
+    });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft}
+      paymentMethods={{ cash: "cash-method", transfer: "transfer-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request as never}
+      onPersistRecovery={persist} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    const amount = await screen.findByLabelText(/importe inicial/i);
+    fireEvent.change(amount, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: /efectivo/i }));
+    const cashDialog = screen.getByRole("dialog", { name: /cobro en efectivo/i });
+    fireEvent.change(within(cashDialog).getByRole("textbox", { name: /dinero recibido/i }), { target: { value: "50" } });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /confirmar cobro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /transferencia/i }));
+    const transfer = screen.getByRole("group", { name: /transferencia/i });
+    fireEvent.change(within(transfer).getByLabelText(/importe/i), { target: { value: "30" } });
+    fireEvent.change(within(transfer).getByLabelText(/referencia/i), { target: { value: "TR-50" } });
+    fireEvent.click(within(transfer).getByRole("button", { name: /guardar transferencia/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  });
+
+  it("reopens and byte-replays a fully pending create after its response is lost", async () => {
+    let recovery!: PendingSaleRecoveryEnvelope;
+    const firstRequest = vi.fn().mockResolvedValueOnce({ total: "100.00" }).mockRejectedValueOnce(new Error("response lost"));
+    const first = render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={firstRequest}
+      onPersistRecovery={(value) => { recovery = value; }} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    await screen.findAllByText("100,00");
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+    const firstBody = firstRequest.mock.calls[1][1].body;
+    expect(recovery).toMatchObject({ phase: "READY_TO_CREATE", payments: [], draft: { checkoutId: "checkout-1" } });
+    first.unmount();
+
+    const secondRequest = vi.fn().mockResolvedValue({ receivable: { documentId: "doc-replayed" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} recovery={recovery} paymentMethods={{}}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={secondRequest}
+      onPersistRecovery={vi.fn()} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(secondRequest).toHaveBeenCalledOnce());
+    expect(secondRequest.mock.calls[0][1].body).toEqual(firstBody);
   });
 
   it("allocates 30 cash from a 100 invoice and keeps 70 pending with received/change", async () => {
