@@ -122,6 +122,8 @@ class DocumentServiceTest {
     private AuthoritativePromotionPricing promotionPricing;
     @Mock
     private PromotionCatalogGateway promotionCatalog;
+    @Mock
+    private CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
 
     private DocumentService service;
     private Store store;
@@ -179,6 +181,7 @@ class DocumentServiceTest {
                 counterRepository,
                 paymentMethodRepository,
                 relationRepository,
+                receivablePaymentReservations,
                 stockGateway,
                 currentOrganization,
                 customerRepository,
@@ -1252,7 +1255,7 @@ class DocumentServiceTest {
     void onlyInvoicesCanBeRelatedToOriginDocuments() {
         var note = draft(CommercialDocumentType.ALBARAN_VENTA);
         var origin = draft(CommercialDocumentType.TICKET);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
+        stubLocked(note, origin);
 
         assertThatThrownBy(() -> service.relate(
                 note.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
@@ -1266,8 +1269,7 @@ class DocumentServiceTest {
     void invoiceRelationRequiresCompatibleOriginType() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         var originInvoice = draft(CommercialDocumentType.FACTURA_VENTA);
-        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
-        when(documentRepository.findById(originInvoice.getId())).thenReturn(Optional.of(originInvoice));
+        stubLocked(invoice, originInvoice);
 
         assertThatThrownBy(() -> service.relate(
                 invoice.getId(), originInvoice.getId(), DocumentRelationType.FACTURA_DE))
@@ -1275,6 +1277,108 @@ class DocumentServiceTest {
                 .hasMessageContaining("origen");
 
         verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesDeliveryNoteWithPartialPaymentCannotBecomeInvoiceOrigin() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        origin.addPayment(new DocumentPayment(
+                origin, cash, 1, new BigDecimal("30.00"), true,
+                null, null, null, null, NOW));
+        origin.updatePaymentStatus();
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("pagos");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesInvoiceAndDeliveryNoteRelationRequiresSameCustomer() {
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, UUID.randomUUID(), "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, UUID.randomUUID(), "100.00");
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cliente");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesInvoiceAndDeliveryNoteRelationRequiresSameTotal() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "90.00");
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("total");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesDeliveryNoteCannotBeInvoicedWhilePhysicalCollectionIsReserved() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        var now = NOW.minusSeconds(1);
+        var active = CustomerReceivablePaymentReservation.reserve(
+                UUID.randomUUID(), origin.getId(), store.getId(), terminalId, user.getId(),
+                "a".repeat(64), new BigDecimal("30.00"),
+                CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD,
+                UUID.randomUUID(), NOW.plusSeconds(30), now);
+        when(receivablePaymentReservations.findAllLockedByDocumentId(origin.getId()))
+                .thenReturn(List.of(active));
+        when(receivablePaymentReservations.findAllLockedByDocumentId(invoice.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cobro");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void validUnpaidSalesRelationLocksDocumentsInStableIdentifierOrder() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+
+        service.relate(invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE);
+
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        var order = inOrder(documentRepository);
+        order.verify(documentRepository).findLockedDocument(firstId, store.getId());
+        order.verify(documentRepository).findLockedDocument(secondId, store.getId());
+        verify(relationRepository).save(any(DocumentRelation.class));
     }
 
     @Test
@@ -1421,6 +1525,26 @@ class DocumentServiceTest {
                 user.getId(), command.descuentoGlobal());
         command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         return document;
+    }
+
+    private CommercialDocument confirmedSales(
+            CommercialDocumentType type, UUID customerId, String total) {
+        var document = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), type, LocalDate.of(2026, 6, 8),
+                user.getId(), BigDecimal.ZERO);
+        document.setParties(customerId, null, null);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, 1, "P-REL", "Producto", "VENTA",
+                new BigDecimal(total), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+        document.confirm(type.prefix() + "-001-26-000001", user.getId(), NOW, false);
+        return document;
+    }
+
+    private void stubLocked(CommercialDocument first, CommercialDocument second) {
+        when(documentRepository.findLockedDocument(first.getId(), store.getId()))
+                .thenReturn(Optional.of(first));
+        when(documentRepository.findLockedDocument(second.getId(), store.getId()))
+                .thenReturn(Optional.of(second));
     }
 
     private CommercialDocument purchaseDraft(

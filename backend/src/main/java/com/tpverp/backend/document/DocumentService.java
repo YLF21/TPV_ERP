@@ -72,6 +72,7 @@ public class DocumentService {
     private final DocumentCounterRepository counters;
     private final PaymentMethodRepository paymentMethods;
     private final DocumentRelationRepository relations;
+    private final CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
     private final StockDocumentGateway stockGateway;
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
@@ -100,6 +101,7 @@ public class DocumentService {
             DocumentCounterRepository counters,
             PaymentMethodRepository paymentMethods,
             DocumentRelationRepository relations,
+            CustomerReceivablePaymentReservationRepository receivablePaymentReservations,
             StockDocumentGateway stockGateway,
             CurrentOrganization organization,
             CustomerRepository customers,
@@ -126,6 +128,7 @@ public class DocumentService {
         this.counters = counters;
         this.paymentMethods = paymentMethods;
         this.relations = relations;
+        this.receivablePaymentReservations = receivablePaymentReservations;
         this.stockGateway = stockGateway;
         this.organization = organization;
         this.customers = customers;
@@ -957,15 +960,90 @@ public class DocumentService {
     // Explicitly links an invoice to its origin document.
     @Transactional
     public CommercialDocument relate(UUID invoiceId, UUID originId, DocumentRelationType type) {
-        var invoice = find(invoiceId);
+        Objects.requireNonNull(type, "tipoRelacion");
+        var locked = lockRelationDocuments(invoiceId, originId);
+        var invoice = locked.invoice();
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
         }
-        Objects.requireNonNull(type, "tipoRelacion");
-        var origin = find(originId);
+        var origin = locked.origin();
         validateRelationOrigin(type, origin);
+        requireNoActiveCollection(type, invoice, origin);
+        validateSalesDeliveryNoteInvoice(type, invoice, origin);
         relations.save(new DocumentRelation(invoice, origin, type));
         return invoice;
+    }
+
+    private RelationDocuments lockRelationDocuments(UUID invoiceId, UUID originId) {
+        Objects.requireNonNull(invoiceId, "invoiceId");
+        Objects.requireNonNull(originId, "originId");
+        if (invoiceId.equals(originId)) {
+            throw new IllegalArgumentException("un documento no puede relacionarse consigo mismo");
+        }
+        var storeId = organization.currentStore().getId();
+        var firstId = invoiceId.compareTo(originId) < 0 ? invoiceId : originId;
+        var secondId = firstId.equals(invoiceId) ? originId : invoiceId;
+        var first = documents.findLockedDocument(firstId, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        var second = documents.findLockedDocument(secondId, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        return first.getId().equals(invoiceId)
+                ? new RelationDocuments(first, second)
+                : new RelationDocuments(second, first);
+    }
+
+    private static void validateSalesDeliveryNoteInvoice(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE
+                || invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                || origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            return;
+        }
+        if (!origin.getPagos().isEmpty() || origin.getPaidTotal().signum() != 0) {
+            throw new IllegalStateException(
+                    "no se puede facturar un albaran que ya tiene pagos");
+        }
+        if ((invoice.getEstado() != DocumentStatus.PENDIENTE
+                && invoice.getEstado() != DocumentStatus.PARCIAL
+                && invoice.getEstado() != DocumentStatus.PAGADO)
+                || origin.getEstado() != DocumentStatus.PENDIENTE) {
+            throw new IllegalStateException("factura y albaran deben estar confirmados y cobrables");
+        }
+        if (!Objects.equals(invoice.getClienteId(), origin.getClienteId())
+                || invoice.getClienteId() == null) {
+            throw new IllegalStateException("factura y albaran deben pertenecer al mismo cliente");
+        }
+        if (Money.euros(invoice.getTotal()).compareTo(Money.euros(origin.getTotal())) != 0) {
+            throw new IllegalStateException("factura y albaran deben tener el mismo total");
+        }
+    }
+
+    private void requireNoActiveCollection(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE
+                || invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                || origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            return;
+        }
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        var active = java.util.stream.Stream.concat(
+                        receivablePaymentReservations.findAllLockedByDocumentId(firstId).stream(),
+                        receivablePaymentReservations.findAllLockedByDocumentId(secondId).stream())
+                .anyMatch(CustomerReceivablePaymentReservation::reservesBalance);
+        if (active) {
+            throw new IllegalStateException(
+                    "no se puede facturar mientras existe un cobro en curso");
+        }
+    }
+
+    private record RelationDocuments(
+            CommercialDocument invoice, CommercialDocument origin) {
     }
 
     private static void validateRelationOrigin(DocumentRelationType type, CommercialDocument origin) {

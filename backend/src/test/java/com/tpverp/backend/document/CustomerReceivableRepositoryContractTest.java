@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 
 class CustomerReceivableRepositoryContractTest {
 
@@ -21,6 +22,15 @@ class CustomerReceivableRepositoryContractTest {
     @Test
     void lockedPaymentLookupExcludesDeliveryNotesCoveredByAnActiveInvoice() throws Exception {
         assertExcludesInvoicedOrigin("findLockedReceivable", UUID.class, UUID.class);
+    }
+
+    @Test
+    void invoiceRelationLocksBothDocumentsBeforeCheckingAccountingState() throws Exception {
+        var method = CommercialDocumentRepository.class.getDeclaredMethod(
+                "findLockedDocument", UUID.class, UUID.class);
+
+        assertThat(method.getAnnotation(Lock.class).value())
+                .isEqualTo(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
     }
 
     private static void assertExcludesInvoicedOrigin(

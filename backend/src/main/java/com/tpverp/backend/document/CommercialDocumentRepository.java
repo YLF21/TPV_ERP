@@ -20,6 +20,16 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             select document
             from CommercialDocument document
             left join fetch document.pagos
+            where document.id = :id and document.tiendaId = :storeId
+            """)
+    Optional<CommercialDocument> findLockedDocument(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from CommercialDocument document
+            left join fetch document.pagos
             where document.id = :id
               and document.tiendaId = :storeId
               and not exists (
