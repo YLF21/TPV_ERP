@@ -36,7 +36,7 @@ function buildCashDrawerBuffer() {
 
 function buildTicketBuffer(ticket) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
-  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", total: "TOTAL", ...(suppliedLabels || {}) };
+  const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
   const chunks = [
     Buffer.from([ESC, 0x40]),
@@ -66,6 +66,10 @@ function buildTicketBuffer(ticket) {
   chunks.push(line("------------------------------------------"));
   for (const [index, payment] of (ticket.payments || []).entries()) {
     chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
+  }
+  if (ticket.subtotal !== undefined || ticket.tax !== undefined) {
+    chunks.push(line(padColumns(labels.base, money(ticket.subtotal))));
+    chunks.push(line(padColumns(labels.tax, money(ticket.tax))));
   }
   chunks.push(line("------------------------------------------"));
   chunks.push(Buffer.from([ESC, 0x45, 0x01]));

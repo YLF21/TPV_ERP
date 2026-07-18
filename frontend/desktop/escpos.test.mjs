@@ -38,6 +38,27 @@ describe("escpos command builder", () => {
     expect(text).toContain("Avenida Sur 2, 41001 Sevilla, ES");
   });
 
+  it("prints commercial fiscal totals in a stable base, tax, total order", () => {
+    const text = buildTicketBuffer({
+      documentNumber: "FV-2", storeName: "Tienda", terminalCode: "01", issuedAt: "2026-07-18",
+      lines: [], payments: [], subtotal: 100, tax: 21, total: 121,
+      escposLabels: {
+        terminal: "Terminal", item: "Articulo", quantity: "Cant.", price: "Precio",
+        base: "Base imponible", tax: "IVA", total: "TOTAL"
+      }
+    }).toString("latin1");
+
+    const baseLine = text.indexOf("Base imponible");
+    const taxLine = text.indexOf("IVA");
+    const totalLine = text.lastIndexOf("TOTAL");
+    expect(baseLine).toBeGreaterThan(-1);
+    expect(taxLine).toBeGreaterThan(baseLine);
+    expect(totalLine).toBeGreaterThan(taxLine);
+    expect(text).toContain("Base imponible                      100.00");
+    expect(text).toContain("IVA                                  21.00");
+    expect(text).toContain("TOTAL                               121.00");
+  });
+
   it("builds the standard cash drawer pulse command", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });

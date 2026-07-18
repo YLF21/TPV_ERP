@@ -91,9 +91,11 @@ export type TicketPrintRequest = {
   issuedAt: string;
   lines: TicketLinePrint[];
   payments: TicketPaymentPrint[];
+  subtotal?: number;
+  tax?: number;
   total: number;
   labels?: { terminal: string; item: string; quantity: string; price: string; total: string };
-  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string };
+  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; base?: string; tax?: string };
   escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
   issuer?: { name: string; taxId: string; address: string };
   customer?: { name: string; taxId: string; address: string };

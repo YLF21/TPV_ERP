@@ -166,6 +166,13 @@ export async function printPendingCommercialDocument(
         issuer: snapshot.issuer ? { ...snapshot.issuer, address: printableAddress(snapshot.issuer.address) } : undefined,
         customer: snapshot.customer ? { ...snapshot.customer, address: printableAddress(snapshot.customer.address) } : undefined,
         partyLabels: parties,
+        subtotal: Number(snapshot.baseTotal ?? snapshot.total),
+        tax: Number(snapshot.taxTotal ?? 0),
+        escposLabels: {
+          terminal: t("print.a4.terminal"), item: t("print.a4.description"),
+          quantity: t("print.a4.quantity"), price: t("print.a4.unitPrice"),
+          base: t("print.a4.base"), tax: t("print.a4.tax"), total: t("print.a4.total")
+        },
         lines: snapshot.lines.map((line) => ({
           name: line.name, quantity: Number(line.quantity), price: Number(line.unitPrice ?? line.price),
           total: Number(line.total), taxesIncluded: line.taxesIncluded

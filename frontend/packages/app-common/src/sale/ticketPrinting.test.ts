@@ -138,28 +138,35 @@ describe("confirmed ticket printing", () => {
     }), expect.anything());
   });
 
-  it("routes invoice parties through ESC/POS when the document route uses the raw ticket printer", async () => {
+  it.each([
+    { documentType: "FACTURA_VENTA" as const, routeType: "INVOICE" as const, documentNumber: "FV-RAW" },
+    { documentType: "ALBARAN_VENTA" as const, routeType: "DELIVERY_NOTE" as const, documentNumber: "AV-RAW" }
+  ])("routes $documentType parties and authoritative fiscal totals through ESC/POS", async ({ documentType, routeType, documentNumber }) => {
     const printTicket = vi.fn().mockResolvedValue({ ok: true });
     const config = {
       ...defaultHardwareConfig,
       ticketPrinterDriver: "ESCPOS_RAW" as const,
-      documentPrintRoutes: defaultHardwareConfig.documentPrintRoutes.map((route) => route.documentType === "INVOICE"
+      documentPrintRoutes: defaultHardwareConfig.documentPrintRoutes.map((route) => route.documentType === routeType
         ? { ...route, printerTarget: "TICKET_PRINTER" as const, paperSize: "TICKET_80" as const }
         : route)
     };
     const hardware = { getHardwareConfig: vi.fn().mockResolvedValue(config), printTicket } as unknown as HardwareBridge;
 
     await printPendingCommercialDocument({
-      kind: "COMMERCIAL_DOCUMENT", documentType: "FACTURA_VENTA", documentNumber: "FV-RAW",
+      kind: "COMMERCIAL_DOCUMENT", documentType, documentNumber,
       issuer: { name: "TPV ERP SL", taxId: "B12345678", address: { line1: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES" } },
       customer: { name: "Cliente Fiscal SL", taxId: "B87654321", address: { line1: "Avenida Sur 2", postalCode: "41001", city: "Sevilla", province: "Sevilla", country: "ES" } },
-      lines: snapshot.lines, total: 7
+      lines: snapshot.lines, baseTotal: "100.00", taxTotal: "21.00", total: "121.00"
     }, terminal, hardware);
 
     expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
-      documentNumber: "FV-RAW",
+      documentNumber,
       issuer: expect.objectContaining({ name: "TPV ERP SL", taxId: "B12345678" }),
-      customer: expect.objectContaining({ name: "Cliente Fiscal SL", taxId: "B87654321" })
+      customer: expect.objectContaining({ name: "Cliente Fiscal SL", taxId: "B87654321" }),
+      subtotal: 100,
+      tax: 21,
+      total: 121,
+      escposLabels: expect.objectContaining({ base: "Base", tax: "Impuesto", total: "Total" })
     }), config);
   });
 
