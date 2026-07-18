@@ -214,6 +214,49 @@ describe("CustomerPendingSaleDialog", () => {
     expect(screen.getByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
   });
 
+  it("freezes every payload control after create starts and byte-replays the same checkout", async () => {
+    const createBodies: unknown[] = [];
+    let creates = 0;
+    const request = vi.fn(async (path: string, options?: { body?: unknown }) => {
+      if (path.endsWith("/quote")) return { total: "10.00" };
+      createBodies.push(options?.body); creates += 1;
+      if (creates === 1) throw new Error("response lost");
+      return { receivable: { documentId: "doc-frozen" }, printDocument: {} };
+    });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ transfer: "transfer-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }} request={request as never}
+      onPersistRecovery={vi.fn()} onClearRecovery={vi.fn()} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+    await screen.findAllByText("10,00");
+    fireEvent.click(screen.getByRole("button", { name: /añadir transferencia/i }));
+    const transfer = screen.getByRole("group", { name: /transferencia/i });
+    fireEvent.change(within(transfer).getByLabelText(/importe/i), { target: { value: "4" } });
+    fireEvent.change(within(transfer).getByLabelText(/referencia/i), { target: { value: "TR-FROZEN" } });
+    fireEvent.click(within(transfer).getByRole("button", { name: /guardar transferencia/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+
+    const type = screen.getByLabelText(/tipo de documento/i);
+    const dueDate = screen.getByLabelText(/vencimiento/i);
+    const allocation = screen.getByLabelText(/importe inicial/i);
+    const remove = screen.getByRole("button", { name: "Eliminar" });
+    expect(type).toBeDisabled();
+    expect(dueDate).toBeDisabled();
+    expect(allocation).toBeDisabled();
+    expect(remove).toBeDisabled();
+    expect(screen.getByRole("button", { name: /añadir efectivo/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /añadir tarjeta/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /añadir transferencia/i })).toBeDisabled();
+
+    fireEvent.change(type, { target: { value: "FACTURA_VENTA" } });
+    fireEvent.change(dueDate, { target: { value: "2027-01-01" } });
+    fireEvent.change(allocation, { target: { value: "9" } });
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole("button", { name: /reintentar.*finalizar/i }));
+    await waitFor(() => expect(createBodies).toHaveLength(2));
+    expect(createBodies[1]).toEqual(createBodies[0]);
+    expect((createBodies[1] as { checkoutId: string }).checkoutId).toBe("checkout-1");
+  });
+
   it("creates an already approved recovered checkout exactly once with its original identifiers", async () => {
     const recovery: PendingSaleRecoveryEnvelope = {
       version: 2, phase: "READY_TO_CREATE", terminalCode: "T-1", customer: { id: "customer-1", name: "Cliente" }, draft,

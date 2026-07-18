@@ -90,6 +90,12 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }, []);
 
   useEffect(() => {
+    if (!createDurable) return;
+    setCashOpen(false);
+    setTransferOpen(false);
+  }, [createDurable]);
+
+  useEffect(() => {
     if (recovery) return;
     let current = true;
     setQuoteLoading(true); setQuoteReady(false); setError("");
@@ -171,6 +177,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }, [cashOpen, confirm, createDurable, error, hasCardEffect, onCancel, submitting, transferOpen]);
 
   function saveTransfer() {
+    if (createDurable) return;
     const amountCents = centsFromInput(transferAmount);
     if (!transferReference.trim()) { setError(t("receivables.payment.referenceRequired")); return; }
     if (amountCents <= 0 || amountCents > summary.pendingCents) { setError(t("pendingSale.transferAmountError")); return; }
@@ -185,6 +192,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }
 
   function openCash() {
+    if (createDurable) return;
     const amountCents = selectedAllocationCents();
     if (amountCents === 0) return;
     setError("");
@@ -193,7 +201,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }
 
   async function chargeCard() {
-    if (!resolvedMethods.card || summary.pendingCents <= 0 || uncertain) return;
+    if (createDurable || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain) return;
     const amountCents = selectedAllocationCents();
     if (amountCents === 0) return;
     const priorCard = payments.some((payment) => payment.kind === "INTEGRATED_CARD");
@@ -256,6 +264,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
   }
 
   function removePayment(payment: PendingPaymentAllocation) {
+    if (createDurable) return;
     if (payment.kind === "INTEGRATED_CARD") {
       try { onClearRecovery?.(); }
       catch { setError(t("pendingSale.recoveryError")); return; }
@@ -273,25 +282,25 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       <header><h2 id="customer-pending-title">{t("pendingSale.title")}</h2><button type="button" aria-label={t("common.close")} disabled={submitting || hasCardEffect || createDurable} onClick={onCancel}>×</button></header>
       <p><strong>{t("pendingSale.customer")}:</strong> {customerName}</p>
       <div className="pending-sale-fields">
-        <label>{t("pendingSale.documentType")}<select value={draft.type} disabled={disabled || submitting || hasCardEffect} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect) setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] })); }}><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
-        <label>{t("pendingSale.dueDate")}<input type="date" value={draft.dueDate} disabled={disabled || submitting || hasCardEffect} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect) setDraft((value) => ({ ...value, dueDate: event.target.value })); }} /></label>
+        <label>{t("pendingSale.documentType")}<select value={draft.type} disabled={disabled || submitting || hasCardEffect || createDurable} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect && !createDurable) setDraft((value) => ({ ...value, type: event.target.value as PendingSaleDraft["type"] })); }}><option value="ALBARAN_VENTA">{t("receivables.type.deliveryNote")}</option><option value="FACTURA_VENTA">{t("receivables.type.invoice")}</option></select></label>
+        <label>{t("pendingSale.dueDate")}<input type="date" value={draft.dueDate} disabled={disabled || submitting || hasCardEffect || createDurable} onChange={(event) => { if (!disabled && !submitting && !hasCardEffect && !createDurable) setDraft((value) => ({ ...value, dueDate: event.target.value })); }} /></label>
       </div>
       <div className="pending-sale-summary" aria-live="polite">
         <div><span>{t("pendingSale.total")}</span><strong>{money(summary.totalCents, locale)}</strong></div>
         <div><span>{t("pendingSale.paid")}</span><strong>{money(summary.paidCents, locale)}</strong></div>
         <div><span>{t("pendingSale.pending")}</span><strong>{money(summary.pendingCents, locale)}</strong></div>
       </div>
-      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled || queryingOperationId === payment.operationId} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
-      <label className="pending-sale-allocation-amount">{t("pendingSale.paymentAmount")}<input aria-label={t("pendingSale.paymentAmount")} inputMode="decimal" value={allocationAmount} disabled={disabled || hasCardEffect || summary.pendingCents <= 0 || uncertain} placeholder={money(summary.pendingCents, locale)} onChange={(event) => setAllocationAmount(event.target.value)} /></label>
+      {payments.length > 0 && <ul aria-label={t("pendingSale.initialPayments")}>{payments.map((payment) => <li key={payment.id}><span>{paymentLabel(payment)}: {money(payment.amountCents, locale)} ({t(`paymentTerminal.status.${payment.status}`)})</span>{payment.kind === "INTEGRATED_CARD" && ["PENDING", "SENT", "TIMEOUT"].includes(payment.status) ? <button type="button" disabled={disabled || queryingOperationId === payment.operationId} onClick={() => void queryCard(payment)}>{t("pendingSale.queryCard")}</button> : payment.kind === "INTEGRATED_CARD" && payment.status === "APPROVED" ? <span>{t("pendingSale.approvedCardRequiresVoid")}</span> : <button type="button" disabled={disabled || createDurable} onClick={() => removePayment(payment)}>{t("pendingSale.removePayment")}</button>}</li>)}</ul>}
+      <label className="pending-sale-allocation-amount">{t("pendingSale.paymentAmount")}<input aria-label={t("pendingSale.paymentAmount")} inputMode="decimal" value={allocationAmount} disabled={disabled || hasCardEffect || createDurable || summary.pendingCents <= 0 || uncertain} placeholder={money(summary.pendingCents, locale)} onChange={(event) => { if (!createDurable) setAllocationAmount(event.target.value); }} /></label>
       <div className="pending-sale-payment-actions">
-        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={openCash}>{t("pendingSale.addCash")}</button>
-        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>{t("pendingSale.addCard")}</button>
-        <button type="button" disabled={disabled || hasCardEffect || !resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => setTransferOpen(true)}>{t("pendingSale.addTransfer")}</button>
+        <button type="button" disabled={disabled || hasCardEffect || createDurable || !resolvedMethods.cash || summary.pendingCents <= 0 || uncertain} onClick={openCash}>{t("pendingSale.addCash")}</button>
+        <button type="button" disabled={disabled || hasCardEffect || createDurable || !resolvedMethods.card || summary.pendingCents <= 0 || uncertain} onClick={() => void chargeCard()}>{t("pendingSale.addCard")}</button>
+        <button type="button" disabled={disabled || hasCardEffect || createDurable || !resolvedMethods.transfer || summary.pendingCents <= 0 || uncertain} onClick={() => { if (!createDurable) setTransferOpen(true); }}>{t("pendingSale.addTransfer")}</button>
       </div>
-      {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
+      {transferOpen && <fieldset aria-label={t("receivables.payment.transfer")} disabled={createDurable}><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.amount")}<input aria-label={t("pendingSale.transferAmount")} inputMode="decimal" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label><label>{t("receivables.payment.transferReference")}<input value={transferReference} onChange={(event) => setTransferReference(event.target.value)} /></label><button type="button" onClick={saveTransfer}>{t("pendingSale.saveTransfer")}</button><button type="button" onClick={() => setTransferOpen(false)}>{t("pendingSale.cancelTransfer")}</button></fieldset>}
       {error && <p className="sale-action-error" role="alert">{error}</p>}
       <footer><button type="button" disabled={submitting || hasCardEffect || createDurable} onClick={onCancel}>{t("common.cancel")}</button><button type="button" aria-label={createDurable && !submitting ? `${t("pendingSale.retryCreate")} · ${t("pendingSale.confirm")}` : undefined} disabled={disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate} onClick={() => void confirm()}>{t(submitting ? "pendingSale.creating" : createDurable ? "pendingSale.retryCreate" : "pendingSale.confirm")}</button></footer>
     </section>
-    {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
+    {cashOpen && <CashPaymentDialog totalCents={cashAmountCents} submitting={false} error="" initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(receivedCents) => { if (createDurable) return; const amountCents = cashAmountCents; setPayments((current) => [...current, { id: uuid(), kind: "CASH", methodId: resolvedMethods.cash!, amountCents, deliveredCents: receivedCents, changeCents: receivedCents - amountCents, status: "APPROVED" }]); setAllocationAmount(""); setCashOpen(false); }} />}
   </div>;
 }
