@@ -28,13 +28,13 @@ public class DocumentExcelExportController {
     }
 
     @GetMapping("/{documentId}/export")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
     public ResponseEntity<byte[]> export(@PathVariable UUID documentId) {
         return file(service.export(documentId), "documento.xlsx");
     }
 
     @PostMapping("/export")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
     public ResponseEntity<byte[]> exportBatch(@RequestBody ExportRequest request) {
         return file(service.export(request.documentIds()), "documentos.xlsx");
     }

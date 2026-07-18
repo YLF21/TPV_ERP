@@ -120,6 +120,8 @@ class DocumentPromotionIntegrationTest {
     private PromotionCatalogGateway promotionCatalog;
     @Mock
     private StockSettingsService stockSettings;
+    @Mock
+    private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
 
     private DocumentService service;
     private Store store;
@@ -189,6 +191,7 @@ class DocumentPromotionIntegrationTest {
                 promotionPricing,
                 promotionCatalog,
                 stockSettings,
+                controlAlerts,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

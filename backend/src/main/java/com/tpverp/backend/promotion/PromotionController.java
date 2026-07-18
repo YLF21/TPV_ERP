@@ -19,9 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class PromotionController {
 
     private static final String READ_PERMISSION =
-            "hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','STOCK_READ')";
+            "hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','STOCK_READ')";
     private static final String MANAGE_PERMISSION =
-            "hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')";
+            "hasRole('ADMIN') or hasAuthority('GESTION_PRODUCTO')";
 
     private final PromotionService promotions;
 
@@ -42,7 +42,7 @@ public class PromotionController {
     }
 
     @PostMapping("/preview")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_PRODUCTO','GESTION_VENTAS','VENTA')")
     public PromotionPreview preview(@Valid @RequestBody PromotionPreviewRequest request) {
         return promotions.preview(request);
     }

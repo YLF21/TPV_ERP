@@ -30,7 +30,7 @@ public class CashPermissionService {
     // Exige permiso operativo de ventas o administracion total.
     public void requireSalesPermission(Authentication authentication) {
         if (!isAdmin(authentication)
-                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_VENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.VENTA)
                 && !hasAuthority(authentication, CorePermissionBootstrap.CASH_OPERATE)) {
             throw new AccessDeniedException("Se requiere permiso de ventas o caja");
         }
@@ -39,7 +39,7 @@ public class CashPermissionService {
     // Permite consultar el estado de caja a perfiles operativos, contables o de solo lectura.
     public void requireCashStatusPermission(Authentication authentication) {
         if (!isAdmin(authentication)
-                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_VENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.VENTA)
                 && !hasAuthority(authentication, CorePermissionBootstrap.CASH_OPERATE)
                 && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)
                 && !hasAuthority(authentication, CorePermissionBootstrap.CASH_READ)) {

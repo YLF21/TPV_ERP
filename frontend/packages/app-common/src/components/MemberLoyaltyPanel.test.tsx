@@ -30,9 +30,13 @@ describe("MemberLoyaltyPanel", () => {
     expect(() => memberLoyaltyAdjustmentBody("1.5", "x", "points")).toThrow("party.members.adjustmentInvalid");
   });
 
-  it("reserves manual category changes for administrators", () => {
-    expect(memberLoyaltyPermissions(session)).toEqual({ canWrite: true, canSetCategory: false });
+  it("allows customer managers to maintain loyalty categories", () => {
+    expect(memberLoyaltyPermissions(session)).toEqual({ canWrite: true, canSetCategory: true });
     expect(memberLoyaltyPermissions({ ...session, permissions: ["ADMIN"] })).toEqual({ canWrite: true, canSetCategory: true });
+    expect(memberLoyaltyPermissions({
+      ...session,
+      permissions: ["GESTION_CLIENTE_PROVEEDOR"]
+    })).toEqual({ canWrite: true, canSetCategory: true });
   });
 
   it("renders an accessible loyalty region while data loads", () => {

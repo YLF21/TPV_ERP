@@ -25,7 +25,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/licenses")
-@PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
 public class LicenseController {
 
     private final LicenseService licenseService;
@@ -48,38 +47,45 @@ public class LicenseController {
     }
 
     @PostMapping("/preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
     public LicensePreview preview(@Valid @RequestBody LicenseFileRequest request) {
         requireLocalFileActivationEnabled();
         return licenseService.preview(request.license());
     }
 
     @PostMapping("/activate")
+    @PreAuthorize("hasRole('ADMIN')")
     public LicensePreview activate(@Valid @RequestBody ActivateLicenseRequest request) {
         requireLocalFileActivationEnabled();
         return licenseService.activate(request.license(), request.confirmationHash());
     }
 
     @PostMapping("/link-saas")
+    @PreAuthorize("hasRole('ADMIN')")
     public LinkSaasResponse linkSaas(@Valid @RequestBody LinkSaasRequest request) {
         return LinkSaasResponse.from(saasLink.link(request.pairingCode()));
     }
 
     @PostMapping("/validate-saas")
+    @PreAuthorize("hasRole('ADMIN')")
     public LicenseSaasValidationResponse validateSaas() {
         return saasValidation.validateActiveLicense();
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LICENSES_MANAGE')")
     public List<LicenseService.LicenseHistoryItem> history() {
         return licenseService.history();
     }
 
     @PostMapping("/{reference}/block")
+    @PreAuthorize("hasRole('ADMIN')")
     public LicenseSaasValidationResponse block(@PathVariable String reference) {
         return saasAdmin.block(reference);
     }
 
     @PostMapping("/{reference}/unblock")
+    @PreAuthorize("hasRole('ADMIN')")
     public LicenseSaasValidationResponse unblock(@PathVariable String reference) {
         return saasAdmin.unblock(reference);
     }

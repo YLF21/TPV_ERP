@@ -196,7 +196,10 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session }: Pa
   const isSupplier = kind === "suppliers";
   const isMember = kind === "members";
   const title = t(`party.${kind}.title`);
-  const canWrite = session.permissions.includes("ADMIN") || session.permissions.includes(isSupplier ? "SUPPLIERS_WRITE" : "CUSTOMERS_WRITE");
+  const canWrite = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
+    || session.permissions.includes(isSupplier ? "SUPPLIERS_WRITE" : "CUSTOMERS_WRITE")
+    || (isSupplier && session.permissions.includes("GESTION_ALMACEN"));
   const entries: PartyDirectoryEntry[] = isSupplier ? suppliers : isMember ? members : customers;
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
   const memberCandidate = customers.find((customer) => customer.id === memberCandidateId) ?? null;

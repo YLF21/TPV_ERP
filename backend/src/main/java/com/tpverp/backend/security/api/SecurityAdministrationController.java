@@ -85,7 +85,7 @@ public class SecurityAdministrationController {
     }
 
     @GetMapping("/roles")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public List<SecurityAdministrationService.RoleItem> roles() {
         return service.roles();
     }
@@ -99,14 +99,14 @@ public class SecurityAdministrationController {
     }
 
     @PostMapping("/roles")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public SecurityAdministrationService.RoleItem createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         return service.createRole(request.name());
     }
 
     @PutMapping("/roles/{roleId}/permissions")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('ROLES_MANAGE','GESTION_USUARIO')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
     public SecurityAdministrationService.RoleItem assignPermissions(
             @PathVariable UUID roleId,
             @Valid @RequestBody PermissionsRequest request) {

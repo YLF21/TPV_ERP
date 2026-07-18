@@ -22,21 +22,21 @@ class PartyControllerContractTest {
     @Test
     void protectsReadAndWriteOperationsWithExistingPermissions() throws Exception {
         assertThat(permission(CustomerController.class.getMethod("list")))
-                .contains("CUSTOMERS_READ")
+                .contains("CUSTOMERS_READ", "GESTION_CLIENTE_PROVEEDOR")
                 .doesNotContain("VENTA");
         assertThat(permission(CustomerController.class.getMethod("saleOptions")))
                 .contains("CUSTOMERS_READ", "VENTA");
         assertThat(permission(CustomerController.class.getMethod(
                 "create", CustomerController.CustomerRequest.class)))
-                .contains("CUSTOMERS_WRITE");
+                .contains("CUSTOMERS_WRITE", "GESTION_CLIENTE_PROVEEDOR", "VENTA");
         assertThat(permission(SupplierController.class.getMethod("list")))
-                .contains("SUPPLIERS_READ");
+                .contains("SUPPLIERS_READ", "GESTION_CLIENTE_PROVEEDOR", "GESTION_ALMACEN");
         assertThat(permission(CustomerController.class.getMethod("activate", java.util.UUID.class)))
                 .contains("CUSTOMERS_WRITE");
         assertThat(permission(SupplierController.class.getMethod("activate", java.util.UUID.class)))
                 .contains("SUPPLIERS_WRITE");
         assertThat(permission(SalesRepresentativeController.class.getMethod("list")))
-                .contains("SUPPLIERS_READ");
+                .contains("SUPPLIERS_READ", "GESTION_CLIENTE_PROVEEDOR", "GESTION_ALMACEN");
     }
 
     @Test
