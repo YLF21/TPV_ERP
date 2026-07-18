@@ -37,10 +37,15 @@ public class ProductController {
 
     private final CatalogService service;
     private final ProductImageService images;
+    private final SaleProductCatalogService saleCatalog;
 
-    public ProductController(CatalogService service, ProductImageService images) {
+    public ProductController(
+            CatalogService service,
+            ProductImageService images,
+            SaleProductCatalogService saleCatalog) {
         this.service = service;
         this.images = images;
+        this.saleCatalog = saleCatalog;
     }
 
     @GetMapping
@@ -53,6 +58,13 @@ public class ProductController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
     public List<ProductView> managementList() {
         return service.products().stream().map(ProductView::managementView).toList();
+    }
+
+    @GetMapping("/sale")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','"
+            + GESTION_VENTAS + "','" + VENTA + "')")
+    public List<SaleProductView> saleList() {
+        return saleCatalog.products();
     }
 
     @GetMapping("/management/{productId}")
