@@ -13723,3 +13723,204 @@ textarea:focus,
     grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 }
+
+/* APP VENTA home launcher: keep these final overrides after legacy home rules. */
+.home-screen .home-actions {
+  --home-launcher-height: min(640px, calc(100vh - 210px));
+  width: min(1180px, calc(100vw - 80px)) !important;
+  grid-template-columns: minmax(360px, 0.86fr) minmax(470px, 1.14fr) !important;
+  gap: 38px !important;
+  align-items: stretch !important;
+}
+
+.home-screen .home-actions-sale-only,
+.home-screen .home-actions-side-only {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.home-screen .home-action-side {
+  display: flex !important;
+  flex-direction: column;
+  height: var(--home-launcher-height) !important;
+  gap: 14px !important;
+}
+
+.home-screen .home-action-side .home-action {
+  position: relative;
+  flex: 1 1 0;
+  width: 100% !important;
+  height: auto !important;
+  display: grid !important;
+  grid-template-columns: 168px minmax(0, 1fr) 86px !important;
+  grid-template-rows: 1fr !important;
+  border: 1px solid #b8c7d8 !important;
+  background: #fff !important;
+}
+
+.home-screen .home-action-side .home-action .home-action-icon-panel {
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  display: grid;
+  place-items: center;
+  background: #eef4fb;
+}
+
+.home-screen .home-action .home-action-label {
+  align-self: center !important;
+  justify-self: start !important;
+  padding: 0 28px;
+  font-size: clamp(22px, 2.2vw, 36px) !important;
+}
+
+.home-screen .home-action-shortcut {
+  align-self: center;
+  justify-self: center;
+  padding: 10px 12px;
+  border: 2px solid #2f7dbc;
+  border-radius: 7px;
+  color: #2f7dbc;
+  background: #fff;
+  font: inherit;
+  font-weight: 900;
+}
+
+.home-screen .home-action-sale {
+  position: relative;
+  width: 100% !important;
+  height: var(--home-launcher-height) !important;
+  grid-template-rows: 34% 1fr !important;
+}
+
+.home-screen .home-action-sale .home-action-icon-panel {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+}
+
+.home-screen .home-action-sale .home-action-label {
+  justify-self: center !important;
+  padding: 0;
+  font-size: clamp(58px, 7vw, 96px) !important;
+}
+
+.home-screen .home-action-sale .home-action-shortcut {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  border-color: #fff;
+  color: #fff;
+  background: transparent;
+}
+
+@media (max-width: 1023px) {
+  body:has(.home-screen) {
+    min-width: 0;
+  }
+
+  .home-screen {
+    overflow-y: auto;
+  }
+
+  .home-screen .home-actions {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: min(620px, calc(100vw - 32px)) !important;
+    margin: 24px auto 40px !important;
+    transform: none !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .home-screen .home-action-sale {
+    height: auto !important;
+    min-height: 360px !important;
+  }
+
+  .home-screen .home-action-side {
+    height: auto !important;
+  }
+
+  .home-screen .home-action-side .home-action {
+    min-height: 118px !important;
+    grid-template-columns: 110px minmax(0, 1fr) 70px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .home-screen .home-actions {
+    width: calc(100vw - 24px) !important;
+  }
+
+  .home-screen .home-action-side .home-action {
+    grid-template-columns: 72px minmax(0, 1fr) 54px !important;
+  }
+
+  .home-screen .home-action-side .home-action .home-action-icon {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  .home-screen .home-action .home-action-label {
+    min-width: 0;
+    padding: 0 10px;
+    font-size: clamp(16px, 4.6vw, 20px) !important;
+    line-height: 1.1 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .home-screen .home-action-shortcut {
+    padding: 7px 8px;
+  }
+}
+
+.customer-pending-sale-dialog .pending-sale-payment-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button,
+.customer-pending-sale-dialog .pending-sale-confirm-button {
+  min-height: 46px;
+  border: 1px solid #2f70b7;
+  border-radius: 7px;
+  background: #2f78bd;
+  color: #fff;
+  font-weight: 800;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button:hover:not(:disabled),
+.customer-pending-sale-dialog .pending-sale-payment-button:focus-visible,
+.customer-pending-sale-dialog .pending-sale-confirm-button:hover:not(:disabled),
+.customer-pending-sale-dialog .pending-sale-confirm-button:focus-visible {
+  background: #255f99;
+}
+.customer-pending-sale-dialog .pending-sale-payment-button:disabled,
+.customer-pending-sale-dialog .pending-sale-confirm-button:disabled {
+  border-color: #cbd4df;
+  background: #e7ecf2;
+  color: #8b97a6;
+  cursor: not-allowed;
+}
+.customer-pending-sale-dialog > .pending-sale-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+  align-items: stretch;
+}
+.customer-pending-sale-dialog .pending-sale-cancel-button {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding-inline: 18px;
+}
+.customer-pending-sale-dialog .pending-sale-confirm-button {
+  flex: 1 1 auto;
+}
+@media (max-width: 640px) {
+  .customer-pending-sale-dialog .pending-sale-payment-actions { grid-template-columns: 1fr; }
+  .customer-pending-sale-dialog > .pending-sale-footer { flex-direction: column; }
+  .customer-pending-sale-dialog .pending-sale-cancel-button,
+  .customer-pending-sale-dialog .pending-sale-confirm-button { width: 100%; }
+}
