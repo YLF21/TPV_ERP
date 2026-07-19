@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import "@testing-library/jest-dom/vitest";
 import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -14,6 +16,8 @@ import {
 } from "../sale/customerReceivables";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import { cardQueryResultStatus, CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
+
+const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 
 afterEach(cleanup);
 
@@ -94,6 +98,11 @@ describe("CustomerPendingSaleDialog", () => {
     expect(screen.getByRole("button", { name: /^cancelar$/i })).toHaveClass("pending-sale-cancel-button");
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toHaveClass("pending-sale-confirm-button");
     expect(screen.getByRole("button", { name: /confirmar venta pendiente/i }).parentElement).toHaveClass("pending-sale-footer");
+  });
+
+  it("keeps the mobile confirmation footer in DOM and focus order", () => {
+    const mobileCss = tpvCss.slice(tpvCss.lastIndexOf("@media (max-width: 640px)"));
+    expect(mobileCss).toMatch(/\.customer-pending-sale-dialog > \.pending-sale-footer\s*\{[^}]*flex-direction:\s*column;/s);
   });
 
   it("persists the exact draft and pending card operation before the terminal side effect", async () => {

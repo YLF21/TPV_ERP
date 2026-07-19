@@ -68,7 +68,7 @@ export function SessionHomeScreen({
       F5: canOpenReceivables ? onOpenCustomerReceivables : undefined,
     } : {};
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat) return;
+      if (event.defaultPrevented || event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const action = shortcuts[event.key];
       if (!action) return;
       event.preventDefault();
@@ -121,12 +121,6 @@ export function SessionHomeScreen({
                 {app === "venta" && <kbd className="home-action-shortcut">F2</kbd>}
               </button>
             )}
-            {canOpenWarehouse && (
-              <button type="button" className="home-action home-action-warehouse" data-home-action="warehouse" onClick={onOpenWarehouse}>
-                <span className="home-action-icon-panel"><img className="home-action-icon" alt="" src={warehouseIcon} /></span>
-                <span className="home-action-label">{t("home.warehouse")}</span>
-              </button>
-            )}
             {canOpenReport && (
               <button
                 type="button"
@@ -139,6 +133,13 @@ export function SessionHomeScreen({
                 {app === "venta" && <kbd className="home-action-shortcut">F3</kbd>}
               </button>
             )}
+            {canOpenSettings && (
+              <button type="button" className="home-action home-action-settings" data-home-action="settings" onClick={onOpenSettings}>
+                <span className="home-action-icon-panel"><img className="home-action-icon" alt="" src={settingsIcon} /></span>
+                <span className="home-action-label">{t("home.settings")}</span>
+                {app === "venta" && <kbd className="home-action-shortcut">F4</kbd>}
+              </button>
+            )}
             {canOpenReceivables && (
               <button type="button" className="home-action home-action-receivables" data-home-action="receivables" onClick={onOpenCustomerReceivables}>
                 <span className="home-action-icon-panel"><img className="home-action-icon" alt="" src={reportIcon} /></span>
@@ -146,11 +147,10 @@ export function SessionHomeScreen({
                 {app === "venta" && <kbd className="home-action-shortcut">F5</kbd>}
               </button>
             )}
-            {canOpenSettings && (
-              <button type="button" className="home-action home-action-settings" data-home-action="settings" onClick={onOpenSettings}>
-                <span className="home-action-icon-panel"><img className="home-action-icon" alt="" src={settingsIcon} /></span>
-                <span className="home-action-label">{t("home.settings")}</span>
-                {app === "venta" && <kbd className="home-action-shortcut">F4</kbd>}
+            {canOpenWarehouse && (
+              <button type="button" className="home-action home-action-warehouse" data-home-action="warehouse" onClick={onOpenWarehouse}>
+                <span className="home-action-icon-panel"><img className="home-action-icon" alt="" src={warehouseIcon} /></span>
+                <span className="home-action-label">{t("home.warehouse")}</span>
               </button>
             )}
           </div>

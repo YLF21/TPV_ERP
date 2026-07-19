@@ -79,6 +79,26 @@ describe("SessionHomeScreen", () => {
     expect(sale.querySelector(".home-action-shortcut")).not.toBeNull();
   });
 
+  it("orders every visible launcher action by its shortcut before warehouse", () => {
+    render(<SessionHomeScreen
+      app="venta"
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+      canOpenSalesReport
+      onLocaleChange={vi.fn()}
+      onOpenSales={vi.fn()}
+      onOpenStock={vi.fn()}
+      onOpenWarehouse={vi.fn()}
+      onOpenSalesReport={vi.fn()}
+      onOpenSettings={vi.fn()}
+      onOpenCustomerReceivables={vi.fn()}
+    />);
+
+    expect(Array.from(document.querySelectorAll("[data-home-action]"), (action) => action.getAttribute("data-home-action")))
+      .toEqual(["sale", "stock", "report", "settings", "receivables", "warehouse"]);
+  });
+
   it("keeps the single-column launcher reachable at narrow widths", () => {
     const narrowStyles = tpvStyles.slice(tpvStyles.lastIndexOf("@media (max-width: 1023px)"));
 
@@ -179,6 +199,21 @@ describe("SessionHomeScreen", () => {
     expect(callbacks.receivables).toHaveBeenCalledOnce();
     fireEvent.keyDown(window, { key: "F1", repeat: true });
     expect(callbacks.sale).toHaveBeenCalledOnce();
+  });
+
+  it("suspends home shortcuts while the real shutdown modal is open and restores them after closing it", () => {
+    const onOpenSales = vi.fn();
+    render(<SessionHomeScreen app="venta" locale="es" session={session}
+      terminalContext={terminalContext} onLocaleChange={vi.fn()} onOpenSales={onOpenSales} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /apagar/i }));
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
+    fireEvent.keyDown(window, { key: "F1" });
+    expect(onOpenSales).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^no$/i }));
+    fireEvent.keyDown(window, { key: "F1" });
+    expect(onOpenSales).toHaveBeenCalledOnce();
   });
 
   it("does not run a shortcut for an action hidden by permissions", () => {

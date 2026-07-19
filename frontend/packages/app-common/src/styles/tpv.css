@@ -13920,7 +13920,7 @@ textarea:focus,
 }
 @media (max-width: 640px) {
   .customer-pending-sale-dialog .pending-sale-payment-actions { grid-template-columns: 1fr; }
-  .customer-pending-sale-dialog > .pending-sale-footer { flex-direction: column-reverse; }
+  .customer-pending-sale-dialog > .pending-sale-footer { flex-direction: column; }
   .customer-pending-sale-dialog .pending-sale-cancel-button,
   .customer-pending-sale-dialog .pending-sale-confirm-button { width: 100%; }
 }
