@@ -477,7 +477,7 @@ class CashSessionServiceTest {
         assertThat(view.expectedCash()).isNull();
         assertThat(view.availableCash()).isNull();
         assertThat(view.retainedFund()).isNull();
-        assertThat(view.discrepancy()).isEqualByComparingTo("-10.00");
+        assertThat(view.discrepancy()).isNull();
         assertThat(view.reconciliationAttempt()).isEqualTo(1);
         assertThat(view.closedByAttempt()).isFalse();
         assertThat(session.getAttempts()).hasSize(1);
@@ -502,7 +502,7 @@ class CashSessionServiceTest {
         assertThat(view.status()).isEqualTo(CashSessionStatus.CERRADA);
         assertThat(view.expectedCash()).isNull();
         assertThat(view.retainedFund()).isNull();
-        assertThat(view.discrepancy()).isEqualByComparingTo("-5.00");
+        assertThat(view.discrepancy()).isNull();
         assertThat(view.reconciliationAttempt()).isEqualTo(2);
         assertThat(view.closedByAttempt()).isTrue();
         assertThat(session.getDiscrepancy()).isEqualByComparingTo("-5.00");
@@ -528,7 +528,7 @@ class CashSessionServiceTest {
         assertThat(view.expectedCash()).isNull();
         assertThat(view.availableCash()).isNull();
         assertThat(view.retainedFund()).isNull();
-        assertThat(view.discrepancy()).isEqualByComparingTo("0.00");
+        assertThat(view.discrepancy()).isNull();
     }
 
     @Test
@@ -709,7 +709,7 @@ class CashSessionServiceTest {
 
     private static UsernamePasswordAuthenticationToken salesAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
-                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS)));
+                user, "token", List.of(new SimpleGrantedAuthority(CorePermissionBootstrap.VENTA)));
     }
 
     private static UsernamePasswordAuthenticationToken accountingAuthentication(UserAccount user) {
@@ -720,13 +720,13 @@ class CashSessionServiceTest {
     private static UsernamePasswordAuthenticationToken salesAndAccountingAuthentication(UserAccount user) {
         return new UsernamePasswordAuthenticationToken(
                 user, "token", List.of(
-                        new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_VENTAS),
+                        new SimpleGrantedAuthority(CorePermissionBootstrap.VENTA),
                         new SimpleGrantedAuthority(CorePermissionBootstrap.GESTION_CUENTAS)));
     }
 
     private static Role salesRole(Store store) {
         var role = new Role(store, "SELLER");
-        role.conceder(new Permission(CorePermissionBootstrap.GESTION_VENTAS, "sales", "DOCUMENTS"));
+        role.conceder(new Permission(CorePermissionBootstrap.VENTA, "sales", "DOCUMENTS"));
         return role;
     }
 

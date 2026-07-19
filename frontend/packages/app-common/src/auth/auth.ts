@@ -10,8 +10,9 @@ const localUsers: LocalUser[] = [
     username: "admin",
     password: "admin",
     displayName: "ADMIN",
-    permissions: ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS",
-      "GESTION_ALMACEN", "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"]
+    permissions: ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO",
+      "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"]
   },
   {
     username: "venta",
@@ -23,19 +24,19 @@ const localUsers: LocalUser[] = [
     username: "gestor",
     password: "gestor",
     displayName: "GESTION",
-    permissions: ["VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "INVOICES_WRITE", "DELIVERY_NOTES_WRITE"]
+    permissions: ["APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CLIENTE_PROVEEDOR", "INVOICES_WRITE", "DELIVERY_NOTES_WRITE"]
   },
   {
     username: "producto",
     password: "producto",
     displayName: "PRODUCTO",
-    permissions: ["GESTION_PRODUCTO"]
+    permissions: ["APP_GESTION_ACCESS", "GESTION_PRODUCTO"]
   },
   {
     username: "almacen",
     password: "almacen",
     displayName: "ALMACEN",
-    permissions: ["GESTION_ALMACEN"]
+    permissions: ["APP_GESTION_ACCESS", "GESTION_ALMACEN"]
   }
 ];
 
@@ -62,9 +63,7 @@ export function canAccessApp(permissions: Permission[], app: AppKind): boolean {
       || permissions.includes("GESTION_ALMACEN")
       || permissions.includes("GESTION_CUENTAS");
   }
-  return permissions.includes("GESTION_VENTAS")
-    || permissions.includes("GESTION_PRODUCTO")
-    || permissions.includes("GESTION_ALMACEN");
+  return permissions.includes("APP_GESTION_ACCESS");
 }
 
 export function hasPermission(session: UserSession, permission: Permission): boolean {
@@ -115,8 +114,9 @@ export async function authenticateRemote(
 function permissionsFromRole(role: string): Permission[] {
   const normalized = role.toUpperCase();
   if (normalized === "ADMIN") {
-    return ["ADMIN", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_CUENTAS",
-      "GESTION_ALMACEN", "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"];
+    return ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO",
+      "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"];
   }
 
   const permissions: Permission[] = [];

@@ -34,11 +34,13 @@ public class SaleLineDeletionController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
     public List<SaleLineDeletionView> record(
             @Valid @RequestBody Request request,
             Authentication authentication) {
-        return service.record(request.toCommands(), request.fullTicketClear(), authentication);
+        return service.record(
+                request.saleOperationId(), request.deletionOperationId(),
+                request.toCommands(), request.fullTicketClear(), authentication);
     }
 
     @DeleteMapping("/{id}")
@@ -49,6 +51,8 @@ public class SaleLineDeletionController {
     }
 
     public record Request(
+            @NotNull UUID saleOperationId,
+            @NotNull UUID deletionOperationId,
             boolean fullTicketClear,
             @NotEmpty List<@Valid Line> lines) {
 

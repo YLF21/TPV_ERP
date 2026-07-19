@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.inOrder;
 
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -16,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +38,7 @@ class SaleLineDeletionServiceTest {
     @Mock private JdbcTemplate jdbc;
     @Mock private CurrentOrganization organization;
     @Mock private CurrentTerminal currentTerminal;
+    @Mock private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
 
     private SaleLineDeletionService service;
     private Store store;
@@ -54,34 +58,94 @@ class SaleLineDeletionServiceTest {
                 "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         user = new UserAccount(store, "SELLER", "hash", new Role(store, "SELLER"));
         terminalId = UUID.randomUUID();
-        when(organization.currentStore()).thenReturn(store);
-        when(organization.currentUser(any())).thenReturn(user);
-        when(currentTerminal.terminalId(any())).thenReturn(terminalId);
+        org.mockito.Mockito.lenient().when(organization.currentStore()).thenReturn(store);
+        org.mockito.Mockito.lenient().when(organization.currentUser(any())).thenReturn(user);
+        org.mockito.Mockito.lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
+        org.mockito.Mockito.lenient()
+                .when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+        org.mockito.Mockito.lenient().when(jdbc.queryForObject(anyString(),
+                org.mockito.ArgumentMatchers.eq(Integer.class), any(Object[].class)))
+                .thenReturn(1);
+        org.mockito.Mockito.lenient().when(jdbc.query(anyString(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<SaleLineDeletionView>>any(),
+                any(Object[].class))).thenReturn(List.of());
         service = new SaleLineDeletionService(
-                jdbc, organization, currentTerminal, Clock.fixed(NOW, ZoneOffset.UTC));
+                jdbc, organization, currentTerminal, controlAlerts,
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
     void recordsDeletedLineWithUserTerminalAndTotal() {
         var productId = UUID.randomUUID();
+        var saleOperationId = UUID.randomUUID();
+        var deletionOperationId = UUID.randomUUID();
 
-        var result = service.record(List.of(new SaleLineDeletionCommand(
-                productId, "P-1", "Producto", 2, new BigDecimal("3.50"))), false, auth());
+        var result = service.record(saleOperationId, deletionOperationId,
+                List.of(new SaleLineDeletionCommand(
+                        productId, "P-1", "Producto", 2, new BigDecimal("3.50"))),
+                false, auth());
 
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().type()).isEqualTo("LINEA");
         assertThat(result.getFirst().terminalId()).isEqualTo(terminalId);
         assertThat(result.getFirst().userId()).isEqualTo(user.getId());
         assertThat(result.getFirst().total()).isEqualByComparingTo("7.00");
-        verify(jdbc).update(anyString(), any(Object[].class));
+        verify(jdbc, times(2)).update(anyString(), any(Object[].class));
+        verify(controlAlerts).detectConsecutiveLineDeletions(
+                org.mockito.ArgumentMatchers.eq(saleOperationId),
+                org.mockito.ArgumentMatchers.eq(1),
+                any(), org.mockito.ArgumentMatchers.eq(terminalId), any());
     }
 
     @Test
     void fullTicketClearStoresListType() {
-        var result = service.record(List.of(new SaleLineDeletionCommand(
-                UUID.randomUUID(), "P-1", "Producto", 1, new BigDecimal("10.00"))), true, auth());
+        var deletionOperationId = UUID.randomUUID();
+        var result = service.record(UUID.randomUUID(), deletionOperationId,
+                List.of(new SaleLineDeletionCommand(
+                        UUID.randomUUID(), "P-1", "Producto", 1, new BigDecimal("10.00"))),
+                true, auth());
 
         assertThat(result.getFirst().type()).isEqualTo("LISTA");
+        verify(controlAlerts).detectSaleScreenCleared(
+                org.mockito.ArgumentMatchers.eq(deletionOperationId),
+                org.mockito.ArgumentMatchers.eq(result),
+                org.mockito.ArgumentMatchers.eq(terminalId), any());
+    }
+
+    @Test
+    void repeatedDeletionOperationIsReturnedWithoutCountingOrEmittingAgain() {
+        var headerAttempts = new java.util.concurrent.atomic.AtomicInteger();
+        when(jdbc.update(anyString(), any(Object[].class))).thenAnswer(invocation ->
+                invocation.<String>getArgument(0).contains("venta_operacion_eliminacion")
+                        ? (headerAttempts.getAndIncrement() == 0 ? 1 : 0)
+                        : 1);
+        var saleOperationId = UUID.randomUUID();
+        var deletionOperationId = UUID.randomUUID();
+        var command = new SaleLineDeletionCommand(
+                UUID.randomUUID(), "P-1", "Producto", 1, new BigDecimal("10.00"));
+
+        service.record(saleOperationId, deletionOperationId,
+                List.of(command), false, auth());
+        var repeated = service.record(saleOperationId, deletionOperationId,
+                List.of(command), false, auth());
+
+        assertThat(repeated).isEmpty();
+        verify(controlAlerts, times(1)).detectConsecutiveLineDeletions(
+                org.mockito.ArgumentMatchers.eq(saleOperationId), any(Integer.class),
+                any(), org.mockito.ArgumentMatchers.eq(terminalId), any());
+    }
+
+    @Test
+    void purgesExpiredLinesBeforeTheirOperationHeaders() {
+        service.purgeExpired();
+
+        var ordered = inOrder(jdbc);
+        ordered.verify(jdbc).update(
+                org.mockito.ArgumentMatchers.contains("delete from venta_linea_eliminada"),
+                org.mockito.ArgumentMatchers.eq(NOW.minus(365, ChronoUnit.DAYS)));
+        ordered.verify(jdbc).update(
+                org.mockito.ArgumentMatchers.contains("delete from venta_operacion_eliminacion"),
+                org.mockito.ArgumentMatchers.eq(NOW.minus(365, ChronoUnit.DAYS)));
     }
 
     private static UsernamePasswordAuthenticationToken auth() {

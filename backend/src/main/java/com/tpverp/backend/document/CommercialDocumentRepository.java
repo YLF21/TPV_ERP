@@ -114,6 +114,9 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
 
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
+    @EntityGraph(attributePaths = "lineas")
+    Optional<CommercialDocument> findByIdAndTiendaId(UUID id, UUID tiendaId);
+
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndTipoInOrderByFechaDesc(
             UUID tiendaId, Collection<CommercialDocumentType> tipos);

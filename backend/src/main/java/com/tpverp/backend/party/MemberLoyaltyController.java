@@ -28,25 +28,25 @@ public class MemberLoyaltyController {
     }
 
     @GetMapping("/api/v1/members")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberDirectoryView> list() {
         return service.list();
     }
 
     @GetMapping("/api/v1/members/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberView get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @GetMapping("/api/v1/members/{id}/movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberMovementView> movements(@PathVariable UUID id) {
         return service.movements(id);
     }
 
     @PostMapping("/api/v1/members/{id}/balance-adjustments")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberMovementView adjustBalance(
             @PathVariable UUID id,
             @Valid @RequestBody BalanceAdjustmentRequest request) {
@@ -54,7 +54,7 @@ public class MemberLoyaltyController {
     }
 
     @PostMapping("/api/v1/members/{id}/points-adjustments")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberMovementView adjustPoints(
             @PathVariable UUID id,
             @Valid @RequestBody PointsAdjustmentRequest request) {
@@ -62,7 +62,7 @@ public class MemberLoyaltyController {
     }
 
     @PutMapping("/api/v1/members/{id}/category")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberView setCategory(
             @PathVariable UUID id,
             @Valid @RequestBody SetCategoryRequest request) {
@@ -70,20 +70,20 @@ public class MemberLoyaltyController {
     }
 
     @GetMapping("/api/v1/member-categories")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberCategoryView> categories() {
         return service.categories();
     }
 
     @PostMapping("/api/v1/member-categories")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberCategoryView createCategory(
             @Valid @RequestBody CategoryRequest request) {
         return service.createCategory(request.command());
     }
 
     @PutMapping("/api/v1/member-categories/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberCategoryView updateCategory(
             @PathVariable UUID id,
             @Valid @RequestBody CategoryRequest request) {
@@ -91,40 +91,40 @@ public class MemberLoyaltyController {
     }
 
     @PatchMapping("/api/v1/member-categories/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public ResponseEntity<Void> deactivateCategory(@PathVariable UUID id) {
         service.deactivateCategory(id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/api/v1/member-settings")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberSettingsView settings() {
         return service.settings();
     }
 
     @PutMapping("/api/v1/member-settings")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberSettingsView updateSettings(
             @Valid @RequestBody SettingsRequest request) {
         return service.updateSettings(request.command());
     }
 
     @GetMapping("/api/v1/commercial-contact-channels")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.CommercialChannelView> channels() {
         return service.channels();
     }
 
     @PostMapping("/api/v1/commercial-contact-channels")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.CommercialChannelView createChannel(
             @Valid @RequestBody ChannelRequest request) {
         return service.createChannel(request.command());
     }
 
     @PutMapping("/api/v1/commercial-contact-channels/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.CommercialChannelView updateChannel(
             @PathVariable UUID id,
             @Valid @RequestBody ChannelRequest request) {
@@ -132,14 +132,14 @@ public class MemberLoyaltyController {
     }
 
     @GetMapping("/api/v1/member-card-deliveries")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<MemberLoyaltyService.MemberCardDeliveryView> cardDeliveries(
             @RequestParam(required = false) MemberCardDeliveryStatus status) {
         return service.cardDeliveries(status);
     }
 
     @PatchMapping("/api/v1/member-card-deliveries/{id}/retry")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public MemberLoyaltyService.MemberCardDeliveryView retryCardDelivery(@PathVariable UUID id) {
         return service.retryCardDelivery(id);
     }

@@ -17,6 +17,7 @@ import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
+import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
@@ -110,6 +111,7 @@ public class DocumentService {
     private final AuthoritativePromotionPricing promotionPricing;
     private final PromotionCatalogGateway promotionCatalog;
     private final StockSettingsService stockSettings;
+    private final ControlAlertDetectionService controlAlerts;
     private final Clock clock;
 
     public DocumentService(
@@ -140,6 +142,7 @@ public class DocumentService {
             AuthoritativePromotionPricing promotionPricing,
             PromotionCatalogGateway promotionCatalog,
             StockSettingsService stockSettings,
+            ControlAlertDetectionService controlAlerts,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -168,6 +171,7 @@ public class DocumentService {
         this.promotionPricing = promotionPricing;
         this.promotionCatalog = promotionCatalog;
         this.stockSettings = stockSettings;
+        this.controlAlerts = controlAlerts;
         this.clock = clock;
     }
 
@@ -294,6 +298,10 @@ public class DocumentService {
                 document.getTipo(), authentication, confirmPermission(document.getTipo()));
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
+        // A persisted line discount may come from member pricing. Only the global discount
+        // remains unambiguously manual when a draft is confirmed in a later request.
+        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                document.getDescuentoGlobal());
         var promotionContext = promotionContext(document);
         applyDirectPromotions(document, promotionContext);
         validateInactiveSaleProducts(document);
@@ -312,6 +320,7 @@ public class DocumentService {
         generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, null);
+        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, null, authentication);
         return saved;
     }
 
@@ -364,6 +373,7 @@ public class DocumentService {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
+        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.from(command);
         var customer = pricingCustomer(command);
         var ticket = createDraft(command, authentication, customer);
         var promotionContext = promotionContext(ticket, customer);
@@ -395,6 +405,7 @@ public class DocumentService {
         generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
+        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
     }
 
@@ -405,6 +416,10 @@ public class DocumentService {
             List<PaymentCommand> payments,
             Authentication authentication) {
         Objects.requireNonNull(snapshot, "snapshot");
+        // The authorized snapshot has already been priced and can contain member benefits.
+        // Do not classify its line discounts as manual without the original client command.
+        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                snapshot.globalDiscount());
         var store = organization.currentStore();
         if (!store.getId().equals(snapshot.storeId())) {
             throw new IllegalStateException("La instantanea pertenece a otra tienda");
@@ -433,6 +448,7 @@ public class DocumentService {
                 saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
+        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
     }
 
@@ -892,6 +908,7 @@ public class DocumentService {
         var saved = documents.save(ticket);
         fiscalIntegration.registerTicketCancellation(saved);
         enqueueDocumentEvent(saved, null, SyncOperation.ANULAR);
+        controlAlerts.detectTicketCancelled(saved, currentTerminalOrNull(authentication), authentication);
         return saved;
     }
 
@@ -1561,6 +1578,14 @@ public class DocumentService {
                 type, document.getFecha(), organization.currentStore().getCodigoTienda());
         counters.save(counter);
         return number;
+    }
+
+    private UUID currentTerminalOrNull(Authentication authentication) {
+        try {
+            return currentTerminal.terminalId(authentication);
+        } catch (IllegalStateException exception) {
+            return null;
+        }
     }
 
     CommercialDocument find(UUID id) {

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { retryPrintSucceeded } from "../sale/printRetry";
 import {
   SaleScreen,
+  SaleDeletionControlSequence,
   addSaleLine,
   applyMemberDiscounts,
   cashPaymentErrorTransition,
@@ -118,7 +119,8 @@ it("keeps sale print retry after two failures and clears only after success", as
 const session: UserSession = {
   username: "admin",
   displayName: "ADMIN",
-  permissions: ["ADMIN"]
+  permissions: ["ADMIN"],
+  accessToken: "access-token"
 };
 
 const terminalContext: TerminalContext = {
@@ -169,6 +171,44 @@ const customers: SaleCustomer[] = [
 ];
 
 describe("SaleScreen", () => {
+  it("resets the deletion sequence for every real cart boundary", () => {
+    const ids = ["sale-1", "after-add", "after-finalize", "after-empty", "after-park"];
+    const sequence = new SaleDeletionControlSequence(() => ids.shift()!);
+
+    expect(sequence.currentSaleOperationId()).toBe("sale-1");
+    sequence.reset("PRODUCT_ADDED");
+    expect(sequence.currentSaleOperationId()).toBe("after-add");
+    sequence.reset("SALE_FINALIZED");
+    expect(sequence.currentSaleOperationId()).toBe("after-finalize");
+    sequence.reset("CART_EMPTIED");
+    expect(sequence.currentSaleOperationId()).toBe("after-empty");
+    sequence.reset("SALE_PARKED");
+    expect(sequence.currentSaleOperationId()).toBe("after-park");
+  });
+
+  it("serializes deletion records so rapid removals preserve their database order", async () => {
+    const sequence = new SaleDeletionControlSequence(() => "sale-1");
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const onError = vi.fn();
+
+    const first = sequence.enqueue(async () => {
+      events.push("first:start");
+      await firstGate;
+      events.push("first:end");
+    }, onError);
+    const second = sequence.enqueue(async () => {
+      events.push("second:start");
+    }, onError);
+
+    await Promise.resolve();
+    expect(events).toEqual(["first:start"]);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(events).toEqual(["first:start", "first:end", "second:start"]);
+    expect(onError).not.toHaveBeenCalled();
+  });
   function renderSaleScreen(onLogout = vi.fn(), locale: "es" | "en" | "zh" = "es") {
     render(
       <SaleScreen
@@ -369,6 +409,92 @@ describe("SaleScreen", () => {
 
     expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
+  });
+
+  it("records the removed line and identifies a complete cart clear", async () => {
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(String(url), "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/sale-line-deletions")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.change(search, { target: { value: "CAF-001" } });
+      fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    }
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    fireEvent.click(screen.getByRole("button", { name: "Anular linea" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/sale-line-deletions"))).toBe(true));
+    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
+    expect(request).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({ Authorization: "Bearer access-token" }),
+    });
+    expect(JSON.parse(String(request?.body))).toEqual({
+      saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      fullTicketClear: true,
+      lines: [{
+        productId: "coffee",
+        code: "CAF-001",
+        name: "Cafe molido",
+        quantity: 2,
+        unitPrice: 10,
+      }],
+    });
+  });
+
+  it("removes one line even when recording the best-effort event fails", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
+      const path = new URL(String(url), "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/sale-line-deletions")) {
+        throw new Error("control endpoint unavailable");
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.change(search, { target: { value: "PAN-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Pan integral/ }));
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    fireEvent.click(screen.getByRole("button", { name: "Anular linea" }));
+
+    expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
+    await waitFor(() => expect(warning).toHaveBeenCalledWith("sale_line_deletion_not_recorded", expect.any(Error)));
+    const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      saleOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      deletionOperationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      fullTicketClear: false,
+      lines: [{ productId: "bread", code: "PAN-001", name: "Pan integral", quantity: 1, unitPrice: 2.5 }],
+    });
+    warning.mockRestore();
   });
 
   it("replaces the selected quantity from the keyboard and cancels later edits with Escape", async () => {

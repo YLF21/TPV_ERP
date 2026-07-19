@@ -977,12 +977,14 @@ export function userHasStockPermission(
 export function userCanReadStock(session: Pick<UserSession, "permissions">) {
   return session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_PRODUCTO")
+    || session.permissions.includes("GESTION_ALMACEN")
     || session.permissions.includes("GESTION_VENTAS")
     || session.permissions.includes("STOCK_READ");
 }
 
 export function userCanManageWarehouses(session: Pick<UserSession, "permissions">) {
   return session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_ALMACEN")
     || session.permissions.includes("WAREHOUSES_MANAGE");
 }
 
@@ -2258,13 +2260,21 @@ export function StockScreen({
     });
   }, [bulkProductSupplierLinks, bulkProductSupplierLinksReady]);
   const canManageWarehouseSettings = userCanManageWarehouses(session);
+  const warehouseOnly = session.permissions.includes("GESTION_ALMACEN") && !canManageProducts;
   const visibleStockViews = !canReadStock
     ? []
     : canManageProducts
       ? stockViews
-      : stockViews.filter((view) => view !== "stock.bulkEdit");
-  const canReadCustomers = session.permissions.includes("ADMIN") || session.permissions.includes("CUSTOMERS_READ");
-  const canReadSuppliers = session.permissions.includes("ADMIN") || session.permissions.includes("SUPPLIERS_READ");
+      : warehouseOnly
+        ? ["stock.current" as StockViewKey]
+        : stockViews.filter((view) => view !== "stock.bulkEdit");
+  const canReadCustomers = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
+    || session.permissions.includes("CUSTOMERS_READ");
+  const canReadSuppliers = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
+    || session.permissions.includes("GESTION_ALMACEN")
+    || session.permissions.includes("SUPPLIERS_READ");
   const visiblePartyDirectories: PartyDirectoryKind[] = [
     ...(canReadCustomers ? ["customers", "members"] as PartyDirectoryKind[] : []),
     ...(canReadSuppliers ? ["suppliers"] as PartyDirectoryKind[] : [])

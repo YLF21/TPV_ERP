@@ -251,7 +251,9 @@ public class CashSessionService {
                 session.getId(), session.getTerminalId(), session.getStatus(), session.getOpenedAt(),
                 session.getOpeningFund(), expectedCash, availableCash,
                 retainedFund,
-                attempt == null ? session.getDiscrepancy() : attempt.getDiscrepancy(),
+                includeExpectedTotals
+                        ? attempt == null ? session.getDiscrepancy() : attempt.getDiscrepancy()
+                        : null,
                 session.getClosedAt(),
                 attempt == null ? null : attempt.getAttemptNumber(),
                 attempt != null && attempt.closedSession());

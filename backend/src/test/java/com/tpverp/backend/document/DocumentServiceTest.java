@@ -127,6 +127,8 @@ class DocumentServiceTest {
     private CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
     @Mock
     private StockSettingsService stockSettings;
+    @Mock
+    private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
 
     private DocumentService service;
     private Store store;
@@ -207,6 +209,7 @@ class DocumentServiceTest {
                 promotionPricing,
                 promotionCatalog,
                 stockSettings,
+                controlAlerts,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

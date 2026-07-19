@@ -35,6 +35,9 @@ class StockReadPermissionContractTest {
     private ProductImageService images;
 
     @MockitoBean
+    private SaleProductCatalogService saleCatalog;
+
+    @MockitoBean
     private PromotionService promotions;
 
     @Test

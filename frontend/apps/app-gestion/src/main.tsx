@@ -10,6 +10,9 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import "./gestion.css";
+import { visibleGestionModules } from "./gestionAccess";
+import { GestionDashboard } from "./GestionDashboard";
+import { ControlAlertsScreen } from "./ControlAlertsScreen";
 
 const StockScreen = lazy(() =>
   import("../../../packages/app-common/src/components/StockScreen").then(({ StockScreen }) => ({
@@ -17,7 +20,13 @@ const StockScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "promotions" | "stock";
+const SalesReportScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
+    default: SalesReportScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "controlAlerts" | "promotions" | "sales" | "stock";
 
 function App() {
   const [locale, setLocale] = useState<LocaleCode>("es");
@@ -64,10 +73,29 @@ function App() {
     );
   }
 
+  if (module === "sales") {
+    return (
+      <SalesReportScreen
+        app="gestion"
+        locale={locale}
+        session={session}
+        terminalContext={devTerminalContext}
+        onBack={() => setModule("dashboard")}
+        onLogout={() => setSession(null)}
+        onLocaleChange={setLocale}
+      />
+    );
+  }
+
   return (
     <AppFrame titleKey="gestion.title" locale={locale} session={session} onLogout={() => setSession(null)}>
       <GestionScreen
         locale={locale}
+        session={session}
+        module={module}
+        onOpenDashboard={() => setModule("dashboard")}
+        onOpenControlAlerts={() => setModule("controlAlerts")}
+        onOpenSales={() => setModule("sales")}
         onOpenPromotions={() => setModule("promotions")}
         onOpenStock={() => setModule("stock")}
       />
@@ -77,59 +105,58 @@ function App() {
 
 function GestionScreen({
   locale,
+  session,
+  module,
+  onOpenDashboard,
+  onOpenControlAlerts,
+  onOpenSales,
   onOpenPromotions,
   onOpenStock
 }: {
   locale: LocaleCode;
+  session: UserSession;
+  module: "dashboard" | "controlAlerts";
+  onOpenDashboard: () => void;
+  onOpenControlAlerts: () => void;
+  onOpenSales: () => void;
   onOpenPromotions: () => void;
   onOpenStock: () => void;
 }) {
   const t = createTranslator(locale);
-  const modules = [
-    "gestion.sales",
-    "gestion.products",
-    "gestion.stock",
-    "gestion.customers",
-    "gestion.suppliers",
-    "gestion.users"
+  const modules = visibleGestionModules(session);
+  const canManageProducts = session.permissions.includes("ADMIN")
+    || session.permissions.includes("GESTION_PRODUCTO");
+
+  const navigation = [
+    { key: "dashboard", label: t("gestion.dashboard"), onOpen: onOpenDashboard },
+    ...(modules.includes("gestion.controlAlerts")
+      ? [{ key: "controlAlerts", label: t("gestion.controlAlerts.navigation"), onOpen: onOpenControlAlerts }]
+      : []),
+    ...(modules.includes("gestion.sales")
+      ? [{ key: "sales", label: t("gestion.sales"), onOpen: onOpenSales }]
+      : []),
+    ...(modules.includes("gestion.stock")
+      ? [{ key: "stock", label: t("gestion.stock"), onOpen: onOpenStock }]
+      : []),
+    ...(canManageProducts
+      ? [{ key: "promotions", label: t("promotion.list.heading"), onOpen: onOpenPromotions }]
+      : [])
   ];
 
+  if (module === "controlAlerts" && modules.includes("gestion.controlAlerts")) {
+    return <ControlAlertsScreen session={session} t={t} navigation={navigation} />;
+  }
+
   return (
-    <main className="gestion-screen">
-      <aside className="gestion-nav">
-        <h1>{t("gestion.title")}</h1>
-        <p>{t("gestion.subtitle")}</p>
-        {modules.map((moduleKey) => (
-          <button
-            key={moduleKey}
-            type="button"
-            onClick={moduleKey === "gestion.stock" ? onOpenStock : undefined}
-          >
-            {t(moduleKey)}
-          </button>
-        ))}
-        <button type="button" onClick={onOpenPromotions}>{t("promotion.list.heading")}</button>
-      </aside>
-      <section className="gestion-workspace">
-        <header>
-          <h2>{t("promotion.list.heading")}</h2>
-          <span>{t("common.ready")}</span>
-        </header>
-        <div className="gestion-grid">
-          <article>
-            <strong>{t("promotion.list.heading")}</strong>
-            <p>{t("promotion.coupon.placeholder")}</p>
-            <button type="button" onClick={onOpenPromotions}>{t("promotion.list.heading")}</button>
-          </article>
-          {modules.map((moduleKey) => (
-            <article key={moduleKey}>
-              <strong>{t(moduleKey)}</strong>
-              <p>{t("gestion.placeholder")}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
+    <GestionDashboard
+      session={session}
+      t={t}
+      navigation={navigation}
+      onOpenSales={onOpenSales}
+      onOpenStock={onOpenStock}
+      onOpenPromotions={onOpenPromotions}
+      onOpenControlAlerts={onOpenControlAlerts}
+    />
   );
 }
 

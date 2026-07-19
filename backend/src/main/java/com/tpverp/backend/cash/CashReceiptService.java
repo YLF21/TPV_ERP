@@ -107,7 +107,7 @@ public class CashReceiptService {
                 null,
                 List.of(),
                 includeExpectedTotals ? session.getRetainedFund() : null,
-                session.getDiscrepancy(),
+                includeExpectedTotals ? session.getDiscrepancy() : null,
                 includeExpectedTotals ? session.getExpectedCash() : null,
                 EMPTY_SIGNATURE_LABEL,
                 EMPTY_SIGNATURE_LABEL);

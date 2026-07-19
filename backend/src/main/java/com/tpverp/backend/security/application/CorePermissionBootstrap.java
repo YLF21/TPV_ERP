@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class CorePermissionBootstrap {
 
+    public static final String APP_GESTION_ACCESS = "APP_GESTION_ACCESS";
     public static final String USERS_MANAGE = "USERS_MANAGE";
     public static final String GESTION_USUARIO = "GESTION_USUARIO";
     public static final String ROLES_MANAGE = "ROLES_MANAGE";
@@ -15,6 +16,9 @@ public class CorePermissionBootstrap {
     public static final String LICENSES_MANAGE = "LICENSES_MANAGE";
     public static final String BACKUPS_MANAGE = "BACKUPS_MANAGE";
     public static final String AUDIT_READ = "AUDIT_READ";
+    public static final String CONTROL_ALERTS_READ = "CONTROL_ALERTS_READ";
+    public static final String CONTROL_ALERTS_MANAGE = "CONTROL_ALERTS_MANAGE";
+    public static final String CONTROL_RULES_MANAGE = "CONTROL_RULES_MANAGE";
     public static final String PRODUCTS_READ = "PRODUCTS_READ";
     public static final String PRODUCTS_WRITE = "PRODUCTS_WRITE";
     public static final String PRODUCTS_DELETE = "PRODUCTS_DELETE";
@@ -31,6 +35,7 @@ public class CorePermissionBootstrap {
     public static final String SUPPLIERS_READ = "SUPPLIERS_READ";
     public static final String SUPPLIERS_WRITE = "SUPPLIERS_WRITE";
     public static final String SUPPLIERS_DELETE = "SUPPLIERS_DELETE";
+    public static final String GESTION_CLIENTE_PROVEEDOR = "GESTION_CLIENTE_PROVEEDOR";
     public static final String VENTA = "VENTA";
     public static final String GESTION_VENTAS = "GESTION_VENTAS";
     public static final String CAMBIAR_PRECIO = "CAMBIAR_PRECIO";
@@ -64,6 +69,7 @@ public class CorePermissionBootstrap {
     @Transactional
     public void initialize() {
         List.of(
+                permission(APP_GESTION_ACCESS, "security.permissions.appGestionAccess", "SECURITY"),
                 permission(USERS_MANAGE, "security.permissions.users", "SECURITY"),
                 permission(GESTION_USUARIO, "security.permissions.userManagement", "SECURITY"),
                 permission(ROLES_MANAGE, "security.permissions.roles", "SECURITY"),
@@ -72,6 +78,9 @@ public class CorePermissionBootstrap {
                 permission(LICENSES_MANAGE, "security.permissions.licenses", "SYSTEM"),
                 permission(BACKUPS_MANAGE, "security.permissions.backups", "SYSTEM"),
                 permission(AUDIT_READ, "security.permissions.audit", "SYSTEM"),
+                permission(CONTROL_ALERTS_READ, "control.permissions.alerts.read", "CONTROL"),
+                permission(CONTROL_ALERTS_MANAGE, "control.permissions.alerts.manage", "CONTROL"),
+                permission(CONTROL_RULES_MANAGE, "control.permissions.rules.manage", "CONTROL"),
                 permission(PRODUCTS_READ, "catalog.permissions.read", "CATALOG"),
                 permission(PRODUCTS_WRITE, "catalog.permissions.write", "CATALOG"),
                 permission(PRODUCTS_DELETE, "catalog.permissions.delete", "CATALOG"),
@@ -88,6 +97,7 @@ public class CorePermissionBootstrap {
                 permission(SUPPLIERS_READ, "party.permissions.suppliers.read", "PARTY"),
                 permission(SUPPLIERS_WRITE, "party.permissions.suppliers.write", "PARTY"),
                 permission(SUPPLIERS_DELETE, "party.permissions.suppliers.delete", "PARTY"),
+                permission(GESTION_CLIENTE_PROVEEDOR, "party.permissions.management", "PARTY"),
                 permission(VENTA, "document.permissions.sales.operate", "DOCUMENTS"),
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),
                 permission(CAMBIAR_PRECIO, "document.permissions.sales.changePrice", "DOCUMENTS"),

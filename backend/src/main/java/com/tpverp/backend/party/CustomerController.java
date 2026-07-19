@@ -32,13 +32,13 @@ public class CustomerController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<CustomerService.CustomerView> list() {
         return service.list();
     }
 
     @GetMapping("/sale-options")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','VENTA','GESTION_ALMACEN')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR','VENTA','GESTION_ALMACEN')")
     public List<SaleCustomerOption> saleOptions() {
         return service.list().stream()
                 .map(SaleCustomerOption::from)
@@ -46,19 +46,19 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView get(@PathVariable UUID id) {
         return service.get(id);
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR','VENTA')")
     public CustomerService.CustomerView create(@Valid @RequestBody CustomerRequest request) {
         return service.create(request.command());
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView update(
             @PathVariable UUID id,
             @Valid @RequestBody CustomerRequest request) {
@@ -66,52 +66,52 @@ public class CustomerController {
     }
 
     @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public ResponseEntity<Void> deactivate(@PathVariable UUID id) {
         service.deactivate(id);
         return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{id}/activate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public ResponseEntity<Void> activate(@PathVariable UUID id) {
         service.activate(id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/member/activate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR','VENTA')")
     public CustomerService.CustomerView activateMember(@PathVariable UUID id) {
         return service.activateMember(id);
     }
 
     @PostMapping("/{id}/member/deactivate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView deactivateMember(@PathVariable UUID id) {
         return service.deactivateMember(id);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_DELETE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_DELETE','GESTION_CLIENTE_PROVEEDOR')")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/validate-fiscal")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView validateFiscalData(@PathVariable UUID id) {
         return service.validateFiscalData(id);
     }
 
     @GetMapping("/{id}/balance-movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_READ')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
     public List<CustomerService.BalanceView> balanceMovements(@PathVariable UUID id) {
         return service.balanceMovements(id);
     }
 
     @PostMapping("/{id}/balance-movements")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CUSTOMERS_WRITE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.BalanceView moveBalance(
             @PathVariable UUID id,
             @Valid @RequestBody BalanceRequest request) {

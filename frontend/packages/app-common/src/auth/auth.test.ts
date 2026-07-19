@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authenticate, authenticateRemote, canAccessApp } from "./auth";
+import { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth";
 import { afterEach, vi } from "vitest";
 
 afterEach(() => {
@@ -15,8 +15,26 @@ describe("auth", () => {
     expect(authenticate("producto", "producto", "venta").username).toBe("producto");
   });
 
-  it("allows gestion users into APP GESTION", () => {
-    expect(canAccessApp(["GESTION_VENTAS"], "gestion")).toBe(true);
+  it("allows users with APP_GESTION_ACCESS into APP GESTION", () => {
+    expect(canAccessApp(["APP_GESTION_ACCESS"], "gestion")).toBe(true);
+  });
+
+  it("does not use module permissions as access to APP GESTION", () => {
+    expect(canAccessApp(["GESTION_VENTAS"], "gestion")).toBe(false);
+    expect(canAccessApp(["GESTION_PRODUCTO"], "gestion")).toBe(false);
+    expect(canAccessApp(["GESTION_ALMACEN"], "gestion")).toBe(false);
+  });
+
+  it("keeps ADMIN as implicit access to APP GESTION", () => {
+    expect(canAccessApp(["ADMIN"], "gestion")).toBe(true);
+  });
+
+  it("does not grant internal module permissions with APP_GESTION_ACCESS", () => {
+    expect(hasPermission({
+      username: "resumen",
+      displayName: "RESUMEN",
+      permissions: ["APP_GESTION_ACCESS"]
+    }, "GESTION_PRODUCTO")).toBe(false);
   });
 
   it("assigns customer receivables permissions to the ADMIN profile", () => {

@@ -26,6 +26,10 @@ class CorePermissionBootstrapTest {
         new CorePermissionBootstrap(repository).initialize();
 
         assertThat(saved).extracting(Permission::getCodigo).contains(
+                "APP_GESTION_ACCESS",
+                "CONTROL_ALERTS_READ",
+                "CONTROL_ALERTS_MANAGE",
+                "CONTROL_RULES_MANAGE",
                 "PRODUCTS_READ",
                 "PRODUCTS_WRITE",
                 "PRODUCTS_DELETE",
@@ -34,6 +38,7 @@ class CorePermissionBootstrapTest {
                 "STOCK_ADJUST",
                 "CUSTOMERS_WRITE",
                 "SUPPLIERS_WRITE",
+                "GESTION_CLIENTE_PROVEEDOR",
                 "VENTA",
                 "GESTION_VENTAS",
                 "CAMBIAR_PRECIO",

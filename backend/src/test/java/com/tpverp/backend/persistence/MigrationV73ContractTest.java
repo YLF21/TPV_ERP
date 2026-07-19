@@ -2,24 +2,30 @@ package com.tpverp.backend.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class MigrationV73ContractTest {
 
-    @Test
-    void migrationPersistsAuthoritativeReceivablePaymentReservationsAndPendingSaleLease() throws Exception {
-        var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V73__receivable_payment_reservations.sql"))
-                .toLowerCase();
+    private static final String MIGRATION =
+            "db/migration/V73__gestion_clientes_proveedores.sql";
 
-        assertThat(sql).contains(
-                "customer_receivable_payment_reservation", "document_id", "amount",
-                "request_hash", "status", "lease_owner", "lease_until", "version");
-        assertThat(sql).contains(
-                "alter table customer_pending_sale_checkout", "processing_owner",
-                "processing_lease_until");
-        assertThat(sql).contains("check (amount > 0)");
+    @Test
+    void createsCustomerSupplierManagementPermissionWithoutExpandingExistingRoles() throws IOException {
+        String sql = migrationSql();
+
+        assertThat(sql)
+                .contains("'gestion_cliente_proveedor'")
+                .contains("'party.permissions.management'")
+                .doesNotContain("insert into rol_permiso");
+    }
+
+    private String migrationSql() throws IOException {
+        try (InputStream stream = getClass().getClassLoader().getResourceAsStream(MIGRATION)) {
+            assertThat(stream).as("Debe existir %s", MIGRATION).isNotNull();
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+        }
     }
 }

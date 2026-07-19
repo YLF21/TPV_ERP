@@ -444,6 +444,43 @@ function currentSaleDate(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+export function newSaleControlOperationId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map((value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export type SaleControlResetReason = "PRODUCT_ADDED" | "SALE_FINALIZED" | "CART_EMPTIED" | "SALE_PARKED";
+
+export class SaleDeletionControlSequence {
+  private saleOperationId: string;
+  private recordingQueue: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly generateId: () => string = newSaleControlOperationId) {
+    this.saleOperationId = generateId();
+  }
+
+  currentSaleOperationId() {
+    return this.saleOperationId;
+  }
+
+  newDeletionOperationId() {
+    return this.generateId();
+  }
+
+  reset(_reason: SaleControlResetReason) {
+    this.saleOperationId = this.generateId();
+  }
+
+  enqueue(record: () => Promise<unknown>, onError: (error: unknown) => void) {
+    this.recordingQueue = this.recordingQueue.then(record).catch(onError);
+    return this.recordingQueue;
+  }
+}
+
 function salePriceNumber(value: unknown, fallback = 0) {
   if (value === null || value === undefined || String(value).trim() === "") return fallback;
   const parsed = Number(String(value).replace(",", "."));
@@ -594,6 +631,9 @@ export function SaleScreen({
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
   const blockedRecoveryDialogRef = useRef<HTMLElement>(null);
+  const deletionControlRef = useRef<SaleDeletionControlSequence | null>(null);
+  if (!deletionControlRef.current) deletionControlRef.current = new SaleDeletionControlSequence();
+  const deletionControl = deletionControlRef.current;
   const logoutInProgressRef = useRef(false);
   const shutdownInProgressRef = useRef(false);
   const selectableProducts = useMemo(
@@ -707,6 +747,7 @@ export function SaleScreen({
   }, [pendingRecoveryBlocked]);
 
   function addProduct(product: SaleProduct) {
+    deletionControl.reset("PRODUCT_ADDED");
     setLines((current) => applyMemberDiscounts(addSaleLine(current, product), selectedCustomer));
     setSelectedProductId(product.id);
     setQuery("");
@@ -821,7 +862,11 @@ export function SaleScreen({
   }
 
   function confirmRemoveLine() {
-    if (!selectedProductId) return;
+    if (!selectedProductId || !selectedLine) return;
+    const removedLine = selectedLine;
+    const fullTicketClear = lines.length === 1;
+    const saleOperationId = deletionControl.currentSaleOperationId();
+    const deletionOperationId = deletionControl.newDeletionOperationId();
     setLines((current) => {
       const nextSelectedProductId = selectedProductAfterRemoval(current, selectedProductId);
       const remaining = removeSaleLine(current, selectedProductId);
@@ -829,6 +874,28 @@ export function SaleScreen({
       return remaining;
     });
     setActionDialog(null);
+    void deletionControl.enqueue(
+      () => apiRequest("/sale-line-deletions", {
+        token: session.accessToken,
+        body: {
+          saleOperationId,
+          deletionOperationId,
+          fullTicketClear,
+          lines: [{
+            productId: removedLine.product.id,
+            code: removedLine.product.code ?? "",
+            name: removedLine.product.name ?? "",
+            quantity: removedLine.quantity,
+            unitPrice: effectiveSaleProductPrice(removedLine.product, activeMember),
+          }],
+        },
+      }),
+      (error: unknown) => {
+        // Best effort: a control-event outage must never block the active sale.
+        console.warn("sale_line_deletion_not_recorded", error);
+      },
+    );
+    if (fullTicketClear) deletionControl.reset("CART_EMPTIED");
   }
 
   function handleRemoveLineKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -903,6 +970,7 @@ export function SaleScreen({
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
       setQuery(transition.query);
+      deletionControl.reset("SALE_FINALIZED");
       startAutomaticTicketPrint(result.printTicket);
       } catch (error) {
       const transition = cashPaymentErrorTransition(
@@ -944,6 +1012,7 @@ export function SaleScreen({
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+          deletionControl.reset("SALE_FINALIZED");
         }
       } catch (error) {
         if (error instanceof ApiError) {
@@ -1237,6 +1306,7 @@ export function SaleScreen({
               }}
               onFinalized={(printTicket, summary) => {
                 invalidateCashOpening();
+                deletionControl.reset("SALE_FINALIZED");
                 setLines([]);
                 setSelectedProductId(null);
                 setSelectedCustomer(null);

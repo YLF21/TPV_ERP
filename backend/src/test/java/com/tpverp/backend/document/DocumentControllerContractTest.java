@@ -52,6 +52,16 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void saleOperatorsCanRecordSaleScreenClearEvents() throws NoSuchMethodException {
+        var method = SaleLineDeletionController.class.getDeclaredMethod(
+                "record", SaleLineDeletionController.Request.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("VENTA", "GESTION_VENTAS");
+    }
+
+    @Test
     void deliveryNotesExposePaymentEndpoint() throws NoSuchMethodException {
         var method = DeliveryNoteController.class.getDeclaredMethod(
                 "pay", UUID.class, PaymentRequest.class,

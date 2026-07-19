@@ -1,4 +1,5 @@
 export { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth/auth";
+export { apiRequest, ApiConnectionError, ApiError } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
 export { AppFrame } from "./components/AppFrame";
 export { HardwareSettingsScreen } from "./components/HardwareSettingsScreen";
@@ -12,6 +13,10 @@ export { CustomerPendingSaleDialog } from "./components/CustomerPendingSaleDialo
 export { SettingsScreen } from "./components/SettingsScreen";
 export { SessionHomeScreen } from "./components/SessionHomeScreen";
 export { StockScreen } from "./components/StockScreen";
+export { TableLayoutHeaderCell } from "./components/TableLayoutHeaderCell";
+export { useTableLayoutPreference } from "./components/useTableLayoutPreference";
+export { tableLayoutGridTemplate, visibleTableColumns } from "./components/tableLayoutPreferences";
+export type { TableColumnDefinition } from "./components/tableLayoutPreferences";
 export { PartyDirectoryPanel } from "./components/PartyDirectoryPanel";
 export type { PartyDirectoryKind } from "./components/PartyDirectoryPanel";
 export { MemberLoyaltyPanel } from "./components/MemberLoyaltyPanel";
