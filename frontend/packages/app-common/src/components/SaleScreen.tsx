@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ProductCreateDialog } from "./ProductCreateDialog";
@@ -26,6 +27,7 @@ import { addLocalDays, type PendingSaleDraft } from "../sale/customerReceivables
 import {
   clearPendingSaleRecovery,
   loadPendingSaleRecovery,
+  pendingSaleRecoveryRequiresAttention,
   savePendingSaleRecovery,
   type PendingSaleRecoveryEnvelope,
   type PendingSaleRecoveryLoadResult,
@@ -555,6 +557,7 @@ type SaleScreenProps = {
   onBack: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
+  onOpenCustomerReceivables?: (customerId?: string) => void;
 };
 
 export function SaleScreen({
@@ -565,7 +568,8 @@ export function SaleScreen({
   touchMode = false,
   onBack,
   onLocaleChange,
-  onLogout
+  onLogout,
+  onOpenCustomerReceivables
 }: SaleScreenProps) {
   const t = createTranslator(locale);
   const [productCreateOpen, setProductCreateOpen] = useState(false);
@@ -586,7 +590,14 @@ export function SaleScreen({
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
   const [pendingCustomerContinuation, setPendingCustomerContinuation] = useState(false);
   const [pendingRecovery, setPendingRecovery] = useState<PendingSaleRecoveryLoadResult>(() => {
-    try { return loadPendingSaleRecovery(localStorage, terminalContext.terminalCode); }
+    try {
+      const loaded = loadPendingSaleRecovery(localStorage, terminalContext.terminalCode);
+      if (loaded.status === "valid" && !pendingSaleRecoveryRequiresAttention(loaded.envelope)) {
+        clearPendingSaleRecovery(localStorage, terminalContext.terminalCode);
+        return { status: "empty" };
+      }
+      return loaded;
+    }
     catch { return { status: "empty" }; }
   });
   const recoveredPendingSale = pendingRecovery.status === "valid" ? pendingRecovery.envelope : undefined;
@@ -1128,8 +1139,6 @@ export function SaleScreen({
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
       /></div>
-      {pendingPrintRetry && <div className="receivables-error" aria-hidden={pendingRecoveryBlocked || undefined}><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryPendingPrint()}>{t("payment.result.retryPrint")}</button></div>}
-
       <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || undefined}>
         <header className="work-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
@@ -1324,6 +1333,24 @@ export function SaleScreen({
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
             {pendingError && <p className="sale-payment-status" role="alert">{pendingError}</p>}
           </section>
+          {onOpenCustomerReceivables && hasPermission(session, "CUSTOMER_RECEIVABLES_READ") && (
+            <section className="sale-receivables-entry" aria-label={t("receivables.title")}>
+              <button
+                type="button"
+                disabled={paymentLocked}
+                onClick={() => onOpenCustomerReceivables(selectedCustomer?.id)}
+              >
+                <span>{t("receivables.title")}</span>
+                {selectedCustomer?.fiscalName && <small>{selectedCustomer.fiscalName}</small>}
+              </button>
+            </section>
+          )}
+          {pendingPrintRetry && (
+            <aside className="sale-sidebar-print-retry" aria-hidden={pendingRecoveryBlocked || undefined}>
+              <p role="alert">{t("payment.result.printFailed")}</p>
+              <button type="button" onClick={() => void retryPendingPrint()}>{t("payment.result.retryPrint")}</button>
+            </aside>
+          )}
         </section>
 
         <nav className="sale-shortcut-bar" aria-label={t("sale.main.shortcuts")}>

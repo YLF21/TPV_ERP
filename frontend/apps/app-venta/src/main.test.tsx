@@ -41,23 +41,34 @@ vi.mock("../../../packages/app-common/src/components/SessionHomeScreen", () => (
     onLocaleChange,
     onLogout,
     onOpenCustomerReceivables,
+    onOpenSales,
   }: {
     locale: LocaleCode;
     onLocaleChange: (locale: LocaleCode) => void;
     onLogout: () => void;
     onOpenCustomerReceivables?: () => void;
+    onOpenSales?: () => void;
   }) => (
     <section aria-label="home">
       <output aria-label="home locale">{locale}</output>
       <button type="button" onClick={() => onLocaleChange("zh")}>Change home locale</button>
       <button type="button" onClick={onLogout}>Log out</button>
       <button type="button" onClick={onOpenCustomerReceivables}>Open receivables</button>
+      <button type="button" onClick={onOpenSales}>Open sales</button>
     </section>
   ),
 }));
 
 vi.mock("../../../packages/app-common/src/components/CustomerReceivablesScreen", () => ({
   CustomerReceivablesScreen: ({ initialCustomerId, onBack }: { initialCustomerId?: string; onBack: () => void }) => <section aria-label="receivables"><output>{initialCustomerId}</output><button onClick={onBack}>Back home</button></section>
+}));
+
+vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
+  SaleScreen: ({ onOpenCustomerReceivables }: { onOpenCustomerReceivables?: (customerId?: string) => void }) => (
+    <section aria-label="sale">
+      <button type="button" onClick={() => onOpenCustomerReceivables?.("customer-from-sale")}>Open sale receivables</button>
+    </section>
+  ),
 }));
 
 import { App } from "./main";
@@ -90,5 +101,14 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByLabelText("receivables")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Back home" }));
     expect(screen.getByLabelText("home")).toBeVisible();
+  });
+
+  it("opens filtered customer receivables from the sale sidebar", async () => {
+    render(<App />); fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open sale receivables" }));
+    expect(await screen.findByLabelText("receivables")).toHaveTextContent("customer-from-sale");
+    fireEvent.click(screen.getByRole("button", { name: "Back home" }));
+    expect(await screen.findByLabelText("sale")).toBeVisible();
   });
 });

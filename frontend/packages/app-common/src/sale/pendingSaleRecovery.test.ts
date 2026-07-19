@@ -4,6 +4,7 @@ import {
   clearPendingSaleRecovery,
   loadPendingSaleRecovery,
   pendingSaleRecoveryKey,
+  pendingSaleRecoveryRequiresAttention,
   savePendingSaleRecovery,
   type PendingSaleRecoveryEnvelope,
 } from "./pendingSaleRecovery";
@@ -95,6 +96,13 @@ describe("pending sale recovery envelope", () => {
     const ready = { ...envelope(), phase: "READY_TO_CREATE" as const, payments: [] };
     savePendingSaleRecovery(storage, ready);
     expect(loadPendingSaleRecovery(storage, "T-01")).toEqual({ status: "valid", envelope: ready });
+  });
+
+  it("requires automatic recovery only for submitted creates or integrated cards", () => {
+    const localDraft = { ...envelope(), phase: "READY_TO_CREATE" as const, payments: [] };
+    expect(pendingSaleRecoveryRequiresAttention(localDraft)).toBe(false);
+    expect(pendingSaleRecoveryRequiresAttention({ ...localDraft, createAttempted: true })).toBe(true);
+    expect(pendingSaleRecoveryRequiresAttention(envelope())).toBe(true);
   });
 
   it.each([

@@ -132,6 +132,31 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
+    void synchronizesDocumentCountersWithSeededDocumentNumbersIdempotently() {
+        var countersBefore = jdbc.queryForList("""
+                select tipo || '|' || periodo || '|' || ultimo_numero
+                from contador_documento
+                where tienda_id = (select id from tienda where codigo_tienda = '001')
+                  and tipo in ('AV', 'AC', 'FV', 'FC', 'FRV', 'FRC')
+                order by tipo, periodo
+                """, String.class);
+
+        assertThat(countersBefore).contains(
+                "AV|2026|144",
+                "FV|2026|144");
+
+        seeder.seed();
+
+        assertThat(jdbc.queryForList("""
+                select tipo || '|' || periodo || '|' || ultimo_numero
+                from contador_documento
+                where tienda_id = (select id from tienda where codigo_tienda = '001')
+                  and tipo in ('AV', 'AC', 'FV', 'FC', 'FRV', 'FRC')
+                order by tipo, periodo
+                """, String.class)).isEqualTo(countersBefore);
+    }
+
+    @Test
     void seedsOneClosedZeroBalanceCashHistoryIdempotently() {
         var historyId = DevSampleDataSeeder.cashSessionHistoryId();
         var history = jdbc.queryForMap("""

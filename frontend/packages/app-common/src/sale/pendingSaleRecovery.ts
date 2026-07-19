@@ -11,6 +11,7 @@ export type PendingSaleRecoveryEnvelope = {
   quoteCents: number;
   quoteReady: true;
   payments: PendingPaymentAllocation[];
+  createAttempted?: boolean;
   savedAt: string;
 };
 
@@ -35,6 +36,11 @@ export function pendingSaleRecoveryPhase(payments: PendingPaymentAllocation[]): 
   const card = payments.find((payment) => payment.kind === "INTEGRATED_CARD");
   if (!card || card.status === "APPROVED") return "READY_TO_CREATE";
   return UNCERTAIN_CARD.has(card.status) ? "CARD_IN_FLIGHT" : "CARD_FINAL_FAILURE";
+}
+
+export function pendingSaleRecoveryRequiresAttention(envelope: PendingSaleRecoveryEnvelope) {
+  return envelope.createAttempted === true
+    || envelope.payments.some((payment) => payment.kind === "INTEGRATED_CARD");
 }
 
 export function savePendingSaleRecovery(storage: Storage, envelope: PendingSaleRecoveryEnvelope) {
@@ -80,6 +86,7 @@ function validEnvelopeShape(value: unknown): value is PendingSaleRecoveryEnvelop
   if (!validDraft(value.draft)) return false;
   if (!safePositiveInteger(value.quoteCents) || value.quoteReady !== true) return false;
   if (typeof value.savedAt !== "string" || !Number.isFinite(Date.parse(value.savedAt))) return false;
+  if (value.createAttempted !== undefined && typeof value.createAttempted !== "boolean") return false;
   if (!Array.isArray(value.payments) || !value.payments.every(validAllocation)) return false;
   if (new Set(value.payments.map((payment) => payment.id)).size !== value.payments.length) return false;
   let allocatedCents = 0;

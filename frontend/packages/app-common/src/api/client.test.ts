@@ -21,6 +21,12 @@ describe("apiRequest", () => {
     }));
   });
 
+  it("accepts a successful response with an empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+
+    await expect(apiRequest("/pos/payment-sessions/active")).resolves.toBeUndefined();
+  });
+
   it("keeps structured problem details on API errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       code: "PRODUCT_PRICE_RULE_CONFLICT",

@@ -2,7 +2,9 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import java.lang.reflect.RecordComponent;
 import java.math.BigDecimal;
@@ -10,6 +12,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,15 @@ class SalePaymentSessionControllerContractTest {
  @Test void exposesReloadAllocationQueryFinalizeAndCancelBehindSalePermission() throws Exception {assertThat(SalePaymentSessionController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1/pos/payment-sessions");assertThat(SalePaymentSessionController.class.getAnnotation(PreAuthorize.class).value()).contains("TICKETS_CREATE");assertThat(SalePaymentSessionController.class.getDeclaredMethod("get",UUID.class,Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/{id}");assertThat(SalePaymentSessionController.class.getDeclaredMethod("add",UUID.class,SalePaymentSessionController.Allocation.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations");assertThat(SalePaymentSessionController.class.getDeclaredMethod("query",UUID.class,UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations/{allocationId}/query");assertThat(SalePaymentSessionController.class.getDeclaredMethod("finalizeSession",UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/finalize");}
  @Test void mutationsUseAPessimisticSessionLock() throws Exception {var lock=SalePaymentSessionRepository.class.getDeclaredMethod("findLocked",UUID.class).getAnnotation(org.springframework.data.jpa.repository.Lock.class);assertThat(lock.value()).isEqualTo(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);}
  @Test void activeRecoveryIsServerScopedByStoreTerminalAndUser() throws Exception {assertThat(SalePaymentSessionController.class.getDeclaredMethod("active",Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/active");var query=SalePaymentSessionRepository.class.getDeclaredMethod("findActive",UUID.class,UUID.class,UUID.class).getAnnotation(org.springframework.data.jpa.repository.Query.class).value();assertThat(query).contains("s.storeId=:storeId","s.terminalId=:terminalId","s.userId=:userId");}
+
+ @Test void activeRecoveryReturnsNoContentWhenThereIsNoActiveSession() throws Exception {
+  var fixture=httpFixture();
+  when(fixture.service.active(any())).thenReturn(Optional.empty());
+
+  fixture.mvc.perform(get("/api/v1/pos/payment-sessions/active"))
+    .andExpect(status().isNoContent())
+    .andExpect(content().string(""));
+ }
 
  @Test void invalidDiscardBodyReturnsBadRequestWithoutCallingService() throws Exception {
   var fixture=httpFixture();

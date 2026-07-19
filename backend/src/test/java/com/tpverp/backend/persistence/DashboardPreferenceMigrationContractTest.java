@@ -7,19 +7,21 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV73ContractTest {
+class DashboardPreferenceMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V73__gestion_clientes_proveedores.sql";
+            "db/migration/V77__preferencia_dashboard_usuario.sql";
 
     @Test
-    void createsCustomerSupplierManagementPermissionWithoutExpandingExistingRoles() throws IOException {
+    void createsOneJsonDashboardPreferencePerUserWithCascadeDeletion() throws IOException {
         String sql = migrationSql();
 
         assertThat(sql)
-                .contains("'gestion_cliente_proveedor'")
-                .contains("'party.permissions.management'")
-                .doesNotContain("insert into rol_permiso");
+                .contains("create table preferencia_dashboard")
+                .contains("usuario_id uuid not null references usuario(id) on delete cascade")
+                .contains("widgets jsonb not null")
+                .contains("jsonb_array_length(widgets) <= 24")
+                .contains("unique (usuario_id)");
     }
 
     private String migrationSql() throws IOException {

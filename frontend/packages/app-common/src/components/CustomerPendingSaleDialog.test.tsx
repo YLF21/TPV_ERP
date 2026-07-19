@@ -6,6 +6,7 @@ import "@testing-library/jest-dom/vitest";
 import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
 import {
   addLocalDays,
   pendingAllocationCents,
@@ -533,6 +534,26 @@ describe("CustomerPendingSaleDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Servidor no disponible");
     expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-09-03");
     fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("clears a local recovery and restores Cancel after a definitive create conflict", async () => {
+    const onCancel = vi.fn();
+    const onClearRecovery = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockRejectedValueOnce(new ApiError("La operación entra en conflicto con los datos existentes", 409));
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{}}
+      request={request} onClearRecovery={onClearRecovery} onCancel={onCancel} onSuccess={vi.fn()} />);
+
+    await screen.findAllByText("10,00");
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/conflicto/i);
+    expect(onClearRecovery).toHaveBeenCalledOnce();
+    const cancel = screen.getByRole("button", { name: "Cancelar" });
+    expect(cancel).toBeEnabled();
+    fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledOnce();
   });
 

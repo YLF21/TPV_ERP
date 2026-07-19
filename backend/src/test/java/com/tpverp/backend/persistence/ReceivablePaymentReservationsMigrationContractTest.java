@@ -6,12 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV78ContractTest {
+class ReceivablePaymentReservationsMigrationContractTest {
 
     @Test
     void migrationPersistsAuthoritativeReceivablePaymentReservationsAndPendingSaleLease() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V78__receivable_payment_reservations.sql"))
+                "src/main/resources/db/migration/V73__receivable_payment_reservations.sql"))
                 .toLowerCase();
 
         assertThat(sql).contains(

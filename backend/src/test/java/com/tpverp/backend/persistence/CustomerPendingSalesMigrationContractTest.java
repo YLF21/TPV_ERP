@@ -6,12 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class MigrationV77ContractTest {
+class CustomerPendingSalesMigrationContractTest {
 
     @Test
     void migrationAddsIdempotencyWithoutInventingPendingPaymentMethod() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V77__customer_pending_sales.sql"));
+                "src/main/resources/db/migration/V72__customer_pending_sales.sql"));
         var normalized = sql.toLowerCase();
 
         assertThat(normalized).contains(

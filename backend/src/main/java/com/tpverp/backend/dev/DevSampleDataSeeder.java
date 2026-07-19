@@ -65,7 +65,49 @@ public class DevSampleDataSeeder {
         seedCatalog();
         seedParties();
         seedDocuments();
+        synchronizeDocumentCounters();
         seedWarehouseOutput();
+    }
+
+    private void synchronizeDocumentCounters() {
+        var seededCounters = jdbc.query("""
+                select tipo,
+                       case when tipo = 'TICKET'
+                            then to_char(fecha, 'YYYYMMDD')
+                            else extract(year from fecha)::integer::text
+                       end as periodo,
+                       max(substring(numero from '([0-9]+)$')::integer) as ultimo_numero
+                from documento
+                where tienda_id = ?
+                  and numero ~ '[0-9]+$'
+                group by tipo,
+                         case when tipo = 'TICKET'
+                              then to_char(fecha, 'YYYYMMDD')
+                              else extract(year from fecha)::integer::text
+                         end
+                """, (result, row) -> new SeededDocumentCounter(
+                CommercialDocumentType.valueOf(result.getString("tipo")),
+                result.getString("periodo"),
+                result.getInt("ultimo_numero")), STORE);
+        for (var counter : seededCounters) {
+            var prefix = prefix(counter.type());
+            jdbc.update("""
+                    insert into contador_documento
+                        (id, tienda_id, tipo, periodo, ultimo_numero, version)
+                    values (?, ?, ?, ?, ?, 0)
+                    on conflict (tienda_id, tipo, periodo) do update
+                    set ultimo_numero = greatest(
+                        contador_documento.ultimo_numero,
+                        excluded.ultimo_numero)
+                    """, id("document-counter-" + prefix + "-" + counter.period()),
+                    STORE, prefix, counter.period(), counter.lastNumber());
+        }
+    }
+
+    private record SeededDocumentCounter(
+            CommercialDocumentType type,
+            String period,
+            int lastNumber) {
     }
 
     private UUID installation() {

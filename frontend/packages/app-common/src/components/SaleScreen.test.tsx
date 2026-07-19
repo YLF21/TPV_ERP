@@ -757,6 +757,7 @@ describe("SaleScreen", () => {
       version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
       customer: { id: "customer-1", name: "Cliente Pruebas SL" }, draft: recoveredDraft,
       quoteCents: 1_000, quoteReady: true, payments: [], savedAt: "2026-07-18T08:00:00.000Z",
+      createAttempted: true,
     });
     const bodies: string[] = [];
     let creates = 0;
@@ -789,6 +790,28 @@ describe("SaleScreen", () => {
     expect(bodies[1]).toBe(bodies[0]);
     expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBeNull();
     expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
+  });
+
+  it("discards a legacy local-only draft instead of reopening it on a new sale entry", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: products[0], quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-stale");
+    savePendingSaleRecovery(localStorage, {
+      version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" }, draft: recoveredDraft,
+      quoteCents: 1_000, quoteReady: true,
+      payments: [{ id: "cash-stale", kind: "CASH", methodId: "cash-method", amountCents: 200,
+        deliveredCents: 200, changeCents: 0, status: "APPROVED" }],
+      savedAt: "2026-07-18T08:00:00.000Z",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+
+    renderSaleScreen();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBeNull();
   });
 
   it("fails closed on corrupt recovery data and exposes its recoverable identifier without deleting it", async () => {
@@ -1092,6 +1115,7 @@ describe("SaleScreen", () => {
     expect(saleDisplayedTotal(5, false, 0, 1210)).toBe(5);
   });
   it("renders the sales workspace with shared frame controls", () => {
+    const openCustomerReceivables = vi.fn();
     const html = renderToStaticMarkup(
       <SaleScreen
         app="venta"
@@ -1101,6 +1125,7 @@ describe("SaleScreen", () => {
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
         onLogout={vi.fn()}
+        onOpenCustomerReceivables={openCustomerReceivables}
       />
     );
 
@@ -1113,6 +1138,8 @@ describe("SaleScreen", () => {
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Líneas de venta");
     expect(html).toContain("Cobro");
+    expect(html).toContain("Deudas de clientes");
+    expect(html).toContain('class="sale-receivables-entry"');
     expect(html).toContain("F5");
     expect(html).toContain("AvPág");
     expect(html).not.toContain("F10");

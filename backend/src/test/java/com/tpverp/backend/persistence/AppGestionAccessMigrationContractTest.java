@@ -7,10 +7,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV72ContractTest {
+class AppGestionAccessMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V72__acceso_app_gestion.sql";
+            "db/migration/V75__acceso_app_gestion.sql";
 
     @Test
     void createsAppAccessPermissionAndMigratesPreviouslyEligibleRoles() throws IOException {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 import type { TerminalContext } from "../types";
@@ -109,7 +109,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     return () => { current = false; };
   }, []);
 
-  const persistRecovery = useCallback((nextDraft: PendingSaleDraft, nextPayments: PendingPaymentAllocation[]) => {
+  const persistRecovery = useCallback((nextDraft: PendingSaleDraft, nextPayments: PendingPaymentAllocation[], createAttempted = false) => {
     if (!onPersistRecovery || !terminalContext?.terminalCode || !quoteReady) return;
     onPersistRecovery({
       version: 2,
@@ -120,6 +120,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       quoteCents,
       quoteReady: true,
       payments: nextPayments,
+      createAttempted,
       savedAt: new Date().toISOString(),
     });
   }, [customerName, onPersistRecovery, quoteCents, quoteReady, terminalContext?.terminalCode]);
@@ -147,7 +148,7 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
     if (disabled || submitting || quoteLoading || !quoteReady || uncertain || cardFinalFailure || summary.pendingCents < 0 || !draft.dueDate) return;
     setSubmitting(true); setError("");
     try {
-      persistRecovery(draft, payments);
+      persistRecovery(draft, payments, true);
       setCreateDurable(true);
       const result = await request<PendingSaleMutationResult>("/pos/customer-pending-sales", {
         token, body: pendingCreateBody(draft, payments, quoteCents),
@@ -162,6 +163,16 @@ export function CustomerPendingSaleDialog({ customerName, locale = "es", draft: 
       }
       if (retryPrint) onSuccess(result.receivable, retryPrint); else onSuccess(result.receivable);
     } catch (failure) {
+      const hasIntegratedCard = payments.some((payment) => payment.kind === "INTEGRATED_CARD");
+      const definitiveLocalFailure = !hasIntegratedCard
+        && failure instanceof ApiError
+        && failure.status >= 400
+        && failure.status < 500;
+      if (definitiveLocalFailure) {
+        try { onClearRecovery?.(); }
+        catch { /* The failed request is still definitive; storage will be discarded on next entry. */ }
+        setCreateDurable(false);
+      }
       setError(failure instanceof Error ? failure.message : t("pendingSale.createError"));
     } finally { setSubmitting(false); }
   }, [cardFinalFailure, disabled, draft, onClearRecovery, onSuccess, payments, persistRecovery, quoteCents, quoteLoading, quoteReady, request, submitting, summary.pendingCents, token, uncertain]);

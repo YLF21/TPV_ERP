@@ -43,6 +43,7 @@ export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
+  const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
 
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
@@ -77,7 +78,7 @@ export function App() {
   const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
 
   if (screen === "customerReceivables" && canOpenCustomerReceivables) {
-    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={devTerminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen("home"); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
+    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={devTerminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
   }
 
   if (screen === "salesReport" && canOpenSalesReport) {
@@ -105,6 +106,11 @@ export function App() {
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
+        onOpenCustomerReceivables={(customerId?: string) => {
+          setReceivablesCustomerId(customerId);
+          setReceivablesReturnScreen("sale");
+          setScreen("customerReceivables");
+        }}
       />
     );
   }
@@ -119,7 +125,7 @@ export function App() {
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
-        onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setScreen("customerReceivables"); }}
+        onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setReceivablesReturnScreen("stock"); setScreen("customerReceivables"); }}
       />
     );
   }
@@ -180,7 +186,7 @@ export function App() {
       onOpenStock={() => setScreen("stock")}
       onOpenWarehouse={() => setScreen("warehouse")}
       onOpenSalesReport={() => setScreen("salesReport")}
-      onOpenCustomerReceivables={() => { setReceivablesCustomerId(undefined); setScreen("customerReceivables"); }}
+      onOpenCustomerReceivables={() => { setReceivablesCustomerId(undefined); setReceivablesReturnScreen("home"); setScreen("customerReceivables"); }}
       onOpenSettings={() => setScreen("settings")}
     />
   );

@@ -10274,6 +10274,70 @@ body,
   font-size: 16px !important;
 }
 
+.sale-receivables-entry {
+  margin: 0 10px 10px !important;
+}
+
+.sale-receivables-entry button {
+  width: 100% !important;
+  min-height: 48px !important;
+  padding: 8px 12px !important;
+  display: grid !important;
+  place-items: center !important;
+  gap: 2px !important;
+  border: 1px solid var(--tpv-v3-line) !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: var(--tpv-v3-surface-alt) !important;
+  color: var(--tpv-v3-text) !important;
+  font: inherit !important;
+  font-weight: 850 !important;
+}
+
+.sale-receivables-entry button:hover:not(:disabled),
+.sale-receivables-entry button:focus-visible {
+  border-color: var(--tpv-v3-primary) !important;
+  background: var(--tpv-v3-surface) !important;
+}
+
+.sale-receivables-entry button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.58 !important;
+}
+
+.sale-receivables-entry small {
+  color: var(--tpv-v3-muted) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+.sale-sidebar-print-retry {
+  margin: 0 10px 10px !important;
+  padding: 10px !important;
+  display: grid !important;
+  gap: 8px !important;
+  border: 1px solid #d92d20 !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: #fff4f2 !important;
+  color: #b42318 !important;
+}
+
+.sale-sidebar-print-retry p {
+  margin: 0 !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  line-height: 1.35 !important;
+}
+
+.sale-sidebar-print-retry button {
+  width: 100% !important;
+  min-height: 34px !important;
+  border: 1px solid #d92d20 !important;
+  border-radius: var(--tpv-v3-radius) !important;
+  background: #ffffff !important;
+  color: #b42318 !important;
+  font-weight: 800 !important;
+}
+
 .sale-payment-actions {
   gap: 6px !important;
 }
