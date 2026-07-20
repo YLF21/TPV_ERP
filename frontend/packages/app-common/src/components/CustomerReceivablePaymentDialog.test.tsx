@@ -80,16 +80,28 @@ describe("CustomerReceivablePaymentDialog", () => {
 
   it("uses the cash calculator received amount and change for a partial collection", async () => {
     const onPaid = vi.fn();
-    const request = vi.fn(async (path: string) => path === "/payment-methods" ? methods : receivable);
+    const receipt = {
+      kind: "PAYMENT_RECEIPT", paymentId: "cash-payment", documentNumber: "FV-1",
+      collectedAt: "2026-07-20T09:00:00Z", method: "EFECTIVO", amount: "20.00", remaining: "55.00"
+    } as const;
+    const request = vi.fn(async (path: string) => path === "/payment-methods"
+      ? methods
+      : { receivable, paymentReceipt: receipt });
     render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" request={request as any} onCancel={vi.fn()} onPaid={onPaid} />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Efectivo" })).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Importe a cobrar"), { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Efectivo" }));
     fireEvent.change(screen.getByLabelText("Dinero recibido"), { target: { value: "50" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar cobro" }));
-    await waitFor(() => expect(onPaid).toHaveBeenCalled());
+    expect(await screen.findByRole("dialog", { name: "Pago completado" })).toBeVisible();
+    expect(screen.getByText("20,00")).toBeVisible();
+    expect(screen.getByText("50,00")).toBeVisible();
+    expect(screen.getByText("30,00")).toBeVisible();
+    expect(onPaid).not.toHaveBeenCalled();
     const payment = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"))?.[1].body.pagos[0];
     expect(payment).toMatchObject({ metodoPagoId: "cash", importe: "20.00", entregado: "50.00", cambio: "30.00" });
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    expect(onPaid).toHaveBeenCalledWith(receivable);
   });
 
   it("retains a stable transfer request id after a lost response and retries without duplication", async () => {
@@ -218,10 +230,23 @@ describe("CustomerReceivablePaymentDialog", () => {
   it("clears the stable payment attempt and reports paid when printing fails", async () => {
     const onPaid = vi.fn();
     localStorage.setItem("tpverp.receivable.01.doc-1.card-attempt.standard", JSON.stringify({ requestId: "stable", kind: "cash", item: { metodoPagoId: "cash", importe: "75.00", principal: true, requestId: "stable" } }));
-    const request = vi.fn(async (path: string) => path === "/payment-methods" ? methods : { receivable, paymentReceipt: { paymentId: "stable" } });
-    render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printReceipt={vi.fn().mockResolvedValue({ status: "FAILED", technicalMessage: "printer offline" })} request={request as any} onCancel={vi.fn()} onPaid={onPaid} />);
+    const receipt = {
+      kind: "PAYMENT_RECEIPT", paymentId: "stable", documentNumber: "FV-1",
+      collectedAt: "2026-07-20T09:00:00Z", method: "EFECTIVO", amount: "75.00", remaining: "0.00"
+    } as const;
+    const request = vi.fn(async (path: string) => path === "/payment-methods" ? methods : { receivable, paymentReceipt: receipt });
+    const printReceipt = vi.fn()
+      .mockResolvedValueOnce({ status: "FAILED", technicalMessage: "printer offline" })
+      .mockResolvedValueOnce({ status: "PRINTED" });
+    render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printReceipt={printReceipt} request={request as any} onCancel={vi.fn()} onPaid={onPaid} />);
     fireEvent.click(await screen.findByRole("button", { name: "Reintentar cobro" }));
-    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(receivable, expect.any(Function)));
+    expect(await screen.findByRole("dialog", { name: "Pago completado" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("El cobro se ha completado");
+    expect(onPaid).not.toHaveBeenCalled();
     expect(localStorage.getItem("tpverp.receivable.01.doc-1.card-attempt.standard")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
+    expect(await screen.findByText("Ticket enviado a la impresora")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    expect(onPaid).toHaveBeenCalledWith(receivable);
   });
 });

@@ -25,11 +25,13 @@ describe("PartyDirectoryPanel", () => {
     expect(buildPartyRequest({
       ...emptyPartyForm, name: " Cliente Uno ", documentType: "NIF", documentNumber: " 123A ",
       birthday: "1990-05-12", gender: "FEMENINO", discount: "7.5", commercialConsent: true,
-      preferredCommercialChannelId: "channel-1", country: "es"
+      preferredCommercialChannelId: "channel-1", country: "es", creditEnabled: true,
+      creditLimit: "2500.50", paymentTermDays: "45", creditBlocked: false, blockOnOverdue: true
     }, false)).toMatchObject({
       fiscalName: "Cliente Uno", documentNumber: "123A", birthday: "1990-05-12", gender: "FEMENINO",
       discount: 7.5, commercialConsent: true, preferredCommercialChannelId: "channel-1",
-      address: { country: "ES" }, isMember: false
+      address: { country: "ES" }, isMember: false, creditEnabled: true, creditLimit: 2500.5,
+      unlimitedCredit: false, paymentTermDays: 45, creditBlocked: false, blockOnOverdue: true
     });
   });
 
@@ -55,16 +57,33 @@ describe("PartyDirectoryPanel", () => {
     expect(partyFormFromView({
       id: "c1", clientId: "C-01-1", fiscalName: "Ana", documentType: "NIF", documentNumber: "1",
       discount: "3.00", isMember: false, birthday: "2000-02-02", gender: "OTRO", commercialConsent: true,
-      preferredCommercialChannelId: "channel-1", active: true, address: { city: "Arrecife", country: "ES" }
+      preferredCommercialChannelId: "channel-1", active: true, address: { city: "Arrecife", country: "ES" },
+      creditEnabled: false, creditLimit: "500.00", paymentTermDays: 15, creditBlocked: true, blockOnOverdue: true
     }, false)).toMatchObject({
       name: "Ana", discount: "3.00", birthday: "2000-02-02", gender: "OTRO", commercialConsent: true,
-      preferredCommercialChannelId: "channel-1", city: "Arrecife"
+      preferredCommercialChannelId: "channel-1", city: "Arrecife", creditEnabled: false,
+      creditLimit: "500.00", paymentTermDays: "15", creditBlocked: true, blockOnOverdue: true
     });
   });
 
   it("requires a valid country and a channel when consent is enabled", () => {
     expect(validatePartyForm({ ...emptyPartyForm, name: "Ana", documentNumber: "1", country: "E", commercialConsent: true }, false))
       .toEqual(["country", "preferredCommercialChannelId"]);
+  });
+
+  it("explicitly clears an existing credit limit when the field is empty", () => {
+    expect(buildPartyRequest({
+      ...emptyPartyForm, name: "Cliente sin límite", documentNumber: "1", creditLimit: ""
+    }, false)).toMatchObject({ creditLimit: null, unlimitedCredit: true });
+  });
+
+  it("validates customer credit limits and payment terms", () => {
+    expect(validatePartyForm({
+      ...emptyPartyForm, name: "Ana", documentNumber: "1", creditLimit: "-0.01", paymentTermDays: "2.5"
+    }, false)).toEqual(["creditLimit", "paymentTermDays"]);
+    expect(validatePartyForm({
+      ...emptyPartyForm, name: "Ana", documentNumber: "1", creditLimit: "", paymentTermDays: "0"
+    }, false)).toEqual([]);
   });
 
   it("offers the selected customer receivables action only for customer directories with read permission", () => {

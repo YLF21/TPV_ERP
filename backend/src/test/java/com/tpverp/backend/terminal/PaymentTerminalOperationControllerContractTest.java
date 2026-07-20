@@ -84,7 +84,7 @@ class PaymentTerminalOperationControllerContractTest {
                         .content(template.formatted(operationId, "\"password\":\"wrong\",")))
                 .andExpect(status().isUnauthorized());
 
-        when(service.refund(any(), any(), any(), any(), any())).thenThrow(new PaymentTerminalApiException(
+        when(service.refund(any(), any(), any(), any(), any(), any())).thenThrow(new PaymentTerminalApiException(
                 org.springframework.http.HttpStatus.NOT_FOUND, "PAYMENT_OPERATION_NOT_FOUND", "Operacion no encontrada"));
         mvc.perform(post("/api/v1/payment-terminal/operations/{id}/refund", originalId)
                         .with(permitted).with(csrf()).contentType(MediaType.APPLICATION_JSON)
@@ -143,7 +143,7 @@ class PaymentTerminalOperationControllerContractTest {
         assertThat(annotation.inclusive()).isTrue();
         assertThat(new PaymentTerminalOperationController.RefundRequest(UUID.randomUUID(), "key",
                 "1234",
-                new BigDecimal("1.00")).amount()).isEqualByComparingTo("1.00");
+                new BigDecimal("1.00"), null).amount()).isEqualByComparingTo("1.00");
     }
 
     private static void assertProtected(String name, Class<?>[] parameters,

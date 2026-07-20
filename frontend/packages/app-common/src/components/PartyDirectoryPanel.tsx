@@ -48,6 +48,8 @@ export type CustomerView = {
   memberUuid?: string | null;
   balance?: number | string | null; birthday?: string | null; gender?: string | null; commercialConsent?: boolean;
   preferredCommercialChannelId?: string | null; active: boolean; fiscalDataComplete?: boolean;
+  creditEnabled?: boolean; creditLimit?: number | string | null; paymentTermDays?: number | null;
+  creditBlocked?: boolean; blockOnOverdue?: boolean;
 };
 
 export type SupplierView = {
@@ -72,12 +74,14 @@ export type PartyForm = {
   address: string; postalCode: string; city: string; province: string; country: string; notes: string;
   discount: string; numMember: string; birthday: string; gender: string; commercialConsent: boolean;
   preferredCommercialChannelId: string;
+  creditEnabled: boolean; creditLimit: string; paymentTermDays: string; creditBlocked: boolean; blockOnOverdue: boolean;
 };
 
 export const emptyPartyForm: PartyForm = {
   name: "", tradeName: "", documentType: "NIF", documentNumber: "", phone: "", email: "", address: "",
   postalCode: "", city: "", province: "", country: "ES", notes: "", discount: "0", numMember: "",
-  birthday: "", gender: "", commercialConsent: false, preferredCommercialChannelId: ""
+  birthday: "", gender: "", commercialConsent: false, preferredCommercialChannelId: "",
+  creditEnabled: true, creditLimit: "", paymentTermDays: "30", creditBlocked: false, blockOnOverdue: false
 };
 
 export function customerReceivablesActionVisible(kind: PartyDirectoryKind, selected: boolean, permissions: Permission[]) {
@@ -99,7 +103,12 @@ export function partyFormFromView(entry: CustomerView | SupplierView, supplier: 
     discount: supplier ? "0" : String(customer.discount ?? 0), numMember: supplier ? "" : customer.numMember ?? "",
     birthday: supplier ? "" : customer.birthday ?? "", gender: supplier ? "" : customer.gender ?? "",
     commercialConsent: supplier ? false : Boolean(customer.commercialConsent),
-    preferredCommercialChannelId: supplier ? "" : customer.preferredCommercialChannelId ?? ""
+    preferredCommercialChannelId: supplier ? "" : customer.preferredCommercialChannelId ?? "",
+    creditEnabled: supplier ? true : customer.creditEnabled ?? true,
+    creditLimit: supplier ? "" : customer.creditLimit == null ? "" : String(customer.creditLimit),
+    paymentTermDays: supplier ? "30" : String(customer.paymentTermDays ?? 30),
+    creditBlocked: supplier ? false : customer.creditBlocked ?? false,
+    blockOnOverdue: supplier ? false : customer.blockOnOverdue ?? false
   };
 }
 
@@ -119,7 +128,13 @@ export function buildPartyRequest(form: PartyForm, supplier: boolean, preserveMe
     discount: Number(form.discount) || 0, isMember: preserveMember,
     numMember: preserveMember ? form.numMember.trim() || null : null,
     birthday: form.birthday || null, gender: form.gender || null, commercialConsent: form.commercialConsent,
-    preferredCommercialChannelId: form.commercialConsent ? form.preferredCommercialChannelId || null : null
+    preferredCommercialChannelId: form.commercialConsent ? form.preferredCommercialChannelId || null : null,
+    creditEnabled: form.creditEnabled,
+    creditLimit: form.creditLimit.trim() ? Number(form.creditLimit) : null,
+    unlimitedCredit: !form.creditLimit.trim(),
+    paymentTermDays: Number(form.paymentTermDays),
+    creditBlocked: form.creditBlocked,
+    blockOnOverdue: form.blockOnOverdue
   };
 }
 
@@ -130,6 +145,9 @@ export function validatePartyForm(form: PartyForm, supplier: boolean): string[] 
   if (form.country.trim().length !== 2) errors.push("country");
   if (!supplier && (Number(form.discount) < 0 || Number(form.discount) > 100)) errors.push("discount");
   if (!supplier && form.commercialConsent && !form.preferredCommercialChannelId) errors.push("preferredCommercialChannelId");
+  if (!supplier && form.creditLimit.trim() && (!Number.isFinite(Number(form.creditLimit)) || Number(form.creditLimit) < 0)) errors.push("creditLimit");
+  const paymentTermDays = Number(form.paymentTermDays);
+  if (!supplier && (!Number.isInteger(paymentTermDays) || paymentTermDays < 0 || paymentTermDays > 3650)) errors.push("paymentTermDays");
   return errors;
 }
 
@@ -446,7 +464,7 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
             <label><span>{t("party.field.address")}</span><input value={form.address} onChange={(e) => update("address", e.target.value)} /></label>
             <div className="product-create-row product-create-row-three"><label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(e) => update("postalCode", e.target.value)} /></label><label><span>{t("party.field.city")}</span><input value={form.city} onChange={(e) => update("city", e.target.value)} /></label><label><span>{t("party.field.province")}</span><input value={form.province} onChange={(e) => update("province", e.target.value)} /></label></div>
             <div className="product-create-row product-create-row-two"><label><span>{t("party.field.country")}</span><input required maxLength={2} value={form.country} onChange={(e) => update("country", e.target.value.toUpperCase())} /></label><label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(e) => update("notes", e.target.value)} /></label></div>
-            {!isSupplier && <><div className="product-create-row product-create-row-two"><label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(e) => update("birthday", e.target.value)} /></label><label><span>{t("party.field.gender")}</span><ErpSelect value={form.gender} onChange={(value) => update("gender", value)} options={["", "MASCULINO", "FEMENINO", "OTRO"].map((value) => ({ value, label: value ? t(`party.gender.${value.toLowerCase()}`) : t("party.gender.unspecified") }))} /></label></div><label className="party-commercial-consent"><input type="checkbox" checked={form.commercialConsent} onChange={(e) => update("commercialConsent", e.target.checked)} /><span>{t("party.field.commercialConsent")}</span></label>{form.commercialConsent && <label><span>{t("party.field.preferredCommercialChannel")}</span><ErpSelect value={form.preferredCommercialChannelId} onChange={(value) => update("preferredCommercialChannelId", value)} options={[{ value: "", label: t("party.channel.select") }, ...channels.map((channel) => ({ value: channel.id, label: channel.name }))]} /></label>}</>}
+            {!isSupplier && <><div className="product-create-row product-create-row-two"><label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(e) => update("birthday", e.target.value)} /></label><label><span>{t("party.field.gender")}</span><ErpSelect value={form.gender} onChange={(value) => update("gender", value)} options={["", "MASCULINO", "FEMENINO", "OTRO"].map((value) => ({ value, label: value ? t(`party.gender.${value.toLowerCase()}`) : t("party.gender.unspecified") }))} /></label></div><section className="party-credit-settings" aria-label={t("party.credit.title")}><h3>{t("party.credit.title")}</h3><label className="party-commercial-consent"><input type="checkbox" checked={form.creditEnabled} onChange={(e) => update("creditEnabled", e.target.checked)} /><span>{t("party.field.creditEnabled")}</span></label><div className="product-create-row product-create-row-two"><label><span>{t("party.field.creditLimit")}</span><input type="number" min="0" step="0.01" placeholder={t("party.credit.unlimited")} value={form.creditLimit} onChange={(e) => update("creditLimit", e.target.value)} /></label><label><span>{t("party.field.paymentTermDays")}</span><input required type="number" min="0" max="3650" step="1" value={form.paymentTermDays} onChange={(e) => update("paymentTermDays", e.target.value)} /></label></div><div className="party-credit-checkboxes"><label><input type="checkbox" checked={form.creditBlocked} onChange={(e) => update("creditBlocked", e.target.checked)} /><span>{t("party.field.creditBlocked")}</span></label><label><input type="checkbox" checked={form.blockOnOverdue} onChange={(e) => update("blockOnOverdue", e.target.checked)} /><span>{t("party.field.blockOnOverdue")}</span></label></div></section><label className="party-commercial-consent"><input type="checkbox" checked={form.commercialConsent} onChange={(e) => update("commercialConsent", e.target.checked)} /><span>{t("party.field.commercialConsent")}</span></label>{form.commercialConsent && <label><span>{t("party.field.preferredCommercialChannel")}</span><ErpSelect value={form.preferredCommercialChannelId} onChange={(value) => update("preferredCommercialChannelId", value)} options={[{ value: "", label: t("party.channel.select") }, ...channels.map((channel) => ({ value: channel.id, label: channel.name }))]} /></label>}</>}
           </fieldset>
           {status && <p className="product-create-status" role="status">{status}</p>}
           {isMember && selected && (selected as CustomerView).memberUuid && (

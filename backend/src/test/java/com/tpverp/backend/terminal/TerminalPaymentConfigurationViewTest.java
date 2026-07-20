@@ -103,6 +103,23 @@ class TerminalPaymentConfigurationViewTest {
         assertThat(view.configuration().pairingStatus()).isEqualTo("PAIRED");
     }
 
+    @Test
+    void enablesLiveOnlyForProvidersWhoseLocalBridgeAdvertisesCharges() {
+        var terminal = terminal();
+        var view = TerminalPaymentConfigurationView.from(terminal,
+                new StorePaymentConfiguration(terminal.getTienda()), TerminalPaymentConfiguration.manual(terminal))
+                .withLiveCapabilities(Map.of(
+                        PaymentTerminalProvider.REDSYS_TPV_PC, java.util.Set.of(PaymentTerminalCapability.CHARGE),
+                        PaymentTerminalProvider.GLOBAL_PAYMENTS, java.util.Set.of(PaymentTerminalCapability.CHARGE,
+                                PaymentTerminalCapability.QUERY)));
+
+        assertThat(view.providerDescriptors()).filteredOn(TerminalPaymentConfigurationView.ProviderDescriptor::liveAvailable)
+                .extracting(TerminalPaymentConfigurationView.ProviderDescriptor::provider)
+                .containsExactly(PaymentTerminalProvider.REDSYS_TPV_PC, PaymentTerminalProvider.GLOBAL_PAYMENTS);
+        assertThat(view.providerDescriptors()).filteredOn(descriptor -> !descriptor.liveAvailable())
+                .allSatisfy(descriptor -> assertThat(descriptor.unavailableReason()).isEqualTo("SDK_NOT_INSTALLED"));
+    }
+
     private Terminal terminal() {
         var company = new Company("B12345678", "Demo SL", Map.of(
                 "linea1", "Calle A", "ciudad", "Las Palmas", "codigoPostal", "35001",

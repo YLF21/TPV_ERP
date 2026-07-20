@@ -36,6 +36,12 @@ public class DocumentViewAssembler {
                 document, customerName(document), businessDate);
     }
 
+    public CustomerReceivablePaymentHistoryView receivablePaymentHistory(
+            DocumentPayment payment) {
+        return CustomerReceivablePaymentHistoryView.from(
+                payment, customerName(payment.getDocumento()));
+    }
+
     private String customerName(CommercialDocument document) {
         if (document.getClienteId() == null) {
             return null;

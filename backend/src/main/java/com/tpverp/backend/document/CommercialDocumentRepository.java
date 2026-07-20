@@ -75,6 +75,33 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     @Query("""
             select document
             from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL,
+                  com.tpverp.backend.document.DocumentStatus.PAGADO)
+              and document.clienteId is not null
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            order by document.fecha desc, document.numero desc
+            """)
+    List<CommercialDocument> findCustomerReceivablesIncludingPaid(
+            @Param("storeId") UUID storeId);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
             where document.id = :id
               and document.tiendaId = :storeId
               and document.tipo in (
@@ -113,6 +140,20 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("id") UUID id, @Param("storeId") UUID storeId);
 
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = "lineas")
+    @Query("select document from CommercialDocument document where document.id = :id and document.tiendaId = :storeId")
+    Optional<CommercialDocument> findLockedRefundSource(@Param("id") UUID id, @Param("storeId") UUID storeId);
+
+    @Query(value = """
+            select coalesce(sum(abs(line.cantidad)), 0)
+              from documento_linea line
+              join documento document on document.id = line.documento_id
+             where line.original_document_line_id = :lineId
+               and document.estado not in ('BORRADOR', 'ANULADO')
+            """, nativeQuery = true)
+    BigDecimal confirmedRefundedQuantity(@Param("lineId") UUID lineId);
 
     @EntityGraph(attributePaths = "lineas")
     Optional<CommercialDocument> findByIdAndTiendaId(UUID id, UUID tiendaId);

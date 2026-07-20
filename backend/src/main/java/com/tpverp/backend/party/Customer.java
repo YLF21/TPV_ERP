@@ -78,6 +78,21 @@ public class Customer {
     @Column(nullable = false)
     private boolean activo = true;
 
+    @Column(name = "credit_enabled", nullable = false)
+    private boolean creditEnabled = true;
+
+    @Column(name = "credit_limit", precision = 19, scale = 2)
+    private BigDecimal creditLimit;
+
+    @Column(name = "payment_term_days", nullable = false)
+    private int paymentTermDays = 30;
+
+    @Column(name = "credit_blocked", nullable = false)
+    private boolean creditBlocked;
+
+    @Column(name = "block_on_overdue", nullable = false)
+    private boolean blockOnOverdue;
+
     @Version
     private long version;
 
@@ -135,6 +150,25 @@ public class Customer {
         this.gender = gender;
         this.commercialConsent = commercialConsent;
         this.preferredCommercialChannelId = preferredCommercialChannelId;
+    }
+
+    public void configureCredit(
+            boolean enabled,
+            BigDecimal limit,
+            int termDays,
+            boolean blocked,
+            boolean blockWhenOverdue) {
+        if (limit != null && limit.signum() < 0) {
+            throw new IllegalArgumentException("creditLimit no puede ser negativo");
+        }
+        if (termDays < 0 || termDays > 3650) {
+            throw new IllegalArgumentException("paymentTermDays debe estar entre 0 y 3650");
+        }
+        creditEnabled = enabled;
+        creditLimit = limit == null ? null : limit.setScale(2, java.math.RoundingMode.HALF_UP);
+        paymentTermDays = termDays;
+        creditBlocked = blocked;
+        blockOnOverdue = blockWhenOverdue;
     }
 
     public void assignClientCode(UUID storeId, String code) {
@@ -224,5 +258,25 @@ public class Customer {
 
     public Company getCompany() {
         return company;
+    }
+
+    public boolean isCreditEnabled() {
+        return creditEnabled;
+    }
+
+    public BigDecimal getCreditLimit() {
+        return creditLimit;
+    }
+
+    public int getPaymentTermDays() {
+        return paymentTermDays;
+    }
+
+    public boolean isCreditBlocked() {
+        return creditBlocked;
+    }
+
+    public boolean isBlockOnOverdue() {
+        return blockOnOverdue;
     }
 }

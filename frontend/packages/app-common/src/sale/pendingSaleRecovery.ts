@@ -101,6 +101,8 @@ function validDraft(value: unknown): value is PendingSaleDraft {
   if (!isRecord(value) || !nonBlank(value.checkoutId) || !nonBlank(value.warehouseId) || !nonBlank(value.customerId)) return false;
   if (!validDate(value.date) || !validDate(value.dueDate)) return false;
   if (!['ALBARAN_VENTA', 'FACTURA_VENTA'].includes(String(value.type)) || !percentage(value.globalDiscount)) return false;
+  if (value.creditOverride !== undefined
+    && (!isRecord(value.creditOverride) || !nonBlank(value.creditOverride.reason) || value.creditOverride.reason.length > 500)) return false;
   return Array.isArray(value.lines) && value.lines.length > 0 && value.lines.every((line) => {
     if (!isRecord(line) || !nonBlank(line.productId) || typeof line.code !== "string" || typeof line.name !== "string") return false;
     if (!safePositiveInteger(line.quantity)) return false;

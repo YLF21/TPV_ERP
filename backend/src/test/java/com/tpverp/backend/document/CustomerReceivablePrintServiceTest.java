@@ -2,7 +2,10 @@ package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -168,6 +171,45 @@ class CustomerReceivablePrintServiceTest {
 
         assertThatThrownBy(() -> service.paymentReceipt(requested.getId(), requestId))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void reprintsPersistedPaymentByScopedIdWithoutWritingOrRegisteringAnotherPayment() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(organization.currentStore()).thenReturn(store);
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers);
+        var document = document(storeId);
+        var payment = new DocumentPayment(document,
+                new PaymentMethod(UUID.randomUUID(), "TRANSFERENCIA", true), 1,
+                new BigDecimal("25.00"), true, null, null, null, "TR-HIST-1",
+                Instant.parse("2026-07-20T09:00:00Z"), null, null, null,
+                null, null, null);
+        document.addPayment(payment);
+        document.updatePaymentStatus();
+        when(documents.findCustomerDocumentForPrint(document.getId(), storeId))
+                .thenReturn(Optional.of(document));
+        when(payments.findCustomerReceivablePayment(
+                document.getId(), payment.getId(), storeId)).thenReturn(Optional.of(payment));
+        when(payments.findAllByDocumentoId(document.getId())).thenReturn(List.of(payment));
+
+        var first = service.paymentReceiptByPaymentId(document.getId(), payment.getId());
+        var replay = service.paymentReceiptByPaymentId(document.getId(), payment.getId());
+
+        assertThat(replay).isEqualTo(first);
+        assertThat(replay.paymentId()).isEqualTo(payment.getId());
+        assertThat(replay.amount()).isEqualByComparingTo("25.00");
+        assertThat(replay.remaining()).isEqualByComparingTo("75.00");
+        verify(payments, org.mockito.Mockito.times(2)).findCustomerReceivablePayment(
+                document.getId(), payment.getId(), storeId);
+        verify(payments, never()).save(any());
+        assertThat(document.getPagos()).hasSize(1);
     }
 
     private static CommercialDocument document(UUID storeId) {

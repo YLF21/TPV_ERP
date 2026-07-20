@@ -22,6 +22,8 @@ public class DevSampleDataSeeder {
     private static final UUID WAREHOUSE = STORE;
     private static final UUID FAMILY = STORE;
     private static final UUID TAX = id("tax-iva-21");
+    private static final UUID ADMIN_ROLE = id("role-admin");
+    private static final UUID ADMIN_USER = id("user-admin");
     private static final UUID ROLE = id("role-ventas");
     private static final UUID USER = id("user-vendedor");
     private static final UUID TERMINAL = id("terminal-servidor");
@@ -52,6 +54,10 @@ public class DevSampleDataSeeder {
 
     static UUID cashSessionHistoryId() {
         return CASH_SESSION_HISTORY;
+    }
+
+    static UUID terminalId() {
+        return TERMINAL;
     }
 
     @Transactional
@@ -156,6 +162,14 @@ public class DevSampleDataSeeder {
     private void seedSecurity() {
         jdbc.update("""
                 insert into rol (id, tienda_id, nombre, protegido)
+                values (?, ?, 'ADMIN', true)
+                on conflict (id) do update
+                set tienda_id = excluded.tienda_id,
+                    nombre = excluded.nombre,
+                    protegido = true
+                """, ADMIN_ROLE, STORE);
+        jdbc.update("""
+                insert into rol (id, tienda_id, nombre, protegido)
                 values (?, ?, 'VENTAS', false)
                 on conflict do nothing
                 """, ROLE, STORE);
@@ -181,15 +195,36 @@ public class DevSampleDataSeeder {
                     activo = true
                 """, USER, STORE, passwordEncoder.encode("0000"), ROLE);
         jdbc.update("""
+                insert into usuario
+                    (id, tienda_id, nombre, user_id, user_name, password_hash, rol_id,
+                     protegido, activo, idioma, must_change_password)
+                values (?, ?, 'ADMIN', 'E-999000', 'Administrador demo', ?, ?,
+                    true, true, 'ES', false)
+                on conflict (id) do update
+                set tienda_id = excluded.tienda_id,
+                    password_hash = excluded.password_hash,
+                    rol_id = excluded.rol_id,
+                    protegido = true,
+                    activo = true,
+                    must_change_password = false
+                """, ADMIN_USER, STORE, passwordEncoder.encode("0000"), ADMIN_ROLE);
+        jdbc.update("""
                 insert into usuario_tienda (usuario_id, tienda_id)
                 values (?, ?)
                 on conflict do nothing
                 """, USER, STORE);
         jdbc.update("""
+                insert into usuario_tienda (usuario_id, tienda_id)
+                values (?, ?)
+                on conflict do nothing
+                """, ADMIN_USER, STORE);
+        jdbc.update("""
                 insert into terminal (id, tienda_id, nombre, tipo, credential_hash, aprobada, activa)
                 values (?, ?, 'SERVIDOR PRUEBAS', 'SERVIDOR', ?, true, true)
                 on conflict (id) do update
-                set aprobada = true, activa = true
+                set credential_hash = excluded.credential_hash,
+                    aprobada = true,
+                    activa = true
                 """, TERMINAL, STORE, passwordEncoder.encode("DEV-SERVER"));
     }
 

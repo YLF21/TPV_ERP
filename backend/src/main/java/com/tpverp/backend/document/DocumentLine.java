@@ -37,6 +37,8 @@ public class DocumentLine {
     private UUID promotionVersionId;
     @Column(name = "cupon_promocional_id")
     private UUID promotionalCouponId;
+    @Column(name = "original_document_line_id")
+    private UUID originalDocumentLineId;
     @Column(nullable = false)
     private int posicion;
     @Column(nullable = false, precision = 19, scale = 3)
@@ -194,6 +196,19 @@ public class DocumentLine {
 
     public CommercialDocument getDocumento() {
         return documento;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getOriginalDocumentLineId() {
+        return originalDocumentLineId;
+    }
+
+    public void identifyRefundOf(UUID originalLineId) {
+        if (originalDocumentLineId != null) throw new IllegalStateException("La linea ya identifica su origen fiscal");
+        originalDocumentLineId = Objects.requireNonNull(originalLineId, "originalLineId");
     }
 
     public UUID getProductoId() {

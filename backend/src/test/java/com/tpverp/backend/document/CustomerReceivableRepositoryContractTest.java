@@ -15,6 +15,26 @@ class CustomerReceivableRepositoryContractTest {
     }
 
     @Test
+    void paidListExcludesDeliveryNotesCoveredByAnActiveInvoice() throws Exception {
+        assertExcludesInvoicedOrigin("findCustomerReceivablesIncludingPaid", UUID.class);
+    }
+
+    @Test
+    void paymentHistoryExcludesDeliveryNotesCoveredByAnActiveInvoice() throws Exception {
+        assertExcludesInvoicedOrigin(DocumentPaymentRepository.class,
+                "findCustomerReceivablePaymentHistory",
+                UUID.class, java.time.Instant.class, java.time.Instant.class,
+                boolean.class, UUID.class, boolean.class, UUID.class);
+    }
+
+    @Test
+    void printablePaymentExcludesDeliveryNotesCoveredByAnActiveInvoice() throws Exception {
+        assertExcludesInvoicedOrigin(DocumentPaymentRepository.class,
+                "findCustomerReceivablePayment",
+                UUID.class, UUID.class, UUID.class);
+    }
+
+    @Test
     void detailExcludesDeliveryNotesCoveredByAnActiveInvoice() throws Exception {
         assertExcludesInvoicedOrigin("findCustomerReceivable", UUID.class, UUID.class);
     }
@@ -35,7 +55,13 @@ class CustomerReceivableRepositoryContractTest {
 
     private static void assertExcludesInvoicedOrigin(
             String methodName, Class<?>... parameterTypes) throws Exception {
-        var query = CommercialDocumentRepository.class
+        assertExcludesInvoicedOrigin(
+                CommercialDocumentRepository.class, methodName, parameterTypes);
+    }
+
+    private static void assertExcludesInvoicedOrigin(
+            Class<?> repository, String methodName, Class<?>... parameterTypes) throws Exception {
+        var query = repository
                 .getDeclaredMethod(methodName, parameterTypes)
                 .getAnnotation(Query.class)
                 .value();

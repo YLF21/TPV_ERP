@@ -132,13 +132,42 @@ public class CustomerController {
             LocalDate birthday,
             CustomerGender gender,
             boolean commercialConsent,
-            UUID preferredCommercialChannelId) {
+            UUID preferredCommercialChannelId,
+            Boolean creditEnabled,
+            @DecimalMin("0.00") BigDecimal creditLimit,
+            @DecimalMin("0") @DecimalMax("3650") Integer paymentTermDays,
+            Boolean creditBlocked,
+            Boolean blockOnOverdue,
+            Boolean unlimitedCredit) {
+
+        public CustomerRequest(
+                String fiscalName,
+                DocumentType documentType,
+                String documentNumber,
+                FiscalAddress address,
+                String phone,
+                String email,
+                String notes,
+                BigDecimal discount,
+                boolean isMember,
+                String numMember,
+                LocalDate birthday,
+                CustomerGender gender,
+                boolean commercialConsent,
+                UUID preferredCommercialChannelId) {
+            this(fiscalName, documentType, documentNumber, address, phone, email, notes,
+                    discount, isMember, numMember, birthday, gender, commercialConsent,
+                    preferredCommercialChannelId, null, null, null, null, null, null);
+        }
 
         CustomerService.CustomerCommand command() {
             return new CustomerService.CustomerCommand(
                     fiscalName, documentType, documentNumber, address,
                     phone, email, notes, discount, isMember, numMember,
-                    birthday, gender, commercialConsent, preferredCommercialChannelId);
+                    birthday, gender, commercialConsent, preferredCommercialChannelId,
+                    creditEnabled, Boolean.TRUE.equals(unlimitedCredit) ? null : creditLimit,
+                    creditLimit != null || Boolean.TRUE.equals(unlimitedCredit), paymentTermDays,
+                    creditBlocked, blockOnOverdue);
         }
     }
 
@@ -154,12 +183,23 @@ public class CustomerController {
             String documentNumber,
             boolean activeMember,
             String memberCategoryName,
-            BigDecimal memberDiscountPercent) {
+            BigDecimal memberDiscountPercent,
+            boolean creditEnabled,
+            BigDecimal creditLimit,
+            int paymentTermDays,
+            boolean creditBlocked,
+            boolean blockOnOverdue,
+            BigDecimal outstandingDebt,
+            BigDecimal overdueDebt,
+            BigDecimal availableCredit) {
 
         static SaleCustomerOption from(CustomerService.CustomerView customer) {
             return new SaleCustomerOption(
                     customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber(),
-                    customer.isMember(), customer.memberCategoryName(), customer.memberDiscountPercent());
+                    customer.isMember(), customer.memberCategoryName(), customer.memberDiscountPercent(),
+                    customer.creditEnabled(), customer.creditLimit(), customer.paymentTermDays(),
+                    customer.creditBlocked(), customer.blockOnOverdue(), customer.outstandingDebt(),
+                    customer.overdueDebt(), customer.availableCredit());
         }
     }
 }

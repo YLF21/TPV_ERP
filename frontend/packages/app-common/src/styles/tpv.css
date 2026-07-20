@@ -13459,6 +13459,11 @@ textarea:focus,
 .party-create-form .filter-actions { margin: 4px -18px -18px; padding: 12px 18px; }
 .party-commercial-consent { display: flex !important; align-items: center; gap: 8px; min-height: 34px; }
 .party-commercial-consent input { width: 16px; height: 16px; }
+.party-credit-settings { display: grid; gap: 10px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; }
+.party-credit-settings h3 { margin: 0; color: #18324f; font-size: 15px; }
+.party-credit-checkboxes { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.party-credit-checkboxes label { display: flex; align-items: center; gap: 8px; }
+.party-credit-checkboxes input { width: 16px; height: 16px; }
 .party-activate-button { border-color: #2f7a50 !important; color: #185c38 !important; background: #edf8f1 !important; }
 .party-deactivate-button { border-color: #b45a5a !important; color: #7f2727 !important; background: #fff1f1 !important; }
 
@@ -13510,6 +13515,14 @@ textarea:focus,
 .pending-sale-fields, .pending-sale-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .pending-sale-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pending-sale-summary > div { display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--border, #ccd3db); border-radius: 8px; }
+.pending-sale-credit { display: grid; gap: 10px; margin: 16px 0; padding: 12px; border: 1px solid #b8c9db; border-radius: 8px; background: #f5f9fd; }
+.pending-sale-credit h3 { margin: 0; font-size: 16px; }
+.pending-sale-credit-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.pending-sale-credit-summary > div { display: flex; flex-direction: column; gap: 3px; padding: 9px; border: 1px solid #d2deea; border-radius: 6px; background: #fff; }
+.pending-sale-credit-summary span { color: #56677a; font-size: 12px; }
+.pending-sale-credit-warning { display: grid; gap: 8px; padding: 10px; border-left: 4px solid #b45309; color: #7c2d12; background: #fff7ed; }
+.pending-sale-credit-warning textarea { min-height: 68px; padding: 8px; resize: vertical; }
+.pending-sale-credit-hard-block { border-left-color: #b91c1c; color: #7f1d1d; background: #fff1f2; }
 .customer-pending-sale-dialog label { display: grid; gap: 6px; }
 .pending-sale-allocation-amount { margin: 16px 0 10px; }
 .customer-pending-sale-dialog input, .customer-pending-sale-dialog select { min-height: 40px; }
@@ -13543,6 +13556,33 @@ textarea:focus,
   grid-template-columns: minmax(14rem, 2fr) repeat(5, minmax(9rem, 1fr));
   gap: .75rem;
   margin: 1rem 0;
+}
+
+.receivables-view-tabs {
+  display: flex;
+  gap: .5rem;
+  margin-top: 1rem;
+  border-bottom: 1px solid #cfd9e4;
+}
+
+.receivables-view-tabs button {
+  min-height: 2.6rem;
+  padding: .55rem 1rem;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  font-weight: 800;
+}
+
+.receivables-view-tabs button[aria-pressed="true"] {
+  border-color: #cfd9e4;
+  border-bottom-color: #285990;
+  background: #f4f8fc;
+  color: #173f6d;
+}
+
+.customer-receivables-filters.receivables-history-filters {
+  grid-template-columns: minmax(16rem, 2fr) repeat(3, minmax(11rem, 1fr));
 }
 
 .customer-receivables-filters label,
@@ -13580,6 +13620,15 @@ textarea:focus,
 .receivable-row > * { padding: .7rem; }
 .receivable-row.header { color: #fff; background: #285990; font-weight: 800; }
 .receivable-row.overdue { background: #fff2f0; }
+.receivable-history-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.5fr 1.2fr 1fr .75fr 1fr .75fr;
+  min-width: 64rem;
+  border-bottom: 1px solid #dbe3eb;
+}
+.receivable-history-row > * { padding: .7rem; }
+.receivable-history-row.header { color: #fff; background: #285990; font-weight: 800; }
+.receivables-empty { padding: 1.5rem; text-align: center; color: #56677a; }
 .receivables-error { display: flex; align-items: center; gap: 1rem; color: #b42318; }
 
 .customer-receivable-payment-dialog {
@@ -13591,11 +13640,59 @@ textarea:focus,
 }
 .receivable-payment-summary,
 .receivable-payment-actions { display: flex; justify-content: space-between; gap: .75rem; margin: 1rem 0; }
-.receivable-payment-actions button { flex: 1; min-height: 2.75rem; }
+.receivable-payment-summary {
+  align-items: center;
+  padding: .7rem .8rem;
+  border: 1px solid var(--tpv-v3-line-soft, #dbe3eb);
+  border-radius: 4px;
+  background: var(--tpv-v3-surface-alt, #f4f8fc);
+}
+.receivable-payment-summary strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.receivable-payment-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
+  padding: .5rem;
+  border: 1px solid var(--tpv-v3-line, #c8d4e1);
+  border-radius: 4px;
+  background: var(--tpv-v3-surface-alt, #f4f8fc);
+}
+.receivable-payment-actions button {
+  min-height: 2.9rem;
+  border: 1px solid var(--tpv-v3-line, #9fb1c5);
+  border-radius: 3px;
+  background: var(--tpv-v3-surface, #fff);
+  color: var(--tpv-v3-text, #172033);
+  font-weight: 800;
+  box-shadow: none;
+}
+.receivable-payment-actions button:enabled:hover,
+.receivable-payment-actions button:enabled:focus-visible {
+  border-color: var(--tpv-v3-blue, #2f78b9);
+  background: #eef5fc;
+  color: #173f6d;
+}
 .customer-receivable-payment-dialog fieldset { display: grid; gap: .75rem; margin: 1rem 0; padding: 1rem; }
+.receivable-history-dialog dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+.receivable-history-dialog dl > div { min-width: 0; padding: .65rem; border: 1px solid #dbe3eb; border-radius: .4rem; background: #f8fafc; }
+.receivable-history-dialog dt { color: #56677a; font-size: .85rem; font-weight: 700; }
+.receivable-history-dialog dd { margin: .25rem 0 0; overflow-wrap: anywhere; font-weight: 800; }
+.receivable-history-dialog footer button:last-child { min-width: 11rem; }
 
 @media (max-width: 1100px) {
   .customer-receivables-filters { grid-template-columns: repeat(2, minmax(12rem, 1fr)); }
+  .customer-receivables-filters.receivables-history-filters { grid-template-columns: repeat(2, minmax(12rem, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .receivables-view-tabs { display: grid; grid-template-columns: 1fr; }
+  .customer-receivables-filters,
+  .customer-receivables-filters.receivables-history-filters { grid-template-columns: 1fr; }
+  .receivable-payment-actions { grid-template-columns: 1fr; }
+  .receivable-history-dialog dl { grid-template-columns: 1fr; }
 }
 
 /* Stock detail keeps operational data on the left and product context visible on the right. */

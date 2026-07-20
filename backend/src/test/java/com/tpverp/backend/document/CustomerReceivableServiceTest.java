@@ -3,7 +3,9 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,6 +118,89 @@ class CustomerReceivableServiceTest {
 
         assertThat(service.list(new CustomerReceivableFilter(
                 null, null, null, null, null, null, null), authentication)).isEmpty();
+    }
+
+    @Test
+    void defaultListRemainsOpenOnlyAndPaidStatusUsesExplicitPaidSource() {
+        var customerId = UUID.randomUUID();
+        var open = receivable(customerId, LocalDate.of(2026, 8, 1), "100.00");
+        var paid = receivable(customerId, LocalDate.of(2026, 7, 1), "100.00");
+        var method = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", false);
+        paid.addPayment(new DocumentPayment(paid, method, 1, new BigDecimal("100.00"),
+                true, new BigDecimal("100.00"), BigDecimal.ZERO, null, null,
+                Instant.parse("2026-07-16T09:00:00Z"), null, null, null,
+                null, null, UUID.randomUUID()));
+        paid.updatePaymentStatus();
+        when(documents.findCustomerReceivables(store.getId())).thenReturn(List.of(open));
+        when(documents.findCustomerReceivablesIncludingPaid(store.getId()))
+                .thenReturn(List.of(open, paid));
+        when(views.receivableView(any(), any())).thenAnswer(invocation ->
+                CustomerReceivableView.from(invocation.getArgument(0), "CLIENTE",
+                        invocation.getArgument(1)));
+
+        var defaultResult = service.list(null, authentication);
+        var paidResult = service.list(new CustomerReceivableFilter(
+                null, null, DocumentStatus.PAGADO, null, null, null, null), authentication);
+
+        assertThat(defaultResult).extracting(CustomerReceivableView::status)
+                .containsExactly(DocumentStatus.PENDIENTE);
+        assertThat(paidResult).extracting(CustomerReceivableView::status)
+                .containsExactly(DocumentStatus.PAGADO);
+        verify(documents).findCustomerReceivables(store.getId());
+        verify(documents).findCustomerReceivablesIncludingPaid(store.getId());
+    }
+
+    @Test
+    void paymentHistoryUsesInclusiveStoreLocalDatesAndFiltersSearchAndMethod() {
+        var customerId = UUID.randomUUID();
+        var document = receivable(customerId, LocalDate.of(2026, 8, 1), "100.00");
+        var method = new PaymentMethod(store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        var payment = new DocumentPayment(document, method, 1, new BigDecimal("20.00"),
+                true, null, null, null, "TR-1",
+                Instant.parse("2026-07-16T22:15:00Z"), null, null, null,
+                null, null, UUID.randomUUID());
+        var view = CustomerReceivablePaymentHistoryView.from(payment, "CLIENTE ORO");
+        when(payments.findCustomerReceivablePaymentHistory(
+                store.getId(), Instant.parse("2026-07-15T22:00:00Z"),
+                Instant.parse("2026-07-17T22:00:00Z"), true, method.getId(),
+                true, customerId))
+                .thenReturn(List.of(payment));
+        when(views.receivablePaymentHistory(payment)).thenReturn(view);
+
+        var result = service.paymentHistory(new CustomerReceivablePaymentHistoryFilter(
+                LocalDate.of(2026, 7, 16), LocalDate.of(2026, 7, 17),
+                " oro ", method.getId(), customerId), authentication);
+
+        assertThat(result).containsExactly(view);
+        assertThat(result.getFirst().paymentId()).isEqualTo(payment.getId());
+        assertThat(result.getFirst().requestId()).isEqualTo(payment.getRequestId());
+        verify(payments).findCustomerReceivablePaymentHistory(
+                store.getId(), Instant.parse("2026-07-15T22:00:00Z"),
+                Instant.parse("2026-07-17T22:00:00Z"), true, method.getId(),
+                true, customerId);
+    }
+
+    @Test
+    void paymentHistoryUsesTypedSentinelsForEmptyPostgreSqlFilters() {
+        service.paymentHistory(null, authentication);
+
+        verify(payments).findCustomerReceivablePaymentHistory(
+                store.getId(), Instant.EPOCH,
+                Instant.parse("9999-12-31T23:59:59.999999Z"), false,
+                new UUID(0L, 0L), false, new UUID(0L, 0L));
+    }
+
+    @Test
+    void paymentHistoryRejectsInvertedDateRangeWithoutQueryingDatabase() {
+        assertThatThrownBy(() -> service.paymentHistory(
+                new CustomerReceivablePaymentHistoryFilter(
+                        LocalDate.of(2026, 7, 17), LocalDate.of(2026, 7, 16),
+                        null, null, null), authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("customer_receivable_invalid_collection_date_range");
+
+        verify(payments, never()).findCustomerReceivablePaymentHistory(
+                any(), any(), any(), anyBoolean(), any(), anyBoolean(), any());
     }
 
     @Test

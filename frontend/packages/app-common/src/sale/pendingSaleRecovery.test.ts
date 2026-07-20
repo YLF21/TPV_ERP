@@ -93,7 +93,10 @@ describe("pending sale recovery envelope", () => {
 
   it("accepts an empty payment list only when the exact create request is ready", () => {
     const storage = new MemoryStorage();
-    const ready = { ...envelope(), phase: "READY_TO_CREATE" as const, payments: [] };
+    const ready = {
+      ...envelope(), phase: "READY_TO_CREATE" as const, payments: [],
+      draft: { ...draft, creditOverride: { reason: "Autorizado por gerencia" } },
+    };
     savePendingSaleRecovery(storage, ready);
     expect(loadPendingSaleRecovery(storage, "T-01")).toEqual({ status: "valid", envelope: ready });
   });
@@ -109,6 +112,8 @@ describe("pending sale recovery envelope", () => {
     ["line without request fields", (value: any) => { value.draft.lines = [{}]; }],
     ["missing due date", (value: any) => { delete value.draft.dueDate; }],
     ["invalid calendar date", (value: any) => { value.draft.dueDate = "2026-02-31"; }],
+    ["blank credit override", (value: any) => { value.draft.creditOverride = { reason: "  " }; }],
+    ["oversized credit override", (value: any) => { value.draft.creditOverride = { reason: "x".repeat(501) }; }],
     ["invalid quantity", (value: any) => { value.draft.lines[0].quantity = null; }],
     ["non finite price", (value: any) => { value.draft.lines[0].price = "NaN"; }],
     ["invalid discount", (value: any) => { value.draft.lines[0].discount = "101"; }],

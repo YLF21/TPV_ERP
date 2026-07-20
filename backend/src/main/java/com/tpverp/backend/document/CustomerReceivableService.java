@@ -28,6 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CustomerReceivableService {
 
+    private static final Instant PAYMENT_HISTORY_START = Instant.EPOCH;
+    private static final Instant PAYMENT_HISTORY_END =
+            Instant.parse("9999-12-31T23:59:59.999999Z");
+    private static final UUID EMPTY_FILTER_ID = new UUID(0L, 0L);
+
     private final CommercialDocumentRepository documents;
     private final DocumentPaymentRepository payments;
     private final DocumentService documentService;
@@ -78,7 +83,11 @@ public class CustomerReceivableService {
         var normalizedSearch = normalized(effective.search());
         var search = normalizedSearch == null
                 ? null : normalizedSearch.toLowerCase(Locale.ROOT);
-        return documents.findCustomerReceivables(organization.currentStore().getId()).stream()
+        var storeId = organization.currentStore().getId();
+        var source = effective.status() == DocumentStatus.PAGADO
+                ? documents.findCustomerReceivablesIncludingPaid(storeId)
+                : documents.findCustomerReceivables(storeId);
+        return source.stream()
                 .filter(document -> document.getClienteId() != null)
                 .map(document -> views.receivableView(document, businessDate))
                 .filter(view -> effective.customerId() == null
@@ -92,6 +101,40 @@ public class CustomerReceivableService {
                         && !view.dueDate().isBefore(effective.dueFrom())))
                 .filter(view -> effective.dueTo() == null || (view.dueDate() != null
                         && !view.dueDate().isAfter(effective.dueTo())))
+                .filter(view -> search == null || contains(view.documentNumber(), search)
+                        || contains(view.customerName(), search))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CustomerReceivablePaymentHistoryView> paymentHistory(
+            CustomerReceivablePaymentHistoryFilter filter,
+            Authentication authentication) {
+        var effective = filter == null
+                ? new CustomerReceivablePaymentHistoryFilter(null, null, null, null, null)
+                : filter;
+        if (effective.collectedFrom() != null && effective.collectedTo() != null
+                && effective.collectedFrom().isAfter(effective.collectedTo())) {
+            throw new IllegalArgumentException("customer_receivable_invalid_collection_date_range");
+        }
+        var store = organization.currentStore();
+        var zone = ZoneId.of(store.getTimezone());
+        var from = effective.collectedFrom() == null ? PAYMENT_HISTORY_START
+                : effective.collectedFrom().atStartOfDay(zone).toInstant();
+        var to = effective.collectedTo() == null ? PAYMENT_HISTORY_END
+                : effective.collectedTo().plusDays(1).atStartOfDay(zone).toInstant();
+        var filterPaymentMethod = effective.paymentMethodId() != null;
+        var paymentMethodId = filterPaymentMethod
+                ? effective.paymentMethodId() : EMPTY_FILTER_ID;
+        var filterCustomer = effective.customerId() != null;
+        var customerId = filterCustomer ? effective.customerId() : EMPTY_FILTER_ID;
+        var normalizedSearch = normalized(effective.search());
+        var search = normalizedSearch == null
+                ? null : normalizedSearch.toLowerCase(Locale.ROOT);
+        return payments.findCustomerReceivablePaymentHistory(
+                        store.getId(), from, to, filterPaymentMethod, paymentMethodId,
+                        filterCustomer, customerId).stream()
+                .map(views::receivablePaymentHistory)
                 .filter(view -> search == null || contains(view.documentNumber(), search)
                         || contains(view.customerName(), search))
                 .toList();

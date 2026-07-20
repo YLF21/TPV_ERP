@@ -79,6 +79,124 @@ describe("customer receivable checkout helpers", () => {
 });
 
 describe("CustomerPendingSaleDialog", () => {
+  it("shows the authoritative credit exposure and requires an auditable supervisor reason", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        total: "10.00",
+        credit: {
+          enabled: true, blocked: true, blockReason: "CREDIT_LIMIT_EXCEEDED", limit: "100.00",
+          outstandingDebt: "95.00", overdueDebt: "0.00", availableCredit: "5.00",
+          paymentTermDays: 30, proposedOutstanding: "105.00", requiresOverride: true,
+          limitExceeded: true, overdueBlocked: false, manualBlocked: false,
+        },
+      })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-credit" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} permissions={["CUSTOMER_CREDIT_OVERRIDE"]}
+      paymentMethods={{}} request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    const credit = await screen.findByRole("region", { name: /crédito del cliente/i });
+    expect(within(credit).getByText("95,00")).toBeInTheDocument();
+    expect(within(credit).getByText("105,00")).toBeInTheDocument();
+    expect(within(credit).getByText("-5,00")).toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/motivo de la autorización/i), { target: { value: "Autorizado por gerencia" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body.creditOverride).toEqual({ reason: "Autorizado por gerencia" });
+  });
+
+  it("lets an initial payment bring the operation back inside the available credit", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        total: "10.00",
+        credit: {
+          enabled: true, blocked: true, blockReason: "CREDIT_LIMIT_EXCEEDED", limit: "100.00",
+          outstandingDebt: "95.00", overdueDebt: "0.00", availableCredit: "5.00",
+          paymentTermDays: 30, proposedOutstanding: "105.00", requiresOverride: true,
+          limitExceeded: true, overdueBlocked: false, manualBlocked: false,
+        },
+      })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-with-deposit" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ cash: "cash-method" }}
+      request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    const confirm = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: /añadir efectivo/i }));
+    const cashDialog = screen.getByRole("dialog", { name: /cobro en efectivo/i });
+    fireEvent.change(within(cashDialog).getByRole("textbox", { name: /dinero recibido/i }), { target: { value: "5" } });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /confirmar cobro/i }));
+
+    expect(confirm).toBeEnabled();
+    expect(screen.queryByText(/se necesita la autorización de un supervisor/i)).not.toBeInTheDocument();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body).not.toHaveProperty("creditOverride");
+    expect(request.mock.calls[1][1].body.payments[0]).toMatchObject({ amount: "5.00" });
+  });
+
+  it("keeps the supervisor reason identical across card authorization and final creation", async () => {
+    const credit = {
+      enabled: true, blocked: true, blockReason: "CREDIT_LIMIT_EXCEEDED", limit: "100.00",
+      outstandingDebt: "95.00", overdueDebt: "0.00", availableCredit: "5.00",
+      paymentTermDays: 30, proposedOutstanding: "105.00", requiresOverride: true,
+      limitExceeded: true, overdueBlocked: false, manualBlocked: false,
+    };
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00", credit })
+      .mockResolvedValueOnce({ status: "APPROVED" })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-card-override" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} permissions={["CUSTOMER_CREDIT_OVERRIDE"]}
+      paymentMethods={{ card: "card-method" }} request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText(/motivo de la autorización/i), { target: { value: "Excepción aprobada" } });
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /añadir tarjeta/i }));
+    await screen.findByText(/tarjeta aprobada/i);
+    expect(request.mock.calls[1][1].body.sale.creditOverride).toEqual({ reason: "Excepción aprobada" });
+
+    fireEvent.click(screen.getByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(request.mock.calls[2][1].body.creditOverride).toEqual({ reason: "Excepción aprobada" });
+  });
+
+  it("blocks hard credit rules for operators without supervisor permission", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({
+        total: "10.00",
+        credit: {
+          enabled: true, blocked: true, blockReason: "CUSTOMER_CREDIT_BLOCKED", limit: null,
+          outstandingDebt: "0.00", overdueDebt: "0.00", availableCredit: null,
+          paymentTermDays: 30, proposedOutstanding: "10.00", requiresOverride: true,
+          limitExceeded: false, overdueBlocked: false, manualBlocked: true,
+        },
+      })
+      .mockResolvedValueOnce({ receivable: { documentId: "doc-paid-up-front" }, printDocument: {} });
+    render(<CustomerPendingSaleDialog customerName="Cliente" draft={draft} paymentMethods={{ cash: "cash-method" }}
+      request={request} onCancel={vi.fn()} onSuccess={vi.fn()} />);
+
+    expect(await screen.findByText(/el crédito del cliente está bloqueado/i)).toBeInTheDocument();
+    expect(screen.getByText(/corrige la configuración del cliente o cobra el importe completo/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/motivo de la autorización/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/importe inicial/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /añadir efectivo/i }));
+    const cashDialog = screen.getByRole("dialog", { name: /cobro en efectivo/i });
+    fireEvent.change(within(cashDialog).getByRole("textbox", { name: /dinero recibido/i }), { target: { value: "10" } });
+    fireEvent.click(within(cashDialog).getByRole("button", { name: /confirmar cobro/i }));
+    expect(screen.queryByText(/el crédito del cliente está bloqueado/i)).not.toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body).not.toHaveProperty("creditOverride");
+  });
+
   it("uses primary payment actions and a flexible confirmation footer", async () => {
     const request = vi.fn(async (path: string) => {
       if (path.endsWith("/quote")) return { total: "10.00" };

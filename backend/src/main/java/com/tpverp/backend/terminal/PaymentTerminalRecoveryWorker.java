@@ -62,15 +62,16 @@ public class PaymentTerminalRecoveryWorker {
         catch(RuntimeException exception){coordinator.releaseTicket(checkout.getId(),owner);throw exception;}
     }
     private void resumeRefund(PaymentTerminalOperation refund){var original=operations.find(refund.getOriginalOperationId()).orElseThrow();
-        if(refund.getAmount().compareTo(original.getAmount())!=0||original.getDocumentId()==null)
-            throw new IdentityMismatchException("La devolucion parcial necesita desglose fiscal de lineas");
+        if(original.getDocumentId()==null)
+            throw new IdentityMismatchException("El cobro original no tiene documento fiscal");
         var checkout=checkouts.findById(original.getId()).orElseThrow(()->new IdentityMismatchException("No existe identidad original del cobro"));
         var user=users.findById(checkout.getRequestedUserId()).orElseThrow(()->new IdentityMismatchException("Usuario de devolucion inexistente"));
         if(!user.isActivo()||user.getTienda()==null||!user.getTienda().getId().equals(refund.getStoreId()))
             throw new IdentityMismatchException("Usuario sin acceso a la tienda original");
         var authentication=org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(user,"RECOVERY",
                 java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_SYSTEM")));
-        var document=documents.createApprovedCardRefund(refund.getId(),original.getDocumentId(),refund.getAmount(),authentication);
+        var document=documents.createApprovedCardRefund(refund.getId(),original.getDocumentId(),refund.getAmount(),
+                refund.getRefundLineSelections(),authentication);
         operations.linkDocument(refund.getId(),document.getId(),null);
     }
     private void reconcileExistingDocument(PaymentTerminalOperation operation,com.tpverp.backend.document.PosCardCheckout checkout){var matches=documentPayments

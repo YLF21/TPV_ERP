@@ -1,6 +1,12 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.CustomerRepository;
+import com.tpverp.backend.security.application.CorePermissionBootstrap;
+import com.tpverp.backend.security.application.PermissionChecks;
 import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
@@ -12,6 +18,8 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -32,6 +40,8 @@ public class CustomerPendingSaleService {
     private final CardTerminalConfigurationReader configurations;
     private final CurrentTerminal currentTerminal;
     private final CurrentOrganization organization;
+    private final CustomerRepository customers;
+    private final AuditService audit;
     private final DocumentViewAssembler views;
     private final Clock clock;
 
@@ -43,6 +53,8 @@ public class CustomerPendingSaleService {
             CardTerminalConfigurationReader configurations,
             CurrentTerminal currentTerminal,
             CurrentOrganization organization,
+            CustomerRepository customers,
+            AuditService audit,
             DocumentViewAssembler views,
             Clock clock) {
         this.documents = documents;
@@ -52,6 +64,8 @@ public class CustomerPendingSaleService {
         this.configurations = configurations;
         this.currentTerminal = currentTerminal;
         this.organization = organization;
+        this.customers = customers;
+        this.audit = audit;
         this.views = views;
         this.clock = clock;
     }
@@ -60,7 +74,8 @@ public class CustomerPendingSaleService {
     public Quote quote(
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication) {
-        return new Quote(authoritativeQuote(request, authentication).getTotal());
+        var total = authoritativeQuote(request, authentication).getTotal();
+        return new Quote(total, assessCredit(request, total, authentication, false));
     }
 
     public PaymentTerminalResult chargeCard(
@@ -72,6 +87,8 @@ public class CustomerPendingSaleService {
         var terminalId = currentTerminal.terminalId(authentication);
         var total = authoritativeQuote(sale, authentication).getTotal();
         requireQuotedTotal(sale, total);
+        var credit = assessCredit(sale, total, authentication, false);
+        requireCreditAllowed(credit);
         var cardPayment = requireIntegratedCardPayment(sale);
         if (Money.euros(cardPayment.amount()).compareTo(amount) != 0) {
             throw new IllegalArgumentException("card_charge_amount_mismatch");
@@ -111,6 +128,7 @@ public class CustomerPendingSaleService {
 
         var total = authoritativeQuote(request, authentication).getTotal();
         requireQuotedTotal(request, total);
+        var credit = assessCredit(request, total, authentication, true);
         var hash = CustomerPendingSaleRequestHasher.hash(request, total);
 
         if (existing.isEmpty()) {
@@ -160,6 +178,9 @@ public class CustomerPendingSaleService {
             }
             checkout.complete(document.getId(), Instant.now(clock));
             checkouts.save(checkout);
+            if (credit.overrideUsed()) {
+                recordCreditOverride(request, document, credit);
+            }
             return views.receivableView(document, request.date());
         } catch (RuntimeException failure) {
             throw failure;
@@ -199,6 +220,137 @@ public class CustomerPendingSaleService {
             Authentication authentication) {
         return documents.quotePendingSale(
                 request.toCommand(), request.dueDate(), authentication);
+    }
+
+    private CreditAssessment assessCredit(
+            CustomerPendingSaleController.CreateRequest request,
+            BigDecimal total,
+            Authentication authentication,
+            boolean lockAndEnforce) {
+        Objects.requireNonNull(request.date(), "date");
+        Objects.requireNonNull(request.dueDate(), "dueDate");
+        if (request.dueDate().isBefore(request.date())) {
+            throw new IllegalArgumentException("message.document.pending_sale_due_date_before_issue_date");
+        }
+        var companyId = organization.currentCompany().getId();
+        Customer customer = (lockAndEnforce
+                ? customers.findLockedByIdAndCompanyId(request.customerId(), companyId)
+                : customers.findByIdAndCompanyId(request.customerId(), companyId))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.document.active_customer_not_found"));
+        var latestDueDate = request.date().plusDays(customer.getPaymentTermDays());
+        if (request.dueDate().isAfter(latestDueDate)) {
+            throw new IllegalArgumentException("message.document.pending_sale_due_date_exceeds_customer_terms");
+        }
+
+        var outstanding = money(customers.outstandingDebt(customer.getId()));
+        var overdue = money(customers.overdueDebt(customer.getId(), request.date()));
+        var newDebt = money(total.subtract(declaredPayments(request)));
+        if (newDebt.signum() < 0) {
+            newDebt = Money.euros(BigDecimal.ZERO);
+        }
+        var creditRequired = newDebt.signum() > 0;
+        var proposed = money(outstanding.add(newDebt));
+        var limit = customer.getCreditLimit();
+        var available = limit == null ? null : money(limit.subtract(outstanding));
+        var availableAfter = limit == null ? null : money(limit.subtract(proposed));
+
+        var manualBlocked = creditRequired && customer.isCreditBlocked();
+        var overdueBlocked = creditRequired
+                && customer.isBlockOnOverdue() && overdue.signum() > 0;
+        var limitExceeded = creditRequired
+                && limit != null && proposed.compareTo(limit) > 0;
+        var overrideUsed = false;
+        if (limitExceeded && request.creditOverride() != null) {
+            var reason = request.creditOverride().reason();
+            if (reason == null || reason.isBlank()) {
+                throw new IllegalArgumentException("message.document.credit_override_reason_required");
+            }
+            if (!PermissionChecks.hasRole(authentication, "ADMIN")
+                    && !PermissionChecks.hasAuthority(
+                    authentication, CorePermissionBootstrap.CUSTOMER_CREDIT_OVERRIDE)) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "message.document.customer_credit_override_permission_required");
+            }
+            overrideUsed = true;
+        }
+        if (limitExceeded && lockAndEnforce && !overrideUsed) {
+            throw new IllegalStateException("message.document.customer_credit_limit_exceeded");
+        }
+        if (lockAndEnforce) {
+            requireCreditAllowed(new CreditAssessment(
+                    customer.isCreditEnabled(), creditRequired, manualBlocked || overdueBlocked,
+                    customer.isBlockOnOverdue(), creditBlockReason(
+                    customer.isCreditEnabled(), creditRequired,
+                    manualBlocked, overdueBlocked, limitExceeded),
+                    manualBlocked, overdueBlocked, limitExceeded,
+                    limit, outstanding, overdue, available, customer.getPaymentTermDays(),
+                    proposed, availableAfter, limitExceeded && !overrideUsed, overrideUsed,
+                    latestDueDate));
+        }
+
+        return new CreditAssessment(
+                customer.isCreditEnabled(), creditRequired, manualBlocked || overdueBlocked,
+                customer.isBlockOnOverdue(), creditBlockReason(
+                customer.isCreditEnabled(), creditRequired,
+                manualBlocked, overdueBlocked, limitExceeded),
+                manualBlocked, overdueBlocked, limitExceeded,
+                limit, outstanding, overdue, available, customer.getPaymentTermDays(),
+                proposed, availableAfter, limitExceeded && !overrideUsed, overrideUsed,
+                latestDueDate);
+    }
+
+    private static String creditBlockReason(
+            boolean enabled, boolean creditRequired,
+            boolean manualBlocked, boolean overdueBlocked,
+            boolean limitExceeded) {
+        if (!creditRequired) return null;
+        if (!enabled) return "CREDIT_DISABLED";
+        if (manualBlocked) return "CREDIT_BLOCKED";
+        if (overdueBlocked) return "OVERDUE_DEBT";
+        return limitExceeded ? "CREDIT_LIMIT_EXCEEDED" : null;
+    }
+
+    private static void requireCreditAllowed(CreditAssessment credit) {
+        if (credit.creditRequired() && !credit.enabled()) {
+            throw new IllegalStateException("message.document.customer_credit_disabled");
+        }
+        if (credit.manualBlocked()) {
+            throw new IllegalStateException("message.document.customer_credit_blocked");
+        }
+        if (credit.overdueBlocked()) {
+            throw new IllegalStateException("message.document.customer_credit_blocked_by_overdue_debt");
+        }
+        if (credit.requiresOverride()) {
+            throw new IllegalStateException("message.document.customer_credit_limit_exceeded");
+        }
+    }
+
+    private static BigDecimal declaredPayments(
+            CustomerPendingSaleController.CreateRequest request) {
+        return payments(request).stream()
+                .map(CustomerPendingSaleController.PaymentItem::amount)
+                .filter(Objects::nonNull)
+                .map(Money::euros)
+                .reduce(Money.euros(BigDecimal.ZERO), BigDecimal::add);
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return Money.euros(value == null ? BigDecimal.ZERO : value);
+    }
+
+    private void recordCreditOverride(
+            CustomerPendingSaleController.CreateRequest request,
+            CommercialDocument document,
+            CreditAssessment credit) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("documentId", document.getId());
+        details.put("customerId", request.customerId());
+        details.put("reason", request.creditOverride().reason().trim());
+        details.put("outstandingDebt", credit.outstandingDebt());
+        details.put("proposedOutstanding", credit.proposedOutstanding());
+        details.put("creditLimit", credit.limit());
+        audit.record("CUSTOMER_CREDIT_LIMIT_OVERRIDDEN", AuditResult.EXITO, details);
     }
 
     private static void requireQuotedTotal(
@@ -296,6 +448,25 @@ public class CustomerPendingSaleService {
         return value;
     }
 
-    public record Quote(BigDecimal total) {
-    }
+    public record Quote(BigDecimal total, CreditAssessment credit) {}
+
+    public record CreditAssessment(
+            boolean enabled,
+            boolean creditRequired,
+            boolean blocked,
+            boolean blockOnOverdue,
+            String blockReason,
+            boolean manualBlocked,
+            boolean overdueBlocked,
+            boolean limitExceeded,
+            BigDecimal limit,
+            BigDecimal outstandingDebt,
+            BigDecimal overdueDebt,
+            BigDecimal availableCredit,
+            int paymentTermDays,
+            BigDecimal proposedOutstanding,
+            BigDecimal availableAfterSale,
+            boolean requiresOverride,
+            boolean overrideUsed,
+            LocalDate latestDueDate) {}
 }

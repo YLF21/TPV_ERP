@@ -49,6 +49,14 @@ public class CustomerReceivableController {
         return service.detail(documentId, authentication);
     }
 
+    @GetMapping("/payment-history")
+    @PreAuthorize(READ_PERMISSION)
+    public List<CustomerReceivablePaymentHistoryView> paymentHistory(
+            @Valid @ModelAttribute CustomerReceivablePaymentHistoryFilter filter,
+            Authentication authentication) {
+        return service.paymentHistory(filter, authentication);
+    }
+
     @GetMapping("/{documentId}/print-document")
     @PreAuthorize(READ_PERMISSION)
     public CustomerReceivablePrintService.CommercialDocumentPrint printDocument(
@@ -59,6 +67,13 @@ public class CustomerReceivableController {
     public CustomerReceivablePrintService.PaymentReceipt paymentReceipt(
             @PathVariable UUID documentId, @PathVariable UUID paymentId) {
         return printing.paymentReceipt(documentId, paymentId);
+    }
+
+    @GetMapping("/{documentId}/payments/{paymentId}/print")
+    @PreAuthorize(READ_PERMISSION)
+    public CustomerReceivablePrintService.PaymentReceipt printPayment(
+            @PathVariable UUID documentId, @PathVariable UUID paymentId) {
+        return printing.paymentReceiptByPaymentId(documentId, paymentId);
     }
 
     @PostMapping("/{documentId}/card-charges")

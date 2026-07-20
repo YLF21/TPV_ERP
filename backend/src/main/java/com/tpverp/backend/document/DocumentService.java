@@ -50,6 +50,7 @@ import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalProvider;
+import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.terminal.StorePaymentConfiguration;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.TerminalPaymentConfigurationRepository;
@@ -474,22 +475,50 @@ public class DocumentService {
     @Transactional
     public CommercialDocument createApprovedCardRefund(
             UUID originalDocumentId, BigDecimal approvedAmount, Authentication authentication) {
-        return createApprovedCardRefund(UUID.randomUUID(), originalDocumentId, approvedAmount, authentication);
+        return createApprovedCardRefund(UUID.randomUUID(), originalDocumentId, approvedAmount, List.of(), authentication);
     }
 
     @Transactional
     public CommercialDocument createApprovedCardRefund(UUID operationId,
             UUID originalDocumentId, BigDecimal approvedAmount, Authentication authentication) {
+        return createApprovedCardRefund(operationId, originalDocumentId, approvedAmount, List.of(), authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CardRefundLineOption> cardRefundLineOptions(UUID originalDocumentId) {
+        var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
+        requireRefundableDocument(original);
+        var factor = BigDecimal.ONE.subtract(original.getDescuentoGlobal().movePointLeft(2));
+        return original.getLineas().stream().map(line -> {
+            var purchased = line.getCantidad().abs();
+            var refunded = documents.confirmedRefundedQuantity(line.getId());
+            var available = purchased.subtract(refunded == null ? BigDecimal.ZERO : refunded).max(BigDecimal.ZERO)
+                    .setScale(3, Money.ROUNDING);
+            var availableTotal = purchased.signum() == 0 ? BigDecimal.ZERO : Money.euros(
+                    line.getTotal().multiply(factor).multiply(available)
+                            .divide(purchased, Money.SCALE + 4, Money.ROUNDING)).abs();
+            return new CardRefundLineOption(line.getId(), line.getCodigo(), line.getNombre(), line.getLineType(),
+                    purchased, available, line.getPrecioUnitario(), availableTotal);
+        }).filter(option -> option.refundableQuantity().signum() > 0).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public void validateApprovedCardRefund(UUID originalDocumentId, BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> selections) {
+        var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
+        var plan = refundPlan(original, approvedAmount, selections);
+        buildRefundPreview(original, plan);
+    }
+
+    @Transactional
+    public CommercialDocument createApprovedCardRefund(UUID operationId,
+            UUID originalDocumentId, BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> selections, Authentication authentication) {
         var replay = documents.findByPaymentTerminalRefundOperationId(Objects.requireNonNull(operationId));
         if (replay.isPresent()) return replay.orElseThrow();
-        var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
-        if (original.getEstado() == DocumentStatus.BORRADOR || original.getEstado() == DocumentStatus.ANULADO) {
-            throw new IllegalStateException("El documento original no admite devolucion");
-        }
-        if (Money.euros(approvedAmount).compareTo(original.getTotal()) != 0) {
-            throw new IllegalArgumentException(
-                    "La devolucion parcial requiere desglose explicito de lineas y cantidades");
-        }
+        var original = documents.findLockedRefundSource(Objects.requireNonNull(originalDocumentId, "originalDocumentId"),
+                organization.currentStore().getId()).orElseThrow(() -> new IllegalArgumentException("Documento no encontrado"));
+        var plan = refundPlan(original, approvedAmount, selections);
         var refund = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
                 CommercialDocumentType.TICKET, LocalDate.now(clock),
                 organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
@@ -497,13 +526,8 @@ public class DocumentService {
         refund.assignOriginTerminal(terminalId);
         refund.setParties(original.getClienteId(), null, null);
         refund.identifyPaymentTerminalRefund(operationId);
-        original.getLineas().stream().map(DocumentLineCommand::from).forEach(line ->
-                refund.addLine(new DocumentLineCommand(line.productoId(), line.cantidad().negate(),
-                        line.codigo(), line.nombre(), line.tarifa(), line.precioUnitario(), line.descuento(),
-                        line.impuestosIncluidos(), line.regimenImpuesto(), line.porcentajeImpuesto(),
-                        line.lineType(), line.promotionId(), line.promotionVersionId(), line.promotionalCouponId())
-                        .toEntity(refund)));
-        if (refund.getTotal().compareTo(original.getTotal().negate()) != 0) {
+        for (var selected : plan.lines()) refund.addLine(refundLine(refund, selected));
+        if (refund.getTotal().compareTo(plan.amount().negate()) != 0) {
             throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");
         }
         refund.confirm(nextNumber(refund), organization.currentUser(authentication).getId(), Instant.now(clock), false);
@@ -520,6 +544,82 @@ public class DocumentService {
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
     }
+
+    private RefundPlan refundPlan(CommercialDocument original, BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> requested) {
+        requireRefundableDocument(original);
+        var amount = Money.euros(approvedAmount);
+        if (amount.signum() <= 0) throw new IllegalArgumentException("El importe de devolucion debe ser positivo");
+        var selections = requested == null ? List.<PaymentTerminalRefundLineSelection>of() : List.copyOf(requested);
+        if (selections.isEmpty()) {
+            if (amount.compareTo(original.getTotal()) != 0) {
+                throw new IllegalArgumentException("La devolucion parcial requiere desglose explicito de lineas y cantidades");
+            }
+            return new RefundPlan(amount, original.getLineas().stream()
+                    .map(line -> new SelectedRefundLine(line, line.getCantidad().abs())).toList());
+        }
+        PaymentTerminalRefundLineSelection.canonical(selections);
+        var source = original.getLineas().stream().collect(java.util.stream.Collectors.toMap(DocumentLine::getId, line -> line));
+        var selected = new java.util.ArrayList<SelectedRefundLine>();
+        for (var request : selections) {
+            var line = source.get(request.lineId());
+            if (line == null) throw new IllegalArgumentException("La linea seleccionada no pertenece al documento original");
+            var purchased = line.getCantidad().abs();
+            var refunded = documents.confirmedRefundedQuantity(line.getId());
+            var available = purchased.subtract(refunded == null ? BigDecimal.ZERO : refunded);
+            if (request.quantity().compareTo(available) > 0) {
+                throw new IllegalArgumentException("La cantidad supera el saldo reembolsable de la linea " + line.getCodigo());
+            }
+            if (line.getLineType() != DocumentLineType.PRODUCT && request.quantity().compareTo(purchased) != 0) {
+                throw new IllegalArgumentException("Las promociones y cupones solo admiten devolucion completa");
+            }
+            selected.add(new SelectedRefundLine(line, request.quantity()));
+        }
+        var plan = new RefundPlan(amount, List.copyOf(selected));
+        buildRefundPreview(original, plan);
+        return plan;
+    }
+
+    private void requireRefundableDocument(CommercialDocument original) {
+        if (original.getEstado() == DocumentStatus.BORRADOR || original.getEstado() == DocumentStatus.ANULADO) {
+            throw new IllegalStateException("El documento original no admite devolucion");
+        }
+    }
+
+    private void buildRefundPreview(CommercialDocument original, RefundPlan plan) {
+        var preview = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
+                CommercialDocumentType.TICKET, LocalDate.now(clock), UUID.randomUUID(), original.getDescuentoGlobal());
+        for (var selected : plan.lines()) preview.addLine(refundLine(preview, selected));
+        if (preview.getTotal().compareTo(plan.amount().negate()) != 0) {
+            throw new IllegalArgumentException("El importe no coincide con el desglose fiscal seleccionado");
+        }
+    }
+
+    private DocumentLine refundLine(CommercialDocument refund, SelectedRefundLine selected) {
+        var source = selected.source();
+        DocumentLine line;
+        if (source.getLineType() == DocumentLineType.PRODUCT) {
+            var command = DocumentLineCommand.from(source);
+            line = new DocumentLineCommand(command.productoId(), selected.quantity().negate(), command.codigo(),
+                    command.nombre(), command.tarifa(), command.precioUnitario(), command.descuento(),
+                    command.impuestosIncluidos(), command.regimenImpuesto(), command.porcentajeImpuesto(),
+                    command.lineType(), command.promotionId(), command.promotionVersionId(), command.promotionalCouponId())
+                    .toEntity(refund);
+        } else {
+            line = DocumentLine.special(refund, refund.getLineas().size() + 1, source.getNombre(),
+                    source.getPrecioUnitario().negate(), source.isImpuestosIncluidos(), source.getRegimenImpuesto(),
+                    source.getPorcentajeImpuesto(), source.getPromotionId(), source.getPromotionVersionId(),
+                    source.getPromotionalCouponId());
+        }
+        line.identifyRefundOf(source.getId());
+        return line;
+    }
+
+    public record CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
+            BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
+            BigDecimal refundableTotal) { }
+    private record SelectedRefundLine(DocumentLine source, BigDecimal quantity) { }
+    private record RefundPlan(BigDecimal amount, List<SelectedRefundLine> lines) { }
 
     private PromotionContext promotionContext(CommercialDocument document) {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {

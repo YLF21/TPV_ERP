@@ -23,6 +23,7 @@ export type PendingSaleDraft = {
   dueDate: string;
   globalDiscount: string;
   lines: PendingSaleLine[];
+  creditOverride?: { reason: string };
 };
 
 export type PendingPaymentAllocation = {

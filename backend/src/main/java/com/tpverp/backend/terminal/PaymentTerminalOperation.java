@@ -42,6 +42,7 @@ public class PaymentTerminalOperation {
     @Column(name = "legacy_configuration_fingerprint", nullable = false) private boolean legacyConfigurationFingerprint;
     @Column(name = "document_id") private UUID documentId;
     @Column(name = "document_payment_id") private UUID documentPaymentId;
+    @Column(name = "refund_line_selection", columnDefinition = "text") private String refundLineSelection;
     @Column(name = "processing_owner") private UUID processingOwner;
     @Column(name = "processing_lease_until") private Instant processingLeaseUntil;
     @Column(name = "retry_count", nullable = false) private int retryCount;
@@ -94,6 +95,16 @@ public class PaymentTerminalOperation {
 
     public void markSent(String code, Instant at) {
         markSent(code, at, Map.of());
+    }
+
+    public void assignRefundLineSelection(String canonical) {
+        if (operationType != PaymentTerminalOperationType.REFUND || status != PaymentTerminalOperationStatus.PENDING) {
+            throw new IllegalStateException("El desglose solo puede asignarse a una devolucion reservada");
+        }
+        var value = canonical == null ? "" : canonical;
+        if (value.length() > 16_384) throw new IllegalArgumentException("El desglose de devolucion es demasiado grande");
+        PaymentTerminalRefundLineSelection.parse(value);
+        refundLineSelection = value;
     }
 
     public void markSent(String code, Instant at, Map<String, ?> metadata) {
@@ -316,6 +327,9 @@ public class PaymentTerminalOperation {
     public Instant getNextRetryAt() { return nextRetryAt; }
     public UUID getDocumentId() { return documentId; }
     public UUID getDocumentPaymentId() { return documentPaymentId; }
+    public List<PaymentTerminalRefundLineSelection> getRefundLineSelections() {
+        return PaymentTerminalRefundLineSelection.parse(refundLineSelection);
+    }
     public String getExternalReference() { return externalReference; }
     public String getAuthorizationCode() { return authorizationCode; }
     public void releaseProcessing(Instant now) { processingOwner=null; processingLeaseUntil=null; updatedAt=Objects.requireNonNull(now); }

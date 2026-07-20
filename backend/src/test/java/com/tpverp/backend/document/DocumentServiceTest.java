@@ -47,6 +47,7 @@ import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalProvider;
+import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalPaymentConfiguration;
@@ -464,6 +465,26 @@ class DocumentServiceTest {
         verify(stockGateway,never()).confirm(any());
         verify(fiscalIntegration,never()).registerAlta(any(),any(Boolean.class));
         verify(relationRepository,never()).save(any());
+    }
+
+    @Test
+    void partialCardRefundRequiresExactAvailableFiscalLineQuantitiesBeforeSendingMoney() {
+        var original = new CommercialDocument(store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.now(), user.getId(), BigDecimal.ZERO);
+        var line = new DocumentLine(original, UUID.randomUUID(), 1, new BigDecimal("2.000"), "P-1", "Producto",
+                "VENTA", new BigDecimal("5.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
+        original.addLine(line);
+        original.confirm("001-260608-00001", user.getId(), NOW, false);
+        when(documentRepository.findById(original.getId())).thenReturn(Optional.of(original));
+        when(documentRepository.confirmedRefundedQuantity(line.getId())).thenReturn(new BigDecimal("0.000"));
+        var oneUnit = List.of(new PaymentTerminalRefundLineSelection(line.getId(), BigDecimal.ONE));
+
+        service.validateApprovedCardRefund(original.getId(), new BigDecimal("5.00"), oneUnit);
+        assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("4.99"), oneUnit))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("importe");
+        assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("15.00"),
+                List.of(new PaymentTerminalRefundLineSelection(line.getId(), new BigDecimal("3.000")))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("saldo reembolsable");
     }
 
     @Test

@@ -11,6 +11,9 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.party.Customer;
+import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CardTerminalConfiguration;
 import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
@@ -48,11 +51,14 @@ class CustomerPendingSaleServiceTest {
     @Mock CardTerminalConfigurationReader configurations;
     @Mock CurrentTerminal currentTerminal;
     @Mock CurrentOrganization organization;
+    @Mock CustomerRepository customers;
+    @Mock AuditService audit;
     @Mock DocumentViewAssembler views;
     @Mock Authentication authentication;
     @Mock Store store;
     @Mock Company company;
     @Mock UserAccount user;
+    @Mock Customer customer;
 
     private CustomerPendingSaleService service;
     private UUID terminalId;
@@ -64,15 +70,25 @@ class CustomerPendingSaleServiceTest {
         terminalId = UUID.randomUUID();
         storeId = UUID.randomUUID();
         userId = UUID.randomUUID();
+        var companyId = UUID.randomUUID();
         org.mockito.Mockito.lenient().when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         org.mockito.Mockito.lenient().when(organization.currentStore()).thenReturn(store);
         org.mockito.Mockito.lenient().when(store.getId()).thenReturn(storeId);
         org.mockito.Mockito.lenient().when(organization.currentCompany()).thenReturn(company);
+        org.mockito.Mockito.lenient().when(company.getId()).thenReturn(companyId);
         org.mockito.Mockito.lenient().when(organization.currentUser(authentication)).thenReturn(user);
         org.mockito.Mockito.lenient().when(user.getId()).thenReturn(userId);
+        org.mockito.Mockito.lenient().when(customers.findByIdAndCompanyId(any(), eq(companyId)))
+                .thenReturn(Optional.of(customer));
+        org.mockito.Mockito.lenient().when(customers.findLockedByIdAndCompanyId(any(), eq(companyId)))
+                .thenReturn(Optional.of(customer));
+        org.mockito.Mockito.lenient().when(customer.isCreditEnabled()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(customer.getPaymentTermDays()).thenReturn(30);
+        org.mockito.Mockito.lenient().when(customers.outstandingDebt(any())).thenReturn(BigDecimal.ZERO);
+        org.mockito.Mockito.lenient().when(customers.overdueDebt(any(), any())).thenReturn(BigDecimal.ZERO);
         service = new CustomerPendingSaleService(
                 documents, checkouts, reservations, terminalOperations, configurations,
-                currentTerminal, organization, views,
+                currentTerminal, organization, customers, audit, views,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -85,6 +101,106 @@ class CustomerPendingSaleServiceTest {
 
         assertThat(service.quote(request, authentication).total())
                 .isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void quoteUsesInitialPaymentsWhenCalculatingAvailableCredit() {
+        var request = request(List.of(standardPayment(new BigDecimal("50.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(customer.getCreditLimit()).thenReturn(new BigDecimal("100.00"));
+        when(customers.outstandingDebt(any())).thenReturn(new BigDecimal("40.00"));
+
+        var credit = service.quote(request, authentication).credit();
+
+        assertThat(credit.outstandingDebt()).isEqualByComparingTo("40.00");
+        assertThat(credit.proposedOutstanding()).isEqualByComparingTo("90.00");
+        assertThat(credit.availableAfterSale()).isEqualByComparingTo("10.00");
+        assertThat(credit.requiresOverride()).isFalse();
+    }
+
+    @Test
+    void quoteReportsManualAndOverdueBlocksWithoutHidingCreditSummary() {
+        var request = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(customer.isCreditBlocked()).thenReturn(true);
+        when(customer.isBlockOnOverdue()).thenReturn(true);
+        when(customers.overdueDebt(any(), any())).thenReturn(new BigDecimal("25.00"));
+
+        var credit = service.quote(request, authentication).credit();
+
+        assertThat(credit.manualBlocked()).isTrue();
+        assertThat(credit.overdueBlocked()).isTrue();
+        assertThat(credit.blockReason()).isEqualTo("CREDIT_BLOCKED");
+        assertThat(credit.overdueDebt()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void fullyPaidInitialSaleDoesNotRequireCreditOrApplyCreditBlocks() {
+        var request = request(List.of(standardPayment(new BigDecimal("100.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(customer.isCreditEnabled()).thenReturn(false);
+        org.mockito.Mockito.lenient().when(customer.isCreditBlocked()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(customer.isBlockOnOverdue()).thenReturn(true);
+        when(customers.overdueDebt(any(), any())).thenReturn(new BigDecimal("25.00"));
+        when(customer.getCreditLimit()).thenReturn(new BigDecimal("10.00"));
+
+        var credit = service.quote(request, authentication).credit();
+
+        assertThat(credit.creditRequired()).isFalse();
+        assertThat(credit.blocked()).isFalse();
+        assertThat(credit.limitExceeded()).isFalse();
+        assertThat(credit.blockReason()).isNull();
+    }
+
+    @Test
+    void createLocksCustomerAndRejectsConcurrentCreditLimitOverrun() {
+        var request = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(customer.getCreditLimit()).thenReturn(new BigDecimal("50.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(request, authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.document.customer_credit_limit_exceeded");
+
+        verify(customers).findLockedByIdAndCompanyId(eq(request.customerId()), any());
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void quoteRequiresSupervisorPermissionAndReasonForLimitOverride() {
+        var base = request(List.of(), new BigDecimal("100.00"));
+        var overridden = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(), base.customerId(),
+                base.dueDate(), base.globalDiscount(), base.lines(), base.payments(),
+                base.quotedTotal(), new CustomerPendingSaleController.CreditOverride("Autorizado"));
+        stubQuote(overridden, new BigDecimal("100.00"));
+        when(customer.getCreditLimit()).thenReturn(new BigDecimal("50.00"));
+
+        assertThatThrownBy(() -> service.quote(overridden, authentication))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                .hasMessage("message.document.customer_credit_override_permission_required");
+
+        when(authentication.getAuthorities()).thenAnswer(invocation -> List.of(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                        "CUSTOMER_CREDIT_OVERRIDE")));
+        assertThat(service.quote(overridden, authentication).credit().overrideUsed()).isTrue();
+    }
+
+    @Test
+    void rejectsDueDatesOutsideCustomerTerms() {
+        var base = request(List.of(), new BigDecimal("100.00"));
+        var outsideTerms = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(), base.customerId(),
+                base.date().plusDays(31), base.globalDiscount(), base.lines(), base.payments(),
+                base.quotedTotal());
+        stubQuote(outsideTerms, new BigDecimal("100.00"));
+
+        assertThatThrownBy(() -> service.quote(outsideTerms, authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.pending_sale_due_date_exceeds_customer_terms");
     }
 
     @Test
@@ -469,6 +585,12 @@ class CustomerPendingSaleServiceTest {
         return new CustomerPendingSaleController.PaymentItem(
                 CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
                 UUID.randomUUID(), amount, true, null, null, null, null, null, null);
+    }
+
+    private CustomerPendingSaleController.PaymentItem standardPayment(BigDecimal amount) {
+        return new CustomerPendingSaleController.PaymentItem(
+                CustomerPendingSaleController.PaymentKind.STANDARD,
+                UUID.randomUUID(), amount, true, null, null, null, null, UUID.randomUUID(), null);
     }
 
     private CustomerPendingSaleController.CreateRequest withIntegratedPayment(

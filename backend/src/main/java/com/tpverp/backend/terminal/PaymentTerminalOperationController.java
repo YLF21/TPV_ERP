@@ -51,7 +51,14 @@ public class PaymentTerminalOperationController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
     public OperationView refund(@PathVariable UUID id,@Valid @RequestBody RefundRequest request,Authentication authentication){
         reauthentication.require(authentication, request.password());
-        return OperationView.from(service.refund(id,request.operationId(),request.idempotencyKey(),request.amount(),authentication)); }
+        var lines=request.lines()==null?List.<PaymentTerminalRefundLineSelection>of():request.lines().stream()
+                .map(line->new PaymentTerminalRefundLineSelection(line.lineId(),line.quantity())).toList();
+        return OperationView.from(service.refund(id,request.operationId(),request.idempotencyKey(),request.amount(),lines,authentication)); }
+
+    @GetMapping("/operations/{id}/refund-lines")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    public List<com.tpverp.backend.document.DocumentService.CardRefundLineOption> refundLines(@PathVariable UUID id){
+        return service.refundLineOptions(id); }
 
     @GetMapping("/operations/{id}/receipt")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_READ')")
@@ -72,7 +79,10 @@ public class PaymentTerminalOperationController {
 
     public record AdjustmentRequest(@NotNull UUID operationId,@NotBlank String idempotencyKey,String password) {}
     public record RefundRequest(@NotNull UUID operationId,@NotBlank String idempotencyKey,
-            String password,@NotNull @DecimalMin(value="0.01") BigDecimal amount) {}
+            String password,@NotNull @DecimalMin(value="0.01") BigDecimal amount,
+            @Valid List<RefundLineRequest> lines) {}
+    public record RefundLineRequest(@NotNull UUID lineId,
+            @NotNull @DecimalMin(value="0.001") BigDecimal quantity) {}
     public record ReconciliationRequest(@NotNull UUID reconciliationId) {}
     public record OperationView(UUID id,UUID terminalId,UUID storeId,PaymentTerminalProvider provider,PaymentTerminalMode mode,
             PaymentTerminalOperationType type,UUID originalOperationId,BigDecimal amount,String currency,BigDecimal refundedAmount,

@@ -48,6 +48,21 @@ public class CustomerReceivablePrintService {
         var payment = payments.findByRequestId(Objects.requireNonNull(paymentId, "paymentId"))
                 .filter(value -> value.getDocumento().getId().equals(document.getId()))
                 .orElseThrow(() -> new IllegalArgumentException("customer_receivable_payment_not_found"));
+        return receipt(document, payment);
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentReceipt paymentReceiptByPaymentId(UUID documentId, UUID paymentId) {
+        var document = scoped(documentId);
+        var payment = payments.findCustomerReceivablePayment(
+                        document.getId(), Objects.requireNonNull(paymentId, "paymentId"),
+                        organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "customer_receivable_payment_not_found"));
+        return receipt(document, payment);
+    }
+
+    private PaymentReceipt receipt(CommercialDocument document, DocumentPayment payment) {
         var paidThroughReceipt = payments.findAllByDocumentoId(document.getId()).stream()
                 .sorted(Comparator.comparingInt(DocumentPayment::getPosicion)
                         .thenComparing(DocumentPayment::getCreadoEn)
@@ -56,7 +71,9 @@ public class CustomerReceivablePrintService {
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new PaymentReceipt(payment.getRequestId(), document.getId(), document.getNumero(),
+        var printablePaymentId = payment.getRequestId() == null
+                ? payment.getId() : payment.getRequestId();
+        return new PaymentReceipt(printablePaymentId, document.getId(), document.getNumero(),
                 document.getClienteId(), payment.getCreadoEn(), payment.getMetodoPago().getNombre(),
                 payment.getImporte(), payment.getReferencia(),
                 Money.euros(document.getTotal()).subtract(paidThroughReceipt).max(BigDecimal.ZERO));

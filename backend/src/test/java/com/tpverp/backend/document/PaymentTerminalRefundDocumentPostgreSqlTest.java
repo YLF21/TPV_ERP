@@ -19,6 +19,7 @@ import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import com.tpverp.backend.verifactu.FiscalDocumentPolicy;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.FiscalSnapshotFactory;
@@ -29,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,6 +88,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private AuthoritativePromotionPricing promotionPricing;
     @MockitoBean private PromotionCatalogGateway promotionCatalog;
     @MockitoBean private PromotionalCouponService promotionalCoupons;
+    @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
+    @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -132,8 +136,33 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         assertThat(jdbc.queryForObject("select count(*) from sync_outbox where (tipo_entidad = 'DOCUMENTO' and entidad_id = ?) or (tipo_entidad = 'STOCK_MOVEMENT' and payload ->> 'documentoId' = ?)", Integer.class, first.getId(), first.getId().toString())).isEqualTo(2);
     }
 
+    @Test
+    void partialRefundPersistsSelectedQuantityAndItsOriginalFiscalLine() {
+        var fixture = insertFixture();
+        var company = companies.findById(fixture.companyId()).orElseThrow();
+        var store = stores.findById(fixture.storeId()).orElseThrow();
+        var user = users.findById(fixture.userId()).orElseThrow();
+        when(organization.currentCompany()).thenReturn(company);
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentUser(any())).thenReturn(user);
+        when(currentTerminal.terminalId(any())).thenReturn(fixture.terminalId());
+        jdbc.update("update payment_terminal_operation set amount = 6.05 where id = ?", fixture.operationId());
+        var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+
+        var refund = inTransaction(() -> service.createApprovedCardRefund(fixture.operationId(), fixture.documentId(),
+                new BigDecimal("6.05"), List.of(new PaymentTerminalRefundLineSelection(
+                        fixture.documentLineId(), new BigDecimal("0.500"))), authentication));
+
+        assertThat(jdbc.queryForMap("select documento.total, documento_linea.cantidad, documento_linea.original_document_line_id from documento join documento_linea on documento_linea.documento_id = documento.id where documento.id = ?", refund.getId()))
+                .containsEntry("total", new BigDecimal("-6.05"))
+                .containsEntry("cantidad", new BigDecimal("-0.500"))
+                .containsEntry("original_document_line_id", fixture.documentLineId());
+        assertThat(jdbc.queryForObject("select cantidad from existencia where producto_id = ? and almacen_id = ?",
+                BigDecimal.class, fixture.productId(), fixture.warehouseId())).isEqualByComparingTo("0.500");
+    }
+
     private Fixture insertFixture() {
-        var f = new Fixture(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        var f = new Fixture(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         var address = "{\"linea1\":\"a\",\"ciudad\":\"c\",\"codigoPostal\":\"35001\",\"provincia\":\"p\",\"pais\":\"ES\"}";
         jdbc.update("insert into instalacion(id,referencia,public_key,creada_en,demo_hasta) values (?,'TEST','key',?,?)", f.installationId(), java.sql.Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")), java.sql.Timestamp.from(Instant.parse("2026-01-31T00:00:00Z")));
         jdbc.update("insert into empresa(id,tax_id,razon_social,domicilio_fiscal) values (?,'B12345674','Company',cast(? as jsonb))", f.companyId(), address);
@@ -148,7 +177,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         jdbc.update("insert into almacen(id,tienda_id,nombre,predeterminado) values (?,?,'GENERAL',true)", f.warehouseId(), f.storeId());
         jdbc.update("insert into producto(id,tienda_id,familia_id,impuesto_id,nombre) values (?,?,?,?,'Producto')", f.productId(), f.storeId(), f.familyId(), f.taxId());
         jdbc.update("insert into documento(id,tienda_id,almacen_id,tipo,estado,numero,fecha,creado_en,confirmado_en,creado_por,confirmado_por,descuento_global,base_total,impuesto_total,total,moneda,origen_stock) values (?,?,?,'TICKET','CONFIRMADO','001-260713-000001',?,?,?,?,?,0,10,2.10,12.10,'EUR',false)", f.documentId(), f.storeId(), f.warehouseId(), LocalDate.of(2026,7,13), java.sql.Timestamp.from(NOW.minusSeconds(60)), java.sql.Timestamp.from(NOW.minusSeconds(30)), f.userId(), f.userId());
-        jdbc.update("insert into documento_linea(id,documento_id,producto_id,posicion,cantidad,codigo,nombre,tarifa,precio_unitario,descuento,impuestos_incluidos,regimen_impuesto,porcentaje_impuesto,base,impuesto,total,tipo_linea) values (?,?,?,1,1,'P-1','Producto','VENTA',12.10,0,true,'IVA',21,10,2.10,12.10,'PRODUCT')", UUID.randomUUID(), f.documentId(), f.productId());
+        jdbc.update("insert into documento_linea(id,documento_id,producto_id,posicion,cantidad,codigo,nombre,tarifa,precio_unitario,descuento,impuestos_incluidos,regimen_impuesto,porcentaje_impuesto,base,impuesto,total,tipo_linea) values (?,?,?,1,1,'P-1','Producto','VENTA',12.10,0,true,'IVA',21,10,2.10,12.10,'PRODUCT')", f.documentLineId(), f.documentId(), f.productId());
         jdbc.update("insert into payment_terminal_operation(id,terminal_id,store_id,provider,mode,operation_type,idempotency_key,request_hash,amount,status,external_reference,authorization_code,configuration_version,document_id,created_at,updated_at,completed_at) values (?,?,?,'PAYTEF','SIMULATED','CHARGE','charge','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',12.10,'APPROVED','CHARGE-REF','AUTH',-1,?,?,?,?)", f.chargeOperationId(), f.terminalId(), f.storeId(), f.documentId(), java.sql.Timestamp.from(NOW.minusSeconds(60)), java.sql.Timestamp.from(NOW.minusSeconds(30)), java.sql.Timestamp.from(NOW.minusSeconds(30)));
         jdbc.update("insert into payment_terminal_operation(id,terminal_id,store_id,provider,mode,operation_type,original_operation_id,idempotency_key,request_hash,amount,status,external_reference,authorization_code,configuration_version,created_at,updated_at,completed_at) values (?,?,?,'PAYTEF','SIMULATED','REFUND',?,'refund','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',12.10,'APPROVED','REFUND-REF','AUTH-R',-1,?,?,?)", f.operationId(), f.terminalId(), f.storeId(), f.chargeOperationId(), java.sql.Timestamp.from(NOW.minusSeconds(20)), java.sql.Timestamp.from(NOW.minusSeconds(10)), java.sql.Timestamp.from(NOW.minusSeconds(10)));
         return f;
@@ -159,5 +188,5 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     private static void execute(String sql) { try(var connection=DriverManager.getConnection(URL,USER,PASSWORD);var statement=connection.createStatement()){statement.execute(sql);}catch(Exception exception){throw new IllegalStateException(exception);} }
 
     @TestConfiguration static class Configuration { @Bean @Primary Clock clock(){return Clock.fixed(NOW, ZoneOffset.UTC);} }
-    private record Fixture(UUID installationId, UUID companyId, UUID storeId, UUID roleId, UUID userId, UUID terminalId, UUID taxId, UUID familyId, UUID warehouseId, UUID productId, UUID documentId, UUID chargeOperationId, UUID operationId) { }
+    private record Fixture(UUID installationId, UUID companyId, UUID storeId, UUID roleId, UUID userId, UUID terminalId, UUID taxId, UUID familyId, UUID warehouseId, UUID productId, UUID documentId, UUID documentLineId, UUID chargeOperationId, UUID operationId) { }
 }

@@ -26,11 +26,13 @@ public record CustomerReceivableView(
                     "message.document.only_receivable_document_can_be_paid");
         }
         var pending = document.getPendingTotal();
+        var status = pending.signum() == 0
+                ? DocumentStatus.PAGADO : document.getEstado();
         return new CustomerReceivableView(
                 document.getId(), document.getTipo(), document.getNumero(),
                 document.getClienteId(), customerName, document.getFecha(),
                 document.getDueDate(), document.getTotal(), document.getPaidTotal(),
-                pending, document.getEstado(), pending.signum() > 0
+                pending, status, pending.signum() > 0
                         && document.getDueDate() != null
                         && document.getDueDate().isBefore(businessDate));
     }

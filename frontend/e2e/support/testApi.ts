@@ -4,7 +4,7 @@ export const backendUrl = process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:18080
 export const apiUrl = `${backendUrl}/api/v1`;
 export const ventaUrl = process.env.E2E_VENTA_URL ?? "http://127.0.0.1:4173";
 export const gestionUrl = process.env.E2E_GESTION_URL ?? "http://127.0.0.1:4174";
-export const terminalId = process.env.E2E_TERMINAL_ID ?? "7f931e55-370a-4516-8b48-1f67d1a07b8f";
+export const terminalId = process.env.E2E_TERMINAL_ID ?? "06d2ce45-8ead-349d-b844-4ecdead5e1ec";
 export const terminalCredential = process.env.E2E_TERMINAL_CREDENTIAL ?? "DEV-SERVER";
 
 export type LoginSession = {

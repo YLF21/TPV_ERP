@@ -22,10 +22,14 @@ class CustomerReceivableControllerContractTest {
 
         assertReadEndpoint("list", CustomerReceivableFilter.class, "");
         assertReadEndpoint("detail", UUID.class, "/{documentId}");
+        assertReadEndpoint("paymentHistory", CustomerReceivablePaymentHistoryFilter.class,
+                "/payment-history");
         assertPrintEndpoint("printDocument", new Class<?>[] {UUID.class},
                 "/{documentId}/print-document");
         assertPrintEndpoint("paymentReceipt", new Class<?>[] {UUID.class, UUID.class},
                 "/{documentId}/payments/{paymentId}/receipt");
+        assertPrintEndpoint("printPayment", new Class<?>[] {UUID.class, UUID.class},
+                "/{documentId}/payments/{paymentId}/print");
         assertPayEndpoint("chargeCard", UUID.class,
                 CustomerReceivableController.CardChargeRequest.class, "/{documentId}/card-charges");
         assertPayEndpoint("pay", UUID.class, PaymentRequest.class, "/{documentId}/payments");

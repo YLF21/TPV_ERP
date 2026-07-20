@@ -249,6 +249,31 @@ class CustomerServiceTest {
         verify(members, never()).findByCustomerIdAndCompanyId(any(), any());
     }
 
+    @Test
+    void updateCanExplicitlyRemoveAnExistingCreditLimit() {
+        var customer = new Customer(
+                company, "Cliente", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.configureCredit(true, new BigDecimal("500.00"), 30, false, false);
+        when(customers.findByIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.of(customer));
+        when(customers.findByCompanyIdAndDocumentTypeAndDocumentNumber(
+                PartyTestData.id(company), DocumentType.NIF, "1"))
+                .thenReturn(Optional.of(customer));
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), PartyTestData.id(company)))
+                .thenReturn(Optional.empty());
+
+        var request = new CustomerController.CustomerRequest(
+                "Cliente", DocumentType.NIF, "1", null, null, null, null,
+                BigDecimal.ZERO, false, null, null, null, false, null,
+                true, null, 30, false, false, true);
+
+        var updated = service().update(customer.getId(), request.command());
+
+        assertThat(updated.creditLimit()).isNull();
+        assertThat(customer.getCreditLimit()).isNull();
+    }
+
     private CustomerService service() {
         var organization = new CurrentOrganization(stores, users);
         return new CustomerService(

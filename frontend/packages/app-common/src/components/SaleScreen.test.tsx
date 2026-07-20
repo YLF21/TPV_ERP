@@ -1548,6 +1548,19 @@ describe("SaleScreen", () => {
     expect(pending.lines[0]).not.toHaveProperty("memberDiscountPercent");
   });
 
+  it("uses the selected customer's configured payment term", () => {
+    const pending = pendingSaleDraftForCustomer(
+      addSaleLine([], products[0]),
+      { ...customers[0], paymentTermDays: 15 },
+      "warehouse-1",
+      new Date(2026, 6, 16, 23, 30),
+      "checkout-terms",
+    );
+
+    expect(pending.date).toBe("2026-07-16");
+    expect(pending.dueDate).toBe("2026-07-31");
+  });
+
   it("requires a valid fiscal percentage and regime for every pending-sale line", () => {
     const validLines = addSaleLine([], products[0]);
     const customer = customers[0];

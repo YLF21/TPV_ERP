@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -33,6 +34,9 @@ class DevSampleDataSeederPostgreSqlTest {
 
     @Autowired
     private DevSampleDataSeeder seeder;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -75,6 +79,44 @@ class DevSampleDataSeederPostgreSqlTest {
         assertThat(count("proveedor")).isGreaterThanOrEqualTo(1);
         assertThat(count("salida_almacen")).isGreaterThanOrEqualTo(1);
         assertThat(count("terminal")).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void seedsOperationalAdminForTheDemoTerminal() {
+        var admin = jdbc.queryForMap("""
+                select u.password_hash, u.protegido, u.activo, u.must_change_password,
+                       u.tienda_id, r.nombre as rol, r.protegido as rol_protegido
+                from usuario u
+                join rol r on r.id = u.rol_id
+                where u.nombre = 'ADMIN' and u.tienda_id is not null
+                """);
+
+        assertThat(passwordEncoder.matches("0000", admin.get("password_hash").toString())).isTrue();
+        assertThat(admin)
+                .containsEntry("protegido", true)
+                .containsEntry("activo", true)
+                .containsEntry("must_change_password", false)
+                .containsEntry("rol", "ADMIN")
+                .containsEntry("rol_protegido", true);
+        assertThat(jdbc.queryForObject(
+                "select id from terminal where tipo = 'SERVIDOR'", UUID.class))
+                .isEqualTo(DevSampleDataSeeder.terminalId());
+    }
+
+    @Test
+    void restoresDevelopmentTerminalCredentialWhenReseeding() {
+        jdbc.update(
+                "update terminal set credential_hash = ? where id = ?",
+                passwordEncoder.encode("stale-provisioned-credential"),
+                DevSampleDataSeeder.terminalId());
+
+        seeder.seed();
+
+        var credentialHash = jdbc.queryForObject(
+                "select credential_hash from terminal where id = ?",
+                String.class,
+                DevSampleDataSeeder.terminalId());
+        assertThat(passwordEncoder.matches("DEV-SERVER", credentialHash)).isTrue();
     }
 
     @Test

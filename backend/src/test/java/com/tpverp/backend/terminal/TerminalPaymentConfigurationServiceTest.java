@@ -57,6 +57,29 @@ class TerminalPaymentConfigurationServiceTest {
     }
 
     @Test
+    void publishesLiveAvailabilityReportedByTheLocalBridgeGateway() {
+        var terminal = terminal();
+        when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());
+        when(terminals.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+        when(configurations.findByTerminalId(terminal.getId())).thenReturn(Optional.empty());
+        when(storeConfigurations.findByStoreId(terminal.getTienda().getId())).thenReturn(Optional.empty());
+        when(gateway.supports(PaymentTerminalProvider.REDSYS_TPV_PC, false)).thenReturn(true);
+        when(gateway.capabilities()).thenReturn(java.util.Set.of(
+                PaymentTerminalCapability.CONNECTION_TEST, PaymentTerminalCapability.CHARGE,
+                PaymentTerminalCapability.QUERY));
+
+        var view = service().current();
+
+        assertThat(view.providerDescriptors()).filteredOn(descriptor -> descriptor.provider() == PaymentTerminalProvider.REDSYS_TPV_PC)
+                .singleElement().satisfies(descriptor -> {
+                    assertThat(descriptor.liveAvailable()).isTrue();
+                    assertThat(descriptor.unavailableReason()).isNull();
+                });
+        assertThat(view.providerDescriptors()).filteredOn(descriptor -> descriptor.provider() == PaymentTerminalProvider.GLOBAL_PAYMENTS)
+                .singleElement().satisfies(descriptor -> assertThat(descriptor.liveAvailable()).isFalse());
+    }
+
+    @Test
     void savesConfigurationForCurrentTerminalOnly() {
         var terminal = terminal();
         when(currentTerminal.terminalId(null)).thenReturn(terminal.getId());

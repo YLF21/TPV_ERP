@@ -67,7 +67,23 @@ public class CustomerPendingSaleController {
             @NotNull BigDecimal globalDiscount,
             @NotEmpty @Valid List<DocumentRequest.LineRequest> lines,
             List<@Valid PaymentItem> payments,
-            @NotNull @DecimalMin("0.00") BigDecimal quotedTotal) {
+            @NotNull @DecimalMin("0.00") BigDecimal quotedTotal,
+            @Valid CreditOverride creditOverride) {
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, null);
+        }
 
         DocumentCommand toCommand() {
             return new DocumentCommand(
@@ -76,6 +92,10 @@ public class CustomerPendingSaleController {
                     lines.stream().map(DocumentRequest.LineRequest::toCommand).toList());
         }
     }
+
+    public record CreditOverride(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Size(max = 500) String reason) {}
 
     public record PaymentItem(
             @NotNull PaymentKind kind,

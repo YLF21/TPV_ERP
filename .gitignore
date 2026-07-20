@@ -9,3 +9,4 @@ vite-*.log
 frontend-saas/vite-cache/
 frontend/**/target/
 output/
+payment-terminal-bridge/**/target/

@@ -5,6 +5,7 @@ import type { LocaleCode } from "../types";
 import type { TerminalContext } from "../types";
 import { printCustomerReceivablePaymentReceipt, type CustomerReceivablePaymentReceiptSnapshot } from "../sale/ticketPrinting";
 import { CashPaymentDialog } from "./CashPaymentDialog";
+import { CashPaymentResultDialog, type TicketPrintUiStatus } from "./CashPaymentResultDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 export type CustomerReceivable = {
@@ -20,6 +21,14 @@ type Method = { id: string; name?: string; nombre?: string; active?: boolean };
 type Attempt = { paymentId: string; amount: string; methodId: string; status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED"; finalOutcome?: boolean };
 type StandardAttempt = { requestId: string; kind: "cash" | "transfer"; item: Record<string, unknown> };
 type PaymentMutationResult = { receivable: CustomerReceivable; paymentReceipt: CustomerReceivablePaymentReceiptSnapshot };
+type CashCompletion = {
+  receivable: CustomerReceivable;
+  receipt: CustomerReceivablePaymentReceiptSnapshot;
+  totalCents: number;
+  receivedCents: number;
+  changeCents: number;
+  printStatus: TicketPrintUiStatus;
+};
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 export const receivablePaymentAttemptKey = (terminalCode: string, documentId: string) => `tpverp.receivable.${terminalCode}.${documentId}.card-attempt`;
@@ -36,6 +45,7 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [cashCompletion, setCashCompletion] = useState<CashCompletion | null>(null);
   const mounted = useRef(true);
   const dialogRef = useRef<HTMLElement>(null);
   const storageKey = receivablePaymentAttemptKey(terminalCode, receivable.documentId);
@@ -73,6 +83,23 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
     return request<PaymentMutationResult>(`/customer-receivables/${receivable.documentId}/payments`, { token, body: { pagos: [item] } });
   }
 
+  async function printCashCompletion(completion: CashCompletion) {
+    if (!terminalContext) return;
+    setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
+      ? { ...current, printStatus: "PRINTING" }
+      : current);
+    try {
+      const outcome = await printReceipt(completion.receipt, terminalContext, undefined, locale);
+      if (mounted.current) setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
+        ? { ...current, printStatus: outcome.status }
+        : current);
+    } catch {
+      if (mounted.current) setCashCompletion((current) => current?.receipt.paymentId === completion.receipt.paymentId
+        ? { ...current, printStatus: "FAILED" }
+        : current);
+    }
+  }
+
   async function payStandard(kind: "cash" | "transfer", receivedCents?: number) {
     if (!standardAttempt && !validate()) return;
     const methodId = standardAttempt ? String(standardAttempt.item.metodoPagoId) : methods[kind]; if (!methodId) { setError(t("receivables.payment.methodMissing")); return; }
@@ -86,6 +113,26 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
         reference: kind === "transfer" ? reference.trim() : null, requestId };
       const attempt = standardAttempt ?? { requestId, kind, item }; localStorage.setItem(standardKey, JSON.stringify(attempt)); setStandardAttempt(attempt);
       const result = await postPayment(item);
+      if (kind === "cash") {
+        const confirmedAmount = Number(result.paymentReceipt.amount);
+        const totalCents = Number.isFinite(confirmedAmount)
+          ? Math.round(confirmedAmount * 100)
+          : amountCents;
+        const confirmedReceivedCents = receivedCents ?? amountCents;
+        const completion: CashCompletion = {
+          receivable: result.receivable,
+          receipt: result.paymentReceipt,
+          totalCents,
+          receivedCents: confirmedReceivedCents,
+          changeCents: Math.max(0, confirmedReceivedCents - totalCents),
+          printStatus: terminalContext ? "PRINTING" : "SKIPPED"
+        };
+        localStorage.removeItem(standardKey); setStandardAttempt(null);
+        setCashOpen(false); setTransferOpen(false); setBusy(false); setError("");
+        if (mounted.current) setCashCompletion(completion);
+        if (terminalContext) await printCashCompletion(completion);
+        return;
+      }
       let retryPrint: (() => Promise<unknown>) | undefined;
       if (terminalContext) { const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
         try { if ((await retry()).status === "FAILED") retryPrint = retry; } catch { retryPrint = retry; } }
@@ -148,6 +195,17 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
   }
 
   useEffect(() => { const handler = (event: KeyboardEvent) => { if (event.key !== "Escape" || busy) return; if (cashOpen) return; if (transferOpen) { event.preventDefault(); event.stopImmediatePropagation(); setTransferOpen(false); return; } if (!unsafeCard) { event.preventDefault(); onCancel(); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, [busy, cashOpen, onCancel, transferOpen, unsafeCard]);
+
+  if (cashCompletion) return <CashPaymentResultDialog
+    locale={locale}
+    ticketNumber={cashCompletion.receipt.documentNumber}
+    totalCents={cashCompletion.totalCents}
+    receivedCents={cashCompletion.receivedCents}
+    changeCents={cashCompletion.changeCents}
+    printStatus={cashCompletion.printStatus}
+    onRetryPrint={cashCompletion.printStatus === "FAILED" ? () => void printCashCompletion(cashCompletion) : undefined}
+    onFinish={() => onPaid(cashCompletion.receivable)}
+  />;
 
   return <div className="sale-action-overlay" role="presentation">
     <section ref={dialogRef} className="customer-receivable-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-payment-title">

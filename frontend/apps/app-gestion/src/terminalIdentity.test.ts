@@ -18,7 +18,7 @@ describe("resolveGestionTerminalIdentity", () => {
     expect(devTerminalContext).toMatchObject({
       storeName: "TIENDA DEMO",
       terminalCode: "SERVIDOR",
-      terminalId: "7f931e55-370a-4516-8b48-1f67d1a07b8f"
+      terminalId: "06d2ce45-8ead-349d-b844-4ecdead5e1ec"
     });
     expect(resolveGestionTerminalIdentity({ ok: true, identity: null }, true))
       .toEqual(devTerminalContext);

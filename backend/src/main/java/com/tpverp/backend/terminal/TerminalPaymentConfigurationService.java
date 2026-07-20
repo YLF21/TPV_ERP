@@ -48,7 +48,7 @@ public class TerminalPaymentConfigurationService {
     @Transactional(readOnly = true)
     public TerminalPaymentConfigurationView current() {
         var terminal = currentTerminal();
-        return TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), terminalConfiguration(terminal));
+        return decorate(TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), terminalConfiguration(terminal)));
     }
 
     @Transactional
@@ -66,7 +66,7 @@ public class TerminalPaymentConfigurationService {
             if(metadata.version()!=configuration.getSecretReferenceVersion()||!metadata.provider().equals(command.provider().name()))throw new IllegalArgumentException("message.payment_terminal.secret_reference_mismatch");
         }
         configuration.configure(command);
-        return TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), configuration);
+        return decorate(TerminalPaymentConfigurationView.from(terminal, storeRules(terminal), configuration));
     }
 
     public TerminalPaymentConfigurationView testConnection() {
@@ -78,7 +78,7 @@ public class TerminalPaymentConfigurationService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("message.payment_terminal.gateway_not_available"));
         var result = gateway.testConnection(configuration);
-        return gatewayConfigurations.recordAndView(terminalId,result.status()==PaymentTerminalOperationStatus.APPROVED);
+        return decorate(gatewayConfigurations.recordAndView(terminalId,result.status()==PaymentTerminalOperationStatus.APPROVED));
     }
 
     public PaymentTerminalResult pair(UUID pairingId) {
@@ -131,5 +131,22 @@ public class TerminalPaymentConfigurationService {
     private StorePaymentConfiguration storeRules(Terminal terminal) {
         return storeConfigurations.findByStoreId(terminal.getTienda().getId())
                 .orElseGet(() -> new StorePaymentConfiguration(terminal.getTienda()));
+    }
+
+    private TerminalPaymentConfigurationView decorate(TerminalPaymentConfigurationView view) {
+        var capabilities = new java.util.EnumMap<PaymentTerminalProvider, java.util.Set<PaymentTerminalCapability>>(
+                PaymentTerminalProvider.class);
+        for (var provider : PaymentTerminalProvider.values()) {
+            if (provider == PaymentTerminalProvider.NONE) continue;
+            gateways.stream().filter(gateway -> gateway.supports(provider, false)).findFirst().ifPresent(gateway -> {
+                try {
+                    var advertised = gateway.capabilities();
+                    if (advertised.contains(PaymentTerminalCapability.CHARGE)) capabilities.put(provider, advertised);
+                } catch (RuntimeException ignored) {
+                    // An unavailable local bridge must keep LIVE disabled in the configuration UI.
+                }
+            });
+        }
+        return view.withLiveCapabilities(capabilities);
     }
 }

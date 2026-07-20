@@ -57,6 +57,7 @@ public class CorePermissionBootstrap {
     public static final String CUSTOMER_RECEIVABLES_READ = "CUSTOMER_RECEIVABLES_READ";
     public static final String CUSTOMER_RECEIVABLES_CREATE = "CUSTOMER_RECEIVABLES_CREATE";
     public static final String CUSTOMER_RECEIVABLES_PAY = "CUSTOMER_RECEIVABLES_PAY";
+    public static final String CUSTOMER_CREDIT_OVERRIDE = "CUSTOMER_CREDIT_OVERRIDE";
     public static final String PAYMENT_TERMINAL_VOID = "PAYMENT_TERMINAL_VOID";
     public static final String PAYMENT_TERMINAL_REFUND = "PAYMENT_TERMINAL_REFUND";
     public static final String PAYMENT_TERMINAL_SECRETS = "PAYMENT_TERMINAL_SECRETS";
@@ -119,6 +120,7 @@ public class CorePermissionBootstrap {
                 permission(CUSTOMER_RECEIVABLES_READ, "document.permissions.receivables.read", "DOCUMENTS"),
                 permission(CUSTOMER_RECEIVABLES_CREATE, "document.permissions.receivables.create", "DOCUMENTS"),
                 permission(CUSTOMER_RECEIVABLES_PAY, "document.permissions.receivables.pay", "DOCUMENTS"),
+                permission(CUSTOMER_CREDIT_OVERRIDE, "document.permissions.receivables.creditOverride", "DOCUMENTS"),
                 permission(PAYMENT_TERMINAL_VOID, "terminal.permissions.payment.void", "TERMINAL"),
                 permission(PAYMENT_TERMINAL_REFUND, "terminal.permissions.payment.refund", "TERMINAL"),
                 permission(PAYMENT_TERMINAL_SECRETS, "terminal.permissions.payment.secrets", "TERMINAL"))

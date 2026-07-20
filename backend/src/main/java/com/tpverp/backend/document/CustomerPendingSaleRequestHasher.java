@@ -37,6 +37,10 @@ final class CustomerPendingSaleRequestHasher {
                     .add(text(payment.voucherCode())).add(text(payment.reference()))
                     .add(payment.paymentTerminalOperationId());
         }
+        if (request.creditOverride() != null) {
+            canonical.add("credit-override")
+                    .add(text(request.creditOverride().reason()));
+        }
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(canonical.value().getBytes(StandardCharsets.UTF_8)));

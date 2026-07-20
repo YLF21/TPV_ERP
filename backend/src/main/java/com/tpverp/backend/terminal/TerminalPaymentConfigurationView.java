@@ -22,6 +22,17 @@ public record TerminalPaymentConfigurationView(
                 PaymentConfigurationView.from(configuration));
     }
 
+    public TerminalPaymentConfigurationView withLiveCapabilities(
+            Map<PaymentTerminalProvider, java.util.Set<PaymentTerminalCapability>> capabilitiesByProvider) {
+        var decorated = providerDescriptors.stream().map(descriptor -> {
+            var liveCapabilities = capabilitiesByProvider.getOrDefault(descriptor.provider(), java.util.Set.of());
+            var available = liveCapabilities.contains(PaymentTerminalCapability.CHARGE);
+            return new ProviderDescriptor(descriptor.provider(), descriptor.displayName(), descriptor.supportedModes(),
+                    available, available ? null : "SDK_NOT_INSTALLED", descriptor.capabilities(), descriptor.fieldSchemas());
+        }).toList();
+        return new TerminalPaymentConfigurationView(terminalId, rules, decorated, configuration);
+    }
+
     public record ProviderField(String key, String label, String type, boolean required,
             List<PaymentTerminalMode> modes, List<String> options) {}
 

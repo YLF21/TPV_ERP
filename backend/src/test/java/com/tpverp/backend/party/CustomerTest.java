@@ -36,6 +36,27 @@ class CustomerTest {
         assertThat(customer.isActive()).isTrue();
     }
 
+    @Test
+    void creditPolicyDefaultsAreCompatibleAndConfigurationIsValidated() {
+        var customer = new Customer(
+                company(), "Cliente", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+
+        assertThat(customer.isCreditEnabled()).isTrue();
+        assertThat(customer.getCreditLimit()).isNull();
+        assertThat(customer.getPaymentTermDays()).isEqualTo(30);
+        assertThat(customer.isCreditBlocked()).isFalse();
+        assertThat(customer.isBlockOnOverdue()).isFalse();
+
+        customer.configureCredit(false, new BigDecimal("250.00"), 45, true, true);
+
+        assertThat(customer.isCreditEnabled()).isFalse();
+        assertThat(customer.getCreditLimit()).isEqualByComparingTo("250.00");
+        assertThat(customer.getPaymentTermDays()).isEqualTo(45);
+        assertThat(customer.isCreditBlocked()).isTrue();
+        assertThat(customer.isBlockOnOverdue()).isTrue();
+    }
+
     private Company company() {
         return new Company("B00000000", "Company", Map.of(
                 "linea1", "Calle 1", "ciudad", "Las Palmas",

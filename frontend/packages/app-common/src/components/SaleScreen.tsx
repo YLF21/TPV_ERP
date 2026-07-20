@@ -74,6 +74,14 @@ export type SaleCustomer = {
   activeMember?: boolean;
   memberCategoryName?: string | null;
   memberDiscountPercent?: number | string | null;
+  creditEnabled?: boolean;
+  creditLimit?: number | string | null;
+  paymentTermDays?: number | null;
+  creditBlocked?: boolean;
+  blockOnOverdue?: boolean;
+  outstandingDebt?: number | string | null;
+  overdueDebt?: number | string | null;
+  availableCredit?: number | string | null;
 };
 
 type SaleTranslator = (key: string) => string;
@@ -536,7 +544,7 @@ export function pendingSaleDraftForCustomer(
 ): PendingSaleDraft {
   return {
     checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
-    customerId: customer.id, dueDate: addLocalDays(now, 30), globalDiscount: "0.00",
+    customerId: customer.id, dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)), globalDiscount: "0.00",
     lines: lines.map((line) => ({
       productId: line.product.id, quantity: line.quantity,
       code: line.product.code ?? line.product.barcode ?? line.product.id,
@@ -1408,6 +1416,7 @@ export function SaleScreen({
         draft={pendingDraft}
         recovery={recoveredPendingSale}
         token={session.accessToken}
+        permissions={session.permissions}
         disabled={paymentLocked}
         onPersistRecovery={(envelope: PendingSaleRecoveryEnvelope) => {
           savePendingSaleRecovery(localStorage, envelope);

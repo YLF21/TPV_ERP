@@ -50,12 +50,15 @@ class PartyControllerContractTest {
     }
 
     @Test
-    void saleCustomerOptionExposesOnlyIdentityAndMemberBenefit() {
+    void saleCustomerOptionExposesIdentityMemberBenefitAndCreditAssessmentInputs() {
         assertThat(Arrays.stream(CustomerController.SaleCustomerOption.class.getRecordComponents())
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "clientId", "fiscalName", "documentNumber",
-                        "activeMember", "memberCategoryName", "memberDiscountPercent");
+                        "activeMember", "memberCategoryName", "memberDiscountPercent",
+                        "creditEnabled", "creditLimit", "paymentTermDays",
+                        "creditBlocked", "blockOnOverdue", "outstandingDebt",
+                        "overdueDebt", "availableCredit");
     }
 
     private String path(Class<?> controller) {

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "listenHost": "127.0.0.1",
+  "port": 9123,
+  "authenticationTokenReference": "windows:bridge-http-token",
+  "dataDirectory": "./data",
+  "pluginsDirectory": "./plugins",
+  "pluginDigests": {},
+  "terminals": [
+    {
+      "terminalId": "33333333-3333-3333-3333-333333333333",
+      "provider": "REDSYS_TPV_PC",
+      "adapterId": "redsys-sdk",
+      "mode": "LIVE",
+      "model": "MODELO_HOMOLOGADO",
+      "connectionType": "TCP_IP",
+      "secretReference": "windows:tpv-redsys-terminal-001",
+      "parameters": {
+        "deviceHost": "192.0.2.10",
+        "devicePort": "1234"
+      }
+    },
+    {
+      "terminalId": "44444444-4444-4444-4444-444444444444",
+      "provider": "GLOBAL_PAYMENTS",
+      "adapterId": "globalpayments-universal",
+      "mode": "SIMULATED",
+      "model": "UNIVERSAL",
+      "connectionType": "SIMULATED",
+      "secretReference": null,
+      "parameters": {
+        "protocol": "SIMULATED",
+        "simulationOutcome": "APPROVED"
+      }
+    }
+  ]
+}

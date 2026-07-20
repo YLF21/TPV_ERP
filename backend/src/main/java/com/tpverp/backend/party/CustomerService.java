@@ -62,6 +62,7 @@ public class CustomerService {
         customer.updateProfile(
                 command.birthday(), command.gender(), command.commercialConsent(),
                 command.preferredCommercialChannelId());
+        applyCreditConfiguration(customer, command, true);
         customer.assignClientCode(store.getId(), codes.nextClient(store));
         customer = customers.save(customer);
         return view(customer, null);
@@ -93,6 +94,7 @@ public class CustomerService {
             customer.updateProfile(
                     command.birthday(), command.gender(), command.commercialConsent(),
                     command.preferredCommercialChannelId());
+            applyCreditConfiguration(customer, command, true);
             customer.assignClientCode(store.getId(), reservedCodes.get(index));
             pending.add(customer);
         }
@@ -115,6 +117,7 @@ public class CustomerService {
         customer.updateProfile(
                 command.birthday(), command.gender(), command.commercialConsent(),
                 command.preferredCommercialChannelId());
+        applyCreditConfiguration(customer, command, false);
         if (command.member()) {
             if (member == null) {
                 var store = context.currentStore();
@@ -256,7 +259,35 @@ public class CustomerService {
     }
 
     private CustomerView view(Customer customer, Member member) {
-        return CustomerView.from(customer, member);
+        var credit = creditSummary(customer);
+        return CustomerView.from(customer, member, credit);
+    }
+
+    private CreditSummary creditSummary(Customer customer) {
+        var outstanding = money(customers.outstandingDebt(customer.getId()));
+        var overdue = money(customers.overdueDebt(customer.getId(), LocalDate.now(clock)));
+        var available = customer.getCreditLimit() == null ? null
+                : money(customer.getCreditLimit().subtract(outstanding));
+        return new CreditSummary(outstanding, overdue, available);
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return (value == null ? BigDecimal.ZERO : value)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static void applyCreditConfiguration(
+            Customer customer, CustomerCommand command, boolean creating) {
+        customer.configureCredit(
+                command.creditEnabled() == null
+                        ? creating || customer.isCreditEnabled() : command.creditEnabled(),
+                command.creditLimitSpecified() ? command.creditLimit() : customer.getCreditLimit(),
+                command.paymentTermDays() == null
+                        ? (creating ? 30 : customer.getPaymentTermDays()) : command.paymentTermDays(),
+                command.creditBlocked() == null
+                        ? (!creating && customer.isCreditBlocked()) : command.creditBlocked(),
+                command.blockOnOverdue() == null
+                        ? (!creating && customer.isBlockOnOverdue()) : command.blockOnOverdue());
     }
 
     public record CustomerCommand(
@@ -273,7 +304,33 @@ public class CustomerService {
             LocalDate birthday,
             CustomerGender gender,
             boolean commercialConsent,
-            UUID preferredCommercialChannelId) {
+            UUID preferredCommercialChannelId,
+            Boolean creditEnabled,
+            BigDecimal creditLimit,
+            boolean creditLimitSpecified,
+            Integer paymentTermDays,
+            Boolean creditBlocked,
+            Boolean blockOnOverdue) {
+
+        public CustomerCommand(
+                String fiscalName,
+                DocumentType documentType,
+                String documentNumber,
+                FiscalAddress address,
+                String phone,
+                String email,
+                String notes,
+                BigDecimal discount,
+                boolean member,
+                String numMember,
+                LocalDate birthday,
+                CustomerGender gender,
+                boolean commercialConsent,
+                UUID preferredCommercialChannelId) {
+            this(fiscalName, documentType, documentNumber, address, phone, email, notes,
+                    discount, member, numMember, birthday, gender, commercialConsent,
+                    preferredCommercialChannelId, null, null, false, null, null, null);
+        }
 
         public CustomerCommand(
                 String fiscalName,
@@ -287,7 +344,8 @@ public class CustomerService {
                 boolean member,
                 String numMember) {
             this(fiscalName, documentType, documentNumber, address, phone, email, notes,
-                    discount, member, numMember, null, null, false, null);
+                    discount, member, numMember, null, null, false, null,
+                    null, null, false, null, null, null);
         }
     }
 
@@ -316,9 +374,17 @@ public class CustomerService {
             boolean commercialConsent,
             UUID preferredCommercialChannelId,
             boolean active,
-            boolean fiscalDataComplete) {
+            boolean fiscalDataComplete,
+            boolean creditEnabled,
+            BigDecimal creditLimit,
+            int paymentTermDays,
+            boolean creditBlocked,
+            boolean blockOnOverdue,
+            BigDecimal outstandingDebt,
+            BigDecimal overdueDebt,
+            BigDecimal availableCredit) {
 
-        static CustomerView from(Customer customer, Member member) {
+        static CustomerView from(Customer customer, Member member, CreditSummary credit) {
             boolean activeMember = member != null && member.isActive();
             var category = activeMember ? member.getMemberCategory() : null;
             var memberDiscount = category != null && category.isActive() && category.isDiscountEnabled()
@@ -339,9 +405,18 @@ public class CustomerService {
                     member == null ? BigDecimal.ZERO.setScale(2) : member.getMemberBalance(),
                     customer.getBirthday(), customer.getGender(),
                     customer.hasCommercialConsent(), customer.getPreferredCommercialChannelId(),
-                    customer.isActive(), customer.hasCompleteFiscalData());
+                    customer.isActive(), customer.hasCompleteFiscalData(),
+                    customer.isCreditEnabled(), customer.getCreditLimit(),
+                    customer.getPaymentTermDays(), customer.isCreditBlocked(),
+                    customer.isBlockOnOverdue(), credit.outstandingDebt(),
+                    credit.overdueDebt(), credit.availableCredit());
         }
     }
+
+    private record CreditSummary(
+            BigDecimal outstandingDebt,
+            BigDecimal overdueDebt,
+            BigDecimal availableCredit) {}
 
     public record BalanceView(
             UUID id,

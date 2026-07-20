@@ -19,6 +19,14 @@ public class PaymentTerminalAdjustmentService {
     public PaymentTerminalOperation reserveRefund(UUID id, UUID originalId, UUID terminalId, UUID storeId,
             PaymentTerminalProvider provider, String idempotencyKey, String requestHash, BigDecimal amount,
             String configurationHash, long configurationVersion, Instant now) {
+        return reserveRefund(id, originalId, terminalId, storeId, provider, idempotencyKey, requestHash, amount,
+                configurationHash, configurationVersion, now, "");
+    }
+
+    @Transactional
+    public PaymentTerminalOperation reserveRefund(UUID id, UUID originalId, UUID terminalId, UUID storeId,
+            PaymentTerminalProvider provider, String idempotencyKey, String requestHash, BigDecimal amount,
+            String configurationHash, long configurationVersion, Instant now, String refundLineSelection) {
         repository.lockIdempotencyKey(terminalId+":"+idempotencyKey);
         var replay = repository.findByTerminalIdAndIdempotencyKey(terminalId, idempotencyKey);
         if (replay.isPresent()) return compatibleReplay(replay.orElseThrow(), PaymentTerminalOperationType.REFUND,
@@ -33,9 +41,11 @@ public class PaymentTerminalAdjustmentService {
         if (amount == null || amount.signum() <= 0 || amount.compareTo(remaining) > 0) {
             throw new IllegalArgumentException("La devolucion supera el saldo reembolsable");
         }
-        return repository.saveAndFlush(PaymentTerminalOperation.reserve(id, terminalId, storeId, provider,
+        var operation = PaymentTerminalOperation.reserve(id, terminalId, storeId, provider,
                 original.getMode(), PaymentTerminalOperationType.REFUND, originalId, idempotencyKey,
-                requestHash, amount, configurationHash, configurationVersion, now));
+                requestHash, amount, configurationHash, configurationVersion, now);
+        operation.assignRefundLineSelection(refundLineSelection);
+        return repository.saveAndFlush(operation);
     }
 
     @Transactional

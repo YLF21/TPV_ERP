@@ -69,11 +69,21 @@ public class PaymentTerminalOperationsService {
 
     public PaymentTerminalOperation refund(UUID originalId, UUID operationId, String idempotencyKey, BigDecimal amount,
             Authentication authentication) {
+        return refund(originalId, operationId, idempotencyKey, amount, List.of(), authentication);
+    }
+
+    public PaymentTerminalOperation refund(UUID originalId, UUID operationId, String idempotencyKey, BigDecimal amount,
+            List<PaymentTerminalRefundLineSelection> lines, Authentication authentication) {
         var original=get(originalId); var configuration=configuration(original);
         requireCapability(configuration,PaymentTerminalCapability.REFUND);
-        var hash=hash("REFUND|"+originalId+"|"+amount.stripTrailingZeros().toPlainString());
+        if(original.getDocumentId()==null) throw problem(HttpStatus.CONFLICT,"PAYMENT_REFUND_DOCUMENT_PENDING","El cobro aun no tiene documento fiscal");
+        var canonical=PaymentTerminalRefundLineSelection.canonical(lines);
+        var key=requiredKey(idempotencyKey);
+        var hash=hash("REFUND|"+originalId+"|"+amount.stripTrailingZeros().toPlainString()+"|"+canonical);
+        if(operations.findByTerminalIdAndIdempotencyKey(configuration.terminalId(),key).isEmpty())
+            documents.validateApprovedCardRefund(original.getDocumentId(),amount,lines);
         var adjustment=adjustments.reserveRefund(operationId,originalId,configuration.terminalId(),configuration.storeId(),
-                configuration.provider(),requiredKey(idempotencyKey),hash,amount,configuration.configurationHash(),configuration.configurationVersion(),clock.instant());
+                configuration.provider(),key,hash,amount,configuration.configurationHash(),configuration.configurationVersion(),clock.instant(),canonical);
         if(adjustment.getStatus()!=PaymentTerminalOperationStatus.PENDING) return adjustment;
         adjustments.markSent(operationId,clock.instant());
         PaymentTerminalResult result;
@@ -82,14 +92,19 @@ public class PaymentTerminalOperationsService {
         var completed=adjustments.complete(operationId,result,clock.instant());
         if(completed.getStatus()==PaymentTerminalOperationStatus.APPROVED && completed.getDocumentId()==null){
             var refreshed=get(originalId);
-            if(amount.compareTo(refreshed.getAmount())!=0 || refreshed.getDocumentId()==null){
-                return recovery.documentReview(operationId,"La devolucion parcial requiere desglose fiscal explicito de lineas");
-            }
-            try { var document=documents.createApprovedCardRefund(operationId,refreshed.getDocumentId(),amount,authentication);
+            try { var document=documents.createApprovedCardRefund(operationId,refreshed.getDocumentId(),amount,lines,authentication);
                 recovery.linkDocument(operationId,document.getId(),null);return get(operationId); }
             catch(RuntimeException failure){return recovery.documentFailure(operationId,"Fallo al crear el documento fiscal de devolucion");}
         }
         return completed;
+    }
+
+    @Transactional(readOnly=true)
+    public List<com.tpverp.backend.document.DocumentService.CardRefundLineOption> refundLineOptions(UUID originalId) {
+        var original=get(originalId);
+        if(original.getOperationType()!=PaymentTerminalOperationType.CHARGE || original.getDocumentId()==null)
+            throw problem(HttpStatus.CONFLICT,"PAYMENT_REFUND_DOCUMENT_PENDING","El cobro aun no tiene documento fiscal");
+        return documents.cardRefundLineOptions(original.getDocumentId());
     }
 
     public PaymentTerminalReceipt receipt(UUID id){ var op=get(id); var c=configuration(op); requireCapability(c,PaymentTerminalCapability.RECEIPT);
