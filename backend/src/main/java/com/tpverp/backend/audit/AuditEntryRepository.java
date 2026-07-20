@@ -10,7 +10,5 @@ public interface AuditEntryRepository extends JpaRepository<AuditEntry, UUID> {
     List<AuditEntry> findByTiendaIdAndCreadaEnBetweenOrderByCreadaEnDesc(
             UUID tiendaId, Instant desde, Instant hasta);
 
-    java.util.Optional<AuditEntry> findByIdAndTiendaId(UUID id, UUID tiendaId);
-
     long deleteByCreadaEnBefore(Instant limite);
 }

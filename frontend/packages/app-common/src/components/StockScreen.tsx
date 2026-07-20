@@ -73,15 +73,25 @@ import { excelImportAccept } from "./excelImport";
 import { enterNavigationIntent, nextEnterTargetIndex } from "./keyboardNavigation";
 import stockFilterIcon from "../assets/stock/filter.png";
 import stockSearchIcon from "../assets/stock/search.png";
+import {
+  stockViews,
+  userCanManageStockProducts,
+  userCanManageWarehouses,
+  userCanReadStock,
+  userHasStockPermission,
+  visibleStockViewsForSession,
+  type StockViewKey
+} from "./stockAccess";
+export {
+  stockViews,
+  userCanManageStockProducts,
+  userCanManageWarehouses,
+  userCanReadStock,
+  userHasStockPermission,
+  visibleStockViewsForSession
+} from "./stockAccess";
+export type { StockViewKey } from "./stockAccess";
 
-export type StockViewKey =
-  | "stock.current"
-  | "stock.topSales"
-  | "stock.offers"
-  | "stock.memberPrice"
-  | "stock.promotions"
-  | "stock.noDiscount"
-  | "stock.bulkEdit";
 type StockDetailTab = "stock" | "sales";
 export type StockBulkEditTab = "main" | "info" | "salePrice" | "memberPrice" | "wholesalePrice" | "offer" | "image";
 export type BulkPriceUseMode = "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
@@ -139,6 +149,10 @@ type StockScreenProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenDocument?: (documentId: string, documentType: string) => void | Promise<void>;
+  embedded?: boolean;
+  initialView?: StockViewKey;
+  initialPartyDirectory?: PartyDirectoryKind | null;
+  initialSettingsMode?: StockSettingsMode | null;
 };
 
 type StockItemView = {
@@ -375,15 +389,6 @@ export type StockTopSalesFamilyNode = {
   }>;
 };
 
-export const stockViews: StockViewKey[] = [
-  "stock.current",
-  "stock.topSales",
-  "stock.offers",
-  "stock.memberPrice",
-  "stock.promotions",
-  "stock.noDiscount",
-  "stock.bulkEdit"
-];
 const stockTopSalesPeriods: StockTopSalesQuickPeriod[] = ["day", "week", "month", "year"];
 const stockColumnMinWidth = 72;
 const stockColumnMaxWidth = 420;
@@ -959,32 +964,6 @@ export function stockRowToProductEdit(row: StockInventoryRow): ProductCreateEdit
       offerUntil: row.offerUntil
     }
   };
-}
-
-export function userCanManageStockProducts(session: Pick<UserSession, "permissions">) {
-  return session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_PRODUCTO");
-}
-
-export function userHasStockPermission(
-  session: Pick<UserSession, "permissions">,
-  ...permissions: UserSession["permissions"]
-) {
-  return session.permissions.includes("ADMIN")
-    || permissions.some((permission) => session.permissions.includes(permission));
-}
-
-export function userCanReadStock(session: Pick<UserSession, "permissions">) {
-  return session.permissions.includes("ADMIN")
-    || session.permissions.includes("GESTION_PRODUCTO")
-    || session.permissions.includes("GESTION_ALMACEN")
-    || session.permissions.includes("GESTION_VENTAS")
-    || session.permissions.includes("STOCK_READ");
-}
-
-export function userCanManageWarehouses(session: Pick<UserSession, "permissions">) {
-  return session.permissions.includes("ADMIN")
-    || session.permissions.includes("GESTION_ALMACEN")
-    || session.permissions.includes("WAREHOUSES_MANAGE");
 }
 
 export function stockViewIsSelected(
@@ -1919,12 +1898,16 @@ export function StockScreen({
   onBack,
   onLocaleChange,
   onLogout,
-  onOpenDocument
+  onOpenDocument,
+  embedded = false,
+  initialView = "stock.current",
+  initialPartyDirectory = null,
+  initialSettingsMode = null
 }: StockScreenProps) {
   const t = createTranslator(locale);
   const stockTitle = t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
-  const [selectedView, setSelectedView] = useState<StockViewKey>("stock.current");
-  const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(null);
+  const [selectedView, setSelectedView] = useState<StockViewKey>(initialView);
+  const [partyDirectory, setPartyDirectory] = useState<PartyDirectoryKind | null>(initialPartyDirectory);
   const [searchText, setSearchText] = useState("");
   const [allStockRows, setAllStockRows] = useState<StockInventoryRow[]>([]);
   const [stockPage, setStockPage] = useState<{ nextCursor: string | null; hasMore: boolean }>({ nextCursor: null, hasMore: false });
@@ -2035,7 +2018,7 @@ export function StockScreen({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
-  const [stockSettingsMode, setStockSettingsMode] = useState<StockSettingsMode | null>(null);
+  const [stockSettingsMode, setStockSettingsMode] = useState<StockSettingsMode | null>(initialSettingsMode);
   const [stockSettings, setStockSettings] = useState<StockSettingsView | null>(null);
   const stockTableRef = useRef<HTMLDivElement | null>(null);
   const bulkTableRef = useRef<HTMLDivElement | null>(null);
@@ -2258,14 +2241,7 @@ export function StockScreen({
     });
   }, [bulkProductSupplierLinks, bulkProductSupplierLinksReady]);
   const canManageWarehouseSettings = userCanManageWarehouses(session);
-  const warehouseOnly = session.permissions.includes("GESTION_ALMACEN") && !canManageProducts;
-  const visibleStockViews = !canReadStock
-    ? []
-    : canManageProducts
-      ? stockViews
-      : warehouseOnly
-        ? ["stock.current" as StockViewKey]
-        : stockViews.filter((view) => view !== "stock.bulkEdit");
+  const visibleStockViews = visibleStockViewsForSession(session);
   const canReadCustomers = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_CLIENTE_PROVEEDOR")
     || session.permissions.includes("CUSTOMERS_READ");
@@ -6477,8 +6453,8 @@ export function StockScreen({
   }
 
   return (
-    <main className="stock-screen work-screen">
-      <SessionTopControls
+    <main className={embedded ? "stock-screen work-screen gestion-embedded-module" : "stock-screen work-screen"}>
+      {!embedded && <SessionTopControls
         locale={locale}
         session={session}
         languageLabel={t("login.language")}
@@ -6491,22 +6467,22 @@ export function StockScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={onLogout}
-      />
+      />}
 
       <section
         className={`work-shell ${selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-editor-work-shell" : ""}`}
         aria-label={stockTitle}
       >
         <header className="work-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
-          </button>
+          </button>}
           {selectedView !== "stock.bulkEdit" && (
             <h1 className="report-title">{stockTitle}</h1>
           )}
         </header>
 
-        <aside className="stock-nav">
+        {!embedded && <aside className="stock-nav">
           {!(selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor") && <strong>{stockTitle}</strong>}
           {visibleStockViews.map((view) => (
             <button
@@ -6540,7 +6516,7 @@ export function StockScreen({
           <button type="button" className="report-back" onClick={onBack}>
             {t("common.back")}
           </button>
-        </aside>
+        </aside>}
 
         <section className={`stock-list work-panel ${!partyDirectory && selectedView === "stock.bulkEdit" ? "bulk-edit-panel" : ""} ${!partyDirectory && selectedView === "stock.bulkEdit" && bulkWorkspaceView === "editor" ? "bulk-edit-workspace-panel" : ""}`} aria-label={partyDirectory ? t(`party.${partyDirectory}.title`) : selectedViewLabel}>
           {partyDirectory ? null : selectedView === "stock.bulkEdit" ? (

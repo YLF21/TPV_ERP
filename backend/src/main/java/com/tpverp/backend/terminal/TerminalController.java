@@ -1,5 +1,6 @@
 package com.tpverp.backend.terminal;
 
+import com.tpverp.backend.security.domain.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -7,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +36,16 @@ public class TerminalController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('TERMINALS_MANAGE')")
     public List<TerminalRegistrationService.TerminalItem> list() {
         return service.list();
+    }
+
+    @PostMapping("/server/provision")
+    @PreAuthorize("hasRole('ADMIN')")
+    public TerminalRegistrationService.ServerProvisioningResult provisionServer(
+            Authentication authentication) {
+        if (!(authentication.getPrincipal() instanceof UserAccount administrator)) {
+            throw new IllegalStateException("message.terminal.server_provision_requires_installation_admin");
+        }
+        return service.provisionServer(administrator);
     }
 
     @PostMapping("/{terminalId}/approve")

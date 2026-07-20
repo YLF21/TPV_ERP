@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,16 +22,27 @@ public class TicketController {
 
     private final DocumentService service;
     private final DocumentFiscalQrService fiscalQr;
+    private final DocumentAttributionResolver attributions;
 
-    public TicketController(DocumentService service, DocumentFiscalQrService fiscalQr) {
+    public TicketController(
+            DocumentService service,
+            DocumentFiscalQrService fiscalQr,
+            DocumentAttributionResolver attributions) {
         this.service = service;
         this.fiscalQr = fiscalQr;
+        this.attributions = attributions;
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public List<DocumentView> list() {
-        return service.listTickets().stream().map(this::view).toList();
+        var documents = service.listTickets();
+        var attributionIndex = attributions.resolve(documents);
+        var views = new ArrayList<DocumentView>(documents.size());
+        for (var document : documents) {
+            views.add(view(document, attributionIndex.get(document.getId())));
+        }
+        return List.copyOf(views);
     }
 
     @PostMapping
@@ -68,14 +80,23 @@ public class TicketController {
     @PreAuthorize("hasRole('ADMIN')")
     public DocumentView adminEdit(
             @PathVariable UUID id,
-            @Valid @RequestBody DeliveryNoteController.AdminEditRequest request) {
+            @Valid @RequestBody DeliveryNoteController.AdminEditRequest request,
+            Authentication authentication) {
         return view(service.adminEditConfirmed(
                 id, request.descuentoGlobal(), request.clienteId(), request.proveedorId(),
-                request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList()));
+                request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList(),
+                authentication));
     }
 
     private DocumentView view(CommercialDocument document) {
-        return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
+        var attribution = attributions.resolve(List.of(document)).get(document.getId());
+        return view(document, attribution);
+    }
+
+    private DocumentView view(
+            CommercialDocument document,
+            DocumentAttributionResolver.Attribution attribution) {
+        return DocumentView.from(document, fiscalQr.qrUrl(document.getId()), attribution);
     }
 
     public record CreateTicketRequest(

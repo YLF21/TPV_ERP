@@ -48,6 +48,7 @@ import {
   userCanManageStockProducts,
   userCanManageWarehouses,
   userCanReadStock,
+  visibleStockViewsForSession,
   stockViewIsSelected,
   StockScreen
 } from "./StockScreen";
@@ -1212,6 +1213,36 @@ describe("StockScreen", () => {
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Aceite oliva");
+  });
+
+  it("renders a selected stock view as embedded APP GESTION content without duplicate navigation", () => {
+    const html = renderToStaticMarkup(
+      <StockScreen
+        app="gestion"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        embedded
+        initialView="stock.topSales"
+      />
+    );
+
+    expect(html).toContain('class="stock-screen work-screen gestion-embedded-module"');
+    expect(html).toContain("Top ventas");
+    expect(html).not.toContain('class="stock-nav"');
+    expect(html).not.toContain('class="report-brand-back"');
+    expect(html).not.toContain('class="report-user-button"');
+  });
+
+  it("builds permission-aware stock submenu options", () => {
+    expect(visibleStockViewsForSession({ permissions: ["GESTION_ALMACEN"] }))
+      .toEqual(["stock.current"]);
+    expect(visibleStockViewsForSession({ permissions: ["STOCK_READ"] }))
+      .not.toContain("stock.bulkEdit");
+    expect(visibleStockViewsForSession({ permissions: ["GESTION_PRODUCTO"] }))
+      .toContain("stock.bulkEdit");
   });
 
   it("uses an inventory filter dialog label outside top sales", () => {

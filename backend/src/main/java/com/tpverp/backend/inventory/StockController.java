@@ -112,7 +112,7 @@ public class StockController {
     }
 
     @GetMapping("/settings")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + WAREHOUSES_MANAGE + "')")
     public StockSettingsView settings() {
         return settingsService.settings();
     }
@@ -132,7 +132,7 @@ public class StockController {
     }
 
     @GetMapping("/minimums/{productId}/{warehouseId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + WAREHOUSES_MANAGE + "')")
     public StockMinimumView minimum(
             @PathVariable UUID productId, @PathVariable UUID warehouseId) {
         return settingsService.minimum(productId, warehouseId);

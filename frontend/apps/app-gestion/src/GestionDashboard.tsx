@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { UserSession } from "@tpverp/app-common";
-import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import {
   changeDashboardWidgetHeight,
   dashboardWidgetDefaults,
@@ -26,7 +25,6 @@ type Translator = (key: string) => string;
 type GestionDashboardProps = {
   session: UserSession;
   t: Translator;
-  navigation: GestionNavigationItem[];
   onOpenSales: () => void;
   onOpenStock: () => void;
   onOpenPromotions: () => void;
@@ -38,7 +36,6 @@ type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 export function GestionDashboard({
   session,
   t,
-  navigation,
   onOpenSales,
   onOpenStock,
   onOpenPromotions,
@@ -104,8 +101,7 @@ export function GestionDashboard({
   const addableWidgets = availableWidgets.filter((key) => !configuredKeys.has(key));
 
   return (
-    <GestionShell session={session} t={t} activeKey="dashboard" navigation={navigation}>
-      <section className="gestion-workspace">
+    <section className="gestion-workspace">
         <header className="gestion-dashboard-toolbar">
           <div>
             <span className="gestion-eyebrow">{t("gestion.dashboard.eyebrow")}</span>
@@ -200,8 +196,7 @@ export function GestionDashboard({
             ))}
           </section>
         )}
-      </section>
-    </GestionShell>
+    </section>
   );
 }
 

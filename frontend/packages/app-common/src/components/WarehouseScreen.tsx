@@ -12,8 +12,13 @@ import type {
   WarehouseSupplierOption
 } from "./WarehouseDocumentDialog";
 import type { WarehouseImportProduct } from "./warehouseDocumentImport";
-
-type WarehouseSection = "input" | "output" | "goodsCheck";
+import { userCanManageWarehouse, type WarehouseSection } from "./warehouseAccess";
+export {
+  userCanManageWarehouse,
+  visibleWarehouseSectionsForSession,
+  warehouseSections
+} from "./warehouseAccess";
+export type { WarehouseSection } from "./warehouseAccess";
 
 type WarehouseScreenProps = {
   app: AppKind;
@@ -23,6 +28,8 @@ type WarehouseScreenProps = {
   onBack: () => void;
   onLogout?: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
+  embedded?: boolean;
+  initialSection?: WarehouseSection;
 };
 
 type ProductOptionView = WarehouseImportProduct & {
@@ -34,10 +41,6 @@ type WarehouseView = WarehouseOption & {
   defaultWarehouse?: boolean;
 };
 
-export function userCanManageWarehouse(session: Pick<UserSession, "permissions">) {
-  return session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_ALMACEN");
-}
-
 export function WarehouseScreen({
   app,
   locale,
@@ -45,10 +48,12 @@ export function WarehouseScreen({
   terminalContext,
   onBack,
   onLogout,
-  onLocaleChange
+  onLocaleChange,
+  embedded = false,
+  initialSection = "input"
 }: WarehouseScreenProps) {
   const t = createTranslator(locale);
-  const [section, setSection] = useState<WarehouseSection>("input");
+  const [section, setSection] = useState<WarehouseSection>(initialSection);
   const [products, setProducts] = useState<WarehouseImportProduct[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseView[]>([]);
   const [customers, setCustomers] = useState<WarehouseCustomerOption[]>([]);
@@ -59,6 +64,10 @@ export function WarehouseScreen({
     warehouses.find((warehouse) => warehouse.defaultWarehouse)?.id
       ?? warehouses.find((warehouse) => warehouse.active !== false)?.id
   ), [warehouses]);
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,8 +108,11 @@ export function WarehouseScreen({
       : "warehouseScreen.goodsCheckSubtitle";
 
   return (
-    <main className="stock-screen work-screen warehouse-screen">
-      <SessionTopControls
+    <main className={embedded
+      ? "stock-screen work-screen warehouse-screen gestion-embedded-module"
+      : "stock-screen work-screen warehouse-screen"}
+    >
+      {!embedded && <SessionTopControls
         locale={locale}
         session={session}
         languageLabel={t("login.language")}
@@ -113,17 +125,17 @@ export function WarehouseScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={onLogout}
-      />
+      />}
 
       <section className="work-shell" aria-label={t("home.warehouse")}>
         <header className="work-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
-          </button>
+          </button>}
           <h1 className="report-title">{t("home.warehouse")}</h1>
         </header>
 
-        <aside className="stock-nav">
+        {!embedded && <aside className="stock-nav">
           <strong>{t("home.warehouse")}</strong>
           <button type="button" className={section === "input" ? "selected" : ""} onClick={() => setSection("input")}>
             {t("stock.nav.inputWarehouse")}
@@ -135,7 +147,7 @@ export function WarehouseScreen({
             {t("warehouseScreen.goodsCheck")}
           </button>
           <button type="button" className="report-back" onClick={onBack}>{t("common.back")}</button>
-        </aside>
+        </aside>}
 
         <section className="stock-list work-panel" aria-label={t(titleKey)}>
           <header className="work-panel-heading stock-panel-heading">
@@ -169,9 +181,10 @@ export function WarehouseScreen({
           )}
           {status && <p className="stock-operation-status error" role="alert">{status}</p>}
         </section>
+        {embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
       </section>
 
-      <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
+      {!embedded && <ScreenContextFooter locale={locale} terminalContext={terminalContext} />}
     </main>
   );
 }

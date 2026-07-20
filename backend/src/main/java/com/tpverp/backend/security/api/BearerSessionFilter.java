@@ -1,6 +1,7 @@
 package com.tpverp.backend.security.api;
 
 import com.tpverp.backend.security.application.AuthenticationService;
+import com.tpverp.backend.security.domain.OperationalSessionContext;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -40,9 +41,9 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 							: session.getTerminal() != null
 							&& session.getTerminal().isActiva()
 							&& session.getTerminal().isAprobada())
-					.map(session -> session.getUsuario())
-					.filter(user -> user.isActivo())
-					.ifPresent(user -> {
+					.filter(session -> session.getUsuario().isActivo())
+					.ifPresent(session -> {
+						var user = session.getUsuario();
 						var authorities = new ArrayList<SimpleGrantedAuthority>();
 						authorities.add(new SimpleGrantedAuthority(user.getRol().authority()));
 						user.getRol().getPermisos().stream()
@@ -50,8 +51,14 @@ public class BearerSessionFilter extends OncePerRequestFilter {
 								.map(SimpleGrantedAuthority::new)
 								.forEach(authorities::add);
 						var securityContext = SecurityContextHolder.createEmptyContext();
-						securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(
-								user, token, authorities));
+						var authentication = new UsernamePasswordAuthenticationToken(
+								user, token, authorities);
+						if (session.getTerminal() != null) {
+							authentication.setDetails(new OperationalSessionContext(
+									session.getTerminal().getId(),
+									session.getTerminal().getTienda().getId()));
+						}
+						securityContext.setAuthentication(authentication);
 						SecurityContextHolder.setContext(securityContext);
 					});
 		}

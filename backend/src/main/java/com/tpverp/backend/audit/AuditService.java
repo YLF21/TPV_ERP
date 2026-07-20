@@ -36,6 +36,17 @@ public class AuditService {
                 store, user, null, event, result, details, Instant.now(clock)));
     }
 
+    @Transactional
+    public void recordForStore(
+            Store store,
+            String event,
+            AuditResult result,
+            Map<String, Object> details) {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        auditoriaRepository.save(new AuditEntry(
+                store, resolveUser(authentication), null, event, result, details, Instant.now(clock)));
+    }
+
     // Records internal tasks without linking them to an interactive session or user.
     @Transactional
     public void recordSystem(
@@ -62,19 +73,6 @@ public class AuditService {
                 .stream()
                 .map(AuditItem::from)
                 .toList();
-    }
-
-    @Transactional
-    public void delete(UUID auditId, String confirmation) {
-        if (!"ELIMINAR AUDITORIA".equals(confirmation)) {
-            throw new IllegalArgumentException("La confirmacion de borrado no es valida");
-        }
-        var audit = auditoriaRepository.findByIdAndTiendaId(
-                        auditId, organization.currentStore().getId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "message.audit.not_found"));
-        auditoriaRepository.delete(audit);
-        record("AUDIT_DELETED", AuditResult.EXITO, Map.of("deletedAuditId", auditId));
     }
 
     @Transactional

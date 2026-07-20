@@ -2,6 +2,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("tpvDesktop", {
   closeApplication: () => ipcRenderer.invoke("tpv:close-application"),
+  terminalIdentity: {
+    load: () => ipcRenderer.invoke("tpv:terminal-identity:load"),
+    save: (identity) => ipcRenderer.invoke("tpv:terminal-identity:save", identity)
+  },
+  reports: {
+    saveFile: (request) => ipcRenderer.invoke("tpv:reports:save-file", request),
+    exportPdf: (defaultFileName) => ipcRenderer.invoke("tpv:reports:export-pdf", defaultFileName),
+    print: () => ipcRenderer.invoke("tpv:reports:print")
+  },
   hardware: {
     listPrinters: () => ipcRenderer.invoke("tpv:hardware:list-printers"),
     listCustomerDisplays: () => ipcRenderer.invoke("tpv:hardware:list-customer-displays"),

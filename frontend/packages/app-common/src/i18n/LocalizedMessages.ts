@@ -3,11 +3,13 @@ import { MessagesEn } from "./MessagesEn";
 import { MessagesEs } from "./MessagesEs";
 import { MessagesZh } from "./MessagesZh";
 import { controlMessages } from "./ControlMessages";
+import { securityMessages } from "./SecurityMessages";
+import { warehouseManagementMessages } from "./WarehouseMessages";
 
 export const messages: Record<LocaleCode, Record<string, string>> = {
-  es: { ...MessagesEs.values, ...controlMessages("es") },
-  en: { ...MessagesEn.values, ...controlMessages("en") },
-  zh: { ...MessagesZh.values, ...controlMessages("zh") }
+  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es") },
+  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en") },
+  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh") }
 };
 
 export class LocalizedMessages {

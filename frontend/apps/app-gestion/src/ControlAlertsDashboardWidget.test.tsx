@@ -43,7 +43,6 @@ describe("control alerts dashboard widget", () => {
       <GestionDashboard
         session={{ username: "manager", displayName: "MANAGER", accessToken: "token", permissions: ["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"] }}
         t={(key) => key}
-        navigation={[{ key: "dashboard", label: "gestion.dashboard", onOpen: vi.fn() }]}
         onOpenSales={vi.fn()}
         onOpenStock={vi.fn()}
         onOpenPromotions={vi.fn()}

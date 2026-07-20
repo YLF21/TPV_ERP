@@ -46,10 +46,11 @@ class AuthenticationServiceTest {
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("0000", "password-hash")).thenReturn(true);
 
 		var service = service();
-		var result = service.login(terminal.getId(), "admin", "0000");
+		var result = service.login(terminal.getId(), "server-secret", "admin", "0000");
 
 		assertThat(result.accessToken()).isNotBlank();
 		assertThat(result.userName()).isEqualTo("ADMIN");
@@ -58,6 +59,28 @@ class AuthenticationServiceTest {
 		var session = ArgumentCaptor.forClass(UserSession.class);
 		verify(sesionRepository).save(session.capture());
 		assertThat(session.getValue().getTokenHash()).doesNotContain(result.accessToken());
+	}
+
+	@Test
+	void globalInstallationAdminCanLoginThroughProvisionedServerTerminal() {
+		var store = store();
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		var role = new Role(null, "ADMIN");
+		var user = new UserAccount(null, "ADMIN", "password-hash", role);
+		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
+				.thenReturn(Optional.empty());
+		when(usuarioRepository.findByNombreAndTiendaIsNull("ADMIN")).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
+		when(passwordEncoder.matches("1234", "password-hash")).thenReturn(true);
+
+		var result = service().login(terminal.getId(), "server-secret", "admin", "1234");
+
+		assertThat(result.userName()).isEqualTo("ADMIN");
+		assertThat(result.permissions()).contains("ADMIN");
+		var session = ArgumentCaptor.forClass(UserSession.class);
+		verify(sesionRepository).save(session.capture());
+		assertThat(session.getValue().getTerminal()).isSameAs(terminal);
 	}
 
 	@Test
@@ -118,9 +141,21 @@ class AuthenticationServiceTest {
 		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
 		when(usuarioRepository.findByEmpresaIdAndNombre(store.getEmpresa().getId(), "ADMIN"))
 				.thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("server-secret", "credential")).thenReturn(true);
 		when(passwordEncoder.matches("bad", "password-hash")).thenReturn(false);
 
-		assertThatThrownBy(() -> service().login(terminal.getId(), "ADMIN", "bad"))
+		assertThatThrownBy(() -> service().login(terminal.getId(), "server-secret", "ADMIN", "bad"))
+				.isInstanceOf(AuthenticationFailedException.class);
+	}
+
+	@Test
+	void rejectsServerTerminalWithoutItsProvisionedCredential() {
+		var store = store();
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		when(terminalRepository.findById(terminal.getId())).thenReturn(Optional.of(terminal));
+		when(passwordEncoder.matches("", "credential")).thenReturn(false);
+
+		assertThatThrownBy(() -> service().login(terminal.getId(), null, "ADMIN", "0000"))
 				.isInstanceOf(AuthenticationFailedException.class);
 	}
 

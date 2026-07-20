@@ -1,0 +1,91 @@
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  body {
+    background: #fff !important;
+    overflow: visible !important;
+  }
+
+  body > * {
+    visibility: hidden;
+  }
+
+  .report-screen,
+  .report-screen * {
+    visibility: visible;
+  }
+
+  .report-screen {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  .report-screen > .top-date-time,
+  .report-screen > .report-user-menu,
+  .report-screen > .report-user-button,
+  .report-screen > .language-button,
+  .report-screen > .language-picker,
+  .report-screen > .shutdown-button,
+  .report-screen > .report-footer-context,
+  .report-topbar,
+  .report-nav,
+  .report-data-toolbar,
+  .report-options .active-filter-summary button,
+  .report-load-more,
+  .visualization-overlay,
+  .filter-overlay,
+  .shutdown-overlay {
+    display: none !important;
+  }
+
+  .report-shell,
+  .report-workspace,
+  .report-data,
+  .daily-summary-data,
+  .report-table-scroll,
+  .daily-summary-scroll {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .report-options {
+    padding: 0 0 8mm !important;
+    border: 0 !important;
+  }
+
+  .report-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+  }
+
+  .report-table th,
+  .report-table td {
+    border: 1px solid #808080 !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .report-table thead {
+    display: table-header-group;
+  }
+
+  .report-table tr {
+    break-inside: avoid;
+  }
+}

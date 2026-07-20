@@ -111,6 +111,7 @@ public class DocumentService {
     private final PromotionCatalogGateway promotionCatalog;
     private final StockSettingsService stockSettings;
     private final ControlAlertDetectionService controlAlerts;
+    private final DocumentOperationalEventRecorder operationalEvents;
     private final Clock clock;
 
     public DocumentService(
@@ -141,6 +142,7 @@ public class DocumentService {
             PromotionCatalogGateway promotionCatalog,
             StockSettingsService stockSettings,
             ControlAlertDetectionService controlAlerts,
+            DocumentOperationalEventRecorder operationalEvents,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -169,6 +171,7 @@ public class DocumentService {
         this.promotionCatalog = promotionCatalog;
         this.stockSettings = stockSettings;
         this.controlAlerts = controlAlerts;
+        this.operationalEvents = operationalEvents;
         this.clock = clock;
     }
 
@@ -178,7 +181,10 @@ public class DocumentService {
         requireType(command, DELIVERY_NOTES);
         requireDocumentWritePermission(
                 command.tipo(), authentication, CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
-        return documents.save(createDraft(command, authentication));
+        var draft = createDraft(command, authentication);
+        var saved = documents.save(draft);
+        recordCreated(saved);
+        return saved;
     }
 
     @Transactional
@@ -229,16 +235,22 @@ public class DocumentService {
                 && document.isOrigenStock());
         var requiresStock = requiresStock(document) || document.isOrigenStock();
         Instant confirmedAt = Instant.now(clock);
+        var terminalId = currentTerminalOrNull(authentication);
+        if (document.getTerminalOrigenId() == null) {
+            document.assignOriginTerminal(terminalId);
+        }
         document.confirm(nextNumber(document), userId, confirmedAt, false);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
         if (recordsPurchase) {
             recordPurchase(document, confirmedAt);
         }
         var saved = documents.save(document);
+        operationalEvents.record(saved, DocumentOperationalEventType.CONFIRMADO,
+                userId, terminalId, confirmedAt);
         generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
-        enqueueConfirmedDocument(saved, null);
-        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, null, authentication);
+        enqueueConfirmedDocument(saved, terminalId);
+        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
     }
 
@@ -302,6 +314,7 @@ public class DocumentService {
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
         }
         var terminalId = currentTerminal.terminalId(authentication);
+        ticket.assignOriginTerminal(terminalId);
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
@@ -312,6 +325,8 @@ public class DocumentService {
         }
         // Stock movements reference the document, so its row must exist before the gateway inserts them.
         documents.saveAndFlush(ticket);
+        recordCreated(ticket);
+        recordConfirmed(ticket, terminalId);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
@@ -356,9 +371,12 @@ public class DocumentService {
         requirePaymentsPresent(payments);
         requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
         var terminalId = currentTerminal.terminalId(authentication);
+        ticket.assignOriginTerminal(terminalId);
         ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
         addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
         documents.saveAndFlush(ticket);
+        recordCreated(ticket);
+        recordConfirmed(ticket, terminalId);
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
@@ -393,6 +411,8 @@ public class DocumentService {
         var refund = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
                 CommercialDocumentType.TICKET, LocalDate.now(clock),
                 organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
+        var terminalId = currentTerminal.terminalId(authentication);
+        refund.assignOriginTerminal(terminalId);
         refund.setParties(original.getClienteId(), null, null);
         refund.identifyPaymentTerminalRefund(operationId);
         original.getLineas().stream().map(DocumentLineCommand::from).forEach(line ->
@@ -406,11 +426,16 @@ public class DocumentService {
         }
         refund.confirm(nextNumber(refund), organization.currentUser(authentication).getId(), Instant.now(clock), false);
         documents.saveAndFlush(refund);
+        recordCreated(refund);
+        recordConfirmed(refund, terminalId);
         refund.setStockOrigin(stockGateway.confirm(refund));
         var saved = documents.save(refund);
         relations.save(new DocumentRelation(saved, original, DocumentRelationType.RECTIFICA));
+        operationalEvents.record(original, DocumentOperationalEventType.RECTIFICADO,
+                organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
+                Map.of("documentoRelacionadoId", saved.getId().toString()));
         fiscalIntegration.registerAlta(saved, false);
-        enqueueConfirmedDocument(saved, currentTerminal.terminalId(authentication));
+        enqueueConfirmedDocument(saved, terminalId);
         return saved;
     }
 
@@ -819,14 +844,18 @@ public class DocumentService {
                     "el ticket con vale debe corregirse con un documento rectificativo");
         }
         var userId = organization.currentUser(authentication).getId();
-        ticket.cancel(userId, Instant.now(clock), reason);
+        var terminalId = currentTerminalOrNull(authentication);
+        var cancelledAt = Instant.now(clock);
+        ticket.cancel(userId, cancelledAt, reason);
         if (ticket.isOrigenStock()) {
             stockGateway.cancel(ticket);
         }
         var saved = documents.save(ticket);
+        operationalEvents.record(saved, DocumentOperationalEventType.ANULADO,
+                userId, terminalId, cancelledAt, Map.of("motivo", reason.trim()));
         fiscalIntegration.registerTicketCancellation(saved);
-        enqueueDocumentEvent(saved, null, SyncOperation.ANULAR);
-        controlAlerts.detectTicketCancelled(saved, currentTerminalOrNull(authentication), authentication);
+        enqueueDocumentEvent(saved, terminalId, SyncOperation.ANULAR);
+        controlAlerts.detectTicketCancelled(saved, terminalId, authentication);
         return saved;
     }
 
@@ -843,13 +872,20 @@ public class DocumentService {
             throw new IllegalStateException("el ticket ya esta facturado");
         }
         var invoice = invoiceFromTicket(ticket, customerId, authentication);
+        var terminalId = currentTerminalOrNull(authentication);
+        invoice.assignOriginTerminal(terminalId);
         validateConfirmation(invoice);
         invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
         var saved = documents.save(invoice);
+        recordCreated(saved);
+        recordConfirmed(saved, terminalId);
         relations.save(new DocumentRelation(saved, ticket, DocumentRelationType.FACTURA_DE));
+        operationalEvents.record(ticket, DocumentOperationalEventType.CONVERTIDO,
+                organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
+                Map.of("documentoRelacionadoId", saved.getId().toString()));
         fiscalIntegration.registerInvoiceFromTicket(saved, ticket);
-        enqueueConfirmedDocument(saved, null);
+        enqueueConfirmedDocument(saved, terminalId);
         return saved;
     }
 
@@ -859,7 +895,10 @@ public class DocumentService {
         requireType(command, INVOICES);
         requireDocumentWritePermission(
                 command.tipo(), authentication, CorePermissionBootstrap.INVOICES_WRITE);
-        return documents.save(createDraft(command, authentication));
+        var draft = createDraft(command, authentication);
+        var saved = documents.save(draft);
+        recordCreated(saved);
+        return saved;
     }
 
     @Transactional
@@ -917,6 +956,9 @@ public class DocumentService {
         var paidNow = addPartialPayments(document, payments, terminalId);
         document.updatePaymentStatus();
         var saved = documents.save(document);
+        operationalEvents.record(saved, DocumentOperationalEventType.COBRADO,
+                organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
+                Map.of("importe", paidNow.toPlainString()));
         cashPayments.recordDocumentPayments(terminalId, saved);
         memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(saved, paidNow));
         enqueueDocumentEvent(saved, terminalId, SyncOperation.ACTUALIZAR);
@@ -930,7 +972,8 @@ public class DocumentService {
             BigDecimal globalDiscount,
             UUID customerId,
             UUID supplierId,
-            List<DocumentLineCommand> lines) {
+            List<DocumentLineCommand> lines,
+            Authentication authentication) {
         var document = find(id);
         if (fiscalIntegration.hasFiscalRecord(document.getId())) {
             throw new IllegalStateException(
@@ -945,12 +988,20 @@ public class DocumentService {
                 globalDiscount, lines);
         document.adminReplace(
                 globalDiscount, customerId, supplierId, authoritativeLines);
-        return documents.save(document);
+        var saved = documents.save(document);
+        operationalEvents.record(saved, DocumentOperationalEventType.MODIFICADO,
+                organization.currentUser(authentication).getId(), currentTerminalOrNull(authentication),
+                Instant.now(clock));
+        return saved;
     }
 
     // Explicitly links an invoice to its origin document.
     @Transactional
-    public CommercialDocument relate(UUID invoiceId, UUID originId, DocumentRelationType type) {
+    public CommercialDocument relate(
+            UUID invoiceId,
+            UUID originId,
+            DocumentRelationType type,
+            Authentication authentication) {
         var invoice = find(invoiceId);
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
@@ -959,6 +1010,12 @@ public class DocumentService {
         var origin = find(originId);
         validateRelationOrigin(type, origin);
         relations.save(new DocumentRelation(invoice, origin, type));
+        var eventType = type == DocumentRelationType.FACTURA_DE
+                ? DocumentOperationalEventType.CONVERTIDO
+                : DocumentOperationalEventType.RECTIFICADO;
+        operationalEvents.record(origin, eventType,
+                organization.currentUser(authentication).getId(), currentTerminalOrNull(authentication),
+                Instant.now(clock), Map.of("documentoRelacionadoId", invoice.getId().toString()));
         return invoice;
     }
 
@@ -989,6 +1046,7 @@ public class DocumentService {
         var document = new CommercialDocument(
                 store.getId(), command.almacenId(), command.tipo(), command.fecha(),
                 user.getId(), command.descuentoGlobal());
+        document.assignOriginTerminal(currentTerminalOrNull(authentication));
         document.setParties(
                 command.clienteId(), command.proveedorId(), command.numeroExterno());
         document.setStockOrigin(
@@ -1092,6 +1150,7 @@ public class DocumentService {
                 ticket.getTiendaId(), ticket.getAlmacenId(), CommercialDocumentType.FACTURA_VENTA,
                 ticket.getFecha(), organization.currentUser(authentication).getId(),
                 ticket.getDescuentoGlobal());
+        invoice.assignOriginTerminal(currentTerminalOrNull(authentication));
         invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
         invoice.setNumTicket(ticket.getNumero());
         ticket.getLineas().stream()
@@ -1362,6 +1421,16 @@ public class DocumentService {
         } catch (IllegalStateException exception) {
             return null;
         }
+    }
+
+    private void recordCreated(CommercialDocument document) {
+        operationalEvents.record(document, DocumentOperationalEventType.CREADO,
+                document.getCreadoPor(), document.getTerminalOrigenId(), document.getCreadoEn());
+    }
+
+    private void recordConfirmed(CommercialDocument document, UUID terminalId) {
+        operationalEvents.record(document, DocumentOperationalEventType.CONFIRMADO,
+                document.getConfirmadoPor(), terminalId, document.getConfirmadoEn());
     }
 
     private CommercialDocument find(UUID id) {

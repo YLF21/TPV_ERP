@@ -27,6 +27,14 @@ import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import {
+  allReports,
+  isPurchaseDocumentReport,
+  outputReports,
+  salesReportAccess,
+  visibleSalesReports
+} from "./salesReportAccess";
+export { isPurchaseDocumentReport, salesReportAccess, visibleSalesReports } from "./salesReportAccess";
 import languageIcon from "../assets/language.png";
 import lockIcon from "../assets/lock.png";
 import deliveryNoteIcon from "../assets/reports/delivery-note.png";
@@ -39,6 +47,7 @@ import filterIcon from "../assets/reports/filter.png";
 import printIcon from "../assets/reports/print.png";
 import searchIcon from "../assets/reports/search.png";
 import visualizeIcon from "../assets/reports/visualize.png";
+import "../styles/report-print.css";
 
 type SalesReportScreenProps = {
   app: AppKind;
@@ -48,6 +57,8 @@ type SalesReportScreenProps = {
   onBack: () => void;
   onLogout?: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
+  embedded?: boolean;
+  initialReport?: string;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -69,55 +80,6 @@ function apiServerLabel() {
 
 function currentOnlineStatus() {
   return typeof navigator === "undefined" ? false : navigator.onLine;
-}
-
-const outputReports = [
-  "salesReport.dailySales",
-  "salesReport.tickets",
-  "salesReport.deliveryNotes",
-  "salesReport.invoices",
-  "salesReport.warehouseOutputs"
-];
-
-const inputReports = [
-  "salesReport.inputInvoices",
-  "salesReport.inputDeliveryNotes",
-  "salesReport.inputWarehouse"
-];
-
-const allReports = [...outputReports, ...inputReports];
-
-export function salesReportAccess(session: Pick<UserSession, "permissions">) {
-  const admin = session.permissions.includes("ADMIN");
-  const sales = admin
-    || session.permissions.includes("GESTION_VENTAS")
-    || session.permissions.includes("GESTION_CUENTAS");
-  const purchases = admin
-    || session.permissions.includes("GESTION_PRODUCTO")
-    || session.permissions.includes("GESTION_ALMACEN")
-    || session.permissions.includes("GESTION_CUENTAS");
-  const warehouse = admin || session.permissions.includes("GESTION_ALMACEN");
-  const purchaseWrite = admin
-    || session.permissions.includes("GESTION_PRODUCTO")
-    || session.permissions.includes("GESTION_ALMACEN");
-  return { sales, purchases, purchaseWrite, warehouse };
-}
-
-export function visibleSalesReports(session: Pick<UserSession, "permissions">) {
-  const access = salesReportAccess(session);
-  const visibleOutputReports = [
-    ...(access.sales ? outputReports.filter((report) => report !== "salesReport.warehouseOutputs") : []),
-    ...(access.warehouse ? ["salesReport.warehouseOutputs"] : [])
-  ];
-  const visibleInputReports = [
-    ...(access.purchases ? ["salesReport.inputInvoices", "salesReport.inputDeliveryNotes"] : []),
-    ...(access.warehouse ? ["salesReport.inputWarehouse"] : [])
-  ];
-  return { visibleOutputReports, visibleInputReports, all: [...visibleOutputReports, ...visibleInputReports] };
-}
-
-export function isPurchaseDocumentReport(report: string) {
-  return report === "salesReport.inputInvoices" || report === "salesReport.inputDeliveryNotes";
 }
 
 const reportIcon: Record<string, string> = {
@@ -275,6 +237,7 @@ type DocumentPaymentView = {
 };
 
 type DocumentView = {
+  id?: string;
   tipo?: string;
   estado?: string;
   numero?: string;
@@ -300,6 +263,11 @@ type DocumentView = {
   user?: string;
   userName?: string;
   vendedor?: string;
+  usuarioId?: string | null;
+  usuarioNombre?: string | null;
+  terminalOrigenId?: string | null;
+  terminalOrigenNombre?: string | null;
+  ocurridoEn?: string | null;
 };
 
 type PagedResult<T> = {
@@ -307,6 +275,52 @@ type PagedResult<T> = {
   nextCursor?: string | null;
   hasMore?: boolean;
 };
+
+type DocumentOperationalEventType = "CREADO" | "CONFIRMADO" | "ANULADO" | "MODIFICADO" | "COBRADO" | "CONVERTIDO" | "RECTIFICADO";
+
+type DocumentOperationalTimeline = {
+  documentId: string;
+  documentType: string;
+  documentStatus: string;
+  documentNumber?: string | null;
+  documentDate: string;
+  originUserId?: string | null;
+  originUserName?: string | null;
+  originTerminalId?: string | null;
+  originTerminalName?: string | null;
+  events: Array<{
+    id: string;
+    type: DocumentOperationalEventType;
+    userId: string;
+    userName?: string | null;
+    terminalId?: string | null;
+    terminalName?: string | null;
+    occurredAt: string;
+    data?: Record<string, unknown> | null;
+  }>;
+};
+
+export function loadDocumentOperationalTimeline(documentId: string, token?: string) {
+  return apiRequest<DocumentOperationalTimeline>(
+    `/documents/${encodeURIComponent(documentId)}/operational-events`,
+    { token }
+  );
+}
+
+export function canOpenOperationalTimeline(
+  app: AppKind,
+  session: Pick<UserSession, "permissions">,
+  reportKey: string,
+  row: Record<string, string> | undefined
+) {
+  if (app !== "gestion" || !row?.__documentId) return false;
+  if (session.permissions.includes("ADMIN")) return true;
+  if (!session.permissions.includes("APP_GESTION_ACCESS")) return false;
+  if (isPurchaseDocumentReport(reportKey)) {
+    return session.permissions.some((permission) => ["GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CUENTAS"].includes(permission));
+  }
+  return session.permissions.includes("GESTION_VENTAS");
+}
 
 type WarehouseOutputView = {
   id?: string;
@@ -739,6 +753,10 @@ function formatBackendTime(value: string | undefined) {
   if (!value) {
     return "";
   }
+  const instant = new Date(value);
+  if (!Number.isNaN(instant.getTime())) {
+    return `${String(instant.getHours()).padStart(2, "0")}:${String(instant.getMinutes()).padStart(2, "0")}`;
+  }
   const match = value.match(/T(\d{2}):(\d{2})/);
   return match ? `${match[1]}:${match[2]}` : "";
 }
@@ -781,7 +799,11 @@ function paymentDate(payment: DocumentPaymentView) {
 }
 
 function documentUser(document: DocumentView, fallbackUser: string) {
-  return document.usuario || document.user || document.userName || document.vendedor || fallbackUser;
+  return document.usuarioNombre || document.usuario || document.user || document.userName || document.vendedor || fallbackUser;
+}
+
+function documentTerminal(document: DocumentView, fallbackTerminal: string) {
+  return document.terminalOrigenNombre || fallbackTerminal;
 }
 
 function paidAmount(document: DocumentView) {
@@ -941,18 +963,20 @@ export function buildDocumentReports(
   warehouseOutputs: WarehouseOutputView[],
   stockMovements: StockMovementView[],
   warehouseInputs: WarehouseInputView[],
-  session: UserSession,
-  terminalContext: TerminalContext
+  _session: UserSession,
+  _terminalContext: TerminalContext
 ): Partial<Record<string, ReportSample>> {
-  const terminal = terminalContext.terminalCode;
-  const user = session.displayName;
+  const unavailable = "salesReport.value.unavailable";
+  const terminal = unavailable;
+  const user = unavailable;
   const ticketRows = tickets.map((document) => ({
+    __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
-    time: "",
+    time: formatBackendTime(document.ocurridoEn ?? undefined),
     ticket: document.numTicket || document.numero || "",
     invoiced: "",
-    terminal,
-    user,
+    terminal: documentTerminal(document, terminal),
+    user: documentUser(document, user),
     productCount: "",
     customer: "",
     customerName: "",
@@ -961,11 +985,12 @@ export function buildDocumentReports(
     total: formatAmount(Number(document.total ?? 0))
   }));
   const invoiceRows = invoices.filter(isSalesDocument).map((document) => ({
+    __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
-    time: "",
+    time: formatBackendTime(document.ocurridoEn ?? undefined),
     invoice: document.numero || "",
-    terminal,
-    user,
+    terminal: documentTerminal(document, terminal),
+    user: documentUser(document, user),
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
     payment: paymentText(document),
@@ -974,11 +999,12 @@ export function buildDocumentReports(
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({
+    __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
-    time: "",
+    time: formatBackendTime(document.ocurridoEn ?? undefined),
     invoice: document.numero || "",
-    terminal,
-    user,
+    terminal: documentTerminal(document, terminal),
+    user: documentUser(document, user),
     supplier: document.proveedorCodigo || document.proveedorId || "",
     supplierName: document.proveedorNombre || "",
     warehouse: document.almacenNombre || document.almacenId || "",
@@ -989,11 +1015,12 @@ export function buildDocumentReports(
     total: formatAmount(Number(document.total ?? 0))
   }));
   const deliveryNoteRows = deliveryNotes.filter(isSalesDocument).map((document) => ({
+    __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
-    time: "",
+    time: formatBackendTime(document.ocurridoEn ?? undefined),
     deliveryNote: document.numero || "",
-    terminal,
-    user,
+    terminal: documentTerminal(document, terminal),
+    user: documentUser(document, user),
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
     comment: document.numeroExterno || "",
@@ -1001,11 +1028,12 @@ export function buildDocumentReports(
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputDeliveryNoteRows = deliveryNotes.filter(isPurchaseDocument).map((document) => ({
+    __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
-    time: "",
+    time: formatBackendTime(document.ocurridoEn ?? undefined),
     deliveryNote: document.numero || "",
-    terminal,
-    user,
+    terminal: documentTerminal(document, terminal),
+    user: documentUser(document, user),
     supplier: document.proveedorCodigo || document.proveedorId || "",
     supplierName: document.proveedorNombre || "",
     warehouse: document.almacenNombre || document.almacenId || "",
@@ -1150,17 +1178,144 @@ function filterOptionsFromRows(rows: Array<Record<string, string>>, attribute: s
   ];
 }
 
-export function SalesReportScreen({ app, locale, session, terminalContext, onBack, onLogout, onLocaleChange }: SalesReportScreenProps) {
+function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClose }: {
+  documentId: string;
+  locale: LocaleCode;
+  token?: string;
+  t: (key: string) => string;
+  onClose: () => void;
+}) {
+  const [timeline, setTimeline] = useState<DocumentOperationalTimeline | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(false);
+    void loadDocumentOperationalTimeline(documentId, token)
+      .then((value) => { if (active) setTimeline(value); })
+      .catch(() => { if (active) { setTimeline(null); setError(true); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [documentId, token]);
+
+  useEffect(() => {
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  const unavailable = t("salesReport.value.unavailable");
+  return (
+    <div
+      className="document-activity-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="document-activity-title"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <section className="document-activity-dialog">
+        <header>
+          <div>
+            <span>{t("salesReport.activity.eyebrow")}</span>
+            <h2 id="document-activity-title">{timeline?.documentNumber || t("salesReport.activity.title")}</h2>
+          </div>
+          <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
+        </header>
+
+        {loading && <div className="document-activity-state">{t("common.loading")}</div>}
+        {!loading && error && <div className="document-activity-state error">{t("salesReport.activity.loadError")}</div>}
+        {!loading && timeline && (
+          <>
+            <dl className="document-activity-summary">
+              <div><dt>{t("salesReport.activity.documentType")}</dt><dd>{t(`salesReport.activity.documentType.${timeline.documentType}`)}</dd></div>
+              <div><dt>{t("salesReport.activity.status")}</dt><dd>{t(`salesReport.activity.documentStatus.${timeline.documentStatus}`)}</dd></div>
+              <div><dt>{t("salesReport.column.date")}</dt><dd>{formatBackendDate(timeline.documentDate)}</dd></div>
+              <div><dt>{t("salesReport.column.user")}</dt><dd>{timeline.originUserName || unavailable}</dd></div>
+              <div><dt>{t("salesReport.column.terminal")}</dt><dd>{timeline.originTerminalName || unavailable}</dd></div>
+              <div><dt>{t("salesReport.activity.events")}</dt><dd>{timeline.events.length}</dd></div>
+            </dl>
+            <div className="document-activity-table-wrap">
+              <table className="document-activity-table">
+                <thead><tr>
+                  <th>{t("salesReport.activity.occurredAt")}</th>
+                  <th>{t("salesReport.activity.action")}</th>
+                  <th>{t("salesReport.column.user")}</th>
+                  <th>{t("salesReport.column.terminal")}</th>
+                  <th>{t("salesReport.activity.detail")}</th>
+                </tr></thead>
+                <tbody>
+                  {timeline.events.map((event) => (
+                    <tr key={event.id}>
+                      <td>{formatOperationalDateTime(event.occurredAt, locale)}</td>
+                      <td><span className={`document-activity-type ${event.type.toLowerCase()}`}>{t(`salesReport.activity.type.${event.type}`)}</span></td>
+                      <td>{event.userName || unavailable}</td>
+                      <td>{event.terminalName || unavailable}</td>
+                      <td>{operationalEventDetail(event.data, t) || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {timeline.events.length === 0 && <div className="document-activity-empty">{t("salesReport.activity.empty")}</div>}
+            </div>
+          </>
+        )}
+        <footer>
+          <span>{t("salesReport.activity.readOnly")}</span>
+          <button type="button" onClick={onClose}>{t("common.close")}</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function formatOperationalDateTime(value: string, locale: LocaleCode) {
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }).format(instant);
+}
+
+function operationalEventDetail(data: Record<string, unknown> | null | undefined, t: (key: string) => string) {
+  if (!data) return "";
+  const parts: string[] = [];
+  if (typeof data.motivo === "string" && data.motivo.trim()) parts.push(`${t("salesReport.activity.reason")}: ${data.motivo}`);
+  if (typeof data.importe === "string" && data.importe.trim()) parts.push(`${t("salesReport.activity.amount")}: ${data.importe}`);
+  if (typeof data.documentoRelacionadoId === "string" && data.documentoRelacionadoId.trim()) {
+    parts.push(`${t("salesReport.activity.relatedDocument")}: ${data.documentoRelacionadoId}`);
+  }
+  if (data.migrado === true && parts.length === 0) parts.push(t("salesReport.activity.migrated"));
+  return parts.join(" · ");
+}
+
+export function SalesReportScreen({
+  app,
+  locale,
+  session,
+  terminalContext,
+  onBack,
+  onLogout,
+  onLocaleChange,
+  embedded = false,
+  initialReport: requestedInitialReport
+}: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const reportAccess = salesReportAccess(session);
   const availableReports = visibleSalesReports(session);
-  const initialReport = availableReports.all[0] ?? outputReports[0];
+  const initialReport = requestedInitialReport && availableReports.all.includes(requestedInitialReport)
+    ? requestedInitialReport
+    : availableReports.all[0] ?? outputReports[0];
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [saasConnected, setSaasConnected] = useState(currentOnlineStatus);
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
+  const [reportExportBusy, setReportExportBusy] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const printMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1184,6 +1339,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const [warehouseCustomers, setWarehouseCustomers] = useState<WarehouseCustomerOption[]>([]);
   const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplierOption[]>([]);
   const [purchaseTaxes, setPurchaseTaxes] = useState<PurchaseDocumentTax[]>([]);
+  const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [visualReport, setVisualReport] = useState(initialReport);
   const [dragAttribute, setDragAttribute] = useState<string | null>(null);
@@ -1227,6 +1383,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredRows, filteredTotals);
   const selectedDailySummary = sample.dailySummaries?.[filters.dateFrom] ?? emptyDailySalesSummary(filters.dateFrom);
   const selectedRowIndex = selectedRowByReport[selectedReport] ?? 0;
+  const selectedReportRow = filteredRows[selectedRowIndex];
+  const canOpenSelectedActivity = canOpenOperationalTimeline(app, session, selectedReport, selectedReportRow);
   const dbLabel = apiServerLabel();
   const visualVisibleAttributes = isDailyVisualReport
     ? visibleAttributesByReport[visualReport]
@@ -1375,12 +1533,85 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   }
 
   function printReport() {
-    if (isDailySalesReport) {
-      setPrintMenuOpen(false);
+    setPrintMenuOpen((open) => !open);
+  }
+
+  function reportFileName(extension: "xlsx" | "pdf") {
+    const label = t(selectedReport).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+    return `${label || "informe"}.${extension}`;
+  }
+
+  function exportColumns() {
+    const keys = isDailySalesReport
+      ? visibleAttributesByReport[selectedReport]
+      : visibleColumnLayout.map((column) => column.key);
+    return keys.map((key) => ({ key, label: t(attributeLabelKey[key] ?? key) }));
+  }
+
+  async function exportExcelReport() {
+    if (!session.accessToken || reportExportBusy) return;
+    setPrintMenuOpen(false);
+    setReportExportBusy(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/sales-reports/export`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`
+        },
+        body: JSON.stringify({
+          reportKey: selectedReport,
+          filters,
+          search: reportSearch,
+          columns: exportColumns()
+        })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const fileName = reportFileName("xlsx");
+      if (window.tpvDesktop?.reports) {
+        const result = await window.tpvDesktop.reports.saveFile({
+          defaultFileName: fileName,
+          filters: [{ name: "Excel", extensions: ["xlsx"] }],
+          bytes
+        });
+        if (!result.ok) throw new Error(result.message);
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      window.alert(`${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`);
+    } finally {
+      setReportExportBusy(false);
+    }
+  }
+
+  async function exportPdfReport() {
+    setPrintMenuOpen(false);
+    if (!window.tpvDesktop?.reports) {
       window.print();
       return;
     }
-    setPrintMenuOpen((open) => !open);
+    const result = await window.tpvDesktop.reports.exportPdf(reportFileName("pdf"));
+    if (!result.ok) window.alert(`${t("salesReport.exportFailed")}: ${result.message}`);
+  }
+
+  async function printCurrentReport() {
+    setPrintMenuOpen(false);
+    if (!window.tpvDesktop?.reports) {
+      window.print();
+      return;
+    }
+    const result = await window.tpvDesktop.reports.print();
+    if (!result.ok) window.alert(`${t("salesReport.printFailed")}: ${result.message}`);
   }
 
   function selectReport(reportKey: string) {
@@ -1941,22 +2172,22 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         <div className="report-action-menu" ref={printMenuRef}>
           <button
             type="button"
-            aria-expanded={isDailySalesReport ? undefined : printMenuOpen}
-            aria-haspopup={isDailySalesReport ? undefined : "menu"}
+            aria-expanded={printMenuOpen}
+            aria-haspopup="menu"
             onClick={printReport}
           >
             <img alt="" className="report-action-icon" src={printIcon} />
             {t("salesReport.print")}
           </button>
-          {!isDailySalesReport && printMenuOpen && (
+          {printMenuOpen && (
             <div className="print-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => setPrintMenuOpen(false)}>
+              <button type="button" role="menuitem" onClick={() => void exportPdfReport()}>
                 {t("salesReport.exportPdf")}
               </button>
-              <button type="button" role="menuitem" onClick={() => setPrintMenuOpen(false)}>
+              <button type="button" role="menuitem" disabled={reportExportBusy} onClick={() => void exportExcelReport()}>
                 {t("salesReport.exportExcel")}
               </button>
-              <button type="button" role="menuitem" onClick={() => setPrintMenuOpen(false)}>
+              <button type="button" role="menuitem" onClick={() => void printCurrentReport()}>
                 {t("salesReport.printPdf")}
               </button>
             </div>
@@ -1966,6 +2197,20 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           <img alt="" className="report-action-icon" src={filterIcon} />
           {t("salesReport.filter")}
         </button>
+        {app === "gestion" && !isDailySalesReport && (
+          <button
+            type="button"
+            disabled={!canOpenSelectedActivity}
+            title={t("salesReport.activity.hint")}
+            onClick={() => {
+              if (selectedReportRow?.__documentId && canOpenSelectedActivity) {
+                setActivityDocumentId(selectedReportRow.__documentId);
+              }
+            }}
+          >
+            {t("salesReport.activity.open")}
+          </button>
+        )}
         {reportAccess.warehouse && isWarehouseDocumentReport(selectedReport) && (
           <button
             type="button"
@@ -2026,9 +2271,9 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
   }
 
   return (
-    <main className="report-screen">
-      <TopDateTime locale={locale} />
-      <div ref={userMenuRef} style={{ display: "contents" }}>
+    <main className={embedded ? "report-screen gestion-embedded-module" : "report-screen"}>
+      {!embedded && <TopDateTime locale={locale} />}
+      {!embedded && <div ref={userMenuRef} style={{ display: "contents" }}>
         <button
           type="button"
           className="report-user-button"
@@ -2064,8 +2309,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             </button>
           </section>
         )}
-      </div>
-      <div ref={languagePickerRef} style={{ display: "contents" }}>
+      </div>}
+      {!embedded && <div ref={languagePickerRef} style={{ display: "contents" }}>
         <button
           type="button"
           className="language-button"
@@ -2098,8 +2343,8 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
             ))}
           </section>
         )}
-      </div>
-      <button
+      </div>}
+      {!embedded && <button
         type="button"
         className="shutdown-button"
         aria-label={t("login.shutdown")}
@@ -2107,16 +2352,16 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
         onClick={() => setShutdownOpen(true)}
       >
         {"\u23FB"}
-      </button>
+      </button>}
 
       <section className="report-shell" aria-label={t("home.salesReport")}>
         <header className="report-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
-          </button>
+          </button>}
           <h1 className="report-title">{t("home.salesReport")}</h1>
         </header>
-        <aside className="report-nav">
+        {!embedded && <aside className="report-nav">
           {availableReports.visibleOutputReports.length > 0 && <strong>{t("salesReport.output")}</strong>}
           {availableReports.visibleOutputReports.map((reportKey) => (
             <button
@@ -2146,7 +2391,7 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           <button type="button" className="report-back" onClick={onBack}>
             {t("common.back")}
           </button>
-        </aside>
+        </aside>}
 
         <section className="report-workspace">
           <header className="report-options">
@@ -2214,6 +2459,11 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
                         aria-selected={selectedRowIndex === rowIndex}
                         onClick={() => selectRow(rowIndex)}
                         onFocus={() => selectRow(rowIndex)}
+                        onDoubleClick={() => {
+                          if (canOpenOperationalTimeline(app, session, selectedReport, row)) {
+                            setActivityDocumentId(row.__documentId);
+                          }
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === "ArrowUp") {
                             event.preventDefault();
@@ -2222,6 +2472,10 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
                           if (event.key === "ArrowDown") {
                             event.preventDefault();
                             moveSelectedRow(rowIndex, 1);
+                          }
+                          if (event.key === "Enter" && canOpenOperationalTimeline(app, session, selectedReport, row)) {
+                            event.preventDefault();
+                            setActivityDocumentId(row.__documentId);
                           }
                         }}
                       >
@@ -2252,6 +2506,16 @@ export function SalesReportScreen({ app, locale, session, terminalContext, onBac
           </span>
         </footer>
       </section>
+
+      {activityDocumentId && (
+        <DocumentOperationalTimelineDialog
+          documentId={activityDocumentId}
+          locale={locale}
+          token={session.accessToken}
+          t={t}
+          onClose={() => setActivityDocumentId(null)}
+        />
+      )}
 
       {visualizationOpen && (
         <div className="visualization-overlay" role="dialog" aria-modal="true" aria-labelledby="visualization-title">

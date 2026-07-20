@@ -73,8 +73,9 @@ public class InvoiceController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_WRITE')")
     public DocumentView relate(
             @PathVariable UUID id,
-            @Valid @RequestBody RelationRequest request) {
-        return view(service.relate(id, request.originId(), request.type()));
+            @Valid @RequestBody RelationRequest request,
+            Authentication authentication) {
+        return view(service.relate(id, request.originId(), request.type(), authentication));
     }
 
     private DocumentView view(CommercialDocument document) {

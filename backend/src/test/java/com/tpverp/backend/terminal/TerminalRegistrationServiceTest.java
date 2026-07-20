@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.InstallationStatusService;
@@ -77,22 +78,57 @@ class TerminalRegistrationServiceTest {
                 .contains("tiendaId");
     }
 
+    @Test
+    void installationAdminCanProvisionAndRotateTheUniqueServerCredential() {
+        var store = store("001");
+        var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "old-hash");
+        var terminals = mock(TerminalRepository.class);
+        var stores = mock(StoreRepository.class);
+        var encoder = mock(PasswordEncoder.class);
+        var audit = mock(AuditService.class);
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(server));
+        when(encoder.encode(org.mockito.ArgumentMatchers.anyString())).thenReturn("new-hash");
+        var admin = new UserAccount(null, "ADMIN", "hash", new Role(null, "ADMIN"));
+
+        var result = service(terminals, stores, encoder, audit).provisionServer(admin);
+
+        assertThat(result.terminalId()).isEqualTo(server.getId());
+        assertThat(result.terminalCredential()).isNotBlank();
+        assertThat(server.getCredentialHash()).isEqualTo("new-hash");
+        verify(audit).recordForStore(
+                org.mockito.ArgumentMatchers.eq(store),
+                org.mockito.ArgumentMatchers.eq("SERVER_TERMINAL_PROVISIONED"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyMap());
+    }
+
     private static TerminalRegistrationService service(
             TerminalRepository terminals, StoreRepository stores) {
+        return service(terminals, stores, mock(PasswordEncoder.class), mock(AuditService.class));
+    }
+
+    private static TerminalRegistrationService service(
+            TerminalRepository terminals,
+            StoreRepository stores,
+            PasswordEncoder encoder,
+            AuditService audit) {
         var organization = mock(CurrentOrganization.class);
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        var user = (UserAccount) authentication.getPrincipal();
-        when(organization.currentStore()).thenReturn(user.getTienda());
+        if (authentication != null && authentication.getPrincipal() instanceof UserAccount user) {
+            when(organization.currentStore()).thenReturn(user.getTienda());
+        }
         return new TerminalRegistrationService(
                 terminals,
                 stores,
                 organization,
                 mock(LicenseRepository.class),
                 mock(InstallationStatusService.class),
-                mock(PasswordEncoder.class),
+                encoder,
                 mock(UserSessionRepository.class),
                 Clock.systemUTC(),
-                mock(AuditService.class));
+                audit);
     }
 
     private static void authenticate(Store store) {

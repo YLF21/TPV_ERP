@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.AuthenticationService;
+import com.tpverp.backend.security.domain.OperationalSessionContext;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserSession;
 import com.tpverp.backend.security.domain.UserSessionRepository;
@@ -28,6 +29,49 @@ class BearerSessionFilterTest {
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void exposesTerminalStoreAsOperationalSessionContext() throws Exception {
+        var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
+        var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
+        var terminal = new Terminal(store(), "SERVER", TerminalType.SERVIDOR, "hash");
+        var role = new Role(null, "ADMIN");
+        var user = new UserAccount(null, "ADMIN", "hash", role);
+        var session = new UserSession(user, terminal, "token-hash", Instant.now());
+        when(authentication.hash("token")).thenReturn("token-hash");
+        when(sessions.findByTokenHashAndRevocadaEnIsNull("token-hash"))
+                .thenReturn(Optional.of(session));
+        var request = new MockHttpServletRequest("GET", "/api/v1/products");
+        request.addHeader("Authorization", "Bearer token");
+
+        invoke(new BearerSessionFilter(sessions, authentication), request);
+
+        var authenticated = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authenticated).isNotNull();
+        assertThat(authenticated.getPrincipal()).isSameAs(user);
+        assertThat(authenticated.getDetails()).isEqualTo(new OperationalSessionContext(
+                terminal.getId(), terminal.getTienda().getId()));
+    }
+
+    @Test
+    void installationSessionDoesNotInventOperationalStoreContext() throws Exception {
+        var sessions = org.mockito.Mockito.mock(UserSessionRepository.class);
+        var authentication = org.mockito.Mockito.mock(AuthenticationService.class);
+        var role = new Role(null, "ADMIN");
+        var user = new UserAccount(null, "ADMIN", "hash", role);
+        var session = new UserSession(user, null, "token-hash", Instant.now());
+        when(authentication.hash("token")).thenReturn("token-hash");
+        when(sessions.findByTokenHashAndRevocadaEnIsNull("token-hash"))
+                .thenReturn(Optional.of(session));
+        var request = new MockHttpServletRequest("GET", "/api/v1/installation/status");
+        request.addHeader("Authorization", "Bearer token");
+
+        invoke(new BearerSessionFilter(sessions, authentication), request);
+
+        var authenticated = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authenticated).isNotNull();
+        assertThat(authenticated.getDetails()).isNull();
     }
 
     @Test

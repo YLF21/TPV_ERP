@@ -7,15 +7,17 @@ export type GestionModuleKey =
   | "gestion.customers"
   | "gestion.suppliers"
   | "gestion.users"
+  | "gestion.roles"
   | "gestion.controlAlerts";
 
 const modulePermissions: Record<GestionModuleKey, Permission[]> = {
   "gestion.sales": ["GESTION_VENTAS"],
   "gestion.products": ["GESTION_PRODUCTO"],
-  "gestion.stock": ["GESTION_PRODUCTO", "GESTION_ALMACEN"],
+  "gestion.stock": ["GESTION_PRODUCTO", "GESTION_ALMACEN", "WAREHOUSES_MANAGE"],
   "gestion.customers": ["GESTION_CLIENTE_PROVEEDOR"],
   "gestion.suppliers": ["GESTION_CLIENTE_PROVEEDOR", "GESTION_ALMACEN"],
   "gestion.users": ["GESTION_USUARIO"],
+  "gestion.roles": ["ROLES_MANAGE"],
   "gestion.controlAlerts": ["CONTROL_ALERTS_READ", "CONTROL_ALERTS_MANAGE"]
 };
 

@@ -96,7 +96,8 @@ class DocumentControllerContractTest {
                 "pay", UUID.class, PaymentRequest.class,
                 org.springframework.security.core.Authentication.class));
         assertSalesManagement(InvoiceController.class.getDeclaredMethod(
-                "relate", UUID.class, InvoiceController.RelationRequest.class));
+                "relate", UUID.class, InvoiceController.RelationRequest.class,
+                org.springframework.security.core.Authentication.class));
         assertSalesManagement(DocumentReportController.class.getDeclaredMethod(
                 "invoices", Integer.class, String.class,
                 org.springframework.security.core.Authentication.class));

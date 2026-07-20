@@ -61,6 +61,12 @@ public class OperationalAccessFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/v1/auth")) {
             return OperationCategory.READ;
         }
+        if (path.startsWith("/api/v1/terminals/server/provision")) {
+            return OperationCategory.LICENSE_MANAGEMENT;
+        }
+        if (path.startsWith("/api/v1/sales-reports/export")) {
+            return OperationCategory.EXPORT_OR_PRINT;
+        }
         if (path.startsWith("/api/v1/users") || path.startsWith("/api/v1/roles")) {
             return OperationCategory.SECURITY_WRITE;
         }

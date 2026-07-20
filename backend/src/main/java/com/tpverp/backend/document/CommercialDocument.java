@@ -55,6 +55,8 @@ public class CommercialDocument {
     private UUID confirmadoPor;
     @Column(name = "anulado_por")
     private UUID anuladoPor;
+    @Column(name = "terminal_origen_id")
+    private UUID terminalOrigenId;
     @Column(name = "cliente_id")
     private UUID clienteId;
     @Column(name = "proveedor_id")
@@ -152,6 +154,48 @@ public class CommercialDocument {
 
     public Instant getConfirmadoEn() {
         return confirmadoEn;
+    }
+
+    public Instant getCreadoEn() {
+        return creadoEn;
+    }
+
+    public Instant getAnuladoEn() {
+        return anuladoEn;
+    }
+
+    public UUID getCreadoPor() {
+        return creadoPor;
+    }
+
+    public UUID getConfirmadoPor() {
+        return confirmadoPor;
+    }
+
+    public UUID getAnuladoPor() {
+        return anuladoPor;
+    }
+
+    public UUID getTerminalOrigenId() {
+        return terminalOrigenId;
+    }
+
+    public UUID getOperationalUserId() {
+        return confirmadoPor == null ? creadoPor : confirmadoPor;
+    }
+
+    public Instant getOperationalOccurredAt() {
+        return confirmadoEn == null ? creadoEn : confirmadoEn;
+    }
+
+    public void assignOriginTerminal(UUID terminalId) {
+        if (terminalId == null) {
+            return;
+        }
+        if (terminalOrigenId != null && !terminalOrigenId.equals(terminalId)) {
+            throw new IllegalStateException("el terminal de origen del documento es inmutable");
+        }
+        terminalOrigenId = terminalId;
     }
 
     // Returns the calculated document total.

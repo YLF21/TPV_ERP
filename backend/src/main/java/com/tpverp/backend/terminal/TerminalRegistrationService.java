@@ -7,6 +7,7 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.shared.access.OperationalMode;
+import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -64,9 +65,7 @@ public class TerminalRegistrationService {
         if (terminalRepository.findByTiendaIdAndNombreIgnoreCase(store.getId(), name).isPresent()) {
             throw new IllegalArgumentException("Ya existe una terminal con ese nombre");
         }
-        byte[] secretBytes = new byte[32];
-        random.nextBytes(secretBytes);
-        String credential = Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
+        String credential = newCredential();
         Terminal terminal = terminalRepository.save(
                 Terminal.request(store, name, type, passwordEncoder.encode(credential)));
         auditService.record(
@@ -74,6 +73,37 @@ public class TerminalRegistrationService {
                 AuditResult.EXITO,
                 Map.of("terminalId", terminal.getId(), "type", type.name()));
         return new RegistrationResult(terminal.getId(), credential, "PENDING");
+    }
+
+    @Transactional
+    public ServerProvisioningResult provisionServer(UserAccount administrator) {
+        if (administrator == null || !administrator.isProtegido() || administrator.getTienda() != null) {
+            throw new IllegalStateException("message.terminal.server_provision_requires_installation_admin");
+        }
+        var stores = tiendaRepository.findAll();
+        if (stores.size() != 1) {
+            throw new IllegalStateException("message.terminal.server_provision_requires_single_store");
+        }
+        var store = stores.getFirst();
+        String credential = newCredential();
+        var terminal = terminalRepository.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR)
+                .map(existing -> {
+                    existing.rotateCredential(passwordEncoder.encode(credential));
+                    existing.approve();
+                    return existing;
+                })
+                .orElseGet(() -> terminalRepository.save(new Terminal(
+                        store,
+                        "SERVIDOR",
+                        TerminalType.SERVIDOR,
+                        passwordEncoder.encode(credential))));
+        auditService.recordForStore(
+                store,
+                "SERVER_TERMINAL_PROVISIONED",
+                AuditResult.EXITO,
+                Map.of("terminalId", terminal.getId(), "storeId", store.getId()));
+        return new ServerProvisioningResult(
+                terminal.getId(), terminal.getNombre(), store.getNombreEfectivo(), credential);
     }
 
     @Transactional
@@ -140,12 +170,25 @@ public class TerminalRegistrationService {
         return organization.currentStore();
     }
 
+    private String newCredential() {
+        byte[] secretBytes = new byte[32];
+        random.nextBytes(secretBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
+    }
+
     private Terminal currentTerminal(UUID terminalId) {
         return terminalRepository.findByIdAndTiendaId(terminalId, currentStore().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.terminal.not_found"));
     }
 
     public record RegistrationResult(UUID terminalId, String credential, String status) {
+    }
+
+    public record ServerProvisioningResult(
+            UUID terminalId,
+            String terminalCode,
+            String storeName,
+            String terminalCredential) {
     }
 
     public record TerminalItem(UUID id, String name, TerminalType type, boolean approved, boolean active) {

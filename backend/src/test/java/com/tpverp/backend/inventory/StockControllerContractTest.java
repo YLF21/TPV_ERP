@@ -103,7 +103,7 @@ class StockControllerContractTest {
         assertThat(getSettings.getAnnotation(GetMapping.class).value())
                 .containsExactly("/settings");
         assertThat(getSettings.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "hasRole('ADMIN')");
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "WAREHOUSES_MANAGE", "hasRole('ADMIN')");
         assertThat(putSettings.getAnnotation(PutMapping.class).value())
                 .containsExactly("/settings");
         assertThat(putSettings.getAnnotation(PreAuthorize.class).value())
@@ -116,6 +116,8 @@ class StockControllerContractTest {
                 .doesNotContain("WAREHOUSES_MANAGE");
         assertThat(getMinimum.getAnnotation(GetMapping.class).value())
                 .containsExactly("/minimums/{productId}/{warehouseId}");
+        assertThat(getMinimum.getAnnotation(PreAuthorize.class).value())
+                .contains("WAREHOUSES_MANAGE");
         assertThat(putMinimum.getAnnotation(PutMapping.class).value())
                 .containsExactly("/minimums/{productId}/{warehouseId}");
         assertThat(deleteMinimum.getAnnotation(DeleteMapping.class).value())

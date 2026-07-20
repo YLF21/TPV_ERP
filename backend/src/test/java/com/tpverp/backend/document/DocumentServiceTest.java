@@ -127,6 +127,8 @@ class DocumentServiceTest {
     private StockSettingsService stockSettings;
     @Mock
     private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
+    @Mock
+    private DocumentOperationalEventRecorder operationalEvents;
 
     private DocumentService service;
     private Store store;
@@ -207,6 +209,7 @@ class DocumentServiceTest {
                 promotionCatalog,
                 stockSettings,
                 controlAlerts,
+                operationalEvents,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -222,6 +225,13 @@ class DocumentServiceTest {
 
         assertThat(created.getTiendaId()).isEqualTo(store.getId());
         assertThat(created.getStockUserId()).isEqualTo(user.getId());
+        assertThat(created.getTerminalOrigenId()).isEqualTo(terminalId);
+        verify(operationalEvents).record(
+                created,
+                DocumentOperationalEventType.CREADO,
+                user.getId(),
+                terminalId,
+                created.getCreadoEn());
     }
 
     @Test
@@ -297,6 +307,13 @@ class DocumentServiceTest {
         assertThat(confirmed.getNumero()).isEqualTo("AV-001-26-000001");
         assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
         assertThat(confirmed.isOrigenStock()).isTrue();
+        assertThat(confirmed.getTerminalOrigenId()).isEqualTo(terminalId);
+        verify(operationalEvents).record(
+                confirmed,
+                DocumentOperationalEventType.CONFIRMADO,
+                user.getId(),
+                terminalId,
+                NOW);
     }
 
     @Test
@@ -317,6 +334,27 @@ class DocumentServiceTest {
         assertThat(command.getValue().payload())
                 .containsEntry("tipo", "ALBARAN_VENTA")
                 .containsEntry("numero", confirmed.getNumero());
+    }
+
+    @Test
+    void confirmationKeepsCreationTerminalAndRecordsTheConfirmingTerminal() {
+        var document = draft(CommercialDocumentType.ALBARAN_VENTA);
+        var creationTerminal = UUID.randomUUID();
+        document.assignOriginTerminal(creationTerminal);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
+                document.getTiendaId(), "AV", "2026")).thenReturn(Optional.empty());
+
+        var confirmed = service.confirm(document.getId(), authentication());
+
+        assertThat(confirmed.getTerminalOrigenId()).isEqualTo(creationTerminal);
+        verify(operationalEvents).record(
+                confirmed,
+                DocumentOperationalEventType.CONFIRMADO,
+                user.getId(),
+                terminalId,
+                NOW);
     }
 
     @Test
@@ -1096,7 +1134,7 @@ class DocumentServiceTest {
         when(documentRepository.save(note)).thenReturn(note);
 
         var edited = service.adminEditConfirmed(
-                note.getId(), BigDecimal.TEN, null, UUID.randomUUID(), lines());
+                note.getId(), BigDecimal.TEN, null, UUID.randomUUID(), lines(), authentication());
 
         assertThat(edited.getNumero()).isEqualTo("AC-001-26-000001");
         assertThat(edited.getFecha()).isEqualTo(LocalDate.of(2026, 6, 8));
@@ -1113,7 +1151,7 @@ class DocumentServiceTest {
         when(fiscalIntegration.hasFiscalRecord(ticket.getId())).thenReturn(true);
 
         assertThatThrownBy(() -> service.adminEditConfirmed(
-                ticket.getId(), BigDecimal.ZERO, null, null, lines()))
+                ticket.getId(), BigDecimal.ZERO, null, null, lines(), authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fiscal");
 
@@ -1127,7 +1165,7 @@ class DocumentServiceTest {
         when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
 
         assertThatThrownBy(() -> service.relate(
-                note.getId(), origin.getId(), DocumentRelationType.FACTURA_DE))
+                note.getId(), origin.getId(), DocumentRelationType.FACTURA_DE, authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("factura");
 
@@ -1142,7 +1180,8 @@ class DocumentServiceTest {
         when(documentRepository.findById(originInvoice.getId())).thenReturn(Optional.of(originInvoice));
 
         assertThatThrownBy(() -> service.relate(
-                invoice.getId(), originInvoice.getId(), DocumentRelationType.FACTURA_DE))
+                invoice.getId(), originInvoice.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("origen");
 

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
+import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
@@ -82,6 +83,37 @@ class ApiExceptionHandlerTest {
 
         assertEquals("en", problem.getProperties().get("locale"));
         assertEquals("A product with history cannot be deleted", problem.getDetail());
+    }
+
+    @Test
+    void reportsAssignedUserCountWhenRoleCannotBeDeleted() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.roleInUse(new RoleInUseException(3), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("ROLE_IN_USE", problem.getProperties().get("code"));
+        assertEquals(3L, problem.getProperties().get("assignedUsers"));
+        assertEquals(
+                "The role is assigned to 3 users. Reassign them before deleting it.",
+                problem.getDetail());
+    }
+
+    @Test
+    void reportsServerProvisioningPreconditionsAsLocalizedConflict() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.stateConflict(
+                new IllegalStateException("message.terminal.server_provision_requires_single_store"),
+                request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("STATE_CONFLICT", problem.getProperties().get("code"));
+        assertEquals(
+                "Debe existir exactamente una tienda antes de configurar el terminal servidor",
+                problem.getDetail());
     }
 
     @Test

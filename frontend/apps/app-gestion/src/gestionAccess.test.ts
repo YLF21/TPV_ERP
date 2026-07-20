@@ -20,6 +20,10 @@ describe("APP GESTION module access", () => {
       session(["APP_GESTION_ACCESS", "GESTION_ALMACEN"]),
       "gestion.stock"
     )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "WAREHOUSES_MANAGE"]),
+      "gestion.stock"
+    )).toBe(true);
   });
 
   it("does not use a module permission as app access", () => {
@@ -27,6 +31,10 @@ describe("APP GESTION module access", () => {
   });
 
   it("keeps role administration separate from user management", () => {
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "ROLES_MANAGE"]),
+      "gestion.roles"
+    )).toBe(true);
     expect(canOpenGestionModule(
       session(["APP_GESTION_ACCESS", "ROLES_MANAGE"]),
       "gestion.users"
@@ -38,7 +46,7 @@ describe("APP GESTION module access", () => {
   });
 
   it("allows ADMIN into every module", () => {
-    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(7);
+    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(8);
   });
 
   it("opens control alerts to readers and managers only through APP GESTION", () => {

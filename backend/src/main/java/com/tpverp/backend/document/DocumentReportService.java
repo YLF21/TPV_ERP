@@ -43,18 +43,21 @@ public class DocumentReportService {
     private final CustomerRepository customers;
     private final SupplierRepository suppliers;
     private final WarehouseRepository warehouses;
+    private final DocumentAttributionResolver attributions;
 
     public DocumentReportService(
             CommercialDocumentRepository documents,
             CurrentOrganization organization,
             CustomerRepository customers,
             SupplierRepository suppliers,
-            WarehouseRepository warehouses) {
+            WarehouseRepository warehouses,
+            DocumentAttributionResolver attributions) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
         this.suppliers = suppliers;
         this.warehouses = warehouses;
+        this.attributions = attributions;
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +90,35 @@ public class DocumentReportService {
         return list(documentTypes(
                 includeSalesDocuments, includePurchaseDocuments,
                 SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES), limit, cursor);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DocumentReportView> allInvoices(
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments) {
+        return all(documentTypes(
+                includeSalesDocuments, includePurchaseDocuments,
+                SALES_INVOICES, PURCHASE_INVOICES));
+    }
+
+    @Transactional(readOnly = true)
+    public List<DocumentReportView> allDeliveryNotes(
+            boolean includeSalesDocuments,
+            boolean includePurchaseDocuments) {
+        return all(documentTypes(
+                includeSalesDocuments, includePurchaseDocuments,
+                SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
+    }
+
+    private List<DocumentReportView> all(Collection<CommercialDocumentType> types) {
+        var result = new ArrayList<DocumentReportView>();
+        String cursor = null;
+        do {
+            var page = list(types, MAX_LIMIT, cursor);
+            result.addAll(page.items());
+            cursor = page.hasMore() ? page.nextCursor() : null;
+        } while (cursor != null);
+        return result;
     }
 
     private PagedResult<DocumentReportView> list(
@@ -129,13 +161,15 @@ public class DocumentReportService {
                 .collect(Collectors.toMap(
                         com.tpverp.backend.catalog.Warehouse::getId,
                         com.tpverp.backend.catalog.Warehouse::getName));
+        var attributionIndex = attributions.resolve(pageValues);
 
         var items = pageValues.stream()
                 .map(document -> DocumentReportView.from(
                         document,
                         customerIndex.get(document.getClienteId()),
                         supplierIndex.get(document.getProveedorId()),
-                        warehouseIndex.get(document.getAlmacenId())))
+                        warehouseIndex.get(document.getAlmacenId()),
+                        attributionIndex.get(document.getId())))
                 .toList();
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }

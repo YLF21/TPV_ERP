@@ -76,10 +76,12 @@ public class DeliveryNoteController {
     @PreAuthorize("hasRole('ADMIN')")
     public DocumentView adminEdit(
             @PathVariable UUID id,
-            @Valid @RequestBody AdminEditRequest request) {
+            @Valid @RequestBody AdminEditRequest request,
+            Authentication authentication) {
         return DocumentView.from(service.adminEditConfirmed(
                 id, request.descuentoGlobal(), request.clienteId(), request.proveedorId(),
-                request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList()));
+                request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList(),
+                authentication));
     }
 
     public record AdminEditRequest(
