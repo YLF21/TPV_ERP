@@ -78,7 +78,6 @@ function renderScreen(
     <ControlAlertsScreen
       session={session(permissions)}
       t={t}
-      navigation={[{ key: "dashboard", label: "gestion.dashboard", onOpen: vi.fn() }, { key: "controlAlerts", label: "gestion.controlAlerts.navigation", onOpen: vi.fn() }]}
     />
   );
 }

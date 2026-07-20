@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.backup.BackupSettingsRepository;
 import com.tpverp.backend.backup.application.BackupKeyStore;
 import com.tpverp.backend.installation.InstallationRepository;
@@ -17,6 +18,7 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.PermissionRepository;
+import com.tpverp.backend.security.domain.Permission;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.RoleRepository;
 import com.tpverp.backend.security.domain.UserSessionRepository;
@@ -100,6 +102,114 @@ class SecurityAdministrationServiceTest {
                 user.getId(), adminRole.getId()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ADMIN");
+    }
+
+    @Test
+    void roleOptionsOnlyUsesAssignableRolesFromCurrentStore() {
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var store = store();
+        var role = new Role(store, "CAJA");
+        var currentUser = new UserAccount(store, "CURRENT", "hash", role);
+        when(roles.findAllByTiendaIdAndProtegidoFalseOrderByNombre(store.getId()))
+                .thenReturn(List.of(role));
+        authenticate(currentUser);
+
+        var result = service(users, roles).roleOptions();
+
+        assertThat(result).extracting(SecurityAdministrationService.RoleOption::name)
+                .containsExactly("CAJA");
+    }
+
+    @Test
+    void permissionCatalogKeepsBackendGroupingAndTranslationKeys() {
+        var permissions = org.mockito.Mockito.mock(PermissionRepository.class);
+        var permission = new Permission("GESTION_USUARIO", "security.permissions.userManagement", "SECURITY");
+        when(permissions.findAllByOrderByGrupoAscCodigoAsc()).thenReturn(List.of(permission));
+        var service = new SecurityAdministrationService(
+                org.mockito.Mockito.mock(CurrentOrganization.class),
+                org.mockito.Mockito.mock(UserAccountRepository.class),
+                org.mockito.Mockito.mock(RoleRepository.class),
+                permissions,
+                org.mockito.Mockito.mock(UserSessionRepository.class),
+                org.mockito.Mockito.mock(StoreRepository.class),
+                org.mockito.Mockito.mock(JdbcTemplate.class),
+                org.mockito.Mockito.mock(PasswordEncoder.class),
+                Clock.systemUTC(),
+                org.mockito.Mockito.mock(AuditService.class),
+                org.mockito.Mockito.mock(BackupKeyStore.class),
+                org.mockito.Mockito.mock(BackupSettingsRepository.class),
+                org.mockito.Mockito.mock(InstallationRepository.class));
+
+        assertThat(service.permissionCatalog()).containsExactly(
+                new SecurityAdministrationService.PermissionItem(
+                        "GESTION_USUARIO", "security.permissions.userManagement", "SECURITY"));
+    }
+
+    @Test
+    void renamesConfigurableRoleAndAuditsPreviousAndNewNames() {
+        var store = store();
+        var role = new Role(store, "CAJA");
+        var currentUser = new UserAccount(store, "CURRENT", "hash", role);
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var audit = org.mockito.Mockito.mock(AuditService.class);
+        when(roles.findByIdAndTiendaId(role.getId(), store.getId())).thenReturn(Optional.of(role));
+        when(roles.findByTiendaIdAndNombre(store.getId(), "SUPERVISOR")).thenReturn(Optional.empty());
+        authenticate(currentUser);
+
+        var result = service(users, roles, audit).renameRole(role.getId(), " supervisor ");
+
+        assertThat(result.name()).isEqualTo("SUPERVISOR");
+        verify(audit).record(
+                "ROLE_RENAMED",
+                AuditResult.EXITO,
+                Map.of("roleId", role.getId(), "previousName", "CAJA", "newName", "SUPERVISOR"));
+    }
+
+    @Test
+    void refusesToDeleteRoleAssignedToUsers() {
+        var store = store();
+        var role = new Role(store, "VENTAS");
+        var currentUser = new UserAccount(store, "CURRENT", "hash", role);
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var audit = org.mockito.Mockito.mock(AuditService.class);
+        when(roles.findByIdAndTiendaId(role.getId(), store.getId())).thenReturn(Optional.of(role));
+        when(users.countByRolId(role.getId())).thenReturn(2L);
+        authenticate(currentUser);
+
+        assertThatThrownBy(() -> service(users, roles, audit).deleteRole(role.getId()))
+                .isInstanceOf(RoleInUseException.class)
+                .hasMessage("ROLE_IN_USE");
+        verify(roles, never()).delete(any(Role.class));
+        verify(audit, never()).record(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void deletesUnassignedConfigurableRoleAndAuditsIt() {
+        var store = store();
+        var currentRole = new Role(store, "SUPERVISOR");
+        var roleToDelete = new Role(store, "TEMPORAL");
+        var currentUser = new UserAccount(store, "CURRENT", "hash", currentRole);
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        var roles = org.mockito.Mockito.mock(RoleRepository.class);
+        var audit = org.mockito.Mockito.mock(AuditService.class);
+        when(roles.findByIdAndTiendaId(roleToDelete.getId(), store.getId()))
+                .thenReturn(Optional.of(roleToDelete));
+        when(users.countByRolId(roleToDelete.getId())).thenReturn(0L);
+        authenticate(currentUser);
+
+        service(users, roles, audit).deleteRole(roleToDelete.getId());
+
+        verify(roles).delete(roleToDelete);
+        verify(audit).record(
+                "ROLE_DELETED",
+                AuditResult.EXITO,
+                Map.of("roleId", roleToDelete.getId(), "name", "TEMPORAL"));
     }
 
     @Test
@@ -188,6 +298,38 @@ class SecurityAdministrationServiceTest {
     }
 
     @Test
+    void genericPasswordResetCannotReplaceProtectedAdminPassword() {
+        var store = store();
+        var admin = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        when(users.findByIdAndEmpresaId(admin.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(admin));
+        authenticate(admin);
+
+        assertThatThrownBy(() -> service(
+                users, org.mockito.Mockito.mock(RoleRepository.class))
+                .resetPassword(admin.getId(), "1234"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operaciones protegidas");
+    }
+
+    @Test
+    void genericIdentityChangeCannotRenameProtectedAdmin() {
+        var store = store();
+        var admin = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var users = org.mockito.Mockito.mock(UserAccountRepository.class);
+        when(users.findByIdAndEmpresaId(admin.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(admin));
+        authenticate(admin);
+
+        assertThatThrownBy(() -> service(
+                users, org.mockito.Mockito.mock(RoleRepository.class))
+                .changeUserIdentity(admin.getId(), "OTRO", "otro"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("operaciones protegidas");
+    }
+
+    @Test
     void changeAdminPasswordRejectsNonNumericPasswordBeforeRewrappingBackupKey() {
         var store = store();
         var admin = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
@@ -217,6 +359,35 @@ class SecurityAdministrationServiceTest {
                 roles,
                 org.mockito.Mockito.mock(PasswordEncoder.class),
                 org.mockito.Mockito.mock(BackupKeyStore.class));
+    }
+
+    private static SecurityAdministrationService service(
+            UserAccountRepository users,
+            RoleRepository roles,
+            AuditService auditService) {
+        var organization = org.mockito.Mockito.mock(CurrentOrganization.class);
+        when(organization.currentStore()).thenAnswer(invocation -> {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            return ((UserAccount) authentication.getPrincipal()).getTienda();
+        });
+        when(organization.currentCompany()).thenAnswer(invocation -> {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            return ((UserAccount) authentication.getPrincipal()).getTienda().getEmpresa();
+        });
+        return new SecurityAdministrationService(
+                organization,
+                users,
+                roles,
+                org.mockito.Mockito.mock(PermissionRepository.class),
+                org.mockito.Mockito.mock(UserSessionRepository.class),
+                org.mockito.Mockito.mock(StoreRepository.class),
+                org.mockito.Mockito.mock(JdbcTemplate.class),
+                org.mockito.Mockito.mock(PasswordEncoder.class),
+                Clock.systemUTC(),
+                auditService,
+                org.mockito.Mockito.mock(BackupKeyStore.class),
+                org.mockito.Mockito.mock(BackupSettingsRepository.class),
+                org.mockito.Mockito.mock(InstallationRepository.class));
     }
 
     private static SecurityAdministrationService service(

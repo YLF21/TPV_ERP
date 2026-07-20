@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, screen } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -111,6 +111,100 @@ function createWindow() {
 
 function hardwareConfigPath() {
   return path.join(app.getPath("userData"), "hardware-config.json");
+}
+
+function terminalIdentityPath() {
+  return path.join(app.getPath("userData"), "server-terminal-identity.dpapi");
+}
+
+function readTerminalIdentity() {
+  const target = terminalIdentityPath();
+  if (!fs.existsSync(target)) {
+    return { ok: true, identity: null };
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return structuredError("SECURE_STORAGE_UNAVAILABLE", "El almacenamiento seguro de Windows no esta disponible");
+  }
+  try {
+    const encrypted = fs.readFileSync(target);
+    return { ok: true, identity: JSON.parse(safeStorage.decryptString(encrypted)) };
+  } catch (error) {
+    return structuredError("TERMINAL_IDENTITY_INVALID", error instanceof Error ? error.message : "No se pudo leer la identidad del terminal");
+  }
+}
+
+function writeTerminalIdentity(identity) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    return structuredError("SECURE_STORAGE_UNAVAILABLE", "El almacenamiento seguro de Windows no esta disponible");
+  }
+  if (!identity?.terminalId || !identity?.terminalCredential || !identity?.terminalCode || !identity?.storeName) {
+    return structuredError("TERMINAL_IDENTITY_INVALID", "La identidad del terminal esta incompleta");
+  }
+  const target = terminalIdentityPath();
+  const temporary = `${target}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(temporary, safeStorage.encryptString(JSON.stringify(identity)));
+    fs.renameSync(temporary, target);
+    return { ok: true };
+  } catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch {}
+    return structuredError("TERMINAL_IDENTITY_WRITE_FAILED", error instanceof Error ? error.message : "No se pudo guardar la identidad del terminal");
+  }
+}
+
+async function saveBinaryFile(request) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: request.defaultFileName,
+    filters: request.filters || []
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  try {
+    fs.writeFileSync(result.filePath, Buffer.from(request.bytes));
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError("FILE_WRITE_FAILED", error instanceof Error ? error.message : "No se pudo guardar el archivo");
+  }
+}
+
+async function exportCurrentPagePdf(defaultFileName) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultFileName || "informe.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  try {
+    const contents = await mainWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: true,
+      pageSize: "A4"
+    });
+    fs.writeFileSync(result.filePath, contents);
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError("PDF_EXPORT_FAILED", error instanceof Error ? error.message : "No se pudo generar el PDF");
+  }
+}
+
+function printCurrentPage() {
+  if (!mainWindow) {
+    return Promise.resolve(structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible"));
+  }
+  return new Promise((resolve) => {
+    mainWindow.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
+      resolve(success ? { ok: true } : structuredError("PRINT_FAILED", reason || "No se pudo imprimir"));
+    });
+  });
 }
 
 function structuredError(code, message) {
@@ -548,6 +642,12 @@ async function printA4Document(document, config) {
 ipcMain.handle("tpv:close-application", () => {
   app.quit();
 });
+
+ipcMain.handle("tpv:terminal-identity:load", () => readTerminalIdentity());
+ipcMain.handle("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
+ipcMain.handle("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
+ipcMain.handle("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
+ipcMain.handle("tpv:reports:print", () => printCurrentPage());
 
 ipcMain.handle("tpv:hardware:list-printers", async () => {
   if (!mainWindow) {

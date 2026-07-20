@@ -130,6 +130,7 @@ public class SecurityAdministrationService {
     @Transactional
     public UserItem changeUserName(UUID userId, String userName) {
         UserAccount user = user(userId);
+        requireMutableUser(user);
         user.cambiarUserName(userName);
         auditService.record(
                 "USER_NAME_CHANGED", AuditResult.EXITO, Map.of("userId", userId));
@@ -137,9 +138,21 @@ public class SecurityAdministrationService {
     }
 
     @Transactional
+    public UserItem changeUserIdentity(UUID userId, String name, String userName) {
+        UserAccount user = user(userId);
+        requireMutableUser(user);
+        user.renombrar(name);
+        user.cambiarUserName(userName);
+        auditService.record(
+                "USER_IDENTITY_CHANGED", AuditResult.EXITO, Map.of("userId", userId));
+        return UserItem.from(user);
+    }
+
+    @Transactional
     public void resetPassword(UUID userId, String newPassword) {
         requireNumericPassword(newPassword);
         UserAccount user = user(userId);
+        requireMutableUser(user);
         user.cambiarPassword(passwordEncoder.encode(newPassword));
         Instant now = Instant.now(clock);
         sesionRepository.findByUsuarioIdAndRevocadaEnIsNull(userId)
@@ -208,6 +221,40 @@ public class SecurityAdministrationService {
     }
 
     @Transactional
+    public RoleItem renameRole(UUID roleId, String name) {
+        Role role = role(roleId);
+        String normalized = normalize(name);
+        if (role.getNombre().equals(normalized)) {
+            return RoleItem.from(role);
+        }
+        if (rolRepository.findByTiendaIdAndNombre(currentStore().getId(), normalized).isPresent()) {
+            throw new IllegalArgumentException("Ya existe ese rol");
+        }
+        String previousName = role.getNombre();
+        role.renombrar(normalized);
+        auditService.record(
+                "ROLE_RENAMED",
+                AuditResult.EXITO,
+                Map.of("roleId", roleId, "previousName", previousName, "newName", normalized));
+        return RoleItem.from(role);
+    }
+
+    @Transactional
+    public void deleteRole(UUID roleId) {
+        Role role = role(roleId);
+        role.validateDeletion();
+        long assignedUsers = usuarioRepository.countByRolId(roleId);
+        if (assignedUsers > 0) {
+            throw new RoleInUseException(assignedUsers);
+        }
+        rolRepository.delete(role);
+        auditService.record(
+                "ROLE_DELETED",
+                AuditResult.EXITO,
+                Map.of("roleId", roleId, "name", role.getNombre()));
+    }
+
+    @Transactional
     public RoleItem assignPermissions(UUID roleId, Set<String> permissionCodes) {
         Role role = role(roleId);
         var permissions = permissionCodes.stream()
@@ -225,6 +272,19 @@ public class SecurityAdministrationService {
     public List<RoleItem> roles() {
         return rolRepository.findAllByTiendaIdOrderByNombre(currentStore().getId())
                 .stream().map(RoleItem::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<RoleOption> roleOptions() {
+        return rolRepository.findAllByTiendaIdAndProtegidoFalseOrderByNombre(currentStore().getId())
+                .stream().map(RoleOption::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PermissionItem> permissionCatalog() {
+        return permisoRepository.findAllByOrderByGrupoAscCodigoAsc().stream()
+                .map(PermissionItem::from)
+                .toList();
     }
 
     private UserAccount user(UUID id) {
@@ -281,6 +341,13 @@ public class SecurityAdministrationService {
         return value.trim().toUpperCase(Locale.ROOT);
     }
 
+    private void requireMutableUser(UserAccount user) {
+        if (user.isProtegido()) {
+            throw new IllegalStateException(
+                    "El usuario ADMIN solo puede modificarse mediante las operaciones protegidas de administrador");
+        }
+    }
+
     private void requireNumericPassword(String value) {
         if (value == null || !value.matches(NUMERIC_PASSWORD_PATTERN)) {
             throw new IllegalArgumentException("La contrasena debe tener entre 4 y 12 cifras numericas");
@@ -305,6 +372,19 @@ public class SecurityAdministrationService {
                             .map(value -> value.getPermiso().getCodigo())
                             .collect(Collectors.toUnmodifiableSet());
             return new RoleItem(role.getId(), role.getNombre(), role.isProtegido(), permissions);
+        }
+    }
+
+    public record RoleOption(UUID id, String name) {
+        static RoleOption from(Role role) {
+            return new RoleOption(role.getId(), role.getNombre());
+        }
+    }
+
+    public record PermissionItem(String code, String translationKey, String group) {
+        static PermissionItem from(com.tpverp.backend.security.domain.Permission permission) {
+            return new PermissionItem(
+                    permission.getCodigo(), permission.getTranslationKey(), permission.getGrupo());
         }
     }
 }

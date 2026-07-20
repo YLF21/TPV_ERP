@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -29,6 +30,11 @@ public record DocumentReportView(
         String proveedorNombre,
         UUID almacenId,
         String almacenNombre,
+        UUID usuarioId,
+        String usuarioNombre,
+        UUID terminalOrigenId,
+        String terminalOrigenNombre,
+        Instant ocurridoEn,
         int lineas,
         List<DocumentView.PaymentView> payments) {
 
@@ -36,7 +42,11 @@ public record DocumentReportView(
             CommercialDocument document,
             PartySummary customer,
             PartySummary supplier,
-            String warehouseName) {
+            String warehouseName,
+            DocumentAttributionResolver.Attribution attribution) {
+        var resolvedAttribution = attribution == null
+                ? DocumentAttributionResolver.Attribution.empty(document)
+                : attribution;
         return new DocumentReportView(
                 document.getId(),
                 document.getTipo(),
@@ -60,6 +70,11 @@ public record DocumentReportView(
                 supplier == null ? "" : supplier.name(),
                 document.getAlmacenId(),
                 warehouseName == null ? "" : warehouseName,
+                resolvedAttribution.userId(),
+                resolvedAttribution.userName(),
+                resolvedAttribution.terminalId(),
+                resolvedAttribution.terminalName(),
+                resolvedAttribution.occurredAt(),
                 document.getLineas().size(),
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))

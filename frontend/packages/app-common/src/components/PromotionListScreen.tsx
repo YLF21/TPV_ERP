@@ -19,6 +19,7 @@ type PromotionListScreenProps = {
   onBack: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
+  embedded?: boolean;
 };
 
 type PromotionAction = "duplicate" | "activate" | "deactivate" | "delete";
@@ -60,7 +61,8 @@ export function PromotionListScreen({
   terminalContext,
   onBack,
   onLocaleChange,
-  onLogout
+  onLogout,
+  embedded = false
 }: PromotionListScreenProps) {
   const t = createTranslator(locale);
   const [promotions, setPromotions] = useState<PromotionView[]>([]);
@@ -138,8 +140,8 @@ export function PromotionListScreen({
   }
 
   return (
-    <main className="promotion-screen work-screen">
-      <SessionTopControls
+    <main className={embedded ? "promotion-screen work-screen gestion-embedded-module" : "promotion-screen work-screen"}>
+      {!embedded && <SessionTopControls
         locale={locale}
         session={session}
         languageLabel={t("login.language")}
@@ -152,13 +154,13 @@ export function PromotionListScreen({
         yesLabel={t("common.yes")}
         onLocaleChange={onLocaleChange}
         onLogout={onLogout}
-      />
+      />}
 
       <section className="work-shell promotion-shell" aria-label={t("promotion.list.title")}>
         <header className="work-topbar">
-          <button type="button" className="report-brand-back" onClick={onBack}>
+          {!embedded && <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
-          </button>
+          </button>}
           <h1 className="report-title">{t("promotion.list.title")}</h1>
         </header>
 

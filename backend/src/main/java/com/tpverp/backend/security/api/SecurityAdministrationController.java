@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -67,6 +68,14 @@ public class SecurityAdministrationController {
         return service.changeUserName(userId, request.userName());
     }
 
+    @PatchMapping("/users/{userId}/identity")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    public SecurityAdministrationService.UserItem changeUserIdentity(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UserIdentityRequest request) {
+        return service.changeUserIdentity(userId, request.name(), request.userName());
+    }
+
     @PutMapping("/users/{userId}/password")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
     public ResponseEntity<Void> resetPassword(
@@ -90,6 +99,18 @@ public class SecurityAdministrationController {
         return service.roles();
     }
 
+    @GetMapping("/roles/options")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    public List<SecurityAdministrationService.RoleOption> roleOptions() {
+        return service.roleOptions();
+    }
+
+    @GetMapping("/permissions/catalog")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    public List<SecurityAdministrationService.PermissionItem> permissionCatalog() {
+        return service.permissionCatalog();
+    }
+
     @PutMapping("/users/admin/password")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> changeAdminPassword(
@@ -103,6 +124,21 @@ public class SecurityAdministrationController {
     public SecurityAdministrationService.RoleItem createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         return service.createRole(request.name());
+    }
+
+    @PatchMapping("/roles/{roleId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    public SecurityAdministrationService.RoleItem renameRole(
+            @PathVariable UUID roleId,
+            @Valid @RequestBody RoleNameRequest request) {
+        return service.renameRole(roleId, request.name());
+    }
+
+    @DeleteMapping("/roles/{roleId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ROLES_MANAGE')")
+    public ResponseEntity<Void> deleteRole(@PathVariable UUID roleId) {
+        service.deleteRole(roleId);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/roles/{roleId}/permissions")
@@ -129,6 +165,9 @@ public class SecurityAdministrationController {
     public record UserNameRequest(@NotBlank String userName) {
     }
 
+    public record UserIdentityRequest(@NotBlank String name, @NotBlank String userName) {
+    }
+
     public record ResetPasswordRequest(@NotBlank @Pattern(regexp = "\\d{4,12}") String password) {
     }
 
@@ -136,6 +175,9 @@ public class SecurityAdministrationController {
     }
 
     public record CreateRoleRequest(@NotBlank String name) {
+    }
+
+    public record RoleNameRequest(@NotBlank String name) {
     }
 
     public record PermissionsRequest(@NotNull Set<String> codes) {

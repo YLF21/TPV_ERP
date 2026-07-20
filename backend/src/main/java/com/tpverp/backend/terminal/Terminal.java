@@ -110,6 +110,10 @@ public class Terminal {
         activa = true;
     }
 
+    public void rotateCredential(String credentialHash) {
+        this.credentialHash = required(credentialHash, "credentialHash");
+    }
+
     public void deactivate() {
         if (tipo == TerminalType.SERVIDOR) {
             throw new IllegalStateException("message.terminal.server_cannot_deactivate");

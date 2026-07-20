@@ -40,19 +40,19 @@ public class WarehouseController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
     public Warehouse create(@Valid @RequestBody NameRequest request) {
         return service.createWarehouse(request.name());
     }
 
     @PutMapping("/{warehouseId}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
     public Warehouse rename(@PathVariable UUID warehouseId, @Valid @RequestBody NameRequest request) {
         return service.renameWarehouse(warehouseId, request.name());
     }
 
     @PatchMapping("/{warehouseId}/active")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + WAREHOUSES_MANAGE + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + WAREHOUSES_MANAGE + "','" + GESTION_ALMACEN + "')")
     public Warehouse setActive(
             @PathVariable UUID warehouseId, @Valid @RequestBody TaxController.ActiveRequest request) {
         return service.setWarehouseActive(warehouseId, request.active());

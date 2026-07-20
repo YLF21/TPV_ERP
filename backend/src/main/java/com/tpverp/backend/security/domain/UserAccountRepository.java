@@ -37,6 +37,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> 
             """)
     List<UserAccount> findAllByEmpresaIdOrderByNombre(@Param("companyId") UUID companyId);
 
+    long countByRolId(UUID roleId);
+
     @Query(value = """
             select exists (
                 select 1 from usuario_tienda access

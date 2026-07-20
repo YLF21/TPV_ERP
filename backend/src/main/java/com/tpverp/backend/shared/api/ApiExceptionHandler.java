@@ -2,6 +2,7 @@ package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
+import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
@@ -99,6 +100,24 @@ public class ApiExceptionHandler {
                 SystemErrorCode.STATE_CONFLICT.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language);
+    }
+
+    @ExceptionHandler(RoleInUseException.class)
+    ProblemDetail roleInUse(RoleInUseException exception, HttpServletRequest request) {
+        var language = language(request);
+        long count = exception.assignedUsers();
+        var detail = switch (language) {
+            case EN -> count == 1
+                    ? "The role is assigned to 1 user. Reassign that user before deleting it."
+                    : "The role is assigned to %d users. Reassign them before deleting it.".formatted(count);
+            case ZH -> "该角色已分配给 %d 个用户。请先重新分配这些用户，然后再删除该角色。".formatted(count);
+            default -> count == 1
+                    ? "El rol está asignado a 1 usuario. Reasígnalo antes de eliminar el rol."
+                    : "El rol está asignado a %d usuarios. Reasígnalos antes de eliminar el rol.".formatted(count);
+        };
+        var problem = problem(HttpStatus.CONFLICT, "ROLE_IN_USE", detail, language);
+        problem.setProperty("assignedUsers", count);
+        return problem;
     }
 
     @ExceptionHandler(WarehouseConfirmationException.class)

@@ -29,14 +29,12 @@ import {
   type ControlRuleDraft,
   type RelatedDocument
 } from "./controlAlertsApi";
-import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 
 type Translator = (key: string) => string;
 
 type ControlAlertsScreenProps = {
   session: UserSession;
   t: Translator;
-  navigation: GestionNavigationItem[];
 };
 
 type DateRange = { from: string; to: string };
@@ -72,7 +70,7 @@ export function canOpenRelatedSale(session: UserSession, alert: ControlAlert | n
   );
 }
 
-export function ControlAlertsScreen({ session, t, navigation }: ControlAlertsScreenProps) {
+export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   const token = session.accessToken;
   const initialRange = useMemo(todayRange, []);
   const [draftRange, setDraftRange] = useState<DateRange>(initialRange);
@@ -158,7 +156,7 @@ export function ControlAlertsScreen({ session, t, navigation }: ControlAlertsScr
   }
 
   return (
-    <GestionShell session={session} t={t} activeKey="controlAlerts" navigation={navigation}>
+    <>
       <section className="gestion-workspace gestion-control-workspace">
         <header className="gestion-dashboard-toolbar gestion-control-toolbar">
           <div>
@@ -215,7 +213,7 @@ export function ControlAlertsScreen({ session, t, navigation }: ControlAlertsScr
           }}
         />
       )}
-    </GestionShell>
+    </>
   );
 }
 

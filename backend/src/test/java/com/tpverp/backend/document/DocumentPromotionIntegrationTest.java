@@ -124,6 +124,8 @@ class DocumentPromotionIntegrationTest {
     private StockSettingsService stockSettings;
     @Mock
     private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
+    @Mock
+    private DocumentOperationalEventRecorder operationalEvents;
 
     private DocumentService service;
     private Store store;
@@ -195,6 +197,7 @@ class DocumentPromotionIntegrationTest {
                 promotionCatalog,
                 stockSettings,
                 controlAlerts,
+                operationalEvents,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

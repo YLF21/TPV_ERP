@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
+  canOpenOperationalTimeline,
   isPurchaseDocumentReport,
   isWarehouseDocumentReport,
   moveReportColumnBeforeTotal,
@@ -253,6 +254,46 @@ describe("SalesReportScreen", () => {
     ]);
   });
 
+  it("uses historical document attribution instead of the active session", () => {
+    const reports = buildDocumentReports(
+      [{
+        id: "ticket-1",
+        tipo: "TICKET",
+        numero: "T-1",
+        fecha: "2026-07-18",
+        total: "10.00",
+        usuarioNombre: "CAJERO HISTORICO",
+        terminalOrigenNombre: "CAJA 02",
+        ocurridoEn: "2026-07-18T10:35:00Z"
+      }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      session,
+      terminalContext
+    );
+
+    expect(reports["salesReport.tickets"]?.rows[0]).toEqual(expect.objectContaining({
+      __documentId: "ticket-1",
+      ticket: "T-1",
+      user: "CAJERO HISTORICO",
+      terminal: "CAJA 02",
+      time: expect.stringMatching(/^\d{2}:\d{2}$/)
+    }));
+  });
+
+  it("only exposes document activity in management with the matching document permission", () => {
+    const row = { __documentId: "document-1" };
+    expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "GESTION_VENTAS"] }, "salesReport.tickets", row)).toBe(true);
+    expect(canOpenOperationalTimeline("venta", { permissions: ["APP_GESTION_ACCESS", "GESTION_VENTAS"] }, "salesReport.tickets", row)).toBe(false);
+    expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "VENTA"] }, "salesReport.tickets", row)).toBe(false);
+    expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "GESTION_CUENTAS"] }, "salesReport.inputInvoices", row)).toBe(true);
+    expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "GESTION_PRODUCTO"] }, "salesReport.tickets", row)).toBe(false);
+    expect(canOpenOperationalTimeline("gestion", { permissions: ["GESTION_VENTAS"] }, "salesReport.tickets", row)).toBe(false);
+  });
+
   it("renders the formal report layout chrome", () => {
     const html = renderToStaticMarkup(
       <SalesReportScreen
@@ -282,6 +323,28 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain("Cafe molido");
     expect(html).not.toContain("Pan integral");
     expect(html).not.toContain("Aceite oliva");
+  });
+
+  it("renders a selected report as embedded APP GESTION content without duplicate navigation", () => {
+    const html = renderToStaticMarkup(
+      <SalesReportScreen
+        app="gestion"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLogout={vi.fn()}
+        onLocaleChange={vi.fn()}
+        embedded
+        initialReport="salesReport.tickets"
+      />
+    );
+
+    expect(html).toContain('class="report-screen gestion-embedded-module"');
+    expect(html).toContain("Tickets");
+    expect(html).not.toContain('class="report-nav"');
+    expect(html).not.toContain('class="report-brand-back"');
+    expect(html).not.toContain('class="report-user-button"');
   });
 
   it("renders the five daily accounting buckets from the authoritative backend report", async () => {

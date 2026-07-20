@@ -2,6 +2,7 @@ package com.tpverp.backend.organization;
 
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.security.domain.OperationalSessionContext;
 import java.util.Locale;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,11 +22,17 @@ public class CurrentOrganization {
     public Store currentStore() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof UserAccount user) {
-            return user.getTienda();
+            if (authentication.getDetails() instanceof OperationalSessionContext operational) {
+                return stores.findWithCompanyById(operational.storeId())
+                        .orElseThrow(() -> storeNotInitialized());
+            }
+            if (user.getTienda() != null) {
+                return user.getTienda();
+            }
+            throw storeNotInitialized();
         }
         return stores.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "message.organization.store_not_initialized"));
+                .orElseThrow(this::storeNotInitialized);
     }
 
     public Company currentCompany() {
@@ -51,5 +58,9 @@ public class CurrentOrganization {
                 .filter(UserAccount::isActivo)
                 .orElseThrow(() -> new IllegalStateException(
                         "message.organization.authenticated_user_not_found"));
+    }
+
+    private IllegalStateException storeNotInitialized() {
+        return new IllegalStateException("message.organization.store_not_initialized");
     }
 }

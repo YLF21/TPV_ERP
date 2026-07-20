@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_ALMACEN;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
 import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.WAREHOUSES_MANAGE;
 
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,6 +43,24 @@ class CatalogControllerContractTest {
                         org.springframework.security.core.Authentication.class)
                 .getAnnotation(PreAuthorize.class).value())
                 .doesNotContain("'" + VENTA + "'");
+    }
+
+    @Test
+    void warehouseStructureCanBeManagedByWarehouseOperationsOrDedicatedManagement() throws Exception {
+        assertAllows(WarehouseController.class, "create", PostMapping.class,
+                GESTION_ALMACEN, WarehouseController.NameRequest.class);
+        assertAllows(WarehouseController.class, "create", PostMapping.class,
+                WAREHOUSES_MANAGE, WarehouseController.NameRequest.class);
+        assertAllows(WarehouseController.class, "rename", PutMapping.class,
+                GESTION_ALMACEN, java.util.UUID.class, WarehouseController.NameRequest.class);
+        assertAllows(WarehouseController.class, "setActive", PatchMapping.class,
+                GESTION_ALMACEN, java.util.UUID.class, TaxController.ActiveRequest.class);
+
+        var delete = WarehouseController.class.getDeclaredMethod("delete", java.util.UUID.class);
+        assertThat(delete.getAnnotation(DeleteMapping.class)).isNotNull();
+        assertThat(delete.getAnnotation(PreAuthorize.class).value())
+                .contains("'" + WAREHOUSES_MANAGE + "'")
+                .doesNotContain("'" + GESTION_ALMACEN + "'");
     }
 
     private void assertController(Class<?> type, String path) {

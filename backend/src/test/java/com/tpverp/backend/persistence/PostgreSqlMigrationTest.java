@@ -12,9 +12,102 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 
 class PostgreSqlMigrationTest {
+
+    @Test
+    void regularizaAdminLegacySinCambiarSuPasswordCuandoSeConfiguraPostgreSqlReal() throws Exception {
+        String url = System.getenv("TPV_ERP_TEST_DB_URL");
+        String user = System.getenv("TPV_ERP_TEST_DB_USER");
+        String password = System.getenv("TPV_ERP_TEST_DB_PASSWORD");
+        assumeTrue(url != null && !url.isBlank(), "TPV_ERP_TEST_DB_URL no configurada");
+
+        String schema = "tpv_erp_admin_test_" + UUID.randomUUID().toString().replace("-", "");
+        UUID companyId = UUID.randomUUID();
+        UUID storeId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String existingPasswordHash = "$2a$10$existing.password.hash.is.preserved.exactly";
+        try {
+            Flyway.configure()
+                    .dataSource(url, user, password)
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .createSchemas(true)
+                    .target(MigrationVersion.fromVersion("77"))
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        insert into %1$s.empresa (id, tax_id, razon_social, domicilio_fiscal)
+                        values ('%2$s', 'B00000001', 'Empresa legacy', '{
+                            "linea1":"Calle Uno",
+                            "ciudad":"Las Palmas",
+                            "codigoPostal":"35001",
+                            "provincia":"Las Palmas",
+                            "pais":"ES"
+                        }')
+                        """.formatted(schema, companyId));
+                statement.executeUpdate("""
+                        insert into %1$s.tienda (
+                            id, empresa_id, nombre, direccion, address_normalized_hash,
+                            timezone, moneda, locale, codigo_tienda)
+                        values (
+                            '%2$s', '%3$s', 'Tienda legacy', '{
+                                "linea1":"Calle Uno",
+                                "ciudad":"Las Palmas",
+                                "codigoPostal":"35001",
+                                "provincia":"Las Palmas",
+                                "pais":"ES"
+                            }', 'LEGACY-STORE', 'Atlantic/Canary', 'EUR', 'es-ES', '001')
+                        """.formatted(schema, storeId, companyId));
+                statement.executeUpdate("""
+                        insert into %1$s.rol (id, tienda_id, nombre, protegido)
+                        values ('%2$s', '%3$s', 'ADMIN', true)
+                        """.formatted(schema, roleId, storeId));
+                statement.executeUpdate("""
+                        insert into %1$s.usuario (
+                            id, tienda_id, nombre, user_name, password_hash,
+                            rol_id, protegido, activo, must_change_password)
+                        values (
+                            '%2$s', '%3$s', 'ADMIN', 'Administrador', '%4$s',
+                            '%5$s', true, true, false)
+                        """.formatted(schema, adminId, storeId, existingPasswordHash, roleId));
+            }
+
+            Flyway.configure()
+                    .dataSource(url, user, password)
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                    Statement statement = connection.createStatement();
+                    ResultSet admin = statement.executeQuery("""
+                        select usuario.tienda_id, usuario.password_hash,
+                               usuario.must_change_password, rol.tienda_id as rol_tienda_id
+                          from %1$s.usuario
+                          join %1$s.rol on rol.id = usuario.rol_id
+                         where usuario.id = '%2$s'
+                        """.formatted(schema, adminId))) {
+                assertThat(admin.next()).isTrue();
+                assertThat(admin.getObject("tienda_id")).isNull();
+                assertThat(admin.getObject("rol_tienda_id")).isNull();
+                assertThat(admin.getString("password_hash")).isEqualTo(existingPasswordHash);
+                assertThat(admin.getBoolean("must_change_password")).isFalse();
+            }
+        } finally {
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                    Statement statement = connection.createStatement()) {
+                statement.execute("drop schema if exists " + schema + " cascade");
+            }
+        }
+    }
 
     @Test
     void aplicaEsquemaCompletoEnPostgreSqlRealCuandoSeConfiguraPorVariables() throws Exception {
@@ -114,11 +207,44 @@ class PostgreSqlMigrationTest {
             verifyManagedCertificateIndexes(url, user, password, schema);
             verifyDeferredFiscalTriggers(url, user, password, schema);
             verifyImmutableFiscalRecords(url, user, password, schema);
+            verifyDocumentOperationalAttribution(url, user, password, schema);
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {
                 statement.execute("drop schema if exists " + schema + " cascade");
             }
+        }
+    }
+
+    private static void verifyDocumentOperationalAttribution(
+            String url, String user, String password, String schema) throws Exception {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet table = statement.executeQuery("""
+                    select count(*)
+                    from information_schema.tables
+                    where table_schema = '%s'
+                      and table_name = 'documento_evento_operativo'
+                    """.formatted(schema))) {
+            assertThat(table.next()).isTrue();
+            assertThat(table.getInt(1)).isEqualTo(1);
+        }
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement();
+                ResultSet triggers = statement.executeQuery("""
+                    select distinct trigger_name
+                    from information_schema.triggers
+                    where trigger_schema = '%s'
+                      and trigger_name in (
+                        'documento_terminal_origen_inmutable',
+                        'documento_evento_operativo_append_only')
+                    order by trigger_name
+                    """.formatted(schema))) {
+            var names = new ArrayList<String>();
+            while (triggers.next()) names.add(triggers.getString(1));
+            assertThat(names).containsExactly(
+                    "documento_evento_operativo_append_only",
+                    "documento_terminal_origen_inmutable");
         }
     }
 

@@ -310,6 +310,22 @@ El cajero no vera claves ni parametros tecnicos durante el cobro.
 - Configuracion de todos los perifericos; la spec define la base comun para
   incorporarlos.
 
+## Aprovisionamiento del terminal servidor
+
+APP GESTION se autentica contra el terminal logico `SERVIDOR`, pero su identidad
+no se compila dentro del frontend. Tras existir una unica tienda local, el
+`ADMIN` global de instalacion ejecuta un aprovisionamiento de primer arranque que:
+
+1. crea el terminal `SERVIDOR` si falta o rota su secreto si ya existe;
+2. guarda en backend solo el hash del secreto;
+3. entrega el secreto una unica vez a Electron;
+4. lo cifra localmente con `safeStorage`/DPAPI;
+5. exige ese secreto en todos los inicios de sesion posteriores.
+
+La operacion se audita asociada a la tienda. Una sesion administrativa de tienda,
+un usuario con `CONFIGURACION_TERMINAL` o un proceso remoto no pueden ejecutar
+este aprovisionamiento: requiere el usuario protegido de instalacion sin tienda.
+
 ## Pruebas
 
 La implementacion posterior debera cubrir:

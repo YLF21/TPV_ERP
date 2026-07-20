@@ -12,4 +12,6 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
     Optional<Role> findByIdAndTiendaId(UUID id, UUID tiendaId);
 
     List<Role> findAllByTiendaIdOrderByNombre(UUID tiendaId);
+
+    List<Role> findAllByTiendaIdAndProtegidoFalseOrderByNombre(UUID tiendaId);
 }

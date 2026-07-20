@@ -17,8 +17,21 @@ class SecurityAdministrationControllerContractTest {
         assertThat(permission("roles"))
                 .contains("ROLES_MANAGE")
                 .doesNotContain("GESTION_USUARIO");
+        assertThat(permission("roleOptions"))
+                .contains("GESTION_USUARIO")
+                .doesNotContain("ROLES_MANAGE");
+        assertThat(permission("permissionCatalog"))
+                .contains("ROLES_MANAGE")
+                .doesNotContain("GESTION_USUARIO");
         assertThat(permission(
                 "assignPermissions", UUID.class, SecurityAdministrationController.PermissionsRequest.class))
+                .contains("ROLES_MANAGE")
+                .doesNotContain("GESTION_USUARIO");
+        assertThat(permission(
+                "renameRole", UUID.class, SecurityAdministrationController.RoleNameRequest.class))
+                .contains("ROLES_MANAGE")
+                .doesNotContain("GESTION_USUARIO");
+        assertThat(permission("deleteRole", UUID.class))
                 .contains("ROLES_MANAGE")
                 .doesNotContain("GESTION_USUARIO");
     }

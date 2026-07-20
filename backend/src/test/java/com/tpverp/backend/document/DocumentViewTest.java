@@ -13,6 +13,8 @@ import com.tpverp.backend.party.CustomerRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -52,6 +54,7 @@ class DocumentViewTest {
         document.setParties(customerId, null, null);
         var customers = mock(CustomerRepository.class);
         var organization = mock(CurrentOrganization.class);
+        var attributions = mock(DocumentAttributionResolver.class);
         var company = mock(Company.class);
         var customer = mock(Customer.class);
         when(organization.currentCompany()).thenReturn(company);
@@ -59,8 +62,10 @@ class DocumentViewTest {
         when(customers.findByIdAndCompanyId(customerId, companyId))
                 .thenReturn(Optional.of(customer));
         when(customer.getFiscalName()).thenReturn("CLIENTE AUTORIZADO");
+        when(attributions.resolve(List.of(document))).thenReturn(Map.of(
+                document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
 
-        var view = new DocumentViewAssembler(customers, organization)
+        var view = new DocumentViewAssembler(customers, organization, attributions)
                 .documentView(document);
 
         assertThat(view.customerId()).isEqualTo(customerId);

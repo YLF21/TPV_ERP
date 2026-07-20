@@ -4,7 +4,6 @@ import com.tpverp.backend.security.domain.UserSession;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.terminal.TerminalRepository;
-import com.tpverp.backend.terminal.TerminalType;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -41,11 +40,6 @@ public class AuthenticationService {
 		this.sesionRepository = sesionRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.clock = clock;
-	}
-
-	@Transactional
-	public LoginResult login(UUID terminalId, String userName, String password) {
-		return login(terminalId, null, userName, password);
 	}
 
 	@Transactional
@@ -88,8 +82,7 @@ public class AuthenticationService {
 		var terminal = terminalRepository.findById(terminalId)
 				.filter(value -> value.isAprobada() && value.isActiva())
 				.orElseThrow(AuthenticationFailedException::new);
-		if (terminal.getTipo() != TerminalType.SERVIDOR
-				&& !passwordEncoder.matches(
+		if (!passwordEncoder.matches(
 						terminalCredential == null ? "" : terminalCredential,
 						terminal.getCredentialHash())) {
 			throw new AuthenticationFailedException();
@@ -97,6 +90,8 @@ public class AuthenticationService {
 		var normalizedName = userName == null ? "" : userName.trim().toUpperCase(Locale.ROOT);
 		var user = usuarioRepository.findByEmpresaIdAndNombre(
 						terminal.getTienda().getEmpresa().getId(), normalizedName)
+				.or(() -> usuarioRepository.findByNombreAndTiendaIsNull(normalizedName)
+						.filter(value -> value.isProtegido()))
 				.filter(value -> value.isActivo())
 				.filter(value -> value.isProtegido()
 						|| usuarioRepository.hasStoreAccess(value.getId(), terminal.getTienda().getId()))

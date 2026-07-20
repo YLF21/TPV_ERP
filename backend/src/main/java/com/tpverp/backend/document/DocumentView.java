@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -23,18 +24,41 @@ public record DocumentView(
         String numTicket,
         String qrUrl,
         boolean origenStock,
+        UUID usuarioId,
+        String usuarioNombre,
+        UUID terminalOrigenId,
+        String terminalOrigenNombre,
+        Instant ocurridoEn,
         List<PaymentView> payments) {
 
     public static DocumentView from(CommercialDocument document) {
-        return from(document, null, null);
+        return from(document, null, null,
+                DocumentAttributionResolver.Attribution.empty(document));
     }
 
     public static DocumentView from(CommercialDocument document, String qrUrl) {
-        return from(document, null, qrUrl);
+        return from(document, null, qrUrl,
+                DocumentAttributionResolver.Attribution.empty(document));
+    }
+
+    public static DocumentView from(
+            CommercialDocument document,
+            String qrUrl,
+            DocumentAttributionResolver.Attribution attribution) {
+        return from(document, null, qrUrl, attribution);
     }
 
     static DocumentView from(
             CommercialDocument document, String customerName, String qrUrl) {
+        return from(document, customerName, qrUrl,
+                DocumentAttributionResolver.Attribution.empty(document));
+    }
+
+    static DocumentView from(
+            CommercialDocument document,
+            String customerName,
+            String qrUrl,
+            DocumentAttributionResolver.Attribution attribution) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
                 document.getNumero(), document.getFecha(), document.getClienteId(), customerName,
@@ -42,6 +66,8 @@ public record DocumentView(
                 document.getImpuestoTotal(), document.getTotal(), document.getPaidTotal(),
                 document.getPendingTotal(),
                 document.getNumTicket(), qrUrl, document.isOrigenStock(),
+                attribution.userId(), attribution.userName(),
+                attribution.terminalId(), attribution.terminalName(), attribution.occurredAt(),
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
                         .map(PaymentView::from)

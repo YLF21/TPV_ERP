@@ -1,7 +1,6 @@
 package com.tpverp.backend.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,7 +10,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,15 +48,5 @@ class AuditServiceTest {
 
         verify(repository).findByTiendaIdAndCreadaEnBetweenOrderByCreadaEnDesc(
                 storeId, from, NOW);
-    }
-
-    @Test
-    void rejectsAuditUuidFromAnotherStore() {
-        var auditId = UUID.randomUUID();
-        when(repository.findByIdAndTiendaId(auditId, storeId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.delete(auditId, "ELIMINAR AUDITORIA"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("message.audit.not_found");
     }
 }

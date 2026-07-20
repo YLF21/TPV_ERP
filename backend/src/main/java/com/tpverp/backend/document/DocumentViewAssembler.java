@@ -10,11 +10,15 @@ public class DocumentViewAssembler {
 
     private final CustomerRepository customers;
     private final CurrentOrganization organization;
+    private final DocumentAttributionResolver attributions;
 
     public DocumentViewAssembler(
-            CustomerRepository customers, CurrentOrganization organization) {
+            CustomerRepository customers,
+            CurrentOrganization organization,
+            DocumentAttributionResolver attributions) {
         this.customers = customers;
         this.organization = organization;
+        this.attributions = attributions;
     }
 
     public DocumentView documentView(CommercialDocument document) {
@@ -22,7 +26,8 @@ public class DocumentViewAssembler {
     }
 
     public DocumentView documentView(CommercialDocument document, String qrUrl) {
-        return DocumentView.from(document, customerName(document), qrUrl);
+        var attribution = attributions.resolve(java.util.List.of(document)).get(document.getId());
+        return DocumentView.from(document, customerName(document), qrUrl, attribution);
     }
 
     public CustomerReceivableView receivableView(
