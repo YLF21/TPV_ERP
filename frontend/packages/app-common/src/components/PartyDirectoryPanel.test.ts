@@ -5,6 +5,7 @@ import type { UserSession } from "../types";
 import {
   availableMemberCustomers,
   buildPartyRequest,
+  customerReceivablesActionVisible,
   emptyPartyForm,
   filterPartyDirectoryEntries,
   memberActivationPath,
@@ -64,6 +65,13 @@ describe("PartyDirectoryPanel", () => {
   it("requires a valid country and a channel when consent is enabled", () => {
     expect(validatePartyForm({ ...emptyPartyForm, name: "Ana", documentNumber: "1", country: "E", commercialConsent: true }, false))
       .toEqual(["country", "preferredCommercialChannelId"]);
+  });
+
+  it("offers the selected customer receivables action only for customer directories with read permission", () => {
+    expect(customerReceivablesActionVisible("customers", true, ["CUSTOMER_RECEIVABLES_READ"])).toBe(true);
+    expect(customerReceivablesActionVisible("members", true, ["ADMIN"])).toBe(true);
+    expect(customerReceivablesActionVisible("suppliers", true, ["ADMIN"])).toBe(false);
+    expect(customerReceivablesActionVisible("customers", false, ["ADMIN"])).toBe(false);
   });
 
   it("defines every party table and keeps existing callers compatible", () => {

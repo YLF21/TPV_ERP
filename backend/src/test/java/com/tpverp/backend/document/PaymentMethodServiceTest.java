@@ -71,6 +71,16 @@ class PaymentMethodServiceTest {
     }
 
     @Test
+    void listsCurrentTenantWhenBrowserDoesNotSupplyCompanyId() {
+        var companyId = currentCompany();
+        var cash = new PaymentMethod(companyId, "EFECTIVO", true);
+        when(repository.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(java.util.List.of(cash));
+
+        assertThat(service().list(null)).containsExactly(cash);
+        verify(repository).findAllByEmpresaIdOrderByNombre(companyId);
+    }
+
+    @Test
     void rejectsPaymentMethodUuidFromAnotherTenant() {
         var companyId = currentCompany();
         var foreignMethodId = UUID.randomUUID();

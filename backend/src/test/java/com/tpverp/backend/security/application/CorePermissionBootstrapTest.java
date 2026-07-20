@@ -53,6 +53,9 @@ class CorePermissionBootstrapTest {
                 "TICKETS_CANCEL",
                 "INVOICES_CONFIRM",
                 "INVOICES_PAY",
+                "CUSTOMER_RECEIVABLES_READ",
+                "CUSTOMER_RECEIVABLES_CREATE",
+                "CUSTOMER_RECEIVABLES_PAY",
                 "PAYMENT_TERMINAL_VOID",
                 "PAYMENT_TERMINAL_REFUND",
                 "PAYMENT_TERMINAL_SECRETS");

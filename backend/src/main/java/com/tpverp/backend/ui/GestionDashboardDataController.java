@@ -58,10 +58,10 @@ public class GestionDashboardDataController {
         var previous = dailyReports.report(today.minusDays(1));
         return new SalesTodayView(
                 today,
-                current.issuedTotal(),
-                current.collectedTotal(),
-                previous.issuedTotal(),
-                percentageChange(current.issuedTotal(), previous.issuedTotal()));
+                current.invoiced(),
+                current.cashInflow(),
+                previous.invoiced(),
+                percentageChange(current.invoiced(), previous.invoiced()));
     }
 
     @GetMapping("/top-products")

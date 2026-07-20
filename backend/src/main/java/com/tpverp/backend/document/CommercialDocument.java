@@ -379,25 +379,21 @@ public class CommercialDocument {
         numTicket = required(ticketNumber, "num_ticket");
     }
 
-    void setDueDate(LocalDate dueDate) {
+    public void setDueDate(LocalDate dueDate) {
         fechaVencimiento = dueDate;
+    }
+
+    public LocalDate getDueDate() {
+        return fechaVencimiento;
     }
 
     void setStockOrigin(boolean stockOrigin) {
         origenStock = stockOrigin;
     }
 
-    private boolean isInvoice() {
-        return tipo == CommercialDocumentType.FACTURA_VENTA
-                || tipo == CommercialDocumentType.FACTURA_COMPRA
-                || tipo == CommercialDocumentType.RECTIFICATIVA_VENTA
-                || tipo == CommercialDocumentType.RECTIFICATIVA_COMPRA;
-    }
-
     private boolean isReceivableDocument() {
-        return isInvoice()
-                || tipo == CommercialDocumentType.ALBARAN_VENTA
-                || tipo == CommercialDocumentType.ALBARAN_COMPRA;
+        return tipo == CommercialDocumentType.ALBARAN_VENTA
+                || tipo == CommercialDocumentType.FACTURA_VENTA;
     }
 
     private boolean isEditableConfirmedDocument() {

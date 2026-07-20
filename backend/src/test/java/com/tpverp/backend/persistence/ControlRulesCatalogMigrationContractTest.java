@@ -7,9 +7,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV76ContractTest {
+class ControlRulesCatalogMigrationContractTest {
 
-    private static final String MIGRATION = "db/migration/V76__catalogo_reglas_control.sql";
+    private static final String MIGRATION = "db/migration/V79__catalogo_reglas_control.sql";
 
     @Test
     void fixesSystemNamesEnforcesOneRulePerStoreAndAddsSequenceSupport() throws IOException {

@@ -20,10 +20,15 @@ public class InvoiceController {
 
     private final DocumentService service;
     private final DocumentFiscalQrService fiscalQr;
+    private final DocumentViewAssembler views;
 
-    public InvoiceController(DocumentService service, DocumentFiscalQrService fiscalQr) {
+    public InvoiceController(
+            DocumentService service,
+            DocumentFiscalQrService fiscalQr,
+            DocumentViewAssembler views) {
         this.service = service;
         this.fiscalQr = fiscalQr;
+        this.views = views;
     }
 
     @GetMapping
@@ -79,7 +84,7 @@ public class InvoiceController {
     }
 
     private DocumentView view(CommercialDocument document) {
-        return DocumentView.from(document, fiscalQr.qrUrl(document.getId()));
+        return views.documentView(document, fiscalQr.qrUrl(document.getId()));
     }
 
     public record RelationRequest(

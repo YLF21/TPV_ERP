@@ -17,5 +17,5 @@ public final class UnavailableLivePaymentTerminalGateway implements CardTerminal
     @Override public PaymentTerminalResult refund(PaymentTerminalRefundCommand command,PaymentTerminalGatewayContext context){ return unavailable(); }
     @Override public PaymentTerminalReceipt receipt(PaymentTerminalReceiptCommand command,PaymentTerminalGatewayContext context){ return new PaymentTerminalReceipt(PaymentTerminalOperationStatus.ERROR,"SDK_NOT_INSTALLED","SDK oficial de "+provider+" no instalado"); }
     @Override public PaymentTerminalResult reconcile(PaymentTerminalReconciliationCommand command,PaymentTerminalGatewayContext context){ return unavailable(); }
-    private PaymentTerminalResult unavailable(){ return new PaymentTerminalResult(PaymentTerminalOperationStatus.ERROR,"SDK_NOT_INSTALLED",null,null,"SDK oficial de "+provider+" no instalado"); }
+    private PaymentTerminalResult unavailable(){ return new PaymentTerminalResult(PaymentTerminalOperationStatus.ERROR,"SDK_NOT_INSTALLED",null,null,"SDK oficial de "+provider+" no instalado",true); }
 }

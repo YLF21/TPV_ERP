@@ -24,10 +24,12 @@ class InvoiceControllerTest {
     private DocumentService service;
     @Mock
     private DocumentFiscalQrService fiscalQr;
+    @Mock
+    private DocumentViewAssembler views;
 
     @Test
     void payPassesRealAuthenticationToDocumentService() {
-        var controller = new InvoiceController(service, fiscalQr);
+        var controller = new InvoiceController(service, fiscalQr, views);
         var invoiceId = UUID.randomUUID();
         var methodId = UUID.randomUUID();
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "token");
@@ -37,6 +39,8 @@ class InvoiceControllerTest {
         when(service.payInvoice(eq(invoiceId), eq(expectedPayments), same(authentication)))
                 .thenReturn(paid);
         when(fiscalQr.qrUrl(paid.getId())).thenReturn("qr-url");
+        when(views.documentView(paid, "qr-url"))
+                .thenReturn(DocumentView.from(paid, "qr-url"));
 
         var view = controller.pay(
                 invoiceId,

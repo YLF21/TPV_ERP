@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,10 +11,107 @@ import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CommercialDocumentRepository extends JpaRepository<CommercialDocument, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from CommercialDocument document
+            left join fetch document.pagos
+            where document.id = :id and document.tiendaId = :storeId
+            """)
+    Optional<CommercialDocument> findLockedDocument(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select document
+            from CommercialDocument document
+            left join fetch document.pagos
+            where document.id = :id
+              and document.tiendaId = :storeId
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            """)
+    Optional<CommercialDocument> findLockedReceivable(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL)
+              and document.clienteId is not null
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            order by document.fechaVencimiento asc, document.fecha desc, document.numero desc
+            """)
+    List<CommercialDocument> findCustomerReceivables(@Param("storeId") UUID storeId);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.id = :id
+              and document.tiendaId = :storeId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL)
+              and document.clienteId is not null
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            """)
+    Optional<CommercialDocument> findCustomerReceivable(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
+    @EntityGraph(attributePaths = {"lineas"})
+    @Query("""
+            select document from CommercialDocument document
+            where document.id = :id and document.tiendaId = :storeId
+              and document.clienteId is not null
+              and document.tipo in (
+                com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado not in (
+                com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                com.tpverp.backend.document.DocumentStatus.ANULADO)
+            """)
+    Optional<CommercialDocument> findCustomerDocumentForPrint(
+            @Param("id") UUID id, @Param("storeId") UUID storeId);
+
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
     @EntityGraph(attributePaths = "lineas")

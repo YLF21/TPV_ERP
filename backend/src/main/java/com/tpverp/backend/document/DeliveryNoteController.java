@@ -22,9 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeliveryNoteController {
 
     private final DocumentService service;
+    private final DocumentViewAssembler views;
 
-    public DeliveryNoteController(DocumentService service) {
+    public DeliveryNoteController(DocumentService service, DocumentViewAssembler views) {
         this.service = service;
+        this.views = views;
     }
 
     @GetMapping
@@ -33,7 +35,7 @@ public class DeliveryNoteController {
         return service.listDeliveryNotes(
                         PermissionChecks.hasSalesDocumentRead(authentication, "DELIVERY_NOTES_READ"),
                         PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
-                .map(DocumentView::from)
+                .map(views::documentView)
                 .toList();
     }
 
@@ -42,7 +44,7 @@ public class DeliveryNoteController {
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.createDeliveryNote(
+        return views.documentView(service.createDeliveryNote(
                 request.toCommand(), authentication));
     }
 
@@ -60,7 +62,7 @@ public class DeliveryNoteController {
     public DocumentView confirm(
             @PathVariable UUID id,
             Authentication authentication) {
-        return DocumentView.from(service.confirm(id, authentication));
+        return views.documentView(service.confirm(id, authentication));
     }
 
     @PostMapping("/{id}/pay")
@@ -69,7 +71,7 @@ public class DeliveryNoteController {
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.payDeliveryNote(id, request.toCommands(), authentication));
+        return views.documentView(service.payDeliveryNote(id, request.toCommands(), authentication));
     }
 
     @PutMapping("/{id}/admin")
@@ -78,7 +80,7 @@ public class DeliveryNoteController {
             @PathVariable UUID id,
             @Valid @RequestBody AdminEditRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.adminEditConfirmed(
+        return views.documentView(service.adminEditConfirmed(
                 id, request.descuentoGlobal(), request.clienteId(), request.proveedorId(),
                 request.lineas().stream().map(DocumentRequest.LineRequest::toCommand).toList(),
                 authentication));

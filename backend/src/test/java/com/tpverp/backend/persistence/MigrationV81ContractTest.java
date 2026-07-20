@@ -7,9 +7,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV77ContractTest {
+class MigrationV81ContractTest {
 
-    private static final String MIGRATION = "db/migration/V77__atribucion_operativa_documentos.sql";
+    private static final String MIGRATION = "db/migration/V81__atribucion_operativa_documentos.sql";
 
     @Test
     void addsImmutableOriginAndAppendOnlyOperationalEventsWithConservativeBackfill() throws IOException {

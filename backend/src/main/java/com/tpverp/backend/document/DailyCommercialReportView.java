@@ -7,8 +7,9 @@ import java.util.UUID;
 public record DailyCommercialReportView(
         UUID storeId,
         LocalDate date,
-        BigDecimal issuedTotal,
-        BigDecimal collectedTotal,
-        BigDecimal generatedPendingTotal,
-        BigDecimal collectedPreviousPendingTotal) {
+        BigDecimal invoiced,
+        BigDecimal collectedCurrent,
+        BigDecimal newPending,
+        BigDecimal priorDebtCollected,
+        BigDecimal cashInflow) {
 }

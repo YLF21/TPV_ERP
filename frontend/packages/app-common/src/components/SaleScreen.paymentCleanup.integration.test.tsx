@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import type { TerminalContext, UserSession } from "../types";
@@ -21,7 +21,18 @@ const oldSession = {
   status: "COLLECTING",
   allocations: [{ id: "old-allocation", idempotencyKey: "old-allocation", kind: "INTEGRATED_CARD", amount: "12.10", status: "PENDING" }]
 };
-const configuration = { rules: { cardManualEnabled: false, integratedCardEnabled: false }, providerDescriptors: [], configuration: { provider: "", enabled: false } };
+const configuration = { rules: { cardManualEnabled: false, integratedCardEnabled: true }, providerDescriptors: [{ provider: "REDSYS_TPV_PC", capabilities: [] }], configuration: { provider: "REDSYS_TPV_PC", enabled: true } };
+const product = {
+  id: "coffee",
+  code: "CAF-001",
+  barcode: "8410000000011",
+  name: "Cafe molido",
+  salePrice: 10,
+  taxId: "tax-iva-21",
+  taxesIncluded: true,
+  taxRegime: "IVA" as const,
+  taxPercentage: 21,
+};
 
 function mount(onLogout = vi.fn()) {
   return render(<SaleScreen app="venta" locale="es" session={session} terminalContext={terminal} onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={onLogout} />);
@@ -36,12 +47,58 @@ afterEach(() => {
 });
 
 describe("SaleScreen payment cleanup across restart", () => {
+  it("blocks real-sale payment shortcuts during hydration and enables them after authoritative absence", async () => {
+    let resolveActive!: (value: null) => void;
+    const activeResponse = new Promise<null>((resolve) => { resolveActive = resolve; });
+    apiRequestMock.mockImplementation(async (path: string) => {
+      if (path === "/products/sale") return [product];
+      if (path === "/terminal-configuration/payment") return configuration;
+      if (path === "/pos/payment-sessions/active") return activeResponse;
+      if (path === "/pos/payment-sessions") return { id: "new-card-session", total: "10.00", status: "COLLECTING", allocations: [] };
+      if (path === "/pos/payment-sessions/new-card-session/allocations") return { id: "new-card-session", total: "10.00", status: "COLLECTING", allocations: [{ id: "card-allocation", idempotencyKey: "card-allocation", kind: "INTEGRATED_CARD", amount: "10.00", status: "DECLINED" }] };
+      if (path === "/pos/cash/quote") return { total: "10.00" };
+      if (path === "/customers/sale-options") return [];
+      throw new Error(`unexpected request ${path}`);
+    });
+
+    mount();
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active", expect.anything()));
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    expect(screen.queryByText(/Venta reservada en cobro/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "PageDown" });
+    fireEvent.keyDown(window, { key: "F11" });
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/cash/quote")).toHaveLength(0);
+    expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/payment-sessions")).toHaveLength(0);
+    expect(apiRequestMock.mock.calls.filter(([path]) => path === "/customers/sale-options")).toHaveLength(0);
+
+    await act(async () => { resolveActive(null); await activeResponse; });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled());
+    expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
+
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Cerrar", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "PageDown" });
+    expect(await screen.findByRole("dialog", { name: "Cobro en efectivo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cobro en efectivo" })).not.toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "F11" });
+    await waitFor(() => expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/payment-sessions")).toHaveLength(1));
+  });
+
   it("reopens as an ordinary empty sale after stale simulator cleanup is confirmed CANCELLED", async () => {
     const storageKey = "tpverp.payment-session.01";
     localStorage.setItem(`${storageKey}.allocation-attempt`, "old-attempt");
     let activeCalls = 0;
     apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
-      if (path === "/products") return [];
+      if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return activeCalls++ === 0 ? oldSession : null;
       if (path.endsWith("/simulator-discard")) {
@@ -77,7 +134,7 @@ describe("SaleScreen payment cleanup across restart", () => {
     const pendingCleanup = new Promise<typeof oldSession & { status: string }>((resolve) => { resolveCleanup = resolve; });
     const liveSession = { ...oldSession, id: "task-4-live-session" };
     apiRequestMock.mockImplementation(async (path: string) => {
-      if (path === "/products") return [];
+      if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return liveSession;
       if (path.endsWith("/simulator-discard")) {

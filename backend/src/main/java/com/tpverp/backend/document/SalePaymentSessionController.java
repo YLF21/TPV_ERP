@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.util.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController @RequestMapping("/api/v1/pos/payment-sessions")
@@ -14,7 +15,7 @@ public class SalePaymentSessionController {
  private final SalePaymentSessionService service; public SalePaymentSessionController(SalePaymentSessionService service){this.service=service;}
  @PostMapping public View reserve(@Valid @RequestBody Reserve request,Authentication auth){return View.from(service.reserve(request.sessionId(),request.sale(),auth));}
  @GetMapping("/{id}") public View get(@PathVariable UUID id,Authentication auth){return View.from(service.get(id,auth));}
- @GetMapping("/active") public View active(Authentication auth){return service.active(auth).map(View::from).orElse(null);}
+ @GetMapping("/active") public ResponseEntity<View> active(Authentication auth){return service.active(auth).map(session->ResponseEntity.ok(View.from(session))).orElseGet(()->ResponseEntity.noContent().build());}
  @PostMapping("/{id}/allocations") public View add(@PathVariable UUID id,@Valid @RequestBody Allocation request,Authentication auth){return View.from(service.add(id,request.allocationId(),request.idempotencyKey(),request.kind(),request.amount(),request.provider(),request.reference(),auth));}
  @PostMapping("/{id}/allocations/{allocationId}/query") public View query(@PathVariable UUID id,@PathVariable UUID allocationId,Authentication auth){return View.from(service.query(id,allocationId,auth));}
  @PostMapping("/{id}/finalize") public View finalizeSession(@PathVariable UUID id,Authentication auth){var finalized=service.finalizeSession(id,auth);return View.from(finalized.session(),finalized.printTicket());}

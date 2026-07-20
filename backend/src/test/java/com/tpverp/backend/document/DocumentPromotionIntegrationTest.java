@@ -77,6 +77,8 @@ class DocumentPromotionIntegrationTest {
     @Mock
     private DocumentRelationRepository relationRepository;
     @Mock
+    private CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
+    @Mock
     private StockDocumentGateway stockGateway;
     @Mock
     private CurrentOrganization currentOrganization;
@@ -171,6 +173,7 @@ class DocumentPromotionIntegrationTest {
                 counterRepository,
                 paymentMethodRepository,
                 relationRepository,
+                receivablePaymentReservations,
                 stockGateway,
                 currentOrganization,
                 customerRepository,

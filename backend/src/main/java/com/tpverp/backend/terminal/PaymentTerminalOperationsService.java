@@ -47,7 +47,9 @@ public class PaymentTerminalOperationsService {
     public PaymentTerminalOperation query(UUID id) {
         var operation=get(id);
         if (operation.getStatus()==PaymentTerminalOperationStatus.PENDING || operation.getStatus()==PaymentTerminalOperationStatus.SENT
-                || operation.getStatus()==PaymentTerminalOperationStatus.TIMEOUT) return recovery.recover(id,UUID.randomUUID());
+                || operation.getStatus()==PaymentTerminalOperationStatus.TIMEOUT
+                || (operation.getStatus()==PaymentTerminalOperationStatus.ERROR
+                    && !operation.isFinalOutcome())) return recovery.recover(id,UUID.randomUUID());
         return operation;
     }
 

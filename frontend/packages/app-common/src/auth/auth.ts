@@ -10,7 +10,9 @@ const localUsers: LocalUser[] = [
     username: "admin",
     password: "admin",
     displayName: "ADMIN",
-    permissions: ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS"]
+    permissions: ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO",
+      "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"]
   },
   {
     username: "venta",
@@ -112,7 +114,9 @@ export async function authenticateRemote(
 function permissionsFromRole(role: string): Permission[] {
   const normalized = role.toUpperCase();
   if (normalized === "ADMIN") {
-    return ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS"];
+    return ["ADMIN", "APP_GESTION_ACCESS", "VENTA", "GESTION_VENTAS", "GESTION_PRODUCTO",
+      "GESTION_ALMACEN", "GESTION_CLIENTE_PROVEEDOR", "GESTION_USUARIO", "GESTION_CUENTAS",
+      "CUSTOMER_RECEIVABLES_READ", "CUSTOMER_RECEIVABLES_CREATE", "CUSTOMER_RECEIVABLES_PAY"];
   }
 
   const permissions: Permission[] = [];

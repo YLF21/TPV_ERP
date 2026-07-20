@@ -54,6 +54,9 @@ public class CorePermissionBootstrap {
     public static final String INVOICES_WRITE = "INVOICES_WRITE";
     public static final String INVOICES_CONFIRM = "INVOICES_CONFIRM";
     public static final String INVOICES_PAY = "INVOICES_PAY";
+    public static final String CUSTOMER_RECEIVABLES_READ = "CUSTOMER_RECEIVABLES_READ";
+    public static final String CUSTOMER_RECEIVABLES_CREATE = "CUSTOMER_RECEIVABLES_CREATE";
+    public static final String CUSTOMER_RECEIVABLES_PAY = "CUSTOMER_RECEIVABLES_PAY";
     public static final String PAYMENT_TERMINAL_VOID = "PAYMENT_TERMINAL_VOID";
     public static final String PAYMENT_TERMINAL_REFUND = "PAYMENT_TERMINAL_REFUND";
     public static final String PAYMENT_TERMINAL_SECRETS = "PAYMENT_TERMINAL_SECRETS";
@@ -113,6 +116,9 @@ public class CorePermissionBootstrap {
                 permission(INVOICES_WRITE, "document.permissions.invoices.write", "DOCUMENTS"),
                 permission(INVOICES_CONFIRM, "document.permissions.invoices.confirm", "DOCUMENTS"),
                 permission(INVOICES_PAY, "document.permissions.invoices.pay", "DOCUMENTS"),
+                permission(CUSTOMER_RECEIVABLES_READ, "document.permissions.receivables.read", "DOCUMENTS"),
+                permission(CUSTOMER_RECEIVABLES_CREATE, "document.permissions.receivables.create", "DOCUMENTS"),
+                permission(CUSTOMER_RECEIVABLES_PAY, "document.permissions.receivables.pay", "DOCUMENTS"),
                 permission(PAYMENT_TERMINAL_VOID, "terminal.permissions.payment.void", "TERMINAL"),
                 permission(PAYMENT_TERMINAL_REFUND, "terminal.permissions.payment.refund", "TERMINAL"),
                 permission(PAYMENT_TERMINAL_SECRETS, "terminal.permissions.payment.secrets", "TERMINAL"))

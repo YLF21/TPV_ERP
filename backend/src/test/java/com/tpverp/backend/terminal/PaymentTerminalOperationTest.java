@@ -108,6 +108,21 @@ class PaymentTerminalOperationTest {
     }
 
     @Test
+    void distinguishesUncertainErrorFromAnAuthoritativeFinalError() {
+        var uncertain = reserve();
+        uncertain.markSent("ATTEMPT", now);
+        uncertain.fail("TRANSPORT_ERROR", "Resultado desconocido", now.plusSeconds(1));
+        assertThat(uncertain.isFinalOutcome()).isFalse();
+        uncertain.approveFromQuery("REF", "AUTH", now.plusSeconds(2));
+        assertThat(uncertain.isFinalOutcome()).isTrue();
+
+        var finalError = reserve();
+        finalError.markSent("ATTEMPT", now);
+        finalError.fail("OPERATION_NOT_FOUND", "No existe", true, now.plusSeconds(1));
+        assertThat(finalError.isFinalOutcome()).isTrue();
+    }
+
+    @Test
     void exposesTypedFailureCancellationLeaseRetryAndDocumentLinking() {
         var operation = reserve();
         var owner = UUID.randomUUID();

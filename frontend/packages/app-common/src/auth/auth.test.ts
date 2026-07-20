@@ -37,6 +37,16 @@ describe("auth", () => {
     }, "GESTION_PRODUCTO")).toBe(false);
   });
 
+  it("assigns customer receivables permissions to the ADMIN profile", () => {
+    const session = authenticate("admin", "admin", "gestion");
+
+    expect(session.permissions).toEqual(expect.arrayContaining([
+      "CUSTOMER_RECEIVABLES_READ",
+      "CUSTOMER_RECEIVABLES_CREATE",
+      "CUSTOMER_RECEIVABLES_PAY"
+    ]));
+  });
+
   it("uses the permission codes returned by the backend", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,

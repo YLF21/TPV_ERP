@@ -7,21 +7,19 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV74ContractTest {
+class MigrationV65ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V74__preferencia_dashboard_usuario.sql";
+            "db/migration/V65__contador_documento_entrada_almacen.sql";
 
     @Test
-    void createsOneJsonDashboardPreferencePerUserWithCascadeDeletion() throws IOException {
+    void allowsWarehouseInputDocumentCounterType() throws IOException {
         String sql = migrationSql();
 
         assertThat(sql)
-                .contains("create table preferencia_dashboard")
-                .contains("usuario_id uuid not null references usuario(id) on delete cascade")
-                .contains("widgets jsonb not null")
-                .contains("jsonb_array_length(widgets) <= 24")
-                .contains("unique (usuario_id)");
+                .contains("drop constraint if exists contador_documento_tipo_check")
+                .contains("add constraint contador_documento_tipo_check")
+                .contains("'ent'");
     }
 
     private String migrationSql() throws IOException {

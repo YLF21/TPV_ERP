@@ -11,6 +11,7 @@ import {
  checkoutPresentation,
  compensationGuidanceKey,
  compensationNoteIsEphemeral,
+ entryCleanupRegistrySizeForTest,
  isMissingCashSessionError,
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
@@ -19,7 +20,7 @@ import {
  stableAllocationAttempt,
  shouldOfferTestCashSession,
 } from "./SalePaymentCheckout";
-import { SalePaymentCheckout, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import { SalePaymentCheckout, type SalePaymentCheckoutHandle, type ServerSession } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
@@ -83,6 +84,25 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await act(async()=>{resolveActive(null);await activeResponse;});
   await expect(ref.current!.prepareLogout()).resolves.toBe("READY");
  });
+ it("reports hydration separately from the lock and stays locked for a recovered session",async()=>{
+  let resolveActive!:(value:ServerSession)=>void;
+  const activeResponse=new Promise<ServerSession>(resolve=>{resolveActive=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return activeResponse;
+   if(path.endsWith("/simulator-discard"))throw new ApiError("terminal live",409);
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onLockedChange=vi.fn();const onHydrationChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onHydrationChange,onLockedChange,onFinalized:vi.fn()}));
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active",expect.anything()));
+  expect(onHydrationChange).toHaveBeenLastCalledWith(false);
+  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  const active={id:"active-slow",total:"12.10",status:"COLLECTING",allocations:[{id:"a",idempotencyKey:"a",kind:"INTEGRATED_CARD" as const,amount:"12.10",status:"TIMEOUT"}]};
+  await act(async()=>{resolveActive(active);await activeResponse;});
+  await waitFor(()=>expect(onHydrationChange).toHaveBeenLastCalledWith(true));
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(true,1210));
+ });
  it("auto-cancels a collecting session whose declined and errored allocations are safely terminal",async()=>{
   const storageKey="tpverp.payment-session.01";
   const attemptKey=`${storageKey}.allocation-attempt`;
@@ -129,7 +149,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await act(async()=>{resolveSecondActive(null);await secondActive;});
   await expect(secondRef.current!.prepareLogout()).resolves.toBe("READY");
   expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/cancel"))).toHaveLength(1);
-  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("cancels a safe empty collecting session before allowing logout",async()=>{
@@ -274,7 +294,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(sessionStorage.getItem(storageKey)).toBe(session.id));
   await expect(ref.current!.prepareApplicationClose()).resolves.toBe("READY");
   expect(sessionStorage.getItem(storageKey)).toBeNull();expect(localStorage.getItem(attemptKey)).toBeNull();
-  expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined);
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
  });
  it("blocks logout when simulator discard is not confirmed CANCELLED",async()=>{
   const session={id:"session-logout-unsafe",total:"12.10",status:"COMPENSATION_REQUIRED",allocations:[]};
@@ -401,6 +421,87 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
   expect(sessionStorage.getItem("tpverp.payment-session.01")).toBe(session.id);
  });
+ it("reconciles a CANCELLED entry cleanup with a replacement mount without deleting newer recovery storage",async()=>{
+  const session={id:"session-entry-remount-cancelled",total:"12.10",status:"COLLECTING",allocations:[]};
+  let resolveDiscard!:(value:typeof session&{status:string})=>void;
+  const discardResponse=new Promise<typeof session&{status:string}>(resolve=>{resolveDiscard=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard"))return discardResponse;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1));
+  first.unmount();
+  const onLockedChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{...props,onLockedChange}));
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(true,1210));
+  sessionStorage.setItem("tpverp.payment-session.01","newer-session");
+  localStorage.setItem("tpverp.payment-session.01.allocation-attempt",JSON.stringify({sessionId:"newer-session",allocationId:"newer-allocation",input:{}}));
+
+  resolveDiscard({...session,status:"CANCELLED"});
+
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
+  expect(sessionStorage.getItem("tpverp.payment-session.01")).toBe("newer-session");
+  expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toContain("newer-session");
+ });
+ it("keeps the replacement mount locked when shared entry cleanup is not terminal",async()=>{
+  const session={id:"session-entry-remount-live",total:"12.10",status:"COLLECTING",allocations:[]};
+  let resolveDiscard!:(value:typeof session)=>void;
+  const discardResponse=new Promise<typeof session>(resolve=>{resolveDiscard=resolve;});
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard"))return discardResponse;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1));
+  first.unmount();
+  const onLockedChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{...props,onLockedChange}));
+  await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(true,1210));
+
+  resolveDiscard(session);
+
+  await act(async()=>{await discardResponse;});
+  expect(onLockedChange).toHaveBeenLastCalledWith(true,1210);
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/simulator-discard"))).toHaveLength(1);
+ });
+ it("evicts a settled non-terminal cleanup so a later mount can reconcile evolved backend state",async()=>{
+  const session={id:"session-entry-evolves",total:"12.10",status:"COLLECTING",allocations:[]};let discardCalls=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard")){discardCalls++;return discardCalls===1?session:{...session,status:"CANCELLED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(discardCalls).toBe(1));await waitFor(()=>expect(entryCleanupRegistrySizeForTest()).toBe(0));first.unmount();
+  const onLockedChange=vi.fn();render(createElement(SalePaymentCheckout,{...props,onLockedChange}));
+  await waitFor(()=>expect(discardCalls).toBe(2));await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
+  expect(entryCleanupRegistrySizeForTest()).toBe(0);
+ });
+ it("evicts a settled cleanup error so a later mount retries",async()=>{
+  const session={id:"session-entry-error-retry",total:"12.10",status:"COLLECTING",allocations:[]};let discardCalls=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return session;
+   if(path.endsWith("/simulator-discard")){discardCalls++;if(discardCalls===1)throw new Error("offline");return {...session,status:"CANCELLED"};}
+   throw new Error(`unexpected request ${path}`);
+  });
+  const props={locale:"es" as const,totalCents:1210,sale:{customerId:null,lines:[]},permissions:[] as never[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()};
+  const first=render(createElement(SalePaymentCheckout,props));
+  await waitFor(()=>expect(discardCalls).toBe(1));await waitFor(()=>expect(entryCleanupRegistrySizeForTest()).toBe(0));first.unmount();
+  const onLockedChange=vi.fn();render(createElement(SalePaymentCheckout,{...props,onLockedChange}));
+  await waitFor(()=>expect(discardCalls).toBe(2));await waitFor(()=>expect(onLockedChange).toHaveBeenLastCalledWith(false,undefined));
+  expect(entryCleanupRegistrySizeForTest()).toBe(0);
+ });
  it("translates shutdown and simulator cleanup feedback in every supported locale",()=>{
   for(const locale of ["es","en","zh"] as const){expect(createTranslator(locale)("payment.pending.shutdownBlocked")).not.toBe("payment.pending.shutdownBlocked");expect(createTranslator(locale)("payment.pending.simulatorCleanupError")).not.toBe("payment.pending.simulatorCleanupError");}
  });
@@ -421,11 +522,26 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return null;
    throw new Error(`unexpected request ${path}`);
   });
-  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["CUSTOMER_RECEIVABLES_CREATE"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(screen.getByRole("button",{name:/Efectivo/})).toBeVisible();
   expect(screen.getByRole("button",{name:/Tarjeta/})).toBeVisible();
-  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeDisabled();
+  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeEnabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
+ });
+ it("keeps the pending action disabled and ignores F12 without receivables-create permission",async()=>{
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onPending=vi.fn();
+  render(createElement(SalePaymentCheckout,{ref,locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onPending,onFinalized:vi.fn()}));
+
+  expect(screen.getByRole("button",{name:/Pendiente cliente/})).toBeDisabled();
+  act(()=>ref.current?.triggerPending());
+
+  expect(onPending).not.toHaveBeenCalled();
  });
  it.each([
   ["COLLECTING","Cancelar sesión de cobro"],
@@ -490,10 +606,10 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    if(path==="/pos/payment-sessions/active")return declined;
    throw new Error(`unexpected request ${path}`);
   });
-  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[]},permissions:["CUSTOMER_RECEIVABLES_CREATE"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
   expect(await screen.findByRole("button",{name:/AvPág/})).toBeVisible();
   expect(screen.getByRole("button",{name:/F11/})).toBeVisible();
-  expect(screen.getByRole("button",{name:/F12/})).toBeDisabled();
+  expect(screen.getByRole("button",{name:/F12/})).toBeEnabled();
   expect(screen.queryByRole("button",{name:"Cancelar sesión de cobro"})).not.toBeInTheDocument();
  });
  it("delegates the cash action exactly once when onCash is supplied",async()=>{

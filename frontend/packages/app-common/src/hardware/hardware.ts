@@ -76,6 +76,7 @@ export type TicketLinePrint = {
   quantity: number;
   price: number;
   total: number;
+  taxesIncluded?: boolean;
 };
 
 export type TicketPaymentPrint = {
@@ -90,7 +91,15 @@ export type TicketPrintRequest = {
   issuedAt: string;
   lines: TicketLinePrint[];
   payments: TicketPaymentPrint[];
+  subtotal?: number;
+  tax?: number;
   total: number;
+  labels?: { terminal: string; item: string; quantity: string; price: string; total: string };
+  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; base?: string; tax?: string };
+  escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
+  issuer?: { name: string; taxId: string; address: string };
+  customer?: { name: string; taxId: string; address: string };
+  partyLabels?: { issuer: string; customer: string; taxId: string };
 };
 
 export type A4DocumentPrintRequest = {
@@ -101,8 +110,16 @@ export type A4DocumentPrintRequest = {
   issuedAt: string;
   lines: TicketLinePrint[];
   subtotal: number;
-  taxIncluded: boolean;
+  tax: number;
+  taxIncluded: boolean | "MIXED";
   total: number;
+  issuer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  customer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  labels: {
+    terminal: string; description: string; quantity: string; unitPrice: string;
+    base: string; tax: string; taxIncluded: string; yes: string; no: string; mixed: string; total: string;
+    issuer?: string; customer?: string; taxId?: string;
+  };
 };
 
 export type ScannerTestResult = {
@@ -236,8 +253,12 @@ export function createA4TestDocument(terminalContext: Pick<TerminalContext, "sto
     issuedAt: new Date().toISOString(),
     lines,
     subtotal: total,
+    tax: 0,
     taxIncluded: true,
-    total
+    total,
+    labels: { terminal: "Terminal", description: "Description", quantity: "Quantity",
+      unitPrice: "Unit price", base: "Base", tax: "Tax", taxIncluded: "Tax included",
+      yes: "Yes", no: "No", mixed: "Mixed", total: "Total" }
   };
 }
 

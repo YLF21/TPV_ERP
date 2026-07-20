@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -342,6 +345,54 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain('class="report-nav"');
     expect(html).not.toContain('class="report-brand-back"');
     expect(html).not.toContain('class="report-user-button"');
+  });
+
+  it("renders the five daily accounting buckets from the authoritative backend report", async () => {
+    const request = vi.fn().mockResolvedValue({
+      storeId: "store-1",
+      date: "2026-07-16",
+      invoiced: "100.00",
+      collectedCurrent: "30.00",
+      newPending: "70.00",
+      priorDebtCollected: "20.00",
+      cashInflow: "50.00"
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        onBack={vi.fn()}
+        onLogout={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/commercial-reports\/daily\?date=/),
+      { token: "token" }
+    ));
+    expect(screen.getByText("100.00€")).toBeVisible();
+    expect(screen.getByText("30.00€")).toBeVisible();
+    expect(screen.getByText("70.00€")).toBeVisible();
+    expect(screen.getByText("20.00€")).toBeVisible();
+    expect(screen.getByText("50.00€")).toBeVisible();
+  });
+
+  it("shows translated authoritative loading/error and retries without local totals", async () => {
+    const request = vi.fn().mockRejectedValueOnce(new Error("sin red")).mockResolvedValueOnce({
+      storeId: "store-1", date: "2026-07-16", invoiced: "1.00", collectedCurrent: "0.00",
+      newPending: "1.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+    });
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
+    expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
+    expect((await screen.findAllByText("1.00€")).length).toBeGreaterThanOrEqual(2);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("shows purchase creation from reports to product management", () => {

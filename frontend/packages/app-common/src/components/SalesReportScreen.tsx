@@ -59,6 +59,17 @@ type SalesReportScreenProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   embedded?: boolean;
   initialReport?: string;
+  request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
+};
+
+type DailyCommercialReport = {
+  storeId: string;
+  date: string;
+  invoiced: number | string;
+  collectedCurrent: number | string;
+  newPending: number | string;
+  priorDebtCollected: number | string;
+  cashInflow: number | string;
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -1301,7 +1312,8 @@ export function SalesReportScreen({
   onLogout,
   onLocaleChange,
   embedded = false,
-  initialReport: requestedInitialReport
+  initialReport: requestedInitialReport,
+  request = apiRequest
 }: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const reportAccess = salesReportAccess(session);
@@ -1328,6 +1340,11 @@ export function SalesReportScreen({
   const [openFilterControl, setOpenFilterControl] = useState<keyof ReportFilters | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
+  const [dailyCommercialReport, setDailyCommercialReport] = useState<DailyCommercialReport | null>(null);
+  const [dailyReportLoading, setDailyReportLoading] = useState(false);
+  const [dailyReportError, setDailyReportError] = useState("");
+  const [dailyReportReload, setDailyReportReload] = useState(0);
+  const dailyReportGeneration = useRef(0);
   const [reportPages, setReportPages] = useState<Record<string, { nextCursor: string | null; hasMore: boolean }>>({});
   const [reportLoadingMore, setReportLoadingMore] = useState(false);
   const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
@@ -1510,6 +1527,27 @@ export function SalesReportScreen({
       cancelled = true;
     };
   }, [session, terminalContext, reportReloadKey]);
+
+  useEffect(() => {
+    const generation = ++dailyReportGeneration.current;
+    if (!session.accessToken || selectedReport !== "salesReport.dailySales" || !filters.dateFrom) {
+      setDailyCommercialReport(null);
+      setDailyReportLoading(false); setDailyReportError("");
+      return;
+    }
+    setDailyCommercialReport(null); setDailyReportLoading(true); setDailyReportError("");
+    void request<DailyCommercialReport>(
+      `/commercial-reports/daily?date=${encodeURIComponent(filters.dateFrom)}`,
+      { token: session.accessToken }
+    ).then((report) => {
+      if (generation === dailyReportGeneration.current) setDailyCommercialReport(report);
+    }).catch((failure) => {
+      if (generation === dailyReportGeneration.current) setDailyReportError(failure instanceof Error ? failure.message : t("salesReport.daily.loadError"));
+    }).finally(() => {
+      if (generation === dailyReportGeneration.current) setDailyReportLoading(false);
+    });
+    return () => { if (generation === dailyReportGeneration.current) dailyReportGeneration.current += 1; };
+  }, [dailyReportReload, filters.dateFrom, request, selectedReport, session.accessToken]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -2144,6 +2182,30 @@ export function SalesReportScreen({
   }
 
   function renderDailySalesSummary() {
+    if (dailyReportLoading) return <p className="daily-summary-empty" aria-live="polite">{t("salesReport.daily.loading")}</p>;
+    if (dailyReportError) return <div className="daily-summary-error"><p role="alert">{dailyReportError}</p><button type="button" onClick={() => setDailyReportReload((value) => value + 1)}>{t("salesReport.daily.retry")}</button></div>;
+    if (dailyCommercialReport) {
+      const rows: Array<[string, number | string]> = [
+        ["salesReport.daily.invoiced", dailyCommercialReport.invoiced],
+        ["salesReport.daily.collectedCurrent", dailyCommercialReport.collectedCurrent],
+        ["salesReport.daily.newPending", dailyCommercialReport.newPending],
+        ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
+        ["salesReport.daily.cashInflow", dailyCommercialReport.cashInflow]
+      ];
+      return (
+        <div className="daily-summary-scroll">
+          <section className="daily-summary-card daily-authoritative-summary" aria-label={t("salesReport.daily.authoritativeSummary")}>
+            <h2>{t("salesReport.daily.totalAmount")}</h2>
+            {rows.map(([key, value]) => (
+              <div className={key === "salesReport.daily.cashInflow" ? "daily-final-total-line" : "daily-payment-line"} key={key}>
+                <span>{t(key)}</span>
+                <strong>{`${formatAmount(Number(value))}€`}</strong>
+              </div>
+            ))}
+          </section>
+        </div>
+      );
+    }
     return (
       <div className="daily-summary-scroll">
         <div className="daily-summary-layout">

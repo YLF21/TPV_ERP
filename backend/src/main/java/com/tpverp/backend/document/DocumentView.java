@@ -13,9 +13,14 @@ public record DocumentView(
         DocumentStatus estado,
         String numero,
         LocalDate fecha,
+        UUID customerId,
+        String customerName,
+        LocalDate dueDate,
         BigDecimal base,
         BigDecimal impuesto,
         BigDecimal total,
+        BigDecimal paidTotal,
+        BigDecimal pendingTotal,
         String numTicket,
         String qrUrl,
         boolean origenStock,
@@ -27,21 +32,39 @@ public record DocumentView(
         List<PaymentView> payments) {
 
     public static DocumentView from(CommercialDocument document) {
-        return from(document, null);
+        return from(document, null, null,
+                DocumentAttributionResolver.Attribution.empty(document));
     }
 
     public static DocumentView from(CommercialDocument document, String qrUrl) {
-        return from(document, qrUrl, DocumentAttributionResolver.Attribution.empty(document));
+        return from(document, null, qrUrl,
+                DocumentAttributionResolver.Attribution.empty(document));
     }
 
     public static DocumentView from(
             CommercialDocument document,
             String qrUrl,
             DocumentAttributionResolver.Attribution attribution) {
+        return from(document, null, qrUrl, attribution);
+    }
+
+    static DocumentView from(
+            CommercialDocument document, String customerName, String qrUrl) {
+        return from(document, customerName, qrUrl,
+                DocumentAttributionResolver.Attribution.empty(document));
+    }
+
+    static DocumentView from(
+            CommercialDocument document,
+            String customerName,
+            String qrUrl,
+            DocumentAttributionResolver.Attribution attribution) {
         return new DocumentView(
                 document.getId(), document.getTipo(), document.getEstado(),
-                document.getNumero(), document.getFecha(), document.getBaseTotal(),
-                document.getImpuestoTotal(), document.getTotal(),
+                document.getNumero(), document.getFecha(), document.getClienteId(), customerName,
+                document.getDueDate(), document.getBaseTotal(),
+                document.getImpuestoTotal(), document.getTotal(), document.getPaidTotal(),
+                document.getPendingTotal(),
                 document.getNumTicket(), qrUrl, document.isOrigenStock(),
                 attribution.userId(), attribution.userName(),
                 attribution.terminalId(), attribution.terminalName(), attribution.occurredAt(),

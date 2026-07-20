@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 class DocumentControllerContractTest {
 
@@ -47,6 +48,7 @@ class DocumentControllerContractTest {
         assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .contains("GESTION_VENTAS");
+        assertThat(method.getParameters()[0].getAnnotation(RequestParam.class).required()).isFalse();
     }
 
     @Test

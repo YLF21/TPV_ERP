@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { retryPrintSucceeded } from "../sale/printRetry";
 import {
   SaleScreen,
   SaleDeletionControlSequence,
@@ -25,6 +26,7 @@ import {
   runGuardedCardOpening,
   saleMainMessage,
   saleMainProductCount,
+  pendingSaleDraftForCustomer,
   saleSelectableProducts,
   effectiveSaleLineDiscount,
   effectiveSaleProductPrice,
@@ -50,20 +52,23 @@ import type { TerminalContext, UserSession } from "../types";
 import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import { defaultHardwareConfig } from "../hardware/hardware";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
+import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
   disabled?: boolean;
   onCash?: () => void;
+  onHydrationChange?: (hydrated: boolean) => void;
   onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
-const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
+const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, triggerPending, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   triggerCash: vi.fn(),
   triggerCard: vi.fn(),
+  triggerPending: vi.fn(),
   checkoutHandle: { attached: true },
   checkoutProps: {
     current: null as CheckoutMockProps | null,
@@ -71,15 +76,17 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, checko
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
-  const { forwardRef, useImperativeHandle } = await import("react");
+  const { forwardRef, useEffect, useImperativeHandle } = await import("react");
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
+      useEffect(() => { props.onHydrationChange?.(true); props.onLockedChange?.(false); }, []);
       useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
         prepareLogout,
         triggerCash,
         triggerCard,
+        triggerPending,
       }) as unknown as SalePaymentCheckoutHandle);
       return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>;
     })
@@ -88,14 +95,25 @@ vi.mock("./SalePaymentCheckout", async () => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   prepareApplicationClose.mockReset();
   prepareLogout.mockReset();
   triggerCash.mockReset();
   triggerCard.mockReset();
+  triggerPending.mockReset();
   checkoutHandle.attached = true;
   checkoutProps.current = null;
+  localStorage.clear();
   delete window.tpvDesktop;
+});
+
+it("keeps sale print retry after two failures and clears only after success", async () => {
+  const retry = vi.fn().mockResolvedValueOnce({ status: "FAILED" })
+    .mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ status: "PRINTED" });
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(false);
+  expect(await retryPrintSucceeded(retry)).toBe(true);
 });
 
 const session: UserSession = {
@@ -130,9 +148,9 @@ function installTicketHardware(printTicket: ReturnType<typeof vi.fn>) {
 }
 
 const products: SaleProduct[] = [
-  { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10 },
-  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50" },
-  { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75 }
+  { id: "coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Cafe molido", salePrice: 10, taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" },
+  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: "2.50", taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" },
+  { id: "milk", code: "LEC-001", barcode: "8410000000035", name: "Leche fresca", salePrice: 1.75, taxId: "tax-iva-21", taxesIncluded: true, taxPercentage: 21, taxRegime: "IVA" }
 ];
 
 const memberDiscountProduct: SaleProduct = {
@@ -140,7 +158,11 @@ const memberDiscountProduct: SaleProduct = {
   code: "MEM-CAFE",
   name: "Cafe socio",
   salePrice: 10,
-  discountType: "MEMBER_DISCOUNT"
+  discountType: "MEMBER_DISCOUNT",
+  taxId: "tax-iva-21",
+  taxesIncluded: true,
+  taxPercentage: 21,
+  taxRegime: "IVA",
 };
 
 const customers: SaleCustomer[] = [
@@ -392,7 +414,7 @@ describe("SaleScreen", () => {
   it("records the removed line and identifies a complete cart clear", async () => {
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(String(url), "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -439,7 +461,7 @@ describe("SaleScreen", () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => {
       const path = new URL(String(url), "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify(products.slice(0, 2)), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -572,6 +594,254 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the sale catalog from the fiscal sale endpoint", async () => {
+    const apiPaths: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      apiPaths.push(path.replace("/api/v1", ""));
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([{
+          ...products[0],
+          taxId: "tax-iva-21",
+          taxesIncluded: true,
+          taxPercentage: 21,
+          taxRegime: "IVA",
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+
+    await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(apiPaths).toContain("/products/sale"));
+    expect(apiPaths).not.toContain("/products");
+  });
+
+  it("opens F12 through customer selection, uses local plus 30 days and clears only after create succeeds", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16, 12));
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([{ ...customers[0], activeMember: true, memberDiscountPercent: 5 }, customers[1]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/warehouses")) return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales/quote")) {
+        const body = JSON.parse(String(options?.body));
+        expect(body.customerId).toBe("customer-1");
+        expect(body.lines[0].descuento).toBe("0.00");
+        expect(body.lines[0]).not.toHaveProperty("memberDiscountPercent");
+        return new Response(JSON.stringify({ total: "9.50" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([
+        { id: "cash-method", name: "EFECTIVO", active: true },
+        { id: "card-method", name: "TARJETA", active: true },
+        { id: "transfer-method", name: "TRANSFERENCIA", active: true },
+      ]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales")) {
+        const body = JSON.parse(String(options?.body));
+        expect(body).toMatchObject({ customerId: "customer-1", dueDate: "2026-08-15", payments: [], quotedTotal: "9.50" });
+        expect(body.lines[0].descuento).toBe("0.00");
+        expect(body).not.toHaveProperty("paymentMethod");
+        return new Response(JSON.stringify({ receivable: { documentId: "doc-1", documentNumber: "AV-1" }, printDocument: {
+          documentId: "doc-1", documentType: "ALBARAN_VENTA", documentNumber: "AV-1",
+          issueDate: "2026-07-16", lines: [], baseTotal: "9.50", taxTotal: "0.00", total: "9.50"
+        } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/terminal-configuration/payment")) return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/payment-sessions/active")) return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1000));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    act(() => checkoutProps.current?.onLockedChange?.(false));
+    fireEvent.keyDown(window, { key: "F12" });
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-08-15");
+    expect(screen.getAllByText("9,50")).not.toHaveLength(0);
+    act(() => checkoutProps.current?.onLockedChange?.(true, 1000));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    act(() => checkoutProps.current?.onLockedChange?.(false));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    const confirm = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Cafe molido.*1 x/s })).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("shows the fiscal catalog error instead of opening a pending-sale dialog", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([{ ...products[0], taxesIncluded: null as never }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customers/sale-options")) {
+        return new Response(JSON.stringify([customers[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/warehouses")) {
+        return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.keyDown(window, { key: "F12" });
+    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Producto sin configuración de impuestos válida");
+    expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument();
+  });
+
+  it("auto-opens the same uncertain pending checkout after unmount and reload without requoting", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: products[0], quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-reload");
+    savePendingSaleRecovery(localStorage, {
+      version: 2,
+      phase: "CARD_IN_FLIGHT",
+      terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" },
+      draft: recoveredDraft,
+      quoteCents: 1_000,
+      quoteReady: true,
+      payments: [{ id: "checkout-reload", operationId: "checkout-reload", mode: "INTEGRATED", kind: "INTEGRATED_CARD", methodId: "card-method", amountCents: 300, status: "TIMEOUT" }],
+      savedAt: "2026-07-18T08:00:00.000Z",
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/payment-methods")) return new Response(JSON.stringify([{ id: "card-method", name: "TARJETA", active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /consultar tarjeta/i })).toBeEnabled();
+    cleanup();
+    renderSaleScreen();
+    expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
+  });
+
+  it("auto-reopens and byte-replays a READY_TO_CREATE sale without card after a lost response", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: products[0], quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-ready");
+    savePendingSaleRecovery(localStorage, {
+      version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" }, draft: recoveredDraft,
+      quoteCents: 1_000, quoteReady: true, payments: [], savedAt: "2026-07-18T08:00:00.000Z",
+      createAttempted: true,
+    });
+    const bodies: string[] = [];
+    let creates = 0;
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale") || path.endsWith("/payment-methods")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/pos/customer-pending-sales")) {
+        bodies.push(String(options?.body)); creates += 1;
+        if (creates === 1) throw new Error("response lost");
+        return new Response(JSON.stringify({ receivable: { documentId: "doc-ready" }, printDocument: {} }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).not.toBeNull();
+    const durableDialog = screen.getByRole("dialog", { name: /venta pendiente/i });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(durableDialog).toBeVisible();
+    expect(durableDialog).not.toHaveAttribute("aria-hidden", "true");
+    cleanup();
+    renderSaleScreen();
+    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBeNull();
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/quote"))).toBe(true);
+  });
+
+  it("discards a legacy local-only draft instead of reopening it on a new sale entry", async () => {
+    const recoveredDraft = pendingSaleDraftForCustomer([
+      { product: products[0], quantity: 1, discountPercent: 0 },
+    ], { ...customers[0], activeMember: false }, "warehouse-1", new Date(2026, 6, 16, 12), "checkout-stale");
+    savePendingSaleRecovery(localStorage, {
+      version: 2, phase: "READY_TO_CREATE", terminalCode: terminalContext.terminalCode,
+      customer: { id: "customer-1", name: "Cliente Pruebas SL" }, draft: recoveredDraft,
+      quoteCents: 1_000, quoteReady: true,
+      payments: [{ id: "cash-stale", kind: "CASH", methodId: "cash-method", amountCents: 200,
+        deliveredCents: 200, changeCents: 0, status: "APPROVED" }],
+      savedAt: "2026-07-18T08:00:00.000Z",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+
+    renderSaleScreen();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument());
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBeNull();
+  });
+
+  it("fails closed on corrupt recovery data and exposes its recoverable identifier without deleting it", async () => {
+    const raw = '{"checkoutId":"checkout-corrupt","broken":';
+    localStorage.setItem(pendingSaleRecoveryKey(terminalContext.terminalCode), raw);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })));
+    const previous = document.createElement("button");
+    document.body.appendChild(previous);
+    previous.focus();
+
+    renderSaleScreen();
+    const dialog = await screen.findByRole("dialog", { name: /recuperaci[oó]n de cobro bloqueada/i });
+    expect(dialog).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(/no se han eliminado/i);
+    expect(screen.getByText("checkout-corrupt")).toBeInTheDocument();
+    const rawField = screen.getByLabelText(/datos t[eé]cnicos guardados/i);
+    const copy = screen.getByRole("button", { name: /copiar datos/i });
+    expect(rawField).toHaveValue(raw);
+    expect(rawField).toHaveFocus();
+    copy.focus(); fireEvent.keyDown(copy, { key: "Tab" }); expect(rawField).toHaveFocus();
+    fireEvent.keyDown(rawField, { key: "Tab", shiftKey: true }); expect(copy).toHaveFocus();
+    fireEvent.keyDown(copy, { key: "Escape" });
+    expect(dialog).toBeVisible();
+    expect(document.querySelector(".work-shell")).toHaveAttribute("aria-hidden", "true");
+    expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).toBe(raw);
+    fireEvent.keyDown(window, { key: "F12" });
+    expect(screen.queryByRole("dialog", { name: /seleccionar cliente/i })).not.toBeInTheDocument();
+    cleanup();
+    expect(previous).toHaveFocus();
+    previous.remove();
   });
 
   it("does not run global sale shortcuts from focused editable controls", async () => {
@@ -845,6 +1115,7 @@ describe("SaleScreen", () => {
     expect(saleDisplayedTotal(5, false, 0, 1210)).toBe(5);
   });
   it("renders the sales workspace with shared frame controls", () => {
+    const openCustomerReceivables = vi.fn();
     const html = renderToStaticMarkup(
       <SaleScreen
         app="venta"
@@ -854,6 +1125,7 @@ describe("SaleScreen", () => {
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
         onLogout={vi.fn()}
+        onOpenCustomerReceivables={openCustomerReceivables}
       />
     );
 
@@ -866,6 +1138,8 @@ describe("SaleScreen", () => {
     expect(html).toContain("Añadir producto");
     expect(html).toContain("Líneas de venta");
     expect(html).toContain("Cobro");
+    expect(html).toContain("Deudas de clientes");
+    expect(html).toContain('class="sale-receivables-entry"');
     expect(html).toContain("F5");
     expect(html).toContain("AvPág");
     expect(html).not.toContain("F10");
@@ -959,7 +1233,7 @@ describe("SaleScreen", () => {
     const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -981,7 +1255,7 @@ describe("SaleScreen", () => {
     const inactive = { id: "inactive", code: "OFF-001", name: "Producto desactivado", salePrice: 3, active: false };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) {
+      if (path.endsWith("/products/sale")) {
         return new Response(JSON.stringify([inactive]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/stock/settings")) {
@@ -1011,6 +1285,7 @@ describe("SaleScreen", () => {
 
   it("limits visible search results", () => {
     const manyProducts = Array.from({ length: 12 }, (_, index) => ({
+      ...products[0],
       id: String(index),
       code: `CODE-${index}`,
       name: `Product ${index}`,
@@ -1022,7 +1297,7 @@ describe("SaleScreen", () => {
 
   it("prioritizes an exact code or barcode when selecting with Enter", () => {
     const ambiguous: SaleProduct[] = [
-      { id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 },
+      { ...products[0], id: "code-in-name", code: "OTHER", name: "Accessory CAF-001", salePrice: 3 },
       ...products
     ];
 
@@ -1096,29 +1371,33 @@ describe("SaleScreen", () => {
 
   it("uses a valid member price only for an active member", () => {
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 8.5,
       discountType: "MEMBER_PRICE"
     }, true)).toBe(8.5);
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 8.5,
       discountType: "MEMBER_PRICE"
     }, false)).toBe(10);
     expect(effectiveSaleProductPrice({
+      ...products[0],
       id: "member",
       salePrice: 10,
       memberPrice: 0,
       discountType: "MEMBER_PRICE"
     }, true)).toBe(10);
-    expect(effectiveSaleProductPrice({ id: "normal", salePrice: 10 }, true)).toBe(10);
+    expect(effectiveSaleProductPrice({ ...products[0], id: "normal", salePrice: 10 }, true)).toBe(10);
   });
 
   it("displays a current offer price and falls back after expiry", () => {
 
     const offered: SaleProduct = {
+      ...products[0],
       id: "offer",
       salePrice: 10,
       offerPrice: 7.5,
@@ -1258,6 +1537,68 @@ describe("SaleScreen", () => {
     expect(saleTotal(applyMemberDiscounts(addedBeforeSelection, bronze))).toBe(9.5);
   });
 
+  it("keeps member pricing backend-authoritative and serializes only the manual discount", () => {
+    const member: SaleCustomer = { id: "member-customer", activeMember: true, memberDiscountPercent: 5 };
+    const lines = [{ ...addSaleLine([], memberDiscountProduct)[0], discountPercent: 3, memberDiscountPercent: 5 }];
+
+    const pending = pendingSaleDraftForCustomer(lines, member, "warehouse-1", new Date(2026, 6, 16), "checkout-1");
+
+    expect(pending.customerId).toBe("member-customer");
+    expect(pending.lines[0].discount).toBe("3.00");
+    expect(pending.lines[0]).not.toHaveProperty("memberDiscountPercent");
+  });
+
+  it("requires a valid fiscal percentage and regime for every pending-sale line", () => {
+    const validLines = addSaleLine([], products[0]);
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+
+    expect(pendingSaleDraftForCustomer(validLines, customer, "warehouse-1", now, "checkout-1")
+      .lines[0]).toMatchObject({ taxPercentage: "21.00", taxRegime: "IVA" });
+
+    expect(() => pendingSaleDraftForCustomer(
+      [{ ...validLines[0], product: { ...validLines[0].product, taxPercentage: undefined as never } }],
+      customer, "warehouse-1", now, "checkout-1",
+    )).toThrow("Producto sin porcentaje fiscal válido");
+
+    expect(() => pendingSaleDraftForCustomer(
+      [{ ...validLines[0], product: { ...validLines[0].product, taxRegime: "GENERAL" as never } }],
+      customer, "warehouse-1", now, "checkout-1",
+    )).toThrow("Producto sin régimen fiscal válido");
+  });
+
+  it("rejects empty, blank, and null fiscal percentages", () => {
+    const validLine = addSaleLine([], products[0])[0];
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+
+    for (const taxPercentage of ["", " ", null]) {
+      expect(() => pendingSaleDraftForCustomer(
+        [{ ...validLine, product: { ...validLine.product, taxPercentage: taxPercentage as never } }],
+        customer, "warehouse-1", now, "checkout-1",
+      )).toThrow("Producto sin porcentaje fiscal válido");
+    }
+  });
+
+  it("rejects missing, null, and non-boolean tax inclusion flags", () => {
+    const validLine = addSaleLine([], products[0])[0];
+    const customer = customers[0];
+    const now = new Date(2026, 6, 16);
+    const { taxesIncluded: _taxesIncluded, ...withoutTaxesIncluded } = validLine.product;
+
+    for (const product of [
+      withoutTaxesIncluded,
+      { ...validLine.product, taxesIncluded: undefined as never },
+      { ...validLine.product, taxesIncluded: null as never },
+      { ...validLine.product, taxesIncluded: "true" as never },
+    ]) {
+      expect(() => pendingSaleDraftForCustomer(
+        [{ ...validLine, product: product as SaleProduct }],
+        customer, "warehouse-1", now, "checkout-1",
+      )).toThrow("Producto sin configuración de impuestos válida");
+    }
+  });
+
   it("uses confirmed server amounts in the cash payment result", () => {
     expect(resolveCashPaymentResult(
       { number: "T-42", total: "12.34", received: "50.00", change: "7.66" },
@@ -1340,7 +1681,7 @@ describe("SaleScreen", () => {
     };
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([activeMember]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash")) {
@@ -1394,7 +1735,7 @@ describe("SaleScreen", () => {
     const pendingQuote = new Promise<Response>((resolve) => { resolveQuote = resolve; });
     const fetchMock = vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return pendingQuote;
       throw new Error(`unexpected request ${path}`);
     });
@@ -1423,7 +1764,7 @@ describe("SaleScreen", () => {
     const pendingQuote = new Promise<Response>((_resolve, reject) => { rejectQuote = reject; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/products")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return pendingQuote;
       throw new Error(`unexpected request ${path}`);
     }));

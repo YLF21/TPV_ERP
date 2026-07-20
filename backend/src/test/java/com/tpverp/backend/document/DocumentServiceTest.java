@@ -124,6 +124,8 @@ class DocumentServiceTest {
     @Mock
     private PromotionCatalogGateway promotionCatalog;
     @Mock
+    private CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
+    @Mock
     private StockSettingsService stockSettings;
     @Mock
     private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
@@ -186,6 +188,7 @@ class DocumentServiceTest {
                 counterRepository,
                 paymentMethodRepository,
                 relationRepository,
+                receivablePaymentReservations,
                 stockGateway,
                 currentOrganization,
                 customerRepository,
@@ -954,6 +957,94 @@ class DocumentServiceTest {
     }
 
     @Test
+    void createsPendingSaleWithZeroPartialOrFullActualPayments() {
+        var customer = completeCustomer();
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false, true, false);
+        var requestId = UUID.randomUUID();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(paymentMethodRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        var pending = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+        assertThat(pending.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
+        assertThat(pending.getPagos()).isEmpty();
+
+        var partial = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("3.00"), true, null, null,
+                        null, "TR-1", null, null, null, null, null, requestId)),
+                authentication());
+        assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
+        assertThat(partial.getPendingTotal()).isEqualByComparingTo("7.00");
+        assertThat(partial.getPagos()).singleElement()
+                .extracting(DocumentPayment::getRequestId).isEqualTo(requestId);
+
+        var paid = service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("10.00"), true, null, null,
+                        null, "TR-2", null, null, null, null, null, UUID.randomUUID())),
+                authentication());
+        assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+    }
+
+    @Test
+    void pendingSaleRejectsInvalidTypeMissingOrInactiveCustomerDueDateZeroDuplicateAndOverpayment() {
+        var customer = completeCustomer();
+        customer.deactivate();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.TICKET, lines(), customer.getId()),
+                LocalDate.now(), List.of(), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("type");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(), authentication()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("inactivo");
+
+        customer.activate();
+        var method = new PaymentMethod(store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        var id = UUID.randomUUID();
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                null, List.of(), authentication()))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(new PaymentCommand(
+                        method.getId(), BigDecimal.ZERO, true, null, null,
+                        null, null, null, null, null, null, null, id)), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("positivo");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(
+                        new PaymentCommand(method.getId(), BigDecimal.ONE, true, null, null,
+                                null, null, null, null, null, null, null, id),
+                        new PaymentCommand(method.getId(), BigDecimal.ONE, false, null, null,
+                                null, null, null, null, null, null, null, id)), authentication()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requestId");
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.now(), List.of(new PaymentCommand(
+                        method.getId(), new BigDecimal("10.01"), true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("payment_exceeds_pending_total");
+    }
+
+    @Test
     void receivablePaymentCannotExceedPendingTotal() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
@@ -970,6 +1061,85 @@ class DocumentServiceTest {
                 .hasMessageContaining("message.document.payment_exceeds_pending_total");
 
         verify(documentRepository, never()).save(invoice);
+    }
+
+    @Test
+    void receivablePaymentRejectsZeroAndDuplicateRequestIds() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var method = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        var requestId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        method.getId(), BigDecimal.ZERO, true, null, null)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("positivo");
+
+        assertThatThrownBy(() -> service.payInvoice(
+                invoice.getId(),
+                List.of(
+                        new PaymentCommand(
+                                method.getId(), BigDecimal.ONE, true, null, null,
+                                null, null, null, null, null, null, null, requestId),
+                        new PaymentCommand(
+                                method.getId(), BigDecimal.ONE, false, null, null,
+                                null, null, null, null, null, null, null, requestId)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requestId");
+    }
+
+    @Test
+    void pendingSaleCashPaymentRequiresOpenCashSession() {
+        var customer = completeCustomer();
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        org.mockito.Mockito.doThrow(new IllegalStateException("No hay una sesion de caja abierta"))
+                .when(cashPaymentRecorder).recordDocumentPayments(any(), any());
+
+        assertThatThrownBy(() -> service.createPendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true,
+                        new BigDecimal("10.00"), BigDecimal.ZERO)), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sesion de caja abierta");
+    }
+
+    @Test
+    void directPosInvoiceAndDeliveryNoteApplyStockExactlyOnce() {
+        var customer = completeCustomer();
+        when(customerRepository.findByIdAndCompanyId(customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(stockGateway.confirm(any())).thenReturn(true);
+
+        var invoice = service.createPendingSale(
+                directCommand(CommercialDocumentType.FACTURA_VENTA, customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+        var note = service.createPendingSale(
+                directCommand(CommercialDocumentType.ALBARAN_VENTA, customer.getId()),
+                LocalDate.of(2026, 7, 8), List.of(), authentication());
+
+        assertThat(invoice.isOrigenStock()).isTrue();
+        assertThat(note.isOrigenStock()).isTrue();
+        verify(stockGateway, times(1)).confirm(invoice);
+        verify(stockGateway, times(1)).confirm(note);
     }
 
     @Test
@@ -1162,7 +1332,7 @@ class DocumentServiceTest {
     void onlyInvoicesCanBeRelatedToOriginDocuments() {
         var note = draft(CommercialDocumentType.ALBARAN_VENTA);
         var origin = draft(CommercialDocumentType.TICKET);
-        when(documentRepository.findById(note.getId())).thenReturn(Optional.of(note));
+        stubLocked(note, origin);
 
         assertThatThrownBy(() -> service.relate(
                 note.getId(), origin.getId(), DocumentRelationType.FACTURA_DE, authentication()))
@@ -1176,8 +1346,7 @@ class DocumentServiceTest {
     void invoiceRelationRequiresCompatibleOriginType() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         var originInvoice = draft(CommercialDocumentType.FACTURA_VENTA);
-        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
-        when(documentRepository.findById(originInvoice.getId())).thenReturn(Optional.of(originInvoice));
+        stubLocked(invoice, originInvoice);
 
         assertThatThrownBy(() -> service.relate(
                 invoice.getId(), originInvoice.getId(), DocumentRelationType.FACTURA_DE,
@@ -1186,6 +1355,202 @@ class DocumentServiceTest {
                 .hasMessageContaining("origen");
 
         verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsPurchaseAndRectificationDestinations() {
+        var purchaseInvoice = draft(CommercialDocumentType.FACTURA_COMPRA);
+        var purchaseNote = draft(CommercialDocumentType.ALBARAN_COMPRA);
+        stubLocked(purchaseInvoice, purchaseNote);
+
+        assertThatThrownBy(() -> service.relate(
+                purchaseInvoice.getId(), purchaseNote.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FACTURA_VENTA");
+
+        var rectification = draft(CommercialDocumentType.RECTIFICATIVA_VENTA);
+        var salesNote = draft(CommercialDocumentType.ALBARAN_VENTA);
+        stubLocked(rectification, salesNote);
+
+        assertThatThrownBy(() -> service.relate(
+                rectification.getId(), salesNote.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FACTURA_VENTA");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsNonDeliveryNoteSalesOrigin() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        var ticket = draft(CommercialDocumentType.TICKET);
+        stubLocked(invoice, ticket);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), ticket.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ALBARAN_VENTA");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsSecondInvoiceForSameDeliveryNoteAfterDocumentLocks() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                origin.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("albaran");
+
+        var order = inOrder(documentRepository, relationRepository);
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        order.verify(documentRepository).findLockedDocument(firstId, store.getId());
+        order.verify(documentRepository).findLockedDocument(secondId, store.getId());
+        order.verify(relationRepository).existsByOrigen_IdAndTipo(
+                origin.getId(), DocumentRelationType.FACTURA_DE);
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void facturaDeRejectsSecondDeliveryNoteForSameInvoice() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        when(relationRepository.existsByDocumento_IdAndTipo(
+                invoice.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("factura");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesDeliveryNoteWithPartialPaymentCannotBecomeInvoiceOrigin() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        origin.addPayment(new DocumentPayment(
+                origin, cash, 1, new BigDecimal("30.00"), true,
+                null, null, null, null, NOW));
+        origin.updatePaymentStatus();
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("pagos");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesInvoiceAndDeliveryNoteRelationRequiresSameCustomer() {
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, UUID.randomUUID(), "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, UUID.randomUUID(), "100.00");
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cliente");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesInvoiceAndDeliveryNoteRelationRequiresSameTotal() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "90.00");
+        stubLocked(invoice, origin);
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("total");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void salesDeliveryNoteCannotBeInvoicedWhilePhysicalCollectionIsReserved() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+        var now = NOW.minusSeconds(1);
+        var active = CustomerReceivablePaymentReservation.reserve(
+                UUID.randomUUID(), origin.getId(), store.getId(), terminalId, user.getId(),
+                "a".repeat(64), new BigDecimal("30.00"),
+                CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD,
+                UUID.randomUUID(), NOW.plusSeconds(30), now);
+        when(receivablePaymentReservations.findAllLockedByDocumentId(origin.getId()))
+                .thenReturn(List.of(active));
+        when(receivablePaymentReservations.findAllLockedByDocumentId(invoice.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cobro");
+
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void validUnpaidSalesRelationLocksDocumentsInStableIdentifierOrder() {
+        var customerId = UUID.randomUUID();
+        var invoice = confirmedSales(
+                CommercialDocumentType.FACTURA_VENTA, customerId, "100.00");
+        var origin = confirmedSales(
+                CommercialDocumentType.ALBARAN_VENTA, customerId, "100.00");
+        stubLocked(invoice, origin);
+
+        service.relate(
+                invoice.getId(), origin.getId(), DocumentRelationType.FACTURA_DE,
+                authentication());
+
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        var order = inOrder(documentRepository);
+        order.verify(documentRepository).findLockedDocument(firstId, store.getId());
+        order.verify(documentRepository).findLockedDocument(secondId, store.getId());
+        verify(relationRepository).save(any(DocumentRelation.class));
     }
 
     @Test
@@ -1369,6 +1734,26 @@ class DocumentServiceTest {
         return document;
     }
 
+    private CommercialDocument confirmedSales(
+            CommercialDocumentType type, UUID customerId, String total) {
+        var document = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), type, LocalDate.of(2026, 6, 8),
+                user.getId(), BigDecimal.ZERO);
+        document.setParties(customerId, null, null);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, 1, "P-REL", "Producto", "VENTA",
+                new BigDecimal(total), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+        document.confirm(type.prefix() + "-001-26-000001", user.getId(), NOW, false);
+        return document;
+    }
+
+    private void stubLocked(CommercialDocument first, CommercialDocument second) {
+        when(documentRepository.findLockedDocument(first.getId(), store.getId()))
+                .thenReturn(Optional.of(first));
+        when(documentRepository.findLockedDocument(second.getId(), store.getId()))
+                .thenReturn(Optional.of(second));
+    }
+
     private CommercialDocument purchaseDraft(
             CommercialDocumentType type, Supplier supplier, boolean stockOrigin) {
         return purchaseDraft(type, supplier, stockOrigin, lines());
@@ -1453,6 +1838,21 @@ class DocumentServiceTest {
                 BigDecimal.ZERO,
                 false,
                 lines);
+    }
+
+    private DocumentCommand command(
+            CommercialDocumentType type, List<DocumentLineCommand> lines, UUID customerId) {
+        var base = command(type, lines);
+        return new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), customerId, null, null,
+                base.descuentoGlobal(), base.directo(), base.lineas());
+    }
+
+    private DocumentCommand directCommand(CommercialDocumentType type, UUID customerId) {
+        var base = command(type, lines(), customerId);
+        return new DocumentCommand(
+                base.almacenId(), base.tipo(), base.fecha(), base.clienteId(), null, null,
+                base.descuentoGlobal(), true, base.lineas());
     }
 
     private List<DocumentLineCommand> lines() {

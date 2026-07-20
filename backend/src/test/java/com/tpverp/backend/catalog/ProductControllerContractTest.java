@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +43,39 @@ class ProductControllerContractTest {
 
     @MockitoBean
     private ProductImageService images;
+
+    @MockitoBean
+    private SaleProductCatalogService saleCatalog;
+
+    @Test
+    void saleListIncludesAuthoritativeTaxSnapshot() throws Exception {
+        when(saleCatalog.products()).thenReturn(List.of(new SaleProductView(
+                UUID.randomUUID(),
+                true,
+                "A001",
+                null,
+                null,
+                "Cafe",
+                new BigDecimal("2.40"),
+                null,
+                null,
+                null,
+                PriceUseMode.NORMAL,
+                DiscountType.NORMAL,
+                false,
+                null,
+                null,
+                true,
+                TAX_ID,
+                new BigDecimal("21.00"),
+                "IVA")));
+
+        mvc.perform(get("/api/v1/products/sale")
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].taxPercentage").value(21.00))
+                .andExpect(jsonPath("$[0].taxRegime").value("IVA"));
+    }
 
     @Test
     void publicProductReadDoesNotExposePurchaseFields() throws Exception {

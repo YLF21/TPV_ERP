@@ -153,6 +153,7 @@ type StockScreenProps = {
   initialView?: StockViewKey;
   initialPartyDirectory?: PartyDirectoryKind | null;
   initialSettingsMode?: StockSettingsMode | null;
+  onOpenCustomerReceivables?: (customerId: string) => void;
 };
 
 type StockItemView = {
@@ -1902,7 +1903,8 @@ export function StockScreen({
   embedded = false,
   initialView = "stock.current",
   initialPartyDirectory = null,
-  initialSettingsMode = null
+  initialSettingsMode = null,
+  onOpenCustomerReceivables
 }: StockScreenProps) {
   const t = createTranslator(locale);
   const stockTitle = t("home.product").toLocaleUpperCase(locale === "zh" ? "zh-CN" : locale);
@@ -6542,7 +6544,7 @@ export function StockScreen({
             </header>
           )}
           {partyDirectory ? (
-            <PartyDirectoryPanel app={app} kind={partyDirectory} locale={locale} session={session} />
+            <PartyDirectoryPanel app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} />
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-top-sales-toolbar">

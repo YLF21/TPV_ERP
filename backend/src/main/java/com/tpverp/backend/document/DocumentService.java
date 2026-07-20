@@ -88,6 +88,7 @@ public class DocumentService {
     private final DocumentCounterRepository counters;
     private final PaymentMethodRepository paymentMethods;
     private final DocumentRelationRepository relations;
+    private final CustomerReceivablePaymentReservationRepository receivablePaymentReservations;
     private final StockDocumentGateway stockGateway;
     private final CurrentOrganization organization;
     private final CustomerRepository customers;
@@ -119,6 +120,7 @@ public class DocumentService {
             DocumentCounterRepository counters,
             PaymentMethodRepository paymentMethods,
             DocumentRelationRepository relations,
+            CustomerReceivablePaymentReservationRepository receivablePaymentReservations,
             StockDocumentGateway stockGateway,
             CurrentOrganization organization,
             CustomerRepository customers,
@@ -148,6 +150,7 @@ public class DocumentService {
         this.counters = counters;
         this.paymentMethods = paymentMethods;
         this.relations = relations;
+        this.receivablePaymentReservations = receivablePaymentReservations;
         this.stockGateway = stockGateway;
         this.organization = organization;
         this.customers = customers;
@@ -192,6 +195,85 @@ public class DocumentService {
             DocumentCommand command, Authentication authentication) {
         var draft = createDeliveryNote(command, authentication);
         return confirm(draft.getId(), authentication);
+    }
+
+    @Transactional(readOnly = true)
+    CommercialDocument quotePendingSale(
+            DocumentCommand command, LocalDate dueDate, Authentication authentication) {
+        requirePendingSaleType(command);
+        var customer = requireActiveCustomer(command.clienteId());
+        var context = promotionPricing.customerContext(
+                organization.currentCompany().getId(), customer.getId());
+        var document = createDraft(command, authentication, context);
+        applyDirectPromotions(document, promotionContext(document, context));
+        document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        return document;
+    }
+
+    @Transactional
+    CommercialDocument createPendingSale(
+            DocumentCommand command,
+            LocalDate dueDate,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        requirePendingSaleType(command);
+        var customer = requireActiveCustomer(command.clienteId());
+        var customerContext = promotionPricing.customerContext(
+                organization.currentCompany().getId(), customer.getId());
+        var document = createDraft(command, authentication, customerContext);
+        var promotions = promotionContext(document, customerContext);
+        applyDirectPromotions(document, promotions);
+        document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        var commands = List.copyOf(payments == null ? List.of() : payments);
+        requirePositiveUniquePayments(commands);
+        requirePaymentTotalAtMost(commands, document.getTotal());
+        var terminalId = currentTerminal.terminalId(authentication);
+        var resolved = commands.stream()
+                .map(payment -> resolvePayment(document, payment, terminalId))
+                .toList();
+        requirePaymentTotalAtMost(resolved, document.getTotal());
+        if (!resolved.isEmpty()) {
+            appendPayments(document, resolved);
+            if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
+                throw new IllegalArgumentException("se requiere un pago principal");
+            }
+        }
+        boolean appliesStock = requiresStock(document) || document.isOrigenStock();
+        document.confirm(nextNumber(document),
+                organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        documents.saveAndFlush(document);
+        document.setStockOrigin(appliesStock && stockGateway.confirm(document));
+        document.updatePaymentStatus();
+        var saved = documents.save(document);
+        cashPayments.recordDocumentPayments(terminalId, saved);
+        if (!resolved.isEmpty()) {
+            memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+                    saved, loyaltyAccrualCommandTotal(resolved)));
+        }
+        generatePromotionalCoupons(saved, promotions);
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, terminalId);
+        return saved;
+    }
+
+    private static void requirePendingSaleType(DocumentCommand command) {
+        Objects.requireNonNull(command, "command");
+        if (command.tipo() != CommercialDocumentType.ALBARAN_VENTA
+                && command.tipo() != CommercialDocumentType.FACTURA_VENTA) {
+            throw new IllegalArgumentException("message.document.invalid_pending_sale_type");
+        }
+    }
+
+    private com.tpverp.backend.party.Customer requireActiveCustomer(UUID customerId) {
+        var customer = customers.findByIdAndCompanyId(
+                        Objects.requireNonNull(customerId, "clienteId"),
+                        organization.currentCompany().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.document.active_customer_not_found"));
+        if (!customer.isActive()) {
+            throw new IllegalStateException("message.document.customer_inactivo");
+        }
+        return customer;
     }
 
     @Transactional(readOnly = true)
@@ -965,6 +1047,22 @@ public class DocumentService {
         return saved;
     }
 
+    @Transactional
+    CommercialDocument collectReceivable(
+            CommercialDocument document,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        Objects.requireNonNull(document, "document");
+        if ((document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
+                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA)
+                || (document.getEstado() != DocumentStatus.PENDIENTE
+                && document.getEstado() != DocumentStatus.PARCIAL)) {
+            throw new IllegalStateException(
+                    "message.document.only_receivable_document_can_be_paid");
+        }
+        return payReceivable(document, payments, authentication);
+    }
+
     // Exceptionally edits a confirmed ticket or delivery note without stock or audit side effects.
     @Transactional
     public CommercialDocument adminEditConfirmed(
@@ -1002,13 +1100,18 @@ public class DocumentService {
             UUID originId,
             DocumentRelationType type,
             Authentication authentication) {
-        var invoice = find(invoiceId);
+        Objects.requireNonNull(type, "tipoRelacion");
+        var locked = lockRelationDocuments(invoiceId, originId);
+        var invoice = locked.invoice();
         if (!INVOICES.contains(invoice.getTipo())) {
             throw new IllegalStateException("solo una factura puede relacionarse con origen");
         }
-        Objects.requireNonNull(type, "tipoRelacion");
-        var origin = find(originId);
+        var origin = locked.origin();
+        validateRelationTypes(type, invoice, origin);
         validateRelationOrigin(type, origin);
+        requireOneToOneInvoiceRelation(type, invoice, origin);
+        requireNoActiveCollection(type, invoice, origin);
+        validateSalesDeliveryNoteInvoice(type, invoice, origin);
         relations.save(new DocumentRelation(invoice, origin, type));
         var eventType = type == DocumentRelationType.FACTURA_DE
                 ? DocumentOperationalEventType.CONVERTIDO
@@ -1019,9 +1122,113 @@ public class DocumentService {
         return invoice;
     }
 
+    private RelationDocuments lockRelationDocuments(UUID invoiceId, UUID originId) {
+        Objects.requireNonNull(invoiceId, "invoiceId");
+        Objects.requireNonNull(originId, "originId");
+        if (invoiceId.equals(originId)) {
+            throw new IllegalArgumentException("un documento no puede relacionarse consigo mismo");
+        }
+        var storeId = organization.currentStore().getId();
+        var firstId = invoiceId.compareTo(originId) < 0 ? invoiceId : originId;
+        var secondId = firstId.equals(invoiceId) ? originId : invoiceId;
+        var first = documents.findLockedDocument(firstId, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        var second = documents.findLockedDocument(secondId, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        return first.getId().equals(invoiceId)
+                ? new RelationDocuments(first, second)
+                : new RelationDocuments(second, first);
+    }
+
+    private static void validateSalesDeliveryNoteInvoice(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE
+                || invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                || origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            return;
+        }
+        if (!origin.getPagos().isEmpty() || origin.getPaidTotal().signum() != 0) {
+            throw new IllegalStateException(
+                    "no se puede facturar un albaran que ya tiene pagos");
+        }
+        if ((invoice.getEstado() != DocumentStatus.PENDIENTE
+                && invoice.getEstado() != DocumentStatus.PARCIAL
+                && invoice.getEstado() != DocumentStatus.PAGADO)
+                || origin.getEstado() != DocumentStatus.PENDIENTE) {
+            throw new IllegalStateException("factura y albaran deben estar confirmados y cobrables");
+        }
+        if (!Objects.equals(invoice.getClienteId(), origin.getClienteId())
+                || invoice.getClienteId() == null) {
+            throw new IllegalStateException("factura y albaran deben pertenecer al mismo cliente");
+        }
+        if (Money.euros(invoice.getTotal()).compareTo(Money.euros(origin.getTotal())) != 0) {
+            throw new IllegalStateException("factura y albaran deben tener el mismo total");
+        }
+    }
+
+    private void requireNoActiveCollection(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE
+                || invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA
+                || origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            return;
+        }
+        var firstId = invoice.getId().compareTo(origin.getId()) < 0
+                ? invoice.getId() : origin.getId();
+        var secondId = firstId.equals(invoice.getId()) ? origin.getId() : invoice.getId();
+        var active = java.util.stream.Stream.concat(
+                        receivablePaymentReservations.findAllLockedByDocumentId(firstId).stream(),
+                        receivablePaymentReservations.findAllLockedByDocumentId(secondId).stream())
+                .anyMatch(CustomerReceivablePaymentReservation::reservesBalance);
+        if (active) {
+            throw new IllegalStateException(
+                    "no se puede facturar mientras existe un cobro en curso");
+        }
+    }
+
+    private record RelationDocuments(
+            CommercialDocument invoice, CommercialDocument origin) {
+    }
+
     private static void validateRelationOrigin(DocumentRelationType type, CommercialDocument origin) {
         if (type == DocumentRelationType.FACTURA_DE && INVOICES.contains(origin.getTipo())) {
             throw new IllegalStateException("origen incompatible para factura agrupada");
+        }
+    }
+
+    private static void validateRelationTypes(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE) {
+            return;
+        }
+        if (invoice.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
+            throw new IllegalStateException(
+                    "el destino de FACTURA_DE debe ser FACTURA_VENTA");
+        }
+        if (origin.getTipo() != CommercialDocumentType.ALBARAN_VENTA) {
+            throw new IllegalStateException(
+                    "el origen de FACTURA_DE debe ser ALBARAN_VENTA");
+        }
+    }
+
+    private void requireOneToOneInvoiceRelation(
+            DocumentRelationType type,
+            CommercialDocument invoice,
+            CommercialDocument origin) {
+        if (type != DocumentRelationType.FACTURA_DE) {
+            return;
+        }
+        if (relations.existsByOrigen_IdAndTipo(origin.getId(), type)) {
+            throw new IllegalStateException("el albaran ya esta relacionado con una factura");
+        }
+        if (relations.existsByDocumento_IdAndTipo(invoice.getId(), type)) {
+            throw new IllegalStateException("la factura ya esta relacionada con un albaran");
         }
     }
 
@@ -1163,6 +1370,7 @@ public class DocumentService {
     private void addPayments(
             CommercialDocument document, List<PaymentCommand> commands, String mismatchMessage, UUID terminalId) {
         requirePaymentsPresent(commands);
+        requirePositiveUniquePayments(commands);
         requirePaymentTotal(commands, document.getTotal(), mismatchMessage);
         var resolved = commands.stream()
                 .map(command -> resolvePayment(document, command, terminalId))
@@ -1176,6 +1384,7 @@ public class DocumentService {
 
     private BigDecimal addPartialPayments(CommercialDocument document, List<PaymentCommand> commands, UUID terminalId) {
         requirePaymentsPresent(commands);
+        requirePositiveUniquePayments(commands);
         var pending = document.getPendingTotal();
         requirePaymentTotalAtMost(commands, pending);
         var resolved = commands.stream()
@@ -1202,7 +1411,8 @@ public class DocumentService {
                     command.entregado(), command.cambio(), command.voucherCode(),
                     command.reference(), Instant.now(clock), command.cardMode(),
                     command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                    command.cardAuthorizationCode(), command.paymentTerminalId()));
+                    command.cardAuthorizationCode(), command.paymentTerminalId(),
+                    command.requestId()));
             hasPrincipal = hasPrincipal || principal;
         }
     }
@@ -1210,6 +1420,19 @@ public class DocumentService {
     private static void requirePaymentsPresent(List<PaymentCommand> commands) {
         if (commands == null || commands.isEmpty()) {
             throw new IllegalArgumentException("se requiere al menos un pago");
+        }
+    }
+
+    private static void requirePositiveUniquePayments(List<PaymentCommand> commands) {
+        var requestIds = new java.util.HashSet<UUID>();
+        for (var command : commands) {
+            Objects.requireNonNull(command, "payment");
+            if (Money.euros(command.importe()).signum() <= 0) {
+                throw new IllegalArgumentException("payment debe ser positivo");
+            }
+            if (command.requestId() != null && !requestIds.add(command.requestId())) {
+                throw new IllegalArgumentException("duplicate payment requestId");
+            }
         }
     }
 
@@ -1250,7 +1473,8 @@ public class DocumentService {
             var consumed = memberLoyalty.consumeBalanceForPayment(document, command.importe());
             return new PaymentCommand(
                     command.metodoPagoId(), consumed, command.principal(),
-                    command.entregado(), command.cambio(), null, command.reference());
+                    command.entregado(), command.cambio(), null, command.reference(),
+                    null, null, null, null, null, command.requestId());
         }
         if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
@@ -1266,7 +1490,7 @@ public class DocumentService {
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), command.paymentTerminalId());
+                command.cardAuthorizationCode(), command.paymentTerminalId(), command.requestId());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
 
@@ -1399,7 +1623,7 @@ public class DocumentService {
                 command.metodoPagoId(), command.importe(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), currentTerminalId);
+                command.cardAuthorizationCode(), currentTerminalId, command.requestId());
     }
 
     private String nextNumber(CommercialDocument document) {
@@ -1433,7 +1657,7 @@ public class DocumentService {
                 document.getConfirmadoPor(), terminalId, document.getConfirmadoEn());
     }
 
-    private CommercialDocument find(UUID id) {
+    CommercialDocument find(UUID id) {
         var storeId = organization.currentStore().getId();
         return documents.findById(id)
                 .filter(document -> document.getTiendaId().equals(storeId))

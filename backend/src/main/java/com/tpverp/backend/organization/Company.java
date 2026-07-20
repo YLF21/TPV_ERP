@@ -55,6 +55,10 @@ public class Company {
         return taxId;
     }
 
+    public Map<String, String> getDomicilioFiscal() {
+        return Map.copyOf(domicilioFiscal);
+    }
+
     public void adoptLicensedTaxId(String licensedTaxId) {
         String normalized = SpanishTaxId.normalize(licensedTaxId);
         if (!DEMO_TAX_ID.equals(taxId) && !normalized.equals(SpanishTaxId.normalize(taxId))) {

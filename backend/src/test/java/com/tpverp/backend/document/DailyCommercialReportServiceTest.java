@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.Company;
@@ -18,43 +19,144 @@ import org.junit.jupiter.api.Test;
 
 class DailyCommercialReportServiceTest {
 
+    private static final LocalDate REPORT_DATE = LocalDate.of(2026, 7, 16);
+
     @Test
-    void separatesDebtGeneratedFromDebtCollectedLater() {
+    void separatesCurrentSalesNewDebtPriorDebtAndRealCashInflow() {
         var fixture = fixture();
-        var saleDay = LocalDate.of(2026, 7, 5);
-        var paymentDay = LocalDate.of(2026, 8, 5);
-        var invoice = receivable(saleDay, "500.00");
-        var cash = new PaymentMethod(fixture.store().getEmpresa().getId(), "EFECTIVO", true);
-        invoice.addPayment(new DocumentPayment(
-                invoice, cash, 1, new BigDecimal("500.00"), true, null, null,
-                paymentDay.atStartOfDay(ZoneId.of("Atlantic/Canary")).toInstant()));
-        when(fixture.documents().findAllByTiendaIdAndFecha(
-                fixture.store().getId(), saleDay)).thenReturn(List.of(invoice));
+        var current = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
+        var prior = receivable(CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(3), "80.00");
+        var currentPayment = payment(fixture, current, "30.00", start(REPORT_DATE).plusSeconds(30));
+        var priorPayment = payment(fixture, prior, "20.00", start(REPORT_DATE).plusSeconds(60));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(current));
         when(fixture.payments().findAllByStoreAndCreatedBetween(
-                fixture.store().getId(), start(paymentDay), end(paymentDay))).thenReturn(invoice.getPagos());
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(currentPayment, priorPayment));
 
-        var saleReport = fixture.service().report(saleDay);
-        var paymentReport = fixture.service().report(paymentDay);
+        var report = fixture.service().report(REPORT_DATE);
 
-        assertThat(saleReport.issuedTotal()).isEqualByComparingTo("500.00");
-        assertThat(saleReport.collectedTotal()).isEqualByComparingTo("0.00");
-        assertThat(saleReport.generatedPendingTotal()).isEqualByComparingTo("500.00");
-        assertThat(saleReport.collectedPreviousPendingTotal()).isEqualByComparingTo("0.00");
-        assertThat(paymentReport.issuedTotal()).isEqualByComparingTo("0.00");
-        assertThat(paymentReport.collectedTotal()).isEqualByComparingTo("500.00");
-        assertThat(paymentReport.generatedPendingTotal()).isEqualByComparingTo("0.00");
-        assertThat(paymentReport.collectedPreviousPendingTotal()).isEqualByComparingTo("500.00");
+        assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
+        assertThat(report.newPending()).isEqualByComparingTo("70.00");
+        assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("50.00");
     }
 
-    private static CommercialDocument receivable(LocalDate date, String amount) {
+    @Test
+    void excludesTicketsAndNonReceivableDocumentTypesFromEveryBucket() {
+        var fixture = fixture();
+        var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
+        var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "40.00");
+        var creditNote = confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "10.00");
+        var purchase = confirmed(CommercialDocumentType.FACTURA_COMPRA, REPORT_DATE, "90.00");
+        var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(1));
+        var ticketPayment = payment(fixture, ticket, "40.00", start(REPORT_DATE).plusSeconds(2));
+        var creditPayment = payment(fixture, creditNote, "10.00", start(REPORT_DATE).plusSeconds(3));
+        var purchasePayment = payment(fixture, purchase, "90.00", start(REPORT_DATE).plusSeconds(4));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(invoice, ticket, creditNote, purchase));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(invoicePayment, ticketPayment, creditPayment, purchasePayment));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
+        assertThat(report.newPending()).isEqualByComparingTo("70.00");
+        assertThat(report.priorDebtCollected()).isZero();
+        assertThat(report.cashInflow()).isEqualByComparingTo("30.00");
+    }
+
+    @Test
+    void queriesOnlyCurrentStoreAndHalfOpenLocalDateInterval() {
+        var fixture = fixture();
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of());
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of());
+
+        fixture.service().report(REPORT_DATE);
+
+        verify(fixture.documents()).findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE);
+        verify(fixture.payments()).findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE));
+    }
+
+    @Test
+    void excludesInvoicedDeliveryNoteButKeepsItsRealPaymentOnThePaymentDate() {
+        var fixture = fixture();
+        var deliveryNote = receivable(CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
+        var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
+        var deliveryPayment = payment(fixture, deliveryNote, "20.00", start(REPORT_DATE).plusSeconds(1));
+        var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(2));
+        when(fixture.relations().findInvoicedOriginIds(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(java.util.Set.of(deliveryNote.getId()));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(invoice));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(deliveryPayment, invoicePayment));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
+        assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("50.00");
+    }
+
+    @Test
+    void invoicingLaterDoesNotEraseDeliveryNoteFromItsHistoricalIssueDate() throws Exception {
+        var method = DocumentRelationRepository.class.getDeclaredMethod(
+                "findInvoicedOriginIds", UUID.class, LocalDate.class);
+        var query = method.getAnnotation(org.springframework.data.jpa.repository.Query.class).value();
+
+        assertThat(query).contains("relation.documento.fecha <= :asOfDate");
+
+        var fixture = fixture();
+        var deliveryNote = receivable(
+                CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
+        when(fixture.relations().findInvoicedOriginIds(
+                fixture.store().getId(), deliveryNote.getFecha())).thenReturn(java.util.Set.of());
+        when(fixture.documents().findAllByTiendaIdAndFecha(
+                fixture.store().getId(), deliveryNote.getFecha())).thenReturn(List.of(deliveryNote));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(deliveryNote.getFecha()), end(deliveryNote.getFecha())))
+                .thenReturn(List.of());
+
+        var historical = fixture.service().report(deliveryNote.getFecha());
+
+        assertThat(historical.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(historical.newPending()).isEqualByComparingTo("100.00");
+    }
+
+    private static DocumentPayment payment(
+            Fixture fixture, CommercialDocument document, String amount, Instant createdAt) {
+        var method = new PaymentMethod(
+                fixture.store().getEmpresa().getId(), "EFECTIVO", true);
+        return new DocumentPayment(
+                document, method, document.getPagos().size() + 1,
+                new BigDecimal(amount), document.getPagos().isEmpty(),
+                null, null, null, null, createdAt);
+    }
+
+    private static CommercialDocument receivable(
+            CommercialDocumentType type, LocalDate date, String amount) {
+        return confirmed(type, date, amount);
+    }
+
+    private static CommercialDocument confirmed(
+            CommercialDocumentType type, LocalDate date, String amount) {
         var document = new CommercialDocument(
-                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
+                UUID.randomUUID(), UUID.randomUUID(), type,
                 date, UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, 1, "P1", "Producto", "VENTA",
-                new BigDecimal(amount), BigDecimal.ZERO, true, "IVA",
-                BigDecimal.ZERO));
-        document.confirm("FV-001-26-000001", UUID.randomUUID(), Instant.now(), false);
+                new BigDecimal(amount), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+        document.confirm("DOC-001", UUID.randomUUID(), start(date), false);
         return document;
     }
 
@@ -70,11 +172,12 @@ class DailyCommercialReportServiceTest {
         var store = store();
         var documents = mock(CommercialDocumentRepository.class);
         var payments = mock(DocumentPaymentRepository.class);
+        var relations = mock(DocumentRelationRepository.class);
         var organization = mock(CurrentOrganization.class);
         when(organization.currentStore()).thenReturn(store);
         return new Fixture(
-                new DailyCommercialReportService(documents, payments, organization),
-                documents, payments, store);
+                new DailyCommercialReportService(documents, payments, relations, organization),
+                documents, payments, relations, store);
     }
 
     private static Store store() {
@@ -91,6 +194,7 @@ class DailyCommercialReportServiceTest {
             DailyCommercialReportService service,
             CommercialDocumentRepository documents,
             DocumentPaymentRepository payments,
+            DocumentRelationRepository relations,
             Store store) {
     }
 }

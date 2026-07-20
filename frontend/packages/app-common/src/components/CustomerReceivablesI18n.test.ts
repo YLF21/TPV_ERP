@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { MessagesEn } from "../i18n/MessagesEn";
+import { MessagesEs } from "../i18n/MessagesEs";
+import { MessagesZh } from "../i18n/MessagesZh";
+
+const visibleKeys = [
+  "receivables.title",
+  "receivables.subtitle",
+  "receivables.search",
+  "receivables.status",
+  "receivables.documentType",
+  "receivables.overdueOnly",
+  "receivables.dueFrom",
+  "receivables.dueTo",
+  "receivables.all",
+  "receivables.status.pending",
+  "receivables.status.partial",
+  "receivables.status.paid",
+  "receivables.type.deliveryNote",
+  "receivables.type.invoice",
+  "receivables.column.document",
+  "receivables.column.customer",
+  "receivables.column.issueDate",
+  "receivables.column.dueDate",
+  "receivables.column.total",
+  "receivables.column.paid",
+  "receivables.column.pending",
+  "receivables.column.status",
+  "receivables.column.actions",
+  "receivables.action.collect",
+  "receivables.action.retry",
+  "receivables.error.load",
+  "receivables.payment.title",
+  "receivables.payment.pendingBalance",
+  "receivables.payment.amount",
+  "receivables.payment.cash",
+  "receivables.payment.card",
+  "receivables.payment.transfer",
+  "receivables.payment.transferReference",
+  "receivables.payment.confirmTransfer",
+  "receivables.payment.cancelTransfer",
+  "receivables.payment.alreadyPaid",
+  "receivables.payment.invalidAmount",
+  "receivables.payment.overpayment",
+  "receivables.payment.methodMissing",
+  "receivables.payment.referenceRequired",
+  "receivables.payment.methodsLoadError",
+  "receivables.payment.saveError",
+  "receivables.payment.cardState",
+  "receivables.payment.queryCard",
+  "receivables.payment.retryCard",
+  "receivables.payment.discardCard",
+  "receivables.payment.retry",
+  "receivables.payment.cardAmountConflict",
+  "receivables.payment.queryBeforeRetry",
+  "receivables.payment.retrySameId",
+  "receivables.payment.cardNotFinal",
+  "receivables.payment.unknownResult",
+  "receivables.print.collection",
+  "receivables.print.collectionOf",
+  "pendingSale.title",
+  "pendingSale.customer",
+  "pendingSale.documentType",
+  "pendingSale.dueDate",
+  "pendingSale.total",
+  "pendingSale.paid",
+  "pendingSale.pending",
+  "pendingSale.initialPayments",
+  "pendingSale.addCash",
+  "pendingSale.addCard",
+  "pendingSale.addTransfer",
+  "pendingSale.transferAmount",
+  "pendingSale.saveTransfer",
+  "pendingSale.cancelTransfer",
+  "pendingSale.queryCard",
+  "pendingSale.approvedCardRequiresVoid",
+  "pendingSale.removePayment",
+  "pendingSale.confirm",
+  "pendingSale.creating",
+  "pendingSale.quoteError",
+  "pendingSale.createError",
+  "pendingSale.recoveryError",
+  "pendingSale.transferAmountError",
+  "pendingSale.cardUncertain",
+  "pendingSale.cardQueryError",
+  "paymentTerminal.status.CREATED",
+  "paymentTerminal.status.PENDING",
+  "paymentTerminal.status.SENT",
+  "paymentTerminal.status.TIMEOUT",
+  "paymentTerminal.status.APPROVED",
+  "paymentTerminal.status.DECLINED",
+  "paymentTerminal.status.ERROR",
+  "paymentTerminal.status.CANCELLED",
+  "salesReport.daily.authoritativeSummary",
+  "salesReport.daily.invoiced",
+  "salesReport.daily.collectedCurrent",
+  "salesReport.daily.newPending",
+  "salesReport.daily.priorDebtCollected",
+  "salesReport.daily.cashInflow",
+  "salesReport.daily.loading",
+  "salesReport.daily.loadError",
+  "salesReport.daily.retry",
+  "print.a4.terminal", "print.a4.description", "print.a4.quantity", "print.a4.unitPrice",
+  "print.a4.base", "print.a4.tax", "print.a4.taxIncluded", "print.a4.total"
+] as const;
+
+describe("customer receivables translations", () => {
+  it("covers the complete receivables workflow copy", () => {
+    expect(visibleKeys.length).toBeGreaterThanOrEqual(85);
+  });
+
+  it.each([
+    ["es", MessagesEs.values],
+    ["en", MessagesEn.values],
+    ["zh", MessagesZh.values]
+  ])("contains translated visible copy in %s without mojibake", (_locale, values) => {
+    for (const key of visibleKeys) {
+      expect(values[key], key).toBeTruthy();
+      expect(values[key], key).not.toBe(key);
+      expect(values[key], key).not.toMatch(/[璺鑴甯椹帽贸铆]/);
+    }
+  });
+});

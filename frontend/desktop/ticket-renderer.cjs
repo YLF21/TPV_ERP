@@ -1,0 +1,9 @@
+function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
+const money = (value) => Number(value || 0).toFixed(2);
+function renderTicketHtml(ticket) {
+  const l = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", total: "Total", ...(ticket.labels || {}) };
+  const lines = (ticket.lines || []).map((x) => `<tr><td>${escapeHtml(x.name)}</td><td class="right">${escapeHtml(x.quantity)}</td><td class="right">${money(x.price)}</td><td class="right">${money(x.total)}</td></tr>`).join("");
+  const payments = (ticket.payments || []).map((x) => `<div class="row"><span>${escapeHtml(x.method)}</span><strong>${money(x.amount)}</strong></div>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:4mm;size:80mm auto}body{width:72mm;margin:0;color:#000;font-family:Arial,sans-serif;font-size:11px}h1{text-align:center;font-size:16px}.meta{text-align:center}table{width:100%;border-collapse:collapse}th{border-bottom:1px solid #000;text-align:left}.right{text-align:right}.row{display:flex;justify-content:space-between}.total{font-size:16px;font-weight:800}</style></head><body><h1>${escapeHtml(ticket.storeName || "APP")}</h1><div class="meta"><div>${escapeHtml(ticket.documentNumber)}</div><div>${escapeHtml(l.terminal)} ${escapeHtml(ticket.terminalCode)}</div><div>${escapeHtml(ticket.issuedAt)}</div></div><table><thead><tr><th>${escapeHtml(l.item)}</th><th class="right">${escapeHtml(l.quantity)}</th><th class="right">${escapeHtml(l.price)}</th><th class="right">${escapeHtml(l.total)}</th></tr></thead><tbody>${lines}</tbody></table>${payments}<div class="row total"><span>${escapeHtml(l.total)}</span><strong>${money(ticket.total)}</strong></div></body></html>`;
+}
+module.exports = { renderTicketHtml };

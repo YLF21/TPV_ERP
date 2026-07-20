@@ -54,7 +54,16 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  if (typeof response.text !== "function") {
+    return response.json() as Promise<T>;
+  }
+
+  const responseBody = await response.text();
+  if (!responseBody) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseBody) as T;
 }
 
 export async function checkBackendConnection(): Promise<boolean> {

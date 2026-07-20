@@ -7,19 +7,20 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV62ContractTest {
+class MigrationV64ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V65__contador_documento_entrada_almacen.sql";
+            "db/migration/V64__stock_min_max_producto.sql";
 
     @Test
-    void allowsWarehouseInputDocumentCounterType() throws IOException {
+    void addsMinimumAndMaximumStockToProduct() throws IOException {
         String sql = migrationSql();
 
         assertThat(sql)
-                .contains("drop constraint if exists contador_documento_tipo_check")
-                .contains("add constraint contador_documento_tipo_check")
-                .contains("'ent'");
+                .contains("add column stock_min numeric(19,3)")
+                .contains("add column stock_max numeric(19,3)")
+                .contains("ck_producto_stock_min_max")
+                .contains("stock_max >= stock_min");
     }
 
     private String migrationSql() throws IOException {

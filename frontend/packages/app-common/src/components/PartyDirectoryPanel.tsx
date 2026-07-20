@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
-import type { AppKind, LocaleCode, UserSession } from "../types";
+import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpSelect } from "./ErpSelect";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
@@ -18,6 +18,7 @@ export type PartyDirectoryPanelProps = {
   kind: PartyDirectoryKind;
   locale: LocaleCode;
   session: UserSession;
+  onOpenCustomerReceivables?: (customerId: string) => void;
 };
 
 const sharedPartyColumnDefinitions = [
@@ -78,6 +79,10 @@ export const emptyPartyForm: PartyForm = {
   postalCode: "", city: "", province: "", country: "ES", notes: "", discount: "0", numMember: "",
   birthday: "", gender: "", commercialConsent: false, preferredCommercialChannelId: ""
 };
+
+export function customerReceivablesActionVisible(kind: PartyDirectoryKind, selected: boolean, permissions: Permission[]) {
+  return kind !== "suppliers" && selected && (permissions.includes("ADMIN") || permissions.includes("CUSTOMER_RECEIVABLES_READ"));
+}
 
 export function partyFormFromView(entry: CustomerView | SupplierView, supplier: boolean): PartyForm {
   const customer = entry as CustomerView;
@@ -175,7 +180,7 @@ export function memberActivationPath(customerId: string, action: "activate" | "d
   return `/customers/${customerId}/member/${action}`;
 }
 
-export function PartyDirectoryPanel({ app = "venta", kind, locale, session }: PartyDirectoryPanelProps) {
+export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOpenCustomerReceivables }: PartyDirectoryPanelProps) {
   const t = createTranslator(locale);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [members, setMembers] = useState<MemberDirectoryView[]>([]);
@@ -444,7 +449,10 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session }: Pa
             {!isSupplier && <><div className="product-create-row product-create-row-two"><label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(e) => update("birthday", e.target.value)} /></label><label><span>{t("party.field.gender")}</span><ErpSelect value={form.gender} onChange={(value) => update("gender", value)} options={["", "MASCULINO", "FEMENINO", "OTRO"].map((value) => ({ value, label: value ? t(`party.gender.${value.toLowerCase()}`) : t("party.gender.unspecified") }))} /></label></div><label className="party-commercial-consent"><input type="checkbox" checked={form.commercialConsent} onChange={(e) => update("commercialConsent", e.target.checked)} /><span>{t("party.field.commercialConsent")}</span></label>{form.commercialConsent && <label><span>{t("party.field.preferredCommercialChannel")}</span><ErpSelect value={form.preferredCommercialChannelId} onChange={(value) => update("preferredCommercialChannelId", value)} options={[{ value: "", label: t("party.channel.select") }, ...channels.map((channel) => ({ value: channel.id, label: channel.name }))]} /></label>}</>}
           </fieldset>
           {status && <p className="product-create-status" role="status">{status}</p>}
-          <footer className="filter-actions">{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
+          {isMember && selected && (selected as CustomerView).memberUuid && (
+            <MemberLoyaltyPanel app={app} memberId={(selected as CustomerView).memberUuid!} session={session} t={t} />
+          )}
+          <footer className="filter-actions">{selected && customerReceivablesActionVisible(kind, true, session.permissions) && onOpenCustomerReceivables && <button type="button" onClick={() => onOpenCustomerReceivables(selected.id)}>Ver deudas</button>}{selected && canWrite && <button type="button" className={selected.active ? "party-deactivate-button" : "party-activate-button"} onClick={() => void toggleActive()} disabled={saving}>{t(selected.active ? "party.action.deactivate" : "party.action.activate")}</button>}<button type="button" onClick={closeDialog}>{t("common.cancel")}</button>{canWrite && <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>}</footer>
         </form>}
       </section>
     </div>}

@@ -21,6 +21,7 @@ type SessionHomeScreenProps = {
   onOpenStock?: () => void;
   onOpenWarehouse?: () => void;
   onOpenSalesReport?: () => void;
+  onOpenCustomerReceivables?: () => void;
   onOpenSettings?: () => void;
 };
 
