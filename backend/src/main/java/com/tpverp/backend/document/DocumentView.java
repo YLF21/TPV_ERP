@@ -75,6 +75,7 @@ public record DocumentView(
     }
 
     public record PaymentView(
+            UUID id,
             UUID methodId,
             String methodName,
             int position,
@@ -92,6 +93,7 @@ public record DocumentView(
 
         static PaymentView from(DocumentPayment payment) {
             return new PaymentView(
+                    payment.getId(),
                     payment.getMetodoPago().getId(),
                     payment.getMetodoPago().getNombre(),
                     payment.getPosicion(),

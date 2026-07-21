@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
@@ -64,7 +65,7 @@ class VoucherServiceTest {
         var sourceTicket = ticket("001-260617-00001", "-100.00");
 
         var issued = service.issueFromNegativeTicket(sourceTicket);
-        when(vouchers.findByTiendaIdAndCode(store.getId(), issued.code()))
+        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), issued.code()))
                 .thenReturn(Optional.of(issued));
 
         var result = service.consume(
@@ -77,6 +78,7 @@ class VoucherServiceTest {
                 .isEqualByComparingTo("80.00");
         assertThat(result.replacement().orElseThrow().originTickets())
                 .containsExactly("001-260617-00001", "001-260617-00002");
+        verify(vouchers).findLockedByTiendaIdAndCode(store.getId(), issued.code());
     }
 
     @Test
@@ -129,6 +131,22 @@ class VoucherServiceTest {
                 NOW));
 
         assertThat(service.hasVoucherImpact(paidWithVoucher)).isTrue();
+    }
+
+    @Test
+    void exactConsumptionRejectsInsufficientBalanceUnderTheStoreLock() {
+        var voucher = new Voucher(
+                store.getId(), "VLOCKED", new BigDecimal("10.00"),
+                List.of("001-260617-00001"), NOW);
+        when(vouchers.findLockedByTiendaIdAndCode(store.getId(), "VLOCKED"))
+                .thenReturn(Optional.of(voucher));
+
+        assertThatThrownBy(() -> service.consumeExact(
+                "VLOCKED", new BigDecimal("20.00"), ticket("001-260617-00002", "20.00")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("saldo de vale insuficiente");
+
+        assertThat(voucher.balance()).isEqualByComparingTo("10.00");
     }
 
     private CommercialDocument draftTicket(String total) {

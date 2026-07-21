@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -74,6 +75,37 @@ class DocumentViewTest {
         assertThat(view.paidTotal()).isEqualByComparingTo("30.00");
         assertThat(view.pendingTotal()).isEqualByComparingTo("70.00");
         verify(customers).findByIdAndCompanyId(customerId, companyId);
+    }
+
+    @Test
+    void assemblerResolvesCustomerNamesForTicketLists() {
+        var companyId = UUID.randomUUID();
+        var customerId = UUID.randomUUID();
+        var document = documentWithPayment(
+                "100.00", "30.00", LocalDate.of(2026, 7, 1));
+        document.setParties(customerId, null, null);
+        var customers = mock(CustomerRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var attributions = mock(DocumentAttributionResolver.class);
+        var company = mock(Company.class);
+        var customer = mock(Customer.class);
+        when(organization.currentCompany()).thenReturn(company);
+        when(company.getId()).thenReturn(companyId);
+        when(customers.findByCompanyIdAndIdIn(companyId, Set.of(customerId)))
+                .thenReturn(List.of(customer));
+        when(customer.getId()).thenReturn(customerId);
+        when(customer.getFiscalName()).thenReturn("CLIENTE ORO DEMO");
+        when(attributions.resolve(List.of(document))).thenReturn(Map.of(
+                document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
+
+        var views = new DocumentViewAssembler(customers, organization, attributions)
+                .documentViews(List.of(document), id -> "qr:" + id);
+
+        assertThat(views).hasSize(1);
+        assertThat(views.getFirst().customerId()).isEqualTo(customerId);
+        assertThat(views.getFirst().customerName()).isEqualTo("CLIENTE ORO DEMO");
+        assertThat(views.getFirst().qrUrl()).isEqualTo("qr:" + document.getId());
+        verify(customers).findByCompanyIdAndIdIn(companyId, Set.of(customerId));
     }
 
     @Test

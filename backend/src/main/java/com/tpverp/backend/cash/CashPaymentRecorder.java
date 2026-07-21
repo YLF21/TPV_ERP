@@ -62,6 +62,32 @@ public class CashPaymentRecorder {
         }
     }
 
+    /** Records cash physically paid out for a confirmed return, once per return document. */
+    public void recordRefund(UUID terminalId, CommercialDocument refundDocument, java.math.BigDecimal amount) {
+        var value = Money.euros(amount);
+        if (value.signum() <= 0) {
+            return;
+        }
+        if (movements.existsByDocumentIdAndType(refundDocument.getId(), CashMovementType.DEVOLUCION_EFECTIVO)) {
+            return;
+        }
+        var session = openSession(terminalId);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var user = organization.currentUser(authentication);
+        movements.save(CashMovement.sessionMovement(
+                session.getStoreId(),
+                session.getTerminalId(),
+                session,
+                CashMovementType.DEVOLUCION_EFECTIVO,
+                value,
+                Instant.now(clock),
+                user.getId(),
+                null,
+                "Devolucion " + refundDocument.getNumero(),
+                refundDocument.getId(),
+                null));
+    }
+
     private CashSession openSession(UUID terminalId) {
         return sessions.findByTerminalIdAndStatus(terminalId, CashSessionStatus.ABIERTA)
                 .orElseThrow(() -> new IllegalStateException("No hay una sesion de caja abierta"));

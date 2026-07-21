@@ -73,6 +73,7 @@ public interface PaymentTerminalOperationRepository extends JpaRepository<Paymen
             where operation.operation_type in ('CHARGE','REFUND')
               and operation.status = 'APPROVED'
               and operation.document_id is null
+              and operation.document_managed_externally = false
               and (operation.next_retry_at is null or operation.next_retry_at <= :now)
               and (operation.processing_lease_until is null or operation.processing_lease_until <= :now)
               and not exists (

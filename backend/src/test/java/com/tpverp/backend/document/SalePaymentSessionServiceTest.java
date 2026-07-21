@@ -118,4 +118,16 @@ class SalePaymentSessionServiceTest {
   assertThatThrownBy(()->service.finalizeSession(sessionId,auth)).hasMessage("payment_operation_not_finalizable");
   verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),any(),eq(auth));
  }
+
+ @Test void voucherAllocationChecksBalanceAndCannotReuseTheSameCodeInOneSession(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var vouchers=mock(VoucherService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));when(vouchers.availableBalance("V-100")).thenReturn(new BigDecimal("20.00"));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops);service.setVoucherService(vouchers);
+
+  service.add(sessionId,UUID.randomUUID(),"voucher-1",SalePaymentAllocationKind.VOUCHER,new BigDecimal("5.00"),null,"V-100",auth);
+
+  assertThat(session.getAllocations()).singleElement().satisfies(allocation->{assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.VOUCHER);assertThat(allocation.getReference()).isEqualTo("V-100");assertThat(allocation.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);});
+  assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"voucher-2",SalePaymentAllocationKind.VOUCHER,new BigDecimal("5.00"),null,"V-100",auth)).hasMessage("voucher_already_allocated");
+  verify(vouchers,times(2)).availableBalance("V-100");
+ }
 }

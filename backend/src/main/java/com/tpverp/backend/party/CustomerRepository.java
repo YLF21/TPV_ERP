@@ -1,5 +1,6 @@
 package com.tpverp.backend.party;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     List<Customer> findByCompanyIdOrderByFiscalName(UUID companyId);
+
+    List<Customer> findByCompanyIdAndIdIn(UUID companyId, Collection<UUID> ids);
 
     Optional<Customer> findByCompanyIdAndDocumentTypeAndDocumentNumber(
             UUID companyId, DocumentType documentType, String documentNumber);

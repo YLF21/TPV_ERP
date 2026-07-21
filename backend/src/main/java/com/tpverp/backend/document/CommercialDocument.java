@@ -69,6 +69,8 @@ public class CommercialDocument {
     private String motivoAnulacion;
     @Column(name = "payment_terminal_refund_operation_id", unique = true)
     private UUID paymentTerminalRefundOperationId;
+    @Column(name = "return_request_id", unique = true)
+    private UUID returnRequestId;
     @Column(name = "descuento_global", nullable = false, precision = 5, scale = 2)
     private BigDecimal descuentoGlobal;
     @Column(name = "base_total", nullable = false, precision = 19, scale = 2)
@@ -124,6 +126,15 @@ public class CommercialDocument {
         if (paymentTerminalRefundOperationId != null && !paymentTerminalRefundOperationId.equals(operationId))
             throw new IllegalStateException("Documento ya asociado a otra devolucion");
         paymentTerminalRefundOperationId = Objects.requireNonNull(operationId);
+    }
+
+    public UUID getReturnRequestId() { return returnRequestId; }
+
+    public void identifyReturnRequest(UUID requestId) {
+        if (returnRequestId != null && !returnRequestId.equals(requestId)) {
+            throw new IllegalStateException("Documento ya asociado a otra solicitud de devolucion");
+        }
+        returnRequestId = Objects.requireNonNull(requestId, "requestId");
     }
 
     public UUID getTiendaId() {

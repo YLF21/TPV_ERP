@@ -141,6 +141,8 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
 
     java.util.Optional<CommercialDocument> findByPaymentTerminalRefundOperationId(UUID operationId);
 
+    java.util.Optional<CommercialDocument> findByReturnRequestId(UUID requestId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = "lineas")
     @Query("select document from CommercialDocument document where document.id = :id and document.tiendaId = :storeId")

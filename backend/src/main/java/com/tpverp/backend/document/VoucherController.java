@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import com.tpverp.backend.organization.CurrentOrganization;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,14 +20,17 @@ public class VoucherController {
 
     private final VoucherService vouchers;
     private final CommercialDocumentRepository documents;
+    private final CurrentOrganization organization;
 
-    public VoucherController(VoucherService vouchers, CommercialDocumentRepository documents) {
+    public VoucherController(VoucherService vouchers, CommercialDocumentRepository documents,
+            CurrentOrganization organization) {
         this.vouchers = vouchers;
         this.documents = documents;
+        this.organization = organization;
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
     public List<VoucherView> list() {
         return vouchers.list().stream().map(VoucherView::from).toList();
     }
@@ -47,7 +51,7 @@ public class VoucherController {
     }
 
     private CommercialDocument document(UUID id) {
-        var document = documents.findById(id);
+        var document = documents.findByIdAndTiendaId(id, organization.currentStore().getId());
         if (document.isEmpty()) {
             throw new IllegalArgumentException("documento no encontrado");
         }

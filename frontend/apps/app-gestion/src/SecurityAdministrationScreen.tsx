@@ -19,6 +19,7 @@ import {
   renameSecurityRole,
   saveSecurityRolePermissions,
   updateSecurityUserActive,
+  updateSecurityUserDiscountPolicy,
   updateSecurityUserIdentity,
   updateSecurityUserRole,
   type PermissionCatalogItem,
@@ -29,7 +30,7 @@ import {
 
 type Translator = (key: string) => string;
 export type SecurityAdministrationMode = "users" | "roles";
-type UserDialogKind = "create" | "identity" | "role" | "password";
+type UserDialogKind = "create" | "identity" | "role" | "password" | "discount";
 type UserColumnKey = "userId" | "name" | "userName" | "role" | "status";
 
 export const securityUserTableKey = "gestion.security.users";
@@ -200,6 +201,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
                 <div><dt>{t("gestion.users.column.userName")}</dt><dd>{selected.userName}</dd></div>
                 <div><dt>{t("gestion.users.column.role")}</dt><dd>{selected.role}</dd></div>
                 <div><dt>{t("gestion.users.protected")}</dt><dd>{selected.protectedUser ? t("common.yes") : t("common.no")}</dd></div>
+                <div><dt>{t("gestion.users.field.maxDiscount")}</dt><dd>{Number(selected.maxDiscountPercent).toFixed(2)}%</dd></div>
               </dl>
               {selected.protectedUser ? (
                 <p className="gestion-security-notice">{t("gestion.users.adminProtected")}</p>
@@ -208,6 +210,7 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
                   <button type="button" onClick={() => setDialog("identity")}>{t("gestion.users.editIdentity")}</button>
                   <button type="button" onClick={() => setDialog("role")}>{t("gestion.users.changeRole")}</button>
                   <button type="button" onClick={() => setDialog("password")}>{t("gestion.users.resetPassword")}</button>
+                  <button type="button" onClick={() => setDialog("discount")}>{t("gestion.users.discountPolicy")}</button>
                   <button type="button" className={selected.active ? "danger" : ""} onClick={() => setConfirmActive(!selected.active)}>
                     {t(selected.active ? "gestion.users.deactivate" : "gestion.users.activate")}
                   </button>
@@ -262,6 +265,7 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
   const [roleId, setRoleId] = useState(initialRole);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState(String(user?.maxDiscountPercent ?? 0));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -284,6 +288,13 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
       } else if (kind === "password" && user) {
         await resetSecurityUserPassword(user.id, password, token);
         saved = user;
+      } else if (kind === "discount" && user) {
+        const limit = Number(maxDiscountPercent);
+        if (!Number.isFinite(limit) || limit < 0 || limit > 100) {
+          setError(t("gestion.users.discountInvalid"));
+          return;
+        }
+        saved = await updateSecurityUserDiscountPolicy(user.id, limit, token);
       } else {
         return;
       }
@@ -313,6 +324,9 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
             <label><span>{t("gestion.users.field.password")}</span><input autoFocus={kind === "password"} required inputMode="numeric" type="password" minLength={4} maxLength={12} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <label><span>{t("gestion.users.field.confirmPassword")}</span><input required inputMode="numeric" type="password" minLength={4} maxLength={12} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
           </>
+        )}
+        {kind === "discount" && (
+          <label><span>{t("gestion.users.field.maxDiscount")}</span><input autoFocus required type="number" min="0" max="100" step="0.01" value={maxDiscountPercent} onChange={(event) => setMaxDiscountPercent(event.target.value)} /></label>
         )}
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
         <footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving || ((kind === "create" || kind === "role") && !roleId)}>{saving ? t("common.saving") : t("common.save")}</button></footer>

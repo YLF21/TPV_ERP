@@ -26,6 +26,7 @@ public class VoucherService {
 
     @Transactional
     public Voucher issueFromNegativeTicket(CommercialDocument ticket) {
+        requireCurrentStore(ticket);
         if (ticket.getTipo() != CommercialDocumentType.TICKET || ticket.getTotal().signum() >= 0) {
             throw new IllegalArgumentException("solo un ticket negativo genera vale");
         }
@@ -44,9 +45,28 @@ public class VoucherService {
     @Transactional
     public VoucherConsumptionResult consume(
             String code, BigDecimal pendingAmount, CommercialDocument purchaseTicket) {
+        return consume(code, pendingAmount, purchaseTicket, false);
+    }
+
+    @Transactional
+    public VoucherConsumptionResult consumeExact(
+            String code, BigDecimal amount, CommercialDocument purchaseTicket) {
+        return consume(code, amount, purchaseTicket, true);
+    }
+
+    private VoucherConsumptionResult consume(
+            String code, BigDecimal pendingAmount, CommercialDocument purchaseTicket,
+            boolean exactAmountRequired) {
+        requireCurrentStore(purchaseTicket);
         requireNumberedPurchaseTicket(purchaseTicket);
         var voucher = findActive(code);
         var requested = Money.euros(pendingAmount);
+        if (requested.signum() <= 0) {
+            throw new IllegalArgumentException("importe de vale debe ser positivo");
+        }
+        if (exactAmountRequired && voucher.balance().compareTo(requested) < 0) {
+            throw new IllegalStateException("saldo de vale insuficiente");
+        }
         var consumed = requested.min(voucher.balance());
         var replacement = Optional.<Voucher>empty();
         if (voucher.balance().compareTo(requested) > 0) {
@@ -80,7 +100,7 @@ public class VoucherService {
     // Detecta tickets que han usado o generado vales para evitar anulaciones incoherentes.
 
     private Voucher findActive(String code) {
-        return vouchers.findByTiendaIdAndCode(organization.currentStore().getId(), code)
+        return vouchers.findLockedByTiendaIdAndCode(organization.currentStore().getId(), code)
                 .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
                 .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
     }
@@ -101,6 +121,20 @@ public class VoucherService {
         if (ticket == null || ticket.getTipo() != CommercialDocumentType.TICKET
                 || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
             throw new IllegalArgumentException("el consumo de vale necesita un ticket numerado");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal availableBalance(String code) {
+        return vouchers.findByTiendaIdAndCode(organization.currentStore().getId(), code)
+                .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
+                .map(Voucher::balance)
+                .orElseThrow(() -> new IllegalArgumentException("vale activo no encontrado"));
+    }
+
+    private void requireCurrentStore(CommercialDocument ticket) {
+        if (ticket == null || !organization.currentStore().getId().equals(ticket.getTiendaId())) {
+            throw new IllegalArgumentException("documento no encontrado");
         }
     }
 

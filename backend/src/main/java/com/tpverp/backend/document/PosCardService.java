@@ -44,7 +44,7 @@ public class PosCardService {
         var existing=coordinator.existing(request.checkoutId(),terminalId,requestHash);
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
 
-        var command=sales.authoritativeCommand(request.sale());
+        var command=sales.authoritativeCommand(request.sale(),authentication);
         var quotedTicket=documents.quoteTicket(command,authentication); BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         var configuration=configurations.required(terminalId);

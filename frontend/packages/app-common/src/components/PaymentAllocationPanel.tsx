@@ -1,4 +1,4 @@
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { remainingPaymentCents, type AllocationKind, type PaymentSession } from "../sale/paymentOrchestration";
 import type { LocaleCode } from "../types";
@@ -8,6 +8,7 @@ type Props = {
   session: PaymentSession;
   providers: string[];
   manualCardEnabled: boolean;
+  vouchers?: Array<{ code: string; balance: number | string }>;
   onAdd: (input: { kind: AllocationKind; amountCents: number; provider?: string; reference?: string }) => void;
   onQuery: (operationId: string) => void;
   onManage?: (operationId: string) => void;
@@ -49,20 +50,24 @@ export function ManualCardReferenceDialog({ locale, reference, onReferenceChange
   </div>;
 }
 
-export function PaymentAllocationPanel({ locale, session, providers, manualCardEnabled, onAdd, onQuery, onManage, allowAdd = true }: Props) {
+export function PaymentAllocationPanel({ locale, session, providers, manualCardEnabled, vouchers = [], onAdd, onQuery, onManage, allowAdd = true }: Props) {
   const t = createTranslator(locale);
   const money = (cents: number) => (cents / 100).toLocaleString(localeName[locale], { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const remaining = remainingPaymentCents(session);
   const [amount, setAmount] = useState(String(remaining / 100));
+  const [voucherCode, setVoucherCode] = useState("");
   const [manualCardDialog, dispatchManualCardDialog] = useReducer(manualCardDialogState, { open: false, reference: "" });
   const amountCents = Math.round(Number(amount.replace(",", ".")) * 100);
   const compensationRequired = session.status === "COMPENSATION_REQUIRED";
+  const selectedVoucher = vouchers.find((voucher) => voucher.code === voucherCode);
+  const voucherBalanceCents = Math.round(Number(selectedVoucher?.balance ?? 0) * 100);
+  useEffect(() => setAmount(String(remaining / 100)), [remaining]);
   return <section className="payment-allocation-panel" aria-label={t("payment.split.title")}>
     <h3>{t("payment.split.title")}</h3>
     <strong>{t("payment.split.remaining")}: {money(remaining)}</strong>
     {compensationRequired && <p role="alert">{t("payment.split.compensationRequired")}</p>}
     <ul>{session.allocations.map((allocation) => <li key={allocation.idempotencyKey}>
-      <span>{allocation.provider ?? t(allocation.kind === "CASH" ? "payment.split.cash" : "payment.split.manualCard")}</span>{" · "}
+      <span>{allocation.provider ?? t(allocation.kind === "CASH" ? "payment.split.cash" : allocation.kind === "VOUCHER" ? "payment.split.voucher" : "payment.split.manualCard")}</span>{" · "}
       <span>{money(allocation.amountCents)}</span>{" · "}<b>{t(`payment.split.status.${allocation.status}`)}</b>
       {allocation.authorization && <span>{` · ${allocation.authorization}`}</span>}
       {allocation.message && <span>{` · ${allocation.message}`}</span>}
@@ -75,6 +80,15 @@ export function PaymentAllocationPanel({ locale, session, providers, manualCardE
       <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "CASH", amountCents })}>{t("payment.split.cash")}</button>
       {manualCardEnabled && <button type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => dispatchManualCardDialog({ type: "open" })}>{t("payment.split.manualCard")}</button>}
       {providers.map((provider) => <button key={provider} type="button" disabled={amountCents <= 0 || amountCents > remaining} onClick={() => onAdd({ kind: "INTEGRATED_CARD", amountCents, provider })}>{provider}</button>)}
+      {vouchers.length > 0 && <div className="payment-voucher-allocation">
+        <label>{t("payment.split.voucher")}
+          <select value={voucherCode} onChange={(event) => setVoucherCode(event.currentTarget.value)}>
+            <option value="">{t("payment.split.voucherSelect")}</option>
+            {vouchers.map((voucher) => <option key={voucher.code} value={voucher.code}>{voucher.code} · {money(Math.round(Number(voucher.balance) * 100))}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={!voucherCode || amountCents <= 0 || amountCents > remaining || amountCents > voucherBalanceCents} onClick={() => onAdd({ kind: "VOUCHER", amountCents, reference: voucherCode })}>{t("payment.split.voucherApply")}</button>
+      </div>}
     </div>}
     {manualCardDialog.open && <ManualCardReferenceDialog
       locale={locale}

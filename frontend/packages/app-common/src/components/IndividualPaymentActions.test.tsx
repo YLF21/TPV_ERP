@@ -34,6 +34,18 @@ describe("IndividualPaymentActions", () => {
     expect(within(pending).getByText("F12")).toBeInTheDocument();
   });
 
+  it.each([
+    ["en", "Cash", "Card", "Charge to customer", "PgDn"],
+    ["zh", "\u73b0\u91d1", "\u94f6\u884c\u5361", "\u5ba2\u6237\u6302\u8d26", "PgDn"],
+  ] as const)("localizes payment actions in %s", (locale, cashLabel, cardLabel, pendingLabel, pageDownKey) => {
+    render(<IndividualPaymentActions locale={locale} disabled={false} busy={false} cardEnabled {...callbacks()} />);
+
+    const cash = screen.getByRole("button", { name: new RegExp(cashLabel) });
+    expect(screen.getByRole("button", { name: new RegExp(cardLabel) })).toBeEnabled();
+    expect(screen.getByRole("button", { name: new RegExp(pendingLabel) })).toBeEnabled();
+    expect(within(cash).getByText(pageDownKey)).toBeInTheDocument();
+  });
+
   it("dispatches cash, card and pending callbacks through DOM click events", () => {
     const handlers = callbacks();
     render(<IndividualPaymentActions disabled={false} busy={false} cardEnabled {...handlers} />);

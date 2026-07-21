@@ -1179,6 +1179,26 @@ describe("SaleScreen", () => {
     expect(html).toContain("0,00");
   });
 
+  it.each([
+    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Gestionar tickets", "Buscar y realizar acciones"]],
+    ["en", ["Management", "Parked sales", "Save or recover", "Manage tickets", "Search and perform actions"]],
+    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "\u7968\u636e\u7ba1\u7406", "\u641c\u7d22\u5e76\u6267\u884c\u64cd\u4f5c"]],
+  ] as const)("localizes sale management actions in %s", (locale, labels) => {
+    const html = renderToStaticMarkup(
+      <SaleScreen
+        app="venta"
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    labels.forEach((label) => expect(html).toContain(label));
+  });
+
   it.each(["en", "zh"] as const)("keeps dynamic product names and codes literal in %s", async (locale) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
       { id: "literal-product", name: "Café 原样", code: "SKU-原样-001", salePrice: 12.34 },

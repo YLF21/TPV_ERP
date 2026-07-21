@@ -36,6 +36,14 @@ public class PaymentTerminalOperationController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_READ')")
     public OperationView status(@PathVariable UUID id){ return OperationView.from(service.get(id)); }
 
+    @GetMapping("/operations/by-payment/{paymentId}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_READ')")
+    public OperationView byPayment(@PathVariable UUID paymentId){
+        return service.findByDocumentPaymentId(paymentId)
+                .map(OperationView::from)
+                .orElseThrow(() -> new IllegalArgumentException("Operacion de tarjeta no encontrada"));
+    }
+
     @PostMapping("/operations/{id}/query")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_READ')")
     public OperationView query(@PathVariable UUID id){ return OperationView.from(service.query(id)); }

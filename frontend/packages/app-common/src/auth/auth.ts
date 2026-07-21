@@ -76,6 +76,7 @@ type LoginResult = {
   userName: string;
   role: string;
   permissions?: string[];
+  maxDiscountPercent?: number | string;
 };
 
 export async function authenticateRemote(
@@ -103,7 +104,8 @@ export async function authenticateRemote(
     displayName: result.userName,
     role: result.role,
     accessToken: result.accessToken,
-    permissions: permissionsFromLogin(result.role, result.permissions)
+    permissions: permissionsFromLogin(result.role, result.permissions),
+    maxDiscountPercent: Number(result.maxDiscountPercent ?? (result.role.toUpperCase() === "ADMIN" ? 100 : 0))
   };
   if (!canAccessApp(session.permissions, app)) {
     throw new Error("no_access");
