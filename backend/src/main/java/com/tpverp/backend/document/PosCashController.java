@@ -36,7 +36,14 @@ public class PosCashController {
         return service.charge(request, authentication);
     }
 
-    public record SaleRequest(UUID customerId, @NotEmpty List<@Valid LineRequest> lines) {}
+    public record SaleRequest(
+            UUID customerId,
+            @NotEmpty List<@Valid LineRequest> lines,
+            String discountAuthorizationToken) {
+        public SaleRequest(UUID customerId, List<LineRequest> lines) {
+            this(customerId, lines, null);
+        }
+    }
 
     public record LineRequest(
             @NotNull UUID productId,

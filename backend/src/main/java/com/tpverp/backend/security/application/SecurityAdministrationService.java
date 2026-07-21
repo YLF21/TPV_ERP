@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.math.BigDecimal;
 import java.util.stream.Collectors;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -159,6 +160,18 @@ public class SecurityAdministrationService {
                 .forEach(session -> session.revocar(user, "PASSWORD_RESET", now));
         auditService.record(
                 "USER_PASSWORD_RESET", AuditResult.EXITO, Map.of("userId", userId));
+    }
+
+    @Transactional
+    public UserItem changeUserDiscountPolicy(UUID userId, BigDecimal maxDiscountPercent) {
+        UserAccount user = user(userId);
+        requireMutableUser(user);
+        user.changeMaxDiscountPercent(maxDiscountPercent);
+        auditService.record(
+                "USER_DISCOUNT_POLICY_CHANGED",
+                AuditResult.EXITO,
+                Map.of("userId", userId, "maxDiscountPercent", user.getMaxDiscountPercent()));
+        return UserItem.from(user);
     }
 
     @Transactional
@@ -356,11 +369,12 @@ public class SecurityAdministrationService {
 
     public record UserItem(
             UUID id, String userId, String name, String userName,
-            String role, boolean active, boolean protectedUser) {
+            String role, boolean active, boolean protectedUser,
+            BigDecimal maxDiscountPercent) {
         static UserItem from(UserAccount user) {
             return new UserItem(
                     user.getId(), user.getUserId(), user.getNombre(), user.getUserName(), user.getRol().getNombre(),
-                    user.isActivo(), user.isProtegido());
+                    user.isActivo(), user.isProtegido(), user.getMaxDiscountPercent());
         }
     }
 

@@ -44,6 +44,12 @@ public class PaymentTerminalOperationsService {
     public PaymentTerminalOperation get(UUID id){ var operation=operations.findById(id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND,"PAYMENT_OPERATION_NOT_FOUND","Operacion no encontrada"));
         if(!operation.getStoreId().equals(organization.currentStore().getId())) throw problem(HttpStatus.NOT_FOUND,"PAYMENT_OPERATION_NOT_FOUND","Operacion no encontrada"); return operation; }
 
+    @Transactional(readOnly=true)
+    public java.util.Optional<PaymentTerminalOperation> findByDocumentPaymentId(UUID paymentId) {
+        return operations.findByDocumentPaymentId(paymentId)
+                .filter(operation -> operation.getStoreId().equals(organization.currentStore().getId()));
+    }
+
     public PaymentTerminalOperation query(UUID id) {
         var operation=get(id);
         if (operation.getStatus()==PaymentTerminalOperationStatus.PENDING || operation.getStatus()==PaymentTerminalOperationStatus.SENT
@@ -79,17 +85,9 @@ public class PaymentTerminalOperationsService {
         if(original.getDocumentId()==null) throw problem(HttpStatus.CONFLICT,"PAYMENT_REFUND_DOCUMENT_PENDING","El cobro aun no tiene documento fiscal");
         var canonical=PaymentTerminalRefundLineSelection.canonical(lines);
         var key=requiredKey(idempotencyKey);
-        var hash=hash("REFUND|"+originalId+"|"+amount.stripTrailingZeros().toPlainString()+"|"+canonical);
         if(operations.findByTerminalIdAndIdempotencyKey(configuration.terminalId(),key).isEmpty())
             documents.validateApprovedCardRefund(original.getDocumentId(),amount,lines);
-        var adjustment=adjustments.reserveRefund(operationId,originalId,configuration.terminalId(),configuration.storeId(),
-                configuration.provider(),key,hash,amount,configuration.configurationHash(),configuration.configurationVersion(),clock.instant(),canonical);
-        if(adjustment.getStatus()!=PaymentTerminalOperationStatus.PENDING) return adjustment;
-        adjustments.markSent(operationId,clock.instant());
-        PaymentTerminalResult result;
-        try { result=gateway(configuration).refund(new PaymentTerminalRefundCommand(operationId,originalId,amount,reference(original)),context(configuration,idempotencyKey)); }
-        catch(RuntimeException ex){ result=new PaymentTerminalResult(PaymentTerminalOperationStatus.TIMEOUT,"PAYMENT_TRANSPORT_TIMEOUT",null,null,"Resultado incierto; consulte el estado"); }
-        var completed=adjustments.complete(operationId,result,clock.instant());
+        var completed=performRefund(original,configuration,operationId,key,amount,canonical,false);
         if(completed.getStatus()==PaymentTerminalOperationStatus.APPROVED && completed.getDocumentId()==null){
             var refreshed=get(originalId);
             try { var document=documents.createApprovedCardRefund(operationId,refreshed.getDocumentId(),amount,lines,authentication);
@@ -97,6 +95,37 @@ public class PaymentTerminalOperationsService {
             catch(RuntimeException failure){return recovery.documentFailure(operationId,"Fallo al crear el documento fiscal de devolucion");}
         }
         return completed;
+    }
+
+    /** Sends and persists a card refund without creating a fiscal document.
+     * Used by the mixed-return orchestrator, which creates one rectifying ticket for all payout methods. */
+    public PaymentTerminalOperation refundPaymentOnly(
+            UUID originalId, UUID operationId, String idempotencyKey, BigDecimal amount) {
+        var original=get(originalId); var configuration=configuration(original);
+        requireCapability(configuration,PaymentTerminalCapability.REFUND);
+        if(original.getDocumentId()==null)
+            throw problem(HttpStatus.CONFLICT,"PAYMENT_REFUND_DOCUMENT_PENDING","El cobro aun no tiene documento fiscal");
+        return performRefund(original,configuration,operationId,requiredKey(idempotencyKey),amount,"",true);
+    }
+
+    private PaymentTerminalOperation performRefund(
+            PaymentTerminalOperation original,
+            CardTerminalConfiguration configuration,
+            UUID operationId,
+            String idempotencyKey,
+            BigDecimal amount,
+            String canonicalLines,
+            boolean documentManagedExternally) {
+        var hash=hash("REFUND|"+original.getId()+"|"+amount.stripTrailingZeros().toPlainString()+"|"+canonicalLines);
+        var adjustment=adjustments.reserveRefund(operationId,original.getId(),configuration.terminalId(),configuration.storeId(),
+                configuration.provider(),idempotencyKey,hash,amount,configuration.configurationHash(),configuration.configurationVersion(),clock.instant(),canonicalLines,
+                documentManagedExternally);
+        if(adjustment.getStatus()!=PaymentTerminalOperationStatus.PENDING) return adjustment;
+        adjustments.markSent(operationId,clock.instant());
+        PaymentTerminalResult result;
+        try { result=gateway(configuration).refund(new PaymentTerminalRefundCommand(operationId,original.getId(),amount,reference(original)),context(configuration,idempotencyKey)); }
+        catch(RuntimeException ex){ result=new PaymentTerminalResult(PaymentTerminalOperationStatus.TIMEOUT,"PAYMENT_TRANSPORT_TIMEOUT",null,null,"Resultado incierto; consulte el estado"); }
+        return adjustments.complete(operationId,result,clock.instant());
     }
 
     @Transactional(readOnly=true)

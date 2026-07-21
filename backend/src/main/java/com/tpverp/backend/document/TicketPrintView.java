@@ -14,6 +14,10 @@ public record TicketPrintView(
         BigDecimal total) {
 
     public static TicketPrintView from(CommercialDocument document) {
+        return from(document, List.of());
+    }
+
+    public static TicketPrintView from(CommercialDocument document, List<RefundTender> refundPayouts) {
         if (document.getEstado() != DocumentStatus.CONFIRMADO
                 || document.getConfirmadoEn() == null) {
             throw new IllegalArgumentException(
@@ -25,10 +29,16 @@ public record TicketPrintView(
                         .map(line -> new Line(line.getNombre(), line.getCantidad(),
                                 line.getPrecioUnitario(), line.getTotal()))
                         .toList(),
-                document.getPagos().stream()
-                        .map(payment -> new Payment(
-                                payment.getMetodoPago().getNombre(), payment.getImporte()))
-                        .toList(),
+                refundPayouts == null || refundPayouts.isEmpty()
+                        ? document.getPagos().stream()
+                                .map(payment -> new Payment(
+                                        payment.getMetodoPago().getNombre(), payment.getImporte()))
+                                .toList()
+                        : refundPayouts.stream()
+                                .map(payout -> new Payment(
+                                        payout.getType() == RefundTenderType.CASH ? "EFECTIVO" : "TARJETA",
+                                        payout.getAmount().negate()))
+                                .toList(),
                 document.getTotal());
     }
 

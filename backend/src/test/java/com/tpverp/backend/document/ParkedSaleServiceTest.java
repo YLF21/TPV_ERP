@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,7 +60,7 @@ class ParkedSaleServiceTest {
     }
 
     @Test
-    void parksSaleWithoutTicketNumberAndRemovesItWhenOpened() {
+    void parksSaleWithoutTicketNumberAndKeepsItUntilRestoreIsAcknowledged() {
         when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
         var customerId = UUID.randomUUID();
 
@@ -67,7 +68,7 @@ class ParkedSaleServiceTest {
         when(repository.findByIdAndTiendaId(parked.getId(), store.getId()))
                 .thenReturn(Optional.of(parked));
 
-        var opened = service.openAndRemove(parked.getId());
+        var opened = service.open(parked.getId());
 
         assertThat(parked.getTicketNumber()).isNull();
         assertThat(parked.getCustomerId()).isEqualTo(customerId);
@@ -75,6 +76,9 @@ class ParkedSaleServiceTest {
         assertThat(parked.getTotal()).isEqualByComparingTo("10.00");
         assertThat(opened.document().tipo()).isEqualTo(CommercialDocumentType.TICKET);
         assertThat(opened.document().clienteId()).isEqualTo(customerId);
+        verify(repository, never()).delete(parked);
+
+        service.delete(parked.getId());
         verify(repository).delete(parked);
     }
 

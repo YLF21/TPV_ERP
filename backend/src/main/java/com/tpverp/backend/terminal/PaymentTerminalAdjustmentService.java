@@ -27,10 +27,25 @@ public class PaymentTerminalAdjustmentService {
     public PaymentTerminalOperation reserveRefund(UUID id, UUID originalId, UUID terminalId, UUID storeId,
             PaymentTerminalProvider provider, String idempotencyKey, String requestHash, BigDecimal amount,
             String configurationHash, long configurationVersion, Instant now, String refundLineSelection) {
+        return reserveRefund(id, originalId, terminalId, storeId, provider, idempotencyKey, requestHash, amount,
+                configurationHash, configurationVersion, now, refundLineSelection, false);
+    }
+
+    @Transactional
+    public PaymentTerminalOperation reserveRefund(UUID id, UUID originalId, UUID terminalId, UUID storeId,
+            PaymentTerminalProvider provider, String idempotencyKey, String requestHash, BigDecimal amount,
+            String configurationHash, long configurationVersion, Instant now, String refundLineSelection,
+            boolean documentManagedExternally) {
         repository.lockIdempotencyKey(terminalId+":"+idempotencyKey);
         var replay = repository.findByTerminalIdAndIdempotencyKey(terminalId, idempotencyKey);
-        if (replay.isPresent()) return compatibleReplay(replay.orElseThrow(), PaymentTerminalOperationType.REFUND,
-                originalId, requestHash, amount);
+        if (replay.isPresent()) {
+            var operation = compatibleReplay(replay.orElseThrow(), PaymentTerminalOperationType.REFUND,
+                    originalId, requestHash, amount);
+            if (operation.isDocumentManagedExternally() != documentManagedExternally) {
+                throw new IllegalStateException("La clave idempotente pertenece a otro flujo de devolucion");
+            }
+            return operation;
+        }
         var original = lockedCompatibleCharge(originalId, terminalId, storeId, provider);
         if (repository.activeVoidCount(originalId) != 0) {
             throw new IllegalStateException("El cobro tiene una anulacion activa");
@@ -45,6 +60,7 @@ public class PaymentTerminalAdjustmentService {
                 original.getMode(), PaymentTerminalOperationType.REFUND, originalId, idempotencyKey,
                 requestHash, amount, configurationHash, configurationVersion, now);
         operation.assignRefundLineSelection(refundLineSelection);
+        if (documentManagedExternally) operation.manageDocumentExternally();
         return repository.saveAndFlush(operation);
     }
 

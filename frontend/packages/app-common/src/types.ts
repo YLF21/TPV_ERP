@@ -64,6 +64,7 @@ export type UserSession = {
   role?: string;
   accessToken?: string;
   permissions: Permission[];
+  maxDiscountPercent?: number;
 };
 
 export type LocaleCode = "es" | "en" | "zh";

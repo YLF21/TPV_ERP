@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.math.BigDecimal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -83,6 +84,14 @@ public class SecurityAdministrationController {
             @Valid @RequestBody ResetPasswordRequest request) {
         service.resetPassword(userId, request.password());
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/users/{userId}/discount-policy")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('USERS_MANAGE','GESTION_USUARIO')")
+    public SecurityAdministrationService.UserItem changeDiscountPolicy(
+            @PathVariable UUID userId,
+            @Valid @RequestBody DiscountPolicyRequest request) {
+        return service.changeUserDiscountPolicy(userId, request.maxDiscountPercent());
     }
 
     @PutMapping("/users/{userId}/stores")
@@ -169,6 +178,9 @@ public class SecurityAdministrationController {
     }
 
     public record ResetPasswordRequest(@NotBlank @Pattern(regexp = "\\d{4,12}") String password) {
+    }
+
+    public record DiscountPolicyRequest(@NotNull BigDecimal maxDiscountPercent) {
     }
 
     public record StoreAccessRequest(@NotNull Set<UUID> storeIds) {

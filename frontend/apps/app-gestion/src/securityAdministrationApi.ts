@@ -8,6 +8,7 @@ export type SecurityUser = {
   role: string;
   active: boolean;
   protectedUser: boolean;
+  maxDiscountPercent?: number | string;
 };
 
 export type SecurityRole = {
@@ -76,6 +77,14 @@ export function resetSecurityUserPassword(userId: string, password: string, toke
     token,
     method: "PUT",
     body: { password }
+  });
+}
+
+export function updateSecurityUserDiscountPolicy(userId: string, maxDiscountPercent: number, token?: string) {
+  return apiRequest<SecurityUser>(`/users/${encodeURIComponent(userId)}/discount-policy`, {
+    token,
+    method: "PUT",
+    body: { maxDiscountPercent }
   });
 }
 

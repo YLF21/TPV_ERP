@@ -514,8 +514,29 @@ public class DocumentService {
     public CommercialDocument createApprovedCardRefund(UUID operationId,
             UUID originalDocumentId, BigDecimal approvedAmount,
             List<PaymentTerminalRefundLineSelection> selections, Authentication authentication) {
-        var replay = documents.findByPaymentTerminalRefundOperationId(Objects.requireNonNull(operationId));
+        return createApprovedReturn(operationId, originalDocumentId, approvedAmount, selections,
+                operationId, authentication);
+    }
+
+    /**
+     * Creates exactly one fiscal return for cash, card or a mixed payout. The request id
+     * makes retries safe even when no payment-terminal operation exists.
+     */
+    @Transactional
+    public CommercialDocument createApprovedReturn(
+            UUID requestId,
+            UUID originalDocumentId,
+            BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> selections,
+            UUID paymentTerminalRefundOperationId,
+            Authentication authentication) {
+        var canonicalRequestId = Objects.requireNonNull(requestId, "requestId");
+        var replay = documents.findByReturnRequestId(canonicalRequestId);
         if (replay.isPresent()) return replay.orElseThrow();
+        if (paymentTerminalRefundOperationId != null) {
+            var terminalReplay = documents.findByPaymentTerminalRefundOperationId(paymentTerminalRefundOperationId);
+            if (terminalReplay.isPresent()) return terminalReplay.orElseThrow();
+        }
         var original = documents.findLockedRefundSource(Objects.requireNonNull(originalDocumentId, "originalDocumentId"),
                 organization.currentStore().getId()).orElseThrow(() -> new IllegalArgumentException("Documento no encontrado"));
         var plan = refundPlan(original, approvedAmount, selections);
@@ -525,7 +546,10 @@ public class DocumentService {
         var terminalId = currentTerminal.terminalId(authentication);
         refund.assignOriginTerminal(terminalId);
         refund.setParties(original.getClienteId(), null, null);
-        refund.identifyPaymentTerminalRefund(operationId);
+        refund.identifyReturnRequest(canonicalRequestId);
+        if (paymentTerminalRefundOperationId != null) {
+            refund.identifyPaymentTerminalRefund(paymentTerminalRefundOperationId);
+        }
         for (var selected : plan.lines()) refund.addLine(refundLine(refund, selected));
         if (refund.getTotal().compareTo(plan.amount().negate()) != 0) {
             throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");

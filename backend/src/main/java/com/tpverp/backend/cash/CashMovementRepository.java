@@ -28,4 +28,6 @@ public interface CashMovementRepository extends JpaRepository<CashMovement, UUID
             UUID storeId, UUID terminalId, Instant from, Instant to);
 
     boolean existsByDocumentoPagoId(UUID paymentId);
+
+    boolean existsByDocumentIdAndType(UUID documentId, CashMovementType type);
 }

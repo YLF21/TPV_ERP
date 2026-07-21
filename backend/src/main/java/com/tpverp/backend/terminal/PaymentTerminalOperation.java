@@ -42,6 +42,7 @@ public class PaymentTerminalOperation {
     @Column(name = "legacy_configuration_fingerprint", nullable = false) private boolean legacyConfigurationFingerprint;
     @Column(name = "document_id") private UUID documentId;
     @Column(name = "document_payment_id") private UUID documentPaymentId;
+    @Column(name = "document_managed_externally", nullable = false) private boolean documentManagedExternally;
     @Column(name = "refund_line_selection", columnDefinition = "text") private String refundLineSelection;
     @Column(name = "processing_owner") private UUID processingOwner;
     @Column(name = "processing_lease_until") private Instant processingLeaseUntil;
@@ -105,6 +106,13 @@ public class PaymentTerminalOperation {
         if (value.length() > 16_384) throw new IllegalArgumentException("El desglose de devolucion es demasiado grande");
         PaymentTerminalRefundLineSelection.parse(value);
         refundLineSelection = value;
+    }
+
+    public void manageDocumentExternally() {
+        if (operationType != PaymentTerminalOperationType.REFUND || documentId != null) {
+            throw new IllegalStateException("Solo una devolucion sin documento puede delegar su documentacion");
+        }
+        documentManagedExternally = true;
     }
 
     public void markSent(String code, Instant at, Map<String, ?> metadata) {
@@ -308,6 +316,7 @@ public class PaymentTerminalOperation {
     }
     public String getCurrency() { return currency; }
     public BigDecimal getRefundedAmount() { return refundedAmount; }
+    public boolean isDocumentManagedExternally() { return documentManagedExternally; }
     public String getConfigurationHash() { return configurationHash; }
     public long getConfigurationVersion() { return configurationVersion; }
     public boolean matchesConfigurationIdentity(CardTerminalConfiguration configuration) {

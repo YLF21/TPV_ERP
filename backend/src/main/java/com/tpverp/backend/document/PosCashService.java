@@ -32,7 +32,9 @@ public class PosCashService {
     private final PosCashCheckoutRepository checkouts;
     private final PosCashTicketSnapshot snapshots;
     private final CurrentTerminal currentTerminal;
+    private final DiscountAuthorizationService discountAuthorizations;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public PosCashService(
             DocumentService documents,
             ProductRepository products,
@@ -42,7 +44,8 @@ public class PosCashService {
             CurrentOrganization organization,
             PosCashCheckoutRepository checkouts,
             PosCashTicketSnapshot snapshots,
-            CurrentTerminal currentTerminal) {
+            CurrentTerminal currentTerminal,
+            DiscountAuthorizationService discountAuthorizations) {
         this.documents = documents;
         this.products = products;
         this.taxes = taxes;
@@ -52,12 +55,27 @@ public class PosCashService {
         this.checkouts = checkouts;
         this.snapshots = snapshots;
         this.currentTerminal = currentTerminal;
+        this.discountAuthorizations = discountAuthorizations;
+    }
+
+    PosCashService(
+            DocumentService documents,
+            ProductRepository products,
+            StoreTaxRepository taxes,
+            WarehouseRepository warehouses,
+            PaymentMethodRepository paymentMethods,
+            CurrentOrganization organization,
+            PosCashCheckoutRepository checkouts,
+            PosCashTicketSnapshot snapshots,
+            CurrentTerminal currentTerminal) {
+        this(documents, products, taxes, warehouses, paymentMethods, organization,
+                checkouts, snapshots, currentTerminal, null);
     }
 
     @Transactional(readOnly = true)
     public Quote quote(PosCashController.SaleRequest request, Authentication authentication) {
-        var ticket = documents.quoteTicket(authoritativeCommand(request), authentication);
-        return new Quote(ticket.getTotal());
+        var ticket = documents.quoteTicket(authoritativeCommand(request, authentication), authentication);
+        return Quote.from(ticket);
     }
 
     @Transactional
@@ -86,7 +104,7 @@ public class PosCashService {
             }
             return resultFrom(existing);
         }
-        var command = authoritativeCommand(request.sale());
+        var command = authoritativeCommand(request.sale(), authentication);
         var quote = documents.quoteTicket(command, authentication);
         var total = quote.getTotal();
         var received = Money.euros(request.received());
@@ -112,13 +130,23 @@ public class PosCashService {
     }
 
     @Transactional(readOnly = true)
-    DocumentCommand authoritativeCommand(PosCashController.SaleRequest request) {
+    DocumentCommand authoritativeCommand(
+            PosCashController.SaleRequest request,
+            Authentication authentication) {
         var store = organization.currentStore();
         var warehouse = warehouses.findByStoreIdAndPredeterminadoTrue(store.getId())
                 .filter(value -> value.isActive())
                 .orElseThrow(() -> new IllegalStateException("No hay un almacen predeterminado activo"));
         if (request.lines() == null || request.lines().isEmpty()) {
             throw new IllegalArgumentException("message.document.lines_required");
+        }
+        var maximumDiscount = request.lines().stream()
+                .map(PosCashController.LineRequest::discount)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+        if (discountAuthorizations != null) {
+            discountAuthorizations.enforce(
+                    maximumDiscount, request.discountAuthorizationToken(), authentication);
         }
         var lines = request.lines().stream().map(line -> {
             var product = products.findById(line.productId())
@@ -138,7 +166,43 @@ public class PosCashService {
                 BigDecimal.ZERO.setScale(2), true, lines);
     }
 
-    public record Quote(BigDecimal total) {}
+    @Transactional(readOnly = true)
+    DocumentCommand authoritativeCommand(PosCashController.SaleRequest request) {
+        return authoritativeCommand(request, null);
+    }
+
+    public record Quote(
+            BigDecimal total,
+            BigDecimal productTotal,
+            PromotionPreviewView promotionPreview) {
+
+        static Quote from(CommercialDocument ticket) {
+            var productTotal = Money.euros(ticket.getLineas().stream()
+                    .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                    .map(DocumentLine::getTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
+            var promotions = ticket.getLineas().stream()
+                    .filter(line -> line.getLineType() != DocumentLineType.PRODUCT)
+                    .filter(line -> line.getPromotionId() != null || line.getPromotionalCouponId() != null)
+                    .map(line -> new AppliedPromotion(
+                            line.getPromotionId(), line.getNombre(), line.getTotal().abs()))
+                    .toList();
+            return new Quote(ticket.getTotal(), productTotal, new PromotionPreviewView(promotions));
+        }
+
+        public Quote(BigDecimal total) {
+            this(total, total, new PromotionPreviewView(List.of()));
+        }
+    }
+
+    public record PromotionPreviewView(List<AppliedPromotion> appliedPromotions) {
+        public PromotionPreviewView {
+            appliedPromotions = List.copyOf(appliedPromotions == null ? List.of() : appliedPromotions);
+        }
+    }
+
+    public record AppliedPromotion(UUID id, String name, BigDecimal discountAmount) {
+    }
 
     static String requestHash(PosCashController.CashRequest request) {
         var canonical = new StringBuilder("v1|")

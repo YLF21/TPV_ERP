@@ -46,12 +46,17 @@ public class ParkedSaleService {
     }
 
     @Transactional
-    public ParkedSaleOpened openAndRemove(UUID id) {
+    public ParkedSaleOpened open(UUID id) {
         var sale = find(id);
-        sales.delete(sale);
         return new ParkedSaleOpened(sale.documentCommand(), sale.getComment());
     }
-    // Opening it on a terminal removes it from parked sales.
+
+    @Transactional
+    public void delete(UUID id) {
+        sales.delete(find(id));
+    }
+    // Opening only returns the snapshot. The client acknowledges a successful restore
+    // through DELETE so a frontend failure cannot lose the parked sale.
 
     private ParkedSale find(UUID id) {
         return sales.findByIdAndTiendaId(id, organization.currentStore().getId())

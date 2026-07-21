@@ -15,6 +15,7 @@ import jakarta.persistence.PreRemove;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -54,6 +55,9 @@ public class UserAccount {
 
     @Column(nullable = false)
     private boolean activo = true;
+
+    @Column(name = "max_discount_percent", nullable = false, precision = 5, scale = 2)
+    private BigDecimal maxDiscountPercent = BigDecimal.ZERO.setScale(2);
 
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
@@ -122,6 +126,26 @@ public class UserAccount {
 
     public boolean isActivo() {
         return activo;
+    }
+
+    public BigDecimal getMaxDiscountPercent() {
+        return protegido ? new BigDecimal("100.00") : maxDiscountPercent;
+    }
+
+    public void changeMaxDiscountPercent(BigDecimal value) {
+        if (protegido) {
+            throw new IllegalStateException("El usuario ADMIN mantiene un limite de descuento del 100%");
+        }
+        if (value == null || value.signum() < 0
+                || value.compareTo(new BigDecimal("100.00")) > 0) {
+            throw new IllegalArgumentException("El limite de descuento debe estar entre 0 y 100 con dos decimales");
+        }
+        try {
+            maxDiscountPercent = value.setScale(2, java.math.RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException error) {
+            throw new IllegalArgumentException(
+                    "El limite de descuento debe estar entre 0 y 100 con dos decimales", error);
+        }
     }
 
     public boolean mustChangePassword() {

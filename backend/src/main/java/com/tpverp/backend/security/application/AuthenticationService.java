@@ -129,6 +129,7 @@ public class AuthenticationService {
 				current.getUsuario().getNombre(),
 				current.getUsuario().getRol().getNombre(),
 				current.getUsuario().mustChangePassword(),
+				current.getUsuario().getMaxDiscountPercent(),
 				permissions(current.getUsuario()));
 	}
 
@@ -165,6 +166,7 @@ public class AuthenticationService {
 				user.getNombre(),
 				user.getRol().getNombre(),
 				user.mustChangePassword(),
+				user.getMaxDiscountPercent(),
 				permissions(user));
 	}
 

@@ -10,7 +10,7 @@ import { CashPaymentDialog } from "./CashPaymentDialog";
 import { CashPaymentResultDialog } from "./CashPaymentResultDialog";
 import { CardPaymentDialog } from "./CardPaymentDialog";
 import { readCashInputMode, type CashInputMode } from "../sale/cashInputMode";
-import { PromotionPreviewPanel } from "./PromotionPreviewPanel";
+import { PromotionPreviewPanel, type PromotionPreview } from "./PromotionPreviewPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
@@ -34,6 +34,8 @@ import {
 } from "../sale/pendingSaleRecovery";
 import { retryPrintSucceeded } from "../sale/printRetry";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { ParkedSalesDialog, type OpenedParkedSale } from "./ParkedSalesDialog";
+import { TicketManagementDialog } from "./TicketManagementDialog";
 
 export type SaleProduct = {
   id: string;
@@ -82,6 +84,12 @@ export type SaleCustomer = {
   outstandingDebt?: number | string | null;
   overdueDebt?: number | string | null;
   availableCredit?: number | string | null;
+};
+
+type PosAuthoritativeQuote = {
+  total: number | string;
+  productTotal: number | string;
+  promotionPreview: PromotionPreview;
 };
 
 type SaleTranslator = (key: string) => string;
@@ -355,7 +363,7 @@ export function paymentResultFromFinalization(
   return {
     ticketNumber: printTicket.documentNumber,
     totalCents: summary.totalCents,
-    method: summary.kind === "CARD" ? "Tarjeta" : "Mixto",
+    method: summary.kind === "CARD" ? "Tarjeta" : summary.kind === "VOUCHER" ? "Vale" : "Mixto",
     printTicket,
   };
 }
@@ -587,9 +595,14 @@ export function SaleScreen({
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "customer" | "remove" | null>(null);
+  const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "discountAuthorization" | "customer" | "remove" | null>(null);
   const [quantityInput, setQuantityInput] = useState("1");
   const [discountInput, setDiscountInput] = useState("0");
+  const [discountAuthorizationToken, setDiscountAuthorizationToken] = useState("");
+  const [discountAuthorizationPercent, setDiscountAuthorizationPercent] = useState(0);
+  const [managerName, setManagerName] = useState("");
+  const [managerPassword, setManagerPassword] = useState("");
+  const [managerAuthorizationBusy, setManagerAuthorizationBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [customers, setCustomers] = useState<SaleCustomer[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
@@ -640,6 +653,11 @@ export function SaleScreen({
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
+  const [authoritativeQuote, setAuthoritativeQuote] = useState<PosAuthoritativeQuote | null>(null);
+  const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
+  const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
+  const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
+  const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
@@ -655,6 +673,7 @@ export function SaleScreen({
   const deletionControl = deletionControlRef.current;
   const logoutInProgressRef = useRef(false);
   const shutdownInProgressRef = useRef(false);
+  const quoteGenerationRef = useRef(0);
   const selectableProducts = useMemo(
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
@@ -664,8 +683,11 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const activeMember = selectedCustomer?.activeMember === true;
   const total = saleTotal(lines, activeMember);
-  const displayedTotal = saleDisplayedTotal(total,paymentLocked,lines.length,reservedPaymentTotalCents);
-  const paymentActionsDisabled = lines.length === 0 || total <= 0 || cashOpening;
+  const authoritativeTotal = authoritativeQuote ? Number(authoritativeQuote.total) : total;
+  const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
+  const paymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening;
+  const canApplyManualDiscount = hasPermission(session, "APLICAR_DESCUENTO");
+  const userDiscountLimit = session.permissions.includes("ADMIN") ? 100 : Number(session.maxDiscountPercent ?? 0);
   const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
   const selectedSearchProductId = results[0]?.id ?? "";
   const activeSearchResultId = selectedSearchProductId
@@ -818,7 +840,7 @@ export function SaleScreen({
   }
 
   function openDiscountDialog() {
-    if (!selectedLine || saleProductBlocksManualDiscount(selectedLine.product)) return;
+    if (!selectedLine || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
     setDiscountInput(String(selectedLine.discountPercent));
     setActionError("");
     setActionDialog("discount");
@@ -837,12 +859,48 @@ export function SaleScreen({
   function saveDiscount() {
     if (!selectedProductId) return;
     try {
-      setLines((current) => updateSaleLineDiscount(current, selectedProductId, Number(discountInput)));
+      const discount = Number(discountInput);
+      updateSaleLineDiscount(lines, selectedProductId, discount);
+      if (discount > userDiscountLimit) {
+        setDiscountAuthorizationPercent(discount);
+        setManagerName("");
+        setManagerPassword("");
+        setActionError("");
+        setActionDialog("discountAuthorization");
+        return;
+      }
+      setLines((current) => updateSaleLineDiscount(current, selectedProductId, discount));
+      setDiscountAuthorizationToken("");
       setActionDialog(null);
     } catch (error) {
       setActionError(error instanceof Error && error.message === "discount_blocked"
         ? t("sale.discountBlocked")
         : "El descuento debe estar entre 0 y 100");
+    }
+  }
+
+  async function authorizeDiscount() {
+    if (!selectedProductId || managerAuthorizationBusy) return;
+    setManagerAuthorizationBusy(true);
+    setActionError("");
+    try {
+      const authorization = await apiRequest<{ token: string }>("/pos/discount-authorizations", {
+        token: session.accessToken,
+        body: {
+          managerName,
+          password: managerPassword,
+          requestedPercent: discountAuthorizationPercent
+        }
+      });
+      setDiscountAuthorizationToken(authorization.token);
+      setLines((current) => updateSaleLineDiscount(current, selectedProductId, discountAuthorizationPercent));
+      setManagerPassword("");
+      setActionDialog(null);
+    } catch (error) {
+      setManagerPassword("");
+      setActionError(error instanceof Error ? error.message : "No se pudo autorizar el descuento");
+    } finally {
+      setManagerAuthorizationBusy(false);
     }
   }
 
@@ -939,9 +997,82 @@ export function SaleScreen({
         productId: line.product.id,
         quantity: line.quantity,
         discount: line.discountPercent
-      }))
+      })),
+      ...(discountAuthorizationToken ? { discountAuthorizationToken } : {})
     };
   }
+
+  function clearCurrentSale() {
+    setLines([]);
+    setSelectedProductId(null);
+    setSelectedCustomer(null);
+    setQuery("");
+    setDiscountAuthorizationToken("");
+    deletionControl.reset("CART_EMPTIED");
+  }
+
+  async function recoverParkedSale(opened: OpenedParkedSale) {
+    const recoveredLines = opened.document.lineas.flatMap((line) => {
+      const product = products.find((candidate) => candidate.id === line.productoId);
+      if (!product) return [];
+      return [{
+        product,
+        quantity: Number(line.cantidad),
+        discountPercent: Number(line.descuento)
+      } satisfies SaleLine];
+    });
+    setLines(recoveredLines);
+    setSelectedProductId(recoveredLines[0]?.product.id ?? null);
+    setDiscountAuthorizationToken("");
+    setParkedSalesOpen(false);
+    const customerId = opened.document.clienteId;
+    if (customerId) {
+      try {
+        const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken });
+        const customer = options.find((candidate) => candidate.id === customerId) ?? null;
+        setSelectedCustomer(customer);
+        setLines((current) => applyMemberDiscounts(current, customer));
+      } catch {
+        setSelectedCustomer(null);
+      }
+    } else {
+      setSelectedCustomer(null);
+    }
+    const maximumDiscount = recoveredLines.reduce((maximum, line) => Math.max(maximum, line.discountPercent), 0);
+    if (maximumDiscount > userDiscountLimit && recoveredLines[0]) {
+      setDiscountAuthorizationPercent(maximumDiscount);
+      setActionDialog("discountAuthorization");
+    }
+  }
+
+  useEffect(() => {
+    const generation = ++quoteGenerationRef.current;
+    if (lines.length === 0) {
+      setAuthoritativeQuote(null);
+      setAuthoritativeQuoteLoading(false);
+      setAuthoritativeQuoteError("");
+      setDiscountAuthorizationToken("");
+      return;
+    }
+    setAuthoritativeQuoteLoading(true);
+    setAuthoritativeQuoteError("");
+    const timer = window.setTimeout(() => {
+      apiRequest<PosAuthoritativeQuote>("/pos/cash/quote", {
+        token: session.accessToken,
+        body: cashSaleRequest()
+      }).then((quote) => {
+        if (generation === quoteGenerationRef.current) setAuthoritativeQuote(quote);
+      }).catch((error) => {
+        if (generation === quoteGenerationRef.current) {
+          setAuthoritativeQuote(null);
+          setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.main.quoteError"));
+        }
+      }).finally(() => {
+        if (generation === quoteGenerationRef.current) setAuthoritativeQuoteLoading(false);
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [discountAuthorizationToken, lines, selectedCustomer?.id, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
@@ -1100,7 +1231,7 @@ export function SaleScreen({
           openCustomerDialog();
           break;
         case "F7":
-          if (!selectedLine || paymentLocked || saleProductBlocksManualDiscount(selectedLine.product)) return;
+          if (!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
           openDiscountDialog();
           break;
         case "Delete":
@@ -1127,7 +1258,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
+  }, [canApplyManualDiscount, catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1198,13 +1329,15 @@ export function SaleScreen({
               ))}
             </div>
           )}
-          <PromotionPreviewPanel locale={locale} preview={null} />
+          <PromotionPreviewPanel locale={locale} preview={authoritativeQuote?.promotionPreview ?? null} />
         </section>
 
         <section className="sale-tools work-panel" aria-label={t("sale.main.searchAndPayment")}>
           <footer className="sale-total">
             <span>{t("sale.main.total")}</span>
             <strong>{formatSaleAmount(displayedTotal)}</strong>
+            {authoritativeQuoteLoading && <small aria-live="polite">Calculando total definitivo...</small>}
+            {authoritativeQuoteError && <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>}
           </footer>
           <div className="work-panel-heading sale-product-heading">
             <div>
@@ -1284,8 +1417,10 @@ export function SaleScreen({
             </button>
             <button
               type="button"
-              disabled={!selectedLine || paymentLocked || saleProductBlocksManualDiscount(selectedLine.product)}
-              title={selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
+              disabled={!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)}
+              title={!canApplyManualDiscount
+                ? "No tienes el permiso APLICAR_DESCUENTO"
+                : selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
               onClick={openDiscountDialog}
             >
               <span>{t("sale.main.discount")}</span>
@@ -1300,12 +1435,25 @@ export function SaleScreen({
               <kbd>{t("sale.main.deleteKey")}</kbd>
             </button>
           </div>
+          <section className="sale-management-actions" aria-label={t("sale.main.management")}>
+            <h2>{t("sale.main.management")}</h2>
+            <div className="sale-secondary-actions">
+              <button type="button" disabled={paymentLocked} onClick={() => setParkedSalesOpen(true)}>
+                <span>{t("sale.main.parkedSales")}</span>
+                <small>{t("sale.main.parkedSalesHint")}</small>
+              </button>
+              <button type="button" disabled={paymentLocked} onClick={() => setTicketManagementOpen(true)}>
+                <span>{t("sale.main.manageTickets")}</span>
+                <small>{t("sale.main.manageTicketsHint")}</small>
+              </button>
+            </div>
+          </section>
           <section className="sale-payment" aria-label={t("sale.main.payment")}>
             <h2>{t("sale.main.payment")}</h2>
             <SalePaymentCheckout
               ref={paymentCheckoutRef}
               locale={locale}
-              totalCents={Math.round(total * 100)}
+              totalCents={Math.round(authoritativeTotal * 100)}
               sale={cashSaleRequest()}
               token={session.accessToken}
               permissions={session.permissions}
@@ -1367,7 +1515,7 @@ export function SaleScreen({
           <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
           <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
           <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
-          <span><kbd>AvPág</kbd> {t("sale.main.cash")}</span>
+          <span><kbd>{t("sale.main.pageDownKey")}</kbd> {t("sale.main.cash")}</span>
           <span><kbd>F11</kbd> {t("sale.main.card")}</span>
           <span><kbd>F12</kbd> {t("sale.main.pending")}</span>
         </nav>
@@ -1474,6 +1622,29 @@ export function SaleScreen({
         </SaleActionDialog>
       )}
 
+      {actionDialog === "discountAuthorization" && selectedLine && (
+        <SaleActionDialog title="Autorizacion de descuento" onClose={() => { setManagerPassword(""); setActionDialog(null); }}>
+          <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); void authorizeDiscount(); }}>
+            <p>
+              El descuento del {formatSaleAmount(discountAuthorizationPercent)}% supera tu limite del {formatSaleAmount(userDiscountLimit)}%.
+            </p>
+            <label>
+              <span>Usuario responsable</span>
+              <input autoFocus autoComplete="username" value={managerName} onChange={(event) => setManagerName(event.target.value)} />
+            </label>
+            <label>
+              <span>Contrasena del responsable</span>
+              <input type="password" inputMode="numeric" autoComplete="current-password" value={managerPassword} onChange={(event) => setManagerPassword(event.target.value)} />
+            </label>
+            {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
+            <div className="sale-action-buttons">
+              <button type="button" onClick={() => { setManagerPassword(""); setActionDialog(null); }}>Cancelar</button>
+              <button type="submit" disabled={managerAuthorizationBusy || !managerName.trim() || !managerPassword}>Autorizar</button>
+            </div>
+          </form>
+        </SaleActionDialog>
+      )}
+
       {actionDialog === "customer" && (
         <SaleActionDialog title="Seleccionar cliente" onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }} wide>
           <label>
@@ -1502,6 +1673,22 @@ export function SaleScreen({
           <p>Se eliminara {selectedLine.product.name ?? "el producto"} del ticket.</p>
           <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
         </SaleActionDialog>
+      )}
+
+      {parkedSalesOpen && (
+        <ParkedSalesDialog
+          token={session.accessToken}
+          locale={locale}
+          currentSale={cashSaleRequest()}
+          canPark={lines.length > 0 && !paymentLocked && !authoritativeQuoteLoading && !authoritativeQuoteError}
+          onClose={() => setParkedSalesOpen(false)}
+          onParked={clearCurrentSale}
+          onRecovered={recoverParkedSale}
+        />
+      )}
+
+      {ticketManagementOpen && (
+        <TicketManagementDialog token={session.accessToken} locale={locale} terminalContext={terminalContext} onClose={() => setTicketManagementOpen(false)} />
       )}
 
       {pendingInactiveProduct && (
