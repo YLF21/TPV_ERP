@@ -11,7 +11,7 @@ class ReceivablePaymentReservationsMigrationContractTest {
     @Test
     void migrationPersistsAuthoritativeReceivablePaymentReservationsAndPendingSaleLease() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V91__receivable_payment_reservations.sql"))
+                "src/main/resources/db/migration/V93__receivable_payment_reservations.sql"))
                 .toLowerCase();
 
         assertThat(sql).contains(

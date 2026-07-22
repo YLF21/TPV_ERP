@@ -65,8 +65,8 @@ public class RefundTender {
         if (type == RefundTenderType.CARD && terminalOperationId == null) {
             throw new IllegalArgumentException("La devolucion con tarjeta requiere operacion de datafono");
         }
-        if (type == RefundTenderType.CASH && terminalOperationId != null) {
-            throw new IllegalArgumentException("La devolucion en efectivo no admite operacion de datafono");
+        if (type != RefundTenderType.CARD && terminalOperationId != null) {
+            throw new IllegalArgumentException("Solo la devolucion con tarjeta admite operacion de datafono");
         }
         this.originalPaymentId = originalPaymentId;
         this.terminalOperationId = terminalOperationId;

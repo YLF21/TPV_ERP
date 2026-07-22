@@ -17,7 +17,10 @@ describe("apiRequest", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/auth/login", expect.objectContaining({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Request-ID": expect.any(String)
+      },
       body: JSON.stringify({ userName: "admin" })
     }));
   });
@@ -39,7 +42,10 @@ describe("apiRequest", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/verifactu/certificates", {
       method: "POST",
-      headers: { Authorization: "Bearer access-token" },
+      headers: {
+        Authorization: "Bearer access-token",
+        "X-Request-ID": expect.any(String)
+      },
       body
     });
   });
@@ -68,6 +74,20 @@ describe("apiRequest", () => {
         formIndexes: [0, 2]
       }
     } satisfies Partial<ApiError>);
+  });
+
+  it("hides internal server details and includes the trace reference", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "INTERNAL_ERROR",
+      detail: "at org.springframework.service.Internal /api/v1/private",
+      traceId: "trace-12345678"
+    }), { status: 500, headers: { "Content-Type": "application/problem+json" } })));
+
+    await expect(apiRequest("/pos/payment-sessions")).rejects.toMatchObject({
+      message: "No se pudo completar la operación (Ref: trace-12345678)",
+      status: 500,
+      traceId: "trace-12345678"
+    });
   });
 
   it("turns network failures into backend connection errors", async () => {

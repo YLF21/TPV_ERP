@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsScreen } from "./SettingsScreen";
 import {
@@ -8,6 +10,7 @@ import {
 } from "./saleInterfacePreferences";
 import type { TerminalContext, UserSession } from "../types";
 import { persistCashInputModeSelection } from "../sale/cashInputMode";
+import { readSalesReportOutputPreferences } from "./salesReportOutputPreferences";
 
 function storageWith(value: string | null): Storage {
   return {
@@ -29,6 +32,7 @@ const terminalContext: TerminalContext = {
 
 describe("SettingsScreen", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -151,5 +155,68 @@ describe("SettingsScreen", () => {
 
     saveSaleInterfaceTouchMode("venta", terminalContext, false);
     expect(values.has(ventaKey)).toBe(false);
+  });
+
+  it("shows the active user settings and changes the authenticated password", async () => {
+    const request = vi.fn().mockResolvedValue(undefined);
+    const onLocaleChange = vi.fn();
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token", role: "ADMIN", maxDiscountPercent: 20 }}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={onLocaleChange}
+        request={request}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Usuario" }));
+    expect(screen.getByText("Perfil activo")).toBeTruthy();
+    expect(screen.getByText("20%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    expect(onLocaleChange).toHaveBeenCalledWith("en");
+
+    fireEvent.change(screen.getByLabelText("Contraseña actual"), { target: { value: "0000" } });
+    fireEvent.change(screen.getByLabelText("Nueva contraseña"), { target: { value: "1234" } });
+    fireEvent.change(screen.getByLabelText("Confirmar nueva contraseña"), { target: { value: "1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar contraseña" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/auth/password", {
+      token: "token",
+      method: "PUT",
+      body: { currentPassword: "0000", newPassword: "1234" }
+    }));
+    expect(await screen.findByText("Contraseña cambiada correctamente.")).toBeTruthy();
+  });
+
+  it("configures report display and output instead of showing an empty placeholder", () => {
+    const onOpenReports = vi.fn();
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onOpenReports={onOpenReports}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Informes" }));
+    expect(screen.getByText("Visualización de informes")).toBeTruthy();
+    expect(screen.getByText("Impresión y exportación")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Densidad de filas"), { target: { value: "compact" } });
+    fireEvent.change(screen.getByLabelText("Acción principal"), { target: { value: "pdf" } });
+    expect(readSalesReportOutputPreferences("venta", "admin", terminalContext)).toEqual({
+      density: "compact",
+      primaryAction: "pdf"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Abrir informes y configurar columnas" }));
+    expect(onOpenReports).toHaveBeenCalledOnce();
   });
 });

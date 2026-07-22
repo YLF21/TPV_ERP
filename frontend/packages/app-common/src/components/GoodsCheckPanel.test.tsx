@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
+  GoodsCheckPanel,
   goodsCheckClosePath,
   goodsCheckDocumentIsAvailable,
   goodsCheckDocumentPath,
@@ -20,6 +22,17 @@ describe("GoodsCheckPanel", () => {
     expect(goodsCheckDocumentPath("doc/1")).toBe("/goods-checks/documents/doc%2F1/import");
     expect(goodsCheckScanPath("check/1")).toBe("/goods-checks/check%2F1/scan");
     expect(goodsCheckClosePath("check/1")).toBe("/goods-checks/check%2F1/close");
+  });
+
+  it("keeps search, document summary and import action in a separated header", () => {
+    const html = renderToStaticMarkup(
+      <GoodsCheckPanel locale="es" t={(key) => key} />
+    );
+
+    expect(html).toContain("goods-check-documents-header");
+    expect(html).toContain("goods-check-search");
+    expect(html).toContain("goods-check-documents-summary");
+    expect(html).not.toContain("sr-only");
   });
 
   it("only accepts confirmed numbered purchase invoices and delivery notes", () => {

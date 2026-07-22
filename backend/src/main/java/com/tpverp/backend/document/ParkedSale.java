@@ -85,21 +85,33 @@ public class ParkedSale {
     }
 
     public DocumentCommand documentCommand() {
+        return documentCommand(documento);
+    }
+
+    Map<String, Object> documentSnapshot() {
+        return new LinkedHashMap<>(documento);
+    }
+
+    static DocumentCommand documentCommand(Map<String, Object> snapshot) {
         return new DocumentCommand(
-                uuid(documento.get("almacenId")),
-                CommercialDocumentType.valueOf((String) documento.get("tipo")),
-                LocalDate.parse((String) documento.get("fecha")),
-                uuid(documento.get("clienteId")),
+                uuid(snapshot.get("almacenId")),
+                CommercialDocumentType.valueOf((String) snapshot.get("tipo")),
+                LocalDate.parse((String) snapshot.get("fecha")),
+                uuid(snapshot.get("clienteId")),
                 null,
                 null,
-                decimal(documento.get("descuentoGlobal")),
+                decimal(snapshot.get("descuentoGlobal")),
                 false,
-                lines());
+                lines(snapshot));
     }
     // Reconstruye el ticket borrador que se entrega al terminal al abrir la venta.
 
     private List<DocumentLineCommand> lines() {
-        return ((List<?>) documento.get("lineas")).stream()
+        return lines(documento);
+    }
+
+    private static List<DocumentLineCommand> lines(Map<String, Object> snapshot) {
+        return ((List<?>) snapshot.get("lineas")).stream()
                 .map(Map.class::cast)
                 .map(ParkedSale::line)
                 .toList();

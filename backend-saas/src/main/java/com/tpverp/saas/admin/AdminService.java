@@ -160,6 +160,23 @@ public class AdminService {
     }
 
     @Transactional(readOnly = true)
+    public SaasStatusResponse status() {
+        return new SaasStatusResponse(
+                clock.instant(),
+                "saas-api-v1",
+                "V10__saas_phase9_erp_masters",
+                List.of(
+                        "licenses",
+                        "installations",
+                        "sync",
+                        "support",
+                        "health",
+                        "billing",
+                        "tenant",
+                        "erp-masters"));
+    }
+
+    @Transactional(readOnly = true)
     public List<AdminNotificationResponse> notifications() {
         Instant now = clock.instant();
         List<AdminNotificationResponse> licenseNotifications = licenses.findAll().stream()
@@ -688,6 +705,17 @@ public class AdminService {
         return erpCustomer(id);
     }
 
+    @Transactional
+    public ErpCustomerResponse deactivateErpCustomer(UUID companyId, UUID id) {
+        ensureCompanyExists(companyId);
+        int updated = jdbc.update("update saas_erp_customer set active = false where company_id = ? and id = ?", companyId, id);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente ERP no existe");
+        }
+        audit.log("DEACTIVATE_ERP_CUSTOMER", "ERP_CUSTOMER", id.toString());
+        return erpCustomer(id);
+    }
+
     @Transactional(readOnly = true)
     public List<ErpProductResponse> erpProducts(UUID companyId) {
         ensureCompanyExists(companyId);
@@ -718,6 +746,17 @@ public class AdminService {
                 true,
                 clock.instant());
         audit.log("CREATE_ERP_PRODUCT", "COMPANY", companyId.toString());
+        return erpProduct(id);
+    }
+
+    @Transactional
+    public ErpProductResponse deactivateErpProduct(UUID companyId, UUID id) {
+        ensureCompanyExists(companyId);
+        int updated = jdbc.update("update saas_erp_product set active = false where company_id = ? and id = ?", companyId, id);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto ERP no existe");
+        }
+        audit.log("DEACTIVATE_ERP_PRODUCT", "ERP_PRODUCT", id.toString());
         return erpProduct(id);
     }
 
@@ -753,6 +792,17 @@ public class AdminService {
         return erpSupplier(id);
     }
 
+    @Transactional
+    public ErpSupplierResponse deactivateErpSupplier(UUID companyId, UUID id) {
+        ensureCompanyExists(companyId);
+        int updated = jdbc.update("update saas_erp_supplier set active = false where company_id = ? and id = ?", companyId, id);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Proveedor ERP no existe");
+        }
+        audit.log("DEACTIVATE_ERP_SUPPLIER", "ERP_SUPPLIER", id.toString());
+        return erpSupplier(id);
+    }
+
     @Transactional(readOnly = true)
     public List<ErpWarehouseResponse> erpWarehouses(UUID companyId) {
         ensureCompanyExists(companyId);
@@ -780,6 +830,17 @@ public class AdminService {
                 true,
                 clock.instant());
         audit.log("CREATE_ERP_WAREHOUSE", "COMPANY", companyId.toString());
+        return erpWarehouse(id);
+    }
+
+    @Transactional
+    public ErpWarehouseResponse deactivateErpWarehouse(UUID companyId, UUID id) {
+        ensureCompanyExists(companyId);
+        int updated = jdbc.update("update saas_erp_warehouse set active = false where company_id = ? and id = ?", companyId, id);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Almacen ERP no existe");
+        }
+        audit.log("DEACTIVATE_ERP_WAREHOUSE", "ERP_WAREHOUSE", id.toString());
         return erpWarehouse(id);
     }
 

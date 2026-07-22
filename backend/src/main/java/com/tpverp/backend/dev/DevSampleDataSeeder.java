@@ -35,6 +35,11 @@ public class DevSampleDataSeeder {
     private static final UUID SUPPLIER = id("supplier");
     private static final UUID PRODUCT_A = id("product-cafe");
     private static final UUID PRODUCT_B = id("product-agua");
+    private static final UUID PRODUCT_MEMBER = id("product-cafe-member");
+    private static final UUID PRODUCT_OFFER = id("product-zumo-offer");
+    private static final UUID PRODUCT_OFFER_DISCOUNT = id("product-galletas-offer-discount");
+    private static final UUID PRODUCT_WHOLESALE = id("product-leche-wholesale");
+    private static final UUID PRODUCT_NO_DISCOUNT = id("product-pan-no-discount");
     private static final LocalDate TODAY = LocalDate.of(2026, 7, 5);
     private static final Instant NOW = Instant.parse("2026-07-05T10:00:00Z");
     private static final int BULK_DOCUMENTS = 1_000;
@@ -275,8 +280,28 @@ public class DevSampleDataSeeder {
     private void seedCatalog() {
         product(PRODUCT_A, "DEV-CAFE", "8410000000011", "Cafe molido pruebas", "3.50", "12.10");
         product(PRODUCT_B, "DEV-AGUA", "8410000000028", "Agua mineral pruebas", "1.20", "6.05");
+        pricedProduct(PRODUCT_MEMBER, "DEV-CAFE-SOCIO", "8410000000035",
+                "Cafe premium precio socio", "4.20", "9.90", "7.50", null,
+                "MEMBER_PRICE", "MEMBER_PRICE", false, null);
+        pricedProduct(PRODUCT_OFFER, "DEV-ZUMO-OFERTA", "8410000000042",
+                "Zumo naranja en oferta", "1.10", "2.80", null, "2.10",
+                "DISCOUNT_PRICE", "OFFER_PRICE", true, null);
+        pricedProduct(PRODUCT_OFFER_DISCOUNT, "DEV-GALLETAS-PROMO", "8410000000059",
+                "Galletas promocion 20%", "1.25", "3.00", null, "2.40",
+                "DISCOUNT_PRICE", "OFFER_DISCOUNT", true, "20.00");
+        product(PRODUCT_WHOLESALE, "DEV-LECHE-MAYOR", "8410000000066",
+                "Leche con precio mayorista", "0.65", "1.35");
+        price(PRODUCT_WHOLESALE, "MAYORISTA", "1.05");
+        pricedProduct(PRODUCT_NO_DISCOUNT, "DEV-PAN-SIN-DESCUENTO", "8410000000073",
+                "Pan sin descuento manual", "0.55", "1.20", null, null,
+                "NONE", "NORMAL", false, null);
         stock(PRODUCT_A, "100.000");
         stock(PRODUCT_B, "200.000");
+        stock(PRODUCT_MEMBER, "60.000");
+        stock(PRODUCT_OFFER, "80.000");
+        stock(PRODUCT_OFFER_DISCOUNT, "45.000");
+        stock(PRODUCT_WHOLESALE, "120.000");
+        stock(PRODUCT_NO_DISCOUNT, "35.000");
         payment("EFECTIVO", false, true);
         payment("TARJETA", false, false);
         payment("TRANSFERENCIA", false, false);
@@ -284,18 +309,46 @@ public class DevSampleDataSeeder {
     }
 
     private void product(UUID id, String code, String barcode, String name, String cost, String sale) {
+        pricedProduct(id, code, barcode, name, cost, sale, sale, null,
+                "NORMAL", "NORMAL", false, null);
+    }
+
+    private void pricedProduct(
+            UUID id,
+            String code,
+            String barcode,
+            String name,
+            String cost,
+            String sale,
+            String member,
+            String offer,
+            String discountType,
+            String priceUseMode,
+            boolean offerActive,
+            String offerDiscountPercent) {
         jdbc.update("""
                 insert into producto
                     (id, tienda_id, familia_id, impuesto_id, nombre, descripcion, precio_compra,
-                     impuestos_incluidos, product_type, discount_type, comments)
-                values (?, ?, ?, ?, ?, 'Producto de prueba para frontend', ?, true, 'UNIT', 'NORMAL',
+                     impuestos_incluidos, product_type, discount_type, price_use_mode,
+                     oferta_activa, oferta_desde, oferta_hasta, oferta_descuento_porcentaje,
+                     comments)
+                values (?, ?, ?, ?, ?, 'Producto de prueba para frontend', ?, true, 'UNIT', ?, ?,
+                    ?, case when ? then date '2025-01-01' else null end,
+                    case when ? then date '2035-12-31' else null end, ?,
                     'Dato generado por DevSampleDataSeeder')
                 on conflict (id) do nothing
-                """, id, STORE, FAMILY, TAX, name, new BigDecimal(cost));
+                """, id, STORE, FAMILY, TAX, name, new BigDecimal(cost), discountType, priceUseMode,
+                offerActive, offerActive, offerActive,
+                offerDiscountPercent == null ? null : new BigDecimal(offerDiscountPercent));
         identifier(id, "CODIGO", code);
         identifier(id, "CODIGO_BARRAS", barcode);
         price(id, "VENTA", sale);
-        price(id, "MEMBER", sale);
+        if (member != null) {
+            price(id, "MEMBER", member);
+        }
+        if (offer != null) {
+            price(id, "OFERTA", offer);
+        }
     }
 
     private void identifier(UUID product, String type, String value) {

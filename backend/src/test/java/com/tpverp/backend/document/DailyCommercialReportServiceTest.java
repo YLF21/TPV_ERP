@@ -37,6 +37,7 @@ class DailyCommercialReportServiceTest {
         var report = fixture.service().report(REPORT_DATE);
 
         assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.ticketSales()).isZero();
         assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
         assertThat(report.newPending()).isEqualByComparingTo("70.00");
         assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
@@ -44,7 +45,7 @@ class DailyCommercialReportServiceTest {
     }
 
     @Test
-    void excludesTicketsAndNonReceivableDocumentTypesFromEveryBucket() {
+    void reportsTicketSalesAndCashWithoutTurningThemIntoCustomerDebt() {
         var fixture = fixture();
         var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
         var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "40.00");
@@ -63,10 +64,11 @@ class DailyCommercialReportServiceTest {
         var report = fixture.service().report(REPORT_DATE);
 
         assertThat(report.invoiced()).isEqualByComparingTo("100.00");
-        assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
+        assertThat(report.ticketSales()).isEqualByComparingTo("40.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("70.00");
         assertThat(report.newPending()).isEqualByComparingTo("70.00");
         assertThat(report.priorDebtCollected()).isZero();
-        assertThat(report.cashInflow()).isEqualByComparingTo("30.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("70.00");
     }
 
     @Test
@@ -103,6 +105,7 @@ class DailyCommercialReportServiceTest {
         var report = fixture.service().report(REPORT_DATE);
 
         assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.ticketSales()).isZero();
         assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
         assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
         assertThat(report.cashInflow()).isEqualByComparingTo("50.00");
@@ -130,6 +133,7 @@ class DailyCommercialReportServiceTest {
         var historical = fixture.service().report(deliveryNote.getFecha());
 
         assertThat(historical.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(historical.ticketSales()).isZero();
         assertThat(historical.newPending()).isEqualByComparingTo("100.00");
     }
 

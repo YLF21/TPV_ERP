@@ -39,9 +39,17 @@ public class PosCashController {
     public record SaleRequest(
             UUID customerId,
             @NotEmpty List<@Valid LineRequest> lines,
-            String discountAuthorizationToken) {
+            String discountAuthorizationToken,
+            String promotionalCouponCode) {
         public SaleRequest(UUID customerId, List<LineRequest> lines) {
-            this(customerId, lines, null);
+            this(customerId, lines, null, null);
+        }
+
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken) {
+            this(customerId, lines, discountAuthorizationToken, null);
         }
     }
 

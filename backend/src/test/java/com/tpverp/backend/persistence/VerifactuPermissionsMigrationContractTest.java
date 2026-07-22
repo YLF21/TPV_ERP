@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class VerifactuPermissionsMigrationContractTest {
 
-    private static final String MIGRATION = "db/migration/V88__verifactu_permissions.sql";
+    private static final String MIGRATION = "db/migration/V90__verifactu_permissions.sql";
 
     @Test
     void createsSeparatedFiscalPermissionsWithoutExpandingExistingRoles() throws IOException {

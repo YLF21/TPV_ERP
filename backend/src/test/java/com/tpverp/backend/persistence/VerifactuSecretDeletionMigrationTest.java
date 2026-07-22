@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class VerifactuSecretDeletionMigrationTest {
 
     private static final String MIGRATION =
-            "db/migration/V94__verifactu_secret_deletion_jobs.sql";
+            "db/migration/V96__verifactu_secret_deletion_jobs.sql";
 
     @Test
     void definesDurableIdempotentClaimQueue() throws Exception {
@@ -40,7 +40,7 @@ class VerifactuSecretDeletionMigrationTest {
         String user = setting("TPV_ERP_TEST_DB_USER", "postgres");
         String password = setting("TPV_ERP_TEST_DB_PASSWORD", "admin");
         assumeTrue(canConnect(url, user, password), "PostgreSQL de pruebas no disponible");
-        String schema = "tpv_erp_v94_" + UUID.randomUUID().toString().replace("-", "");
+        String schema = "tpv_erp_v96_" + UUID.randomUUID().toString().replace("-", "");
         UUID companyId = UUID.randomUUID();
         UUID storeId = UUID.randomUUID();
         UUID roleId = UUID.randomUUID();
@@ -48,11 +48,11 @@ class VerifactuSecretDeletionMigrationTest {
         UUID certificateId = UUID.randomUUID();
 
         try {
-            migrate(url, user, password, schema, "93");
+            migrate(url, user, password, schema, "95");
             seedDeletedCertificate(
                     url, user, password, schema,
                     companyId, storeId, roleId, userId, certificateId);
-            migrate(url, user, password, schema, "94");
+            migrate(url, user, password, schema, "96");
 
             try (Connection connection = DriverManager.getConnection(url, user, password);
                     Statement statement = connection.createStatement()) {

@@ -372,22 +372,31 @@ describe("SalesReportScreen", () => {
       />
     );
 
-    expect(html).toContain('class="report-screen gestion-embedded-module"');
+    expect(html).toContain('class="report-screen gestion-embedded-module report-density-comfortable"');
     expect(html).toContain("Tickets");
     expect(html).not.toContain('class="report-nav"');
     expect(html).not.toContain('class="report-brand-back"');
     expect(html).not.toContain('class="report-user-button"');
   });
 
-  it("renders the five daily accounting buckets from the authoritative backend report", async () => {
-    const request = vi.fn().mockResolvedValue({
-      storeId: "store-1",
-      date: "2026-07-16",
-      invoiced: "100.00",
-      collectedCurrent: "30.00",
-      newPending: "70.00",
-      priorDebtCollected: "20.00",
-      cashInflow: "50.00"
+  it("renders ticket sales with the daily accounting buckets from the authoritative backend report", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/commercial-reports/daily")) {
+        return Promise.resolve({
+          storeId: "store-1",
+          date: "2026-07-16",
+          invoiced: "100.00",
+          ticketSales: "40.00",
+          collectedCurrent: "70.00",
+          newPending: "70.00",
+          priorDebtCollected: "20.00",
+          cashInflow: "90.00"
+        });
+      }
+      if (path === "/tickets") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
 
     render(
@@ -408,26 +417,39 @@ describe("SalesReportScreen", () => {
       { token: "token" }
     ));
     expect(screen.getByText("100.00€")).toBeVisible();
-    expect(screen.getByText("30.00€")).toBeVisible();
-    expect(screen.getByText("70.00€")).toBeVisible();
+    expect(screen.getByText("40.00€")).toBeVisible();
+    expect(screen.getAllByText("70.00€")).toHaveLength(2);
     expect(screen.getByText("20.00€")).toBeVisible();
-    expect(screen.getByText("50.00€")).toBeVisible();
+    expect(screen.getByText("90.00€")).toBeVisible();
+    expect(screen.getByText("Ventas de tickets")).toBeVisible();
   });
 
   it("shows translated authoritative loading/error and retries without local totals", async () => {
-    const request = vi.fn().mockRejectedValueOnce(new Error("sin red")).mockResolvedValueOnce({
-      storeId: "store-1", date: "2026-07-16", invoiced: "1.00", collectedCurrent: "0.00",
-      newPending: "1.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+    let dailyAttempts = 0;
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/commercial-reports/daily")) {
+        dailyAttempts += 1;
+        return dailyAttempts === 1
+          ? Promise.reject(new Error("sin red"))
+          : Promise.resolve({
+            storeId: "store-1", date: "2026-07-16", invoiced: "1.00", ticketSales: "0.00", collectedCurrent: "0.00",
+            newPending: "1.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+          });
+      }
+      if (path === "/tickets") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
     render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
     expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
     expect((await screen.findAllByText("1.00€")).length).toBeGreaterThanOrEqual(2);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls.filter(([path]) => String(path).startsWith("/commercial-reports/daily"))).toHaveLength(2);
   });
 
-  it("shows purchase creation from reports to product management", () => {
+  it("keeps reports read-only and leaves document creation to operational modules", () => {
     const html = renderToStaticMarkup(
       <SalesReportScreen
         app="venta"
@@ -440,8 +462,40 @@ describe("SalesReportScreen", () => {
     );
 
     expect(html).toContain("Entrada factura");
-    expect(html).toContain("Crear documento de compra");
+    expect(html).not.toContain("Crear documento de compra");
+    expect(html).not.toContain("Crear documento");
     expect(html).not.toContain("Entrada almacén");
+  });
+
+  it("shows warehouse report load failures and retries instead of silently rendering an empty report", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/tickets") {
+        return Promise.resolve([]);
+      }
+      if (path.startsWith("/warehouse-outputs")) {
+        return Promise.reject(new Error("almacén no disponible"));
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ username: "warehouse", displayName: "ALMACÉN", permissions: ["GESTION_ALMACEN"], accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        initialReport="salesReport.warehouseOutputs"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar los datos del informe.");
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    await waitFor(() => {
+      expect(request.mock.calls.filter(([path]) => String(path).startsWith("/warehouse-outputs"))).toHaveLength(2);
+    });
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {

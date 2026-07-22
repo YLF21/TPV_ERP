@@ -91,7 +91,51 @@ type PosAuthoritativeQuote = {
   total: number | string;
   productTotal: number | string;
   promotionPreview: PromotionPreview;
+  pricingVersion?: number;
+  quoteFingerprint?: string;
+  lineBreakdown?: AuthoritativeSaleLine[];
 };
+
+type AuthoritativeSaleLine = {
+  lineId: string;
+  position: number;
+  productId: string;
+  code: string;
+  name: string;
+  quantity: number | string;
+  normalUnitPrice: number | string;
+  memberUnitPrice?: number | string | null;
+  baseUnitPrice: number | string;
+  priceSource?: string | null;
+  memberPriceSaving: number | string;
+  memberDiscountPercent: number | string;
+  memberDiscount: number | string;
+  manualDiscountPercent: number | string;
+  manualDiscount: number | string;
+  promotionDiscount: number | string;
+  couponDiscount: number | string;
+  taxIncluded: boolean;
+  taxRegime: string;
+  taxPercent: number | string;
+  taxBase: number | string;
+  tax: number | string;
+  baseSubtotal: number | string;
+  roundingAdjustment: number | string;
+  finalSubtotal: number | string;
+};
+
+export function isCompleteAuthoritativeQuote(
+  quote: PosAuthoritativeQuote | null | undefined,
+): quote is PosAuthoritativeQuote & { pricingVersion: 1; lineBreakdown: AuthoritativeSaleLine[] } {
+  if (quote?.pricingVersion !== 1 || !Array.isArray(quote.lineBreakdown)) return false;
+  const total = Number(quote.total);
+  if (!Number.isFinite(total) || total < 0 || quote.lineBreakdown.length === 0) return false;
+  const lineTotal = quote.lineBreakdown.reduce((sum, line) => {
+    const subtotal = Number(line.finalSubtotal);
+    return Number.isFinite(subtotal) ? sum + subtotal : Number.NaN;
+  }, 0);
+  return Number.isFinite(lineTotal) && Math.abs(lineTotal - total) < 0.005;
+}
 
 type SaleTranslator = (key: string) => string;
 
@@ -193,6 +237,18 @@ export function saleLineSelectionAfterArrow(
   const offset = key === "ArrowDown" ? 1 : -1;
   const nextIndex = Math.min(Math.max(selectedIndex + offset, 0), lines.length - 1);
   return lines[nextIndex].product.id;
+}
+
+export function saleSearchSelectionAfterArrow(
+  products: SaleProduct[],
+  selectedId: string,
+  key: "ArrowUp" | "ArrowDown",
+) {
+  if (products.length === 0) return "";
+  const selectedIndex = products.findIndex((product) => product.id === selectedId);
+  if (selectedIndex < 0) return key === "ArrowDown" ? products[0].id : products[products.length - 1].id;
+  const offset = key === "ArrowDown" ? 1 : -1;
+  return products[Math.min(Math.max(selectedIndex + offset, 0), products.length - 1)].id;
 }
 
 function saleShortcutTargetIsEditable(target: EventTarget | null) {
@@ -657,9 +713,14 @@ export function SaleScreen({
   const [authoritativeQuote, setAuthoritativeQuote] = useState<PosAuthoritativeQuote | null>(null);
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [promotionalCouponCode, setPromotionalCouponCode] = useState("");
+  const [couponStatus, setCouponStatus] = useState<"idle" | "validating" | "applied" | "error">("idle");
+  const [couponMessage, setCouponMessage] = useState("");
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
   const [verifactuRefreshSignal, setVerifactuRefreshSignal] = useState(0);
+  const [selectedSearchProductId, setSelectedSearchProductId] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
@@ -685,15 +746,20 @@ export function SaleScreen({
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const activeMember = selectedCustomer?.activeMember === true;
   const total = saleTotal(lines, activeMember);
-  const authoritativeTotal = authoritativeQuote ? Number(authoritativeQuote.total) : total;
+  const authoritativeQuoteReady = isCompleteAuthoritativeQuote(authoritativeQuote);
+  const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
+  const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
   const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
-  const paymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening;
+  const paymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening
+    || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
   const canApplyManualDiscount = hasPermission(session, "APLICAR_DESCUENTO");
   const userDiscountLimit = session.permissions.includes("ADMIN") ? 100 : Number(session.maxDiscountPercent ?? 0);
   const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
-  const selectedSearchProductId = results[0]?.id ?? "";
-  const activeSearchResultId = selectedSearchProductId
-    ? `sale-product-result-${encodeURIComponent(selectedSearchProductId)}`
+  const activeSearchProductId = results.some((product) => product.id === selectedSearchProductId)
+    ? selectedSearchProductId
+    : results[0]?.id ?? "";
+  const activeSearchResultId = activeSearchProductId
+    ? `sale-product-result-${encodeURIComponent(activeSearchProductId)}`
     : undefined;
 
   function invalidateCashOpening() {
@@ -919,7 +985,8 @@ export function SaleScreen({
   }
 
   async function beginPendingSale(customer: SaleCustomer) {
-    if (pendingOpening || lines.length === 0 || total <= 0) return;
+    if (pendingOpening || paymentActionsDisabled || paymentLocked
+      || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
     setPendingOpening(true);
     setPendingError("");
     try {
@@ -935,7 +1002,8 @@ export function SaleScreen({
   }
 
   function openPendingSale() {
-    if (pendingRecoveryBlocked || recoveredPendingSale || lines.length === 0 || total <= 0 || paymentLocked || !paymentHydrated) return;
+    if (pendingRecoveryBlocked || recoveredPendingSale || paymentActionsDisabled
+      || paymentLocked || !paymentHydrated || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
     if (!selectedCustomer) { openCustomerDialog(true); return; }
     void beginPendingSale(selectedCustomer);
   }
@@ -986,10 +1054,21 @@ export function SaleScreen({
   }
 
   function submitSearch() {
-    const selected = selectSaleProduct(selectableProducts, query);
+    const selected = results.find((product) => product.id === activeSearchProductId)
+      ?? selectSaleProduct(selectableProducts, query);
     if (selected) {
       requestAddProduct(selected);
     }
+  }
+
+  function moveSearchSelection(key: "ArrowUp" | "ArrowDown") {
+    const nextId = saleSearchSelectionAfterArrow(results, activeSearchProductId, key);
+    if (!nextId) return;
+    setSelectedSearchProductId(nextId);
+    queueMicrotask(() => {
+      document.getElementById(`sale-product-result-${encodeURIComponent(nextId)}`)
+        ?.scrollIntoView?.({ block: "nearest" });
+    });
   }
 
   function cashSaleRequest() {
@@ -1000,8 +1079,28 @@ export function SaleScreen({
         quantity: line.quantity,
         discount: line.discountPercent
       })),
-      ...(discountAuthorizationToken ? { discountAuthorizationToken } : {})
+      ...(discountAuthorizationToken ? { discountAuthorizationToken } : {}),
+      ...(promotionalCouponCode ? { promotionalCouponCode } : {})
     };
+  }
+
+  function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code || paymentLocked || lines.length === 0) return;
+    if (code === promotionalCouponCode && couponStatus === "applied") {
+      setCouponMessage(t("sale.coupon.applied"));
+      return;
+    }
+    setCouponMessage("");
+    setCouponStatus("validating");
+    setPromotionalCouponCode(code);
+  }
+
+  function removeCoupon() {
+    setCouponInput("");
+    setPromotionalCouponCode("");
+    setCouponStatus("idle");
+    setCouponMessage("");
   }
 
   function clearCurrentSale() {
@@ -1010,6 +1109,7 @@ export function SaleScreen({
     setSelectedCustomer(null);
     setQuery("");
     setDiscountAuthorizationToken("");
+    removeCoupon();
     deletionControl.reset("CART_EMPTIED");
   }
 
@@ -1026,6 +1126,7 @@ export function SaleScreen({
     setLines(recoveredLines);
     setSelectedProductId(recoveredLines[0]?.product.id ?? null);
     setDiscountAuthorizationToken("");
+    removeCoupon();
     setParkedSalesOpen(false);
     const customerId = opened.document.clienteId;
     if (customerId) {
@@ -1054,31 +1155,49 @@ export function SaleScreen({
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
       setDiscountAuthorizationToken("");
+      setCouponInput("");
+      setPromotionalCouponCode("");
+      setCouponStatus("idle");
+      setCouponMessage("");
       return;
     }
     setAuthoritativeQuoteLoading(true);
     setAuthoritativeQuoteError("");
     const timer = window.setTimeout(() => {
-      apiRequest<PosAuthoritativeQuote>("/pos/cash/quote", {
+      apiRequest<PosAuthoritativeQuote>("/pos/sales/quote", {
         token: session.accessToken,
         body: cashSaleRequest()
       }).then((quote) => {
-        if (generation === quoteGenerationRef.current) setAuthoritativeQuote(quote);
+        if (generation !== quoteGenerationRef.current) return;
+        if (!isCompleteAuthoritativeQuote(quote)) {
+          throw new Error(t("sale.quote.invalidResponse"));
+        }
+        setAuthoritativeQuote(quote);
+        if (promotionalCouponCode) {
+          setCouponStatus("applied");
+          setCouponMessage(t("sale.coupon.applied"));
+        }
       }).catch((error) => {
         if (generation === quoteGenerationRef.current) {
           setAuthoritativeQuote(null);
-          setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.main.quoteError"));
+          if (promotionalCouponCode) {
+            setCouponStatus("error");
+            setCouponMessage(t("sale.coupon.invalid"));
+            setPromotionalCouponCode("");
+          } else {
+            setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.quote.error"));
+          }
         }
       }).finally(() => {
         if (generation === quoteGenerationRef.current) setAuthoritativeQuoteLoading(false);
       });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [discountAuthorizationToken, lines, selectedCustomer?.id, session.accessToken]);
+  }, [discountAuthorizationToken, lines, promotionalCouponCode, selectedCustomer?.id, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
-      if (lines.length === 0 || total <= 0) return;
+      if (paymentActionsDisabled || paymentLocked || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
       setCashOpening(true);
       setCashError("");
       setCashStatus("");
@@ -1093,7 +1212,7 @@ export function SaleScreen({
         setCashCheckoutId(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
         setCashDialogOpen(true);
       } catch (error) {
-        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
+        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.quote.error"));
       } finally {
         if (opening.isCurrent()) setCashOpening(false);
       }
@@ -1122,6 +1241,7 @@ export function SaleScreen({
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
       setQuery(transition.query);
+      removeCoupon();
       deletionControl.reset("SALE_FINALIZED");
       setVerifactuRefreshSignal((current) => current + 1);
       startAutomaticTicketPrint(result.printTicket);
@@ -1140,7 +1260,7 @@ export function SaleScreen({
   const newCheckoutId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
   async function openCardDialog() {
-    if (lines.length === 0 || total <= 0) return;
+    if (paymentActionsDisabled || paymentLocked || !authoritativeQuoteReady || authoritativeTotal <= 0) return;
     await runGuardedCardOpening(cardOpeningRef.current, async (opening) => {
       setCardOpening(true); setCashStatus("");
       try {
@@ -1151,7 +1271,7 @@ export function SaleScreen({
         setCardQuoteCents(cents); setCardCheckoutId(checkoutId); setCardStatus("PENDING"); setCardMessage("Esperando respuesta del datafono..."); setCardDialogOpen(true);
         await submitCardPayment(checkoutId, cents);
       } catch (error) {
-        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.main.quoteError"));
+        if (opening.isCurrent()) setCashStatus(error instanceof Error ? error.message : t("sale.quote.error"));
       } finally { setCardOpening(false); }
     });
   }
@@ -1165,6 +1285,7 @@ export function SaleScreen({
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+          removeCoupon();
           deletionControl.reset("SALE_FINALIZED");
           setVerifactuRefreshSignal((current) => current + 1);
         }
@@ -1212,7 +1333,11 @@ export function SaleScreen({
     function handleSaleShortcut(event: KeyboardEvent) {
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (pendingRecoveryBlocked) return;
-      if (saleShortcutTargetIsEditable(event.target)) return;
+      if (saleShortcutTargetIsEditable(event.target)) {
+        const saleFunctionKeyFromProductSearch = event.target === searchInputRef.current
+          && ["F2", "F5", "F6", "F7", "PageDown", "F11", "F12"].includes(event.key);
+        if (!saleFunctionKeyFromProductSearch) return;
+      }
 
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (paymentLocked || lines.length === 0) return;
@@ -1263,7 +1388,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [canApplyManualDiscount, catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
+  }, [authoritativeQuoteReady, authoritativeTotal, canApplyManualDiscount, catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingOpening, pendingRecoveryBlocked, recoveredPendingSale, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1312,7 +1437,39 @@ export function SaleScreen({
             <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : t("sale.main.noSale")}</div>
           ) : (
             <div className="sale-ticket-lines" aria-label={t("sale.main.ticketLines")}>
-              {lines.map((line) => (
+              {authoritativeLineBreakdown ? authoritativeLineBreakdown.map((line) => (
+                <button
+                  type="button"
+                  className={`sale-ticket-line authoritative${selectedProductId === line.productId ? " selected" : ""}`}
+                  key={line.lineId}
+                  aria-pressed={selectedProductId === line.productId}
+                  onClick={() => setSelectedProductId(line.productId)}
+                >
+                  <div>
+                    <strong className="product-name-text">{line.name}</strong>
+                    <span>{line.code}</span>
+                  </div>
+                  <span>
+                    {Number(line.quantity)} x {formatSaleAmount(Number(line.baseUnitPrice))}
+                    {Number(line.memberPriceSaving) > 0 && (
+                      <small>{saleMainMessage(t, "sale.quote.memberPriceSaving", { amount: formatSaleAmount(Number(line.memberPriceSaving)) })}</small>
+                    )}
+                    {Number(line.memberDiscount) > 0 && (
+                      <small>{saleMainMessage(t, "sale.quote.memberDiscount", { percent: formatSaleAmount(Number(line.memberDiscountPercent)), amount: formatSaleAmount(Number(line.memberDiscount)) })}</small>
+                    )}
+                    {Number(line.manualDiscount) > 0 && (
+                      <small>{saleMainMessage(t, "sale.quote.manualDiscount", { percent: formatSaleAmount(Number(line.manualDiscountPercent)), amount: formatSaleAmount(Number(line.manualDiscount)) })}</small>
+                    )}
+                    {Number(line.promotionDiscount) > 0 && (
+                      <small>{saleMainMessage(t, "sale.quote.promotionDiscount", { amount: formatSaleAmount(Number(line.promotionDiscount)) })}</small>
+                    )}
+                    {Number(line.couponDiscount) > 0 && (
+                      <small>{saleMainMessage(t, "sale.quote.couponDiscount", { amount: formatSaleAmount(Number(line.couponDiscount)) })}</small>
+                    )}
+                  </span>
+                  <b>{formatSaleAmount(Number(line.finalSubtotal))}</b>
+                </button>
+              )) : lines.map((line) => (
                 <button
                   type="button"
                   className={`sale-ticket-line${selectedProductId === line.product.id ? " selected" : ""}`}
@@ -1349,7 +1506,7 @@ export function SaleScreen({
           <footer className="sale-total">
             <span>{t("sale.main.total")}</span>
             <strong>{formatSaleAmount(displayedTotal)}</strong>
-            {authoritativeQuoteLoading && <small aria-live="polite">Calculando total definitivo...</small>}
+            {authoritativeQuoteLoading && <small aria-live="polite">{t("sale.quote.loading")}</small>}
             {authoritativeQuoteError && <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>}
           </footer>
           <div className="work-panel-heading sale-product-heading">
@@ -1377,6 +1534,11 @@ export function SaleScreen({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
+                if (searchResultsVisible && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+                  event.preventDefault();
+                  moveSearchSelection(event.key);
+                  return;
+                }
                 if (event.key === "Enter") {
                   event.preventDefault();
                   submitSearch();
@@ -1403,14 +1565,15 @@ export function SaleScreen({
             )}
             {!catalogLoading && !catalogError && results.map((product) => (
               <button
-                aria-selected={product.id === selectedSearchProductId}
-                className={`sale-search-result${product.id === selectedSearchProductId ? " selected" : ""}`}
+                aria-selected={product.id === activeSearchProductId}
+                className={`sale-search-result${product.id === activeSearchProductId ? " selected" : ""}`}
                 id={`sale-product-result-${encodeURIComponent(product.id)}`}
                 role="option"
                 type="button"
                 disabled={paymentLocked}
                 key={product.id}
                 onClick={() => requestAddProduct(product)}
+                onMouseEnter={() => setSelectedSearchProductId(product.id)}
               >
                 <span>
                   <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
@@ -1461,6 +1624,45 @@ export function SaleScreen({
               </button>
             </div>
           </section>
+          <section className="sale-coupon" aria-label={t("sale.coupon.title")}>
+            <h2>{t("sale.coupon.title")}</h2>
+            <form onSubmit={(event) => { event.preventDefault(); applyCoupon(); }}>
+              <label htmlFor="sale-promotional-coupon">{t("sale.coupon.label")}</label>
+              <div>
+                <input
+                  id="sale-promotional-coupon"
+                  autoComplete="off"
+                  disabled={paymentLocked || lines.length === 0 || couponStatus === "validating"}
+                  placeholder={t("sale.coupon.placeholder")}
+                  value={couponInput}
+                  onChange={(event) => {
+                    setCouponInput(event.target.value);
+                    if (couponStatus === "error") {
+                      setCouponStatus("idle");
+                      setCouponMessage("");
+                    }
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={paymentLocked || lines.length === 0 || !couponInput.trim() || couponStatus === "validating"}
+                >
+                  {t(couponStatus === "validating" ? "sale.coupon.validating" : "sale.coupon.apply")}
+                </button>
+                {promotionalCouponCode && couponStatus === "applied" && (
+                  <button type="button" className="sale-coupon-remove" onClick={removeCoupon}>
+                    {t("sale.coupon.remove")}
+                  </button>
+                )}
+              </div>
+              {couponMessage && (
+                <p className={couponStatus === "error" ? "sale-action-error" : "sale-coupon-success"}
+                  role={couponStatus === "error" ? "alert" : "status"}>
+                  {couponMessage}
+                </p>
+              )}
+            </form>
+          </section>
           <section className="sale-payment" aria-label={t("sale.main.payment")}>
             <h2>{t("sale.main.payment")}</h2>
             <SalePaymentCheckout
@@ -1490,6 +1692,7 @@ export function SaleScreen({
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
                 setQuery("");
+                removeCoupon();
                 setReservedPaymentTotalCents(null);
                 const result = paymentResultFromFinalization(printTicket, summary);
                 if (summary.kind === "CARD") {
@@ -1546,6 +1749,7 @@ export function SaleScreen({
 
       {cashDialogOpen && (
         <CashPaymentDialog
+          locale={locale}
           totalCents={cashQuoteCents}
           initialMode={cashInputMode}
           submitting={cashSubmitting}
@@ -1596,7 +1800,7 @@ export function SaleScreen({
         onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
           setPendingPrintRetry(() => retry ?? null);
-          setSelectedCustomer(null); setQuery(""); searchInputRef.current?.focus();
+          setSelectedCustomer(null); setQuery(""); removeCoupon(); searchInputRef.current?.focus();
           setVerifactuRefreshSignal((current) => current + 1);
         }}
       />}
@@ -1706,6 +1910,7 @@ export function SaleScreen({
         <TicketManagementDialog
           token={session.accessToken}
           locale={locale}
+          permissions={session.permissions}
           terminalContext={terminalContext}
           onClose={() => setTicketManagementOpen(false)}
           onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}

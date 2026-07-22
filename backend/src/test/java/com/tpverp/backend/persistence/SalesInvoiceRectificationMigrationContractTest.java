@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class SalesInvoiceRectificationMigrationContractTest {
 
-    private static final String MIGRATION = "db/migration/V89__facturas_rectificativas_venta.sql";
+    private static final String MIGRATION = "db/migration/V91__facturas_rectificativas_venta.sql";
 
     @Test
     void storesOneTypedLinkedFiscalDefinitionPerCorrectiveInvoice() throws IOException {

@@ -1,4 +1,4 @@
-import { lazy, StrictMode, Suspense, useState } from "react";
+import { Component, lazy, StrictMode, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { devTerminalContext } from "../../../packages/app-common/src/api/runtime";
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
@@ -8,6 +8,63 @@ import { readSaleInterfaceTouchMode } from "../../../packages/app-common/src/com
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { useSaleUserLocalePreference } from "./saleUserLocale";
+import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
+import { ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
+
+type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
+
+type AppLoadingPhase = "application" | "compatibility";
+
+function appLoadingCopy(language: string, phase: AppLoadingPhase) {
+  if (language.startsWith("en")) {
+    return phase === "compatibility"
+      ? { title: "Preparing the point of sale", detail: "Checking the secure connection to the backend" }
+      : { title: "Loading APP VENTA", detail: "Preparing your sales workspace" };
+  }
+  if (language.startsWith("zh")) {
+    return phase === "compatibility"
+      ? { title: "正在准备销售终端", detail: "正在检查与后端的安全连接" }
+      : { title: "正在加载 APP VENTA", detail: "正在准备销售工作区" };
+  }
+  return phase === "compatibility"
+    ? { title: "Preparando el punto de venta", detail: "Comprobando compatibilidad y conexión segura con el backend" }
+    : { title: "Cargando APP VENTA", detail: "Preparando tu espacio de venta" };
+}
+
+export function AppLoadingFallback({ phase = "application", locale }: { phase?: AppLoadingPhase; locale?: LocaleCode }) {
+  const language = locale ?? document.documentElement.lang;
+  const copy = appLoadingCopy(language, phase);
+  return (
+    <main className="app-loading-screen">
+      <section className="app-loading-card" role="status" aria-live="polite" aria-busy="true">
+        <span className="app-loading-brand">APP VENTA</span>
+        <div className="app-loading-copy">
+          <h1>{copy.title}</h1>
+          <p>{copy.detail}</p>
+        </div>
+        <progress aria-label={copy.title} />
+      </section>
+      <footer>TPV ERP</footer>
+    </main>
+  );
+}
+
+class LazyModuleErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("APP VENTA module failed to load", { name: error.name, componentStack: info.componentStack });
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <main className="settings-screen"><section className="settings-card" role="alert">
+      <h1>No se pudo cargar esta parte de APP VENTA</h1>
+      <p>La información técnica no se muestra por seguridad.</p>
+      <button type="button" onClick={() => window.location.reload()}>Reintentar</button>
+      <button type="button" onClick={() => window.history.back()}>Volver</button>
+    </section></main>;
+  }
+}
 
 const SalesReportScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SalesReportScreen").then(({ SalesReportScreen }) => ({
@@ -45,6 +102,31 @@ export function App() {
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
+  const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
+
+  useEffect(() => {
+    let active = true;
+    if (!session?.accessToken) {
+      setCompatibilityGate({ status: "ready" });
+      return () => { active = false; };
+    }
+    setCompatibilityGate({ status: "checking" });
+    loadBackendCompatibility(session.accessToken).then(backend => {
+      if (!active) return;
+      const result = evaluateCompatibility(backend);
+      setCompatibilityGate(result.compatible
+        ? { status: "ready" }
+        : { status: "blocked", reason: result.reason ?? "BACKEND_TOO_OLD" });
+    }).catch(error => {
+      if (!active) return;
+      const reason = error instanceof ApiConnectionError ? "BACKEND_UNREACHABLE"
+        : error instanceof ApiError && error.status === 404 ? "BACKEND_TOO_OLD"
+          : error instanceof InvalidCompatibilityContractError ? "BACKEND_TOO_OLD"
+            : "COMPATIBILITY_CHECK_FAILED";
+      setCompatibilityGate({ status: "blocked", reason });
+    });
+    return () => { active = false; };
+  }, [session?.accessToken]);
 
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
   const handleLogin = (nextSession: UserSession) => {
@@ -67,6 +149,21 @@ export function App() {
         onLogin={handleLogin}
       />
     );
+  }
+
+  if (compatibilityGate.status === "checking") {
+    return <AppLoadingFallback phase="compatibility" locale={locale} />;
+  }
+
+  if (compatibilityGate.status === "blocked") {
+    const unreachable = compatibilityGate.reason === "BACKEND_UNREACHABLE";
+    const message = locale === "en" ? (unreachable ? "The backend is unreachable. Payments remain blocked." : "APP VENTA and the backend are not compatible. Update before taking payments.")
+      : locale === "zh" ? (unreachable ? "无法连接后端。收款功能保持锁定。" : "APP VENTA 与后端不兼容。请先更新再进行收款。")
+        : unreachable ? "No se puede conectar con el backend. Los cobros permanecen bloqueados." : "APP VENTA y el backend no son compatibles. Actualiza antes de realizar cobros.";
+    return <main className="settings-screen"><section className="settings-card" role="alert">
+      <h1>{message}</h1><p>{compatibilityGate.reason}</p>
+      <button type="button" onClick={handleLogout}>{locale === "en" ? "Log out" : locale === "zh" ? "退出" : "Cerrar sesión"}</button>
+    </section></main>;
   }
 
   const canOpenSalesReport =
@@ -169,6 +266,7 @@ export function App() {
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
         onOpenHardware={() => setScreen("hardwareSettings")}
+        onOpenReports={() => setScreen("salesReport")}
       />
     );
   }
@@ -194,8 +292,10 @@ export function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Suspense fallback={null}>
-      <App />
-    </Suspense>
+    <LazyModuleErrorBoundary>
+      <Suspense fallback={<AppLoadingFallback />}>
+        <App />
+      </Suspense>
+    </LazyModuleErrorBoundary>
   </StrictMode>
 );

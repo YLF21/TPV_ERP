@@ -3,7 +3,10 @@ package com.tpverp.backend.document;
 import java.util.Set;
 
 final class SimulatorDiscardReason {
-    private static final Set<String> ALLOWED = Set.of("application_shutdown", "sale_entry_cleanup");
+    private static final Set<String> ALLOWED = Set.of(
+            "application_shutdown",
+            "sale_entry_cleanup",
+            "payment_method_change");
 
     private SimulatorDiscardReason() {
     }

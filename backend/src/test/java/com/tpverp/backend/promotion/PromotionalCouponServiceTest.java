@@ -3,6 +3,7 @@ package com.tpverp.backend.promotion;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -51,7 +52,7 @@ class PromotionalCouponServiceTest {
     void unknownRedemptionRegistersRejectedAttemptWithoutPlaintextCode() {
         var companyId = UUID.randomUUID();
         var documentId = UUID.randomUUID();
-        when(coupons.findByEmpresaIdAndCodigoHash(companyId, service("MISSING-0000").hashForTest("MISSING-0000")))
+        when(coupons.findLockedByCompanyIdAndCodeHash(companyId, service("MISSING-0000").hashForTest("MISSING-0000")))
                 .thenReturn(Optional.empty());
 
         var result = service("unused").redeem(new PromotionalCouponService.RedemptionCommand(
@@ -89,7 +90,7 @@ class PromotionalCouponServiceTest {
                 new BigDecimal("10.00"),
                 LocalDate.of(2026, 6, 1),
                 LocalDate.of(2026, 6, 30));
-        when(coupons.findByEmpresaIdAndCodigoHash(creation.companyId(), coupon.codeHash()))
+        when(coupons.findLockedByCompanyIdAndCodeHash(creation.companyId(), coupon.codeHash()))
                 .thenReturn(Optional.of(coupon));
 
         var result = service("unused").redeem(redemption(creation.companyId(), "EXPIRED-9999", "5.00"));
@@ -114,7 +115,7 @@ class PromotionalCouponServiceTest {
                 new BigDecimal("25.00"),
                 LocalDate.of(2026, 7, 1),
                 LocalDate.of(2026, 7, 31));
-        when(coupons.findByEmpresaIdAndCodigoHash(creation.companyId(), original.codeHash()))
+        when(coupons.findLockedByCompanyIdAndCodeHash(creation.companyId(), original.codeHash()))
                 .thenReturn(Optional.of(original));
         when(coupons.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -150,7 +151,7 @@ class PromotionalCouponServiceTest {
                 LocalDate.of(2026, 7, 1),
                 LocalDate.of(2026, 7, 31),
                 NOW);
-        when(coupons.findByEmpresaIdAndCodigoHash(creation.companyId(), coupon.codeHash()))
+        when(coupons.findLockedByCompanyIdAndCodeHash(creation.companyId(), coupon.codeHash()))
                 .thenReturn(Optional.of(coupon));
 
         var documentId = UUID.randomUUID();
@@ -176,6 +177,53 @@ class PromotionalCouponServiceTest {
         assertThat(attempt.getValue().terminalId()).isEqualTo(terminalId);
         assertThat(attempt.getValue().documentId()).isEqualTo(documentId);
         assertThat(coupon.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
+    }
+
+    @Test
+    void evaluationReturnsAuthoritativeDiscountWithoutConsumingCoupon() {
+        var creation = amountCreation();
+        var code = "PREVIEW-5555";
+        var coupon = PromotionalCoupon.amount(
+                creation.companyId(), creation.generatedStoreId(), creation.promotionId(),
+                creation.generatedDocumentId(), service(code).hashForTest(code), "5555",
+                new BigDecimal("25.00"), LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31));
+        when(coupons.findByEmpresaIdAndCodigoHash(creation.companyId(), coupon.codeHash()))
+                .thenReturn(Optional.of(coupon));
+
+        var result = service("unused").evaluate(
+                redemption(creation.companyId(), code, "10.00"));
+
+        assertThat(result.accepted()).isTrue();
+        assertThat(result.couponId()).isEqualTo(coupon.id());
+        assertThat(result.promotionId()).isEqualTo(coupon.promotionId());
+        assertThat(result.discountAmount()).isEqualByComparingTo("10.00");
+        assertThat(coupon.status()).isEqualTo(PromotionalCouponStatus.ACTIVE);
+        verify(coupons, never()).findLockedByCompanyIdAndCodeHash(any(), any());
+        verify(attempts, never()).save(any());
+    }
+
+    @Test
+    void authorizedSnapshotConsumesByInternalIdWithoutPersistingPlaintextCode() {
+        var creation = amountCreation();
+        var code = "SNAPSHOT-6666";
+        var coupon = PromotionalCoupon.amount(
+                creation.companyId(), creation.generatedStoreId(), creation.promotionId(),
+                creation.generatedDocumentId(), service(code).hashForTest(code), "6666",
+                new BigDecimal("15.00"), LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31));
+        when(coupons.findLockedByIdAndCompanyId(coupon.id(), creation.companyId()))
+                .thenReturn(Optional.of(coupon));
+
+        var result = service("unused").redeemAuthorized(
+                new PromotionalCouponService.AuthorizedRedemptionCommand(
+                        creation.companyId(), UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), UUID.randomUUID(), null, null, null,
+                        coupon.id(), new BigDecimal("10.00")));
+
+        assertThat(result.rejectionReason()).isNull();
+        assertThat(result.couponId()).isEqualTo(coupon.id());
+        assertThat(result.redeemedAmount()).isEqualByComparingTo("10.00");
+        assertThat(coupon.status()).isEqualTo(PromotionalCouponStatus.USED);
+        verify(coupons, never()).findLockedByCompanyIdAndCodeHash(any(), any());
     }
 
     @Test

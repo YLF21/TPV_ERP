@@ -889,7 +889,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
  });
 
- it("clears card recovery state on safe cancellation so a later card checkout can start",async()=>{
+ it("discards an uncertain simulated card payment so the operator can choose another method",async()=>{
   const first={id:"session-cancel-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
   const second={id:"session-cancel-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
   let creations=0;
@@ -901,7 +901,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
     const id=(options?.body as {allocationId:string}).allocationId;
     return {...first,allocations:[{id,idempotencyKey:id,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"op-1"}]};
    }
-   if(path==="/pos/payment-sessions/session-cancel-card-1/cancel")return {...first,status:"CANCELLED"};
+   if(path==="/pos/payment-sessions/session-cancel-card-1/cancel")return {...first,status:"COMPENSATION_REQUIRED",allocations:[{id:"card-timeout",idempotencyKey:"card-timeout",status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"op-1"}]};
+   if(path==="/pos/payment-sessions/session-cancel-card-1/simulator-discard"){
+    expect(options?.body).toEqual({reason:"payment_method_change"});
+    return {...first,status:"CANCELLED"};
+   }
    if(path==="/pos/payment-sessions/session-cancel-card-2/allocations")return second;
    throw new Error(`unexpected request ${path}`);
   });
@@ -913,6 +917,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Cancelar sesión de cobro"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+  expect(screen.getByRole("button",{name:/Efectivo/})).toBeEnabled();
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-cancel-card-2/allocations")).toHaveLength(1));

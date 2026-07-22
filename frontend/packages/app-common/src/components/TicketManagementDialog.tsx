@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode, TerminalContext } from "../types";
 import type { PaymentRefundLineOption, PaymentRefundLineSelection } from "../sale/paymentOperations";
 import { printConfirmedTicketAutomatically, type ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
+import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 
 type TicketPayment = {
   id: string;
@@ -26,8 +27,12 @@ type Ticket = {
 };
 
 type CustomerOption = { id: string; fiscalName?: string | null; clientId?: string | null };
-type Voucher = { code: string; balance: number | string; status: string };
-type TicketReturnResult = { receipt: ConfirmedTicketPrintSnapshot };
+type Voucher = { code: string; balance: number | string; status: string; originTickets?: string[] };
+type TicketReturnResult = {
+  documentId: string;
+  voucherCode?: string | null;
+  receipt: ConfirmedTicketPrintSnapshot;
+};
 type ReturnAttempt = {
   signature: string;
   requestId: string;
@@ -38,14 +43,24 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   terminalContext: TerminalContext;
+  permissions?: string[];
   onClose: () => void;
   onFiscalMutation?: () => void;
 };
 
-export function TicketManagementDialog({ token, locale, terminalContext, onClose, onFiscalMutation }: Props) {
+export function TicketManagementDialog({ token, locale, terminalContext, permissions = [], onClose, onFiscalMutation }: Props) {
   const t = createTranslator(locale);
+  const dialogRef = useRef<HTMLElement>(null);
+  const isAdmin = permissions.includes("ADMIN");
+  const canCancelTicket = isAdmin || permissions.some((permission) => permission === "GESTION_VENTAS" || permission === "TICKETS_CANCEL");
+  const canRefundTicket = isAdmin || permissions.includes("PAYMENT_TERMINAL_REFUND");
+  const canInvoiceTicket = isAdmin || permissions.some((permission) => permission === "GESTION_VENTAS" || permission === "VENTA");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -60,36 +75,37 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
   const [refundLines, setRefundLines] = useState<PaymentRefundLineSelection[]>([]);
   const [refundPassword, setRefundPassword] = useState("");
   const [refundCashAmount, setRefundCashAmount] = useState("0.00");
+  const [refundVoucherAmount, setRefundVoucherAmount] = useState("0.00");
   const [refundCardAmounts, setRefundCardAmounts] = useState<Record<string, string>>({});
 
   const selected = tickets.find((ticket) => ticket.id === selectedId) ?? null;
   const filtered = useMemo(() => {
     const value = query.trim().toLocaleLowerCase();
-    if (!value) return tickets;
-    return tickets.filter((ticket) => [ticket.numero, ticket.customerName, ticket.fecha, ticket.estado]
-      .some((field) => String(field ?? "").toLocaleLowerCase().includes(value)));
-  }, [query, tickets]);
+    return tickets.filter((ticket) => {
+      const matchesQuery = !value || [ticket.numero, ticket.customerName, ticket.fecha, ticket.estado]
+        .some((field) => String(field ?? "").toLocaleLowerCase().includes(value));
+      const matchesStatus = !statusFilter || ticket.estado === statusFilter;
+      const matchesDateFrom = !dateFrom || ticket.fecha >= dateFrom;
+      const matchesDateTo = !dateTo || ticket.fecha <= dateTo;
+      return matchesQuery && matchesStatus && matchesDateFrom && matchesDateTo;
+    });
+  }, [dateFrom, dateTo, query, statusFilter, tickets]);
+  const statuses = useMemo(() => Array.from(new Set(tickets.map((ticket) => ticket.estado))).sort(), [tickets]);
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pagedTickets = filtered.slice((page - 1) * pageSize, page * pageSize);
   const refundAmount = refundLines.reduce((sum, line) => {
     const option = refundOptions.find((candidate) => candidate.lineId === line.lineId);
     const quantity = Number(line.quantity);
     const available = Number(option?.refundableQuantity ?? 0);
     return sum + (option && available > 0 ? Number(option.refundableTotal) * quantity / available : 0);
   }, 0);
-  const refundAllocated = Number(refundCashAmount || 0) + Object.values(refundCardAmounts)
+  const refundAllocated = Number(refundCashAmount || 0) + Number(refundVoucherAmount || 0) + Object.values(refundCardAmounts)
     .reduce((sum, value) => sum + Number(value || 0), 0);
   const refundAllocationMatches = Math.abs(refundAllocated - refundAmount) < 0.005;
   const activeVouchers = vouchers.filter((voucher) => voucher.status === "ACTIVE");
-  const selectedTotal = Number(selected?.total ?? 0);
   const selectedPendingTotal = Number(selected?.pendingTotal ?? 0);
-  const canIssueVoucher = selected?.estado === "CONFIRMADO" && selectedTotal < 0;
   const canConsumeVoucher = selectedPendingTotal > 0 && activeVouchers.length > 0 && Boolean(voucherCode);
-  const voucherIssueHint = !selected
-    ? t("ticketManagement.voucher.issue.selectRefund")
-    : selected.estado !== "CONFIRMADO"
-      ? t("ticketManagement.voucher.issue.confirmedRequired")
-      : selectedTotal >= 0
-        ? t("ticketManagement.voucher.issue.negativeRequired")
-        : t("ticketManagement.voucher.issue.ready");
   const voucherConsumeHint = !selected
     ? t("ticketManagement.voucher.consume.selectPending")
     : selectedPendingTotal <= 0
@@ -121,6 +137,16 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
   }
 
   useEffect(() => { void load(""); }, [token]);
+  useEffect(() => dialogRef.current
+    ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
+    : undefined, []);
+  useEffect(() => {
+    setPage(1);
+    setSelectedId((current) => filtered.some((ticket) => ticket.id === current) ? current : filtered[0]?.id ?? "");
+  }, [filtered]);
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -137,6 +163,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
     setRefundLines([]);
     setRefundPassword("");
     setRefundCashAmount("0.00");
+    setRefundVoucherAmount("0.00");
     setRefundCardAmounts({});
     setError("");
     setMessage("");
@@ -196,6 +223,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
       setRefundLines(options.map((option) => ({ lineId: option.lineId, quantity: String(option.refundableQuantity) })));
       setRefundCardAmounts(cardAmounts);
       setRefundCashAmount(remaining.toFixed(2));
+      setRefundVoucherAmount("0.00");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("ticketManagement.error.refundPrepare"));
     } finally {
@@ -222,7 +250,8 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
         }));
       const cashAmount = Number(refundCashAmount || 0).toFixed(2);
       const lines = refundLines.filter((line) => Number(line.quantity) > 0);
-      const signature = JSON.stringify({ cashAmount, cardDrafts, lines });
+      const voucherAmount = Number(refundVoucherAmount || 0).toFixed(2);
+      const signature = JSON.stringify({ cashAmount, voucherAmount, cardDrafts, lines });
       const stored = globalThis.localStorage?.getItem(attemptKey);
       const parsed = readReturnAttempt(stored);
       const attempt = parsed?.signature === signature ? parsed : {
@@ -246,6 +275,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
           requestId: attempt.requestId,
           password: refundPassword,
           cashAmount,
+          voucherAmount,
           cards,
           lines
         }
@@ -256,10 +286,12 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
       if (printOutcome.status === "FAILED") {
         setError(printOutcome.technicalMessage ?? t("ticketManagement.error.print"));
       }
-      setMessage(t("ticketManagement.refund.success"));
+      setMessage(result.voucherCode
+        ? interpolate(t("ticketManagement.refund.voucherSuccess"), { code: result.voucherCode })
+        : t("ticketManagement.refund.success"));
       setRefundPassword("");
       setRefundPrepared(false);
-      await load(selected.id);
+      await load(result.documentId);
     } catch (reason) {
       if (reason instanceof Error && /DECLINED|CANCELLED|ERROR/.test(reason.message)) {
         globalThis.localStorage?.removeItem(attemptKey);
@@ -272,7 +304,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
 
   return (
     <div className="sale-action-overlay" role="presentation">
-      <section className="sale-action-dialog wide ticket-management-dialog" role="dialog" aria-modal="true" aria-labelledby="ticket-management-title">
+      <section ref={dialogRef} className="sale-action-dialog wide ticket-management-dialog" role="dialog" aria-modal="true" aria-labelledby="ticket-management-title">
         <header className="ticket-management-header">
           <div>
             <span className="ticket-management-eyebrow">{t("ticketManagement.eyebrow")}</span>
@@ -291,11 +323,27 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
               placeholder={t("ticketManagement.searchPlaceholder")}
             />
           </label>
+          <label className="ticket-management-filter">
+            <span>{t("ticketManagement.filter.status")}</span>
+            <select aria-label={t("ticketManagement.filter.status")} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="">{t("ticketManagement.filter.allStatuses")}</option>
+              {statuses.map((status) => <option value={status} key={status}>{t(`ticketManagement.status.${status}`)}</option>)}
+            </select>
+          </label>
+          <label className="ticket-management-filter">
+            <span>{t("ticketManagement.filter.dateFrom")}</span>
+            <input aria-label={t("ticketManagement.filter.dateFrom")} type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} />
+          </label>
+          <label className="ticket-management-filter">
+            <span>{t("ticketManagement.filter.dateTo")}</span>
+            <input aria-label={t("ticketManagement.filter.dateTo")} type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
+          </label>
           <span className="ticket-management-count">{interpolate(t("ticketManagement.resultCount"), { count: filtered.length })}</span>
         </div>
         <div className="ticket-management-layout">
           <aside className="ticket-management-list" aria-label={t("ticketManagement.listAria")}>
-            {filtered.map((ticket) => (
+            <div className="ticket-management-list-results">
+            {pagedTickets.map((ticket) => (
               <button
                 type="button"
                 className={ticket.id === selectedId ? "selected" : ""}
@@ -311,6 +359,12 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
               </button>
             ))}
             {!busy && filtered.length === 0 && <p>{t("ticketManagement.noMatches")}</p>}
+            </div>
+            {filtered.length > pageSize && <nav className="ticket-management-pagination" aria-label={t("ticketManagement.pagination.aria")}>
+              <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>{t("ticketManagement.pagination.previous")}</button>
+              <span>{interpolate(t("ticketManagement.pagination.page"), { page, pages: pageCount })}</span>
+              <button type="button" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>{t("ticketManagement.pagination.next")}</button>
+            </nav>}
           </aside>
           <div className="ticket-management-detail" aria-live="polite">
             {!selected && <div className="ticket-management-empty"><strong>{t("ticketManagement.selectTicket")}</strong><span>{t("ticketManagement.selectTicketHint")}</span></div>}
@@ -330,7 +384,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                   <p>{t("ticketManagement.cancel.hint")}</p>
                   <div className="ticket-action-row">
                     <input aria-label={t("ticketManagement.cancel.reasonAria")} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder={t("ticketManagement.cancel.reasonPlaceholder")}/>
-                    <button type="button" className="danger" disabled={busy || selected.estado !== "CONFIRMADO" || !cancelReason.trim()} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/cancel`, { token, method: "POST", body: { reason: cancelReason } }), t("ticketManagement.cancel.success"), true)}>{t("ticketManagement.cancel.action")}</button>
+                    <button type="button" className="danger" title={canCancelTicket ? undefined : t("ticketManagement.permission.cancel")} disabled={busy || !canCancelTicket || selected.estado !== "CONFIRMADO" || !cancelReason.trim()} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/cancel`, { token, method: "POST", body: { reason: cancelReason } }), t("ticketManagement.cancel.success"), true)}>{t("ticketManagement.cancel.action")}</button>
                   </div>
                 </fieldset>
                 <fieldset className="ticket-action-card">
@@ -340,13 +394,13 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                     : t("ticketManagement.invoice.noCustomer")}</p>
                   <div className="ticket-action-row">
                     <select aria-label={t("ticketManagement.invoice.customerAria")} value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}><option value="">{t("ticketManagement.invoice.selectCustomer")}</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.fiscalName ?? customer.clientId ?? customer.id}</option>)}</select>
-                    <button type="button" className="primary" disabled={busy || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"), true)}>{t("ticketManagement.invoice.action")}</button>
+                    <button type="button" className="primary" title={canInvoiceTicket ? undefined : t("ticketManagement.permission.invoice")} disabled={busy || !canInvoiceTicket || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"), true)}>{t("ticketManagement.invoice.action")}</button>
                   </div>
                 </fieldset>
                 <fieldset className="ticket-action-card">
                   <legend>{t("ticketManagement.refund.title")}</legend>
                   <p>{t("ticketManagement.refund.hint")}</p>
-                  <button type="button" className="primary ticket-action-full" disabled={busy || selected.estado !== "CONFIRMADO"} onClick={() => void prepareRefund()}>{t("ticketManagement.refund.prepare")}</button>
+                  <button type="button" className="primary ticket-action-full" title={canRefundTicket ? undefined : t("ticketManagement.permission.refund")} disabled={busy || !canRefundTicket || selected.estado !== "CONFIRMADO"} onClick={() => void prepareRefund()}>{t("ticketManagement.refund.prepare")}</button>
                   {refundPrepared && <div className="ticket-refund-lines">
                     {refundOptions.map((option) => <label key={option.lineId}>
                       <span>{option.code} · {option.name} ({interpolate(t("ticketManagement.refund.max"), { quantity: option.refundableQuantity })})</span>
@@ -360,9 +414,15 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                         <span>{interpolate(t("ticketManagement.refund.card"), { provider: payment.paymentTerminalProvider ?? "" })}</span>
                         <input type="number" min="0" max={Number(payment.amount)} step="0.01" value={refundCardAmounts[payment.id] ?? "0.00"} onChange={(event) => setRefundCardAmounts((current) => ({ ...current, [payment.id]: event.target.value }))} />
                       </label>)}
+                      <label><span>{t("ticketManagement.refund.voucher")}</span><input type="number" min="0" step="0.01" value={refundVoucherAmount} onChange={(event) => setRefundVoucherAmount(event.target.value)} /></label>
+                      <button type="button" className="secondary ticket-refund-voucher-all" onClick={() => {
+                        setRefundCashAmount("0.00");
+                        setRefundCardAmounts((current) => Object.fromEntries(Object.keys(current).map((key) => [key, "0.00"])));
+                        setRefundVoucherAmount(refundAmount.toFixed(2));
+                      }}>{t("ticketManagement.refund.allToVoucher")}</button>
                       <small className={refundAllocationMatches ? "ticket-refund-balanced" : "sale-action-error"}>{interpolate(t(refundAllocationMatches ? "ticketManagement.refund.allocated" : "ticketManagement.refund.allocationMismatch"), { amount: formatTicketAmount(refundAllocated, locale), total: formatTicketAmount(refundAmount, locale) })}</small>
                     </div>
-                    <label><span>{t("ticketManagement.refund.pin")}</span><input type="password" inputMode="numeric" value={refundPassword} onChange={(event) => setRefundPassword(event.target.value)} /></label>
+                    <label><span>{t("ticketManagement.refund.password")}</span><input type="password" inputMode="numeric" autoComplete="current-password" value={refundPassword} onChange={(event) => setRefundPassword(event.target.value)} /></label>
                     <button type="button" className="primary" disabled={busy || refundAmount <= 0 || !refundPassword || !refundAllocationMatches} onClick={() => void confirmRefund()}>{t("ticketManagement.refund.confirm")}</button>
                   </div>}
                 </fieldset>
@@ -370,13 +430,12 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                   <legend>{t("ticketManagement.voucher.title")}</legend>
                   <p>{t("ticketManagement.voucher.hint")}</p>
                   <div className="ticket-voucher-grid">
-                    <section className={`ticket-voucher-action ${canIssueVoucher ? "ready" : "blocked"}`}>
+                    <section className="ticket-voucher-action ready">
                       <div className="ticket-voucher-action-heading">
                         <span>{t("ticketManagement.voucher.origin")}</span>
                         <div><strong>{t("ticketManagement.voucher.issue.title")}</strong><small>{t("ticketManagement.voucher.issue.subtitle")}</small></div>
                       </div>
-                      <button type="button" className="primary" title={voucherIssueHint} disabled={busy || !canIssueVoucher} onClick={() => void execute(() => apiRequest(`/vouchers/issue-from-ticket/${encodeURIComponent(selected.id)}`, { token, method: "POST" }), t("ticketManagement.voucher.issue.success"))}>{t("ticketManagement.voucher.issue.action")}</button>
-                      <p className="ticket-action-hint">{voucherIssueHint}</p>
+                      <p className="ticket-action-hint">{t("ticketManagement.voucher.issue.fromRefundMethod")}</p>
                     </section>
                     <section className={`ticket-voucher-action ${selectedPendingTotal > 0 && activeVouchers.length > 0 ? "ready" : "blocked"}`}>
                       <div className="ticket-voucher-action-heading">

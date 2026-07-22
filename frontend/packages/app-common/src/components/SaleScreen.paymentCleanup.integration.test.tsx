@@ -34,6 +34,24 @@ const product = {
   taxPercentage: 21,
 };
 
+const authoritativeQuote = {
+  total: "10.00",
+  productTotal: "10.00",
+  promotionPreview: { appliedPromotions: [] },
+  pricingVersion: 1,
+  quoteFingerprint: "payment-cleanup-quote",
+  lineBreakdown: [{
+    lineId: "product:coffee:1", position: 1, productId: "coffee", code: "CAF-001",
+    name: "Cafe molido", quantity: "1.000", normalUnitPrice: "10.00",
+    memberUnitPrice: null, baseUnitPrice: "10.00", priceSource: "SALE",
+    memberPriceSaving: "0.00", memberDiscountPercent: "0.00", memberDiscount: "0.00",
+    manualDiscountPercent: "0.00", manualDiscount: "0.00", promotionDiscount: "0.00",
+    couponDiscount: "0.00", taxIncluded: true, taxRegime: "IVA", taxPercent: "21.00",
+    taxBase: "8.26", tax: "1.74", baseSubtotal: "10.00", roundingAdjustment: "0.00",
+    finalSubtotal: "10.00",
+  }],
+};
+
 function mount(onLogout = vi.fn()) {
   return render(<SaleScreen app="venta" locale="es" session={session} terminalContext={terminal} onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={onLogout} />);
 }
@@ -47,11 +65,12 @@ afterEach(() => {
 });
 
 describe("SaleScreen payment cleanup across restart", () => {
-  it("blocks real-sale payment shortcuts during hydration and enables them after authoritative absence", async () => {
+  it("blocks real-sale payment shortcuts until hydration and the authoritative quote complete", async () => {
     let resolveActive!: (value: null) => void;
     const activeResponse = new Promise<null>((resolve) => { resolveActive = resolve; });
     apiRequestMock.mockImplementation(async (path: string) => {
       if (path === "/products/sale") return [product];
+      if (path === "/pos/sales/quote") return authoritativeQuote;
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return activeResponse;
       if (path === "/pos/payment-sessions") return { id: "new-card-session", total: "10.00", status: "COLLECTING", allocations: [] };

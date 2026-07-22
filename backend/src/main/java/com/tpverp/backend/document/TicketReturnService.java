@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class TicketReturnService {
     private final RefundTenderRepository tenders;
     private final CashPaymentRecorder cash;
     private final CurrentTerminal currentTerminal;
+    private final VoucherService vouchers;
 
     public TicketReturnService(
             DocumentService documents,
@@ -30,30 +32,35 @@ public class TicketReturnService {
             RefundSettlementRecorder settlements,
             RefundTenderRepository tenders,
             CashPaymentRecorder cash,
-            CurrentTerminal currentTerminal) {
+            CurrentTerminal currentTerminal,
+            VoucherService vouchers) {
         this.documents = documents;
         this.terminalPayments = terminalPayments;
         this.settlements = settlements;
         this.tenders = tenders;
         this.cash = cash;
         this.currentTerminal = currentTerminal;
+        this.vouchers = vouchers;
     }
 
     public ReturnResult create(
             UUID ticketId,
             UUID requestId,
             BigDecimal cashAmount,
+            BigDecimal voucherAmount,
             List<CardPayout> requestedCards,
             List<PaymentTerminalRefundLineSelection> lines,
             Authentication authentication) {
         Objects.requireNonNull(ticketId, "ticketId");
         Objects.requireNonNull(requestId, "requestId");
         var cashValue = cashAmount == null ? Money.euros(BigDecimal.ZERO) : Money.euros(cashAmount);
+        var voucherValue = voucherAmount == null ? Money.euros(BigDecimal.ZERO) : Money.euros(voucherAmount);
         if (cashValue.signum() < 0) throw new IllegalArgumentException("El efectivo no puede ser negativo");
+        if (voucherValue.signum() < 0) throw new IllegalArgumentException("El vale no puede ser negativo");
         var cards = requestedCards == null ? List.<CardPayout>of() : List.copyOf(requestedCards);
         var selectedLines = lines == null ? List.<PaymentTerminalRefundLineSelection>of() : List.copyOf(lines);
         var seenPayments = new HashSet<UUID>();
-        var total = cashValue;
+        var total = cashValue.add(voucherValue);
         for (var card : cards) {
             Objects.requireNonNull(card, "card");
             if (!seenPayments.add(card.originalPaymentId())) {
@@ -76,6 +83,10 @@ public class TicketReturnService {
         if (cashValue.signum() > 0) {
             recorded.add(new RefundSettlementRecorder.TenderCommand(
                     RefundTenderType.CASH, cashValue, null, null, null));
+        }
+        if (voucherValue.signum() > 0) {
+            recorded.add(new RefundSettlementRecorder.TenderCommand(
+                    RefundTenderType.VOUCHER, voucherValue, null, null, null));
         }
         for (var card : cards) {
             var original = terminalPayments.findByDocumentPaymentId(card.originalPaymentId())
@@ -102,9 +113,13 @@ public class TicketReturnService {
         }
         var refundDocument = settlements.record(
                 requestId, ticketId, total, selectedLines, List.copyOf(recorded), authentication);
+        var issuedVoucher = voucherValue.signum() > 0
+                ? Optional.of(vouchers.issueOrFindFromNegativeTicket(refundDocument, voucherValue))
+                : Optional.<Voucher>empty();
         return new ReturnResult(
                 refundDocument,
-                tenders.findByRefundDocumentIdOrderByCreatedAtAsc(refundDocument.getId()));
+                tenders.findByRefundDocumentIdOrderByCreatedAtAsc(refundDocument.getId()),
+                issuedVoucher);
     }
 
     public List<DocumentService.CardRefundLineOption> options(UUID ticketId) {
@@ -118,6 +133,9 @@ public class TicketReturnService {
             BigDecimal amount) {
     }
 
-    public record ReturnResult(CommercialDocument document, List<RefundTender> payouts) {
+    public record ReturnResult(
+            CommercialDocument document,
+            List<RefundTender> payouts,
+            Optional<Voucher> voucher) {
     }
 }

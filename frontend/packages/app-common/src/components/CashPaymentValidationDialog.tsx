@@ -1,13 +1,17 @@
 import { useEffect, useRef } from "react";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { createTranslator } from "../i18n/LocalizedMessages";
+import type { LocaleCode } from "../types";
 
 type CashPaymentValidationDialogProps = {
   message: string;
+  locale?: LocaleCode;
   onAccept: () => void;
 };
 
-export function CashPaymentValidationDialog({ message, onAccept }: CashPaymentValidationDialogProps) {
+export function CashPaymentValidationDialog({ message, locale = "es", onAccept }: CashPaymentValidationDialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
+  const t = createTranslator(locale);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document, { restoreFocus: false })
@@ -29,9 +33,9 @@ export function CashPaymentValidationDialog({ message, onAccept }: CashPaymentVa
           onAccept();
         }}
       >
-        <header><h2 id="cash-payment-validation-title">Aviso</h2></header>
+        <header><h2 id="cash-payment-validation-title">{t("cashPayment.validation.title")}</h2></header>
         <p id="cash-payment-validation-message">{message}</p>
-        <footer><button type="button" autoFocus onClick={onAccept}>Aceptar</button></footer>
+        <footer><button type="button" autoFocus onClick={onAccept}>{t("cashPayment.validation.accept")}</button></footer>
       </section>
     </div>
   );

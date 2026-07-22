@@ -459,7 +459,8 @@ class AdminApiTest {
         assertThat(summary.overdueCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.pendingCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.renewalsNext30Days()).isGreaterThanOrEqualTo(1);
-        assertThat(new BigDecimal(summary.monthlyRecurringRevenue())).isGreaterThanOrEqualTo(new BigDecimal("79.90"));
+        assertThat(new BigDecimal(summary.monthlyRecurringRevenue()))
+                .isGreaterThanOrEqualTo(new BigDecimal("79.90"));
         assertThat(summary.companies())
                 .filteredOn(value -> value.companyId().equals(company.companyId()))
                 .singleElement()

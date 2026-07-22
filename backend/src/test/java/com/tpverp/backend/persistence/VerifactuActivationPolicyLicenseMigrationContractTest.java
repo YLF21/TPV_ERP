@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class VerifactuActivationPolicyLicenseMigrationContractTest {
 
-    private static final String MIGRATION = "db/migration/V93__verifactu_activation_policy_license.sql";
+    private static final String MIGRATION = "db/migration/V95__verifactu_activation_policy_license.sql";
 
     @Test
     void storesVersionedSaasFiscalPolicyOnTheLocalLicense() throws IOException {

@@ -94,9 +94,10 @@ public class PaymentTerminalOperationController {
     public record ReconciliationRequest(@NotNull UUID reconciliationId) {}
     public record OperationView(UUID id,UUID terminalId,UUID storeId,PaymentTerminalProvider provider,PaymentTerminalMode mode,
             PaymentTerminalOperationType type,UUID originalOperationId,BigDecimal amount,String currency,BigDecimal refundedAmount,
-            PaymentTerminalOperationStatus status,String reference,String authorization,UUID documentId) {
+            PaymentTerminalOperationStatus status,PaymentLifecycleStatus lifecycleStatus,String reference,String authorization,UUID documentId) {
         static OperationView from(PaymentTerminalOperation o){ return new OperationView(o.getId(),o.getTerminalId(),o.getStoreId(),o.getProvider(),o.getMode(),
                 o.getOperationType(),o.getOriginalOperationId(),o.getAmount(),o.getCurrency(),o.getRefundedAmount(),o.getStatus(),
+                o.getStatus()==null?null:PaymentLifecycleStatus.from(o),
                 masked(o.getExternalReference()),masked(o.getAuthorizationCode()),o.getDocumentId()); }
         private static String masked(String value){ if(value==null||value.isBlank())return null; var tail=value.substring(Math.max(0,value.length()-4)); return "****"+tail; }
     }

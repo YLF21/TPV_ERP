@@ -13,7 +13,7 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
-type ReceivablesView = "OPEN" | "HISTORY";
+type ReceivablesView = "OPEN" | "HISTORY" | "ACCOUNT";
 type PaymentMethod = { id: string; name?: string; nombre?: string; active?: boolean };
 export type CustomerReceivablePaymentHistory = {
   paymentId: string;
@@ -29,6 +29,38 @@ export type CustomerReceivablePaymentHistory = {
   paymentMethodName: string;
   amount: number | string;
   reference?: string | null;
+};
+type CustomerCreditAccountEntry = {
+  id: string;
+  kind: "SALE" | "PAYMENT";
+  occurredAt: string;
+  documentId: string;
+  documentNumber: string;
+  documentType: "ALBARAN_VENTA" | "FACTURA_VENTA";
+  paymentId?: string | null;
+  paymentMethod?: string | null;
+  reference?: string | null;
+  debit: number | string;
+  credit: number | string;
+  balance: number | string;
+};
+type CustomerCreditAccount = {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  creditEnabled: boolean;
+  creditLimit?: number | string | null;
+  paymentTermDays: number;
+  creditBlocked: boolean;
+  blockOnOverdue: boolean;
+  outstandingDebt: number | string;
+  overdueDebt: number | string;
+  availableCredit?: number | string | null;
+  storeOutstandingDebt: number | string;
+  storeOverdueDebt: number | string;
+  openDocumentCount: number;
+  overdueDocumentCount: number;
+  entries: CustomerCreditAccountEntry[];
 };
 type Props = {
   locale: LocaleCode;
@@ -58,6 +90,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   const [view, setView] = useState<ReceivablesView>("OPEN");
   const [rows, setRows] = useState<CustomerReceivable[]>([]);
   const [historyRows, setHistoryRows] = useState<CustomerReceivablePaymentHistory[]>([]);
+  const [account, setAccount] = useState<CustomerCreditAccount | null>(null);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [search, setSearch] = useState(""); const [status, setStatus] = useState(""); const [documentType, setDocumentType] = useState("");
   const [overdue, setOverdue] = useState(false); const [dueFrom, setDueFrom] = useState(""); const [dueTo, setDueTo] = useState("");
@@ -90,12 +123,15 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       if (view === "OPEN") {
         const result = await request<CustomerReceivable[]>(`/customer-receivables${query.size ? `?${query}` : ""}`, { token: session.accessToken });
         if (generation === loadGeneration.current) setRows(result);
-      } else {
+      } else if (view === "HISTORY") {
         const result = await request<CustomerReceivablePaymentHistory[]>(`/customer-receivables/payment-history${query.size ? `?${query}` : ""}`, { token: session.accessToken });
         if (generation === loadGeneration.current) setHistoryRows(result);
+      } else if (initialCustomerId) {
+        const result = await request<CustomerCreditAccount>(`/customer-credit-accounts/${initialCustomerId}`, { token: session.accessToken });
+        if (generation === loadGeneration.current) setAccount(result);
       }
     } catch (failure) {
-      if (generation === loadGeneration.current) setError(failure instanceof Error ? failure.message : t(view === "OPEN" ? "receivables.error.load" : "receivables.history.error"));
+      if (generation === loadGeneration.current) setError(failure instanceof Error ? failure.message : t(view === "OPEN" ? "receivables.error.load" : view === "HISTORY" ? "receivables.history.error" : "receivables.account.error"));
     } finally { if (generation === loadGeneration.current) setLoading(false); }
   }, [collectedFrom, collectedTo, documentType, dueFrom, dueTo, historySearch, initialCustomerId, overdue, paymentMethodId, request, search, session.accessToken, status, view]);
   useEffect(() => { void load(); return () => { loadGeneration.current += 1; }; }, [load]);
@@ -140,10 +176,11 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
     <header className="entry-topbar"><strong>{t("receivables.title").toLocaleUpperCase(locale)}</strong></header>
     <SessionTopControls locale={locale} session={session} languageLabel={t("common.language")} shutdownLabel={t("common.close")} changePasswordLabel={t("auth.changePassword")} logoutLabel={t("auth.logout")} shutdownConfirmTitle={t("shutdown.title")} shutdownConfirmText={t("shutdown.message")} noLabel={t("common.no")} yesLabel={t("common.yes")} onLocaleChange={onLocaleChange} onLogout={onLogout} />
     <section className="customer-receivables-panel">
-      <header><div><h1>{t(view === "OPEN" ? "receivables.title" : "receivables.history.title")}</h1><p>{t(view === "OPEN" ? "receivables.subtitle" : "receivables.history.subtitle")}</p></div><button type="button" onClick={onBack}>{t("common.back")}</button></header>
+      <header><div><h1>{t(view === "OPEN" ? "receivables.title" : view === "HISTORY" ? "receivables.history.title" : "receivables.account.title")}</h1><p>{t(view === "OPEN" ? "receivables.subtitle" : view === "HISTORY" ? "receivables.history.subtitle" : "receivables.account.subtitle")}</p></div><button type="button" className="receivables-back-button" onClick={onBack}>{t("common.back")}</button></header>
       <nav className="receivables-view-tabs" aria-label={t("receivables.view.label")}>
         <button type="button" aria-pressed={view === "OPEN"} onClick={() => setView("OPEN")}>{t("receivables.view.open")}</button>
         <button type="button" aria-pressed={view === "HISTORY"} onClick={() => setView("HISTORY")}>{t("receivables.view.history")}</button>
+        {initialCustomerId && <button type="button" aria-pressed={view === "ACCOUNT"} onClick={() => setView("ACCOUNT")}>{t("receivables.view.account")}</button>}
       </nav>
       {view === "OPEN" ? <>
         <div className="customer-receivables-filters">
@@ -154,12 +191,12 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <label>{t("receivables.dueFrom")}<input type="date" value={dueFrom} onChange={(event) => setDueFrom(event.target.value)} /></label>
           <label>{t("receivables.dueTo")}<input type="date" value={dueTo} onChange={(event) => setDueTo(event.target.value)} /></label>
         </div>
-      </> : <div className="customer-receivables-filters receivables-history-filters">
+      </> : view === "HISTORY" ? <div className="customer-receivables-filters receivables-history-filters">
         <label>{t("receivables.history.search")}<input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} /></label>
         <label>{t("receivables.history.method")}<select value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}><option value="">{t("receivables.all")}</option>{methods.map((method) => <option key={method.id} value={method.id}>{method.name ?? method.nombre ?? method.id}</option>)}</select></label>
         <label>{t("receivables.history.collectedFrom")}<input type="date" value={collectedFrom} onChange={(event) => setCollectedFrom(event.target.value)} /></label>
         <label>{t("receivables.history.collectedTo")}<input type="date" value={collectedTo} onChange={(event) => setCollectedTo(event.target.value)} /></label>
-      </div>}
+      </div> : null}
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
       {retryPrint && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryFailedPrint()}>{t("payment.result.retryPrint")}</button></div>}
       {view === "OPEN" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
@@ -169,7 +206,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{t(statusKey(effectiveReceivableStatus(row)))}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={!canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
         </div>)}
-      </div> : <div className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
+      </div> : view === "HISTORY" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
         <div role="row" className="receivable-history-row header">{historyColumns.map((value) => <span role="columnheader" key={value}>{t(`receivables.column.${value}`)}</span>)}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
@@ -177,6 +214,24 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.reference || "-"}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
         </div>)}
+      </div> : <div className="receivables-account" aria-label={t("receivables.account.title")}>
+        {loading && <p>{t("common.loading")}</p>}
+        {!loading && account && <>
+          <section className="receivables-account-summary" aria-label={t("receivables.account.summary")}>
+            <article><span>{t("receivables.account.outstanding")}</span><strong>{money(account.outstandingDebt, locale)}</strong></article>
+            <article className={Number(account.overdueDebt) > 0 ? "warning" : ""}><span>{t("receivables.account.overdue")}</span><strong>{money(account.overdueDebt, locale)}</strong></article>
+            <article><span>{t("receivables.account.limit")}</span><strong>{account.creditLimit == null ? t("party.credit.unlimited") : money(account.creditLimit, locale)}</strong></article>
+            <article><span>{t("receivables.account.available")}</span><strong>{account.availableCredit == null ? t("party.credit.unlimited") : money(account.availableCredit, locale)}</strong></article>
+            <article><span>{t("receivables.account.term")}</span><strong>{account.paymentTermDays}</strong></article>
+            <article><span>{t("receivables.account.openDocuments")}</span><strong>{account.openDocumentCount}</strong></article>
+          </section>
+          {(account.creditBlocked || !account.creditEnabled || (account.blockOnOverdue && Number(account.overdueDebt) > 0)) && <p className="receivables-account-blocked" role="status">{t("receivables.account.blocked")}</p>}
+          <div className="customer-receivables-table" role="table" aria-label={t("receivables.account.statement")}>
+            <div role="row" className="receivable-account-row header"><span role="columnheader">{t("receivables.account.date")}</span><span role="columnheader">{t("receivables.column.document")}</span><span role="columnheader">{t("receivables.account.concept")}</span><span role="columnheader">{t("receivables.account.debit")}</span><span role="columnheader">{t("receivables.account.credit")}</span><span role="columnheader">{t("receivables.account.balance")}</span></div>
+            {account.entries.length === 0 && <p className="receivables-empty">{t("receivables.account.empty")}</p>}
+            {account.entries.map((entry) => <div role="row" className="receivable-account-row" key={`${entry.kind}-${entry.id}`}><span role="cell">{dateTime(entry.occurredAt, locale)}</span><strong role="cell">{entry.documentNumber}</strong><span role="cell">{entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod || t("receivables.account.payment")}</span><span role="cell">{Number(entry.debit) > 0 ? money(entry.debit, locale) : "-"}</span><span role="cell">{Number(entry.credit) > 0 ? money(entry.credit, locale) : "-"}</span><strong role="cell">{money(entry.balance, locale)}</strong></div>)}
+          </div>
+        </>}
       </div>}
     </section>
     <ScreenContextFooter locale={locale} terminalContext={terminalContext} />

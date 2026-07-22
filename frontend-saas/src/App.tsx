@@ -19,6 +19,7 @@ import type {
   InstallationSummary,
   LicenseSummary,
   PairingCodeResponse,
+  SaasStatus,
   StockSnapshot,
   SupportTicket,
   SupportTicketComment,
@@ -330,6 +331,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     createSupplier: "Crear proveedor",
     createWarehouse: "Crear almacen",
     masterCreated: "Maestro creado.",
+    masterDisabled: "Maestro desactivado.",
     mastersBackendPending: "Maestros ERP pendiente de activar en el backend SaaS. Reinicia el backend para cargar esta fase.",
     noMasterData: "No hay datos para este maestro."
   },
@@ -2430,6 +2432,28 @@ function MastersView({
     }
   }
 
+  async function deactivateMaster(id: string) {
+    if (!companyId) return;
+    setBusy(true);
+    try {
+      if (mode === "customers") {
+        await api.deactivateErpCustomer(credentials, companyId, id);
+      } else if (mode === "products") {
+        await api.deactivateErpProduct(credentials, companyId, id);
+      } else if (mode === "suppliers") {
+        await api.deactivateErpSupplier(credentials, companyId, id);
+      } else {
+        await api.deactivateErpWarehouse(credentials, companyId, id);
+      }
+      await loadMasters(companyId);
+      onNotice({ type: "success", text: t("masterDisabled") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="content-section">
       <SectionHeader title={t("erpMasters")} subtitle={t("erpMastersSubtitle")} />
@@ -2497,6 +2521,8 @@ function MastersView({
         products={products}
         suppliers={suppliers}
         warehouses={warehouses}
+        canManage={canManage}
+        onDeactivate={(id) => void deactivateMaster(id)}
       />
     </section>
   );
@@ -2507,13 +2533,17 @@ function MasterTable({
   customers,
   products,
   suppliers,
-  warehouses
+  warehouses,
+  canManage = false,
+  onDeactivate = () => undefined
 }: {
   mode: MasterMode;
   customers: ErpCustomer[];
   products: ErpProduct[];
   suppliers: ErpSupplier[];
   warehouses: ErpWarehouse[];
+  canManage?: boolean;
+  onDeactivate?: (id: string) => void;
 }) {
   const { t } = useI18n();
   if (mode === "products") {
@@ -2529,6 +2559,7 @@ function MasterTable({
               <th>{t("price")}</th>
               <th>{t("taxRate")}</th>
               <th>{t("minStock")}</th>
+              {canManage && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -2540,6 +2571,11 @@ function MasterTable({
                 <td>{formatMoney(item.price)}</td>
                 <td>{formatMoney(item.taxRate)}%</td>
                 <td>{formatMoney(item.minStock)}</td>
+                {canManage && (
+                  <td className="table-actions">
+                    {item.active && <button className="danger-button subtle" type="button" onClick={() => onDeactivate(item.id)}>{t("deactivate")}</button>}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -2558,6 +2594,7 @@ function MasterTable({
               <th>{t("name")}</th>
               <th>{t("address")}</th>
               <th>{t("status")}</th>
+              {canManage && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -2567,6 +2604,11 @@ function MasterTable({
                 <td>{item.name}</td>
                 <td>{item.address || "-"}</td>
                 <td><StatusPill status={item.active ? t("active") : t("inactive")} tone={item.active ? "ok" : "muted"} /></td>
+                {canManage && (
+                  <td className="table-actions">
+                    {item.active && <button className="danger-button subtle" type="button" onClick={() => onDeactivate(item.id)}>{t("deactivate")}</button>}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -2587,6 +2629,7 @@ function MasterTable({
             <th>{t("email")}</th>
             <th>{t("phone")}</th>
             <th>{t("status")}</th>
+            {canManage && <th></th>}
           </tr>
         </thead>
         <tbody>
@@ -2598,6 +2641,11 @@ function MasterTable({
               <td>{item.email || "-"}</td>
               <td>{item.phone || "-"}</td>
               <td><StatusPill status={item.active ? t("active") : t("inactive")} tone={item.active ? "ok" : "muted"} /></td>
+              {canManage && (
+                <td className="table-actions">
+                  {item.active && <button className="danger-button subtle" type="button" onClick={() => onDeactivate(item.id)}>{t("deactivate")}</button>}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -2622,6 +2670,7 @@ function SupportView({
   const [companyId, setCompanyId] = useState("");
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [technicalStatus, setTechnicalStatus] = useState<TechnicalStatus | null>(null);
+  const [saasStatus, setSaasStatus] = useState<SaasStatus | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [commentsByTicket, setCommentsByTicket] = useState<Record<string, SupportTicketComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -2654,9 +2703,10 @@ function SupportView({
   }, [companyId]);
 
   async function loadOverview() {
-    const [nextNotifications, nextTechnicalStatus] = await Promise.allSettled([
+    const [nextNotifications, nextTechnicalStatus, nextSaasStatus] = await Promise.allSettled([
       api.notifications(credentials),
-      api.technicalStatus(credentials)
+      api.technicalStatus(credentials),
+      api.saasStatus(credentials)
     ]);
 
     if (nextNotifications.status === "fulfilled") {
@@ -2674,6 +2724,14 @@ function SupportView({
       onNotice(null);
     } else {
       onNotice({ type: "error", text: errorMessage(nextTechnicalStatus.reason) });
+    }
+
+    if (nextSaasStatus.status === "fulfilled") {
+      setSaasStatus(nextSaasStatus.value);
+    } else if (isMissingPhase3Endpoint(nextSaasStatus.reason) || isRecoverableBackendDataError(nextSaasStatus.reason)) {
+      setSaasStatus(null);
+    } else {
+      onNotice({ type: "error", text: errorMessage(nextSaasStatus.reason) });
     }
   }
 
@@ -2769,7 +2827,7 @@ function SupportView({
   return (
     <div className="view-grid">
       <section className="metric-grid support-metrics">
-        <Metric label={t("backendStatus")} value={t("technicalOk")} detail={technicalStatus ? `${t("generatedAt")} ${formatDate(technicalStatus.generatedAt)}` : t("loadingSaas")} />
+        <Metric label={t("backendStatus")} value={t("technicalOk")} detail={saasStatus ? `${saasStatus.apiVersion} · ${saasStatus.expectedMigration}` : technicalStatus ? `${t("generatedAt")} ${formatDate(technicalStatus.generatedAt)}` : t("loadingSaas")} />
         <Metric label={t("company")} value={technicalStatus?.companies ?? "-"} />
         <Metric label={t("licenses")} value={technicalStatus?.licenses ?? "-"} />
         <Metric label={t("eventsToday")} value={technicalStatus?.eventsToday ?? "-"} />
@@ -4228,7 +4286,10 @@ function fallbackPermissions(username?: string) {
     "REGENERATE_PAIRING_CODE",
     "MANAGE_ADMIN_USERS",
     "MANAGE_SUPPORT_TICKETS",
-    "MANAGE_FISCAL_POLICY"
+    "MANAGE_FISCAL_POLICY",
+    "MANAGE_BILLING",
+    "MANAGE_TENANT_USERS",
+    "MANAGE_ERP_MASTERS"
   ];
 }
 

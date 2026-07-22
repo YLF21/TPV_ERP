@@ -7,6 +7,7 @@ const repositoryRoot = path.resolve(frontendRoot, "..");
 const backendUrl = process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:18080";
 const ventaUrl = process.env.E2E_VENTA_URL ?? "http://127.0.0.1:4173";
 const gestionUrl = process.env.E2E_GESTION_URL ?? "http://127.0.0.1:4174";
+const reuseExternalServers = process.env.E2E_REUSE_EXTERNAL_SERVERS === "true";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -27,7 +28,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "retain-on-failure"
   },
-  webServer: [
+  webServer: reuseExternalServers ? undefined : [
     {
       command: ".\\mvnw.cmd -q spring-boot:run",
       cwd: path.join(repositoryRoot, "backend"),

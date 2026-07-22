@@ -3,6 +3,7 @@ package com.tpverp.backend.dev;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tpverp.backend.document.CommercialDocumentType;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -75,7 +76,7 @@ class DevSampleDataSeederPostgreSqlTest {
                 .containsAll(DevSampleDataSeeder.documentTypes().stream()
                         .map(CommercialDocumentType::name)
                         .toList());
-        assertThat(count("producto")).isGreaterThanOrEqualTo(2);
+        assertThat(count("producto")).isGreaterThanOrEqualTo(7);
         assertThat(count("cliente")).isGreaterThanOrEqualTo(1);
         assertThat(count("proveedor")).isGreaterThanOrEqualTo(1);
         assertThat(count("salida_almacen")).isGreaterThanOrEqualTo(1);
@@ -102,6 +103,21 @@ class DevSampleDataSeederPostgreSqlTest {
         assertThat(jdbc.queryForObject(
                 "select id from terminal where tipo = 'SERVIDOR'", UUID.class))
                 .isEqualTo(DevSampleDataSeeder.terminalId());
+    }
+
+    @Test
+    void seedsProductsForTheSupportedDemoPricingScenarios() {
+        assertProductPricing("DEV-CAFE-SOCIO", "MEMBER_PRICE", "MEMBER_PRICE",
+                "9.90", "7.50", null, null);
+        assertProductPricing("DEV-ZUMO-OFERTA", "DISCOUNT_PRICE", "OFFER_PRICE",
+                "2.80", null, "2.10", null);
+        assertProductPricing("DEV-GALLETAS-PROMO", "DISCOUNT_PRICE", "OFFER_DISCOUNT",
+                "3.00", null, "2.40", "20.00");
+        assertProductPricing("DEV-PAN-SIN-DESCUENTO", "NONE", "NORMAL",
+                "1.20", null, null, null);
+
+        assertThat(price("DEV-LECHE-MAYOR", "MAYORISTA"))
+                .isEqualByComparingTo("1.05");
     }
 
     @Test
@@ -236,6 +252,61 @@ class DevSampleDataSeederPostgreSqlTest {
 
     private Integer count(String table) {
         return jdbc.queryForObject("select count(*) from " + table, Integer.class);
+    }
+
+    private void assertProductPricing(
+            String code,
+            String discountType,
+            String priceUseMode,
+            String salePrice,
+            String memberPrice,
+            String offerPrice,
+            String offerDiscountPercent) {
+        var product = jdbc.queryForMap("""
+                select p.discount_type, p.price_use_mode, p.oferta_activa,
+                       p.oferta_desde, p.oferta_hasta, p.oferta_descuento_porcentaje
+                from producto p
+                join producto_identificador pi on pi.producto_id = p.id
+                where pi.tipo = 'CODIGO' and pi.valor = ?
+                """, code);
+
+        assertThat(product)
+                .containsEntry("discount_type", discountType)
+                .containsEntry("price_use_mode", priceUseMode);
+        assertThat(price(code, "VENTA")).isEqualByComparingTo(salePrice);
+        assertOptionalPrice(code, "MEMBER", memberPrice);
+        assertOptionalPrice(code, "OFERTA", offerPrice);
+        if (offerPrice == null) {
+            assertThat(product).containsEntry("oferta_activa", false);
+        } else {
+            assertThat(product.get("oferta_activa")).isEqualTo(true);
+            assertThat(product.get("oferta_desde")).isNotNull();
+            assertThat(product.get("oferta_hasta")).isNotNull();
+        }
+        if (offerDiscountPercent == null) {
+            assertThat(product.get("oferta_descuento_porcentaje")).isNull();
+        } else {
+            assertThat((BigDecimal) product.get("oferta_descuento_porcentaje"))
+                    .isEqualByComparingTo(offerDiscountPercent);
+        }
+    }
+
+    private void assertOptionalPrice(String code, String tier, String expected) {
+        var amount = price(code, tier);
+        if (expected == null) {
+            assertThat(amount).isNull();
+        } else {
+            assertThat(amount).isEqualByComparingTo(expected);
+        }
+    }
+
+    private BigDecimal price(String code, String tier) {
+        return jdbc.query("""
+                select pp.importe
+                from producto_precio pp
+                join producto_identificador pi on pi.producto_id = pp.producto_id
+                where pi.tipo = 'CODIGO' and pi.valor = ? and pp.tarifa = ?
+                """, result -> result.next() ? result.getBigDecimal(1) : null, code, tier);
     }
 
     private static void deleteDirectory(Path directory) throws Exception {

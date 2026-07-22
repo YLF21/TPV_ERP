@@ -21,12 +21,14 @@ public class VoucherController {
     private final VoucherService vouchers;
     private final CommercialDocumentRepository documents;
     private final CurrentOrganization organization;
+    private final RefundTenderRepository refundTenders;
 
     public VoucherController(VoucherService vouchers, CommercialDocumentRepository documents,
-            CurrentOrganization organization) {
+            CurrentOrganization organization, RefundTenderRepository refundTenders) {
         this.vouchers = vouchers;
         this.documents = documents;
         this.organization = organization;
+        this.refundTenders = refundTenders;
     }
 
     @GetMapping
@@ -38,7 +40,21 @@ public class VoucherController {
     @PostMapping("/issue-from-ticket/{ticketId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
     public VoucherView issueFromTicket(@PathVariable UUID ticketId) {
-        return VoucherView.from(vouchers.issueFromNegativeTicket(document(ticketId)));
+        var ticket = document(ticketId);
+        var existing = vouchers.issuedFromNegativeTicket(ticket);
+        if (existing.isPresent()) {
+            return VoucherView.from(existing.orElseThrow());
+        }
+        var amount = BigDecimal.ZERO;
+        for (var tender : refundTenders.findByRefundDocumentIdOrderByCreatedAtAsc(ticketId)) {
+            if (tender.getType() == RefundTenderType.VOUCHER) {
+                amount = amount.add(tender.getAmount());
+            }
+        }
+        if (amount.signum() <= 0) {
+            throw new IllegalStateException("la devolucion no fue configurada como reembolso mediante vale");
+        }
+        return VoucherView.from(vouchers.issueOrFindFromNegativeTicket(ticket, amount));
     }
 
     @PostMapping("/{code}/consume")

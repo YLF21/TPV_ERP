@@ -11,7 +11,7 @@ class CustomerPendingSalesMigrationContractTest {
     @Test
     void migrationAddsIdempotencyWithoutInventingPendingPaymentMethod() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V90__customer_pending_sales.sql"));
+                "src/main/resources/db/migration/V92__customer_pending_sales.sql"));
         var normalized = sql.toLowerCase();
 
         assertThat(normalized).contains(

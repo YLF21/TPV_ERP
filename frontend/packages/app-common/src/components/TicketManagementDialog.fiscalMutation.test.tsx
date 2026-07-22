@@ -26,13 +26,6 @@ const confirmedTicket = {
   pendingTotal: "10.00",
   payments: []
 };
-const negativeTicket = {
-  ...confirmedTicket,
-  id: "ticket-negative",
-  numero: "T-NEG",
-  total: "-5.00",
-  pendingTotal: "0.00"
-};
 const customer = { id: "customer-1", fiscalName: "Cliente Fiscal", clientId: "C-001" };
 const voucher = { code: "VALE-1", balance: "25.00", status: "ACTIVE" };
 const printSnapshot = {
@@ -122,7 +115,7 @@ describe("TicketManagementDialog onFiscalMutation", () => {
     renderDialog(onFiscalMutation);
 
     fireEvent.click(await screen.findByRole("button", { name: "Preparar devolución" }));
-    fireEvent.change(await screen.findByLabelText("PIN de autorización"), {
+    fireEvent.change(await screen.findByLabelText("Contraseña del usuario actual"), {
       target: { value: "1234" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar devolución" }));
@@ -138,8 +131,8 @@ describe("TicketManagementDialog onFiscalMutation", () => {
     }));
   });
 
-  it("does not notify for reprinting, voucher consumption or voucher issuance", async () => {
-    loadedTickets = [confirmedTicket, negativeTicket];
+  it("does not notify for reprinting or voucher consumption", async () => {
+    loadedTickets = [confirmedTicket];
     const onFiscalMutation = vi.fn();
     renderDialog(onFiscalMutation);
 
@@ -155,13 +148,6 @@ describe("TicketManagementDialog onFiscalMutation", () => {
       expect.objectContaining({ method: "POST", token: "token" })
     ));
     await waitFor(() => expect(screen.getByRole("button", { name: "Consumir vale" })).toBeEnabled());
-
-    fireEvent.click(await screen.findByRole("button", { name: /T-NEG/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Emitir desde devolución" }));
-    await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/vouchers/issue-from-ticket/ticket-negative",
-      { token: "token", method: "POST" }
-    ));
 
     expect(onFiscalMutation).not.toHaveBeenCalled();
   });
@@ -186,6 +172,7 @@ function renderDialog(onFiscalMutation: () => void) {
     <TicketManagementDialog
       token="token"
       locale="es"
+      permissions={["ADMIN"]}
       terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
       onClose={vi.fn()}
       onFiscalMutation={onFiscalMutation}
