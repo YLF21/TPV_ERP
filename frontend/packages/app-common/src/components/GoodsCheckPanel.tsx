@@ -214,26 +214,33 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
   return (
     <section className="goods-check-panel">
       <div className="goods-check-documents">
-        <div className="stock-history-toolbar goods-check-toolbar">
-          <label className="report-search">
-            <span className="sr-only">{t("salesReport.search")}</span>
-            <input
-              type="search"
-              value={search}
-              placeholder={t("goodsCheck.searchPlaceholder")}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <button type="button" disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
-            {busy ? t("common.loading") : t("goodsCheck.import")}
-          </button>
-        </div>
-        <div className="stock-history-context">
-          <strong>{t("goodsCheck.purchaseDocuments")}</strong>
-          <span>{visibleDocuments.length}</span>
-        </div>
+        <header className="goods-check-documents-header">
+          <div className="stock-history-toolbar goods-check-toolbar">
+            <label className="goods-check-search">
+              <span>{t("salesReport.search")}</span>
+              <input
+                type="search"
+                value={search}
+                placeholder={t("goodsCheck.searchPlaceholder")}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <button type="button" disabled={!selectedDocument || busy} onClick={() => void importDocument()}>
+              {busy ? t("common.loading") : t("goodsCheck.import")}
+            </button>
+          </div>
+          <div className="stock-history-context goods-check-documents-summary">
+            <strong>{t("goodsCheck.purchaseDocuments")}</strong>
+            <span>{visibleDocuments.length}</span>
+          </div>
+        </header>
         <div className="stock-history-table-scroll goods-check-document-list">
-          <table className="report-table">
+          {loading ? (
+            <div className="goods-check-empty" role="status" aria-live="polite">
+              <strong>{t("common.loading")}</strong>
+            </div>
+          ) : visibleDocuments.length > 0 ? (
+            <table className="report-table">
             <thead>
               <tr>
                 <th>{t("goodsCheck.column.type")}</th>
@@ -267,11 +274,14 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
                   <td>{document.almacenNombre || "-"}</td>
                 </tr>
               ))}
-              {!loading && visibleDocuments.length === 0 && (
-                <tr><td colSpan={5}>{t("goodsCheck.noDocuments")}</td></tr>
-              )}
             </tbody>
-          </table>
+            </table>
+          ) : (
+            <div className="goods-check-empty">
+              <strong>{t("goodsCheck.noDocuments")}</strong>
+              <span>{t("goodsCheck.searchPlaceholder")}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -322,7 +332,10 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
             </div>
           </>
         ) : (
-          <div className="stock-empty-state">{t("goodsCheck.selectDocument")}</div>
+          <div className="goods-check-empty goods-check-workspace-empty">
+            <strong>{t("goodsCheck.noActive")}</strong>
+            <span>{t("goodsCheck.selectDocument")}</span>
+          </div>
         )}
         {status && <p className="stock-operation-status" aria-live="polite">{status}</p>}
       </div>

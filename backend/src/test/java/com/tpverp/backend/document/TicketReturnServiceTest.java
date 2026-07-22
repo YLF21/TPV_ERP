@@ -36,6 +36,7 @@ class TicketReturnServiceTest {
     @Mock RefundTenderRepository tenders;
     @Mock CashPaymentRecorder cash;
     @Mock CurrentTerminal currentTerminal;
+    @Mock VoucherService vouchers;
     @Mock Authentication authentication;
 
     private TicketReturnService service;
@@ -46,7 +47,7 @@ class TicketReturnServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TicketReturnService(documents, terminalPayments, settlements, tenders, cash, currentTerminal);
+        service = new TicketReturnService(documents, terminalPayments, settlements, tenders, cash, currentTerminal, vouchers);
         ticketId = UUID.randomUUID();
         requestId = UUID.randomUUID();
         terminalId = UUID.randomUUID();
@@ -60,7 +61,7 @@ class TicketReturnServiceTest {
 
     @Test
     void cashReturnRequiresOpenDrawerAndRecordsCashPayout() {
-        var result = service.create(ticketId, requestId, new BigDecimal("12.10"), List.of(), List.of(), authentication);
+        var result = service.create(ticketId, requestId, new BigDecimal("12.10"), BigDecimal.ZERO, List.of(), List.of(), authentication);
 
         verify(documents).validateApprovedCardRefund(ticketId, new BigDecimal("12.10"), List.of());
         verify(cash).requireOpenSession(terminalId);
@@ -89,7 +90,7 @@ class TicketReturnServiceTest {
         when(approvedRefund.getStatus()).thenReturn(PaymentTerminalOperationStatus.APPROVED);
         when(approvedRefund.getId()).thenReturn(refundOperationId);
 
-        service.create(ticketId, requestId, new BigDecimal("5.00"),
+        service.create(ticketId, requestId, new BigDecimal("5.00"), BigDecimal.ZERO,
                 List.of(new TicketReturnService.CardPayout(paymentId, refundOperationId, "key", new BigDecimal("7.10"))),
                 List.of(), authentication);
 
@@ -106,7 +107,7 @@ class TicketReturnServiceTest {
         when(original.getDocumentId()).thenReturn(UUID.randomUUID());
         when(terminalPayments.findByDocumentPaymentId(paymentId)).thenReturn(Optional.of(original));
 
-        assertThatThrownBy(() -> service.create(ticketId, requestId, BigDecimal.ZERO,
+        assertThatThrownBy(() -> service.create(ticketId, requestId, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(new TicketReturnService.CardPayout(
                         paymentId, UUID.randomUUID(), "key", BigDecimal.TEN)),
                 List.of(), authentication))
@@ -115,6 +116,27 @@ class TicketReturnServiceTest {
 
         verify(terminalPayments, never()).refundPaymentOnly(any(), any(), any(), any());
         verify(settlements, never()).record(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void voucherReturnIssuesStoreCreditWithoutOpeningTheCashDrawer() {
+        var voucher = mock(Voucher.class);
+        when(vouchers.issueOrFindFromNegativeTicket(refundDocument, new BigDecimal("12.10")))
+                .thenReturn(voucher);
+
+        var result = service.create(ticketId, requestId, BigDecimal.ZERO, new BigDecimal("12.10"),
+                List.of(), List.of(), authentication);
+
+        verify(cash, never()).requireOpenSession(any());
+        verify(terminalPayments, never()).refundPaymentOnly(any(), any(), any(), any());
+        var payouts = payoutCaptor();
+        verify(settlements).record(eq(requestId), eq(ticketId), eq(new BigDecimal("12.10")),
+                eq(List.of()), payouts.capture(), eq(authentication));
+        assertThat(payouts.getValue()).singleElement().satisfies(payout -> {
+            assertThat(payout.type()).isEqualTo(RefundTenderType.VOUCHER);
+            assertThat(payout.amount()).isEqualByComparingTo("12.10");
+        });
+        assertThat(result.voucher()).contains(voucher);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

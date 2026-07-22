@@ -12,7 +12,7 @@ import com.tpverp.backend.security.domain.UserAccount;
 class SalePaymentSessionServiceTest {
  @Test void discardsSimulationOnlyFromPersistedTestConfiguration(){
   var f=discardFixture();var config=new CardTerminalConfiguration(f.terminalId,f.storeId,PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"sim","ref",1,"hash",Map.of());when(f.configs.required(f.terminalId)).thenReturn(config);
-  var result=f.service.discardSimulation(f.sessionId,"application_shutdown",f.auth);
+  var result=f.service.discardSimulation(f.sessionId,"payment_method_change",f.auth);
   assertThat(result.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);assertThat(result.getAllocations()).hasSize(1);verify(f.repo).save(f.session);verify(f.configs).required(f.terminalId);
  }
 
@@ -129,5 +129,14 @@ class SalePaymentSessionServiceTest {
   assertThat(session.getAllocations()).singleElement().satisfies(allocation->{assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.VOUCHER);assertThat(allocation.getReference()).isEqualTo("V-100");assertThat(allocation.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED);});
   assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"voucher-2",SalePaymentAllocationKind.VOUCHER,new BigDecimal("5.00"),null,"V-100",auth)).hasMessage("voucher_already_allocated");
   verify(vouchers,times(2)).availableBalance("V-100");
+ }
+
+ @Test void blocksAnotherAllocationWhileIntegratedResultIsUncertain(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",BigDecimal.TEN);var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,new BigDecimal("5.00"),"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"resultado incierto");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));var durable=mock(PaymentTerminalOperation.class);when(durable.getStatus()).thenReturn(PaymentTerminalOperationStatus.TIMEOUT);when(ops.find(operationId)).thenReturn(Optional.of(durable));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops);
+
+  assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"cash",SalePaymentAllocationKind.CASH,new BigDecimal("5.00"),null,null,auth)).hasMessage("integrated_payment_result_uncertain");
+  assertThat(session.getAllocations()).hasSize(1);verify(repo,never()).save(any());
  }
 }

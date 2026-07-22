@@ -27,6 +27,7 @@ import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.promotion.Promotion;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
+import com.tpverp.backend.promotion.CouponRejectReason;
 import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.promotion.PromotionCustomerSegment;
 import com.tpverp.backend.promotion.PromotionEngine;
@@ -367,12 +368,22 @@ public class DocumentService {
     public CommercialDocument quoteTicket(
             DocumentCommand command,
             Authentication authentication) {
+        return quoteTicket(command, null, authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument quoteTicket(
+            DocumentCommand command,
+            String promotionalCouponCode,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
         var customer = pricingCustomer(command);
         var ticket = createDraft(command, authentication, customer);
         applyDirectPromotions(ticket, promotionContext(ticket, customer));
+        applyPromotionalCouponPreview(
+                ticket, customer, promotionalCouponCode, authentication);
         validateInactiveSaleProducts(ticket);
         return ticket;
     }
@@ -383,6 +394,15 @@ public class DocumentService {
             DocumentCommand command,
             List<PaymentCommand> payments,
             Authentication authentication) {
+        return createTicket(command, payments, null, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createTicket(
+            DocumentCommand command,
+            List<PaymentCommand> payments,
+            String promotionalCouponCode,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -391,6 +411,13 @@ public class DocumentService {
         var ticket = createDraft(command, authentication, customer);
         var promotionContext = promotionContext(ticket, customer);
         applyDirectPromotions(ticket, promotionContext);
+        if (hasText(promotionalCouponCode)) {
+            // A redeemed amount coupon may create a replacement coupon whose source document
+            // is this ticket. Persist the draft first so every FK remains valid on flush.
+            documents.saveAndFlush(ticket);
+            applyPromotionalCouponRedemption(
+                    ticket, customer, promotionalCouponCode, authentication);
+        }
         validateInactiveSaleProducts(ticket);
         if (ticket.getTotal().signum() >= 0) {
             requirePaymentsPresent(payments);
@@ -453,6 +480,7 @@ public class DocumentService {
         }
         requirePaymentsPresent(payments);
         requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
+        validateAndConsumeSnapshotCoupon(ticket, authentication);
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.assignOriginTerminal(terminalId);
         ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
@@ -469,6 +497,163 @@ public class DocumentService {
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
+    }
+
+    private void applyPromotionalCouponPreview(
+            CommercialDocument ticket,
+            AuthoritativePromotionPricing.CustomerContext customer,
+            String code,
+            Authentication authentication) {
+        if (!hasText(code)) {
+            return;
+        }
+        var evaluation = promotionalCoupons.evaluate(couponRedemptionCommand(
+                ticket, customer, code, ticket.getTotal(), authentication));
+        requireAcceptedCoupon(evaluation.rejectionReason());
+        addPromotionalCouponLines(
+                ticket,
+                evaluation.couponId(),
+                evaluation.promotionId(),
+                evaluation.codeLast4(),
+                evaluation.discountAmount());
+    }
+
+    private void applyPromotionalCouponRedemption(
+            CommercialDocument ticket,
+            AuthoritativePromotionPricing.CustomerContext customer,
+            String code,
+            Authentication authentication) {
+        var result = promotionalCoupons.redeem(couponRedemptionCommand(
+                ticket, customer, code, ticket.getTotal(), authentication));
+        requireAcceptedCoupon(result.rejectionReason());
+        addPromotionalCouponLines(
+                ticket,
+                result.couponId(),
+                result.promotionId(),
+                result.codeLast4(),
+                result.redeemedAmount());
+    }
+
+    private void validateAndConsumeSnapshotCoupon(
+            CommercialDocument ticket,
+            Authentication authentication) {
+        var couponLines = ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON)
+                .toList();
+        if (couponLines.isEmpty()) {
+            return;
+        }
+        var couponIds = couponLines.stream()
+                .map(DocumentLine::getPromotionalCouponId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (couponIds.size() != 1) {
+            throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+        }
+        var customer = promotionPricing.customerContext(
+                organization.currentCompany().getId(), ticket.getClienteId());
+        var couponDiscount = Money.euros(couponLines.stream()
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .abs());
+        var pendingBeforeCoupon = Money.euros(ticket.getTotal().add(couponDiscount));
+        // Persist the draft before redeeming: partial amount coupons generate a replacement
+        // coupon with a FK to this document. Any later failure rolls the transaction back.
+        documents.saveAndFlush(ticket);
+        var result = promotionalCoupons.redeemAuthorized(new PromotionalCouponService.AuthorizedRedemptionCommand(
+                organization.currentCompany().getId(),
+                ticket.getTiendaId(),
+                ticket.getId(),
+                organization.currentUser(authentication).getId(),
+                currentTerminal.terminalId(authentication),
+                customer.customerId(),
+                customer.memberId(),
+                customer.memberCategoryId(),
+                couponIds.getFirst(),
+                pendingBeforeCoupon));
+        requireAcceptedCoupon(result.rejectionReason());
+        var promotionIds = couponLines.stream().map(DocumentLine::getPromotionId).distinct().toList();
+        if (promotionIds.size() != 1
+                || !Objects.equals(couponIds.getFirst(), result.couponId())
+                || !Objects.equals(promotionIds.getFirst(), result.promotionId())
+                || couponDiscount.compareTo(result.redeemedAmount()) != 0) {
+            throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+        }
+    }
+
+    private PromotionalCouponService.RedemptionCommand couponRedemptionCommand(
+            CommercialDocument ticket,
+            AuthoritativePromotionPricing.CustomerContext customer,
+            String code,
+            BigDecimal pendingAmount,
+            Authentication authentication) {
+        return new PromotionalCouponService.RedemptionCommand(
+                organization.currentCompany().getId(),
+                ticket.getTiendaId(),
+                ticket.getId(),
+                organization.currentUser(authentication).getId(),
+                currentTerminal.terminalId(authentication),
+                customer.customerId(),
+                customer.memberId(),
+                customer.memberCategoryId(),
+                code.trim(),
+                Money.euros(pendingAmount));
+    }
+
+    private static void requireAcceptedCoupon(CouponRejectReason reason) {
+        if (reason != null) {
+            throw new IllegalArgumentException("coupon_" + reason.name().toLowerCase(java.util.Locale.ROOT));
+        }
+    }
+
+    private static void addPromotionalCouponLines(
+            CommercialDocument ticket,
+            UUID couponId,
+            UUID promotionId,
+            String codeLast4,
+            BigDecimal discountAmount) {
+        var sources = ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> line.getTotal().signum() > 0)
+                .toList();
+        if (sources.isEmpty()) {
+            throw new IllegalStateException("coupon_document_without_eligible_lines");
+        }
+        var gross = sources.stream().map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var remaining = Money.euros(discountAmount);
+        var position = ticket.getLineas().stream().mapToInt(DocumentLine::getPosicion)
+                .max().orElse(0) + 1;
+        for (int index = 0; index < sources.size() && remaining.signum() > 0; index++) {
+            var source = sources.get(index);
+            var allocated = index == sources.size() - 1
+                    ? remaining
+                    : Money.euros(discountAmount.multiply(source.getTotal())
+                    .divide(gross, Money.SCALE + 4, Money.ROUNDING)).min(remaining);
+            if (allocated.signum() <= 0) {
+                continue;
+            }
+            ticket.addLine(DocumentLine.special(
+                    ticket,
+                    position++,
+                    "CUPON ****" + codeLast4,
+                    allocated.negate(),
+                    source.isImpuestosIncluidos(),
+                    source.getRegimenImpuesto(),
+                    source.getPorcentajeImpuesto(),
+                    promotionId,
+                    null,
+                    couponId));
+            remaining = Money.euros(remaining.subtract(allocated));
+        }
+        if (remaining.signum() != 0) {
+            throw new IllegalStateException("coupon_discount_allocation_mismatch");
+        }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     /** Creates the fiscal/commercial reversal after the acquirer approved a full card refund. */

@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { localizePaymentDiagnostic } from "../i18n/PaymentMessages";
 import { remainingPaymentCents, type AllocationKind, type PaymentSession } from "../sale/paymentOrchestration";
 import type { LocaleCode } from "../types";
 
@@ -70,7 +71,7 @@ export function PaymentAllocationPanel({ locale, session, providers, manualCardE
       <span>{allocation.provider ?? t(allocation.kind === "CASH" ? "payment.split.cash" : allocation.kind === "VOUCHER" ? "payment.split.voucher" : "payment.split.manualCard")}</span>{" · "}
       <span>{money(allocation.amountCents)}</span>{" · "}<b>{t(`payment.split.status.${allocation.status}`)}</b>
       {allocation.authorization && <span>{` · ${allocation.authorization}`}</span>}
-      {allocation.message && <span>{` · ${allocation.message}`}</span>}
+      {allocation.message && <span>{` · ${localizePaymentDiagnostic(t, allocation.message, allocation.status)}`}</span>}
       {(allocation.status === "TIMEOUT" || allocation.status === "PENDING") && allocation.operationId &&
         <button type="button" onClick={() => onQuery(allocation.operationId!)}>{t("payment.split.query")}</button>}
       {allocation.operationId && onManage && <button type="button" onClick={() => onManage(allocation.operationId!)}>{t("payment.split.manage")}</button>}

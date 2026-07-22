@@ -98,6 +98,7 @@ public class TicketController {
                 id,
                 request.requestId(),
                 request.cashAmount(),
+                request.voucherAmount(),
                 cards,
                 lines,
                 authentication);
@@ -159,6 +160,7 @@ public class TicketController {
             @NotNull UUID requestId,
             String password,
             @NotNull @DecimalMin("0.00") BigDecimal cashAmount,
+            @DecimalMin("0.00") BigDecimal voucherAmount,
             @Valid List<CardReturnRequest> cards,
             @Valid List<ReturnLineRequest> lines) {
     }
@@ -193,6 +195,7 @@ public class TicketController {
             String documentNumber,
             BigDecimal total,
             List<ReturnPayoutView> payouts,
+            String voucherCode,
             TicketPrintView receipt) {
         static ReturnView from(TicketReturnService.ReturnResult result) {
             return new ReturnView(
@@ -200,6 +203,7 @@ public class TicketController {
                     result.document().getNumero(),
                     result.document().getTotal(),
                     result.payouts().stream().map(ReturnPayoutView::from).toList(),
+                    result.voucher().map(Voucher::code).orElse(null),
                     TicketPrintView.from(result.document(), result.payouts()));
         }
     }

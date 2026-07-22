@@ -20,6 +20,17 @@ it("keeps print retry after two failures and clears only after success", async (
 });
 
 describe("CustomerReceivablesScreen", () => {
+  it("uses the prominent back action and returns to the previous screen", async () => {
+    const request = vi.fn().mockResolvedValue([]);
+    const onBack = vi.fn();
+    render(<CustomerReceivablesScreen locale="es" session={session} terminalContext={{ storeName: "Tienda", terminalCode: "01" }} request={request as any} onBack={onBack} onLocaleChange={vi.fn()} />);
+
+    const backButton = screen.getByRole("button", { name: "Volver" });
+    expect(backButton).toHaveClass("receivables-back-button");
+    fireEvent.click(backButton);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
   it("normalizes legacy zero-balance rows as paid", async () => {
     const paid = { ...row, paidTotal: "100.00", pendingTotal: "0.00", status: "PARCIAL" as const };
     expect(effectiveReceivableStatus(paid)).toBe("PAGADO");

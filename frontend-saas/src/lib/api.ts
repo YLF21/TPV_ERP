@@ -20,6 +20,7 @@ import type {
   InstallationSummary,
   LicenseSummary,
   PairingCodeResponse,
+  SaasStatus,
   SalesSummary,
   StockSnapshot,
   SupportTicket,
@@ -162,6 +163,10 @@ export const api = {
     return request<TechnicalStatus>(credentials, "/api/v1/admin/technical-status");
   },
 
+  saasStatus(credentials: Credentials) {
+    return request<SaasStatus>(credentials, "/api/v1/admin/status");
+  },
+
   billingSummary(credentials: Credentials) {
     return request<BillingSummary>(credentials, "/api/v1/admin/billing-summary");
   },
@@ -231,6 +236,12 @@ export const api = {
     });
   },
 
+  deactivateErpCustomer(credentials: Credentials, companyId: string, id: string) {
+    return request<ErpCustomer>(credentials, `/api/v1/admin/companies/${companyId}/erp/customers/${id}`, {
+      method: "DELETE"
+    });
+  },
+
   erpProducts(credentials: Credentials, companyId: string) {
     return request<ErpProduct[]>(credentials, `/api/v1/admin/companies/${companyId}/erp/products`);
   },
@@ -243,6 +254,12 @@ export const api = {
     return request<ErpProduct>(credentials, `/api/v1/admin/companies/${companyId}/erp/products`, {
       method: "POST",
       body: payload
+    });
+  },
+
+  deactivateErpProduct(credentials: Credentials, companyId: string, id: string) {
+    return request<ErpProduct>(credentials, `/api/v1/admin/companies/${companyId}/erp/products/${id}`, {
+      method: "DELETE"
     });
   },
 
@@ -261,6 +278,12 @@ export const api = {
     });
   },
 
+  deactivateErpSupplier(credentials: Credentials, companyId: string, id: string) {
+    return request<ErpSupplier>(credentials, `/api/v1/admin/companies/${companyId}/erp/suppliers/${id}`, {
+      method: "DELETE"
+    });
+  },
+
   erpWarehouses(credentials: Credentials, companyId: string) {
     return request<ErpWarehouse[]>(credentials, `/api/v1/admin/companies/${companyId}/erp/warehouses`);
   },
@@ -269,6 +292,12 @@ export const api = {
     return request<ErpWarehouse>(credentials, `/api/v1/admin/companies/${companyId}/erp/warehouses`, {
       method: "POST",
       body: payload
+    });
+  },
+
+  deactivateErpWarehouse(credentials: Credentials, companyId: string, id: string) {
+    return request<ErpWarehouse>(credentials, `/api/v1/admin/companies/${companyId}/erp/warehouses/${id}`, {
+      method: "DELETE"
     });
   },
 

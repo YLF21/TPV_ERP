@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
 import { saleUserLocaleStorageKey } from "./saleUserLocale";
 
@@ -12,6 +12,7 @@ const session: UserSession = {
   displayName: "Cashier",
   permissions: ["CUSTOMER_RECEIVABLES_READ"],
 };
+let loginSession = session;
 
 vi.mock("react-dom/client", () => ({
   createRoot: vi.fn(() => ({ render: vi.fn() })),
@@ -30,7 +31,7 @@ vi.mock("../../../packages/app-common/src/components/LoginScreen", () => ({
     <section aria-label="login">
       <output aria-label="login locale">{locale}</output>
       <button type="button" onClick={() => onLocaleChange("zh")}>Change login locale</button>
-      <button type="button" onClick={() => onLogin(session)}>Log in</button>
+      <button type="button" onClick={() => onLogin(loginSession)}>Log in</button>
     </section>
   ),
 }));
@@ -71,14 +72,25 @@ vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
   ),
 }));
 
-import { App } from "./main";
+import { App, AppLoadingFallback } from "./main";
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
+beforeEach(() => { loginSession = session; });
+
 describe("APP VENTA locale wiring", () => {
+  it("shows a centered localized loading experience", () => {
+    render(<AppLoadingFallback locale="zh" />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载 APP VENTA");
+    expect(screen.getByRole("progressbar", { name: "正在加载 APP VENTA" })).toBeInTheDocument();
+    expect(screen.getByText("TPV ERP")).toBeInTheDocument();
+  });
+
   it("loads the user's preference on login, persists changes, and resets to Spanish on logout", () => {
     localStorage.setItem(saleUserLocaleStorageKey(session), "en");
     render(<App />);
@@ -110,5 +122,43 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByLabelText("receivables")).toHaveTextContent("customer-from-sale");
     fireEvent.click(screen.getByRole("button", { name: "Back home" }));
     expect(await screen.findByLabelText("sale")).toBeVisible();
+  });
+
+  it("waits for a successful backend compatibility check before opening APP VENTA", async () => {
+    loginSession = { ...session, accessToken: "token" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      backendVersion: "2.0.0", apiVersion: "1", minimumFrontendVersion: "0.0.1",
+      capabilities: ["PAYMENT_IDEMPOTENCY", "PAYMENT_RECOVERY", "PAYMENT_STATUS_QUERY", "PAYMENT_VOID",
+        "PAYMENT_REFUND", "PAYMENT_RECONCILIATION", "CORRELATION_ID"], paymentStates: {}
+    }), { status: 200 })));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Comprobando compatibilidad");
+    await waitFor(() => expect(screen.getByLabelText("home")).toBeVisible());
+  });
+
+  it("blocks payments when the backend is too old to expose compatibility", async () => {
+    loginSession = { ...session, accessToken: "token" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("no son compatibles"));
+    expect(screen.getByRole("alert")).toHaveTextContent("BACKEND_TOO_OLD");
+    expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
+  });
+
+  it("blocks payments when required recovery capabilities are missing", async () => {
+    loginSession = { ...session, accessToken: "token" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      backendVersion: "1.0.0", apiVersion: "1", minimumFrontendVersion: "0.0.1",
+      capabilities: ["PAYMENT_IDEMPOTENCY"], paymentStates: {}
+    }), { status: 200 })));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("MISSING_CAPABILITIES"));
+    expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
   });
 });

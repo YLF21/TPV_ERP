@@ -16,7 +16,7 @@ describe("PaymentAllocationPanel", () => {
     const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={["PAYTEF", "PAYCOMET"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
     expect(html).toContain("PAYCOMET");
     expect(html).toContain("APROBADO");
-    expect(html).toContain("Denegada");
+    expect(html).toContain("El proveedor rechazó la operación");
     expect(html).toContain("Efectivo");
     expect(html).toContain("Tarjeta manual");
     expect(html).toContain("PAYTEF");
@@ -74,5 +74,15 @@ describe("PaymentAllocationPanel", () => {
     const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={[]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
     expect(html).toContain(" · ");
     expect(html).not.toContain("路");
+  });
+
+  it("does not expose a Spanish idempotency diagnostic when the interface is Chinese", () => {
+    const recovered = {
+      ...session,
+      allocations: [{ ...session.allocations[0], message: "Operacion recuperada por idempotencia" }],
+    };
+    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="zh" session={recovered} providers={[]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
+    expect(html).toContain("已安全恢复原支付操作");
+    expect(html).not.toContain("Operacion recuperada por idempotencia");
   });
 });

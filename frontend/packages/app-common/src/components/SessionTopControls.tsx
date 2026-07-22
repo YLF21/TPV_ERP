@@ -16,6 +16,7 @@ type SessionTopControlsProps = {
   noLabel: string;
   yesLabel: string;
   onLocaleChange: (locale: LocaleCode) => void;
+  onChangePassword?: () => void;
   onLogout?: () => void;
   onPrepareShutdown?: () => Promise<boolean>;
   onBrowserClose?: () => void | Promise<void>;
@@ -39,6 +40,7 @@ export function SessionTopControls({
   noLabel,
   yesLabel,
   onLocaleChange,
+  onChangePassword,
   onLogout,
   onPrepareShutdown,
   onBrowserClose
@@ -101,7 +103,10 @@ export function SessionTopControls({
         </button>
         {userMenuOpen && (
           <section className="report-user-menu" role="menu" aria-label={session.displayName}>
-            <button type="button" role="menuitem" onClick={() => setUserMenuOpen(false)}>
+            <button type="button" role="menuitem" onClick={() => {
+              setUserMenuOpen(false);
+              onChangePassword?.();
+            }}>
               {changePasswordLabel}
             </button>
             <button

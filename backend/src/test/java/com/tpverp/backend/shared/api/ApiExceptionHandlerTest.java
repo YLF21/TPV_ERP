@@ -130,6 +130,19 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    void internalBusinessKeysNeverLeakForSpanishUsers() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.stateConflict(
+                new IllegalStateException("authoritative_quote_line_total_mismatch"), request);
+
+        assertEquals("STATE_CONFLICT", problem.getProperties().get("code"));
+        assertEquals("La operación no es compatible con el estado actual", problem.getDetail());
+        assertEquals(36, String.valueOf(problem.getProperties().get("traceId")).length());
+    }
+
+    @Test
     void translatesRequiredFieldValidationMessagesFromReusableParts() throws NoSuchMethodException {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
@@ -147,7 +160,7 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
-    void reportsMethodAndPathWhenRequestMethodIsNotSupported() {
+    void reportsMethodWithoutLeakingInternalPathWhenRequestMethodIsNotSupported() {
         var request = new MockHttpServletRequest("GET", "/api/v1/auth/login");
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
         var exception = new HttpRequestMethodNotSupportedException("GET", List.of("POST"));
@@ -157,9 +170,10 @@ class ApiExceptionHandlerTest {
         assertEquals(405, problem.getStatus());
         assertEquals("METHOD_NOT_ALLOWED", problem.getProperties().get("code"));
         assertEquals("GET", problem.getProperties().get("method"));
-        assertEquals("/api/v1/auth/login", problem.getProperties().get("path"));
+        assertEquals(false, problem.getProperties().containsKey("path"));
         assertEquals("POST", problem.getProperties().get("supportedMethods"));
-        assertEquals("Metodo GET no permitido para /api/v1/auth/login. Usa POST.", problem.getDetail());
+        assertEquals("Método GET no permitido. Usa POST.", problem.getDetail());
+        assertEquals(36, String.valueOf(problem.getProperties().get("traceId")).length());
     }
 
     @Test

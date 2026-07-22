@@ -26,6 +26,11 @@ public class VoucherService {
 
     @Transactional
     public Voucher issueFromNegativeTicket(CommercialDocument ticket) {
+        return issueFromNegativeTicket(ticket, ticket == null ? null : ticket.getTotal().abs());
+    }
+
+    @Transactional
+    public Voucher issueFromNegativeTicket(CommercialDocument ticket, BigDecimal amount) {
         requireCurrentStore(ticket);
         if (ticket.getTipo() != CommercialDocumentType.TICKET || ticket.getTotal().signum() >= 0) {
             throw new IllegalArgumentException("solo un ticket negativo genera vale");
@@ -36,9 +41,26 @@ public class VoucherService {
         if (alreadyIssued(ticket)) {
             throw new IllegalStateException("el ticket ya tiene vale generado");
         }
+        var voucherAmount = Money.euros(amount);
+        if (voucherAmount.signum() <= 0 || voucherAmount.compareTo(ticket.getTotal().abs()) > 0) {
+            throw new IllegalArgumentException("el importe del vale no puede superar la devolucion");
+        }
         return vouchers.save(new Voucher(
-                ticket.getTiendaId(), nextCode(), ticket.getTotal().abs(),
+                ticket.getTiendaId(), nextCode(), voucherAmount,
                 List.of(ticket.getNumero()), Instant.now(clock)));
+    }
+
+    @Transactional
+    public Voucher issueOrFindFromNegativeTicket(CommercialDocument ticket, BigDecimal amount) {
+        requireCurrentStore(ticket);
+        var existing = issuedFor(ticket);
+        if (existing.isPresent()) {
+            if (existing.orElseThrow().initialAmount().compareTo(Money.euros(amount)) != 0) {
+                throw new IllegalStateException("el vale existente no coincide con el importe solicitado");
+            }
+            return existing.orElseThrow();
+        }
+        return issueFromNegativeTicket(ticket, amount);
     }
     // Emite un vale por el importe absoluto de un ticket negativo confirmado.
 
@@ -107,6 +129,21 @@ public class VoucherService {
 
     private boolean alreadyIssued(CommercialDocument ticket) {
         return generatedVoucherExists(ticket);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Voucher> issuedFromNegativeTicket(CommercialDocument ticket) {
+        requireCurrentStore(ticket);
+        return issuedFor(ticket);
+    }
+
+    private Optional<Voucher> issuedFor(CommercialDocument ticket) {
+        if (ticket == null || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
+            return Optional.empty();
+        }
+        return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(ticket.getTiendaId()).stream()
+                .filter(voucher -> voucher.originTickets().contains(ticket.getNumero()))
+                .findFirst();
     }
 
     private boolean generatedVoucherExists(CommercialDocument ticket) {

@@ -96,6 +96,11 @@ public class AdminController {
         return service.createErpCustomer(companyId, request);
     }
 
+    @DeleteMapping("/companies/{companyId}/erp/customers/{id}")
+    public ErpCustomerResponse deactivateErpCustomer(@PathVariable UUID companyId, @PathVariable UUID id) {
+        return service.deactivateErpCustomer(companyId, id);
+    }
+
     @GetMapping("/companies/{companyId}/erp/products")
     public List<ErpProductResponse> erpProducts(@PathVariable UUID companyId) {
         return service.erpProducts(companyId);
@@ -106,6 +111,11 @@ public class AdminController {
             @PathVariable UUID companyId,
             @Valid @RequestBody CreateErpProductRequest request) {
         return service.createErpProduct(companyId, request);
+    }
+
+    @DeleteMapping("/companies/{companyId}/erp/products/{id}")
+    public ErpProductResponse deactivateErpProduct(@PathVariable UUID companyId, @PathVariable UUID id) {
+        return service.deactivateErpProduct(companyId, id);
     }
 
     @GetMapping("/companies/{companyId}/erp/suppliers")
@@ -120,6 +130,11 @@ public class AdminController {
         return service.createErpSupplier(companyId, request);
     }
 
+    @DeleteMapping("/companies/{companyId}/erp/suppliers/{id}")
+    public ErpSupplierResponse deactivateErpSupplier(@PathVariable UUID companyId, @PathVariable UUID id) {
+        return service.deactivateErpSupplier(companyId, id);
+    }
+
     @GetMapping("/companies/{companyId}/erp/warehouses")
     public List<ErpWarehouseResponse> erpWarehouses(@PathVariable UUID companyId) {
         return service.erpWarehouses(companyId);
@@ -130,6 +145,11 @@ public class AdminController {
             @PathVariable UUID companyId,
             @Valid @RequestBody CreateErpWarehouseRequest request) {
         return service.createErpWarehouse(companyId, request);
+    }
+
+    @DeleteMapping("/companies/{companyId}/erp/warehouses/{id}")
+    public ErpWarehouseResponse deactivateErpWarehouse(@PathVariable UUID companyId, @PathVariable UUID id) {
+        return service.deactivateErpWarehouse(companyId, id);
     }
 
     @PostMapping("/invoices/{invoiceId}/payments")
@@ -179,6 +199,11 @@ public class AdminController {
     @GetMapping("/me")
     public AdminSessionResponse me() {
         return service.session();
+    }
+
+    @GetMapping("/status")
+    public SaasStatusResponse status() {
+        return service.status();
     }
 
     @GetMapping("/notifications")

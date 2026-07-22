@@ -115,8 +115,8 @@ API principal:
 - `POST /api/v1/customer-receivables/{documentId}/payments`: registra un cobro
   posterior idempotente mediante `requestId`.
 - `GET /api/v1/commercial-reports/daily?date=AAAA-MM-DD`: separa facturado,
-  cobrado en ventas actuales, nuevo pendiente, cobros de deuda anterior y
-  entrada real.
+  ventas de tickets, cobrado en ventas actuales, nuevo pendiente, cobros de
+  deuda anterior y entrada real.
 
 Los permisos son `CUSTOMER_RECEIVABLES_READ`,
 `CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`; `ADMIN` incluye

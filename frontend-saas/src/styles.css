@@ -779,6 +779,23 @@ label {
   background: rgba(255, 240, 237, 0.88);
 }
 
+.danger-button.subtle {
+  min-height: 36px;
+  border: 0;
+  border-radius: 14px;
+  padding: 8px 12px;
+  color: var(--danger);
+  background: rgba(255, 240, 237, 0.88);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.table-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .pairing-panel {
   display: flex;
   align-items: center;

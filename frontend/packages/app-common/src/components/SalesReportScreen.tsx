@@ -8,18 +8,6 @@ import {
   loadReportVisualizationPreferences,
   saveReportVisualizationPreference
 } from "./salesReportVisualizationPreferences";
-import {
-  WarehouseDocumentDialog,
-  type WarehouseCustomerOption,
-  type WarehouseOption,
-  type WarehouseSupplierOption
-} from "./WarehouseDocumentDialog";
-import {
-  PurchaseDocumentDialog,
-  type PurchaseDocumentMode,
-  type PurchaseDocumentProduct,
-  type PurchaseDocumentTax
-} from "./PurchaseDocumentDialog";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -27,11 +15,11 @@ import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import { readSalesReportOutputPreferences } from "./salesReportOutputPreferences";
 import {
   allReports,
   isPurchaseDocumentReport,
   outputReports,
-  salesReportAccess,
   visibleSalesReports
 } from "./salesReportAccess";
 export { isPurchaseDocumentReport, salesReportAccess, visibleSalesReports } from "./salesReportAccess";
@@ -62,10 +50,13 @@ type SalesReportScreenProps = {
   request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
 };
 
+type SalesReportRequest = NonNullable<SalesReportScreenProps["request"]>;
+
 type DailyCommercialReport = {
   storeId: string;
   date: string;
   invoiced: number | string;
+  ticketSales?: number | string;
   collectedCurrent: number | string;
   newPending: number | string;
   priorDebtCollected: number | string;
@@ -1100,11 +1091,21 @@ export function isWarehouseDocumentReport(reportKey: string) {
   ].includes(reportKey);
 }
 
-async function optionalApiRequest<T>(path: string, token: string, fallback: T): Promise<T> {
+type ReportResource<T> = {
+  value: T;
+  failed: boolean;
+};
+
+async function loadReportResource<T>(
+  request: SalesReportRequest,
+  path: string,
+  token: string,
+  fallback: T
+): Promise<ReportResource<T>> {
   try {
-    return await apiRequest<T>(path, { token });
+    return { value: await request<T>(path, { token }), failed: false };
   } catch {
-    return fallback;
+    return { value: fallback, failed: true };
   }
 }
 
@@ -1316,7 +1317,7 @@ export function SalesReportScreen({
   request = apiRequest
 }: SalesReportScreenProps) {
   const t = createTranslator(locale);
-  const reportAccess = salesReportAccess(session);
+  const reportOutputPreferences = readSalesReportOutputPreferences(app, session.username, terminalContext);
   const availableReports = visibleSalesReports(session);
   const initialReport = requestedInitialReport && availableReports.all.includes(requestedInitialReport)
     ? requestedInitialReport
@@ -1346,16 +1347,10 @@ export function SalesReportScreen({
   const [dailyReportReload, setDailyReportReload] = useState(0);
   const dailyReportGeneration = useRef(0);
   const [reportPages, setReportPages] = useState<Record<string, { nextCursor: string | null; hasMore: boolean }>>({});
+  const [reportLoading, setReportLoading] = useState(Boolean(session.accessToken));
+  const [reportLoadErrors, setReportLoadErrors] = useState<Record<string, string>>({});
   const [reportLoadingMore, setReportLoadingMore] = useState(false);
-  const [warehouseDocumentOpen, setWarehouseDocumentOpen] = useState(false);
-  const [purchaseDocumentOpen, setPurchaseDocumentOpen] = useState(false);
-  const [purchaseDocumentMode, setPurchaseDocumentMode] = useState<PurchaseDocumentMode>("invoice");
   const [reportReloadKey, setReportReloadKey] = useState(0);
-  const [warehouseProducts, setWarehouseProducts] = useState<PurchaseDocumentProduct[]>([]);
-  const [warehouseMasterOptions, setWarehouseMasterOptions] = useState<WarehouseOption[]>([]);
-  const [warehouseCustomers, setWarehouseCustomers] = useState<WarehouseCustomerOption[]>([]);
-  const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplierOption[]>([]);
-  const [purchaseTaxes, setPurchaseTaxes] = useState<PurchaseDocumentTax[]>([]);
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [visualReport, setVisualReport] = useState(initialReport);
@@ -1419,8 +1414,8 @@ export function SalesReportScreen({
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
   const hasStatusFilter = !isDailySalesReport && selectedReport !== "salesReport.tickets" && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
-  const warehouseDocumentMode = selectedReport === "salesReport.warehouseOutputs" ? "output" : "input";
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
+  const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
 
   useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
@@ -1465,6 +1460,9 @@ export function SalesReportScreen({
     let cancelled = false;
     if (!session.accessToken) {
       setRemoteReports({});
+      setReportPages({});
+      setReportLoadErrors({});
+      setReportLoading(false);
       return;
     }
 
@@ -1473,30 +1471,36 @@ export function SalesReportScreen({
       if (!token) {
         return;
       }
+      setReportLoading(true);
+      setReportLoadErrors({});
       try {
-        const [tickets, invoices, deliveryNotes, warehouseOutputs, warehouseInputs] = await Promise.all([
-          optionalApiRequest<DocumentView[]>("/tickets", token, []),
-          optionalApiRequest<PagedResult<DocumentView>>(reportPagePath("invoices"), token, { items: [], nextCursor: null, hasMore: false }),
-          optionalApiRequest<PagedResult<DocumentView>>(reportPagePath("deliveryNotes"), token, { items: [], nextCursor: null, hasMore: false }),
-          optionalApiRequest<PagedResult<WarehouseOutputView>>(reportPagePath("warehouseOutputs"), token, { items: [], nextCursor: null, hasMore: false }),
-          optionalApiRequest<PagedResult<WarehouseInputView>>(reportPagePath("warehouseInputs"), token, { items: [], nextCursor: null, hasMore: false })
-        ]);
-        const productPath = session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_PRODUCTO")
-          ? "/products/management"
-          : "/products";
-        const [products, warehouses, customers, suppliers, taxes] = await Promise.all([
-          optionalApiRequest<PurchaseDocumentProduct[]>(productPath, token, []),
-          optionalApiRequest<WarehouseOption[]>("/warehouses", token, []),
-          optionalApiRequest<WarehouseCustomerOption[]>("/customers/sale-options", token, []),
-          optionalApiRequest<WarehouseSupplierOption[]>("/suppliers", token, []),
-          optionalApiRequest<PurchaseDocumentTax[]>("/taxes/selectable", token, [])
+        const [ticketResource, invoiceResource, deliveryNoteResource, warehouseOutputResource, warehouseInputResource] = await Promise.all([
+          loadReportResource<DocumentView[]>(request, "/tickets", token, []),
+          loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("invoices"), token, { items: [], nextCursor: null, hasMore: false }),
+          loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("deliveryNotes"), token, { items: [], nextCursor: null, hasMore: false }),
+          loadReportResource<PagedResult<WarehouseOutputView>>(request, reportPagePath("warehouseOutputs"), token, { items: [], nextCursor: null, hasMore: false }),
+          loadReportResource<PagedResult<WarehouseInputView>>(request, reportPagePath("warehouseInputs"), token, { items: [], nextCursor: null, hasMore: false })
         ]);
         if (!cancelled) {
-          setWarehouseProducts(products);
-          setWarehouseMasterOptions(warehouses);
-          setWarehouseCustomers(customers);
-          setWarehouseSuppliers(suppliers);
-          setPurchaseTaxes(taxes);
+          const tickets = ticketResource.value;
+          const invoices = invoiceResource.value;
+          const deliveryNotes = deliveryNoteResource.value;
+          const warehouseOutputs = warehouseOutputResource.value;
+          const warehouseInputs = warehouseInputResource.value;
+          const loadError = t("salesReport.loadError");
+          setReportLoadErrors({
+            ...(ticketResource.failed ? { "salesReport.tickets": loadError } : {}),
+            ...(invoiceResource.failed ? {
+              "salesReport.invoices": loadError,
+              "salesReport.inputInvoices": loadError
+            } : {}),
+            ...(deliveryNoteResource.failed ? {
+              "salesReport.deliveryNotes": loadError,
+              "salesReport.inputDeliveryNotes": loadError
+            } : {}),
+            ...(warehouseOutputResource.failed ? { "salesReport.warehouseOutputs": loadError } : {}),
+            ...(warehouseInputResource.failed ? { "salesReport.inputWarehouse": loadError } : {})
+          });
           setReportPages({
             invoices: { nextCursor: invoices.nextCursor ?? null, hasMore: Boolean(invoices.hasMore) },
             deliveryNotes: { nextCursor: deliveryNotes.nextCursor ?? null, hasMore: Boolean(deliveryNotes.hasMore) },
@@ -1518,7 +1522,10 @@ export function SalesReportScreen({
         if (!cancelled) {
           setRemoteReports({});
           setReportPages({});
+          setReportLoadErrors(Object.fromEntries(availableReports.all.map((reportKey) => [reportKey, t("salesReport.loadError")])));
         }
+      } finally {
+        if (!cancelled) setReportLoading(false);
       }
     }
 
@@ -1526,7 +1533,7 @@ export function SalesReportScreen({
     return () => {
       cancelled = true;
     };
-  }, [session, terminalContext, reportReloadKey]);
+  }, [request, session, terminalContext, reportReloadKey]);
 
   useEffect(() => {
     const generation = ++dailyReportGeneration.current;
@@ -1571,7 +1578,19 @@ export function SalesReportScreen({
   }
 
   function printReport() {
-    setPrintMenuOpen((open) => !open);
+    switch (reportOutputPreferences.primaryAction) {
+      case "print":
+        void printCurrentReport();
+        break;
+      case "pdf":
+        void exportPdfReport();
+        break;
+      case "excel":
+        void exportExcelReport();
+        break;
+      default:
+        setPrintMenuOpen((open) => !open);
+    }
   }
 
   function reportFileName(extension: "xlsx" | "pdf") {
@@ -1690,7 +1709,7 @@ export function SalesReportScreen({
     }
     setReportLoadingMore(true);
     try {
-      const nextPage = await apiRequest<PagedResult<DocumentView | WarehouseOutputView | WarehouseInputView>>(
+      const nextPage = await request<PagedResult<DocumentView | WarehouseOutputView | WarehouseInputView>>(
         reportPagePath(pageKey, page.nextCursor),
         { token: session.accessToken }
       );
@@ -1729,6 +1748,16 @@ export function SalesReportScreen({
           nextCursor: nextPage.nextCursor ?? null,
           hasMore: Boolean(nextPage.hasMore)
         }
+      }));
+      setReportLoadErrors((current) => {
+        const next = { ...current };
+        affectedReportsByPageKey[pageKey].forEach((reportKey) => delete next[reportKey]);
+        return next;
+      });
+    } catch {
+      setReportLoadErrors((current) => ({
+        ...current,
+        [selectedReport]: t("salesReport.loadError")
       }));
     } finally {
       setReportLoadingMore(false);
@@ -2187,6 +2216,7 @@ export function SalesReportScreen({
     if (dailyCommercialReport) {
       const rows: Array<[string, number | string]> = [
         ["salesReport.daily.invoiced", dailyCommercialReport.invoiced],
+        ["salesReport.daily.ticketSales", dailyCommercialReport.ticketSales ?? 0],
         ["salesReport.daily.collectedCurrent", dailyCommercialReport.collectedCurrent],
         ["salesReport.daily.newPending", dailyCommercialReport.newPending],
         ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
@@ -2273,28 +2303,6 @@ export function SalesReportScreen({
             {t("salesReport.activity.open")}
           </button>
         )}
-        {reportAccess.warehouse && isWarehouseDocumentReport(selectedReport) && (
-          <button
-            type="button"
-            onClick={() => {
-              setPrintMenuOpen(false);
-              setWarehouseDocumentOpen(true);
-            }}
-          >
-            {t("warehouseDocument.create")}
-          </button>
-        )}
-        {reportAccess.purchaseWrite && isPurchaseDocumentReport(selectedReport) && (
-          <button
-            type="button"
-            onClick={() => {
-              setPurchaseDocumentMode(selectedReport === "salesReport.inputInvoices" ? "invoice" : "deliveryNote");
-              setPurchaseDocumentOpen(true);
-            }}
-          >
-            {t("purchaseDocument.create")}
-          </button>
-        )}
         {selectedReportPage?.hasMore && (
           <button
             type="button"
@@ -2333,7 +2341,7 @@ export function SalesReportScreen({
   }
 
   return (
-    <main className={embedded ? "report-screen gestion-embedded-module" : "report-screen"}>
+    <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"} report-density-${reportOutputPreferences.density}`}>
       {!embedded && <TopDateTime locale={locale} />}
       {!embedded && <div ref={userMenuRef} style={{ display: "contents" }}>
         <button
@@ -2480,6 +2488,19 @@ export function SalesReportScreen({
             <div className="report-data">
               {renderReportToolbar()}
               <div className="report-table-scroll">
+                {reportLoading && (
+                  <p className="report-load-state" aria-live="polite">
+                    {t("salesReport.loading")}
+                  </p>
+                )}
+                {selectedReportLoadError && (
+                  <div className="report-load-state error" role="alert">
+                    <span>{selectedReportLoadError}</span>
+                    <button type="button" onClick={() => setReportReloadKey((value) => value + 1)}>
+                      {t("salesReport.retry")}
+                    </button>
+                  </div>
+                )}
                 <table
                   className="report-table"
                   style={{ width: `${reportTableWidth}px`, minWidth: "100%" }}
@@ -2686,46 +2707,6 @@ export function SalesReportScreen({
           </section>
         </div>
       )}
-
-      <WarehouseDocumentDialog
-        mode={warehouseDocumentMode}
-        open={warehouseDocumentOpen}
-        app={app}
-        username={session.username}
-        accessToken={session.accessToken}
-        title={t(selectedReport)}
-        token={session.accessToken}
-        products={warehouseProducts}
-        warehouses={warehouseMasterOptions}
-        customers={warehouseCustomers}
-        suppliers={warehouseSuppliers}
-        terminalContext={terminalContext}
-        canConfirm={
-          session.permissions.includes("ADMIN")
-          || session.permissions.includes("GESTION_ALMACEN")
-        }
-        onClose={() => setWarehouseDocumentOpen(false)}
-        onConfirmed={() => {
-          setWarehouseDocumentOpen(false);
-          setReportReloadKey((value) => value + 1);
-        }}
-      />
-
-      <PurchaseDocumentDialog
-        open={purchaseDocumentOpen}
-        mode={purchaseDocumentMode}
-        token={session.accessToken}
-        products={warehouseProducts}
-        warehouses={warehouseMasterOptions}
-        suppliers={warehouseSuppliers}
-        taxes={purchaseTaxes}
-        t={t}
-        onClose={() => setPurchaseDocumentOpen(false)}
-        onConfirmed={() => {
-          setPurchaseDocumentOpen(false);
-          setReportReloadKey((value) => value + 1);
-        }}
-      />
 
       {filterOpen && (
         <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="filter-title">

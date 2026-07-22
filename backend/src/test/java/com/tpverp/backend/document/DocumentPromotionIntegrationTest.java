@@ -287,6 +287,78 @@ class DocumentPromotionIntegrationTest {
     }
 
     @Test
+    void authoritativeTicketQuoteAppliesCouponWithoutTrustingClientAmounts() {
+        var productId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        var code = "PROMO-7788";
+        var product = product(productId, UUID.randomUUID(), null);
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(promotionalCoupons.evaluate(any())).thenReturn(
+                new PromotionalCouponService.EvaluationResult(
+                        couponId, promotionId, "7788", new BigDecimal("2.00"), null));
+
+        var quote = service.quoteTicket(
+                command(CommercialDocumentType.TICKET, List.of(line(productId, "1", "12.10"))),
+                code,
+                authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("10.10");
+        assertThat(quote.getLineas()).hasSize(2);
+        assertThat(quote.getLineas().get(1).getLineType())
+                .isEqualTo(DocumentLineType.PROMOTIONAL_COUPON);
+        assertThat(quote.getLineas().get(1).getPromotionalCouponId()).isEqualTo(couponId);
+        assertThat(quote.getLineas().get(1).getPromotionId()).isEqualTo(promotionId);
+        assertThat(quote.getLineas().get(1).getTotal()).isEqualByComparingTo("-2.00");
+        var redemption = ArgumentCaptor.forClass(PromotionalCouponService.RedemptionCommand.class);
+        verify(promotionalCoupons).evaluate(redemption.capture());
+        assertThat(redemption.getValue().companyId()).isEqualTo(store.getEmpresa().getId());
+        assertThat(redemption.getValue().storeId()).isEqualTo(store.getId());
+        assertThat(redemption.getValue().pendingDocumentAmount()).isEqualByComparingTo("12.10");
+    }
+
+    @Test
+    void confirmedTicketConsumesCouponAndValidatesPaymentAgainstDiscountedTotal() {
+        var productId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        var code = "PROMO-8899";
+        var product = product(productId, UUID.randomUUID(), null);
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        when(promotionalCoupons.redeem(any())).thenReturn(
+                new PromotionalCouponService.RedemptionResult(
+                        UUID.randomUUID(), couponId, promotionId, "8899",
+                        new BigDecimal("2.00"), null, Optional.empty()));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var ticket = service.createTicket(
+                command(CommercialDocumentType.TICKET, List.of(line(productId, "1", "12.10"))),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.10"), true, null, null)),
+                code,
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("10.10");
+        assertThat(ticket.getPagos()).singleElement()
+                .satisfies(payment -> assertThat(payment.getImporte()).isEqualByComparingTo("10.10"));
+        assertThat(ticket.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.PROMOTIONAL_COUPON);
+        var redemption = ArgumentCaptor.forClass(PromotionalCouponService.RedemptionCommand.class);
+        verify(promotionalCoupons).redeem(redemption.capture());
+        assertThat(redemption.getValue().documentId()).isEqualTo(ticket.getId());
+        assertThat(redemption.getValue().pendingDocumentAmount()).isEqualByComparingTo("12.10");
+        verify(documentRepository, org.mockito.Mockito.atLeastOnce()).saveAndFlush(ticket);
+    }
+
+    @Test
     void confirmedEligibleSalesDocumentGeneratesCouponsAfterSave() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA);
         var promotion = purchaseThresholdCoupon();

@@ -32,10 +32,18 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: never
+      show-details: when-authorized
+      roles: ADMIN
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: ping
+        readiness:
+          include: db,tpvBusiness
 
 springdoc:
   api-docs:
@@ -44,6 +52,10 @@ springdoc:
     enabled: false
 
 tpv:
+  monitoring:
+    business:
+      initial-delay-ms: ${TPV_MONITORING_INITIAL_DELAY_MS:5000}
+      interval-ms: ${TPV_MONITORING_INTERVAL_MS:30000}
   installation:
     key-directory: ${TPV_KEY_DIRECTORY:${user.home}/.tpv-erp/keys}
   license:

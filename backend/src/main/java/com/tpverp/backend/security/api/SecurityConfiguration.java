@@ -41,6 +41,10 @@ class SecurityConfiguration {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(authorize -> authorize
 						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+						.requestMatchers(
+								"/actuator/metrics",
+								"/actuator/metrics/**",
+								"/actuator/prometheus").hasRole("ADMIN")
 						.requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class)
@@ -58,7 +62,8 @@ class SecurityConfiguration {
 				"/api/v1/license/validate",
 				"/api/v1/terminals/request",
 				"/",
-				"/actuator/health"));
+				"/actuator/health",
+				"/actuator/health/**"));
 
 		if (environment.acceptsProfiles(Profiles.of("dev"))) {
 			paths.add("/swagger-ui.html");

@@ -123,6 +123,13 @@ export type TechnicalStatus = {
   lastSyncAt: string | null;
 };
 
+export type SaasStatus = {
+  generatedAt: string;
+  apiVersion: string;
+  expectedMigration: string;
+  modules: string[];
+};
+
 export type SupportTicket = {
   id: string;
   companyId: string;

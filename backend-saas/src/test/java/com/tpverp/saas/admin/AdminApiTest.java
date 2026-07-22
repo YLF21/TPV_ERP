@@ -14,6 +14,7 @@ import com.tpverp.saas.license.LicenseSaasStatus;
 import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -403,7 +404,8 @@ class AdminApiTest {
         assertThat(summary.overdueCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.pendingCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.renewalsNext30Days()).isGreaterThanOrEqualTo(1);
-        assertThat(summary.monthlyRecurringRevenue()).isGreaterThanOrEqualTo("79.90");
+        assertThat(new BigDecimal(summary.monthlyRecurringRevenue()))
+                .isGreaterThanOrEqualTo(new BigDecimal("79.90"));
         assertThat(summary.companies())
                 .filteredOn(value -> value.companyId().equals(company.companyId()))
                 .singleElement()

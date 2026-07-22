@@ -38,7 +38,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(PaymentTerminalApiException.class)
     ProblemDetail paymentTerminalProblem(PaymentTerminalApiException exception, HttpServletRequest request) {
-        return problem(exception.status(), exception.code(), exception.getMessage(), language(request));
+        return problem(exception.status(), exception.code(), exception.getMessage(), language(request), request);
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)
@@ -55,7 +55,7 @@ public class ApiExceptionHandler {
         var language = language(request);
         var detail = requiredFieldDetail(exception, language)
                 .orElseGet(() -> messages.system(SystemErrorCode.VALIDATION_ERROR, language));
-        return problem(HttpStatus.BAD_REQUEST, SystemErrorCode.VALIDATION_ERROR.name(), detail, language);
+        return problem(HttpStatus.BAD_REQUEST, SystemErrorCode.VALIDATION_ERROR.name(), detail, language, request);
     }
 
     @ExceptionHandler(LicenseValidationException.class)
@@ -74,7 +74,8 @@ public class ApiExceptionHandler {
                 HttpStatus.BAD_REQUEST,
                 SystemErrorCode.VALIDATION_ERROR.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.VALIDATION_ERROR, language),
-                language);
+                language,
+                request);
     }
 
     @ExceptionHandler(NoSuchElementException.class)
@@ -87,7 +88,7 @@ public class ApiExceptionHandler {
             case ZH -> "未找到资源";
             default -> "Recurso no encontrado";
         };
-        return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", detail, language);
+        return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", detail, language, request);
     }
 
     @ExceptionHandler(IllegalStateException.class)
@@ -99,7 +100,8 @@ public class ApiExceptionHandler {
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
-                language);
+                language,
+                request);
     }
 
     @ExceptionHandler(RoleInUseException.class)
@@ -115,7 +117,7 @@ public class ApiExceptionHandler {
                     ? "El rol está asignado a 1 usuario. Reasígnalo antes de eliminar el rol."
                     : "El rol está asignado a %d usuarios. Reasígnalos antes de eliminar el rol.".formatted(count);
         };
-        var problem = problem(HttpStatus.CONFLICT, "ROLE_IN_USE", detail, language);
+        var problem = problem(HttpStatus.CONFLICT, "ROLE_IN_USE", detail, language, request);
         problem.setProperty("assignedUsers", count);
         return problem;
     }
@@ -129,7 +131,8 @@ public class ApiExceptionHandler {
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
-                language);
+                language,
+                request);
     }
 
     private String localizedExceptionDetail(
@@ -137,7 +140,7 @@ public class ApiExceptionHandler {
             SystemErrorCode fallbackCode,
             SupportedLanguage language) {
         return messages.legacy(detail, language).orElseGet(() ->
-                language == SupportedLanguage.ES ? detail : messages.system(fallbackCode, language));
+                messages.system(fallbackCode, language));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -153,19 +156,17 @@ public class ApiExceptionHandler {
             HttpServletRequest request) {
         var language = language(request);
         var method = Optional.ofNullable(exception.getMethod()).orElse(request == null ? "" : request.getMethod());
-        var path = request == null ? "" : request.getRequestURI();
         var supportedMethods = supportedMethods(exception.getSupportedMethods());
-        var detail = methodNotSupportedDetail(method, path, supportedMethods, language);
-        var problem = problem(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", detail, language);
+        var detail = safeMethodNotSupportedDetail(method, supportedMethods, language);
+        var problem = problem(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", detail, language, request);
         problem.setProperty("method", method);
-        problem.setProperty("path", path);
         problem.setProperty("supportedMethods", supportedMethods);
         return problem;
     }
 
     private ProblemDetail systemProblem(HttpStatus status, SystemErrorCode code, HttpServletRequest request) {
         var language = language(request);
-        return problem(status, code.name(), messages.system(code, language), language);
+        return problem(status, code.name(), messages.system(code, language), language, request);
     }
 
     private Optional<String> requiredFieldDetail(
@@ -189,11 +190,13 @@ public class ApiExceptionHandler {
                         || code.startsWith("NotEmpty"));
     }
 
-    private ProblemDetail problem(HttpStatus status, String code, String detail, SupportedLanguage language) {
+    private ProblemDetail problem(HttpStatus status, String code, String detail, SupportedLanguage language,
+            HttpServletRequest request) {
         var problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setType(URI.create("urn:tpv-erp:error:" + code));
         problem.setProperty("code", code);
         problem.setProperty("locale", language.localeCode());
+        problem.setProperty("traceId", CorrelationIdFilter.getOrCreate(request));
         return problem;
     }
 
@@ -204,15 +207,12 @@ public class ApiExceptionHandler {
         return String.join(", ", methods);
     }
 
-    private static String methodNotSupportedDetail(
-            String method,
-            String path,
-            String supportedMethods,
-            SupportedLanguage language) {
+    private static String safeMethodNotSupportedDetail(
+            String method, String supportedMethods, SupportedLanguage language) {
         return switch (language) {
-            case EN -> "Method %s is not allowed for %s. Use %s.".formatted(method, path, supportedMethods);
-            case ZH -> "%s 不允许对 %s 使用。请使用 %s。".formatted(method, path, supportedMethods);
-            default -> "Metodo %s no permitido para %s. Usa %s.".formatted(method, path, supportedMethods);
+            case EN -> "Method %s is not allowed. Use %s.".formatted(method, supportedMethods);
+            case ZH -> "不允许使用 %s 方法。请使用 %s。".formatted(method, supportedMethods);
+            default -> "Método %s no permitido. Usa %s.".formatted(method, supportedMethods);
         };
     }
 

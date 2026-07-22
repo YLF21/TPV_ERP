@@ -12,8 +12,8 @@ export const queryPaymentOperation = (id: string, token: string | undefined, req
 export const loadPaymentOperationHistory = (id: string, token: string | undefined, request: Request = apiRequest) =>
   request<PaymentOperationEvent[]>(path(id, "/events"), { token });
 
-export const voidPaymentOperation = (id: string, token: string | undefined, password: string, key: string, request: Request = apiRequest) =>
-  request<PaymentOperationView>(path(id, "/void"), { token, body: { operationId: id, idempotencyKey: key, password } });
+export const voidPaymentOperation = (id: string, token: string | undefined, password: string, operationId: string, request: Request = apiRequest) =>
+  request<PaymentOperationView>(path(id, "/void"), { token, body: { operationId, idempotencyKey: operationId, password } });
 
 export type PaymentRefundLineOption = {
   lineId: string;
@@ -30,9 +30,9 @@ export type PaymentRefundLineSelection = { lineId: string; quantity: string };
 export const loadPaymentRefundLines = (id: string, token: string | undefined, request: Request = apiRequest) =>
   request<PaymentRefundLineOption[]>(path(id, "/refund-lines"), { token });
 
-export const refundPaymentOperation = (id: string, token: string | undefined, amount: string, password: string, key: string,
+export const refundPaymentOperation = (id: string, token: string | undefined, amount: string, password: string, operationId: string,
   lines: PaymentRefundLineSelection[] = [], request: Request = apiRequest) =>
-  request<PaymentOperationView>(path(id, "/refund"), { token, body: { operationId: id, idempotencyKey: key, amount, password, lines } });
+  request<PaymentOperationView>(path(id, "/refund"), { token, body: { operationId, idempotencyKey: operationId, amount, password, lines } });
 
 export async function printPaymentReceipt(
   id: string,

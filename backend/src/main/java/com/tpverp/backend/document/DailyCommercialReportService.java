@@ -45,24 +45,38 @@ public class DailyCommercialReportService {
                 .map(CommercialDocument::getTotal)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var collectedCurrent = collected.stream()
+        var ticketSales = issued.stream()
+                .filter(DailyCommercialReportService::isTicketSale)
+                .filter(document -> !invoicedOrigins.contains(document.getId()))
+                .map(CommercialDocument::getTotal)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var receivableCollectedCurrent = collected.stream()
                 .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
                 .filter(payment -> payment.getDocumento().getFecha().equals(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var ticketCollectedCurrent = collected.stream()
+                .filter(payment -> isTicketSale(payment.getDocumento()))
+                .filter(payment -> payment.getDocumento().getFecha().equals(date))
+                .map(DocumentPayment::getImporte)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var collectedCurrent = receivableCollectedCurrent.add(ticketCollectedCurrent);
         var priorDebtCollected = collected.stream()
                 .filter(payment -> isCustomerReceivableSale(payment.getDocumento()))
                 .filter(payment -> payment.getDocumento().getFecha().isBefore(date))
                 .map(DocumentPayment::getImporte)
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        var newPending = invoiced.subtract(collectedCurrent).max(BigDecimal.ZERO);
+        var newPending = invoiced.subtract(receivableCollectedCurrent).max(BigDecimal.ZERO);
         var cashInflow = collectedCurrent.add(priorDebtCollected);
         return new DailyCommercialReportView(
                 store.getId(),
                 date,
                 Money.euros(invoiced),
+                Money.euros(ticketSales),
                 Money.euros(collectedCurrent),
                 Money.euros(newPending),
                 Money.euros(priorDebtCollected),
@@ -74,5 +88,11 @@ public class DailyCommercialReportService {
                 && document.getEstado() != DocumentStatus.ANULADO
                 && (document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
                 || document.getTipo() == CommercialDocumentType.FACTURA_VENTA);
+    }
+
+    private static boolean isTicketSale(CommercialDocument document) {
+        return document.getEstado() != DocumentStatus.BORRADOR
+                && document.getEstado() != DocumentStatus.ANULADO
+                && document.getTipo() == CommercialDocumentType.TICKET;
     }
 }

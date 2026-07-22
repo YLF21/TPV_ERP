@@ -16,18 +16,115 @@ import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 
 class PosCashServiceTest {
+
+    @Test
+    void authoritativeQuoteReconcilesMemberManualPromotionCouponTaxAndRoundingPerProduct() {
+        var storeId = UUID.randomUUID();
+        var customerId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var product = mock(Product.class);
+        when(product.getId()).thenReturn(productId);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("12.00"));
+        when(product.getMemberPrice()).thenReturn(new BigDecimal("10.00"));
+        var ticket = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 21), UUID.randomUUID(), BigDecimal.ZERO);
+        ticket.setParties(customerId, null, null);
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 1, new BigDecimal("2.000"), "SKU-1", "Cafe socio",
+                "MEMBER", new BigDecimal("10.00"), new BigDecimal("10.00"),
+                true, "IVA", new BigDecimal("21.00")));
+        ticket.addLine(DocumentLine.special(
+                ticket, 2, "PROMOCION", new BigDecimal("-2.00"), true,
+                "IVA", new BigDecimal("21.00"), UUID.randomUUID(), UUID.randomUUID(), null));
+        ticket.addLine(DocumentLine.special(
+                ticket, 3, "CUPON ****1234", new BigDecimal("-1.00"), true,
+                "IVA", new BigDecimal("21.00"), UUID.randomUUID(), null, UUID.randomUUID()));
+        var request = new PosCashController.SaleRequest(
+                customerId,
+                List.of(new PosCashController.LineRequest(
+                        productId, new BigDecimal("2.000"), new BigDecimal("5.00"))),
+                null,
+                "CUPON-1234");
+        var customer = new AuthoritativePromotionPricing.CustomerContext(
+                customerId, UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("10.00"));
+
+        var quote = PosCashService.Quote.from(ticket, request, Map.of(productId, product), customer);
+
+        assertThat(quote.pricingVersion()).isEqualTo(1);
+        assertThat(quote.total()).isEqualByComparingTo("15.00");
+        assertThat(quote.discountTotal()).isEqualByComparingTo("5.00");
+        assertThat(quote.lineBreakdown()).singleElement().satisfies(line -> {
+            assertThat(line.lineId()).isEqualTo("product:" + productId + ":1");
+            assertThat(line.normalUnitPrice()).isEqualByComparingTo("12.00");
+            assertThat(line.memberUnitPrice()).isEqualByComparingTo("10.00");
+            assertThat(line.baseUnitPrice()).isEqualByComparingTo("10.00");
+            assertThat(line.priceSource()).isEqualTo("MEMBER");
+            assertThat(line.memberPriceSaving()).isEqualByComparingTo("4.00");
+            assertThat(line.memberDiscountPercent()).isEqualByComparingTo("10.00");
+            assertThat(line.memberDiscount()).isEqualByComparingTo("2.00");
+            assertThat(line.manualDiscount()).isZero();
+            assertThat(line.promotionDiscount()).isEqualByComparingTo("2.00");
+            assertThat(line.couponDiscount()).isEqualByComparingTo("1.00");
+            assertThat(line.taxBase()).isEqualByComparingTo("12.40");
+            assertThat(line.tax()).isEqualByComparingTo("2.60");
+            assertThat(line.baseSubtotal()).isEqualByComparingTo("20.00");
+            assertThat(line.roundingAdjustment()).isZero();
+            assertThat(line.finalSubtotal()).isEqualByComparingTo("15.00");
+        });
+    }
+
+    @Test
+    void cashIdempotencyHashKeepsLegacyCanonicalWhenCouponIsAbsent() throws Exception {
+        var productId = UUID.randomUUID();
+        var customerId = UUID.randomUUID();
+        var request = new PosCashController.CashRequest(
+                UUID.randomUUID(),
+                new PosCashController.SaleRequest(customerId, List.of(
+                        new PosCashController.LineRequest(
+                                productId, new BigDecimal("2.000"), new BigDecimal("5.00")))),
+                new BigDecimal("30.00"),
+                new BigDecimal("20.00"));
+        var canonical = "v1|" + customerId + "|30.00|20.00|" + productId + ":2:5";
+        var expected = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+
+        assertThat(PosCashService.requestHash(request)).isEqualTo(expected);
+    }
+
+    @Test
+    void cashIdempotencyHashSeparatesCouponCodeFromLegacyRequests() {
+        var line = new PosCashController.LineRequest(
+                UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO);
+        var checkoutId = UUID.randomUUID();
+        var legacy = new PosCashController.CashRequest(
+                checkoutId, new PosCashController.SaleRequest(null, List.of(line)),
+                BigDecimal.TEN, BigDecimal.ONE);
+        var coupon = new PosCashController.CashRequest(
+                checkoutId, new PosCashController.SaleRequest(
+                null, List.of(line), null, "PROMO-1234"),
+                BigDecimal.TEN, BigDecimal.ONE);
+
+        assertThat(PosCashService.requestHash(coupon))
+                .isNotEqualTo(PosCashService.requestHash(legacy));
+    }
 
     @Test
     void chargeReturnsSnapshotOfTheConfirmedDocumentCreatedByDocumentService() {

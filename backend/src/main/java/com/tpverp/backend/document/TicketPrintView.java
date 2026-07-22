@@ -36,8 +36,11 @@ public record TicketPrintView(
                                 .toList()
                         : refundPayouts.stream()
                                 .map(payout -> new Payment(
-                                        payout.getType() == RefundTenderType.CASH ? "EFECTIVO" : "TARJETA",
-                                        payout.getAmount().negate()))
+                                        switch (payout.getType()) {
+                                            case CASH -> "EFECTIVO";
+                                            case CARD -> "TARJETA";
+                                            case VOUCHER -> "VALE";
+                                        }, payout.getAmount().negate()))
                                 .toList(),
                 document.getTotal());
     }

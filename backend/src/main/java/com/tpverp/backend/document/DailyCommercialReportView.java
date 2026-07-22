@@ -8,6 +8,7 @@ public record DailyCommercialReportView(
         UUID storeId,
         LocalDate date,
         BigDecimal invoiced,
+        BigDecimal ticketSales,
         BigDecimal collectedCurrent,
         BigDecimal newPending,
         BigDecimal priorDebtCollected,

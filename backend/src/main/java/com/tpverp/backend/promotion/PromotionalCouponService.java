@@ -60,7 +60,34 @@ public class PromotionalCouponService {
         validateRedemption(command);
         var codeHash = hash(command.code());
         var codeLast4 = last4(command.code());
-        var coupon = coupons.findByEmpresaIdAndCodigoHash(command.companyId(), codeHash);
+        var coupon = coupons.findLockedByCompanyIdAndCodeHash(command.companyId(), codeHash);
+        return redeemLocked(command, coupon, codeHash, codeLast4);
+    }
+
+    /**
+     * Consumes a coupon already frozen into an authorized fiscal snapshot. The
+     * public coupon code is deliberately not persisted in that snapshot.
+     */
+    @Transactional
+    public RedemptionResult redeemAuthorized(AuthorizedRedemptionCommand command) {
+        validateAuthorizedRedemption(command);
+        var coupon = coupons.findLockedByIdAndCompanyId(command.couponId(), command.companyId());
+        if (coupon.isEmpty()) {
+            return RedemptionResult.rejected(command.documentId(), CouponRejectReason.NOT_FOUND);
+        }
+        var existing = coupon.orElseThrow();
+        var context = new RedemptionCommand(
+                command.companyId(), command.storeId(), command.documentId(), command.userId(),
+                command.terminalId(), command.customerId(), command.memberId(),
+                command.memberCategoryId(), existing.codeLast4(), command.pendingDocumentAmount());
+        return redeemLocked(context, coupon, existing.codeHash(), existing.codeLast4());
+    }
+
+    private RedemptionResult redeemLocked(
+            RedemptionCommand command,
+            Optional<PromotionalCoupon> coupon,
+            String codeHash,
+            String codeLast4) {
         if (coupon.isEmpty()) {
             recordAttempt(command, codeHash, codeLast4, CouponRejectReason.NOT_FOUND);
             return RedemptionResult.rejected(command.documentId(), CouponRejectReason.NOT_FOUND);
@@ -91,7 +118,46 @@ public class PromotionalCouponService {
 
         existing.use(command.storeId(), command.documentId(), now());
         var replacement = replacementForRemainingBalance(existing, command, redeemed);
-        return RedemptionResult.accepted(command.documentId(), redeemed, replacement.map(result -> result));
+        return RedemptionResult.accepted(
+                command.documentId(),
+                existing.id(),
+                existing.promotionId(),
+                existing.codeLast4(),
+                redeemed,
+                replacement.map(result -> result));
+    }
+
+    /**
+     * Evaluates a coupon without consuming it. Checkout must evaluate again through
+     * {@link #redeem(RedemptionCommand)} in the same transaction that creates the
+     * fiscal document; a quote never reserves credit by itself.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResult evaluate(RedemptionCommand command) {
+        validateRedemption(command);
+        var coupon = coupons.findByEmpresaIdAndCodigoHash(command.companyId(), hash(command.code()));
+        if (coupon.isEmpty()) {
+            return EvaluationResult.rejected(CouponRejectReason.NOT_FOUND);
+        }
+        var existing = coupon.orElseThrow();
+        var statusRejection = previewStatusRejection(existing, currentDate());
+        if (statusRejection != null) {
+            return EvaluationResult.rejected(statusRejection);
+        }
+        var eligibilityRejection = eligibilityRejection(existing, command);
+        if (eligibilityRejection != null) {
+            return EvaluationResult.rejected(eligibilityRejection);
+        }
+        if (existing.minimumAmount() != null
+                && command.pendingDocumentAmount().compareTo(existing.minimumAmount()) < 0) {
+            return EvaluationResult.rejected(CouponRejectReason.MINIMUM_NOT_REACHED);
+        }
+        var amount = redeemableAmount(existing, command.pendingDocumentAmount());
+        if (amount.signum() <= 0) {
+            return EvaluationResult.rejected(CouponRejectReason.DOCUMENT_NOT_ELIGIBLE);
+        }
+        return EvaluationResult.accepted(
+                existing.id(), existing.promotionId(), existing.codeLast4(), amount);
     }
 
     @Transactional(readOnly = true)
@@ -221,6 +287,25 @@ public class PromotionalCouponService {
         return null;
     }
 
+    private static CouponRejectReason previewStatusRejection(
+            PromotionalCoupon coupon,
+            LocalDate currentDate) {
+        if (coupon.status() == PromotionalCouponStatus.USED) {
+            return CouponRejectReason.USED;
+        }
+        if (coupon.status() == PromotionalCouponStatus.CANCELLED) {
+            return CouponRejectReason.CANCELLED;
+        }
+        if (coupon.status() == PromotionalCouponStatus.EXPIRED
+                || currentDate.isAfter(coupon.validUntil())) {
+            return CouponRejectReason.EXPIRED;
+        }
+        if (currentDate.isBefore(coupon.validFrom())) {
+            return CouponRejectReason.DOCUMENT_NOT_ELIGIBLE;
+        }
+        return null;
+    }
+
     private CouponRejectReason eligibilityRejection(PromotionalCoupon coupon, RedemptionCommand command) {
         if (coupon.customerId() != null && !coupon.customerId().equals(command.customerId())) {
             return CouponRejectReason.CUSTOMER_MISMATCH;
@@ -300,6 +385,17 @@ public class PromotionalCouponService {
         if (command.code().isBlank()) {
             throw new IllegalArgumentException("code is required");
         }
+        if (Money.euros(command.pendingDocumentAmount()).signum() <= 0) {
+            throw new IllegalArgumentException("pendingDocumentAmount debe ser positivo");
+        }
+    }
+
+    private void validateAuthorizedRedemption(AuthorizedRedemptionCommand command) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(command.companyId(), "companyId");
+        Objects.requireNonNull(command.storeId(), "storeId");
+        Objects.requireNonNull(command.documentId(), "documentId");
+        Objects.requireNonNull(command.couponId(), "couponId");
         if (Money.euros(command.pendingDocumentAmount()).signum() <= 0) {
             throw new IllegalArgumentException("pendingDocumentAmount debe ser positivo");
         }
@@ -400,6 +496,19 @@ public class PromotionalCouponService {
             BigDecimal pendingDocumentAmount) {
     }
 
+    public record AuthorizedRedemptionCommand(
+            UUID companyId,
+            UUID storeId,
+            UUID documentId,
+            UUID userId,
+            UUID terminalId,
+            UUID customerId,
+            UUID memberId,
+            UUID memberCategoryId,
+            UUID couponId,
+            BigDecimal pendingDocumentAmount) {
+    }
+
     public record AdminActionCommand(
             UUID companyId,
             UUID couponId,
@@ -450,19 +559,62 @@ public class PromotionalCouponService {
 
     public record RedemptionResult(
             UUID redeemedDocumentId,
+            UUID couponId,
+            UUID promotionId,
+            String codeLast4,
             BigDecimal redeemedAmount,
             CouponRejectReason rejectionReason,
             Optional<CreationResult> replacementCoupon) {
 
         static RedemptionResult rejected(UUID documentId, CouponRejectReason reason) {
-            return new RedemptionResult(documentId, BigDecimal.ZERO, reason, Optional.empty());
+            return new RedemptionResult(
+                    documentId, null, null, null, BigDecimal.ZERO, reason, Optional.empty());
         }
 
         static RedemptionResult accepted(
                 UUID documentId,
+                UUID couponId,
+                UUID promotionId,
+                String codeLast4,
                 BigDecimal redeemedAmount,
                 Optional<CreationResult> replacementCoupon) {
-            return new RedemptionResult(documentId, Money.euros(redeemedAmount), null, replacementCoupon);
+            return new RedemptionResult(
+                    documentId,
+                    couponId,
+                    promotionId,
+                    codeLast4,
+                    Money.euros(redeemedAmount),
+                    null,
+                    replacementCoupon);
+        }
+    }
+
+    public record EvaluationResult(
+            UUID couponId,
+            UUID promotionId,
+            String codeLast4,
+            BigDecimal discountAmount,
+            CouponRejectReason rejectionReason) {
+
+        static EvaluationResult rejected(CouponRejectReason reason) {
+            return new EvaluationResult(null, null, null, BigDecimal.ZERO, reason);
+        }
+
+        static EvaluationResult accepted(
+                UUID couponId,
+                UUID promotionId,
+                String codeLast4,
+                BigDecimal discountAmount) {
+            return new EvaluationResult(
+                    couponId,
+                    promotionId,
+                    codeLast4,
+                    Money.euros(discountAmount),
+                    null);
+        }
+
+        public boolean accepted() {
+            return rejectionReason == null;
         }
     }
 }

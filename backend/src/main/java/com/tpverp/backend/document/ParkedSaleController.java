@@ -57,6 +57,22 @@ public class ParkedSaleController {
         return service.open(id);
     }
 
+    @PostMapping("/{id}/recoveries")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
+    public ParkedSaleService.ParkedSaleRecoveryView recover(
+            @PathVariable UUID id,
+            @Valid @RequestBody RecoveryRequest request,
+            Authentication authentication) {
+        return service.recover(id, request.recoveryId(), authentication);
+    }
+
+    @PostMapping("/{id}/recoveries/{recoveryId}/acknowledge")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
+    public ParkedSaleService.ParkedSaleRecoveryView acknowledge(
+            @PathVariable UUID id, @PathVariable UUID recoveryId) {
+        return service.acknowledge(id, recoveryId);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS') or hasAuthority('VENTA')")
     public void delete(@PathVariable UUID id) {
@@ -72,4 +88,6 @@ public class ParkedSaleController {
             @NotNull @Valid PosCashController.SaleRequest sale,
             String comment) {
     }
+
+    public record RecoveryRequest(@NotNull UUID recoveryId) {}
 }

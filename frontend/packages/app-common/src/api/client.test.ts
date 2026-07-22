@@ -47,6 +47,20 @@ describe("apiRequest", () => {
     } satisfies Partial<ApiError>);
   });
 
+  it("hides internal server details and includes the trace reference", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      code: "INTERNAL_ERROR",
+      detail: "at org.springframework.service.Internal /api/v1/private",
+      traceId: "trace-12345678"
+    }), { status: 500, headers: { "Content-Type": "application/problem+json" } })));
+
+    await expect(apiRequest("/pos/payment-sessions")).rejects.toMatchObject({
+      message: "No se pudo completar la operación (Ref: trace-12345678)",
+      status: 500,
+      traceId: "trace-12345678"
+    });
+  });
+
   it("turns network failures into backend connection errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
 

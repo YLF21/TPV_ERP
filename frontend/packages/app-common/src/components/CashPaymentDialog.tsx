@@ -3,12 +3,15 @@ import { cashChangeCents, cashInputCents, pressCashKey, setCashShortcut } from "
 import type { CashInputMode } from "../sale/cashInputMode";
 import { CashPaymentValidationDialog } from "./CashPaymentValidationDialog";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { createTranslator } from "../i18n/LocalizedMessages";
+import type { LocaleCode } from "../types";
 
 type CashPaymentDialogProps = {
   totalCents: number;
   submitting: boolean;
   error: string;
   initialMode: CashInputMode;
+  locale?: LocaleCode;
   onCancel: () => void;
   onConfirm: (receivedCents: number) => void;
   testCashAction?: { label: string; onOpen: () => void };
@@ -30,7 +33,8 @@ export function cashPaymentKeyAction(
   return "none";
 }
 
-export function CashPaymentDialog({ totalCents, submitting, error, initialMode, onCancel, onConfirm, testCashAction, testCashStatus }: CashPaymentDialogProps) {
+export function CashPaymentDialog({ totalCents, submitting, error, initialMode, locale = "es", onCancel, onConfirm, testCashAction, testCashStatus }: CashPaymentDialogProps) {
+  const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreInputFocusRef = useRef(false);
@@ -50,15 +54,15 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
 
   const attemptConfirm = useCallback(() => {
     if (receivedCents === 0) {
-      showValidation("Debe indicar el importe recibido.");
+      showValidation(t("cashPayment.validation.required"));
       return;
     }
     if (receivedCents < totalCents) {
-      showValidation("El importe recibido no cubre el total.");
+      showValidation(t("cashPayment.validation.insufficient"));
       return;
     }
     onConfirm(receivedCents);
-  }, [onConfirm, receivedCents, showValidation, totalCents]);
+  }, [onConfirm, receivedCents, showValidation, t, totalCents]);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
@@ -101,19 +105,19 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
         aria-hidden={validationMessage !== null ? true : undefined}
       >
         <header>
-          <h2 id="cash-payment-title">Cobro en efectivo</h2>
-          <button type="button" aria-label="Cerrar" disabled={submitting} onClick={onCancel}>×</button>
+          <h2 id="cash-payment-title">{t("cashPayment.title")}</h2>
+          <button type="button" aria-label={t("cashPayment.closeAria")} disabled={submitting} onClick={onCancel}>×</button>
         </header>
         <div className="cash-payment-summary" aria-live="polite">
-          <div><span>Total</span><strong>{money(totalCents)}</strong></div>
-          <div><span>Dinero recibido</span><strong>{money(receivedCents)}</strong></div>
-          <div className="cash-change"><span>Cambio</span><strong>{money(changeCents)}</strong></div>
+          <div><span>{t("cashPayment.total")}</span><strong>{money(totalCents, locale)}</strong></div>
+          <div><span>{t("cashPayment.received")}</span><strong>{money(receivedCents, locale)}</strong></div>
+          <div className="cash-change"><span>{t("cashPayment.change")}</span><strong>{money(changeCents, locale)}</strong></div>
         </div>
         <input
           ref={inputRef}
           autoFocus
           className="cash-received-input"
-          aria-label="Dinero recibido"
+          aria-label={t("cashPayment.received")}
           inputMode="decimal"
           value={received}
           disabled={submitting}
@@ -123,19 +127,19 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
           }}
         />
         <button className="cash-input-mode-toggle" type="button" disabled={submitting} onClick={() => setMode((value) => value === "touch" ? "keyboard" : "touch")}>
-          {mode === "touch" ? "Usar teclado físico" : "Mostrar teclado táctil"}
+          {t(mode === "touch" ? "cashPayment.usePhysicalKeyboard" : "cashPayment.showTouchKeyboard")}
         </button>
         {mode === "touch" && <>
           <div className="cash-shortcuts">
-            <button type="button" disabled={submitting} onClick={() => setReceived(setCashShortcut("EXACT", totalCents))}>Exacto</button>
+            <button type="button" disabled={submitting} onClick={() => setReceived(setCashShortcut("EXACT", totalCents))}>{t("cashPayment.exact")}</button>
             {[5, 10, 20, 50].map((amount) => (
               <button type="button" disabled={submitting} key={amount} onClick={() => setReceived(setCashShortcut(amount, totalCents))}>{amount} €</button>
             ))}
           </div>
           <div className="cash-keypad">
-            {keypad.map((key) => <button type="button" disabled={submitting} aria-label={`Tecla ${key}`} key={key} onClick={() => setReceived((value) => pressCashKey(value, key))}>{key}</button>)}
-            <button type="button" disabled={submitting} aria-label="Borrar ultima cifra" onClick={() => setReceived((value) => pressCashKey(value, "BACKSPACE"))}>⌫</button>
-            <button type="button" disabled={submitting} aria-label="Limpiar importe" onClick={() => setReceived("")}>C</button>
+            {keypad.map((key) => <button type="button" disabled={submitting} aria-label={`${t("cashPayment.key")} ${key}`} key={key} onClick={() => setReceived((value) => pressCashKey(value, key))}>{key}</button>)}
+            <button type="button" disabled={submitting} aria-label={t("cashPayment.backspace")} onClick={() => setReceived((value) => pressCashKey(value, "BACKSPACE"))}>⌫</button>
+            <button type="button" disabled={submitting} aria-label={t("cashPayment.clear")} onClick={() => setReceived("")}>C</button>
           </div>
         </>}
         {error && <p className="sale-action-error" role="alert">{error}</p>}
@@ -151,17 +155,17 @@ export function CashPaymentDialog({ totalCents, submitting, error, initialMode, 
         )}
         {testCashStatus && <p className="test-cash-session-status" role="status">{testCashStatus}</p>}
         <footer className="cash-payment-actions">
-          <button type="button" disabled={submitting} onClick={onCancel}>Cancelar</button>
-          <button type="button" disabled={submitting} onClick={attemptConfirm}>{submitting ? "Registrando..." : "Confirmar cobro"}</button>
+          <button type="button" disabled={submitting} onClick={onCancel}>{t("common.cancel")}</button>
+          <button type="button" disabled={submitting} onClick={attemptConfirm}>{t(submitting ? "cashPayment.submitting" : "cashPayment.confirm")}</button>
         </footer>
       </section>
       {validationMessage !== null && (
-        <CashPaymentValidationDialog message={validationMessage} onAccept={closeValidation} />
+        <CashPaymentValidationDialog message={validationMessage} locale={locale} onAccept={closeValidation} />
       )}
     </div>
   );
 }
 
-function money(cents: number) {
-  return (cents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function money(cents: number, locale: LocaleCode) {
+  return (cents / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

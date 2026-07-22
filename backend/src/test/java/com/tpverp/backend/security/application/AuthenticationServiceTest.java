@@ -118,6 +118,38 @@ class AuthenticationServiceTest {
 	}
 
 	@Test
+	void authenticatedUserCanChangeOwnPasswordWithoutClosingTheSession() {
+		var store = store();
+		var role = new Role(store, "VENDEDOR");
+		var user = new UserAccount(store, "VENDEDOR", "old-hash", role);
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		var session = new UserSession(user, terminal, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		when(sesionRepository.findByTokenHashAndRevocadaEnIsNull(any())).thenReturn(Optional.of(session));
+		when(passwordEncoder.matches("0000", "old-hash")).thenReturn(true);
+		when(passwordEncoder.encode("1234")).thenReturn("new-hash");
+
+		service().changePassword("token", "0000", "1234");
+
+		assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+		assertThat(session.isActiva()).isTrue();
+	}
+
+	@Test
+	void changingOwnPasswordRejectsTheWrongCurrentPassword() {
+		var store = store();
+		var role = new Role(store, "VENDEDOR");
+		var user = new UserAccount(store, "VENDEDOR", "old-hash", role);
+		var terminal = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "credential");
+		var session = new UserSession(user, terminal, "token-hash", Instant.parse("2026-06-08T09:00:00Z"));
+		when(sesionRepository.findByTokenHashAndRevocadaEnIsNull(any())).thenReturn(Optional.of(session));
+		when(passwordEncoder.matches("9999", "old-hash")).thenReturn(false);
+
+		assertThatThrownBy(() -> service().changePassword("token", "9999", "1234"))
+				.isInstanceOf(AuthenticationFailedException.class);
+		assertThat(user.getPasswordHash()).isEqualTo("old-hash");
+	}
+
+	@Test
 	void renewsInstallationAdminSessionWithoutTerminal() {
 		var role = new Role(null, "ADMIN");
 		var user = new UserAccount(null, "ADMIN", "hash", role);

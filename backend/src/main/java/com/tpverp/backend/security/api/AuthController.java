@@ -46,6 +46,17 @@ public class AuthController {
 				request.newPassword());
 	}
 
+	@PutMapping("/password")
+	public ResponseEntity<Void> changePassword(
+			@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+			@Valid @RequestBody ChangePasswordRequest request) {
+		authenticationService.changePassword(
+				BearerTokens.extract(authorization),
+				request.currentPassword(),
+				request.newPassword());
+		return ResponseEntity.noContent().build();
+	}
+
 	@PostMapping("/logout")
 	public ResponseEntity<Void> logout(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
 		authenticationService.logout(BearerTokens.extract(authorization));
@@ -63,6 +74,12 @@ public class AuthController {
 	}
 
 	public record InstallationPasswordRequest(
+			@jakarta.validation.constraints.NotBlank String currentPassword,
+			@jakarta.validation.constraints.NotBlank
+			@jakarta.validation.constraints.Pattern(regexp = "\\d{4,12}") String newPassword) {
+	}
+
+	public record ChangePasswordRequest(
 			@jakarta.validation.constraints.NotBlank String currentPassword,
 			@jakarta.validation.constraints.NotBlank
 			@jakarta.validation.constraints.Pattern(regexp = "\\d{4,12}") String newPassword) {

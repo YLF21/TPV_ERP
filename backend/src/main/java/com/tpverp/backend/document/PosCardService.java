@@ -45,7 +45,9 @@ public class PosCardService {
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
 
         var command=sales.authoritativeCommand(request.sale(),authentication);
-        var quotedTicket=documents.quoteTicket(command,authentication); BigDecimal total=quotedTicket.getTotal();
+        var quotedTicket=request.sale().promotionalCouponCode()==null||request.sale().promotionalCouponCode().isBlank()
+                ?documents.quoteTicket(command,authentication)
+                :documents.quoteTicket(command,request.sale().promotionalCouponCode(),authentication); BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         var configuration=configurations.required(terminalId);
         validateConfiguration(configuration);
@@ -103,7 +105,10 @@ public class PosCardService {
         if(c.provider()==PaymentTerminalProvider.NONE)throw new IllegalStateException("No hay proveedor de datafono configurado");
     }
     private static String hash(PosCashController.SaleRequest sale,BigDecimal total){
-        var c=new StringBuilder("v1|").append(sale.customerId()).append('|').append(Money.euros(total));
+        var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
+        var c=new StringBuilder(coupon.isEmpty()?"v1|":"v2-coupon|").append(sale.customerId()).append('|');
+        if(!coupon.isEmpty())c.append(coupon).append('|');
+        c.append(Money.euros(total));
         sale.lines().forEach(l->c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString())
                 .append(':').append(l.discount().stripTrailingZeros().toPlainString()));
         try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.toString().getBytes(StandardCharsets.UTF_8)));}

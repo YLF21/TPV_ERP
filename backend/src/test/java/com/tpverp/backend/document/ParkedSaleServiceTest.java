@@ -1,8 +1,11 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
@@ -35,10 +39,13 @@ class ParkedSaleServiceTest {
     @Mock
     private ParkedSaleRepository repository;
     @Mock
+    private ParkedSaleRecoveryRepository recoveries;
+    @Mock
     private CurrentOrganization organization;
 
     private ParkedSaleService service;
     private Store store;
+    private Company company;
     private UserAccount user;
 
     @BeforeEach
@@ -49,14 +56,17 @@ class ParkedSaleServiceTest {
                 "codigoPostal", "35001",
                 "provincia", "Las Palmas",
                 "pais", "ES");
+        company = new Company("B00000000", "Company", address);
         store = new Store(
-                new Company("B00000000", "Company", address),
+                company,
                 "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         when(organization.currentStore()).thenReturn(store);
+        lenient().when(organization.currentCompany()).thenReturn(company);
         when(organization.currentUser(any())).thenReturn(user);
         service = new ParkedSaleService(
-                repository, organization, Clock.fixed(NOW, ZoneOffset.UTC));
+                repository, recoveries, organization,
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -105,6 +115,71 @@ class ParkedSaleServiceTest {
         assertThat(restored.promotionId()).isEqualTo(promotionId);
         assertThat(restored.promotionVersionId()).isEqualTo(promotionVersionId);
         assertThat(restored.promotionalCouponId()).isEqualTo(couponId);
+    }
+
+    @Test
+    void recoveryIsReplaySafeAndDeletesOnlyAfterAcknowledgement() {
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(recoveries.save(any())).thenAnswer(call -> call.getArgument(0));
+        var parked = service.park(command(UUID.randomUUID()), "Mesa 7", auth());
+        var recoveryId = UUID.randomUUID();
+        when(recoveries.findByRecoveryIdAndStoreIdAndCompanyId(
+                recoveryId, store.getId(), company.getId()))
+                .thenReturn(Optional.empty());
+        when(repository.findLockedByIdAndStoreId(parked.getId(), store.getId()))
+                .thenReturn(Optional.of(parked));
+        when(recoveries.findByParkedSaleIdAndStoreIdAndCompanyId(
+                parked.getId(), store.getId(), company.getId()))
+                .thenReturn(Optional.empty());
+
+        var claimed = service.recover(parked.getId(), recoveryId, auth());
+        var capture = ArgumentCaptor.forClass(ParkedSaleRecovery.class);
+        verify(recoveries).save(capture.capture());
+        var recovery = capture.getValue();
+
+        assertThat(claimed.status()).isEqualTo(ParkedSaleRecovery.Status.CLAIMED);
+        assertThat(claimed.sale().document().clienteId())
+                .isEqualTo(parked.getCustomerId());
+        verify(repository, never()).delete(parked);
+
+        when(recoveries.findByRecoveryIdAndStoreIdAndCompanyId(
+                recoveryId, store.getId(), company.getId()))
+                .thenReturn(Optional.of(recovery));
+        var replay = service.recover(parked.getId(), recoveryId, auth());
+        assertThat(replay).isEqualTo(claimed);
+
+        when(recoveries.findLocked(
+                recoveryId, store.getId(), company.getId()))
+                .thenReturn(Optional.of(recovery));
+        service.acknowledge(parked.getId(), recoveryId);
+        service.acknowledge(parked.getId(), recoveryId);
+
+        assertThat(recovery.getStatus())
+                .isEqualTo(ParkedSaleRecovery.Status.ACKNOWLEDGED);
+        verify(repository, times(1)).delete(parked);
+    }
+
+    @Test
+    void rejectsASecondRecoveryClaimForTheSameParkedSale() {
+        when(repository.save(any())).thenAnswer(call -> call.getArgument(0));
+        var parked = service.park(command(UUID.randomUUID()), "Caja 2", auth());
+        var competing = new ParkedSaleRecovery(
+                UUID.randomUUID(), parked, company.getId(), user.getId(), NOW);
+        var recoveryId = UUID.randomUUID();
+        when(recoveries.findByRecoveryIdAndStoreIdAndCompanyId(
+                recoveryId, store.getId(), company.getId()))
+                .thenReturn(Optional.empty());
+        when(repository.findLockedByIdAndStoreId(parked.getId(), store.getId()))
+                .thenReturn(Optional.of(parked));
+        when(recoveries.findByParkedSaleIdAndStoreIdAndCompanyId(
+                parked.getId(), store.getId(), company.getId()))
+                .thenReturn(Optional.of(competing));
+
+        assertThatThrownBy(() -> service.recover(
+                parked.getId(), recoveryId, auth()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("parked_sale_recovery_already_claimed");
+        verify(recoveries, never()).save(any());
     }
 
     private static DocumentCommand command(UUID customerId) {

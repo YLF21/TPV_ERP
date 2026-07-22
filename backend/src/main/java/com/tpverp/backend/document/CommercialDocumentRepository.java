@@ -102,6 +102,34 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     @Query("""
             select document
             from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.clienteId = :customerId
+              and document.tipo in (
+                  com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+              and document.estado in (
+                  com.tpverp.backend.document.DocumentStatus.PENDIENTE,
+                  com.tpverp.backend.document.DocumentStatus.PARCIAL,
+                  com.tpverp.backend.document.DocumentStatus.PAGADO)
+              and not exists (
+                  select relation.documento.id
+                  from DocumentRelation relation
+                  where relation.origen.id = document.id
+                    and relation.tipo = com.tpverp.backend.document.DocumentRelationType.FACTURA_DE
+                    and relation.documento.estado not in (
+                        com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                        com.tpverp.backend.document.DocumentStatus.ANULADO)
+              )
+            order by document.fecha desc, document.numero desc
+            """)
+    List<CommercialDocument> findCustomerAccountDocuments(
+            @Param("storeId") UUID storeId,
+            @Param("customerId") UUID customerId);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
             where document.id = :id
               and document.tiendaId = :storeId
               and document.tipo in (
@@ -170,18 +198,30 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             from CommercialDocument document
             where document.tiendaId = :storeId
               and document.tipo in :types
-              and (
-                  :cursorDate is null
-                  or document.fecha < :cursorDate
-                  or (document.fecha = :cursorDate and document.id < :cursorId)
-              )
-            order by document.fecha desc, document.id desc
+            order by document.fecha desc, cast(document.id as string) desc
             """)
     List<CommercialDocument> findReportDocuments(
             @Param("storeId") UUID storeId,
             @Param("types") Collection<CommercialDocumentType> types,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in :types
+              and (
+                  document.fecha < :cursorDate
+                  or (document.fecha = :cursorDate and cast(document.id as string) < :cursorId)
+              )
+            order by document.fecha desc, cast(document.id as string) desc
+            """)
+    List<CommercialDocument> findReportDocumentsAfter(
+            @Param("storeId") UUID storeId,
+            @Param("types") Collection<CommercialDocumentType> types,
             @Param("cursorDate") LocalDate cursorDate,
-            @Param("cursorId") UUID cursorId,
+            @Param("cursorId") String cursorId,
             Pageable pageable);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})

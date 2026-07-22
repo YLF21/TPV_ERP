@@ -110,6 +110,21 @@ public class AuthenticationService {
 	}
 
 	@Transactional
+	public void changePassword(String accessToken, String currentPassword, String newPassword) {
+		var session = sesionRepository.findByTokenHashAndRevocadaEnIsNull(hash(accessToken))
+				.filter(UserSession::isActiva)
+				.filter(value -> value.getUsuario().isActivo())
+				.filter(this::validSessionContext)
+				.orElseThrow(AuthenticationFailedException::new);
+		var user = session.getUsuario();
+		if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+			throw new AuthenticationFailedException();
+		}
+		requireNumericPassword(newPassword);
+		user.cambiarPassword(passwordEncoder.encode(newPassword));
+	}
+
+	@Transactional
 	public LoginResult renew(String accessToken) {
 		var current = sesionRepository.findByTokenHash(hash(accessToken))
 				.filter(UserSession::isActiva)

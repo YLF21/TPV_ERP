@@ -128,9 +128,11 @@ public class DocumentReportService {
         var store = organization.currentStore();
         var limit = normalizedLimit(requestedLimit);
         var parsedCursor = parseCursor(cursor);
-        var values = documents.findReportDocuments(
-                store.getId(), types, parsedCursor.date(), parsedCursor.id(),
-                PageRequest.of(0, limit + 1));
+        var pageRequest = PageRequest.of(0, limit + 1);
+        var values = parsedCursor.date() == null
+                ? documents.findReportDocuments(store.getId(), types, pageRequest)
+                : documents.findReportDocumentsAfter(
+                        store.getId(), types, parsedCursor.date(), parsedCursor.id(), pageRequest);
         var hasMore = values.size() > limit;
         var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
         var customerIndex = customers.findAllById(values.stream()
@@ -204,13 +206,13 @@ public class DocumentReportService {
         if (parts.length != 2) {
             throw new IllegalArgumentException("cursor invalido");
         }
-        return new Cursor(LocalDate.parse(parts[0]), UUID.fromString(parts[1]));
+        return new Cursor(LocalDate.parse(parts[0]), UUID.fromString(parts[1]).toString());
     }
 
     private static String cursorFor(CommercialDocument document) {
         return document.getFecha() + "|" + document.getId();
     }
 
-    private record Cursor(LocalDate date, UUID id) {
+    private record Cursor(LocalDate date, String id) {
     }
 }
