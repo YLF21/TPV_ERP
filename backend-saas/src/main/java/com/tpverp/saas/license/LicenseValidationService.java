@@ -12,14 +12,17 @@ public class LicenseValidationService {
     private final SaasInstallationRepository installations;
     private final InstallationAuthenticator authenticator;
     private final Clock clock;
+    private final VerifactuActivationPolicyResolver verifactuPolicies;
 
     public LicenseValidationService(
             SaasInstallationRepository installations,
             InstallationAuthenticator authenticator,
-            Clock clock) {
+            Clock clock,
+            VerifactuActivationPolicyResolver verifactuPolicies) {
         this.installations = installations;
         this.authenticator = authenticator;
         this.clock = clock;
+        this.verifactuPolicies = verifactuPolicies;
     }
 
     @Transactional
@@ -30,6 +33,13 @@ public class LicenseValidationService {
         authenticator.requireToken(installation, token);
         installation.validatedAt(clock.instant());
         SaasLicense license = installation.getLicense();
-        return new LicenseSaasValidationResponse(license.getStatus(), license.getValidUntil());
+        VerifactuPolicySnapshot policy = verifactuPolicies.required(
+                license.getCompany().getTaxpayerType());
+        return new LicenseSaasValidationResponse(
+                license.getStatus(),
+                license.getValidUntil(),
+                policy.activationDate(),
+                policy.version(),
+                policy.updatedAt());
     }
 }

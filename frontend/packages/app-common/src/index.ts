@@ -2,6 +2,8 @@ export { authenticate, authenticateRemote, canAccessApp, hasPermission } from ".
 export { apiRequest, ApiConnectionError, ApiError } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
 export { AppFrame } from "./components/AppFrame";
+export { ErpSelect } from "./components/ErpSelect";
+export type { ErpSelectOption } from "./components/ErpSelect";
 export { HardwareSettingsScreen } from "./components/HardwareSettingsScreen";
 export { LoginScreen } from "./components/LoginScreen";
 export { PromotionListScreen } from "./components/PromotionListScreen";

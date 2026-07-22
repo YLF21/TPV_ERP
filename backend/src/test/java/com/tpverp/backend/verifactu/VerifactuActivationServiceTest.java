@@ -30,6 +30,41 @@ class VerifactuActivationServiceTest {
     }
 
     @Test
+    void usaLaFechaDistribuidaPorLaLicenciaEnLugarDelFallbackLegal() {
+        var zone = ZoneId.of("Atlantic/Canary");
+
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 3, 1),
+                Instant.parse("2027-01-15T00:00:00Z"),
+                zone)).isFalse();
+        assertThat(service.isAutomaticallyRequired(
+                TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 3, 1),
+                Instant.parse("2027-03-01T00:00:00Z"),
+                zone)).isTrue();
+    }
+
+    @Test
+    void unaPrimeraRemisionConservaLaActivacionAunqueLaPoliticaPosteriorCambie() {
+        var configuration = new VerifactuConfiguration(UUID.randomUUID());
+        configuration.activateVoluntarily(Instant.parse("2026-06-14T10:00:00Z"));
+        service.markFirstSubmission(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2027, 1, 1),
+                Instant.parse("2026-06-14T10:05:00Z"),
+                ZoneId.of("Atlantic/Canary"));
+
+        assertThat(service.isActive(
+                configuration,
+                TaxpayerType.SOCIEDAD,
+                java.time.LocalDate.of(2028, 1, 1),
+                Instant.parse("2026-06-15T00:00:00Z"),
+                ZoneId.of("Atlantic/Canary"))).isTrue();
+    }
+
+    @Test
     void permiteDesactivarAntesDeLaFechaLegalYPrimeraRemision() {
         var configuration = new VerifactuConfiguration(UUID.randomUUID());
         configuration.activateVoluntarily(Instant.parse("2026-06-14T10:00:00Z"));

@@ -135,6 +135,32 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void incluyeMetodoIYFacturaOriginalEnRectificativaSimplificadaR5() {
+        var snapshot = new LinkedHashMap<>(snapshot(Map.of()));
+        snapshot.put("tipoRectificativa", "I");
+        snapshot.put("facturasRectificadas", List.of(Map.of(
+                "nifEmisor", "B12345674",
+                "numero", "001-260614-000001",
+                "fecha", "2026-06-14")));
+        var rectification = fiscalRecord(
+                FiscalDocumentType.R5, "001-260614-000002", snapshot);
+
+        var xml = service().batchXml(request(rectification, "Company SL"));
+        var document = parse(xml);
+
+        assertThat(text(document, "TipoFactura", 0)).isEqualTo("R5");
+        assertThat(text(document, "TipoRectificativa", 0)).isEqualTo("I");
+        assertThat(text(document, "IDFacturaRectificada", 0)).isNotBlank();
+        assertThat(text(document, "IDEmisorFactura", 1)).isEqualTo("B12345674");
+        assertThat(text(document, "NumSerieFactura", 1)).isEqualTo("001-260614-000001");
+        assertThat(text(document, "FechaExpedicionFactura", 1)).isEqualTo("14-06-2026");
+        assertThat(xml).containsSubsequence(
+                "<sf:TipoRectificativa>I</sf:TipoRectificativa>",
+                "<sf:FacturasRectificadas>",
+                "<sf:DescripcionOperacion>");
+    }
+
+    @Test
     void incluyeIndicadoresDestinatarioYDescripcionDeSubsanacionEnOrdenOficial() {
         var corrected = new LinkedHashMap<>(snapshot(Map.of()));
         corrected.put("subsanacion", "S");

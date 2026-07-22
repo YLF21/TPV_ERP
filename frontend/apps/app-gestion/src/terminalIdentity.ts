@@ -1,4 +1,4 @@
-import { devTerminalContext, type TerminalContext } from "@tpverp/app-common";
+import type { TerminalContext } from "@tpverp/app-common";
 
 type TerminalIdentityLoadResult = {
   ok: boolean;
@@ -6,9 +6,8 @@ type TerminalIdentityLoadResult = {
 };
 
 export function resolveGestionTerminalIdentity(
-  result: TerminalIdentityLoadResult,
-  development: boolean
+  result: TerminalIdentityLoadResult
 ): TerminalContext | null {
   if (result.ok && result.identity) return result.identity;
-  return development ? devTerminalContext : null;
+  return null;
 }

@@ -19,6 +19,9 @@ public class LicenseSaasValidationEndpointService {
         }
         return new LicenseSaasValidationResponse(
                 license.getEstadoSaas(),
-                license.getValidaHasta());
+                license.getValidaHasta(),
+                license.getVerifactuActivationDate(),
+                license.getVerifactuPolicyVersion() == null ? 0 : license.getVerifactuPolicyVersion(),
+                license.getVerifactuPolicyUpdatedAt());
     }
 }

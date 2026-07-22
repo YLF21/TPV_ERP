@@ -70,6 +70,7 @@ public class VerifactuXmlService {
         if (isRectification(record.getDocumentType())) {
             text(document, alta, "TipoRectificativa", rectificationType(record));
         }
+        rectifiedInvoices(document, alta, record);
         substitutedInvoices(document, alta, record);
         text(document, alta, "DescripcionOperacion",
                 snapshotText(record, "descripcionOperacion", "Venta"));
@@ -172,6 +173,24 @@ public class VerifactuXmlService {
         var container = child(document, parent, "FacturasSustituidas");
         values.forEach(value -> {
             var invoice = child(document, container, "IDFacturaSustituida");
+            text(document, invoice, "IDEmisorFactura", string(value, "nifEmisor"));
+            text(document, invoice, "NumSerieFactura", string(value, "numero"));
+            text(document, invoice, "FechaExpedicionFactura",
+                    DATE.format(java.time.LocalDate.parse(string(value, "fecha"))));
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void rectifiedInvoices(
+            Document document, Element parent, FiscalRecord record) {
+        var values = (List<Map<String, Object>>) record.getSnapshot()
+                .getOrDefault("facturasRectificadas", List.of());
+        if (values.isEmpty()) {
+            return;
+        }
+        var container = child(document, parent, "FacturasRectificadas");
+        values.forEach(value -> {
+            var invoice = child(document, container, "IDFacturaRectificada");
             text(document, invoice, "IDEmisorFactura", string(value, "nifEmisor"));
             text(document, invoice, "NumSerieFactura", string(value, "numero"));
             text(document, invoice, "FechaExpedicionFactura",
@@ -312,7 +331,8 @@ public class VerifactuXmlService {
         return type == FiscalDocumentType.R1
                 || type == FiscalDocumentType.R2
                 || type == FiscalDocumentType.R3
-                || type == FiscalDocumentType.R4;
+                || type == FiscalDocumentType.R4
+                || type == FiscalDocumentType.R5;
     }
 
     private static String rectificationType(FiscalRecord record) {

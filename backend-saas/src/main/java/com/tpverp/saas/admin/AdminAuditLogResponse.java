@@ -9,5 +9,6 @@ public record AdminAuditLogResponse(
         String action,
         String targetType,
         String targetId,
+        String details,
         Instant createdAt) {
 }

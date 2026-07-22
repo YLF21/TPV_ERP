@@ -12,4 +12,6 @@ public interface SaasInstallationRepository extends JpaRepository<SaasInstallati
     List<SaasInstallation> findByCompany_Id(UUID companyId);
 
     List<SaasInstallation> findAllByOrderByLinkedAtDesc();
+
+    long countByCompany_TaxpayerType(TaxpayerType taxpayerType);
 }

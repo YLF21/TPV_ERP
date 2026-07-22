@@ -46,7 +46,26 @@ describe("APP GESTION module access", () => {
   });
 
   it("allows ADMIN into every module", () => {
-    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(8);
+    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(9);
+  });
+
+  it("opens VeriFactu only with APP GESTION access and fiscal read permission", () => {
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "VERIFACTU_READ"]),
+      "gestion.verifactu"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["VERIFACTU_READ"]),
+      "gestion.verifactu"
+    )).toBe(false);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "VERIFACTU_MANAGE"]),
+      "gestion.verifactu"
+    )).toBe(false);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "VERIFACTU_CORRECT"]),
+      "gestion.verifactu"
+    )).toBe(false);
   });
 
   it("opens control alerts to readers and managers only through APP GESTION", () => {

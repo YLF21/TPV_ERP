@@ -18,10 +18,15 @@ public class AdminController {
 
     private final AdminService service;
     private final AdminAuditService audit;
+    private final VerifactuActivationPolicyAdminService verifactuPolicies;
 
-    public AdminController(AdminService service, AdminAuditService audit) {
+    public AdminController(
+            AdminService service,
+            AdminAuditService audit,
+            VerifactuActivationPolicyAdminService verifactuPolicies) {
         this.service = service;
         this.audit = audit;
+        this.verifactuPolicies = verifactuPolicies;
     }
 
     @PostMapping("/companies")
@@ -164,6 +169,18 @@ public class AdminController {
     @GetMapping("/licenses")
     public List<LicenseSummaryResponse> licenses() {
         return service.licenses();
+    }
+
+    @GetMapping("/verifactu-activation-policies")
+    public List<VerifactuActivationPolicyResponse> verifactuActivationPolicies() {
+        return verifactuPolicies.list();
+    }
+
+    @PutMapping("/verifactu-activation-policies/{taxpayerType}")
+    public VerifactuActivationPolicyResponse updateVerifactuActivationPolicy(
+            @PathVariable com.tpverp.saas.license.TaxpayerType taxpayerType,
+            @Valid @RequestBody UpdateVerifactuActivationPolicyRequest request) {
+        return verifactuPolicies.update(taxpayerType, request);
     }
 
     @GetMapping("/installations")

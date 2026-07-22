@@ -14,6 +14,7 @@ import com.tpverp.saas.license.LicenseSaasStatus;
 import com.tpverp.saas.license.LicenseSaasValidationRequest;
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,6 +52,61 @@ class AdminApiTest {
         assertThat(response.storeId()).isNotNull();
         assertThat(response.licenseReference()).isEqualTo("LIC-B12345678-TIENDA-1");
         assertThat(response.pairingCode()).startsWith("TPV-");
+    }
+
+    @Test
+    void consultaYActualizaPoliticaGlobalVerifactuConAuditoria() throws Exception {
+        var listResult = mvc.perform(get("/api/v1/admin/verifactu-activation-policies")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        VerifactuActivationPolicyResponse[] policies = mapper.readValue(
+                listResult.getResponse().getContentAsString(),
+                VerifactuActivationPolicyResponse[].class);
+        assertThat(policies)
+                .extracting(VerifactuActivationPolicyResponse::taxpayerType)
+                .containsExactly(TaxpayerType.SOCIEDAD, TaxpayerType.AUTONOMO);
+
+        var updateResult = mvc.perform(put("/api/v1/admin/verifactu-activation-policies/SOCIEDAD")
+                        .header("Authorization", basic("admin", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new UpdateVerifactuActivationPolicyRequest(
+                                java.time.LocalDate.of(2027, 1, 1),
+                                "Prueba de distribucion centralizada"))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        VerifactuActivationPolicyResponse updated = mapper.readValue(
+                updateResult.getResponse().getContentAsString(),
+                VerifactuActivationPolicyResponse.class);
+        assertThat(updated.taxpayerType()).isEqualTo(TaxpayerType.SOCIEDAD);
+        assertThat(updated.version()).isGreaterThan(0);
+        assertThat(updated.updatedBy()).isEqualTo("admin");
+        assertThat(updated.reason()).isEqualTo("Prueba de distribucion centralizada");
+
+        var auditResult = mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", basic("admin", "admin")))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminAuditLogResponse[] audit = mapper.readValue(
+                auditResult.getResponse().getContentAsString(),
+                AdminAuditLogResponse[].class);
+        assertThat(audit)
+                .filteredOn(value -> value.action().equals("UPDATE_VERIFACTU_ACTIVATION_POLICY"))
+                .anySatisfy(value -> assertThat(value.details())
+                        .contains("newDate=2027-01-01", "reason=Prueba de distribucion centralizada"));
+    }
+
+    @Test
+    void impideModificarPoliticaVerifactuSinPermisoFiscal() throws Exception {
+        mvc.perform(put("/api/v1/admin/verifactu-activation-policies/AUTONOMO")
+                        .header("Authorization", basic("viewer", "admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(new UpdateVerifactuActivationPolicyRequest(
+                                java.time.LocalDate.of(2027, 7, 1),
+                                "Intento sin permiso fiscal"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -403,7 +459,7 @@ class AdminApiTest {
         assertThat(summary.overdueCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.pendingCompanies()).isGreaterThanOrEqualTo(1);
         assertThat(summary.renewalsNext30Days()).isGreaterThanOrEqualTo(1);
-        assertThat(summary.monthlyRecurringRevenue()).isGreaterThanOrEqualTo("79.90");
+        assertThat(new BigDecimal(summary.monthlyRecurringRevenue())).isGreaterThanOrEqualTo(new BigDecimal("79.90"));
         assertThat(summary.companies())
                 .filteredOn(value -> value.companyId().equals(company.companyId()))
                 .singleElement()

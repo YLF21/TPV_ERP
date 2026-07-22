@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.UUID;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -16,7 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 class VerifactuControllerContractTest {
 
     @Test
-    void exposesDefectiveRecordsEndpointWithSalesManagementPermission()
+    void exposesDefectiveRecordsEndpointWithGestionAccessAndFiscalReadPermission()
             throws NoSuchMethodException {
         assertThat(DefectiveFiscalRecordController.class
                 .getAnnotation(RequestMapping.class).value())
@@ -25,7 +26,7 @@ class VerifactuControllerContractTest {
         var method = DefectiveFiscalRecordController.class.getDeclaredMethod("list");
         assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+                .isEqualTo(fiscalReadAuthorization());
         assertThat(Arrays.stream(DefectiveFiscalRecordController.class.getDeclaredMethods())
                 .filter(Method::isSynthetic)
                 .toList()).isEmpty();
@@ -39,7 +40,7 @@ class VerifactuControllerContractTest {
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/{recordId}/attempts");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+                .isEqualTo(fiscalManageAuthorization());
     }
 
     @Test
@@ -50,7 +51,8 @@ class VerifactuControllerContractTest {
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{recordId}/corrections");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+                .isEqualTo("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+                        + "hasAuthority('VERIFACTU_READ') and hasAuthority('VERIFACTU_CORRECT'))");
     }
 
     @Test
@@ -59,10 +61,10 @@ class VerifactuControllerContractTest {
                 .getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/verifactu/admin");
 
-        assertSecuredGet("status");
+        assertAdminOnlyGet("status");
         assertSecuredGet("queue");
         assertSecuredGet("clock");
-        assertSecuredGet("attempts", UUID.class);
+        assertManagedGet("attempts", UUID.class);
 
         assertAdminOnlyPost("activateVoluntary", "/activate-voluntary");
         assertAdminOnlyPost("deactivateVoluntary", "/deactivate-voluntary");
@@ -70,8 +72,7 @@ class VerifactuControllerContractTest {
         var retry = VerifactuAdminController.class.getDeclaredMethod("retryNext");
         assertThat(retry.getAnnotation(PostMapping.class).value())
                 .containsExactly("/retry-next");
-        assertThat(retry.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+        assertAdminOnly(retry);
     }
 
     @Test
@@ -80,7 +81,8 @@ class VerifactuControllerContractTest {
                 .containsExactly("/api/v1/verifactu/admin/certificates");
         assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod("list"));
         assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod(
-                "importCertificate", MultipartFile.class, char[].class, Authentication.class));
+                "importCertificate", MultipartFile.class, char[].class, UUID.class,
+                String.class, Authentication.class));
         assertAdminOnly(VerifactuCertificateController.class.getDeclaredMethod(
                 "delete", VerifactuCertificateController.DeleteCertificateRequest.class,
                 Authentication.class));
@@ -90,23 +92,83 @@ class VerifactuControllerContractTest {
         var method = VerifactuAdminController.class.getDeclaredMethod(methodName);
         assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+                .isEqualTo(fiscalReadAuthorization());
     }
 
-    private static void assertSecuredGet(String methodName, Class<?> parameter)
+    private static void assertManagedGet(String methodName, Class<?> parameter)
             throws NoSuchMethodException {
         var method = VerifactuAdminController.class.getDeclaredMethod(methodName, parameter);
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/records/{recordId}/attempts");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+                .isEqualTo(fiscalManageAuthorization());
     }
 
-    private static void assertSecuredPost(String methodName, String path) throws NoSuchMethodException {
+    @Test
+    void exposesAdditiveSanitizedAdminReadEndpoints() throws NoSuchMethodException {
+        assertThat(VerifactuAdminReadController.class
+                .getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/verifactu/admin");
+        assertThat(VerifactuAdminReadController.class.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalReadAuthorization());
+
+        var summary = VerifactuAdminReadController.class.getDeclaredMethod("summary");
+        assertThat(summary.getAnnotation(GetMapping.class).value())
+                .containsExactly("/summary");
+        var submissions = VerifactuAdminReadController.class.getDeclaredMethod(
+                "submissions",
+                LocalDate.class,
+                LocalDate.class,
+                FiscalSubmissionStatus.class,
+                FiscalDocumentType.class,
+                FiscalRecordOperation.class,
+                String.class,
+                int.class,
+                int.class);
+        assertThat(submissions.getAnnotation(GetMapping.class).value())
+                .containsExactly("/submissions");
+        var defectiveRecords = VerifactuAdminReadController.class.getDeclaredMethod(
+                "defectiveRecords",
+                LocalDate.class,
+                LocalDate.class,
+                FiscalSubmissionStatus.class,
+                FiscalDocumentType.class,
+                FiscalRecordOperation.class,
+                String.class,
+                int.class,
+                int.class);
+        assertThat(defectiveRecords.getAnnotation(GetMapping.class).value())
+                .containsExactly("/defective-records");
+        var attempts = VerifactuAdminReadController.class.getDeclaredMethod(
+                "attempts", UUID.class, int.class, int.class);
+        assertThat(attempts.getAnnotation(GetMapping.class).value())
+                .containsExactly("/submissions/{recordId}/attempts");
+        var diagnostics = VerifactuAdminReadController.class.getDeclaredMethod("diagnostics");
+        assertThat(diagnostics.getAnnotation(GetMapping.class).value())
+                .containsExactly("/diagnostics");
+        var resolution = VerifactuAdminReadController.class.getDeclaredMethod(
+                "resolution", UUID.class, Authentication.class);
+        assertThat(resolution.getAnnotation(GetMapping.class).value())
+                .containsExactly("/submissions/{recordId}/resolution");
+    }
+
+    @Test
+    void exposesScopedManualRetryWithFiscalManagePermission() throws NoSuchMethodException {
+        assertThat(VerifactuAdminActionController.class
+                .getAnnotation(RequestMapping.class).value())
+                .containsExactly("/api/v1/verifactu/admin");
+        var retry = VerifactuAdminActionController.class.getDeclaredMethod(
+                "retry", UUID.class, VerifactuManualRetryRequest.class);
+        assertThat(retry.getAnnotation(PostMapping.class).value())
+                .containsExactly("/submissions/{recordId}/retry");
+        assertThat(retry.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo(fiscalManageAuthorization());
+    }
+
+    private static void assertAdminOnlyGet(String methodName) throws NoSuchMethodException {
         var method = VerifactuAdminController.class.getDeclaredMethod(methodName);
-        assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
-        assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("GESTION_VENTAS");
+        assertThat(method.getAnnotation(GetMapping.class)).isNotNull();
+        assertAdminOnly(method);
     }
 
     private static void assertAdminOnlyPost(String methodName, String path) throws NoSuchMethodException {
@@ -118,5 +180,15 @@ class VerifactuControllerContractTest {
     private static void assertAdminOnly(Method method) {
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasRole('ADMIN')");
+    }
+
+    private static String fiscalReadAuthorization() {
+        return "hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+                + "hasAuthority('VERIFACTU_READ'))";
+    }
+
+    private static String fiscalManageAuthorization() {
+        return "hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and "
+                + "hasAuthority('VERIFACTU_READ') and hasAuthority('VERIFACTU_MANAGE'))";
     }
 }

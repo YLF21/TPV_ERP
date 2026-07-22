@@ -61,6 +61,9 @@ public class CorePermissionBootstrap {
     public static final String PAYMENT_TERMINAL_VOID = "PAYMENT_TERMINAL_VOID";
     public static final String PAYMENT_TERMINAL_REFUND = "PAYMENT_TERMINAL_REFUND";
     public static final String PAYMENT_TERMINAL_SECRETS = "PAYMENT_TERMINAL_SECRETS";
+    public static final String VERIFACTU_READ = "VERIFACTU_READ";
+    public static final String VERIFACTU_CORRECT = "VERIFACTU_CORRECT";
+    public static final String VERIFACTU_MANAGE = "VERIFACTU_MANAGE";
     private final PermissionRepository permisoRepository;
 
     public CorePermissionBootstrap(PermissionRepository permisoRepository) {
@@ -123,7 +126,10 @@ public class CorePermissionBootstrap {
                 permission(CUSTOMER_CREDIT_OVERRIDE, "document.permissions.receivables.creditOverride", "DOCUMENTS"),
                 permission(PAYMENT_TERMINAL_VOID, "terminal.permissions.payment.void", "TERMINAL"),
                 permission(PAYMENT_TERMINAL_REFUND, "terminal.permissions.payment.refund", "TERMINAL"),
-                permission(PAYMENT_TERMINAL_SECRETS, "terminal.permissions.payment.secrets", "TERMINAL"))
+                permission(PAYMENT_TERMINAL_SECRETS, "terminal.permissions.payment.secrets", "TERMINAL"),
+                permission(VERIFACTU_READ, "verifactu.permissions.read", "FISCAL"),
+                permission(VERIFACTU_CORRECT, "verifactu.permissions.correct", "FISCAL"),
+                permission(VERIFACTU_MANAGE, "verifactu.permissions.manage", "FISCAL"))
                 .forEach(permission -> permisoRepository.findByCodigo(permission.getCodigo())
                         .orElseGet(() -> permisoRepository.save(permission)));
     }

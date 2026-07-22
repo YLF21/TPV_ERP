@@ -7,10 +7,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV82ContractTest {
+class MigrationV78ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V82__regulariza_admin_global_instalacion.sql";
+            "db/migration/V78__regulariza_admin_global_instalacion.sql";
 
     @Test
     void promotesOnlyOneUnambiguousLegacyAdminWithoutChangingItsPassword() throws IOException {

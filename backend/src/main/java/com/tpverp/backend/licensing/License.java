@@ -15,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -78,6 +79,15 @@ public class License {
 
     @Column(name = "ultima_validacion_saas", nullable = false)
     private Instant ultimaValidacionSaas;
+
+    @Column(name = "verifactu_activation_date")
+    private LocalDate verifactuActivationDate;
+
+    @Column(name = "verifactu_policy_version")
+    private Long verifactuPolicyVersion;
+
+    @Column(name = "verifactu_policy_updated_at")
+    private Instant verifactuPolicyUpdatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "estado_saas", nullable = false, length = 32)
@@ -222,6 +232,46 @@ public class License {
 
     public LicenseSaasStatus getEstadoSaas() {
         return estadoSaas;
+    }
+
+    public LocalDate getVerifactuActivationDate() {
+        return verifactuActivationDate;
+    }
+
+    public Long getVerifactuPolicyVersion() {
+        return verifactuPolicyVersion;
+    }
+
+    public Instant getVerifactuPolicyUpdatedAt() {
+        return verifactuPolicyUpdatedAt;
+    }
+
+    public boolean applyVerifactuPolicy(
+            LocalDate activationDate,
+            long policyVersion,
+            Instant policyUpdatedAt) {
+        Objects.requireNonNull(activationDate, "activationDate");
+        Objects.requireNonNull(policyUpdatedAt, "policyUpdatedAt");
+        if (policyVersion < 0) {
+            throw new IllegalArgumentException("Version de politica VERI*FACTU invalida");
+        }
+        if (verifactuPolicyVersion != null && policyVersion < verifactuPolicyVersion) {
+            return false;
+        }
+        if (verifactuPolicyVersion != null
+                && policyVersion == verifactuPolicyVersion
+                && (!activationDate.equals(verifactuActivationDate)
+                        || !policyUpdatedAt.equals(verifactuPolicyUpdatedAt))) {
+            throw new IllegalStateException(
+                    "La misma version de politica VERI*FACTU contiene datos distintos");
+        }
+        if (verifactuPolicyVersion != null && policyVersion == verifactuPolicyVersion) {
+            return false;
+        }
+        verifactuActivationDate = activationDate;
+        verifactuPolicyVersion = policyVersion;
+        verifactuPolicyUpdatedAt = policyUpdatedAt;
+        return true;
     }
 
     public void markSaasValidated(Instant validatedAt, Instant validUntil) {

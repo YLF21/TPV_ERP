@@ -27,7 +27,8 @@ import type {
   TenantUser,
   TaxRegime,
   TechnicalStatus,
-  TaxpayerType
+  TaxpayerType,
+  VerifactuActivationPolicy
 } from "./lib/types";
 
 type View = "dashboard" | "licenses" | "sync" | "users" | "audit" | "support" | "health" | "billing" | "masters";
@@ -108,6 +109,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     block: "Bloquear",
     unblock: "Desbloquear",
     noLicenses: "No hay licencias.",
+    verifactuPolicy: "Activacion global de VeriFactu",
+    verifactuPolicySubtitle: "Fechas distribuidas automaticamente a las licencias activas segun el tipo de contribuyente",
+    verifactuPolicyLoading: "Cargando politica fiscal...",
+    verifactuPolicyEmpty: "No hay una politica de activacion configurada.",
+    verifactuCompany: "Sociedades",
+    verifactuSelfEmployed: "Autonomos",
+    activationDate: "Fecha de activacion",
+    changeReason: "Motivo del cambio",
+    changeReasonPlaceholder: "Ej.: ampliacion del plazo publicada por la AEAT",
+    policyVersion: "Version",
+    updatedBy: "Actualizada por",
+    affectedLicenses: "Licencias activas",
+    affectedInstallations: "Instalaciones vinculadas",
+    currentReason: "Motivo vigente",
+    updatePolicy: "Actualizar politica",
+    policyUpdated: "Politica de activacion de VeriFactu actualizada.",
+    policyReadOnly: "Solo los usuarios con MANAGE_FISCAL_POLICY pueden modificar estas fechas.",
+    policyReasonRequired: "Indica un motivo de al menos 3 caracteres.",
+    policyConfirm: "Este cambio se distribuira a las licencias activas en su siguiente validacion. ¿Confirmas la nueva fecha?",
     linkedAt: "Vinculada",
     lastValidation: "Ultima validacion",
     pending: "Pendiente",
@@ -377,6 +397,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     block: "Block",
     unblock: "Unblock",
     noLicenses: "No licenses.",
+    verifactuPolicy: "Global VeriFactu activation",
+    verifactuPolicySubtitle: "Dates automatically distributed to active licenses by taxpayer type",
+    verifactuPolicyLoading: "Loading fiscal policy...",
+    verifactuPolicyEmpty: "No activation policy is configured.",
+    verifactuCompany: "Companies",
+    verifactuSelfEmployed: "Self-employed",
+    activationDate: "Activation date",
+    changeReason: "Reason for change",
+    changeReasonPlaceholder: "E.g. deadline extension published by the AEAT",
+    policyVersion: "Version",
+    updatedBy: "Updated by",
+    affectedLicenses: "Active licenses",
+    affectedInstallations: "Linked installations",
+    currentReason: "Current reason",
+    updatePolicy: "Update policy",
+    policyUpdated: "VeriFactu activation policy updated.",
+    policyReadOnly: "Only users with MANAGE_FISCAL_POLICY can change these dates.",
+    policyReasonRequired: "Enter a reason with at least 3 characters.",
+    policyConfirm: "This change will be distributed to active licenses during their next validation. Confirm the new date?",
     linkedAt: "Linked at",
     lastValidation: "Last validation",
     pending: "Pending",
@@ -583,6 +622,25 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     block: "锁定",
     unblock: "解锁",
     noLicenses: "暂无许可证。",
+    verifactuPolicy: "VeriFactu 全局启用策略",
+    verifactuPolicySubtitle: "按纳税人类型自动向有效许可证分发启用日期",
+    verifactuPolicyLoading: "正在加载税务策略...",
+    verifactuPolicyEmpty: "尚未配置启用策略。",
+    verifactuCompany: "公司",
+    verifactuSelfEmployed: "个体经营者",
+    activationDate: "启用日期",
+    changeReason: "变更原因",
+    changeReasonPlaceholder: "例如：AEAT 公布延长期限",
+    policyVersion: "版本",
+    updatedBy: "更新人",
+    affectedLicenses: "有效许可证",
+    affectedInstallations: "已连接安装",
+    currentReason: "当前原因",
+    updatePolicy: "更新策略",
+    policyUpdated: "VeriFactu 启用策略已更新。",
+    policyReadOnly: "只有拥有 MANAGE_FISCAL_POLICY 权限的用户才能修改这些日期。",
+    policyReasonRequired: "请输入至少 3 个字符的原因。",
+    policyConfirm: "此变更将在下次验证时分发到有效许可证。是否确认新日期？",
     linkedAt: "绑定时间",
     lastValidation: "最后验证",
     pending: "待处理",
@@ -1304,6 +1362,13 @@ function LicensesView({
 
   return (
     <div className="view-grid">
+      <VerifactuPolicySection
+        credentials={credentials}
+        canManage={permissions.has("MANAGE_FISCAL_POLICY")}
+        onChanged={onChanged}
+        onNotice={onNotice}
+      />
+
       {canCreateCompany && (
         <section className="content-section">
           <SectionHeader title={t("createCompany")} subtitle={t("createCompanySubtitle")} />
@@ -1392,6 +1457,142 @@ function LicensesView({
       </section>
     </div>
   );
+}
+
+function VerifactuPolicySection({
+  credentials,
+  canManage,
+  onChanged,
+  onNotice
+}: {
+  credentials: Credentials;
+  canManage: boolean;
+  onChanged: () => void;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [policies, setPolicies] = useState<VerifactuActivationPolicy[]>([]);
+  const [dates, setDates] = useState<Partial<Record<TaxpayerType, string>>>({});
+  const [reasons, setReasons] = useState<Partial<Record<TaxpayerType, string>>>({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<TaxpayerType | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.verifactuActivationPolicies(credentials)
+      .then((values) => {
+        if (cancelled) return;
+        setPolicies(values);
+        setDates(Object.fromEntries(values.map((policy) => [policy.taxpayerType, policy.activationDate])));
+      })
+      .catch((error) => {
+        if (!cancelled) onNotice({ type: "error", text: errorMessage(error) });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials, onNotice]);
+
+  async function updatePolicy(policy: VerifactuActivationPolicy) {
+    const activationDate = dates[policy.taxpayerType] ?? "";
+    const reason = reasons[policy.taxpayerType]?.trim() ?? "";
+    if (!activationDate || reason.length < 3) {
+      onNotice({ type: "error", text: t("policyReasonRequired") });
+      return;
+    }
+    if (!window.confirm(`${t("policyConfirm")}\n\n${taxpayerLabel(policy.taxpayerType, t)}: ${activationDate}`)) return;
+
+    setBusy(policy.taxpayerType);
+    try {
+      const updated = await api.updateVerifactuActivationPolicy(credentials, policy.taxpayerType, { activationDate, reason });
+      setPolicies((current) => current.map((item) => item.taxpayerType === updated.taxpayerType ? updated : item));
+      setDates((current) => ({ ...current, [updated.taxpayerType]: updated.activationDate }));
+      setReasons((current) => ({ ...current, [updated.taxpayerType]: "" }));
+      onNotice({ type: "success", text: t("policyUpdated") });
+      onChanged();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="content-section verifactu-policy-section">
+      <SectionHeader title={t("verifactuPolicy")} subtitle={t("verifactuPolicySubtitle")} />
+      {!canManage && <div className="permission-hint">{t("policyReadOnly")}</div>}
+      {loading ? (
+        <EmptyState text={t("verifactuPolicyLoading")} />
+      ) : policies.length === 0 ? (
+        <EmptyState text={t("verifactuPolicyEmpty")} />
+      ) : (
+        <div className="verifactu-policy-grid">
+          {policies.map((policy) => (
+            <article className="verifactu-policy-card" key={policy.taxpayerType}>
+              <header>
+                <div>
+                  <span>{t("type")}</span>
+                  <h3>{taxpayerLabel(policy.taxpayerType, t)}</h3>
+                </div>
+                <StatusPill status={`${t("policyVersion")} ${policy.version}`} tone="muted" />
+              </header>
+
+              <div className="verifactu-policy-impact">
+                <div><span>{t("affectedLicenses")}</span><strong>{policy.activeLicenses}</strong></div>
+                <div><span>{t("affectedInstallations")}</span><strong>{policy.linkedInstallations}</strong></div>
+              </div>
+
+              <div className="verifactu-policy-form">
+                <Input
+                  label={t("activationDate")}
+                  type="date"
+                  value={dates[policy.taxpayerType] ?? policy.activationDate}
+                  onChange={(value) => setDates((current) => ({ ...current, [policy.taxpayerType]: value }))}
+                  required
+                  disabled={!canManage || busy === policy.taxpayerType}
+                />
+                <label>
+                  {t("changeReason")}
+                  <input
+                    className="control-input"
+                    value={reasons[policy.taxpayerType] ?? ""}
+                    maxLength={500}
+                    placeholder={t("changeReasonPlaceholder")}
+                    onChange={(event) => setReasons((current) => ({ ...current, [policy.taxpayerType]: event.target.value }))}
+                    disabled={!canManage || busy === policy.taxpayerType}
+                  />
+                </label>
+              </div>
+
+              <dl className="verifactu-policy-meta">
+                <div><dt>{t("updatedBy")}</dt><dd>{policy.updatedBy} · {formatDate(policy.updatedAt)}</dd></div>
+                <div><dt>{t("currentReason")}</dt><dd>{policy.reason}</dd></div>
+              </dl>
+
+              {canManage && (
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void updatePolicy(policy)}
+                >
+                  {busy === policy.taxpayerType ? t("saving") : t("updatePolicy")}
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function taxpayerLabel(taxpayerType: TaxpayerType, t: (key: string) => string) {
+  return taxpayerType === "SOCIEDAD" ? t("verifactuCompany") : t("verifactuSelfEmployed");
 }
 
 function SyncView({ credentials, licenses, onNotice }: { credentials: Credentials; licenses: LicenseSummary[]; onNotice: (notice: Notice) => void }) {
@@ -3219,9 +3420,10 @@ function AuditList({ audit, expanded = false }: { audit: AuditLog[]; expanded?: 
             <span>{item.username} · {formatDate(item.createdAt)}</span>
           </div>
           {expanded && (
-            <code>
-              {item.targetType}:{item.targetId}
-            </code>
+            <div className="audit-detail">
+              <code>{item.targetType}:{item.targetId}</code>
+              {item.details && <p>{item.details}</p>}
+            </div>
           )}
         </article>
       ))}
@@ -3623,7 +3825,8 @@ function auditActionLabel(action: string) {
     DEACTIVATE_ADMIN_USER: "Usuario admin desactivado",
     UPDATE_COMPANY_OPERATIONS: "Datos SaaS de empresa actualizados",
     CREATE_SUPPORT_TICKET: "Ticket de soporte creado",
-    UPDATE_SUPPORT_TICKET: "Ticket de soporte actualizado"
+    UPDATE_SUPPORT_TICKET: "Ticket de soporte actualizado",
+    UPDATE_VERIFACTU_ACTIVATION_POLICY: "Politica de activacion de VeriFactu actualizada"
   };
   return labels[action] ?? action.replaceAll("_", " ").toLowerCase().replace(/^\w/, (value) => value.toUpperCase());
 }
@@ -4024,7 +4227,8 @@ function fallbackPermissions(username?: string) {
     "VIEW_ADMIN_DATA",
     "REGENERATE_PAIRING_CODE",
     "MANAGE_ADMIN_USERS",
-    "MANAGE_SUPPORT_TICKETS"
+    "MANAGE_SUPPORT_TICKETS",
+    "MANAGE_FISCAL_POLICY"
   ];
 }
 

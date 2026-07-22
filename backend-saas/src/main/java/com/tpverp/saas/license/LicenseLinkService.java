@@ -16,16 +16,19 @@ public class LicenseLinkService {
     private final SaasInstallationRepository installations;
     private final TokenHasher tokens;
     private final Clock clock;
+    private final VerifactuActivationPolicyResolver verifactuPolicies;
 
     public LicenseLinkService(
             SaasPairingCodeRepository pairingCodes,
             SaasInstallationRepository installations,
             TokenHasher tokens,
-            Clock clock) {
+            Clock clock,
+            VerifactuActivationPolicyResolver verifactuPolicies) {
         this.pairingCodes = pairingCodes;
         this.installations = installations;
         this.tokens = tokens;
         this.clock = clock;
+        this.verifactuPolicies = verifactuPolicies;
     }
 
     @Transactional
@@ -55,6 +58,7 @@ public class LicenseLinkService {
         SaasCompany company = pairing.getCompany();
         SaasStore store = pairing.getStore();
         SaasLicense license = pairing.getLicense();
+        VerifactuPolicySnapshot policy = verifactuPolicies.required(company.getTaxpayerType());
         return new LicenseSaasLinkResponse(
                 license.getReference(),
                 company.getId(),
@@ -66,6 +70,9 @@ public class LicenseLinkService {
                 company.getTaxId(),
                 company.getTaxpayerType(),
                 company.getTaxRegime(),
+                policy.activationDate(),
+                policy.version(),
+                policy.updatedAt(),
                 token);
     }
 }

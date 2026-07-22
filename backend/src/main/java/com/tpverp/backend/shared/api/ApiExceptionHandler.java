@@ -6,6 +6,7 @@ import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
+import com.tpverp.backend.verifactu.VerifactuCertificateApiException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.RequiredField;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
@@ -39,6 +40,22 @@ public class ApiExceptionHandler {
     @ExceptionHandler(PaymentTerminalApiException.class)
     ProblemDetail paymentTerminalProblem(PaymentTerminalApiException exception, HttpServletRequest request) {
         return problem(exception.status(), exception.code(), exception.getMessage(), language(request));
+    }
+
+    @ExceptionHandler(VerifactuCertificateApiException.class)
+    ProblemDetail verifactuCertificateProblem(
+            VerifactuCertificateApiException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var fallback = exception.status().is4xxClientError()
+                && exception.status() != HttpStatus.BAD_REQUEST
+                ? SystemErrorCode.STATE_CONFLICT
+                : SystemErrorCode.VALIDATION_ERROR;
+        var problem = problem(
+                exception.status(), exception.code(),
+                localizedExceptionDetail(exception.getMessage(), fallback, language), language);
+        exception.properties().forEach(problem::setProperty);
+        return problem;
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)

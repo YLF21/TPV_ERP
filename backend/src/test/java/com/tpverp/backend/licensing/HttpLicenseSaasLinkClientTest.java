@@ -110,6 +110,9 @@ class HttpLicenseSaasLinkClientTest {
                 "B12345678",
                 TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
+                java.time.LocalDate.of(2027, 1, 1),
+                3,
+                Instant.parse("2026-07-22T10:00:00Z"),
                 "token"));
     }
 

@@ -137,7 +137,7 @@ class VerifactuAdminServiceTest {
 
         assertThat(status.certificateConfigured()).isFalse();
         assertThat(status.verifactuActive()).isTrue();
-        assertThat(status.activationMode()).isEqualTo("LEGAL");
+        assertThat(status.activationMode()).isEqualTo("LEGAL_FALLBACK");
         assertThat(status.effectiveActivationAt()).isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
     }
 
@@ -291,6 +291,8 @@ class VerifactuAdminServiceTest {
         var configuration = new VerifactuConfiguration(company.getId());
         var configurations = Mockito.mock(VerifactuConfigurationRepository.class);
         when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(configuration));
+        when(configurations.findForUpdateByCompanyId(company.getId()))
+                .thenReturn(Optional.of(configuration));
         when(configurations.save(configuration)).thenReturn(configuration);
         var licenses = Mockito.mock(LicenseRepository.class);
         when(licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId())).thenReturn(List.of(

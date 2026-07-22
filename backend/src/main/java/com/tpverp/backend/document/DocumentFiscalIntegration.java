@@ -7,6 +7,7 @@ import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
 import com.tpverp.backend.verifactu.FiscalRecordRepository;
 import com.tpverp.backend.verifactu.FiscalRecordService;
+import com.tpverp.backend.verifactu.FiscalRectificationMethod;
 import com.tpverp.backend.verifactu.VerifactuInactiveException;
 import java.math.BigDecimal;
 import org.springframework.stereotype.Component;
@@ -25,23 +26,34 @@ public class DocumentFiscalIntegration {
     private final CurrentOrganization organization;
     private final InstallationRepository installations;
     private final ApplicationEventPublisher events;
+    private final SalesInvoiceRectificationService rectifications;
 
     public DocumentFiscalIntegration(
             FiscalRecordService fiscalRecords,
             FiscalRecordRepository recordRepository,
             CurrentOrganization organization,
             InstallationRepository installations,
-            ApplicationEventPublisher events) {
+            ApplicationEventPublisher events,
+            SalesInvoiceRectificationService rectifications) {
         this.fiscalRecords = fiscalRecords;
         this.recordRepository = recordRepository;
         this.organization = organization;
         this.installations = installations;
         this.events = events;
+        this.rectifications = rectifications;
     }
 
     // Registers the sales document fiscal creation when VERI*FACTU is active.
     public void registerAlta(CommercialDocument document, boolean invoiceFromTicket) {
+        if (document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA) {
+            registerSalesRectification(document);
+            return;
+        }
         var type = altaType(document, invoiceFromTicket);
+        if (type == FiscalDocumentType.R5) {
+            throw new IllegalStateException(
+                    "Una factura simplificada R5 requiere el flujo de devolucion vinculado");
+        }
         if (type != null) {
             register(document, FiscalRecordOperation.ALTA, type);
         }
@@ -64,6 +76,16 @@ public class DocumentFiscalIntegration {
     }
     // Registers F3 and fiscally links the replaced simplified invoice.
 
+    public void registerTicketRectification(
+            CommercialDocument rectification, CommercialDocument original) {
+        registerRectification(rectification, original.getId(), FiscalDocumentType.R5,
+                FiscalRectificationMethod.I);
+    }
+
+    public SalesInvoiceRectification validateBeforeConfirmation(CommercialDocument document) {
+        return rectifications.validateBeforeConfirmation(document);
+    }
+
     public boolean hasFiscalRecord(java.util.UUID documentId) {
         return recordRepository.findByDocumentIdAndOperation(
                 documentId, FiscalRecordOperation.ALTA).isPresent();
@@ -75,7 +97,7 @@ public class DocumentFiscalIntegration {
             case TICKET -> ticketType(document);
             case FACTURA_VENTA -> invoiceFromTicket
                     ? FiscalDocumentType.F3 : FiscalDocumentType.F1;
-            case RECTIFICATIVA_VENTA -> FiscalDocumentType.R1;
+            case RECTIFICATIVA_VENTA -> null;
             default -> null;
         };
     }
@@ -92,6 +114,31 @@ public class DocumentFiscalIntegration {
             events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
         } catch (VerifactuInactiveException ignored) {
             // VERI*FACTU desactivado permite operar hasta activacion legal o voluntaria.
+        }
+    }
+
+    private void registerSalesRectification(CommercialDocument document) {
+        var metadata = rectifications.validateBeforeConfirmation(document);
+        registerRectification(
+                document,
+                metadata.getOriginalDocumentId(),
+                FiscalDocumentType.valueOf(metadata.getFiscalType().name()),
+                FiscalRectificationMethod.valueOf(metadata.getMethod().name()));
+    }
+
+    private void registerRectification(
+            CommercialDocument document,
+            java.util.UUID originalDocumentId,
+            FiscalDocumentType type,
+            FiscalRectificationMethod method) {
+        try {
+            var record = fiscalRecords.registerRectification(
+                    command(document, FiscalRecordOperation.ALTA, type),
+                    originalDocumentId,
+                    method);
+            events.publishEvent(new FiscalRecordQueuedEvent(record.getId()));
+        } catch (VerifactuInactiveException ignored) {
+            // La relacion comercial permanece obligatoria aun sin activacion fiscal.
         }
     }
 

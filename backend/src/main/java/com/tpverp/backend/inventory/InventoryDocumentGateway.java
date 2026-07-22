@@ -61,7 +61,9 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
             if (isService(line.getProductoId())) {
                 continue;
             }
-            var quantity = line.getCantidad().multiply(BigDecimal.valueOf(definition.sign()));
+            var quantity = document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA
+                    ? line.getCantidad().abs()
+                    : line.getCantidad().multiply(BigDecimal.valueOf(definition.sign()));
             apply(line.getProductoId(), document.getAlmacenId(), quantity);
             enqueue(document, movements.save(StockMovement.document(
                     line.getProductoId(),

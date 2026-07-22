@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -41,18 +42,33 @@ public class VerifactuCertificateController {
     public ManagedCertificateView importCertificate(
             @RequestParam("file") MultipartFile file,
             @RequestParam("password") char[] password,
+            @RequestParam(value = "expectedActiveCertificateId", required = false)
+                    UUID expectedActiveCertificateId,
+            @RequestParam(value = "confirmation", required = false) String confirmation,
             Authentication authentication) {
+        byte[] content = null;
         try {
             if (file == null || file.isEmpty()) {
-                throw new IllegalArgumentException("El certificado PKCS#12 es obligatorio");
+                throw VerifactuCertificateApiException.badRequest(
+                        "VERIFACTU_CERTIFICATE_REQUIRED",
+                        "message.verifactu.certificate.required");
             }
             if (file.getSize() > MAX_CERTIFICATE_BYTES) {
-                throw new IllegalArgumentException("El certificado PKCS#12 supera 10 MB");
+                throw VerifactuCertificateApiException.payloadTooLarge(
+                        "VERIFACTU_CERTIFICATE_TOO_LARGE",
+                        "message.verifactu.certificate.too_large");
             }
-            return service.importCertificate(file.getBytes(), password, authentication);
+            content = file.getBytes();
+            return service.importCertificate(
+                    content, password, expectedActiveCertificateId, confirmation, authentication);
         } catch (IOException exception) {
-            throw new IllegalArgumentException("No se pudo leer el certificado PKCS#12", exception);
+            throw VerifactuCertificateApiException.badRequest(
+                    "VERIFACTU_CERTIFICATE_READ_FAILED",
+                    "No se pudo leer el certificado PKCS#12");
         } finally {
+            if (content != null) {
+                Arrays.fill(content, (byte) 0);
+            }
             if (password != null) {
                 Arrays.fill(password, '\0');
             }

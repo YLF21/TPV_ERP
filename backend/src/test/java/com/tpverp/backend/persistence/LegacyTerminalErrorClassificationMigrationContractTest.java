@@ -10,7 +10,7 @@ class LegacyTerminalErrorClassificationMigrationContractTest {
     @Test
     void legacyErrorsBecomeUncertainBecauseTheirPhysicalEffectWasNotClassified() throws Exception {
         try (var stream = getClass().getResourceAsStream(
-                "/db/migration/V74__classify_legacy_terminal_errors_as_uncertain.sql")) {
+                "/db/migration/V92__classify_legacy_terminal_errors_as_uncertain.sql")) {
             assertThat(stream).isNotNull();
             var sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
                     .toLowerCase();

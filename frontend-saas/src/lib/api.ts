@@ -32,7 +32,8 @@ import type {
   TenantUser,
   TaxRegime,
   TechnicalStatus,
-  TaxpayerType
+  TaxpayerType,
+  VerifactuActivationPolicy
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_SAAS_API_BASE_URL ?? "";
@@ -101,6 +102,22 @@ export const api = {
 
   licenses(credentials: Credentials) {
     return request<LicenseSummary[]>(credentials, "/api/v1/admin/licenses");
+  },
+
+  verifactuActivationPolicies(credentials: Credentials) {
+    return request<VerifactuActivationPolicy[]>(credentials, "/api/v1/admin/verifactu-activation-policies");
+  },
+
+  updateVerifactuActivationPolicy(
+    credentials: Credentials,
+    taxpayerType: TaxpayerType,
+    payload: { activationDate: string; reason: string }
+  ) {
+    return request<VerifactuActivationPolicy>(
+      credentials,
+      `/api/v1/admin/verifactu-activation-policies/${encodeURIComponent(taxpayerType)}`,
+      { method: "PUT", body: payload }
+    );
   },
 
   installations(credentials: Credentials) {

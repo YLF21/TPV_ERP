@@ -50,7 +50,13 @@ const WarehouseManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "controlAlerts" | "promotions" | "sales" | "stock" | "users" | "roles";
+const VerifactuManagementScreen = lazy(() =>
+  import("./VerifactuManagementScreen").then(({ VerifactuManagementScreen }) => ({
+    default: VerifactuManagementScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "promotions" | "sales" | "stock" | "users" | "roles";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -77,7 +83,7 @@ function App() {
         return;
       }
       const result = await bridge.load();
-      if (!cancelled) setTerminalContext(resolveGestionTerminalIdentity(result, import.meta.env.DEV));
+      if (!cancelled) setTerminalContext(resolveGestionTerminalIdentity(result));
     }
     void loadIdentity();
     return () => { cancelled = true; };
@@ -113,6 +119,7 @@ function App() {
         salesReport={salesReport}
         stockSelection={stockSelection}
         onOpenDashboard={() => setModule("dashboard")}
+        onOpenVerifactu={() => setModule("verifactu")}
         onOpenControlAlerts={() => setModule("controlAlerts")}
         onOpenSales={(report) => {
           setSalesReport(report);
@@ -140,6 +147,7 @@ function GestionScreen({
   salesReport,
   stockSelection,
   onOpenDashboard,
+  onOpenVerifactu,
   onOpenControlAlerts,
   onOpenSales,
   onOpenPromotions,
@@ -156,6 +164,7 @@ function GestionScreen({
   salesReport: string;
   stockSelection: StockSelection;
   onOpenDashboard: () => void;
+  onOpenVerifactu: () => void;
   onOpenControlAlerts: () => void;
   onOpenSales: (report: string) => void;
   onOpenPromotions: () => void;
@@ -167,6 +176,8 @@ function GestionScreen({
 }) {
   const t = createTranslator(locale);
   const modules = visibleGestionModules(session);
+  const verifactuAllowed = modules.includes("gestion.verifactu");
+  const effectiveModule = module === "verifactu" && !verifactuAllowed ? "dashboard" : module;
   const canManageProducts = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_PRODUCTO");
   const reports = visibleSalesReports(session).all;
@@ -186,6 +197,18 @@ function GestionScreen({
       onOpen: () => onOpenStock({ key: view, view })
     })),
     ...(userCanManageWarehouses(session) ? [{
+      key: "stock.settings.configuration",
+      label: t("stock.settings.configuration"),
+      onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" as const })
+    }] : []),
+    ...(session.permissions.includes("ADMIN") ? [{
+      key: "stock.settings.permissions",
+      label: t("stock.settings.permissions"),
+      onOpen: () => onOpenStock({ key: "stock.settings.permissions", settingsMode: "permissions" as const })
+    }] : [])
+  ];
+  const warehouseChildren: GestionNavigationItem[] = [
+    ...(userCanManageWarehouses(session) ? [{
       key: "stock.warehouse.management",
       label: t("warehouse.management.navigation"),
       onOpen: () => onOpenStock({
@@ -204,7 +227,9 @@ function GestionScreen({
         key: `stock.warehouse.${warehouseSection}`,
         warehouseSection
       })
-    })),
+    }))
+  ];
+  const partyItems: GestionNavigationItem[] = [
     ...(canReadCustomers ? (["customers", "members"] as PartyDirectoryKind[]).map((partyDirectory) => ({
       key: `stock.party.${partyDirectory}`,
       label: t(`party.${partyDirectory}.title`),
@@ -214,18 +239,9 @@ function GestionScreen({
       key: "stock.party.suppliers",
       label: t("party.suppliers.title"),
       onOpen: () => onOpenStock({ key: "stock.party.suppliers", partyDirectory: "suppliers" })
-    }] : []),
-    ...(userCanManageWarehouses(session) ? [{
-      key: "stock.settings.configuration",
-      label: t("stock.settings.configuration"),
-      onOpen: () => onOpenStock({ key: "stock.settings.configuration", settingsMode: "configuration" })
-    }] : []),
-    ...(session.permissions.includes("ADMIN") ? [{
-      key: "stock.settings.permissions",
-      label: t("stock.settings.permissions"),
-      onOpen: () => onOpenStock({ key: "stock.settings.permissions", settingsMode: "permissions" })
     }] : [])
   ];
+  const stockContentItems = [...stockChildren, ...warehouseChildren, ...partyItems];
   const securityChildren: GestionNavigationItem[] = [
     ...(modules.includes("gestion.users")
       ? [{ key: "users", label: t("gestion.users.navigation"), onOpen: onOpenUsers }]
@@ -237,6 +253,9 @@ function GestionScreen({
 
   const navigation: GestionNavigationItem[] = [
     { key: "dashboard", label: t("gestion.dashboard"), onOpen: onOpenDashboard },
+    ...(verifactuAllowed
+      ? [{ key: "verifactu", label: t("verifactu.management.navigation"), onOpen: onOpenVerifactu }]
+      : []),
     ...(modules.includes("gestion.controlAlerts")
       ? [{ key: "controlAlerts", label: t("gestion.controlAlerts.navigation"), onOpen: onOpenControlAlerts }]
       : []),
@@ -248,8 +267,13 @@ function GestionScreen({
         }]
       : []),
     ...(modules.includes("gestion.stock")
+      && stockChildren.length > 0
       ? [{ key: "stock", label: t("gestion.stock"), children: stockChildren }]
       : []),
+    ...(warehouseChildren.length > 0
+      ? [{ key: "warehouse", label: t("stock.warehouse"), children: warehouseChildren }]
+      : []),
+    ...partyItems,
     ...(canManageProducts
       ? [{ key: "promotions", label: t("promotion.list.heading"), onOpen: onOpenPromotions }]
       : []),
@@ -258,16 +282,18 @@ function GestionScreen({
       : [])
   ];
 
-  const activeKey = module === "sales"
+  const activeKey = effectiveModule === "sales"
     ? salesReport
-    : module === "stock"
+    : effectiveModule === "stock"
       ? stockSelection.key
-      : module;
+      : effectiveModule;
 
   let content;
-  if (module === "controlAlerts" && modules.includes("gestion.controlAlerts")) {
+  if (effectiveModule === "verifactu" && verifactuAllowed) {
+    content = <VerifactuManagementScreen locale={locale} session={session} t={t} />;
+  } else if (effectiveModule === "controlAlerts" && modules.includes("gestion.controlAlerts")) {
     content = <ControlAlertsScreen session={session} t={t} />;
-  } else if (module === "sales" && reports.includes(salesReport)) {
+  } else if (effectiveModule === "sales" && reports.includes(salesReport)) {
     content = (
       <SalesReportScreen
         key={salesReport}
@@ -282,7 +308,7 @@ function GestionScreen({
         initialReport={salesReport}
       />
     );
-  } else if (module === "stock" && stockChildren.some((item) => item.key === stockSelection.key)) {
+  } else if (effectiveModule === "stock" && stockContentItems.some((item) => item.key === stockSelection.key)) {
     content = stockSelection.warehouseManagement ? (
       <WarehouseManagementScreen session={session} t={t} />
     ) : stockSelection.warehouseSection ? (
@@ -314,7 +340,7 @@ function GestionScreen({
         initialSettingsMode={stockSelection.settingsMode}
       />
     );
-  } else if (module === "promotions" && canManageProducts) {
+  } else if (effectiveModule === "promotions" && canManageProducts) {
     content = (
       <PromotionListScreen
         app="gestion"
@@ -327,9 +353,9 @@ function GestionScreen({
         embedded
       />
     );
-  } else if (module === "users" && modules.includes("gestion.users")) {
+  } else if (effectiveModule === "users" && modules.includes("gestion.users")) {
     content = <SecurityAdministrationScreen mode="users" session={session} t={t} />;
-  } else if (module === "roles" && modules.includes("gestion.roles")) {
+  } else if (effectiveModule === "roles" && modules.includes("gestion.roles")) {
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
   } else {
     content = (
@@ -346,7 +372,11 @@ function GestionScreen({
 
   return (
     <GestionShell session={session} t={t} activeKey={activeKey} navigation={navigation}>
-      <section className="gestion-module-stage">{content}</section>
+      <section className="gestion-module-stage">
+        <Suspense fallback={<div className="gestion-module-loading">{t("common.loading")}</div>}>
+          {content}
+        </Suspense>
+      </section>
     </GestionShell>
   );
 }

@@ -36,6 +36,7 @@ import { retryPrintSucceeded } from "../sale/printRetry";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ParkedSalesDialog, type OpenedParkedSale } from "./ParkedSalesDialog";
 import { TicketManagementDialog } from "./TicketManagementDialog";
+import { VerifactuPosIndicator } from "./VerifactuPosIndicator";
 
 export type SaleProduct = {
   id: string;
@@ -658,6 +659,7 @@ export function SaleScreen({
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
+  const [verifactuRefreshSignal, setVerifactuRefreshSignal] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
@@ -1121,6 +1123,7 @@ export function SaleScreen({
       setCashResult(transition.cashResult);
       setQuery(transition.query);
       deletionControl.reset("SALE_FINALIZED");
+      setVerifactuRefreshSignal((current) => current + 1);
       startAutomaticTicketPrint(result.printTicket);
       } catch (error) {
       const transition = cashPaymentErrorTransition(
@@ -1163,6 +1166,7 @@ export function SaleScreen({
         if (outcome.clearSale && outcome.result) {
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
           deletionControl.reset("SALE_FINALIZED");
+          setVerifactuRefreshSignal((current) => current + 1);
         }
       } catch (error) {
         if (error instanceof ApiError) {
@@ -1196,6 +1200,7 @@ export function SaleScreen({
         }, cardQuoteCents);
         setCardStatus(outcome.status);
         setCardMessage(outcome.message);
+        if (outcome.clearSale) setVerifactuRefreshSignal((current) => current + 1);
       })
       .catch((error) => {
         setCardMessage(error instanceof Error ? error.message : "No se pudo consultar la operacion");
@@ -1284,6 +1289,14 @@ export function SaleScreen({
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
           <h1 className="report-title">{t("sale.main.screen")}</h1>
+          {app === "venta" && hasPermission(session, "VENTA") && (
+            <VerifactuPosIndicator
+              token={session.accessToken ?? ""}
+              locale={locale}
+              t={t}
+              refreshSignal={verifactuRefreshSignal}
+            />
+          )}
         </header>
 
         <section className="sale-ticket work-panel" aria-label={t("sale.main.ticket")}>
@@ -1472,6 +1485,7 @@ export function SaleScreen({
               onFinalized={(printTicket, summary) => {
                 invalidateCashOpening();
                 deletionControl.reset("SALE_FINALIZED");
+                setVerifactuRefreshSignal((current) => current + 1);
                 setLines([]);
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
@@ -1583,6 +1597,7 @@ export function SaleScreen({
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
           setPendingPrintRetry(() => retry ?? null);
           setSelectedCustomer(null); setQuery(""); searchInputRef.current?.focus();
+          setVerifactuRefreshSignal((current) => current + 1);
         }}
       />}
 
@@ -1688,7 +1703,13 @@ export function SaleScreen({
       )}
 
       {ticketManagementOpen && (
-        <TicketManagementDialog token={session.accessToken} locale={locale} terminalContext={terminalContext} onClose={() => setTicketManagementOpen(false)} />
+        <TicketManagementDialog
+          token={session.accessToken}
+          locale={locale}
+          terminalContext={terminalContext}
+          onClose={() => setTicketManagementOpen(false)}
+          onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
+        />
       )}
 
       {pendingInactiveProduct && (

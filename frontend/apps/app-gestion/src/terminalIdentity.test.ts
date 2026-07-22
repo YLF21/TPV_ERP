@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { devTerminalContext } from "@tpverp/app-common";
 import { resolveGestionTerminalIdentity } from "./terminalIdentity";
 
 describe("resolveGestionTerminalIdentity", () => {
@@ -11,18 +10,11 @@ describe("resolveGestionTerminalIdentity", () => {
       terminalCredential: "secret"
     };
 
-    expect(resolveGestionTerminalIdentity({ ok: true, identity }, true)).toEqual(identity);
+    expect(resolveGestionTerminalIdentity({ ok: true, identity })).toEqual(identity);
   });
 
-  it("uses deterministic demo data only in development", () => {
-    expect(devTerminalContext).toMatchObject({
-      storeName: "TIENDA DEMO",
-      terminalCode: "SERVIDOR",
-      terminalId: "06d2ce45-8ead-349d-b844-4ecdead5e1ec"
-    });
-    expect(resolveGestionTerminalIdentity({ ok: true, identity: null }, true))
-      .toEqual(devTerminalContext);
-    expect(resolveGestionTerminalIdentity({ ok: true, identity: null }, false)).toBeNull();
-    expect(resolveGestionTerminalIdentity({ ok: false }, false)).toBeNull();
+  it("requires server terminal setup when Electron has no protected identity", () => {
+    expect(resolveGestionTerminalIdentity({ ok: true, identity: null })).toBeNull();
+    expect(resolveGestionTerminalIdentity({ ok: false })).toBeNull();
   });
 });

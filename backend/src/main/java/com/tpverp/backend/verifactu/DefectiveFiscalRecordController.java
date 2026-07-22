@@ -30,13 +30,13 @@ public class DefectiveFiscalRecordController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ'))")
     public List<DefectiveFiscalRecordView> list() {
         return service.list();
     }
 
     @GetMapping("/{recordId}/attempts")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ') and hasAuthority('VERIFACTU_MANAGE'))")
     public List<FiscalSubmissionAttemptView> attempts(@PathVariable UUID recordId) {
         return attempts.history(recordId).stream()
                 .map(FiscalSubmissionAttemptView::from)
@@ -44,7 +44,7 @@ public class DefectiveFiscalRecordController {
     }
 
     @PostMapping("/{recordId}/corrections")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ') and hasAuthority('VERIFACTU_CORRECT'))")
     public FiscalCorrectionView correct(
             @PathVariable UUID recordId,
             @Valid @RequestBody FiscalCorrectionRequest request,

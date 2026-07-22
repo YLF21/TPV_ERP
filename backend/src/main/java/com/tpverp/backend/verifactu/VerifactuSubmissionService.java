@@ -82,14 +82,14 @@ public class VerifactuSubmissionService {
             FiscalRecord record, VerifactuSubmissionResult result) {
         switch (result.status()) {
             case ACEPTADO -> {
+                markFirstSubmission(record);
                 attempts.recordAccepted(record.getId(), result.responsePayload());
                 corrections.accepted(record);
-                markFirstSubmission(record);
             }
             case ACEPTADO_CON_ERRORES -> {
+                markFirstSubmission(record);
                 attempts.recordAcceptedWithErrors(
                         record.getId(), result.errorCode(), result.error(), result.responsePayload());
-                markFirstSubmission(record);
             }
             case RECHAZADO -> attempts.recordRejected(
                     record.getId(), result.errorCode(), result.error(), result.responsePayload());

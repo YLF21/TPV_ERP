@@ -421,6 +421,101 @@ h2 {
   padding: 28px;
 }
 
+.verifactu-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.verifactu-policy-card {
+  display: grid;
+  gap: 18px;
+  border: 1px solid rgba(198, 216, 239, 0.82);
+  border-radius: 17px;
+  padding: 20px;
+  background: rgba(248, 251, 255, 0.78);
+}
+
+.verifactu-policy-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.verifactu-policy-card header span,
+.verifactu-policy-impact span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.verifactu-policy-card h3 {
+  margin: 4px 0 0;
+  color: #15325c;
+  font-size: 22px;
+}
+
+.verifactu-policy-impact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.verifactu-policy-impact > div {
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.verifactu-policy-impact span,
+.verifactu-policy-impact strong {
+  display: block;
+}
+
+.verifactu-policy-impact strong {
+  margin-top: 5px;
+  color: #15325c;
+  font-size: 24px;
+}
+
+.verifactu-policy-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.72fr) minmax(220px, 1.28fr);
+  gap: 12px;
+}
+
+.verifactu-policy-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.verifactu-policy-meta > div {
+  display: grid;
+  grid-template-columns: 126px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.verifactu-policy-meta dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.verifactu-policy-meta dd {
+  margin: 0;
+  color: #2a3b55;
+  overflow-wrap: anywhere;
+}
+
+.verifactu-policy-card > .primary-button {
+  justify-self: start;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -1435,6 +1530,14 @@ tbody tr.billing-due {
   font-size: 13px;
 }
 
+.audit-detail p {
+  max-width: 560px;
+  margin: 8px 0 0;
+  color: #40536f;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .event-summary {
   margin-top: 8px;
   color: #24364f;
@@ -1505,7 +1608,8 @@ pre {
   .detail-columns,
   .company-detail-grid,
   .phase2-grid,
-  .health-layout {
+  .health-layout,
+  .verifactu-policy-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1619,6 +1723,12 @@ pre {
   }
 
   .compact-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .verifactu-policy-form,
+  .verifactu-policy-impact,
+  .verifactu-policy-meta > div {
     grid-template-columns: 1fr;
   }
 

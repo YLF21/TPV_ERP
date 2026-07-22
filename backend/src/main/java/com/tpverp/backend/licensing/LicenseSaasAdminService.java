@@ -36,6 +36,11 @@ public class LicenseSaasAdminService {
     }
 
     private static LicenseSaasValidationResponse response(License license) {
-        return new LicenseSaasValidationResponse(license.getEstadoSaas(), license.getValidaHasta());
+        return new LicenseSaasValidationResponse(
+                license.getEstadoSaas(),
+                license.getValidaHasta(),
+                license.getVerifactuActivationDate(),
+                license.getVerifactuPolicyVersion() == null ? 0 : license.getVerifactuPolicyVersion(),
+                license.getVerifactuPolicyUpdatedAt());
     }
 }

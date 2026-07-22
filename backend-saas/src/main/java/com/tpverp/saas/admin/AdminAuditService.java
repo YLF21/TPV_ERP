@@ -23,12 +23,18 @@ public class AdminAuditService {
 
     @Transactional
     public void log(String action, String targetType, String targetId) {
+        log(action, targetType, targetId, null);
+    }
+
+    @Transactional
+    public void log(String action, String targetType, String targetId, String details) {
         audit.save(new SaasAdminAuditLog(
                 UUID.randomUUID(),
                 currentUsername(),
                 action,
                 targetType,
                 targetId,
+                details,
                 clock.instant()));
     }
 
@@ -41,11 +47,12 @@ public class AdminAuditService {
                         value.getAction(),
                         value.getTargetType(),
                         value.getTargetId(),
+                        value.getDetails(),
                         value.getCreatedAt()))
                 .toList();
     }
 
-    private String currentUsername() {
+    String currentUsername() {
         var attributes = RequestContextHolder.getRequestAttributes();
         if (attributes instanceof ServletRequestAttributes servletAttributes) {
             Object username = servletAttributes.getRequest().getAttribute(USERNAME_ATTRIBUTE);

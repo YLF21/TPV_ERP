@@ -52,13 +52,46 @@ class LicenseSaasValidationServiceTest {
                 license.getHash())))
                 .thenReturn(new LicenseSaasValidationResponse(
                         LicenseSaasStatus.VALIDA,
-                        Instant.parse("2027-08-10T00:00:00Z")));
+                        Instant.parse("2027-08-10T00:00:00Z"),
+                        java.time.LocalDate.of(2027, 1, 1),
+                        4,
+                        Instant.parse("2026-07-22T10:00:00Z")));
 
         service.validateActiveLicense();
 
         assertThat(license.getUltimaValidacionSaas()).isEqualTo(NOW);
         assertThat(license.getValidaHasta()).isEqualTo(Instant.parse("2027-08-10T00:00:00Z"));
         assertThat(license.getEstadoSaas()).isEqualTo(LicenseSaasStatus.VALIDA);
+        assertThat(license.getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2027, 1, 1));
+        assertThat(license.getVerifactuPolicyVersion()).isEqualTo(4L);
+        verify(licenses).save(license);
+    }
+
+    @Test
+    void noRetrasaUnaPoliticaVerifactuQueYaEntroEnVigor() {
+        var installation = installation();
+        var store = store();
+        var license = license(store, installation);
+        license.applyVerifactuPolicy(
+                java.time.LocalDate.of(2026, 8, 1),
+                1,
+                Instant.parse("2026-07-01T00:00:00Z"));
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId()))
+                .thenReturn(Optional.of(license));
+        when(client.validate(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new LicenseSaasValidationResponse(
+                        LicenseSaasStatus.VALIDA,
+                        Instant.parse("2027-08-10T00:00:00Z"),
+                        java.time.LocalDate.of(2027, 1, 1),
+                        2,
+                        Instant.parse("2026-08-10T09:00:00Z")));
+
+        service.validateActiveLicense();
+
+        assertThat(license.getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2026, 8, 1));
+        assertThat(license.getVerifactuPolicyVersion()).isEqualTo(1L);
         verify(licenses).save(license);
     }
 

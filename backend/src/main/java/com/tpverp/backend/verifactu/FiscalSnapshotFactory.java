@@ -34,9 +34,6 @@ public class FiscalSnapshotFactory {
         snapshot.put("nifEmisor", SpanishTaxId.validate(issuerTaxId));
         snapshot.put("operacionFiscal", operation.name());
         snapshot.put("tipoFiscal", fiscalType.name());
-        if (isRectification(fiscalType)) {
-            snapshot.put("tipoRectificativa", "S");
-        }
         snapshot.put("proveedorId", id(document.getProveedorId()));
         snapshot.put("moneda", document.getMoneda());
         snapshot.put("descuentoGlobal", document.getDescuentoGlobal());
@@ -119,10 +116,4 @@ public class FiscalSnapshotFactory {
         return value == null ? null : value.toString();
     }
 
-    private static boolean isRectification(FiscalDocumentType type) {
-        return type == FiscalDocumentType.R1
-                || type == FiscalDocumentType.R2
-                || type == FiscalDocumentType.R3
-                || type == FiscalDocumentType.R4;
-    }
 }

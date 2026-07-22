@@ -1,0 +1,115 @@
+.rectification-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 3vw, 42px);
+  background: rgba(5, 23, 48, 0.62);
+}
+
+.rectification-dialog {
+  width: min(1120px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  color: #152c45;
+  background: #f4f7fa;
+  border: 1px solid #7890aa;
+  border-radius: 5px;
+  box-shadow: 0 24px 70px rgba(1, 17, 36, 0.38);
+}
+
+.rectification-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px 18px;
+  color: white;
+  background: #082b52;
+  border-bottom: 4px solid #d99a28;
+}
+
+.rectification-header span { color: #f2c76d; font-size: .78rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.rectification-header h2 { margin: 4px 0 3px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.45rem, 2.2vw, 2rem); }
+.rectification-header p { margin: 0; max-width: 760px; color: #d8e5f1; font-size: .92rem; }
+.rectification-header > button { align-self: start; width: 34px; height: 34px; border: 1px solid #7895b2; border-radius: 3px; color: white; background: #123c66; font-size: 1.45rem; }
+
+.rectification-context {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 11px 24px;
+  background: #e5ebf1;
+  border-bottom: 1px solid #b8c4d0;
+}
+
+.rectification-context > span:not(.rectification-method-badge):not(.rectification-fiscal-badge) { display: grid; gap: 1px; }
+.rectification-context small { color: #5d7084; font-size: .72rem; text-transform: uppercase; }
+.rectification-context strong { font-size: .95rem; }
+.rectification-method-badge, .rectification-fiscal-badge { padding: 5px 10px; border: 1px solid #8194a7; border-radius: 2px; background: #f9fbfc; font-size: .78rem; font-weight: 800; }
+.rectification-method-badge { margin-left: auto; color: #875600; border-color: #c99a3f; background: #fff4d9; }
+
+.rectification-body { min-height: 0; overflow: auto; padding: 20px 24px 24px; }
+.rectification-loading { padding: 48px; text-align: center; color: #526a81; }
+.rectification-error { margin: 0 0 16px; padding: 10px 12px; color: #941d26; background: #fff0f0; border: 1px solid #e3a4a8; border-left: 4px solid #b72d36; }
+
+.rectification-form-head { display: grid; grid-template-columns: minmax(260px, .7fr) minmax(420px, 1.3fr); gap: 18px; }
+.rectification-form-head label { display: grid; align-content: start; gap: 6px; font-size: .82rem; font-weight: 800; }
+.rectification-detail-field { position: relative; }
+.rectification-detail-field textarea { min-height: 76px; resize: vertical; padding: 10px 12px 20px; border: 1px solid #91a2b3; border-radius: 2px; background: white; color: #162d45; font: inherit; font-weight: 500; }
+.rectification-detail-field small { position: absolute; right: 8px; bottom: 5px; color: #637689; font-weight: 500; }
+
+.rectification-notice { margin: 15px 0; padding: 10px 12px; border-left: 4px solid; font-size: .84rem; }
+.rectification-notice.stock { border-color: #b36e19; background: #fff2dd; color: #70430d; }
+.rectification-notice.economic { border-color: #2d719e; background: #e8f3fa; color: #1b5275; }
+.rectification-section-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 8px; }
+.rectification-section-heading h3 { margin: 0; font-size: 1rem; }
+.rectification-section-heading span { color: #5c7185; font-size: .78rem; }
+
+.rectification-table-wrap { overflow: auto; border: 1px solid #a9b7c4; background: white; }
+.rectification-dialog table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.rectification-dialog th { padding: 8px 9px; color: white; background: #244a70; border-right: 1px solid #496986; text-align: left; white-space: nowrap; }
+.rectification-dialog td { padding: 8px 9px; border-right: 1px solid #d3dbe2; border-bottom: 1px solid #d3dbe2; vertical-align: middle; }
+.rectification-dialog td:first-child { min-width: 230px; }
+.rectification-dialog td strong, .rectification-dialog td span { display: block; }
+.rectification-dialog td span { margin-top: 2px; color: #607286; }
+.rectification-dialog input[type="number"] { width: 128px; padding: 7px 8px; border: 1px solid #8799aa; border-radius: 2px; text-align: right; font: inherit; }
+.rectification-dialog input:disabled { color: #43586c; background: #e8edf1; }
+
+.rectification-review > header { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.rectification-review h3 { margin: 0 0 4px; font-family: Georgia, "Times New Roman", serif; font-size: 1.3rem; }
+.rectification-review p { margin: 0; color: #5b7084; }
+.rectification-review > header > span { align-self: start; padding: 6px 10px; color: #764900; background: #fff0cc; border: 1px solid #c59535; font-weight: 800; }
+.rectification-totals { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); margin-bottom: 16px; border: 1px solid #9dadbc; background: white; }
+.rectification-totals span { display: grid; gap: 4px; padding: 13px 16px; border-right: 1px solid #c6d0d9; }
+.rectification-totals span:last-child { border-right: 0; }
+.rectification-totals small { color: #607387; font-size: .72rem; text-transform: uppercase; }
+.rectification-totals strong { font-size: 1.15rem; }
+.rectification-totals .total { color: white; background: #123f6a; }
+.rectification-totals .total small { color: #d4e2ed; }
+.rectification-reason-summary { margin-top: 15px; padding: 12px 14px; background: #e9eef3; border-left: 4px solid #d49a2e; }
+.rectification-reason-summary p { margin-top: 4px; color: #334b63; }
+.rectification-draft-id { display: block; margin-top: 12px; color: #66798c; font-family: Consolas, monospace; }
+
+.rectification-confirmed { min-height: 300px; display: grid; place-content: center; justify-items: center; gap: 9px; text-align: center; }
+.rectification-confirmed > span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; color: white; background: #26734f; font-size: 1.8rem; }
+.rectification-confirmed h3 { margin: 6px 0 0; font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; }
+.rectification-confirmed strong { color: #0d3e68; font-size: 1.1rem; }
+
+.rectification-footer { display: flex; justify-content: flex-end; gap: 9px; padding: 13px 24px; background: #e2e8ee; border-top: 1px solid #b5c1cc; }
+.rectification-footer button { min-height: 36px; padding: 8px 15px; border: 1px solid #8799aa; border-radius: 2px; color: #17334e; background: #f9fbfc; font-weight: 800; }
+.rectification-footer button.primary { color: white; background: #246fb1; border-color: #18588f; }
+.rectification-footer button.danger-confirm { background: #9d362f; border-color: #7e2722; }
+.rectification-footer button:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 760px) {
+  .rectification-overlay { padding: 0; }
+  .rectification-dialog { max-height: 100vh; height: 100vh; border: 0; border-radius: 0; }
+  .rectification-form-head { grid-template-columns: 1fr; }
+  .rectification-context { gap: 10px; flex-wrap: wrap; }
+  .rectification-method-badge { margin-left: 0; }
+  .rectification-totals { grid-template-columns: 1fr; }
+  .rectification-totals span { border-right: 0; border-bottom: 1px solid #c6d0d9; }
+}

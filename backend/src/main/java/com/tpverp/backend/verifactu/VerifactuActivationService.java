@@ -15,12 +15,20 @@ public class VerifactuActivationService {
 
     // Indicates whether the legal date requires VERI*FACTU for the taxpayer type.
     public boolean isLegallyRequired(TaxpayerType type, Instant now, ZoneId zoneId) {
+        return isAutomaticallyRequired(type, null, now, zoneId);
+    }
+
+    public boolean isAutomaticallyRequired(
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            Instant now,
+            ZoneId zoneId) {
         return !Objects.requireNonNull(now, "now").isBefore(
-                legalActivationAt(type, zoneId));
+                activationAt(type, licensedActivationDate, zoneId));
     }
 
     public Instant legalActivationInstant(TaxpayerType type, ZoneId zoneId) {
-        return legalActivationAt(type, zoneId);
+        return activationAt(type, null, zoneId);
     }
     // Expone el inicio legal efectivo para informar al administrador.
 
@@ -30,8 +38,18 @@ public class VerifactuActivationService {
             TaxpayerType type,
             Instant now,
             ZoneId zoneId) {
+        return isActive(configuration, type, null, now, zoneId);
+    }
+
+    public boolean isActive(
+            VerifactuConfiguration configuration,
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            Instant now,
+            ZoneId zoneId) {
         return Objects.requireNonNull(configuration, "configuration").isVoluntarilyActive()
-                || isLegallyRequired(type, now, zoneId);
+                || configuration.getFirstSubmissionAt() != null
+                || isAutomaticallyRequired(type, licensedActivationDate, now, zoneId);
     }
 
     // Records the first submission applying voluntary or legal activation.
@@ -40,10 +58,19 @@ public class VerifactuActivationService {
             TaxpayerType type,
             Instant submittedAt,
             ZoneId zoneId) {
-        var legalActivationAt = legalActivationAt(type, zoneId);
+        markFirstSubmission(configuration, type, null, submittedAt, zoneId);
+    }
+
+    public void markFirstSubmission(
+            VerifactuConfiguration configuration,
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            Instant submittedAt,
+            ZoneId zoneId) {
+        var automaticActivationAt = activationAt(type, licensedActivationDate, zoneId);
         Objects.requireNonNull(configuration, "configuration").markFirstSubmission(
                 submittedAt,
-                submittedAt.isBefore(legalActivationAt) ? null : legalActivationAt);
+                submittedAt.isBefore(automaticActivationAt) ? null : automaticActivationAt);
     }
 
     // Prevents rollback after the legal date or after the first submission.
@@ -52,14 +79,35 @@ public class VerifactuActivationService {
             TaxpayerType type,
             Instant now,
             ZoneId zoneId) {
-        if (isLegallyRequired(type, now, zoneId)) {
+        deactivateVoluntarily(configuration, type, null, now, zoneId);
+    }
+
+    public void deactivateVoluntarily(
+            VerifactuConfiguration configuration,
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            Instant now,
+            ZoneId zoneId) {
+        if (isAutomaticallyRequired(type, licensedActivationDate, now, zoneId)) {
             throw new IllegalStateException("message.verifactu.legal_activation_irreversible");
         }
         Objects.requireNonNull(configuration, "configuration").deactivateVoluntarily();
     }
 
-    private static Instant legalActivationAt(TaxpayerType type, ZoneId zoneId) {
-        var deadline = switch (Objects.requireNonNull(type, "type")) {
+    public Instant activationInstant(
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            ZoneId zoneId) {
+        return activationAt(type, licensedActivationDate, zoneId);
+    }
+
+    private static Instant activationAt(
+            TaxpayerType type,
+            LocalDate licensedActivationDate,
+            ZoneId zoneId) {
+        var deadline = licensedActivationDate != null
+                ? licensedActivationDate
+                : switch (Objects.requireNonNull(type, "type")) {
             case SOCIEDAD -> COMPANY_DEADLINE;
             case AUTONOMO -> SELF_EMPLOYED_DEADLINE;
         };

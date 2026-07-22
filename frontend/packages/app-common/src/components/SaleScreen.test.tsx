@@ -63,7 +63,7 @@ type CheckoutMockProps = {
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
-const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, triggerPending, checkoutHandle, checkoutProps } = vi.hoisted(() => ({
+const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, triggerPending, checkoutHandle, checkoutProps, verifactuIndicatorProps } = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   triggerCash: vi.fn(),
@@ -72,6 +72,9 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, trigge
   checkoutHandle: { attached: true },
   checkoutProps: {
     current: null as CheckoutMockProps | null,
+  },
+  verifactuIndicatorProps: {
+    current: null as { refreshSignal?: unknown } | null,
   }
 }));
 
@@ -93,6 +96,13 @@ vi.mock("./SalePaymentCheckout", async () => {
   };
 });
 
+vi.mock("./VerifactuPosIndicator", () => ({
+  VerifactuPosIndicator: (props: { refreshSignal?: unknown }) => {
+    verifactuIndicatorProps.current = props;
+    return <button type="button">VERI*FACTU</button>;
+  }
+}));
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -104,6 +114,7 @@ afterEach(() => {
   triggerPending.mockReset();
   checkoutHandle.attached = true;
   checkoutProps.current = null;
+  verifactuIndicatorProps.current = null;
   localStorage.clear();
   delete window.tpvDesktop;
 });
@@ -255,6 +266,33 @@ describe("SaleScreen", () => {
 
     await waitFor(() => expect(checkoutProps.current).not.toBeNull());
     expect(checkoutProps.current?.testCashEnabled).toBe(false);
+    expect(verifactuIndicatorProps.current).toBeNull();
+  });
+
+  it("shows VeriFactu only to sales operators and refreshes it after checkout finalization", async () => {
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+    expect(verifactuIndicatorProps.current?.refreshSignal).toBe(0);
+
+    act(() => checkoutProps.current?.onFinalized(
+      printSnapshot("VF-CARD"),
+      { kind: "CARD", totalCents: 1210 },
+    ));
+
+    expect(verifactuIndicatorProps.current?.refreshSignal).toBe(1);
+    cleanup();
+    verifactuIndicatorProps.current = null;
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, permissions: ["GESTION_PRODUCTO"] }}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />,
+    );
+    expect(verifactuIndicatorProps.current).toBeNull();
   });
 
   it("closes the application only after payment checkout is ready", async () => {

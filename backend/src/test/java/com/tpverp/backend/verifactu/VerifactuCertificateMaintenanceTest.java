@@ -50,7 +50,9 @@ class VerifactuCertificateMaintenanceTest {
 
         fixture.service.purgePrevious();
 
-        verify(fixture.secrets).delete("secret.dpapi");
+        verify(fixture.secretDeletions).enqueue(
+                previous.getCompanyId(), previous.getId(), "secret.dpapi",
+                VerifactuSecretDeletionReason.RETENTION_PURGE);
         assertThat(previous.getStatus()).isEqualTo(ManagedCertificateStatus.ELIMINADO);
         assertThat(previous.getFingerprint()).isEqualTo("A".repeat(64));
         verify(fixture.audit).recordSystem(
@@ -59,14 +61,14 @@ class VerifactuCertificateMaintenanceTest {
 
     private static Fixture fixture() {
         var certificates = mock(ManagedVerifactuCertificateRepository.class);
-        var secrets = mock(VerifactuCertificateSecretStore.class);
+        var secretDeletions = mock(VerifactuSecretDeletionService.class);
         var audit = mock(AuditService.class);
         var stores = mock(StoreRepository.class);
         when(stores.findByEmpresaId(any())).thenReturn(List.of(mock(Store.class)));
         return new Fixture(
-                certificates, secrets, audit,
+                certificates, secretDeletions, audit,
                 new VerifactuCertificateMaintenance(
-                        certificates, secrets, audit, stores,
+                        certificates, secretDeletions, audit, stores,
                         Clock.fixed(NOW, ZoneOffset.UTC)));
     }
 
@@ -79,7 +81,7 @@ class VerifactuCertificateMaintenanceTest {
 
     private record Fixture(
             ManagedVerifactuCertificateRepository certificates,
-            VerifactuCertificateSecretStore secrets,
+            VerifactuSecretDeletionService secretDeletions,
             AuditService audit,
             VerifactuCertificateMaintenance service) {
     }

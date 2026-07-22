@@ -20,25 +20,25 @@ public class VerifactuAdminController {
     }
 
     @GetMapping("/status")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN')")
     public VerifactuAdminStatusView status() {
         return service.status();
     }
 
     @GetMapping("/queue")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ'))")
     public List<FiscalSubmissionQueueItem> queue() {
         return service.queue();
     }
 
     @GetMapping("/clock")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ'))")
     public VerifactuClockStatusView clock() {
         return service.clock();
     }
 
     @GetMapping("/records/{recordId}/attempts")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('VERIFACTU_READ') and hasAuthority('VERIFACTU_MANAGE'))")
     public List<FiscalSubmissionAttemptView> attempts(@PathVariable UUID recordId) {
         return service.attempts(recordId);
     }
@@ -56,7 +56,7 @@ public class VerifactuAdminController {
     }
 
     @PostMapping("/retry-next")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('GESTION_VENTAS')")
+    @PreAuthorize("hasRole('ADMIN')")
     public VerifactuWorkerResult retryNext() {
         return service.retryNext();
     }

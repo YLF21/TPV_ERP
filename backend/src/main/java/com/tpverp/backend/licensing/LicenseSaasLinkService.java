@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -171,7 +172,7 @@ public class LicenseSaasLinkService {
                     || !license.getInstalacionId().equals(installation.getId())) {
                 throw new LicenseValidationException("Esta licencia ya fue importada");
             }
-            markSaasStatus(license, response, Instant.now(clock));
+            markSaasStatus(license, store, response, Instant.now(clock));
             licenses.save(license);
             updateDefaultTax(store.getId(), response.impuestos());
             return;
@@ -198,12 +199,29 @@ public class LicenseSaasLinkService {
                 ImportResult.ACEPTADA,
                 null,
                 true);
-        markSaasStatus(license, response, now);
+        markSaasStatus(license, store, response, now);
         licenses.save(license);
         updateDefaultTax(store.getId(), response.impuestos());
     }
 
-    private void markSaasStatus(License license, LicenseSaasLinkResponse response, Instant now) {
+    private void markSaasStatus(
+            License license,
+            Store store,
+            LicenseSaasLinkResponse response,
+            Instant now) {
+        LocalDate currentDate = license.getVerifactuActivationDate();
+        LocalDate receivedDate = Objects.requireNonNull(
+                response.verifactuActivationDate(), "verifactuActivationDate");
+        LocalDate today = now.atZone(java.time.ZoneId.of(store.getTimezone())).toLocalDate();
+        boolean wouldDeactivateReachedPolicy = currentDate != null
+                && !today.isBefore(currentDate)
+                && receivedDate.isAfter(currentDate);
+        if (!wouldDeactivateReachedPolicy) {
+            license.applyVerifactuPolicy(
+                    receivedDate,
+                    response.verifactuPolicyVersion(),
+                    Objects.requireNonNull(response.verifactuPolicyUpdatedAt(), "verifactuPolicyUpdatedAt"));
+        }
         if (response.status() == LicenseSaasStatus.VALIDA) {
             license.markSaasValidated(now, response.validUntil());
         } else {
@@ -218,6 +236,11 @@ public class LicenseSaasLinkService {
         Objects.requireNonNull(response.storeId(), "storeId");
         Objects.requireNonNull(response.validUntil(), "validUntil");
         Objects.requireNonNull(response.status(), "status");
+        Objects.requireNonNull(response.verifactuActivationDate(), "verifactuActivationDate");
+        Objects.requireNonNull(response.verifactuPolicyUpdatedAt(), "verifactuPolicyUpdatedAt");
+        if (response.verifactuPolicyVersion() < 0) {
+            throw new LicenseValidationException("La version de politica VERI*FACTU no es valida");
+        }
         if (response.maxWindows() < 1 || response.maxPda() < 0) {
             throw new LicenseValidationException("Los cupos de la licencia no son validos");
         }
@@ -243,6 +266,8 @@ public class LicenseSaasLinkService {
         metadata.put("source", "SAAS_LINK");
         metadata.put("saasCompanyId", response.companyId().toString());
         metadata.put("saasStoreId", response.storeId().toString());
+        metadata.put("verifactuActivationDate", response.verifactuActivationDate().toString());
+        metadata.put("verifactuPolicyVersion", response.verifactuPolicyVersion());
         return metadata;
     }
 
@@ -252,6 +277,8 @@ public class LicenseSaasLinkService {
                     + "|" + response.companyId()
                     + "|" + response.storeId()
                     + "|" + response.validUntil()
+                    + "|" + response.verifactuActivationDate()
+                    + "|" + response.verifactuPolicyVersion()
                     + "|" + response.installationToken();
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8)));

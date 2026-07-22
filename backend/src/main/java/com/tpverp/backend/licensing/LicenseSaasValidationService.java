@@ -6,6 +6,8 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.transaction.annotation.Transactional;
 
 public class LicenseSaasValidationService {
@@ -46,6 +48,12 @@ public class LicenseSaasValidationService {
                 license.getReferencia(),
                 license.getHash()));
         Instant now = Instant.now(clock);
+        if (canApplyVerifactuPolicy(license, store, response, now)) {
+            license.applyVerifactuPolicy(
+                    response.verifactuActivationDate(),
+                    response.verifactuPolicyVersion(),
+                    response.verifactuPolicyUpdatedAt());
+        }
         if (response.status() == LicenseSaasStatus.VALIDA) {
             license.markSaasValidated(now, response.validUntil());
         } else {
@@ -53,6 +61,24 @@ public class LicenseSaasValidationService {
         }
         licenses.save(license);
         return response;
+    }
+
+    private boolean canApplyVerifactuPolicy(
+            License license,
+            Store store,
+            LicenseSaasValidationResponse response,
+            Instant now) {
+        if (response.verifactuActivationDate() == null
+                || response.verifactuPolicyUpdatedAt() == null) {
+            return false;
+        }
+        LocalDate currentDate = license.getVerifactuActivationDate();
+        if (currentDate == null) {
+            return true;
+        }
+        LocalDate today = now.atZone(ZoneId.of(store.getTimezone())).toLocalDate();
+        return today.isBefore(currentDate)
+                || !response.verifactuActivationDate().isAfter(currentDate);
     }
 
     private Installation currentInstallation() {

@@ -55,7 +55,10 @@ export type Permission =
   | "INVOICES_PAY"
   | "PAYMENT_TERMINAL_VOID"
   | "PAYMENT_TERMINAL_REFUND"
-  | "PAYMENT_TERMINAL_SECRETS";
+  | "PAYMENT_TERMINAL_SECRETS"
+  | "VERIFACTU_READ"
+  | "VERIFACTU_CORRECT"
+  | "VERIFACTU_MANAGE";
 
 export type UserSession = {
   userId?: string;

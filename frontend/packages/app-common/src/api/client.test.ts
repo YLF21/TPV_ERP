@@ -17,8 +17,31 @@ describe("apiRequest", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/auth/login", expect.objectContaining({
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userName: "admin" })
     }));
+  });
+
+  it("sends FormData unchanged without forcing a multipart content type", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const body = new FormData();
+    body.append("password", "secret");
+    body.append("certificate", new Blob(["pkcs12"]), "certificate.p12");
+
+    await apiRequest("/verifactu/certificates", {
+      token: "access-token",
+      body
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/verifactu/certificates", {
+      method: "POST",
+      headers: { Authorization: "Bearer access-token" },
+      body
+    });
   });
 
   it("accepts a successful response with an empty body", async () => {

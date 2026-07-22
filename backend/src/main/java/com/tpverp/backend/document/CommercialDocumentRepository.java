@@ -152,8 +152,11 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             select coalesce(sum(abs(line.cantidad)), 0)
               from documento_linea line
               join documento document on document.id = line.documento_id
+              left join factura_rectificacion_venta rectification
+                on rectification.documento_id = document.id
              where line.original_document_line_id = :lineId
                and document.estado not in ('BORRADOR', 'ANULADO')
+               and (document.tipo = 'TICKET' or rectification.afecta_stock = true)
             """, nativeQuery = true)
     BigDecimal confirmedRefundedQuantity(@Param("lineId") UUID lineId);
 

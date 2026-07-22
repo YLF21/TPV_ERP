@@ -3,14 +3,24 @@ package com.tpverp.backend.verifactu;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 public interface VerifactuConfigurationRepository
         extends JpaRepository<VerifactuConfiguration, UUID> {
 
     Optional<VerifactuConfiguration> findByCompanyId(UUID companyId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select configuration from VerifactuConfiguration configuration
+            where configuration.companyId = :companyId
+            """)
+    Optional<VerifactuConfiguration> findForUpdateByCompanyId(
+            @Param("companyId") UUID companyId);
 
     @Modifying
     @Query(value = """

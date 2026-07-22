@@ -12,8 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
@@ -26,9 +28,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.core.Authentication;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class VerifactuCertificateManagementServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-06-23T10:00:00Z");
@@ -36,7 +41,10 @@ class VerifactuCertificateManagementServiceTest {
     @Mock ManagedVerifactuCertificateRepository certificates;
     @Mock VerifactuCertificateImporter importer;
     @Mock VerifactuCertificateSecretStore secrets;
+    @Mock VerifactuSecretDeletionService secretDeletions;
     @Mock CurrentOrganization organization;
+    @Mock CompanyRepository companies;
+    @Mock VerifactuCertificateDeletionPolicy deletionPolicy;
     @Mock AuditService audit;
     @Mock Authentication authentication;
 
@@ -48,11 +56,21 @@ class VerifactuCertificateManagementServiceTest {
         companyId = UUID.randomUUID();
         userId = UUID.randomUUID();
         var company = mock(Company.class);
+        var store = mock(Store.class);
         var user = mock(UserAccount.class);
         when(company.getId()).thenReturn(companyId);
+        when(store.getId()).thenReturn(UUID.randomUUID());
+        when(store.getEmpresa()).thenReturn(company);
+        when(store.getTimezone()).thenReturn("Atlantic/Canary");
         when(user.getId()).thenReturn(userId);
         when(organization.currentCompany()).thenReturn(company);
+        when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(authentication)).thenReturn(user);
+        when(companies.findForUpdate(companyId)).thenReturn(Optional.of(company));
+        when(deletionPolicy.evaluate()).thenReturn(
+                VerifactuCertificateDeletionDecision.allowed());
+        when(deletionPolicy.evaluateForUpdate()).thenReturn(
+                VerifactuCertificateDeletionDecision.allowed());
     }
 
     @Test
@@ -65,7 +83,8 @@ class VerifactuCertificateManagementServiceTest {
                 .thenReturn(Optional.empty());
         var password = "secreto".toCharArray();
 
-        var result = service().importCertificate(new byte[] {9}, password, authentication);
+        var result = service().importCertificate(
+                new byte[] {9}, password, null, null, authentication);
 
         assertThat(result.status()).isEqualTo(ManagedCertificateStatus.ACTIVO);
         assertThat(password).containsOnly('\0');
@@ -83,10 +102,16 @@ class VerifactuCertificateManagementServiceTest {
         when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ANTERIOR))
                 .thenReturn(Optional.of(previous));
 
-        service().importCertificate(new byte[] {9}, "secreto".toCharArray(), authentication);
+        service().importCertificate(
+                new byte[] {9}, "secreto".toCharArray(), active.getId(),
+                "SUSTITUIR CERTIFICADO", authentication);
 
         assertThat(active.getStatus()).isEqualTo(ManagedCertificateStatus.ANTERIOR);
         assertThat(previous.getStatus()).isEqualTo(ManagedCertificateStatus.ELIMINADO);
+        verify(secretDeletions).enqueue(
+                companyId, previous.getId(), "previous/key.dpapi",
+                VerifactuSecretDeletionReason.PREVIOUS_REPLACED);
+        verify(secrets, never()).delete(any());
         verify(audit).record(eq("VERIFACTU_CERTIFICATE_REPLACED"), eq(EXITO), any());
     }
 
@@ -100,10 +125,13 @@ class VerifactuCertificateManagementServiceTest {
         doThrow(new IllegalStateException("database")).when(certificates).save(any());
 
         assertThatThrownBy(() -> service().importCertificate(
-                new byte[] {9}, "secreto".toCharArray(), authentication))
+                new byte[] {9}, "secreto".toCharArray(), null, null, authentication))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(secrets).delete("company/cert/private-key.dpapi");
+        verify(secretDeletions).enqueueAfterRollback(
+                companyId, "company/cert/private-key.dpapi",
+                VerifactuSecretDeletionReason.IMPORT_ROLLBACK);
+        verify(secrets, never()).delete(any());
         verify(audit, never()).record(any(), any(), any());
     }
 
@@ -118,13 +146,95 @@ class VerifactuCertificateManagementServiceTest {
 
         assertThat(active.getStatus()).isEqualTo(ManagedCertificateStatus.ELIMINADO);
         assertThat(active.getSecretPath()).isNull();
-        verify(secrets).delete("active/key.dpapi");
+        verify(secretDeletions).enqueue(
+                companyId, active.getId(), "active/key.dpapi",
+                VerifactuSecretDeletionReason.ACTIVE_DELETED);
+        verify(secrets, never()).delete(any());
         verify(audit).record(eq("VERIFACTU_CERTIFICATE_DELETED"), eq(EXITO), any());
+    }
+
+    @Test
+    void replacementRequiresExactConfirmationAndCurrentActiveId() {
+        stubImport();
+        var active = certificate(ManagedCertificateStatus.ACTIVO, "active/key.dpapi");
+        when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ACTIVO))
+                .thenReturn(Optional.of(active));
+
+        assertThatThrownBy(() -> service().importCertificate(
+                new byte[] {9}, "secreto".toCharArray(), active.getId(), null, authentication))
+                .isInstanceOf(VerifactuCertificateApiException.class)
+                .extracting(value -> ((VerifactuCertificateApiException) value).code())
+                .isEqualTo("VERIFACTU_CERTIFICATE_REPLACEMENT_CONFIRMATION_REQUIRED");
+
+        assertThatThrownBy(() -> service().importCertificate(
+                new byte[] {9}, "secreto".toCharArray(), UUID.randomUUID(),
+                "SUSTITUIR CERTIFICADO", authentication))
+                .isInstanceOf(VerifactuCertificateApiException.class)
+                .extracting(value -> ((VerifactuCertificateApiException) value).code())
+                .isEqualTo("VERIFACTU_ACTIVE_CERTIFICATE_CHANGED");
+        verify(secrets, never()).write(any(), any(), any());
+    }
+
+    @Test
+    void deleteIsBlockedByBackendPolicy() {
+        var active = certificate(ManagedCertificateStatus.ACTIVO, "active/key.dpapi");
+        when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ACTIVO))
+                .thenReturn(Optional.of(active));
+        when(deletionPolicy.evaluateForUpdate()).thenReturn(
+                VerifactuCertificateDeletionDecision.blocked(
+                        VerifactuCertificateDeletionPolicy.VERIFACTU_ACTIVE));
+
+        assertThatThrownBy(() -> service().deleteActive(
+                "ELIMINAR CERTIFICADO", authentication))
+                .isInstanceOf(VerifactuCertificateApiException.class)
+                .satisfies(value -> {
+                    var exception = (VerifactuCertificateApiException) value;
+                    assertThat(exception.code()).isEqualTo(
+                            "VERIFACTU_CERTIFICATE_DELETE_BLOCKED");
+                    assertThat(exception.properties()).containsEntry(
+                            "deleteBlockReason", VerifactuCertificateDeletionPolicy.VERIFACTU_ACTIVE);
+                });
+        verify(secrets, never()).delete(any());
+    }
+
+    @Test
+    void previousCertificateIsNeverReportedAsDeletable() {
+        var active = certificate(ManagedCertificateStatus.ACTIVO, "active/key.dpapi");
+        var previous = certificate(ManagedCertificateStatus.ANTERIOR, "previous/key.dpapi");
+        when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ACTIVO))
+                .thenReturn(Optional.of(active));
+        when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ANTERIOR))
+                .thenReturn(Optional.of(previous));
+
+        var result = service().list();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.getFirst().canDelete()).isTrue();
+        assertThat(result.get(1).canDelete()).isFalse();
+        assertThat(result.get(1).deleteBlockReason()).isEqualTo(
+                VerifactuCertificateDeletionPolicy.NOT_ACTIVE_CERTIFICATE);
+    }
+
+    @Test
+    void invalidPkcs12UsesStableApiCodeAndDoesNotTouchActiveCertificate() {
+        when(organization.currentCompany().getTaxId()).thenReturn("B12345674");
+        when(importer.importPkcs12(any(), any(), eq("B12345674")))
+                .thenThrow(new IllegalArgumentException(
+                        "No se pudo cargar el certificado PKCS#12"));
+
+        assertThatThrownBy(() -> service().importCertificate(
+                new byte[] {9}, "incorrecta".toCharArray(), null, null, authentication))
+                .isInstanceOf(VerifactuCertificateApiException.class)
+                .extracting(value -> ((VerifactuCertificateApiException) value).code())
+                .isEqualTo("VERIFACTU_CERTIFICATE_INVALID");
+        verify(certificates, never()).save(any());
+        verify(secrets, never()).write(any(), any(), any());
     }
 
     private VerifactuCertificateManagementService service() {
         return new VerifactuCertificateManagementService(
-                certificates, importer, secrets, organization, audit,
+                certificates, importer, secrets, secretDeletions,
+                organization, companies, deletionPolicy, audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

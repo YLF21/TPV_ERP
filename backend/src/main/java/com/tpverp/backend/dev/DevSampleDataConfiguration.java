@@ -1,6 +1,7 @@
 package com.tpverp.backend.dev;
 
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -17,6 +18,7 @@ public class DevSampleDataConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "tpv.dev.sample-data", name = "enabled", havingValue = "true")
     ApplicationRunner devSampleDataRunner(DevSampleDataSeeder seeder) {
         return args -> seeder.seed();
     }

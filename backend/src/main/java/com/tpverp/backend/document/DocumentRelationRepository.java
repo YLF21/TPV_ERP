@@ -13,6 +13,9 @@ public interface DocumentRelationRepository
 
     boolean existsByDocumento_IdAndTipo(UUID documentId, DocumentRelationType type);
 
+    boolean existsByDocumento_IdAndOrigen_IdAndTipo(
+            UUID documentId, UUID originId, DocumentRelationType type);
+
     @Query("""
             select relation.origen.id from DocumentRelation relation
             where relation.documento.tiendaId = :storeId

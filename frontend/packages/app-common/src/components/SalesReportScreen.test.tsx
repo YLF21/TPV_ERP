@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
+  canConfirmSalesInvoiceRectification,
+  canManageSalesInvoiceRectification,
   canOpenOperationalTimeline,
   isPurchaseDocumentReport,
   isWarehouseDocumentReport,
@@ -292,6 +294,36 @@ describe("SalesReportScreen", () => {
     expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "GESTION_CUENTAS"] }, "salesReport.inputInvoices", row)).toBe(true);
     expect(canOpenOperationalTimeline("gestion", { permissions: ["APP_GESTION_ACCESS", "GESTION_PRODUCTO"] }, "salesReport.tickets", row)).toBe(false);
     expect(canOpenOperationalTimeline("gestion", { permissions: ["GESTION_VENTAS"] }, "salesReport.tickets", row)).toBe(false);
+  });
+
+  it("only manages sales rectifications in APP GESTION with the required state and permission", () => {
+    const invoice = {
+      __documentId: "invoice-1",
+      __documentType: "FACTURA_VENTA",
+      __documentStatus: "PAGADO"
+    };
+    const draft = {
+      __documentId: "rectification-1",
+      __documentType: "RECTIFICATIVA_VENTA",
+      __documentStatus: "BORRADOR"
+    };
+    const management = { permissions: ["APP_GESTION_ACCESS", "INVOICES_WRITE"] as UserSession["permissions"] };
+
+    expect(canManageSalesInvoiceRectification("gestion", management, "salesReport.invoices", invoice)).toBe(true);
+    expect(canManageSalesInvoiceRectification("gestion", management, "salesReport.invoices", draft)).toBe(true);
+    expect(canManageSalesInvoiceRectification("venta", management, "salesReport.invoices", invoice)).toBe(false);
+    expect(canManageSalesInvoiceRectification("gestion", { permissions: ["INVOICES_WRITE"] }, "salesReport.invoices", invoice)).toBe(false);
+    expect(canManageSalesInvoiceRectification("gestion", management, "salesReport.invoices", {
+      ...invoice,
+      __documentStatus: "BORRADOR"
+    })).toBe(false);
+    expect(canManageSalesInvoiceRectification("gestion", management, "salesReport.invoices", {
+      ...draft,
+      __documentStatus: "CONFIRMADO"
+    })).toBe(false);
+    expect(canManageSalesInvoiceRectification("gestion", management, "salesReport.inputInvoices", invoice)).toBe(false);
+    expect(canConfirmSalesInvoiceRectification({ permissions: ["APP_GESTION_ACCESS", "INVOICES_WRITE"] })).toBe(false);
+    expect(canConfirmSalesInvoiceRectification({ permissions: ["APP_GESTION_ACCESS", "INVOICES_CONFIRM"] })).toBe(true);
   });
 
   it("renders the formal report layout chrome", () => {

@@ -7,7 +7,7 @@ spring:
     fallback-to-system-locale: false
   servlet:
     multipart:
-      max-file-size: 5MB
+      max-file-size: 10MB
       max-request-size: 110MB
   profiles:
     default: dev
@@ -58,9 +58,12 @@ tpv:
   verifactu:
     endpoint-mode: ${TPV_VERIFACTU_ENDPOINT_MODE:TEST}
     secret-directory: ${TPV_VERIFACTU_SECRET_DIRECTORY:${user.home}/.tpv-erp/verifactu-secrets}
+    secret-acl-mode: ${TPV_VERIFACTU_SECRET_ACL_MODE:PORTABLE}
+    secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'
     system-name: ${TPV_VERIFACTU_SYSTEM_NAME:TPV ERP}
     system-id: ${TPV_VERIFACTU_SYSTEM_ID:01}
     worker-enabled: ${TPV_VERIFACTU_WORKER_ENABLED:true}
     worker-delay-ms: ${TPV_VERIFACTU_WORKER_DELAY_MS:3600000}
     certificate-warning-cron: ${TPV_VERIFACTU_CERTIFICATE_WARNING_CRON:0 0 9 * * *}
     certificate-purge-cron: ${TPV_VERIFACTU_CERTIFICATE_PURGE_CRON:0 0 3 1 * *}
+    secret-deletion-delay-ms: ${TPV_VERIFACTU_SECRET_DELETION_DELAY_MS:60000}

@@ -19,19 +19,19 @@ public class VerifactuCertificateMaintenance {
     private static final Duration RETENTION = Duration.ofDays(365);
 
     private final ManagedVerifactuCertificateRepository certificates;
-    private final VerifactuCertificateSecretStore secrets;
+    private final VerifactuSecretDeletionService secretDeletions;
     private final AuditService audit;
     private final StoreRepository stores;
     private final Clock clock;
 
     public VerifactuCertificateMaintenance(
             ManagedVerifactuCertificateRepository certificates,
-            VerifactuCertificateSecretStore secrets,
+            VerifactuSecretDeletionService secretDeletions,
             AuditService audit,
             StoreRepository stores,
             Clock clock) {
         this.certificates = certificates;
-        this.secrets = secrets;
+        this.secretDeletions = secretDeletions;
         this.audit = audit;
         this.stores = stores;
         this.clock = clock;
@@ -66,7 +66,9 @@ public class VerifactuCertificateMaintenance {
         var now = Instant.now(clock);
         for (var certificate : certificates.findAllByStatusAndReplacedAtBefore(
                 ManagedCertificateStatus.ANTERIOR, now.minus(RETENTION))) {
-            secrets.delete(certificate.getSecretPath());
+            secretDeletions.enqueue(
+                    certificate.getCompanyId(), certificate.getId(), certificate.getSecretPath(),
+                    VerifactuSecretDeletionReason.RETENTION_PURGE);
             certificate.removeSecret(now);
             certificates.save(certificate);
             audit.recordSystem(

@@ -17,3 +17,7 @@ logging:
   level:
     com.tpverp.backend: DEBUG
 
+tpv:
+  dev:
+    sample-data:
+      enabled: ${TPV_DEV_SAMPLE_DATA_ENABLED:false}

@@ -133,7 +133,7 @@ public class VerifactuAdminService {
 
     @Transactional
     public VerifactuConfiguration activateVoluntary() {
-        var configuration = currentConfiguration();
+        var configuration = currentConfigurationForUpdate();
         configuration.activateVoluntarily(Instant.now(requiredClock()));
         return configurations.save(configuration);
     }
@@ -141,11 +141,13 @@ public class VerifactuAdminService {
 
     @Transactional
     public VerifactuConfiguration deactivateVoluntary() {
-        var configuration = currentConfiguration();
+        var configuration = currentConfigurationForUpdate();
         var store = requiredOrganization().currentStore();
+        var license = activeLicense();
         activation.deactivateVoluntarily(
                 configuration,
-                activeLicense().getTaxpayerType(),
+                license.getTaxpayerType(),
+                license.getVerifactuActivationDate(),
                 Instant.now(requiredClock()),
                 ZoneId.of(store.getTimezone()));
         return configurations.save(configuration);
@@ -182,10 +184,23 @@ public class VerifactuAdminService {
                     true, "VOLUNTARY", configuration.getActivatedAt(),
                     configuration.getFirstSubmissionAt());
         }
-        if (activation.isLegallyRequired(license.getTaxpayerType(), now, zone)) {
+        if (configuration.getFirstSubmissionAt() != null) {
             return new VerifactuActivationStatus(
-                    true, "LEGAL",
-                    activation.legalActivationInstant(license.getTaxpayerType(), zone),
+                    true, "LOCKED", configuration.getActivatedAt(),
+                    configuration.getFirstSubmissionAt());
+        }
+        if (activation.isAutomaticallyRequired(
+                license.getTaxpayerType(),
+                license.getVerifactuActivationDate(),
+                now,
+                zone)) {
+            return new VerifactuActivationStatus(
+                    true,
+                    license.getVerifactuActivationDate() == null ? "LEGAL_FALLBACK" : "LICENSE_POLICY",
+                    activation.activationInstant(
+                            license.getTaxpayerType(),
+                            license.getVerifactuActivationDate(),
+                            zone),
                     configuration.getFirstSubmissionAt());
         }
         return new VerifactuActivationStatus(
@@ -198,6 +213,14 @@ public class VerifactuAdminService {
         return configurations.findByCompanyId(companyId)
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la configuracion VERI*FACTU"));
+    }
+
+    private VerifactuConfiguration currentConfigurationForUpdate() {
+        var companyId = requiredOrganization().currentCompany().getId();
+        configurations.insertIfMissing(UUID.randomUUID(), companyId);
+        return configurations.findForUpdateByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No se pudo bloquear la configuracion VERI*FACTU"));
     }
 
     private License activeLicense() {

@@ -39,9 +39,10 @@ type Props = {
   locale: LocaleCode;
   terminalContext: TerminalContext;
   onClose: () => void;
+  onFiscalMutation?: () => void;
 };
 
-export function TicketManagementDialog({ token, locale, terminalContext, onClose }: Props) {
+export function TicketManagementDialog({ token, locale, terminalContext, onClose, onFiscalMutation }: Props) {
   const t = createTranslator(locale);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [query, setQuery] = useState("");
@@ -141,13 +142,14 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
     setMessage("");
   }, [selectedId]);
 
-  async function execute(action: () => Promise<unknown>, success: string) {
+  async function execute(action: () => Promise<unknown>, success: string, fiscalMutation = false) {
     if (busy) return;
     setBusy(true);
     setError("");
     setMessage("");
     try {
       await action();
+      if (fiscalMutation) onFiscalMutation?.();
       setMessage(success);
       await load(selectedId);
     } catch (reason) {
@@ -249,6 +251,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
         }
       });
       globalThis.localStorage?.removeItem(attemptKey);
+      onFiscalMutation?.();
       const printOutcome = await printConfirmedTicketAutomatically(result.receipt, terminalContext);
       if (printOutcome.status === "FAILED") {
         setError(printOutcome.technicalMessage ?? t("ticketManagement.error.print"));
@@ -327,7 +330,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                   <p>{t("ticketManagement.cancel.hint")}</p>
                   <div className="ticket-action-row">
                     <input aria-label={t("ticketManagement.cancel.reasonAria")} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder={t("ticketManagement.cancel.reasonPlaceholder")}/>
-                    <button type="button" className="danger" disabled={busy || selected.estado !== "CONFIRMADO" || !cancelReason.trim()} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/cancel`, { token, method: "POST", body: { reason: cancelReason } }), t("ticketManagement.cancel.success"))}>{t("ticketManagement.cancel.action")}</button>
+                    <button type="button" className="danger" disabled={busy || selected.estado !== "CONFIRMADO" || !cancelReason.trim()} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/cancel`, { token, method: "POST", body: { reason: cancelReason } }), t("ticketManagement.cancel.success"), true)}>{t("ticketManagement.cancel.action")}</button>
                   </div>
                 </fieldset>
                 <fieldset className="ticket-action-card">
@@ -337,7 +340,7 @@ export function TicketManagementDialog({ token, locale, terminalContext, onClose
                     : t("ticketManagement.invoice.noCustomer")}</p>
                   <div className="ticket-action-row">
                     <select aria-label={t("ticketManagement.invoice.customerAria")} value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}><option value="">{t("ticketManagement.invoice.selectCustomer")}</option>{customers.map((customer) => <option value={customer.id} key={customer.id}>{customer.fiscalName ?? customer.clientId ?? customer.id}</option>)}</select>
-                    <button type="button" className="primary" disabled={busy || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"))}>{t("ticketManagement.invoice.action")}</button>
+                    <button type="button" className="primary" disabled={busy || selected.estado !== "CONFIRMADO" || !invoiceCustomerId} onClick={() => void execute(() => apiRequest(`/tickets/${encodeURIComponent(selected.id)}/invoice`, { token, method: "POST", body: { customerId: invoiceCustomerId } }), t("ticketManagement.invoice.success"), true)}>{t("ticketManagement.invoice.action")}</button>
                   </div>
                 </fieldset>
                 <fieldset className="ticket-action-card">

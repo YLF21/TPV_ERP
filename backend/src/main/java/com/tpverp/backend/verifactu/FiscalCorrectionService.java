@@ -15,7 +15,6 @@ public class FiscalCorrectionService {
 
     private static final EnumSet<FiscalSubmissionStatus> CORRECTABLE = EnumSet.of(
             FiscalSubmissionStatus.RECHAZADO,
-            FiscalSubmissionStatus.DEFECTUOSO,
             FiscalSubmissionStatus.ACEPTADO_CON_ERRORES);
 
     private final FiscalRecordRepository records;
@@ -25,6 +24,7 @@ public class FiscalCorrectionService {
     private final CurrentOrganization organization;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final VerifactuDefectClassifier defects;
 
     public FiscalCorrectionService(
             FiscalRecordRepository records,
@@ -33,7 +33,8 @@ public class FiscalCorrectionService {
             FiscalCorrectionSnapshot snapshots,
             CurrentOrganization organization,
             ApplicationEventPublisher events,
-            Clock clock) {
+            Clock clock,
+            VerifactuDefectClassifier defects) {
         this.records = records;
         this.states = states;
         this.fiscalRecords = fiscalRecords;
@@ -41,6 +42,7 @@ public class FiscalCorrectionService {
         this.organization = organization;
         this.events = events;
         this.clock = clock;
+        this.defects = defects;
     }
 
     // Creates an isolated correction per tenant and schedules submission after transaction commit.
@@ -56,7 +58,7 @@ public class FiscalCorrectionService {
         var state = states.findForUpdate(recordId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "estado de envio fiscal no encontrado"));
-        if (!CORRECTABLE.contains(state.getStatus())) {
+        if (original.getOperation() != FiscalRecordOperation.ALTA || !correctable(state)) {
             throw new IllegalStateException("El registro fiscal no admite subsanacion");
         }
         var correctedAt = Instant.now(clock);
@@ -67,5 +69,12 @@ public class FiscalCorrectionService {
         var correction = fiscalRecords.registerCorrection(original, snapshot);
         events.publishEvent(new FiscalRecordQueuedEvent(correction.getId()));
         return FiscalCorrectionView.pending(correction, original.getId());
+    }
+
+    private boolean correctable(FiscalSubmissionState state) {
+        return CORRECTABLE.contains(state.getStatus())
+                || state.getStatus() == FiscalSubmissionStatus.DEFECTUOSO
+                && defects.classify(state.getLastErrorCode())
+                == VerifactuDefectKind.ADMINISTRATIVE_CORRECTABLE;
     }
 }

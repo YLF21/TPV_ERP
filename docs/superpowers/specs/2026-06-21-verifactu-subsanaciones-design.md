@@ -9,11 +9,23 @@ la factura.
 ## Registros Admitidos
 
 Solo podran subsanarse registros de alta cuyo estado sea `RECHAZADO`,
-`DEFECTUOSO` o `ACEPTADO_CON_ERRORES`. No se admitira una subsanacion de un
+`ACEPTADO_CON_ERRORES` o `DEFECTUOSO` expresamente clasificado por el backend
+como error administrativo corregible. No se admitira una subsanacion de un
 registro de anulacion ni de un registro ya subsanado correctamente.
 
-Podran ejecutar la operacion `ADMIN` y los usuarios con el permiso
-`GESTION_VENTAS`.
+Los defectos tecnicos o desconocidos no se subsanaran. En la implementacion
+actual, `INVALID_AEAT_RESPONSE` admite reintento manual, mientras que
+`INVALID_XSD` y cualquier codigo no clasificado requieren revision tecnica.
+No existe todavia ningun codigo `DEFECTUOSO` administrativo habilitado.
+
+Un registro `ACEPTADO` no se subsanara mediante este flujo. Si posteriormente
+se detecta un error en la factura, se emitira la factura rectificativa que
+corresponda desde el modulo comercial. `ACEPTADO_CON_ERRORES` solo se
+subsanara cuando la factura sea correcta y el error afecte al registro fiscal
+transmitido.
+
+Podran ejecutar la operacion `ADMIN` y los usuarios con acceso a APP GESTION y
+el permiso `VERIFACTU_CORRECT`.
 
 ## Datos Corregibles
 
@@ -48,7 +60,8 @@ La subsanacion creara un nuevo `RegistroAlta` inmutable con:
 
 - `Subsanacion=S`.
 - `RechazoPrevio=S` cuando el estado anterior sea `RECHAZADO` por AEAT.
-- `RechazoPrevio=N` para `DEFECTUOSO` o `ACEPTADO_CON_ERRORES`.
+- `RechazoPrevio=N` para un `DEFECTUOSO` administrativo expresamente
+  clasificado o `ACEPTADO_CON_ERRORES`.
 - La misma identidad de factura: NIF emisor, numero y fecha.
 - Una copia fiscal completa con las correcciones administrativas autorizadas.
 - Un nuevo numero de secuencia, huella y referencia al registro anterior de la

@@ -155,10 +155,11 @@ class PostgreSqlMigrationTest {
                             'configuracion_verifactu',
                             'cadena_fiscal', 'registro_fiscal',
                             'registro_fiscal_relacion', 'estado_envio_fiscal',
-                            'intento_envio_fiscal', 'certificado_verifactu')
+                            'intento_envio_fiscal', 'certificado_verifactu',
+                            'verifactu_secret_deletion_job')
                         """.formatted(schema))) {
                 assertThat(result.next()).isTrue();
-                assertThat(result.getInt(1)).isEqualTo(58);
+                assertThat(result.getInt(1)).isEqualTo(59);
             }
 
             try (Connection connection = DriverManager.getConnection(url, user, password);

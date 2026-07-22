@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class ControlAlertsMigrationContractTest {
 
-    private static final String MIGRATION = "db/migration/V78__alertas_control.sql";
+    private static final String MIGRATION = "db/migration/V75__alertas_control.sql";
 
     @Test
     void createsPermissionsVersionedRulesImmutableEventsAndAlertHistory() throws IOException {

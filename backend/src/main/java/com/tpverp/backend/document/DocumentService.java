@@ -303,6 +303,7 @@ public class DocumentService {
         var document = find(id);
         requireDocumentWritePermission(
                 document.getTipo(), authentication, confirmPermission(document.getTipo()));
+        var rectification = fiscalIntegration.validateBeforeConfirmation(document);
         var userId = organization.currentUser(authentication).getId();
         validateConfirmation(document);
         // A persisted line discount may come from member pricing. Only the global discount
@@ -330,6 +331,12 @@ public class DocumentService {
         var saved = documents.save(document);
         operationalEvents.record(saved, DocumentOperationalEventType.CONFIRMADO,
                 userId, terminalId, confirmedAt);
+        if (rectification != null) {
+            var original = find(rectification.getOriginalDocumentId());
+            operationalEvents.record(original, DocumentOperationalEventType.RECTIFICADO,
+                    userId, terminalId, confirmedAt,
+                    Map.of("documentoRelacionadoId", saved.getId().toString()));
+        }
         generatePromotionalCoupons(saved, promotionContext);
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
@@ -564,7 +571,7 @@ public class DocumentService {
         operationalEvents.record(original, DocumentOperationalEventType.RECTIFICADO,
                 organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
                 Map.of("documentoRelacionadoId", saved.getId().toString()));
-        fiscalIntegration.registerAlta(saved, false);
+        fiscalIntegration.registerTicketRectification(saved, original);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
     }
@@ -605,8 +612,17 @@ public class DocumentService {
     }
 
     private void requireRefundableDocument(CommercialDocument original) {
+        if (original.getTipo() != CommercialDocumentType.TICKET) {
+            throw new IllegalStateException(
+                    "Las facturas deben corregirse mediante factura rectificativa");
+        }
         if (original.getEstado() == DocumentStatus.BORRADOR || original.getEstado() == DocumentStatus.ANULADO) {
             throw new IllegalStateException("El documento original no admite devolucion");
+        }
+        if (relations.existsByOrigen_IdAndTipo(
+                original.getId(), DocumentRelationType.FACTURA_DE)) {
+            throw new IllegalStateException(
+                    "El ticket facturado debe corregirse mediante factura rectificativa");
         }
     }
 
@@ -1099,6 +1115,10 @@ public class DocumentService {
     public CommercialDocument createInvoice(
             DocumentCommand command, Authentication authentication) {
         requireType(command, INVOICES);
+        if (command.tipo() == CommercialDocumentType.RECTIFICATIVA_VENTA) {
+            throw new IllegalArgumentException(
+                    "Use el flujo especifico de factura rectificativa de venta");
+        }
         requireDocumentWritePermission(
                 command.tipo(), authentication, CorePermissionBootstrap.INVOICES_WRITE);
         var draft = createDraft(command, authentication);
@@ -1225,6 +1245,10 @@ public class DocumentService {
             DocumentRelationType type,
             Authentication authentication) {
         Objects.requireNonNull(type, "tipoRelacion");
+        if (type == DocumentRelationType.RECTIFICA) {
+            throw new IllegalArgumentException(
+                    "La relacion RECTIFICA solo puede crearla el flujo rectificativo especifico");
+        }
         var locked = lockRelationDocuments(invoiceId, originId);
         var invoice = locked.invoice();
         if (!INVOICES.contains(invoice.getTipo())) {

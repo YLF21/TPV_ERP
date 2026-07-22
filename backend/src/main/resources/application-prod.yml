@@ -18,3 +18,8 @@ logging:
     root: INFO
     com.tpverp.backend: INFO
 
+tpv:
+  verifactu:
+    secret-directory: '${TPV_VERIFACTU_SECRET_DIRECTORY:C:\ProgramData\TPV ERP\secrets\verifactu}'
+    secret-acl-mode: ${TPV_VERIFACTU_SECRET_ACL_MODE:STRICT}
+    secret-service-account: '${TPV_VERIFACTU_SERVICE_ACCOUNT:NT SERVICE\TPVERPBackend}'

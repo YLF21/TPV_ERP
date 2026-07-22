@@ -1,7 +1,9 @@
 package com.tpverp.backend.verifactu;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -49,7 +51,8 @@ class FiscalSubmissionQueueServiceTest {
         lenient().when(organization.currentCompany()).thenReturn(company);
         lenient().when(organization.currentStore()).thenReturn(store);
         queue = new FiscalSubmissionQueueService(
-                states, records, organization, Clock.fixed(NOW, ZoneOffset.UTC));
+                states, records, organization, Clock.fixed(NOW, ZoneOffset.UTC),
+                new VerifactuDefectClassifier());
     }
 
     @Test
@@ -89,8 +92,7 @@ class FiscalSubmissionQueueServiceTest {
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
                 FiscalSubmissionStatus.ENVIANDO,
-                FiscalSubmissionStatus.ENVIADO,
-                FiscalSubmissionStatus.RECHAZADO)))
+                FiscalSubmissionStatus.ENVIADO)))
                 .thenReturn(List.of(pending));
         when(records.findById(pending.getRecordId()))
                 .thenReturn(Optional.of(record(pending.getRecordId(), store.getId(), 1)));
@@ -113,8 +115,7 @@ class FiscalSubmissionQueueServiceTest {
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
                 FiscalSubmissionStatus.ENVIANDO,
-                FiscalSubmissionStatus.ENVIADO,
-                FiscalSubmissionStatus.RECHAZADO)))
+                FiscalSubmissionStatus.ENVIADO)))
                 .thenReturn(List.of(pending));
         when(records.findById(pending.getRecordId()))
                 .thenReturn(Optional.of(record(pending.getRecordId(), otherStoreId, 1)));
@@ -130,8 +131,7 @@ class FiscalSubmissionQueueServiceTest {
         when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
                 FiscalSubmissionStatus.PENDIENTE,
                 FiscalSubmissionStatus.ENVIANDO,
-                FiscalSubmissionStatus.ENVIADO,
-                FiscalSubmissionStatus.RECHAZADO)))
+                FiscalSubmissionStatus.ENVIADO)))
                 .thenReturn(List.of());
 
         assertThat(queue.claimNext()).isEmpty();
@@ -175,6 +175,93 @@ class FiscalSubmissionQueueServiceTest {
         when(states.save(sending)).thenReturn(sending);
 
         assertThat(queue.claimNext()).isPresent();
+    }
+
+    @Test
+    void rejectedRecordsRemainVisibleButAreNeverRetriedAutomatically() {
+        when(states.findAllByStatusInOrderByUpdatedAtAsc(List.of(
+                FiscalSubmissionStatus.PENDIENTE,
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO)))
+                .thenReturn(List.of());
+
+        assertThat(queue.claimNext()).isEmpty();
+
+        verify(states).findAllByStatusInOrderByUpdatedAtAsc(List.of(
+                FiscalSubmissionStatus.PENDIENTE,
+                FiscalSubmissionStatus.ENVIANDO,
+                FiscalSubmissionStatus.ENVIADO));
+    }
+
+    @Test
+    void manualRetryIsScopedVersionedAndMarksTheRecordSending() {
+        var sent = state(FiscalSubmissionStatus.ENVIADO);
+        var record = record(sent.getRecordId(), store.getId(), 1);
+        when(records.findByIdAndCompanyIdAndStoreId(
+                sent.getRecordId(), company.getId(), store.getId()))
+                .thenReturn(Optional.of(record));
+        when(states.findForUpdate(sent.getRecordId())).thenReturn(Optional.of(sent));
+        when(states.save(sent)).thenReturn(sent);
+
+        var claimed = queue.claimForManualRetry(sent.getRecordId(), 0);
+
+        assertThat(claimed.record()).isSameAs(record);
+        assertThat(claimed.state().getStatus()).isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+    }
+
+    @Test
+    void manualRetryOnlyAcceptsRetryableTechnicalDefects() {
+        var retryable = incident(
+                FiscalSubmissionStatus.DEFECTUOSO,
+                "INVALID_AEAT_RESPONSE",
+                "Respuesta AEAT no interpretable");
+        when(records.findByIdAndCompanyIdAndStoreId(
+                retryable.getRecordId(), company.getId(), store.getId()))
+                .thenReturn(Optional.of(record(retryable.getRecordId(), store.getId(), 1)));
+        when(states.findForUpdate(retryable.getRecordId())).thenReturn(Optional.of(retryable));
+        when(states.save(retryable)).thenReturn(retryable);
+
+        assertThat(queue.claimForManualRetry(retryable.getRecordId(), 0).state().getStatus())
+                .isEqualTo(FiscalSubmissionStatus.ENVIANDO);
+
+        var invalidXsd = incident(
+                FiscalSubmissionStatus.DEFECTUOSO, "INVALID_XSD", "XML invalido");
+        when(records.findByIdAndCompanyIdAndStoreId(
+                invalidXsd.getRecordId(), company.getId(), store.getId()))
+                .thenReturn(Optional.of(record(invalidXsd.getRecordId(), store.getId(), 2)));
+        when(states.findForUpdate(invalidXsd.getRecordId())).thenReturn(Optional.of(invalidXsd));
+
+        assertThatThrownBy(() -> queue.claimForManualRetry(invalidXsd.getRecordId(), 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no admite reintento manual");
+    }
+
+    @Test
+    void manualRetryRejectsStaleVersionAndNonRetryableStatus() {
+        var accepted = state(FiscalSubmissionStatus.ACEPTADO);
+        when(records.findByIdAndCompanyIdAndStoreId(
+                accepted.getRecordId(), company.getId(), store.getId()))
+                .thenReturn(Optional.of(record(accepted.getRecordId(), store.getId(), 1)));
+        when(states.findForUpdate(accepted.getRecordId())).thenReturn(Optional.of(accepted));
+
+        assertThatThrownBy(() -> queue.claimForManualRetry(accepted.getRecordId(), 1))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("cambio");
+        assertThatThrownBy(() -> queue.claimForManualRetry(accepted.getRecordId(), 0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("no admite reintento manual");
+    }
+
+    @Test
+    void manualRetryDoesNotRevealWhetherAnotherStoreOwnsTheRecord() {
+        var recordId = UUID.randomUUID();
+        when(records.findByIdAndCompanyIdAndStoreId(
+                recordId, company.getId(), store.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> queue.claimForManualRetry(recordId, 0))
+                .isInstanceOf(java.util.NoSuchElementException.class)
+                .hasMessage("Registro fiscal no encontrado");
     }
 
     private FiscalSubmissionState state(FiscalSubmissionStatus status) {

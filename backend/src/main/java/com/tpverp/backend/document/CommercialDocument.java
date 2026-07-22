@@ -376,6 +376,23 @@ public class CommercialDocument {
         }
     }
 
+    void replaceRectificationDraft(
+            BigDecimal globalDiscount,
+            boolean stockOrigin,
+            List<DocumentLine> newLines) {
+        if (tipo != CommercialDocumentType.RECTIFICATIVA_VENTA
+                || estado != DocumentStatus.BORRADOR) {
+            throw new IllegalStateException(
+                    "Solo puede modificarse una factura rectificativa en borrador");
+        }
+        descuentoGlobal = Money.validPercentage(globalDiscount);
+        origenStock = stockOrigin;
+        lineas.clear();
+        for (var line : newLines) {
+            addLine(line);
+        }
+    }
+
     void setParties(UUID customerId, UUID supplierId, String externalNumber) {
         clienteId = customerId;
         proveedorId = supplierId;

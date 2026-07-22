@@ -8,6 +8,7 @@ export type GestionModuleKey =
   | "gestion.suppliers"
   | "gestion.users"
   | "gestion.roles"
+  | "gestion.verifactu"
   | "gestion.controlAlerts";
 
 const modulePermissions: Record<GestionModuleKey, Permission[]> = {
@@ -18,6 +19,7 @@ const modulePermissions: Record<GestionModuleKey, Permission[]> = {
   "gestion.suppliers": ["GESTION_CLIENTE_PROVEEDOR", "GESTION_ALMACEN"],
   "gestion.users": ["GESTION_USUARIO"],
   "gestion.roles": ["ROLES_MANAGE"],
+  "gestion.verifactu": ["VERIFACTU_READ"],
   "gestion.controlAlerts": ["CONTROL_ALERTS_READ", "CONTROL_ALERTS_MANAGE"]
 };
 

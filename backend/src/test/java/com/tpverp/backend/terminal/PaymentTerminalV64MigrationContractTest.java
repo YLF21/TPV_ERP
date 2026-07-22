@@ -6,11 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-class PaymentTerminalV61MigrationContractTest {
+class PaymentTerminalV64MigrationContractTest {
     @Test
     void marksVersionDriftedActiveLegacyOperationsForManualReview() throws Exception {
         var sql = Files.readString(Path.of(
-                "src/main/resources/db/migration/V61__separate_payment_pairing_metadata_from_operational_version.sql"))
+                "src/main/resources/db/migration/V64__separate_payment_pairing_metadata_from_operational_version.sql"))
                 .toLowerCase();
 
         assertThat(sql)

@@ -15,6 +15,7 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
+import com.tpverp.backend.verifactu.FiscalRectificationMethod;
 import com.tpverp.backend.verifactu.FiscalRecordService;
 import com.tpverp.backend.verifactu.FiscalRecordRepository;
 import com.tpverp.backend.verifactu.VerifactuInactiveException;
@@ -46,6 +47,8 @@ class DocumentFiscalIntegrationTest {
     private InstallationRepository installations;
     @Mock
     private ApplicationEventPublisher events;
+    @Mock
+    private SalesInvoiceRectificationService rectifications;
 
     private DocumentFiscalIntegration integration;
     private Store store;
@@ -73,29 +76,62 @@ class DocumentFiscalIntegrationTest {
         lenient().when(fiscalRecords.register(any())).thenReturn(fiscalRecord);
         lenient().when(fiscalRecords.registerSubstitution(any(), any()))
                 .thenReturn(fiscalRecord);
+        lenient().when(fiscalRecords.registerRectification(any(), any(), any()))
+                .thenReturn(fiscalRecord);
         integration = new DocumentFiscalIntegration(
-                fiscalRecords, recordRepository, organization, installations, events);
+                fiscalRecords, recordRepository, organization, installations, events,
+                rectifications);
     }
 
     @Test
-    void classifiesTicketInvoiceAndCreditNote() {
+    void classifiesTicketAndInvoices() {
         integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
-        integration.registerAlta(confirmed(CommercialDocumentType.TICKET, BigDecimal.ONE.negate()), false);
         integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN), false);
         integration.registerAlta(confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN), true);
-        integration.registerAlta(confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, BigDecimal.TEN), false);
 
         var commands = ArgumentCaptor.forClass(FiscalRecordCommand.class);
-        verify(fiscalRecords, org.mockito.Mockito.times(5)).register(commands.capture());
+        verify(fiscalRecords, org.mockito.Mockito.times(3)).register(commands.capture());
 
         assertThat(commands.getAllValues())
                 .extracting(FiscalRecordCommand::documentType)
                 .containsExactly(
                         FiscalDocumentType.F2,
-                        FiscalDocumentType.R5,
                         FiscalDocumentType.F1,
-                        FiscalDocumentType.F3,
-                        FiscalDocumentType.R1);
+                        FiscalDocumentType.F3);
+    }
+
+    @Test
+    void registersSalesRectificationWithApprovedCauseAndOriginal() {
+        var original = confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN);
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, BigDecimal.ONE.negate());
+        var metadata = new SalesInvoiceRectification(
+                rectification.getId(), original.getId(),
+                SalesInvoiceRectificationReason.GOODS_RETURN,
+                "Devolucion completa de mercancia", Instant.parse("2026-06-08T12:00:00Z"));
+        when(rectifications.validateBeforeConfirmation(rectification)).thenReturn(metadata);
+
+        integration.registerAlta(rectification, false);
+
+        var command = ArgumentCaptor.forClass(FiscalRecordCommand.class);
+        verify(fiscalRecords).registerRectification(
+                command.capture(), org.mockito.Mockito.eq(original.getId()),
+                org.mockito.Mockito.eq(FiscalRectificationMethod.I));
+        assertThat(command.getValue().documentType()).isEqualTo(FiscalDocumentType.R1);
+    }
+
+    @Test
+    void registersSimplifiedInvoiceReturnAsLinkedR5() {
+        var original = confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN);
+        var rectification = confirmed(CommercialDocumentType.TICKET, BigDecimal.ONE.negate());
+
+        integration.registerTicketRectification(rectification, original);
+
+        var command = ArgumentCaptor.forClass(FiscalRecordCommand.class);
+        verify(fiscalRecords).registerRectification(
+                command.capture(), org.mockito.Mockito.eq(original.getId()),
+                org.mockito.Mockito.eq(FiscalRectificationMethod.I));
+        assertThat(command.getValue().documentType()).isEqualTo(FiscalDocumentType.R5);
     }
 
     @Test

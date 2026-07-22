@@ -107,7 +107,7 @@ class FiscalSnapshotFactoryTest {
     }
 
     @Test
-    void marcaRectificativaPorSustitucionPorDefecto() {
+    void noInventaMetodoRectificativoSinElFlujoFiscalVinculado() {
         var document = new CommercialDocument(
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.RECTIFICATIVA_VENTA,
                 LocalDate.of(2027, 1, 2), UUID.randomUUID(), BigDecimal.ZERO);
@@ -120,7 +120,7 @@ class FiscalSnapshotFactoryTest {
                 document, "B12345674", FiscalRecordOperation.ALTA,
                 FiscalDocumentType.R1, null);
 
-        assertThat(snapshot).containsEntry("tipoRectificativa", "S");
+        assertThat(snapshot).doesNotContainKey("tipoRectificativa");
     }
 
     @Test

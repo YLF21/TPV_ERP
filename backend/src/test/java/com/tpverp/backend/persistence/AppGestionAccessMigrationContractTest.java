@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class AppGestionAccessMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V75__acceso_app_gestion.sql";
+            "db/migration/V72__acceso_app_gestion.sql";
 
     @Test
     void createsAppAccessPermissionAndMigratesPreviouslyEligibleRoles() throws IOException {

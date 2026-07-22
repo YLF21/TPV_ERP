@@ -50,6 +50,7 @@ class DevSampleDataSeederPostgreSqlTest {
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
         registry.add("tpv.installation.key-directory", KEY_DIRECTORY::toString);
         registry.add("tpv.verifactu.secret-directory", CERTIFICATE_DIRECTORY::toString);
+        registry.add("tpv.dev.sample-data.enabled", () -> "true");
     }
 
     @AfterAll

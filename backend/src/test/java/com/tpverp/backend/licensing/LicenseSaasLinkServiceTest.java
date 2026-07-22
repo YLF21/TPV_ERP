@@ -99,6 +99,8 @@ class LicenseSaasLinkServiceTest {
         assertThat(saved.getValue().getMaxPda()).isEqualTo(1);
         assertThat(saved.getValue().getEstadoSaas()).isEqualTo(LicenseSaasStatus.VALIDA);
         assertThat(saved.getValue().getUltimaValidacionSaas()).isEqualTo(NOW);
+        assertThat(saved.getValue().getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2027, 1, 1));
+        assertThat(saved.getValue().getVerifactuPolicyVersion()).isEqualTo(3L);
         assertThat(result.license().licenseReference()).isEqualTo("LIC-SAAS-1");
         assertThat(result.serverTerminalId()).isEqualTo(server.getId());
         verify(credentials).writeToken("token-instalacion");
@@ -231,6 +233,9 @@ class LicenseSaasLinkServiceTest {
                 "B12345678",
                 TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
+                java.time.LocalDate.of(2027, 1, 1),
+                3,
+                Instant.parse("2026-07-22T10:00:00Z"),
                 "token-instalacion");
     }
 }

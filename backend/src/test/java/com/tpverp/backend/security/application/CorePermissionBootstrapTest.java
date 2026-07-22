@@ -58,7 +58,14 @@ class CorePermissionBootstrapTest {
                 "CUSTOMER_RECEIVABLES_PAY",
                 "PAYMENT_TERMINAL_VOID",
                 "PAYMENT_TERMINAL_REFUND",
-                "PAYMENT_TERMINAL_SECRETS");
+                "PAYMENT_TERMINAL_SECRETS",
+                "VERIFACTU_READ",
+                "VERIFACTU_CORRECT",
+                "VERIFACTU_MANAGE");
+        assertThat(saved)
+                .filteredOn(permission -> permission.getCodigo().startsWith("VERIFACTU_"))
+                .extracting(Permission::getGrupo)
+                .containsOnly("FISCAL");
         assertThat(saved).extracting(Permission::getCodigo).doesNotContain(
                 "WAREHOUSE_INPUTS_READ",
                 "WAREHOUSE_INPUTS_WRITE",

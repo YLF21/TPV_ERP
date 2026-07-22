@@ -1,6 +1,7 @@
 package com.tpverp.saas.license;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record LicenseSaasLinkResponse(
@@ -14,5 +15,8 @@ public record LicenseSaasLinkResponse(
         String taxId,
         TaxpayerType taxpayerType,
         TaxRegime impuestos,
+        LocalDate verifactuActivationDate,
+        long verifactuPolicyVersion,
+        Instant verifactuPolicyUpdatedAt,
         String installationToken) {
 }

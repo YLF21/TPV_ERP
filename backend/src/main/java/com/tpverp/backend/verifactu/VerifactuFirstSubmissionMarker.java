@@ -35,6 +35,7 @@ public class VerifactuFirstSubmissionMarker {
         activation.markFirstSubmission(
                 configuration,
                 license.getTaxpayerType(),
+                license.getVerifactuActivationDate(),
                 record.getGeneratedAt(),
                 ZoneId.of(record.getTimezone()));
         configurations.save(configuration);
@@ -43,7 +44,7 @@ public class VerifactuFirstSubmissionMarker {
 
     private VerifactuConfiguration configuration(FiscalRecord record) {
         configurations.insertIfMissing(UUID.randomUUID(), record.getCompanyId());
-        return configurations.findByCompanyId(record.getCompanyId())
+        return configurations.findForUpdateByCompanyId(record.getCompanyId())
                 .orElseThrow(() -> new IllegalStateException(
                         "No se pudo inicializar la configuracion VERI*FACTU"));
     }

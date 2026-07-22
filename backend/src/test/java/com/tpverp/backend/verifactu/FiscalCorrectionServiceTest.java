@@ -103,10 +103,45 @@ class FiscalCorrectionServiceTest {
         verify(events, never()).publishEvent(any());
     }
 
+    @Test
+    void rejectsTechnicalDefectInsteadOfCreatingAdministrativeCorrection() {
+        state.markIncident(
+                FiscalSubmissionStatus.DEFECTUOSO,
+                "INVALID_XSD",
+                "XML fiscal invalido",
+                NOW);
+
+        assertThatThrownBy(() -> service().correct(
+                original.getId(),
+                new FiscalCorrectionRequest("Correccion", null, null, "Venta"),
+                authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("El registro fiscal no admite subsanacion");
+
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void rejectsCancellationRecordEvenWhenItsSubmissionWasRejected() {
+        set(original, "operation", FiscalRecordOperation.ANULACION);
+
+        assertThatThrownBy(() -> service().correct(
+                original.getId(),
+                new FiscalCorrectionRequest("Correccion", null, null, "Venta"),
+                authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("El registro fiscal no admite subsanacion");
+
+        verify(fiscalRecords, never()).registerCorrection(any(), any());
+        verify(events, never()).publishEvent(any());
+    }
+
     private FiscalCorrectionService service() {
         return new FiscalCorrectionService(
                 records, states, fiscalRecords, new FiscalCorrectionSnapshot(),
-                organization, events, Clock.fixed(NOW, ZoneOffset.UTC));
+                organization, events, Clock.fixed(NOW, ZoneOffset.UTC),
+                new VerifactuDefectClassifier());
     }
 
     private static FiscalRecord record(
@@ -119,5 +154,15 @@ class FiscalCorrectionServiceTest {
                 new BigDecimal("12.10"), sequence == 1 ? null : "A".repeat(64),
                 "B".repeat(64), "C".repeat(64), snapshot,
                 "1.0", "SHA-256", "0.0.1");
+    }
+
+    private static void set(Object target, String fieldName, Object value) {
+        try {
+            var field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 }

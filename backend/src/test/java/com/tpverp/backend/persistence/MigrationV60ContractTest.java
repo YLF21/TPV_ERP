@@ -7,10 +7,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class MigrationV63ContractTest {
+class MigrationV60ContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V63__family_subfamily_business_ids.sql";
+            "db/migration/V60__family_subfamily_business_ids.sql";
 
     @Test
     void addsReadableBusinessIdsToFamiliesAndSubfamilies() throws IOException {

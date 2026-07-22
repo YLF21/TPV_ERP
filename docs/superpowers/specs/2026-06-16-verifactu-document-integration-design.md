@@ -28,7 +28,7 @@ Queda fuera:
 - Vales de devolucion.
 - Ventas aparcadas y carritos persistentes.
 - Subsanaciones.
-- Seleccion detallada de motivos `R2`, `R3` y `R4`.
+- Seleccion detallada de motivos `R2` y `R3`.
 - Agrupacion de varios tickets en una factura.
 
 ## Numeracion Fiscal
@@ -55,6 +55,12 @@ La clasificacion sera automatica:
 Los tipos `R2`, `R3` y `R4` se reservaran para un flujo posterior con motivos
 fiscales explicitos.
 
+> Actualizacion 2026-07-21: esta clasificacion inicial queda sustituida para
+> facturas rectificativas de venta por el flujo aprobado en
+> `2026-07-21-verifactu-app-integration-design.md`: metodo `I`, tipo `R1` o
+> `R4` derivado de la causa, y referencia obligatoria al documento original.
+> `R2` y `R3` continuan fuera de alcance.
+
 ## Confirmacion De Tickets
 
 `createTicket` confirmara el ticket, registrara pagos, movera stock y, si
@@ -77,7 +83,8 @@ Al confirmar una factura de venta directa:
 Al confirmar una factura rectificativa de venta:
 
 - Se asignara numero fiscal `FRV-...`.
-- Se creara registro fiscal `R1` si VERI*FACTU esta activo.
+- Se creara registro fiscal `R1` o `R4`, derivado de la causa, con metodo `I`
+  y referencia a la factura original si VERI*FACTU esta activo.
 
 Las facturas de compra y albaranes no generaran registros VERI*FACTU en este
 bloque.
@@ -184,4 +191,3 @@ No se repetiran pruebas ya cubiertas en 2A1:
 - Triggers de inmutabilidad fiscal.
 - Concurrencia de cadena.
 - Migraciones completas salvo que una nueva migracion las requiera.
-

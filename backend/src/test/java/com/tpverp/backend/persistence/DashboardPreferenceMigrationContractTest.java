@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class DashboardPreferenceMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V77__preferencia_dashboard_usuario.sql";
+            "db/migration/V74__preferencia_dashboard_usuario.sql";
 
     @Test
     void createsOneJsonDashboardPreferencePerUserWithCascadeDeletion() throws IOException {

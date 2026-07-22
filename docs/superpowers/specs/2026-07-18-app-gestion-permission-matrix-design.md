@@ -32,6 +32,12 @@
 | Copias de seguridad | `BACKUPS_MANAGE` | Crear/configurar: `BACKUPS_MANAGE`; restaurar o eliminar: `ADMIN` |
 | Licencias y SaaS | `LICENSES_MANAGE` | Activar, vincular, bloquear o modificar: `ADMIN` |
 | Auditoría | `AUDIT_READ` | Exportar: `ADMIN`; los registros no se modifican desde APP GESTION |
+| VERI*FACTU | `VERIFACTU_READ` | Reintentos y diagnostico: `VERIFACTU_MANAGE`; subsanaciones: `VERIFACTU_CORRECT`; activacion y certificados: `ADMIN` |
+
+APP VENTA no utiliza estos permisos para abrir un modulo fiscal. Un usuario con
+`VENTA` solo puede consultar, dentro de la pantalla Venta, el estado y la cola
+de la terminal resuelta por su sesion. Esa consulta es de solo lectura y no
+acepta identificadores de terminal o tienda enviados por el cliente.
 
 ## Ciclo de vida de roles
 

@@ -54,6 +54,14 @@ La clave privada correspondiente solo debe existir en el PKCS#12 de `license-iss
 
 OpenAPI y Swagger UI solo se habilitan en el perfil `dev`.
 
+## Certificado VeriFactu en Windows
+
+En produccion, la clave privada VeriFactu debe almacenarse en el directorio
+protegido `C:\ProgramData\TPV ERP\secrets\verifactu` y el backend debe ejecutarse
+como `NT SERVICE\TPVERPBackend`. El aprovisionamiento de ACL, las variables del
+servicio y el procedimiento de backup, restauracion y reimportacion se describen
+en [`../docs/verifactu-certificate-windows-operations.md`](../docs/verifactu-certificate-windows-operations.md).
+
 ## Pruebas
 
 Las pruebas de integracion PostgreSQL aceptan cualquiera de estas familias de
@@ -121,5 +129,5 @@ API principal:
 Los permisos son `CUSTOMER_RECEIVABLES_READ`,
 `CUSTOMER_RECEIVABLES_CREATE` y `CUSTOMER_RECEIVABLES_PAY`; `ADMIN` incluye
 los tres. La migracion de esta funcion es
-`V72__customer_pending_sales.sql`. Consulte el procedimiento de operacion y
+`V90__customer_pending_sales.sql`. Consulte el procedimiento de operacion y
 recuperacion en `../docs/customer-pending-sales-operations.md`.

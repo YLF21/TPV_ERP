@@ -20,6 +20,7 @@ import {
   type PurchaseDocumentProduct,
   type PurchaseDocumentTax
 } from "./PurchaseDocumentDialog";
+import { SalesInvoiceRectificationDialog } from "./SalesInvoiceRectificationDialog";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -125,6 +126,7 @@ const attributeLabelKey: Record<string, string> = {
   total: "salesReport.column.total",
   pending: "salesReport.column.pending",
   payment: "salesReport.column.payment",
+  documentType: "salesReport.column.documentType",
   status: "salesReport.column.status",
   reason: "salesReport.column.reason",
   origin: "salesReport.column.origin",
@@ -153,6 +155,7 @@ const attributeDefaultWidth: Record<string, number> = {
   total: 112,
   pending: 112,
   payment: 152,
+  documentType: 152,
   status: 128,
   reason: 184,
   origin: 184,
@@ -333,6 +336,41 @@ export function canOpenOperationalTimeline(
   return session.permissions.includes("GESTION_VENTAS");
 }
 
+export function canManageSalesInvoiceRectification(
+  app: AppKind,
+  session: Pick<UserSession, "permissions">,
+  reportKey: string,
+  row: Record<string, string> | undefined
+) {
+  if (app !== "gestion" || reportKey !== "salesReport.invoices" || !row?.__documentId) return false;
+  if (!canAccessSalesInvoiceRectification(session)) return false;
+  if (row.__documentType === "RECTIFICATIVA_VENTA") return row.__documentStatus === "BORRADOR";
+  return row.__documentType === "FACTURA_VENTA"
+    && row.__documentStatus !== "BORRADOR"
+    && row.__documentStatus !== "ANULADO";
+}
+
+export function canAccessSalesInvoiceRectification(
+  session: Pick<UserSession, "permissions">
+) {
+  const permissions = session.permissions;
+  const hasAppAccess = permissions.includes("ADMIN") || permissions.includes("APP_GESTION_ACCESS");
+  const canWrite = permissions.includes("ADMIN")
+    || permissions.includes("GESTION_VENTAS")
+    || permissions.includes("INVOICES_WRITE");
+  return hasAppAccess && canWrite;
+}
+
+export function canConfirmSalesInvoiceRectification(
+  session: Pick<UserSession, "permissions">
+) {
+  return session.permissions.some((permission) =>
+    permission === "ADMIN"
+      || permission === "GESTION_VENTAS"
+      || permission === "INVOICES_CONFIRM"
+  );
+}
+
 type WarehouseOutputView = {
   id?: string;
   number?: string | null;
@@ -465,10 +503,10 @@ const reportSamples: Record<string, ReportSample> = {
     totals: { deliveryNote: "salesReport.total", status: "0", total: "0.00" }
   },
   "salesReport.invoices": {
-    availableAttributes: ["date", "time", "invoice", "terminal", "user", "customer", "customerName", "payment", "pending", "comment", "total"],
-    defaultVisibleAttributes: ["invoice", "customer", "payment", "pending", "total"],
+    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "total"],
+    defaultVisibleAttributes: ["invoice", "documentType", "customer", "status", "pending", "total"],
     rows: [],
-    totals: { invoice: "salesReport.total", pending: "0.00", total: "0.00" }
+    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", total: "0.00" }
   },
   "salesReport.warehouseOutputs": {
     availableAttributes: ["date", "time", "output", "terminal", "user", "warehouse", "productCount", "comment", "reason", "total"],
@@ -830,8 +868,20 @@ function pendingAmount(document: DocumentView) {
 
 function documentStatus(document: DocumentView) {
   const status = (document.estado ?? "").toUpperCase();
+  if (status === "BORRADOR") {
+    return "salesReport.status.draft";
+  }
+  if (status === "ANULADO") {
+    return "salesReport.status.cancelled";
+  }
+  if (status === "CONFIRMADO") {
+    return "salesReport.status.confirmed";
+  }
   if (status.includes("PENDIENTE")) {
     return "salesReport.status.pending";
+  }
+  if (status.includes("PARCIAL")) {
+    return "salesReport.status.partial";
   }
   if (status.includes("PAG")) {
     return "salesReport.status.paid";
@@ -840,6 +890,12 @@ function documentStatus(document: DocumentView) {
     return "salesReport.status.invoiced";
   }
   return status;
+}
+
+function salesDocumentType(document: DocumentView) {
+  return document.tipo === "RECTIFICATIVA_VENTA"
+    ? "salesReport.documentType.rectification"
+    : "salesReport.documentType.invoice";
 }
 
 function isPurchaseDocument(document: DocumentView) {
@@ -997,14 +1053,18 @@ export function buildDocumentReports(
   }));
   const invoiceRows = invoices.filter(isSalesDocument).map((document) => ({
     __documentId: document.id || "",
+    __documentType: document.tipo || "",
+    __documentStatus: document.estado || "",
     date: formatBackendDate(document.fecha),
     time: formatBackendTime(document.ocurridoEn ?? undefined),
     invoice: document.numero || "",
+    documentType: salesDocumentType(document),
     terminal: documentTerminal(document, terminal),
     user: documentUser(document, user),
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
     payment: paymentText(document),
+    status: documentStatus(document),
     pending: formatAmount(pendingAmount(document)),
     comment: document.numeroExterno || "",
     total: formatAmount(Number(document.total ?? 0))
@@ -1357,6 +1417,10 @@ export function SalesReportScreen({
   const [warehouseSuppliers, setWarehouseSuppliers] = useState<WarehouseSupplierOption[]>([]);
   const [purchaseTaxes, setPurchaseTaxes] = useState<PurchaseDocumentTax[]>([]);
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
+  const [rectificationTarget, setRectificationTarget] = useState<{
+    documentId: string;
+    continueDraft: boolean;
+  } | null>(null);
   const [selectedReport, setSelectedReport] = useState(initialReport);
   const [visualReport, setVisualReport] = useState(initialReport);
   const [dragAttribute, setDragAttribute] = useState<string | null>(null);
@@ -1402,6 +1466,15 @@ export function SalesReportScreen({
   const selectedRowIndex = selectedRowByReport[selectedReport] ?? 0;
   const selectedReportRow = filteredRows[selectedRowIndex];
   const canOpenSelectedActivity = canOpenOperationalTimeline(app, session, selectedReport, selectedReportRow);
+  const canOpenSelectedRectification = canManageSalesInvoiceRectification(
+    app,
+    session,
+    selectedReport,
+    selectedReportRow
+  );
+  const canAccessRectification = canAccessSalesInvoiceRectification(session);
+  const selectedIsRectificationDraft = selectedReportRow?.__documentType === "RECTIFICATIVA_VENTA"
+    && selectedReportRow.__documentStatus === "BORRADOR";
   const dbLabel = apiServerLabel();
   const visualVisibleAttributes = isDailyVisualReport
     ? visibleAttributesByReport[visualReport]
@@ -2273,6 +2346,23 @@ export function SalesReportScreen({
             {t("salesReport.activity.open")}
           </button>
         )}
+        {app === "gestion" && selectedReport === "salesReport.invoices" && canAccessRectification && (
+          <button
+            type="button"
+            disabled={!canOpenSelectedRectification}
+            title={t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
+            onClick={() => {
+              if (selectedReportRow?.__documentId && canOpenSelectedRectification) {
+                setRectificationTarget({
+                  documentId: selectedReportRow.__documentId,
+                  continueDraft: selectedIsRectificationDraft
+                });
+              }
+            }}
+          >
+            {t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
+          </button>
+        )}
         {reportAccess.warehouse && isWarehouseDocumentReport(selectedReport) && (
           <button
             type="button"
@@ -2576,6 +2666,19 @@ export function SalesReportScreen({
           token={session.accessToken}
           t={t}
           onClose={() => setActivityDocumentId(null)}
+        />
+      )}
+
+      {rectificationTarget && session.accessToken && (
+        <SalesInvoiceRectificationDialog
+          token={session.accessToken}
+          locale={locale}
+          documentId={rectificationTarget.documentId}
+          continueDraft={rectificationTarget.continueDraft}
+          canConfirm={canConfirmSalesInvoiceRectification(session)}
+          t={t}
+          onClose={() => setRectificationTarget(null)}
+          onChanged={() => setReportReloadKey((current) => current + 1)}
         />
       )}
 

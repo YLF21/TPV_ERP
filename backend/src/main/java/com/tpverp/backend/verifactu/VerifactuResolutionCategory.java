@@ -1,0 +1,13 @@
+package com.tpverp.backend.verifactu;
+
+public enum VerifactuResolutionCategory {
+    WAITING,
+    COMMUNICATION_PENDING,
+    LOCAL_TECHNICAL_ERROR,
+    ADMINISTRATIVE_DATA_ERROR,
+    AEAT_REJECTED,
+    AEAT_ACCEPTED_WITH_ERRORS,
+    ACCEPTED_FINAL,
+    CORRECTED_FINAL,
+    TECHNICAL_REVIEW
+}

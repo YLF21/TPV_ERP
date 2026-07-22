@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class PartyManagementPermissionMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V76__gestion_clientes_proveedores.sql";
+            "db/migration/V73__gestion_clientes_proveedores.sql";
 
     @Test
     void createsCustomerSupplierManagementPermissionWithoutExpandingExistingRoles() throws IOException {

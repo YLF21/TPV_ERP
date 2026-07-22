@@ -10,4 +10,8 @@ public interface SaasLicenseRepository extends JpaRepository<SaasLicense, UUID> 
     Optional<SaasLicense> findByReference(String reference);
 
     List<SaasLicense> findByCompany_Id(UUID companyId);
+
+    long countByCompany_TaxpayerTypeAndStatus(
+            TaxpayerType taxpayerType,
+            LicenseSaasStatus status);
 }

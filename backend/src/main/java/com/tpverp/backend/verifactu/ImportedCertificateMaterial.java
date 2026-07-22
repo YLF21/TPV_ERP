@@ -1,6 +1,7 @@
 package com.tpverp.backend.verifactu;
 
 import java.time.Instant;
+import java.util.Arrays;
 
 public record ImportedCertificateMaterial(
         String subject,
@@ -26,5 +27,9 @@ public record ImportedCertificateMaterial(
     @Override
     public byte[] privateKeyPkcs8() {
         return privateKeyPkcs8.clone();
+    }
+
+    public void clearPrivateKey() {
+        Arrays.fill(privateKeyPkcs8, (byte) 0);
     }
 }

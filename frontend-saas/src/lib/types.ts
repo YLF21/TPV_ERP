@@ -72,7 +72,19 @@ export type AuditLog = {
   action: string;
   targetType: string;
   targetId: string;
+  details?: string | null;
   createdAt: string;
+};
+
+export type VerifactuActivationPolicy = {
+  taxpayerType: TaxpayerType;
+  activationDate: string;
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+  reason: string;
+  activeLicenses: number;
+  linkedInstallations: number;
 };
 
 export type PairingCodeResponse = {

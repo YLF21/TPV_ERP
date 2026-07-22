@@ -48,6 +48,9 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         if ("POST".equals(method) && "/api/v1/admin/companies".equals(path)) {
             return AdminPermission.ADD_COMPANY;
         }
+        if ("PUT".equals(method) && path.startsWith("/api/v1/admin/verifactu-activation-policies/")) {
+            return AdminPermission.MANAGE_FISCAL_POLICY;
+        }
         if ("PUT".equals(method) && path.startsWith("/api/v1/admin/companies/")) {
             return AdminPermission.EDIT_COMPANY_DATA;
         }

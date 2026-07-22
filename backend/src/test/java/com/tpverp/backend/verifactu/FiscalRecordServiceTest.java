@@ -334,6 +334,59 @@ class FiscalRecordServiceTest {
     }
 
     @Test
+    void registraRectificativaR1PorDiferenciasYLaVinculaAlAltaOriginal() {
+        command = command(FiscalRecordOperation.ALTA, FiscalDocumentType.R1);
+        var rectification = document(
+                command.documentId(), command.storeId(),
+                CommercialDocumentType.RECTIFICATIVA_VENTA,
+                DocumentStatus.PENDIENTE, new BigDecimal("-12.10"));
+        var originalDocumentId = UUID.randomUUID();
+        var original = new FiscalRecord(
+                chain.getId(), command.companyId(), command.installationId(), command.storeId(),
+                originalDocumentId, 1, FiscalRecordOperation.ALTA, FiscalDocumentType.F1,
+                "FV-001-26-000001", LocalDate.of(2026, 6, 14), TRUNCATED_NOW.minusSeconds(60),
+                "Atlantic/Canary", "B12345674", new BigDecimal("2.10"),
+                new BigDecimal("12.10"), null, "A".repeat(64), "B".repeat(64),
+                Map.of("numero", "FV-001-26-000001"),
+                "1.0", "SHA-256", "0.0.1");
+        chain.advance(original, TRUNCATED_NOW.minusSeconds(60));
+        stubActive(rectification);
+        when(chains.findForUpdate(command.companyId(), command.installationId()))
+                .thenReturn(Optional.of(chain));
+        when(records.findByDocumentIdAndOperation(command.documentId(), FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.empty());
+        when(records.findByDocumentIdAndOperation(originalDocumentId, FiscalRecordOperation.ALTA))
+                .thenReturn(Optional.of(original));
+        when(records.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var saved = service().registerRectification(
+                command, originalDocumentId, FiscalRectificationMethod.I);
+
+        assertThat(saved.getSnapshot()).containsEntry("tipoRectificativa", "I");
+        assertThat(list(saved.getSnapshot().get("facturasRectificadas")))
+                .singleElement()
+                .satisfies(value -> assertThat(map(value))
+                        .containsEntry("numero", "FV-001-26-000001")
+                        .containsEntry("fecha", "2026-06-14"));
+        var relation = ArgumentCaptor.forClass(FiscalRecordRelation.class);
+        verify(relations).save(relation.capture());
+        assertThat(relation.getValue().getRecordId()).isEqualTo(saved.getId());
+        assertThat(relation.getValue().getRelatedId()).isEqualTo(original.getId());
+        assertThat(relation.getValue().getType()).isEqualTo(FiscalRelationType.RECTIFICA);
+    }
+
+    @Test
+    void rechazaAltaRectificativaGenericaSinOrigenNiMetodo() {
+        var invalid = command(FiscalRecordOperation.ALTA, FiscalDocumentType.R4);
+
+        assertThatThrownBy(() -> service().register(invalid))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("origen");
+
+        verify(chains, never()).insertIfMissing(any(), any(), any(), any());
+    }
+
+    @Test
     void registraSubsanacionConMismaIdentidadEImportesYRelacionAlOriginal() {
         var original = fiscalRecord(
                 chain, command, FiscalRecordOperation.ALTA, FiscalDocumentType.F2, 1, null);

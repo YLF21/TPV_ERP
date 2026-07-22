@@ -20,6 +20,7 @@ import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,7 +84,13 @@ public class FiscalRecordService {
     // Records and chains a fiscal operation using only persisted and validated data.
     @Transactional(noRollbackFor = VerifactuInactiveException.class)
     public FiscalRecord register(FiscalRecordCommand command) {
-        return register(command, null, null);
+        if (command != null
+                && command.operation() == FiscalRecordOperation.ALTA
+                && isRectification(command.documentType())) {
+            throw new IllegalArgumentException(
+                    "Una factura rectificativa requiere origen y metodo de rectificacion");
+        }
+        return register(command, null, null, null);
     }
 
     @Transactional(noRollbackFor = VerifactuInactiveException.class)
@@ -94,9 +101,24 @@ public class FiscalRecordService {
                 || command.documentType() != FiscalDocumentType.F3) {
             throw new IllegalArgumentException("message.fiscal_record.substitution_requires_f3");
         }
-        return register(command, substitutedDocumentId, FiscalRelationType.SUSTITUYE);
+        return register(command, substitutedDocumentId, FiscalRelationType.SUSTITUYE, null);
     }
     // Creates the F3 registration and links it to the replaced simplified invoice.
+
+    @Transactional(noRollbackFor = VerifactuInactiveException.class)
+    public FiscalRecord registerRectification(
+            FiscalRecordCommand command,
+            UUID rectifiedDocumentId,
+            FiscalRectificationMethod method) {
+        if (command == null
+                || command.operation() != FiscalRecordOperation.ALTA
+                || !isRectification(command.documentType())) {
+            throw new IllegalArgumentException(
+                    "El registro de rectificacion requiere un alta R1, R2, R3, R4 o R5");
+        }
+        return register(command, Objects.requireNonNull(rectifiedDocumentId, "rectifiedDocumentId"),
+                FiscalRelationType.RECTIFICA, Objects.requireNonNull(method, "method"));
+    }
 
     // Creates a correction registration without changing the original identity or economic content.
     @Transactional
@@ -142,7 +164,8 @@ public class FiscalRecordService {
     private FiscalRecord register(
             FiscalRecordCommand command,
             UUID relatedDocumentId,
-            FiscalRelationType relationType) {
+            FiscalRelationType relationType,
+            FiscalRectificationMethod rectificationMethod) {
         if (command == null) {
             throw new IllegalArgumentException("command es obligatorio");
         }
@@ -166,6 +189,9 @@ public class FiscalRecordService {
         var snapshot = new LinkedHashMap<>(snapshots.create(
                 context.document(), context.issuerTaxId(), command.operation(),
                 command.documentType(), context.customer()));
+        if (relationType == FiscalRelationType.RECTIFICA) {
+            snapshot.put("tipoRectificativa", rectificationMethod.name());
+        }
         addPreviousRecord(snapshot, chain.getLastRecord());
         addRelatedDocument(snapshot, related, relationType);
         var previousHash = chain.previousHash();
@@ -209,11 +235,16 @@ public class FiscalRecordService {
         var related = records.findByDocumentIdAndOperation(
                         relatedDocumentId, FiscalRecordOperation.ALTA)
                 .orElseThrow(() -> new IllegalStateException(
-                        "message.fiscal_record.substitution_requires_ticket_registration"));
-        if (relationType != FiscalRelationType.SUSTITUYE
-                || related.getDocumentType() != FiscalDocumentType.F2) {
-            throw new IllegalArgumentException(
-                    "Solo una factura simplificada F2 puede sustituirse por F3");
+                        "El documento rectificado necesita un alta fiscal previa"));
+        if (relationType == FiscalRelationType.SUSTITUYE) {
+            if (related.getDocumentType() != FiscalDocumentType.F2) {
+                throw new IllegalArgumentException(
+                        "Solo una factura simplificada F2 puede sustituirse por F3");
+            }
+        } else if (relationType == FiscalRelationType.RECTIFICA) {
+            validateRectifiedType(command.documentType(), related.getDocumentType());
+        } else {
+            throw new IllegalArgumentException("Relacion fiscal de alta no admitida");
         }
         if (!related.chainId().equals(chain.getId())
                 || !related.getCompanyId().equals(command.companyId())
@@ -228,13 +259,50 @@ public class FiscalRecordService {
             Map<String, Object> snapshot,
             FiscalRecord related,
             FiscalRelationType relationType) {
-        if (related == null || relationType != FiscalRelationType.SUSTITUYE) {
+        if (related == null) {
             return;
         }
-        snapshot.put("facturasSustituidas", List.of(Map.of(
+        var key = relationType == FiscalRelationType.SUSTITUYE
+                ? "facturasSustituidas"
+                : relationType == FiscalRelationType.RECTIFICA
+                    ? "facturasRectificadas"
+                    : null;
+        if (key == null) {
+            return;
+        }
+        snapshot.put(key, List.of(Map.of(
                 "nifEmisor", related.getIssuerTaxId(),
                 "numero", related.getNumber(),
                 "fecha", related.getIssueDate().toString())));
+    }
+
+    private static void validateRectifiedType(
+            FiscalDocumentType rectification,
+            FiscalDocumentType original) {
+        if (rectification == FiscalDocumentType.R5) {
+            if (original != FiscalDocumentType.F2 && original != FiscalDocumentType.R5) {
+                throw new IllegalArgumentException(
+                        "R5 solo puede rectificar una factura simplificada F2 o R5");
+            }
+            return;
+        }
+        if (original != FiscalDocumentType.F1
+                && original != FiscalDocumentType.F3
+                && original != FiscalDocumentType.R1
+                && original != FiscalDocumentType.R2
+                && original != FiscalDocumentType.R3
+                && original != FiscalDocumentType.R4) {
+            throw new IllegalArgumentException(
+                    "R1-R4 solo pueden rectificar una factura completa");
+        }
+    }
+
+    private static boolean isRectification(FiscalDocumentType type) {
+        return type == FiscalDocumentType.R1
+                || type == FiscalDocumentType.R2
+                || type == FiscalDocumentType.R3
+                || type == FiscalDocumentType.R4
+                || type == FiscalDocumentType.R5;
     }
 
     private static void addPreviousRecord(
@@ -286,7 +354,11 @@ public class FiscalRecordService {
                         "No se pudo inicializar la configuracion VERI*FACTU"));
         var zone = ZoneId.of(store.getTimezone());
         if (!activation.isActive(
-                configuration, license.getTaxpayerType(), generatedAt, zone)) {
+                configuration,
+                license.getTaxpayerType(),
+                license.getVerifactuActivationDate(),
+                generatedAt,
+                zone)) {
             throw new VerifactuInactiveException();
         }
         return new FiscalContext(

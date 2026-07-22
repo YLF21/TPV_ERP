@@ -56,7 +56,8 @@ class VerifactuFirstSubmissionMarkerTest {
         var store = new Store(company, "Store", address(), "001", "Atlantic/Canary", "EUR", "es-ES");
         var configuration = new VerifactuConfiguration(company.getId());
         var configurations = Mockito.mock(VerifactuConfigurationRepository.class);
-        when(configurations.findByCompanyId(company.getId())).thenReturn(Optional.of(configuration));
+        when(configurations.findForUpdateByCompanyId(company.getId()))
+                .thenReturn(Optional.of(configuration));
         var licenses = Mockito.mock(LicenseRepository.class);
         when(licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(
                 Mockito.eq(store.getId()), Mockito.any()))

@@ -67,6 +67,10 @@ public class FiscalSubmissionState {
         return updatedAt;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     // Changes the state and clears errors when the incident is resolved.
     public void mark(FiscalSubmissionStatus newStatus, Instant changedAt) {
         status = Objects.requireNonNull(newStatus, "status");
