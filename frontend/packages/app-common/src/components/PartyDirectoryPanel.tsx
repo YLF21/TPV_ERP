@@ -5,8 +5,8 @@ import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpSelect } from "./ErpSelect";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
-import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
-import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import { clampTableColumnWidth, visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
@@ -26,7 +26,7 @@ const sharedPartyColumnDefinitions = [
   { key: "name", defaultWidth: 250 },
   { key: "document", defaultWidth: 160 },
   { key: "phone", defaultWidth: 130 },
-  { key: "email", defaultWidth: 190 }
+  { key: "email", defaultWidth: 240 }
 ] as const satisfies readonly TableColumnDefinition<PartyDirectoryColumnKey>[];
 
 export function partyDirectoryColumnDefinitions(
@@ -34,9 +34,21 @@ export function partyDirectoryColumnDefinitions(
 ): readonly TableColumnDefinition<PartyDirectoryColumnKey>[] {
   return [
     ...sharedPartyColumnDefinitions,
-    { key: kind === "members" ? "balance" : "location", defaultWidth: 150 },
+    { key: kind === "members" ? "balance" : "location", defaultWidth: kind === "members" ? 150 : 260 },
     { key: "status", defaultWidth: 88 }
   ];
+}
+
+export function partyDirectoryGridTemplate(layout: TableLayout<PartyDirectoryColumnKey>): string {
+  return visibleTableColumns(layout)
+    .map((column) => {
+      const minimumWidth = `${clampTableColumnWidth(column.width)}px`;
+      if (column.key === "location") return `minmax(${minimumWidth}, 1.5fr)`;
+      if (column.key === "email") return `minmax(${minimumWidth}, 1.35fr)`;
+      if (column.key === "name") return `minmax(${minimumWidth}, 1fr)`;
+      return minimumWidth;
+    })
+    .join(" ");
 }
 
 type FiscalAddress = { address?: string | null; postalCode?: string | null; city?: string | null; province?: string | null; country?: string | null };
@@ -235,7 +247,7 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     definitions: columnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
-  const gridStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) };
+  const gridStyle = { gridTemplateColumns: partyDirectoryGridTemplate(tableLayout.layout) };
 
   function columnLabel(column: PartyDirectoryColumnKey): string {
     if (column === "code") return t("party.column.code");
@@ -252,23 +264,37 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     const customer = entry as CustomerView;
     const supplier = entry as SupplierView;
     const member = entry as MemberDirectoryView;
+    const cellClassName = `party-directory-cell party-directory-cell-${column}`;
     if (column === "code") {
-      return <strong data-column-key={column} key={column}>{isSupplier ? supplier.supplierId : isMember ? member.numMember || member.memberId : customer.clientId}</strong>;
+      const code = isSupplier ? supplier.supplierId : isMember ? member.numMember || member.memberId : customer.clientId;
+      return <strong className={cellClassName} data-column-key={column} key={column} title={code}>{code}</strong>;
     }
     if (column === "name") {
-      return <span data-column-key={column} key={column}>{isSupplier ? supplier.legalName : isMember ? member.fiscalName : customer.fiscalName}{isSupplier && supplier.tradeName ? <small>{supplier.tradeName}</small> : null}</span>;
+      const name = isSupplier ? supplier.legalName : isMember ? member.fiscalName : customer.fiscalName;
+      return <span className={cellClassName} data-column-key={column} key={column} title={name}>{name}{isSupplier && supplier.tradeName ? <small>{supplier.tradeName}</small> : null}</span>;
     }
-    if (column === "document") return <span data-column-key={column} key={column}>{entry.documentType} · {entry.documentNumber}</span>;
-    if (column === "phone") return <span data-column-key={column} key={column}>{entry.phone || "-"}</span>;
-    if (column === "email") return <span data-column-key={column} key={column}>{entry.email || "-"}</span>;
+    if (column === "document") {
+      const document = `${entry.documentType} · ${entry.documentNumber}`;
+      return <span className={cellClassName} data-column-key={column} key={column} title={document}>{document}</span>;
+    }
+    if (column === "phone") {
+      const phone = entry.phone || "-";
+      return <span className={cellClassName} data-column-key={column} key={column} title={phone}>{phone}</span>;
+    }
+    if (column === "email") {
+      const email = entry.email || "-";
+      return <span className={cellClassName} data-column-key={column} key={column} title={email}>{email}</span>;
+    }
     if (column === "balance") {
-      return <span data-column-key={column} key={column}>{Number(member.balance || 0).toLocaleString(locale, { style: "currency", currency: "EUR" })}</span>;
+      const balance = Number(member.balance || 0).toLocaleString(locale, { style: "currency", currency: "EUR" });
+      return <span className={cellClassName} data-column-key={column} key={column} title={balance}>{balance}</span>;
     }
     if (column === "location") {
       const locatedEntry = entry as CustomerView | SupplierView;
-      return <span data-column-key={column} key={column}>{[locatedEntry.address?.city, locatedEntry.address?.province].filter(Boolean).join(", ") || "-"}</span>;
+      const location = [locatedEntry.address?.city, locatedEntry.address?.province].filter(Boolean).join(", ") || "-";
+      return <span className={cellClassName} data-column-key={column} key={column} title={location}>{location}</span>;
     }
-    return <span data-column-key={column} key={column} className={entry.active ? "party-status active" : "party-status"}>
+    return <span data-column-key={column} key={column} className={`${cellClassName} ${entry.active ? "party-status active" : "party-status"}`}>
       {t(entry.active ? "party.active" : "party.inactive")}
       {isMember && !member.customerActive ? <small>{t("party.members.customerInactive")}</small> : null}
     </span>;

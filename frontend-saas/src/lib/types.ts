@@ -340,6 +340,79 @@ export type StockSnapshot = {
   quantity: string;
 };
 
+export type SalesDocument = {
+  id: string;
+  companyId: string;
+  storeId: string | null;
+  documentNumber: string;
+  customerCode: string | null;
+  total: string;
+  currency: string;
+  status: string;
+  issuedAt: string;
+  createdAt: string;
+};
+
+export type InventoryMovement = {
+  id: string;
+  companyId: string;
+  warehouseCode: string;
+  productSku: string;
+  movementType: string;
+  quantity: string;
+  reason: string | null;
+  movedAt: string;
+  createdAt: string;
+};
+
+export type InventoryStock = {
+  warehouseCode: string;
+  productSku: string;
+  quantity: string;
+};
+
+export type Subscription = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  planName: string;
+  status: string;
+  billingCycle: string;
+  amount: string;
+  currency: string;
+  startedAt: string;
+  nextBillingAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+};
+
+export type IntegrationEndpoint = {
+  id: string;
+  companyId: string | null;
+  companyName: string | null;
+  name: string;
+  integrationType: string;
+  status: string;
+  targetUrl: string | null;
+  apiKeyPreview: string | null;
+  lastSyncAt: string | null;
+  createdAt: string;
+};
+
+export type AdvancedReport = {
+  companies: number;
+  subscriptions: number;
+  subscriptionMrr: string;
+  invoices: number;
+  invoicedTotal: string;
+  paidTotal: string;
+  salesDocuments: number;
+  salesTotal: string;
+  inventoryMovements: number;
+  integrations: number;
+  activeIntegrations: number;
+};
+
 export type DashboardData = {
   licenses: LicenseSummary[];
   installations: InstallationSummary[];
@@ -348,4 +421,7 @@ export type DashboardData = {
   salesSummary: SalesSummary;
   stockCurrent: StockSnapshot[];
   events: SyncEventView[];
+  advancedReport?: AdvancedReport | null;
+  subscriptions?: Subscription[];
+  integrations?: IntegrationEndpoint[];
 };

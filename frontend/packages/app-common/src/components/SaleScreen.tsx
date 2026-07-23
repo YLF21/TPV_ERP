@@ -751,6 +751,8 @@ export function SaleScreen({
   const paymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening
     || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
   const canApplyManualDiscount = hasPermission(session, "APLICAR_DESCUENTO");
+  const canOpenCustomerReceivables = Boolean(onOpenCustomerReceivables)
+    && hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
   const userDiscountLimit = session.permissions.includes("ADMIN") ? 100 : Number(session.maxDiscountPercent ?? 0);
   const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
   const activeSearchProductId = results.some((product) => product.id === selectedSearchProductId)
@@ -1330,7 +1332,7 @@ export function SaleScreen({
       if (pendingRecoveryBlocked) return;
       if (saleShortcutTargetIsEditable(event.target)) {
         const saleFunctionKeyFromProductSearch = event.target === searchInputRef.current
-          && ["F2", "F5", "F6", "F7", "PageDown", "F11", "F12"].includes(event.key);
+          && ["F2", "F5", "F6", "F7", "F8", "F9", "F10", "PageDown", "F11", "F12"].includes(event.key);
         if (!saleFunctionKeyFromProductSearch) return;
       }
 
@@ -1363,6 +1365,18 @@ export function SaleScreen({
           if (!selectedLine || paymentLocked) return;
           setActionDialog("remove");
           break;
+        case "F8":
+          if (paymentLocked) return;
+          setParkedSalesOpen(true);
+          break;
+        case "F9":
+          if (paymentLocked) return;
+          setTicketManagementOpen(true);
+          break;
+        case "F10":
+          if (paymentLocked || !canOpenCustomerReceivables) return;
+          onOpenCustomerReceivables?.(selectedCustomer?.id);
+          break;
         case "PageDown":
           if (paymentActionsDisabled || paymentLocked) return;
           paymentCheckoutRef.current?.triggerCash();
@@ -1383,7 +1397,7 @@ export function SaleScreen({
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [canApplyManualDiscount, catalogError, catalogLoading, lines, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
+  }, [canApplyManualDiscount, canOpenCustomerReceivables, catalogError, catalogLoading, lines, onOpenCustomerReceivables, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, selectedCustomer, selectedLine, selectedProductId]);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
@@ -1604,10 +1618,12 @@ export function SaleScreen({
               <button type="button" disabled={paymentLocked} onClick={() => setParkedSalesOpen(true)}>
                 <span>{t("sale.main.parkedSales")}</span>
                 <small>{t("sale.main.parkedSalesHint")}</small>
+                <kbd aria-hidden="true">F8</kbd>
               </button>
               <button type="button" disabled={paymentLocked} onClick={() => setTicketManagementOpen(true)}>
                 <span>{t("sale.main.manageTickets")}</span>
                 <small>{t("sale.main.manageTicketsHint")}</small>
+                <kbd aria-hidden="true">F9</kbd>
               </button>
             </div>
           </section>
@@ -1692,15 +1708,16 @@ export function SaleScreen({
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
             {pendingError && <p className="sale-payment-status" role="alert">{pendingError}</p>}
           </section>
-          {onOpenCustomerReceivables && hasPermission(session, "CUSTOMER_RECEIVABLES_READ") && (
+          {canOpenCustomerReceivables && (
             <section className="sale-receivables-entry" aria-label={t("receivables.title")}>
               <button
                 type="button"
                 disabled={paymentLocked}
-                onClick={() => onOpenCustomerReceivables(selectedCustomer?.id)}
+                onClick={() => onOpenCustomerReceivables?.(selectedCustomer?.id)}
               >
                 <span>{t("receivables.title")}</span>
                 {selectedCustomer?.fiscalName && <small>{selectedCustomer.fiscalName}</small>}
+                <kbd aria-hidden="true">F10</kbd>
               </button>
             </section>
           )}
@@ -1718,6 +1735,9 @@ export function SaleScreen({
           <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
           <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
           <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
+          <span><kbd>F8</kbd> {t("sale.main.parkedSales")}</span>
+          <span><kbd>F9</kbd> {t("sale.main.manageTickets")}</span>
+          {canOpenCustomerReceivables && <span><kbd>F10</kbd> {t("receivables.title")}</span>}
           <span><kbd>{t("sale.main.pageDownKey")}</kbd> {t("sale.main.cash")}</span>
           <span><kbd>F11</kbd> {t("sale.main.card")}</span>
           <span><kbd>F12</kbd> {t("sale.main.pending")}</span>

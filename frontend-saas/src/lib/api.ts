@@ -3,6 +3,7 @@ import type {
   AdminLicenseResponse,
   AdminSession,
   AdminUser,
+  AdvancedReport,
   AuditLog,
   BillingInvoice,
   BillingPayment,
@@ -17,12 +18,17 @@ import type {
   ErpProduct,
   ErpSupplier,
   ErpWarehouse,
+  IntegrationEndpoint,
+  InventoryMovement,
+  InventoryStock,
   InstallationSummary,
   LicenseSummary,
   PairingCodeResponse,
   SaasStatus,
+  SalesDocument,
   SalesSummary,
   StockSnapshot,
+  Subscription,
   SupportTicket,
   SupportTicketComment,
   SyncEventView,
@@ -88,15 +94,21 @@ export const api = {
       this.audit(credentials),
       this.salesSummary(credentials),
       this.stockCurrent(credentials),
-      this.events(credentials)
-    ]).then(([licenses, installations, users, audit, salesSummary, stockCurrent, events]) => ({
+      this.events(credentials),
+      this.advancedReports(credentials).catch(() => null),
+      this.subscriptions(credentials).catch(() => []),
+      this.integrations(credentials).catch(() => [])
+    ]).then(([licenses, installations, users, audit, salesSummary, stockCurrent, events, advancedReport, subscriptions, integrations]) => ({
       licenses,
       installations,
       users,
       audit,
       salesSummary,
       stockCurrent,
-      events
+      events,
+      advancedReport,
+      subscriptions,
+      integrations
     }));
   },
 
@@ -195,6 +207,85 @@ export const api = {
       method: "POST",
       body: payload
     });
+  },
+
+  salesDocuments(credentials: Credentials, companyId: string) {
+    return request<SalesDocument[]>(credentials, `/api/v1/admin/companies/${companyId}/sales-documents`);
+  },
+
+  createSalesDocument(
+    credentials: Credentials,
+    companyId: string,
+    payload: { storeId: string | null; documentNumber: string; customerCode: string; total: string; currency: string; status: string; issuedAt: string }
+  ) {
+    return request<SalesDocument>(credentials, `/api/v1/admin/companies/${companyId}/sales-documents`, {
+      method: "POST",
+      body: payload
+    });
+  },
+
+  inventoryMovements(credentials: Credentials, companyId: string) {
+    return request<InventoryMovement[]>(credentials, `/api/v1/admin/companies/${companyId}/inventory-movements`);
+  },
+
+  createInventoryMovement(
+    credentials: Credentials,
+    companyId: string,
+    payload: { warehouseCode: string; productSku: string; movementType: string; quantity: string; reason: string; movedAt: string }
+  ) {
+    return request<InventoryMovement>(credentials, `/api/v1/admin/companies/${companyId}/inventory-movements`, {
+      method: "POST",
+      body: payload
+    });
+  },
+
+  inventoryStock(credentials: Credentials, companyId: string) {
+    return request<InventoryStock[]>(credentials, `/api/v1/admin/companies/${companyId}/inventory-stock`);
+  },
+
+  subscriptions(credentials: Credentials) {
+    return request<Subscription[]>(credentials, "/api/v1/admin/subscriptions");
+  },
+
+  createSubscription(
+    credentials: Credentials,
+    companyId: string,
+    payload: { planName: string; status: string; billingCycle: string; amount: string; currency: string; startedAt: string; nextBillingAt: string | null }
+  ) {
+    return request<Subscription>(credentials, `/api/v1/admin/companies/${companyId}/subscriptions`, {
+      method: "POST",
+      body: payload
+    });
+  },
+
+  cancelSubscription(credentials: Credentials, subscriptionId: string) {
+    return request<Subscription>(credentials, `/api/v1/admin/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST"
+    });
+  },
+
+  integrations(credentials: Credentials) {
+    return request<IntegrationEndpoint[]>(credentials, "/api/v1/admin/integrations");
+  },
+
+  createIntegration(
+    credentials: Credentials,
+    payload: { companyId: string | null; name: string; integrationType: string; status: string; targetUrl: string; apiKey: string }
+  ) {
+    return request<IntegrationEndpoint>(credentials, "/api/v1/admin/integrations", {
+      method: "POST",
+      body: payload
+    });
+  },
+
+  markIntegrationSynced(credentials: Credentials, integrationId: string) {
+    return request<IntegrationEndpoint>(credentials, `/api/v1/admin/integrations/${integrationId}/sync`, {
+      method: "POST"
+    });
+  },
+
+  advancedReports(credentials: Credentials) {
+    return request<AdvancedReport>(credentials, "/api/v1/admin/reports/advanced");
   },
 
   tenantUsers(credentials: Credentials, companyId: string) {

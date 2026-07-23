@@ -11,6 +11,8 @@ import {
 import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
 import { readSaleInterfaceTouchMode, saveSaleInterfaceTouchMode } from "./saleInterfacePreferences";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
+import { CashOperationsCard } from "./CashOperationsCard";
+import { OperationalStatusCard } from "./OperationalStatusCard";
 import { apiRequest, ApiError } from "../api/client";
 import {
   readSalesReportOutputPreferences,
@@ -35,6 +37,12 @@ type SettingsScreenProps = {
 };
 
 const baseSettingsSections: SettingsSection[] = ["terminal", "user", "reports", "system"];
+
+function languageLabel(code: LocaleCode) {
+  if (code === "es") return "Español";
+  if (code === "zh") return "中文";
+  return "English";
+}
 
 export function SettingsScreen({
   app,
@@ -228,6 +236,14 @@ export function SettingsScreen({
                   <option value="keyboard">{t("settings.cashInput.keyboard")}</option>
                 </select>
               </article>
+              {app === "venta" ? (
+                <CashOperationsCard
+                  locale={locale}
+                  token={session.accessToken}
+                  terminalId={terminalContext.terminalId}
+                  request={request}
+                />
+              ) : null}
               <PaymentTerminalSettings locale={locale} token={session.accessToken} />
             </div>
           )}
@@ -262,7 +278,7 @@ export function SettingsScreen({
                   <div>
                     {([ ["es", "Español"], ["en", "English"], ["zh", "中文"] ] as const).map(([code, label]) => (
                       <button type="button" className={locale === code ? "selected" : ""} key={code} onClick={() => onLocaleChange(code)}>
-                        {label}
+                        {languageLabel(code)}
                       </button>
                     ))}
                   </div>
@@ -334,6 +350,13 @@ export function SettingsScreen({
           {selectedSection === "system" && (
             <div className="settings-grid">
               <SystemCompatibilityCard locale={locale} token={session.accessToken} />
+              {app === "venta" ? (
+                <OperationalStatusCard
+                  locale={locale}
+                  token={session.accessToken}
+                  request={request}
+                />
+              ) : null}
             </div>
           )}
         </section>

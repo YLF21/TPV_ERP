@@ -387,6 +387,7 @@ export function StockSettingsDialog({
               <label>
                 <span>{t("stock.settings.defaultMinimum")}</span>
                 <input
+                  className="stock-settings-number-input"
                   ref={defaultMinimumRef}
                   type="number"
                   min="0"
@@ -484,6 +485,7 @@ export function StockSettingsDialog({
               <label>
                 <span>{t("stock.minimum.quantity")}</span>
                 <input
+                  className="stock-settings-number-input"
                   ref={minimumRef}
                   type="number"
                   min="0"

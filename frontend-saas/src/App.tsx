@@ -4,6 +4,7 @@ import type {
   AdminNotification,
   AdminSession,
   AdminUser,
+  AdvancedReport,
   AuditLog,
   BillingInvoice,
   BillingSummary,
@@ -16,11 +17,16 @@ import type {
   ErpProduct,
   ErpSupplier,
   ErpWarehouse,
+  IntegrationEndpoint,
+  InventoryMovement,
+  InventoryStock,
   InstallationSummary,
   LicenseSummary,
   PairingCodeResponse,
   SaasStatus,
+  SalesDocument,
   StockSnapshot,
+  Subscription,
   SupportTicket,
   SupportTicketComment,
   SyncEventView,
@@ -31,7 +37,7 @@ import type {
   TaxpayerType
 } from "./lib/types";
 
-type View = "dashboard" | "licenses" | "sync" | "users" | "audit" | "support" | "health" | "billing" | "masters";
+type View = "dashboard" | "licenses" | "sync" | "users" | "audit" | "support" | "health" | "billing" | "masters" | "operations" | "subscriptions" | "reports";
 type Notice = { type: "success" | "error"; text: string } | null;
 type LicenseAction = "block" | "unblock" | "pairing";
 type SaasAdminRoleName = "ADMIN" | "VIEWER" | "SUPPORT" | "BILLING" | "AUDITOR";
@@ -60,8 +66,15 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     customerHealth: "Pulso",
     billing: "Facturacion",
     masters: "Maestros",
+    operations: "Operaciones",
+    subscriptions: "Suscripciones",
+    reports: "Informes",
     logout: "Salir",
     centralPanel: "Panel central",
+    sessionContext: "Sesion",
+    moduleContext: "Modulo",
+    launchPad: "Accesos operativos",
+    launchPadSubtitle: "Entrada rapida a las areas principales del SaaS",
     refresh: "Actualizar",
     refreshing: "Actualizando",
     loadingSaas: "Cargando datos del SaaS...",
@@ -314,6 +327,54 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     masterDisabled: "Maestro desactivado.",
     mastersBackendPending: "Maestros ERP pendiente de activar en el backend SaaS. Reinicia el backend para cargar esta fase.",
     noMasterData: "No hay datos para este maestro."
+    ,
+    realOperations: "Ventas e inventario real",
+    realOperationsSubtitle: "Documentos de venta, movimientos y stock calculado",
+    salesDocuments: "Documentos de venta",
+    documentNumber: "Numero documento",
+    customerCode: "Codigo cliente",
+    issueSale: "Crear venta",
+    inventoryMovements: "Movimientos de inventario",
+    movementType: "Tipo movimiento",
+    stockCurrent: "Stock actual",
+    reason: "Motivo",
+    createMovement: "Crear movimiento",
+    subscriptionsTitle: "Suscripciones SaaS",
+    subscriptionsSubtitle: "Planes, ciclos, renovaciones y estado de cobro",
+    billingCycle: "Ciclo",
+    nextBillingAt: "Proxima factura",
+    startedAt: "Inicio",
+    cancelSubscription: "Cancelar suscripcion",
+    createSubscription: "Crear suscripcion",
+    integrations: "Integraciones",
+    integrationsSubtitle: "Conectores, webhooks y claves de intercambio",
+    integrationType: "Tipo integracion",
+    targetUrl: "URL destino",
+    apiKey: "API key",
+    apiKeyPreview: "API key",
+    lastSyncAt: "Ultima ejecucion",
+    markSynced: "Marcar sincronizada",
+    createIntegration: "Crear integracion",
+    advancedReports: "Informes avanzados",
+    advancedReportsSubtitle: "Resumen agregado de SaaS, ventas, cobros e integraciones",
+    subscriptionMrr: "MRR suscripciones",
+    invoicedTotal: "Facturado",
+    paidTotal: "Cobrado",
+    salesTotal: "Ventas reales",
+    activeIntegrations: "Integraciones activas",
+    itemCreated: "Registro creado.",
+    itemUpdated: "Registro actualizado.",
+    phase11Pending: "Esta fase necesita reiniciar el backend SaaS para aplicar la migracion V11.",
+    noPermissionAction: "Tu usuario no tiene permiso para esta accion.",
+    invalidAmount: "Introduce un importe numerico valido.",
+    invalidUrl: "Introduce una URL valida.",
+    duplicateCode: "Ya existe un registro con ese codigo en esta empresa.",
+    backendNotUpdated: "El backend SaaS no tiene esta fase activa. Reinicialo para aplicar las migraciones.",
+    resourceNotFound: "No se ha encontrado el recurso solicitado.",
+    forbiddenAction: "No tienes permiso para realizar esta accion.",
+    invalidCredentials: "Credenciales incorrectas o sesion no valida.",
+    networkError: "No se pudo conectar con el backend SaaS.",
+    pendingInvoices: "Facturas pendientes"
   },
   en: {
     administration: "Administration",
@@ -332,6 +393,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     masters: "Masters",
     logout: "Sign out",
     centralPanel: "Central panel",
+    sessionContext: "Session",
+    moduleContext: "Module",
+    launchPad: "Operational shortcuts",
+    launchPadSubtitle: "Quick entry to the main SaaS areas",
     refresh: "Refresh",
     refreshing: "Refreshing",
     loadingSaas: "Loading SaaS data...",
@@ -538,6 +603,10 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     audit: "审计",
     logout: "退出",
     centralPanel: "控制面板",
+    sessionContext: "会话",
+    moduleContext: "模块",
+    launchPad: "快捷入口",
+    launchPadSubtitle: "快速进入 SaaS 主要区域",
     refresh: "刷新",
     refreshing: "刷新中",
     loadingSaas: "正在加载 SaaS 数据...",
@@ -782,6 +851,9 @@ export default function App() {
           <NavButton active={activeView === "health"} onClick={() => setActiveView("health")} label={i18n.t("customerHealth")} />
           <NavButton active={activeView === "billing"} onClick={() => setActiveView("billing")} label={i18n.t("billing")} />
           <NavButton active={activeView === "masters"} onClick={() => setActiveView("masters")} label={i18n.t("masters")} />
+          <NavButton active={activeView === "operations"} onClick={() => setActiveView("operations")} label={i18n.t("operations")} />
+          <NavButton active={activeView === "subscriptions"} onClick={() => setActiveView("subscriptions")} label={i18n.t("subscriptions")} />
+          <NavButton active={activeView === "reports"} onClick={() => setActiveView("reports")} label={i18n.t("reports")} />
           <NavButton active={activeView === "audit"} onClick={() => setActiveView("audit")} label={i18n.t("audit")} />
         </nav>
         <div className="app-actions" aria-label="Panel actions">
@@ -828,7 +900,7 @@ export default function App() {
           <EmptyState text={loading ? i18n.t("loadingSaas") : i18n.t("noLoadedData")} />
         ) : (
           <>
-            {activeView === "dashboard" && <Dashboard data={visibleData} />}
+            {activeView === "dashboard" && <Dashboard data={visibleData} onNavigate={setActiveView} />}
             {activeView === "licenses" && (
               <LicensesView
                 credentials={credentials}
@@ -858,15 +930,29 @@ export default function App() {
               <CustomerHealthView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />
             )}
             {activeView === "billing" && (
-              <BillingView credentials={credentials} licenses={visibleData.licenses} onNotice={setNotice} />
+              <BillingView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "masters" && (
               <MastersView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "operations" && (
+              <OperationsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "subscriptions" && (
+              <SubscriptionsView credentials={credentials} licenses={visibleData.licenses} permissions={permissions} onNotice={setNotice} />
+            )}
+            {activeView === "reports" && (
+              <ReportsView credentials={credentials} permissions={permissions} onNotice={setNotice} />
             )}
             {activeView === "audit" && <AuditView audit={visibleData.audit} />}
           </>
         )}
       </main>
+      <footer className="app-context-footer" aria-label="Contexto SaaS">
+        <span>ERP SaaS</span>
+        <strong>{i18n.t("sessionContext")}: {session?.username ?? credentials.username}</strong>
+        <strong>{i18n.t("moduleContext")}: {viewTitle(activeView, i18n.t)}</strong>
+      </footer>
     </div>
     )}
     </I18nContext.Provider>
@@ -1168,23 +1254,52 @@ function InvoiceTable({ invoices }: { invoices: BillingInvoice[] }) {
   );
 }
 
-function Dashboard({ data }: { data: DashboardData }) {
+function Dashboard({ data, onNavigate }: { data: DashboardData; onNavigate: (view: View) => void }) {
   const { t } = useI18n();
   const activeLicenses = data.licenses.filter((license) => license.status === "VALIDA").length;
   const blockedLicenses = data.licenses.filter((license) => license.status === "BLOQUEADA_MANUAL").length;
   const activeUsers = data.users.filter((user) => user.active).length;
   const lastEvent = data.events[0];
   const alerts = operationalAlerts(data, t);
+  const report = data.advancedReport;
+  const activeSubscriptions = data.subscriptions?.filter((item) => item.status === "ACTIVA").length ?? "-";
+  const activeIntegrations = report?.activeIntegrations ?? data.integrations?.filter((item) => item.status === "ACTIVA").length ?? "-";
+  const moduleCards: Array<{ view: View; label: string; detail: string; value: string | number }> = [
+    { view: "licenses", label: t("licenses"), detail: t("licensesCompanies"), value: data.licenses.length },
+    { view: "sync", label: t("sync"), detail: t("syncSubtitle"), value: data.events.length },
+    { view: "support", label: t("supportCenter"), detail: t("supportTicketsSubtitle"), value: alerts.length },
+    { view: "health", label: t("customerHealth"), detail: t("healthSubtitle"), value: blockedLicenses },
+    { view: "billing", label: t("billing"), detail: t("billingSubtitle"), value: report ? formatMoney(report.invoicedTotal) : data.salesSummary.total },
+    { view: "masters", label: t("masters"), detail: t("erpMastersSubtitle"), value: data.stockCurrent.length },
+    { view: "operations", label: t("operations"), detail: t("realOperationsSubtitle"), value: data.events.length },
+    { view: "subscriptions", label: t("subscriptions"), detail: t("subscriptionsSubtitle"), value: activeSubscriptions },
+    { view: "reports", label: t("reports"), detail: t("advancedReportsSubtitle"), value: activeIntegrations }
+  ];
 
   return (
     <div className="view-grid">
+      <section className="launch-pad" aria-label={t("launchPad")}>
+        <SectionHeader title={t("launchPad")} subtitle={t("launchPadSubtitle")} />
+        <div className="module-grid">
+          {moduleCards.map((card) => (
+            <button className="module-card" type="button" key={card.view} onClick={() => onNavigate(card.view)}>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.detail}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="metric-grid">
         <Metric label={t("validLicenses")} value={activeLicenses} />
         <Metric label={t("blocked")} value={blockedLicenses} tone="warning" />
         <Metric label={t("installations")} value={data.installations.length} />
         <Metric label={t("activeUsers")} value={activeUsers} />
-        <Metric label={t("syncedSales")} value={data.salesSummary.documentCount} detail={`${data.salesSummary.total} ${t("total")}`} />
-        <Metric label={t("observedStock")} value={data.stockCurrent.length} />
+        <Metric label={t("syncedSales")} value={report?.salesDocuments ?? data.salesSummary.documentCount} detail={`${formatMoney(report?.salesTotal ?? data.salesSummary.total)} ${t("total")}`} />
+        <Metric label={t("invoices")} value={report?.invoices ?? "-"} detail={report ? `${t("paidTotal")}: ${formatMoney(report.paidTotal)}` : undefined} />
+        <Metric label={t("subscriptionMrr")} value={formatMoney(report?.subscriptionMrr ?? "0")} />
+        <Metric label={t("activeIntegrations")} value={activeIntegrations} />
       </section>
 
       <section className="content-section">
@@ -1903,10 +2018,12 @@ function CustomerHealthView({
 function BillingView({
   credentials,
   licenses,
+  permissions,
   onNotice
 }: {
   credentials: Credentials;
   licenses: LicenseSummary[];
+  permissions: Set<string>;
   onNotice: (notice: Notice) => void;
 }) {
   const { t } = useI18n();
@@ -1924,6 +2041,7 @@ function BillingView({
   });
   const [paymentForm, setPaymentForm] = useState({ invoiceId: "", amount: "", method: "TRANSFERENCIA", reference: "" });
   const [busy, setBusy] = useState<string | null>(null);
+  const canManage = permissions.has("MANAGE_BILLING");
   const visibleCompanies = (summary?.companies ?? []).filter((company) => visibleCompanyIds.size === 0 || visibleCompanyIds.has(company.companyId));
   const orderedCompanies = visibleCompanies.slice().sort((left, right) => Number(right.overdue) - Number(left.overdue) || Number(right.renewalDueSoon) - Number(left.renewalDueSoon) || left.companyName.localeCompare(right.companyName));
   const localSummary = summary
@@ -1983,6 +2101,14 @@ function BillingView({
   async function createInvoice(event: FormEvent) {
     event.preventDefault();
     if (!selectedCompanyId) return;
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (!isPositiveAmount(invoiceForm.amount)) {
+      onNotice({ type: "error", text: t("invalidAmount") });
+      return;
+    }
     setBusy("invoice");
     try {
       await api.createBillingInvoice(credentials, selectedCompanyId, {
@@ -2011,6 +2137,14 @@ function BillingView({
   async function registerPayment(event: FormEvent) {
     event.preventDefault();
     if (!paymentForm.invoiceId) return;
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (!isPositiveAmount(paymentForm.amount)) {
+      onNotice({ type: "error", text: t("invalidAmount") });
+      return;
+    }
     setBusy("payment");
     try {
       await api.createBillingPayment(credentials, paymentForm.invoiceId, {
@@ -2096,40 +2230,44 @@ function BillingView({
             ))}
           </select>
         </div>
-        <form className="compact-form-grid" onSubmit={createInvoice}>
-          <Input label={t("invoiceNumber")} value={invoiceForm.number} onChange={(number) => setInvoiceForm({ ...invoiceForm, number })} required />
-          <Input label={t("concept")} value={invoiceForm.concept} onChange={(concept) => setInvoiceForm({ ...invoiceForm, concept })} required />
-          <Input label={t("amount")} value={invoiceForm.amount} onChange={(amount) => setInvoiceForm({ ...invoiceForm, amount })} required />
-          <Input label={t("currency")} value={invoiceForm.currency} onChange={(currency) => setInvoiceForm({ ...invoiceForm, currency })} required />
-          <Input label={t("issuedAt")} type="datetime-local" value={invoiceForm.issuedAt} onChange={(issuedAt) => setInvoiceForm({ ...invoiceForm, issuedAt })} required />
-          <Input label={t("dueAt")} type="datetime-local" value={invoiceForm.dueAt} onChange={(dueAt) => setInvoiceForm({ ...invoiceForm, dueAt })} required />
-          <button className="primary-button" type="submit" disabled={busy === "invoice"}>{t("createInvoice")}</button>
-        </form>
-        <form className="compact-form-grid" onSubmit={registerPayment}>
-          <label>
-            {t("invoices")}
-            <select
-              className="control-input"
-              value={paymentForm.invoiceId}
-              onChange={(event) => {
-                const invoiceId = event.target.value;
-                const invoice = invoices.find((value) => value.id === invoiceId);
-                setPaymentForm({ ...paymentForm, invoiceId, amount: invoice ? invoice.amount : paymentForm.amount });
-              }}
-            >
-              <option value="">{t("pending")}</option>
-              {invoices.map((invoice) => (
-                <option value={invoice.id} key={invoice.id}>
-                  {invoice.number} - {formatMoney(invoice.amount)} {invoice.currency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Input label={t("amount")} value={paymentForm.amount} onChange={(amount) => setPaymentForm({ ...paymentForm, amount })} required />
-          <Input label={t("paymentMethod")} value={paymentForm.method} onChange={(method) => setPaymentForm({ ...paymentForm, method })} required />
-          <Input label={t("paymentReference")} value={paymentForm.reference} onChange={(reference) => setPaymentForm({ ...paymentForm, reference })} />
-          <button className="primary-button" type="submit" disabled={busy === "payment" || !paymentForm.invoiceId}>{t("registerPayment")}</button>
-        </form>
+        {canManage && (
+          <>
+            <form className="compact-form-grid" onSubmit={createInvoice}>
+              <Input label={t("invoiceNumber")} value={invoiceForm.number} onChange={(number) => setInvoiceForm({ ...invoiceForm, number })} required />
+              <Input label={t("concept")} value={invoiceForm.concept} onChange={(concept) => setInvoiceForm({ ...invoiceForm, concept })} required />
+              <Input label={t("amount")} value={invoiceForm.amount} onChange={(amount) => setInvoiceForm({ ...invoiceForm, amount })} required />
+              <Input label={t("currency")} value={invoiceForm.currency} onChange={(currency) => setInvoiceForm({ ...invoiceForm, currency })} required />
+              <Input label={t("issuedAt")} type="datetime-local" value={invoiceForm.issuedAt} onChange={(issuedAt) => setInvoiceForm({ ...invoiceForm, issuedAt })} required />
+              <Input label={t("dueAt")} type="datetime-local" value={invoiceForm.dueAt} onChange={(dueAt) => setInvoiceForm({ ...invoiceForm, dueAt })} required />
+              <button className="primary-button" type="submit" disabled={busy === "invoice"}>{t("createInvoice")}</button>
+            </form>
+            <form className="compact-form-grid" onSubmit={registerPayment}>
+              <label>
+                {t("invoices")}
+                <select
+                  className="control-input"
+                  value={paymentForm.invoiceId}
+                  onChange={(event) => {
+                    const invoiceId = event.target.value;
+                    const invoice = invoices.find((value) => value.id === invoiceId);
+                    setPaymentForm({ ...paymentForm, invoiceId, amount: invoice ? invoice.amount : paymentForm.amount });
+                  }}
+                >
+                  <option value="">{t("pending")}</option>
+                  {invoices.map((invoice) => (
+                    <option value={invoice.id} key={invoice.id}>
+                      {invoice.number} - {formatMoney(invoice.amount)} {invoice.currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input label={t("amount")} value={paymentForm.amount} onChange={(amount) => setPaymentForm({ ...paymentForm, amount })} required />
+              <Input label={t("paymentMethod")} value={paymentForm.method} onChange={(method) => setPaymentForm({ ...paymentForm, method })} required />
+              <Input label={t("paymentReference")} value={paymentForm.reference} onChange={(reference) => setPaymentForm({ ...paymentForm, reference })} />
+              <button className="primary-button" type="submit" disabled={busy === "payment" || !paymentForm.invoiceId}>{t("registerPayment")}</button>
+            </form>
+          </>
+        )}
         <InvoiceTable invoices={invoices} />
       </section>
     </div>
@@ -2137,6 +2275,632 @@ function BillingView({
 }
 
 type MasterMode = "customers" | "products" | "suppliers" | "warehouses";
+
+function OperationsView({
+  credentials,
+  licenses,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const [companyId, setCompanyId] = useState("");
+  const [sales, setSales] = useState<SalesDocument[]>([]);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [stock, setStock] = useState<InventoryStock[]>([]);
+  const [salesStatusFilter, setSalesStatusFilter] = useState("");
+  const [inventoryFilter, setInventoryFilter] = useState("");
+  const [saleForm, setSaleForm] = useState({
+    storeId: "",
+    documentNumber: "",
+    customerCode: "",
+    total: "0.00",
+    currency: "EUR",
+    status: "CONFIRMADA",
+    issuedAt: toLocalInput(new Date())
+  });
+  const [movementForm, setMovementForm] = useState({
+    warehouseCode: "",
+    productSku: "",
+    movementType: "ENTRADA",
+    quantity: "1.00",
+    reason: "",
+    movedAt: toLocalInput(new Date())
+  });
+  const [busy, setBusy] = useState(false);
+  const canManage = permissions.has("MANAGE_OPERATIONS");
+  const filteredSales = sales.filter((item) => !salesStatusFilter || item.status === salesStatusFilter);
+  const filteredMovements = movements.filter((item) =>
+    [item.warehouseCode, item.productSku, item.movementType, item.reason ?? ""].some((value) => normalizeSearch(value).includes(normalizeSearch(inventoryFilter)))
+  );
+  const filteredStock = stock.filter((item) =>
+    [item.warehouseCode, item.productSku].some((value) => normalizeSearch(value).includes(normalizeSearch(inventoryFilter)))
+  );
+
+  useEffect(() => {
+    if (!companyId && companies[0]) setCompanyId(companies[0].companyId);
+  }, [companies, companyId]);
+
+  useEffect(() => {
+    if (companyId) void loadOperations(companyId);
+  }, [companyId]);
+
+  async function loadOperations(nextCompanyId: string) {
+    try {
+      const [nextSales, nextMovements, nextStock] = await Promise.all([
+        api.salesDocuments(credentials, nextCompanyId),
+        api.inventoryMovements(credentials, nextCompanyId),
+        api.inventoryStock(credentials, nextCompanyId)
+      ]);
+      setSales(nextSales);
+      setMovements(nextMovements);
+      setStock(nextStock);
+      onNotice(null);
+    } catch (error) {
+      if (isRecoverableBackendDataError(error)) {
+        setSales([]);
+        setMovements([]);
+        setStock([]);
+        onNotice({ type: "error", text: t("phase11Pending") });
+        return;
+      }
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  async function createSale(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (!isPositiveAmount(saleForm.total)) {
+      onNotice({ type: "error", text: t("invalidAmount") });
+      return;
+    }
+    if (sales.some((item) => item.documentNumber.toLowerCase() === saleForm.documentNumber.trim().toLowerCase())) {
+      onNotice({ type: "error", text: t("duplicateCode") });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.createSalesDocument(credentials, companyId, {
+        ...saleForm,
+        storeId: saleForm.storeId || null,
+        issuedAt: new Date(saleForm.issuedAt).toISOString()
+      });
+      setSaleForm({ storeId: "", documentNumber: "", customerCode: "", total: "0.00", currency: "EUR", status: "CONFIRMADA", issuedAt: toLocalInput(new Date()) });
+      await loadOperations(companyId);
+      onNotice({ type: "success", text: t("itemCreated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createMovement(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (!isPositiveAmount(movementForm.quantity)) {
+      onNotice({ type: "error", text: t("invalidAmount") });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.createInventoryMovement(credentials, companyId, {
+        ...movementForm,
+        movedAt: new Date(movementForm.movedAt).toISOString()
+      });
+      setMovementForm({ warehouseCode: "", productSku: "", movementType: "ENTRADA", quantity: "1.00", reason: "", movedAt: toLocalInput(new Date()) });
+      await loadOperations(companyId);
+      onNotice({ type: "success", text: t("itemCreated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="view-grid">
+      <section className="content-section">
+        <SectionHeader title={t("realOperations")} subtitle={t("realOperationsSubtitle")} />
+        <div className="toolbar">
+          <label className="toolbar-field">
+            {t("company")}
+            <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              {companies.map((company) => (
+                <option key={company.companyId} value={company.companyId}>{company.companyName}</option>
+              ))}
+            </select>
+          </label>
+          <label className="toolbar-field">
+            {t("status")}
+            <select className="control-input" value={salesStatusFilter} onChange={(event) => setSalesStatusFilter(event.target.value)}>
+              <option value="">{t("allStatuses")}</option>
+              {uniqueStrings(sales.map((item) => item.status)).map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {canManage && (
+          <form className="compact-form-grid" onSubmit={createSale}>
+            <Input label={t("documentNumber")} value={saleForm.documentNumber} onChange={(documentNumber) => setSaleForm({ ...saleForm, documentNumber })} required />
+            <Input label={t("customerCode")} value={saleForm.customerCode} onChange={(customerCode) => setSaleForm({ ...saleForm, customerCode })} />
+            <Input label={t("amount")} value={saleForm.total} onChange={(total) => setSaleForm({ ...saleForm, total })} required />
+            <Input label={t("currency")} value={saleForm.currency} onChange={(currency) => setSaleForm({ ...saleForm, currency })} required />
+            <Input label={t("issuedAt")} type="datetime-local" value={saleForm.issuedAt} onChange={(issuedAt) => setSaleForm({ ...saleForm, issuedAt })} required />
+            <button className="primary-button" type="submit" disabled={busy}>{t("issueSale")}</button>
+          </form>
+        )}
+        <SimpleSalesTable sales={filteredSales} />
+      </section>
+
+      <section className="content-section">
+        <SectionHeader title={t("inventoryMovements")} subtitle={t("stockCurrent")} />
+        <div className="toolbar">
+          <Input label={t("globalSearch")} value={inventoryFilter} onChange={setInventoryFilter} />
+        </div>
+        {canManage && (
+          <form className="compact-form-grid" onSubmit={createMovement}>
+            <Input label={t("warehouse")} value={movementForm.warehouseCode} onChange={(warehouseCode) => setMovementForm({ ...movementForm, warehouseCode })} required />
+            <Input label={t("sku")} value={movementForm.productSku} onChange={(productSku) => setMovementForm({ ...movementForm, productSku })} required />
+            <Input label={t("movementType")} value={movementForm.movementType} onChange={(movementType) => setMovementForm({ ...movementForm, movementType })} required />
+            <Input label={t("quantity")} value={movementForm.quantity} onChange={(quantity) => setMovementForm({ ...movementForm, quantity })} required />
+            <Input label={t("reason")} value={movementForm.reason} onChange={(reason) => setMovementForm({ ...movementForm, reason })} />
+            <Input label={t("created")} type="datetime-local" value={movementForm.movedAt} onChange={(movedAt) => setMovementForm({ ...movementForm, movedAt })} required />
+            <button className="primary-button" type="submit" disabled={busy}>{t("createMovement")}</button>
+          </form>
+        )}
+        <SimpleStockTable stock={filteredStock} movements={filteredMovements} />
+      </section>
+    </div>
+  );
+}
+
+function SubscriptionsView({
+  credentials,
+  licenses,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  licenses: LicenseSummary[];
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const companies = useMemo(() => uniqueCompanies(licenses), [licenses]);
+  const [companyId, setCompanyId] = useState("");
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [form, setForm] = useState({
+    planName: "STANDARD",
+    status: "ACTIVA",
+    billingCycle: "MENSUAL",
+    amount: "0.00",
+    currency: "EUR",
+    startedAt: toLocalInput(new Date()),
+    nextBillingAt: toLocalInput(addDays(new Date(), 30))
+  });
+  const [busy, setBusy] = useState(false);
+  const canManage = permissions.has("MANAGE_SUBSCRIPTIONS");
+  const filteredSubscriptions = subscriptions.filter((item) => !statusFilter || item.status === statusFilter);
+
+  useEffect(() => {
+    if (!companyId && companies[0]) setCompanyId(companies[0].companyId);
+  }, [companies, companyId]);
+
+  useEffect(() => {
+    void loadSubscriptions();
+  }, [credentials.username]);
+
+  async function loadSubscriptions() {
+    try {
+      setSubscriptions(await api.subscriptions(credentials));
+      onNotice(null);
+    } catch (error) {
+      setSubscriptions([]);
+      onNotice({ type: "error", text: isRecoverableBackendDataError(error) ? t("phase11Pending") : errorMessage(error) });
+    }
+  }
+
+  async function createSubscription(event: FormEvent) {
+    event.preventDefault();
+    if (!companyId) return;
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (!isPositiveAmount(form.amount)) {
+      onNotice({ type: "error", text: t("invalidAmount") });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.createSubscription(credentials, companyId, {
+        ...form,
+        startedAt: new Date(form.startedAt).toISOString(),
+        nextBillingAt: form.nextBillingAt ? new Date(form.nextBillingAt).toISOString() : null
+      });
+      await loadSubscriptions();
+      onNotice({ type: "success", text: t("itemCreated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel(id: string) {
+    setBusy(true);
+    try {
+      await api.cancelSubscription(credentials, id);
+      await loadSubscriptions();
+      onNotice({ type: "success", text: t("itemUpdated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="content-section">
+      <SectionHeader title={t("subscriptionsTitle")} subtitle={t("subscriptionsSubtitle")} />
+      <div className="toolbar">
+        <label className="toolbar-field">
+          {t("status")}
+          <select className="control-input" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">{t("allStatuses")}</option>
+            {uniqueStrings(subscriptions.map((item) => item.status)).map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {canManage && (
+        <form className="compact-form-grid" onSubmit={createSubscription}>
+          <label>
+            {t("company")}
+            <select className="control-input" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              {companies.map((company) => (
+                <option key={company.companyId} value={company.companyId}>{company.companyName}</option>
+              ))}
+            </select>
+          </label>
+          <Input label={t("plan")} value={form.planName} onChange={(planName) => setForm({ ...form, planName })} required />
+          <Input label={t("billingCycle")} value={form.billingCycle} onChange={(billingCycle) => setForm({ ...form, billingCycle })} required />
+          <Input label={t("amount")} value={form.amount} onChange={(amount) => setForm({ ...form, amount })} required />
+          <Input label={t("currency")} value={form.currency} onChange={(currency) => setForm({ ...form, currency })} required />
+          <Input label={t("nextBillingAt")} type="datetime-local" value={form.nextBillingAt} onChange={(nextBillingAt) => setForm({ ...form, nextBillingAt })} />
+          <button className="primary-button" type="submit" disabled={busy}>{t("createSubscription")}</button>
+        </form>
+      )}
+      <SubscriptionsTable subscriptions={filteredSubscriptions} canManage={canManage} onCancel={(id) => void cancel(id)} />
+    </section>
+  );
+}
+
+function ReportsView({
+  credentials,
+  permissions,
+  onNotice
+}: {
+  credentials: Credentials;
+  permissions: Set<string>;
+  onNotice: (notice: Notice) => void;
+}) {
+  const { t } = useI18n();
+  const [report, setReport] = useState<AdvancedReport | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationEndpoint[]>([]);
+  const [integrationFilter, setIntegrationFilter] = useState("");
+  const [form, setForm] = useState({ companyId: "", name: "", integrationType: "WEBHOOK", status: "ACTIVA", targetUrl: "", apiKey: "" });
+  const [busy, setBusy] = useState(false);
+  const canManage = permissions.has("MANAGE_INTEGRATIONS");
+  const filteredIntegrations = integrations.filter((item) =>
+    [item.name, item.companyName ?? "", item.integrationType, item.status, item.targetUrl ?? ""].some((value) =>
+      normalizeSearch(value).includes(normalizeSearch(integrationFilter))
+    )
+  );
+
+  useEffect(() => {
+    void loadReports();
+  }, [credentials.username]);
+
+  async function loadReports() {
+    try {
+      const [nextReport, nextIntegrations] = await Promise.all([api.advancedReports(credentials), api.integrations(credentials)]);
+      setReport(nextReport);
+      setIntegrations(nextIntegrations);
+      onNotice(null);
+    } catch (error) {
+      setReport(null);
+      setIntegrations([]);
+      onNotice({ type: "error", text: isRecoverableBackendDataError(error) ? t("phase11Pending") : errorMessage(error) });
+    }
+  }
+
+  async function createIntegration(event: FormEvent) {
+    event.preventDefault();
+    if (!canManage) {
+      onNotice({ type: "error", text: t("noPermissionAction") });
+      return;
+    }
+    if (form.targetUrl && !isValidUrl(form.targetUrl)) {
+      onNotice({ type: "error", text: t("invalidUrl") });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.createIntegration(credentials, { ...form, companyId: form.companyId || null });
+      setForm({ companyId: "", name: "", integrationType: "WEBHOOK", status: "ACTIVA", targetUrl: "", apiKey: "" });
+      await loadReports();
+      onNotice({ type: "success", text: t("itemCreated") });
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markSynced(id: string) {
+    try {
+      await api.markIntegrationSynced(credentials, id);
+      await loadReports();
+    } catch (error) {
+      onNotice({ type: "error", text: errorMessage(error) });
+    }
+  }
+
+  return (
+    <div className="view-grid">
+      <section className="metric-grid">
+        <Metric label={t("subscriptionMrr")} value={formatMoney(report?.subscriptionMrr ?? "0")} />
+        <Metric label={t("invoicedTotal")} value={formatMoney(report?.invoicedTotal ?? "0")} />
+        <Metric label={t("paidTotal")} value={formatMoney(report?.paidTotal ?? "0")} />
+        <Metric label={t("salesTotal")} value={formatMoney(report?.salesTotal ?? "0")} />
+        <Metric label={t("inventoryMovements")} value={report?.inventoryMovements ?? "-"} />
+        <Metric label={t("activeIntegrations")} value={report?.activeIntegrations ?? "-"} />
+      </section>
+      <section className="content-section">
+        <SectionHeader title={t("advancedReports")} subtitle={t("advancedReportsSubtitle")} />
+        <div className="table-wrap">
+          <table>
+            <tbody>
+              <tr><td>{t("company")}</td><td>{report?.companies ?? 0}</td></tr>
+              <tr><td>{t("subscriptions")}</td><td>{report?.subscriptions ?? 0}</td></tr>
+              <tr><td>{t("invoices")}</td><td>{report?.invoices ?? 0}</td></tr>
+              <tr><td>{t("salesDocuments")}</td><td>{report?.salesDocuments ?? 0}</td></tr>
+              <tr><td>{t("integrations")}</td><td>{report?.integrations ?? 0}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="content-section">
+        <SectionHeader title={t("integrations")} subtitle={t("integrationsSubtitle")} />
+        <div className="toolbar">
+          <Input label={t("globalSearch")} value={integrationFilter} onChange={setIntegrationFilter} />
+        </div>
+        {canManage && (
+          <form className="compact-form-grid" onSubmit={createIntegration}>
+            <Input label={t("name")} value={form.name} onChange={(name) => setForm({ ...form, name })} required />
+            <Input label={t("integrationType")} value={form.integrationType} onChange={(integrationType) => setForm({ ...form, integrationType })} required />
+            <Input label={t("targetUrl")} value={form.targetUrl} onChange={(targetUrl) => setForm({ ...form, targetUrl })} />
+            <Input label={t("apiKey")} value={form.apiKey} onChange={(apiKey) => setForm({ ...form, apiKey })} />
+            <button className="primary-button" type="submit" disabled={busy}>{t("createIntegration")}</button>
+          </form>
+        )}
+        <IntegrationsTable integrations={filteredIntegrations} canManage={canManage} onSync={(id) => void markSynced(id)} />
+      </section>
+    </div>
+  );
+}
+
+function SimpleSalesTable({ sales }: { sales: SalesDocument[] }) {
+  const { t } = useI18n();
+  if (sales.length === 0) return <EmptyState text={t("noBillingData")} />;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("documentNumber")}</th>
+            <th>{t("customerCode")}</th>
+            <th>{t("amount")}</th>
+            <th>{t("status")}</th>
+            <th>{t("issuedAt")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sales.map((item) => (
+            <tr key={item.id}>
+              <td><strong>{item.documentNumber}</strong></td>
+              <td>{item.customerCode || "-"}</td>
+              <td>{formatMoney(item.total)} {item.currency}</td>
+              <td><StatusPill status={item.status} tone={item.status === "ANULADA" ? "warning" : "ok"} /></td>
+              <td>{formatDate(item.issuedAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SimpleStockTable({ stock, movements }: { stock: InventoryStock[]; movements: InventoryMovement[] }) {
+  const { t } = useI18n();
+  return (
+    <div className="tenant-master-grid">
+      <div>
+        <h3>{t("stockCurrent")}</h3>
+        {stock.length === 0 ? (
+          <EmptyState text={t("noStockForFilter")} />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("warehouse")}</th>
+                  <th>{t("sku")}</th>
+                  <th>{t("quantity")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stock.map((item) => (
+                  <tr key={`${item.warehouseCode}-${item.productSku}`}>
+                    <td>{item.warehouseCode}</td>
+                    <td>{item.productSku}</td>
+                    <td>{formatMoney(item.quantity)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <div>
+        <h3>{t("inventoryMovements")}</h3>
+        {movements.length === 0 ? (
+          <EmptyState text={t("noEventsForFilter")} />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t("warehouse")}</th>
+                  <th>{t("sku")}</th>
+                  <th>{t("movementType")}</th>
+                  <th>{t("quantity")}</th>
+                  <th>{t("created")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.warehouseCode}</td>
+                    <td>{item.productSku}</td>
+                    <td>{item.movementType}</td>
+                    <td>{formatMoney(item.quantity)}</td>
+                    <td>{formatDate(item.movedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionsTable({
+  subscriptions,
+  canManage,
+  onCancel
+}: {
+  subscriptions: Subscription[];
+  canManage: boolean;
+  onCancel: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  if (subscriptions.length === 0) return <EmptyState text={t("noBillingData")} />;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("company")}</th>
+            <th>{t("plan")}</th>
+            <th>{t("billingCycle")}</th>
+            <th>{t("amount")}</th>
+            <th>{t("status")}</th>
+            <th>{t("nextBillingAt")}</th>
+            {canManage && <th></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {subscriptions.map((item) => (
+            <tr key={item.id}>
+              <td>{item.companyName}</td>
+              <td>{item.planName}</td>
+              <td>{item.billingCycle}</td>
+              <td>{formatMoney(item.amount)} {item.currency}</td>
+              <td><StatusPill status={item.status} tone={item.status === "ACTIVA" ? "ok" : "muted"} /></td>
+              <td>{item.nextBillingAt ? formatDate(item.nextBillingAt) : "-"}</td>
+              {canManage && (
+                <td className="table-actions">
+                  {item.status !== "CANCELADA" && (
+                    <button className="danger-button subtle" type="button" onClick={() => onCancel(item.id)}>{t("cancelSubscription")}</button>
+                  )}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IntegrationsTable({
+  integrations,
+  canManage,
+  onSync
+}: {
+  integrations: IntegrationEndpoint[];
+  canManage: boolean;
+  onSync: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  if (integrations.length === 0) return <EmptyState text={t("noEventsForFilter")} />;
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{t("name")}</th>
+            <th>{t("company")}</th>
+            <th>{t("integrationType")}</th>
+            <th>{t("status")}</th>
+            <th>{t("apiKeyPreview")}</th>
+            <th>{t("lastSyncAt")}</th>
+            {canManage && <th></th>}
+          </tr>
+        </thead>
+        <tbody>
+          {integrations.map((item) => (
+            <tr key={item.id}>
+              <td><strong>{item.name}</strong><small>{item.targetUrl || "-"}</small></td>
+              <td>{item.companyName || t("allCompanies")}</td>
+              <td>{item.integrationType}</td>
+              <td><StatusPill status={item.status} tone={item.status === "ACTIVA" ? "ok" : "muted"} /></td>
+              <td>{item.apiKeyPreview || "-"}</td>
+              <td>{item.lastSyncAt ? formatDate(item.lastSyncAt) : "-"}</td>
+              {canManage && (
+                <td className="table-actions">
+                  <button className="secondary-button" type="button" onClick={() => onSync(item.id)}>{t("markSynced")}</button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function MastersView({
   credentials,
@@ -3473,6 +4237,9 @@ function viewTitle(view: View, t: (key: string) => string) {
     health: t("customerHealth"),
     billing: t("billing"),
     masters: t("masters"),
+    operations: t("operations"),
+    subscriptions: t("subscriptions"),
+    reports: t("reports"),
     audit: t("audit")
   }[view];
 }
@@ -3587,6 +4354,19 @@ function parseAmount(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isPositiveAmount(value: string | null | undefined) {
+  return parseAmount(value) > 0;
+}
+
+function isValidUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function formatMoney(value: string | number) {
@@ -3710,6 +4490,10 @@ function normalizeSearch(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean))).sort((left, right) => left.localeCompare(right));
 }
 
 function daysUntil(value: string) {
@@ -4033,18 +4817,33 @@ async function copyText(text: string) {
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.status === 401) return TRANSLATIONS.es.invalidCredentials;
+    if (error.status === 403) return TRANSLATIONS.es.forbiddenAction;
+    if (error.status === 404) return TRANSLATIONS.es.resourceNotFound;
+    if (error.status >= 500) return TRANSLATIONS.es.backendNotUpdated;
     try {
       const body = JSON.parse(error.message) as { error?: string; message?: string; status?: number };
       if (body.message) return body.message;
       if (body.error === "Internal Server Error") return "Error interno del backend SaaS.";
+      if (body.error === "Not Found") return TRANSLATIONS.es.resourceNotFound;
+      if (body.error === "Forbidden") return TRANSLATIONS.es.forbiddenAction;
       if (body.error) return body.error;
       if (body.status) return `Error ${body.status}`;
     } catch {
-      return error.message;
+      return cleanTechnicalText(error.message);
     }
   }
-  if (error instanceof Error) return error.message;
+  if (error instanceof TypeError) return TRANSLATIONS.es.networkError;
+  if (error instanceof Error) return cleanTechnicalText(error.message);
   return "Operacion no completada";
+}
+
+function cleanTechnicalText(value: string) {
+  const text = value.trim();
+  if (!text) return "Operacion no completada";
+  if (text.startsWith("{") || text.includes("\"timestamp\"")) return TRANSLATIONS.es.backendNotUpdated;
+  if (text.includes("Failed to fetch") || text.includes("NetworkError")) return TRANSLATIONS.es.networkError;
+  return text;
 }
 
 function isMissingPhase3Endpoint(error: unknown) {
@@ -4065,13 +4864,13 @@ function fallbackSession(username: string): AdminSession {
 function fallbackPermissions(username?: string) {
   const normalized = username?.trim().toLowerCase();
   if (normalized === "viewer" || normalized === "auditor") {
-    return ["VIEW_ADMIN_DATA"];
+    return ["VIEW_ADMIN_DATA", "VIEW_REPORTS"];
   }
   if (normalized === "support") {
     return ["VIEW_ADMIN_DATA", "REGENERATE_PAIRING_CODE", "MANAGE_SUPPORT_TICKETS"];
   }
   if (normalized === "billing") {
-    return ["VIEW_ADMIN_DATA", "RENEW_LICENSE", "EDIT_COMPANY_DATA"];
+    return ["VIEW_ADMIN_DATA", "RENEW_LICENSE", "EDIT_COMPANY_DATA", "MANAGE_BILLING", "MANAGE_SUBSCRIPTIONS", "VIEW_REPORTS"];
   }
   return [
     "ADD_COMPANY",
@@ -4085,7 +4884,11 @@ function fallbackPermissions(username?: string) {
     "MANAGE_SUPPORT_TICKETS",
     "MANAGE_BILLING",
     "MANAGE_TENANT_USERS",
-    "MANAGE_ERP_MASTERS"
+    "MANAGE_ERP_MASTERS",
+    "MANAGE_OPERATIONS",
+    "MANAGE_SUBSCRIPTIONS",
+    "MANAGE_INTEGRATIONS",
+    "VIEW_REPORTS"
   ];
 }
 

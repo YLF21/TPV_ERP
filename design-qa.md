@@ -104,6 +104,74 @@ passed
 
 ---
 
+# Design QA - campo numerico de configuracion de stock
+
+## Fuente visual y alcance
+
+- Referencias: `C:/Users/xy656/AppData/Local/Temp/codex-clipboard-29021d34-b8a4-45f2-a5ca-ca196b9e2d46.png` y `C:/Users/xy656/AppData/Local/Temp/codex-clipboard-368e8d65-92d5-42bc-828b-c6b7796db9d4.png`.
+- Alcance: unificar los campos `Minimo general` y `Cantidad minima` con el selector de almacen y con el resto de controles del dialogo.
+
+## Evidencia de implementacion
+
+- Se eliminaron los controles numericos nativos del navegador que alteraban el aspecto del campo.
+- Ambos campos comparten 38 px de altura, borde recto y el mismo color de linea que el selector de almacen.
+- El foco utiliza ahora un unico borde azul compacto, sin el halo exterior duplicado.
+- La misma regla se aplica al minimo general y al minimo especifico para mantener consistencia interna.
+- `StockSettingsDialog.test.tsx`: 8 pruebas superadas.
+- Compilacion de produccion de `@tpverp/app-venta`: correcta.
+
+## Final result
+
+passed
+
+---
+
+# Design QA - selector coherente en Configuracion stock
+
+## Fuente visual y alcance
+
+- Referencia: `C:/Users/xy656/AppData/Local/Temp/codex-clipboard-8acf7f9f-8bee-48b3-826d-c02e673ef943.png`.
+- Alcance: igualar el selector de almacen predeterminado con los desplegables de APP VENTA y eliminar la franja azul recortada que aparecia al abrirlo.
+
+## Evidencia de implementacion
+
+- El contenedor del selector deja de dibujar un segundo borde y conserva como unico marco visible el control interactivo.
+- El panel de opciones ocupa exactamente el ancho del campo y mantiene una separacion uniforme de 2 px respecto al disparador.
+- El foco de teclado se representa mediante la fila activa; no genera un `outline` recortado en el lateral del panel.
+- La opcion activa no seleccionada usa el mismo azul suave que los demas desplegables, mientras que la opcion seleccionada conserva el azul principal.
+- Las 12 pruebas de `ErpSelect` y `StockSettingsDialog` pasan.
+- La compilacion de produccion de `@tpverp/app-venta` finaliza correctamente.
+
+## Resultado final
+
+APROBADO.
+
+---
+
+# Design QA - bloque de cupon promocional en APP VENTA
+
+## Fuente visual y alcance
+
+- Referencia: `C:/Users/xy656/AppData/Local/Temp/codex-clipboard-85fef07f-f343-4b3c-a9c3-00d376564ba4.png`.
+- Alcance: mejorar la separacion, jerarquia y legibilidad del bloque de cupon sin cambiar el flujo funcional.
+- Estado validado: venta vacia, controles de cupon y cobro deshabilitados.
+- Viewport de comparacion: 2048 x 962 px, igual al de la captura de referencia.
+
+## Comparacion y hallazgos
+
+1. El bloque adopta los mismos margenes laterales que Gestion y Cobro, evitando que parezca pegado a los bordes.
+2. El titulo, la etiqueta y el formulario utilizan una escala tipografica compacta y consistente con APP VENTA.
+3. El campo ocupa el ancho disponible y la accion conserva un ancho minimo estable, sin comprimir el texto.
+4. Los estados de foco, hover, deshabilitado, exito y error tienen contraste y separacion propios.
+5. En pantallas estrechas el campo y la accion pasan a una sola columna.
+6. La compilacion de produccion de `@tpverp/app-venta` finaliza correctamente.
+
+## Resultado final
+
+APROBADO.
+
+---
+
 # Design QA - cabecera de comprobacion de pedido
 
 ## Fuente visual y alcance
@@ -213,3 +281,16 @@ APROBADO.
 ## Final result
 
 passed
+# Design QA - distribución de columnas del directorio de clientes
+
+## Referencia
+
+- Captura revisada: `codex-clipboard-4d32d46d-387c-4934-adc5-0ebd5b06b089.png`.
+- Vista: `Producto > Clientes`.
+
+## Ajuste aplicado
+
+- `Código`, `Documento`, `Teléfono` y `Estado` conservan anchos compactos.
+- `Nombre / Razón social` aprovecha parte del espacio flexible.
+- `Email` y `Población / Provincia` reciben más ancho y mantienen cualquier ancho personalizado como mínimo.
+- La tabla ocupa todo el panel disponible y conserva desplazamiento horizontal en ventanas estrechas.

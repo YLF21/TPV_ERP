@@ -11,7 +11,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly problem?: Record<string, unknown>,
-    readonly traceId?: string
+    readonly traceId?: string,
   ) {
     super(message);
   }
@@ -32,9 +32,9 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       headers: {
         "Content-Type": "application/json",
         "X-Request-ID": requestId,
-        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch (error) {
     throw new ApiConnectionError(error instanceof Error ? error.message : undefined);
@@ -45,7 +45,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     let problem: Record<string, unknown> | undefined;
     let traceId = response.headers?.get?.("X-Request-ID") ?? undefined;
     try {
-      const body = await response.json() as Record<string, unknown>;
+      const body = (await response.json()) as Record<string, unknown>;
       problem = body;
       message = String(body.detail || body.code || message);
       traceId = String(body.traceId || traceId || "") || undefined;
