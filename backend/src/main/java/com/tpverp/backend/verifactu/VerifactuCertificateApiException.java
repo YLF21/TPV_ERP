@@ -25,10 +25,24 @@ public final class VerifactuCertificateApiException extends RuntimeException {
                 HttpStatus.BAD_REQUEST, code, message, Map.of());
     }
 
+    public static VerifactuCertificateApiException badRequest(
+            String code,
+            String message,
+            Map<String, Object> properties) {
+        return new VerifactuCertificateApiException(
+                HttpStatus.BAD_REQUEST, code, message, properties);
+    }
+
     public static VerifactuCertificateApiException payloadTooLarge(
             String code, String message) {
         return new VerifactuCertificateApiException(
                 HttpStatus.PAYLOAD_TOO_LARGE, code, message, Map.of());
+    }
+
+    public static VerifactuCertificateApiException internalServerError(
+            String code, String message) {
+        return new VerifactuCertificateApiException(
+                HttpStatus.INTERNAL_SERVER_ERROR, code, message, Map.of());
     }
 
     public static VerifactuCertificateApiException conflict(String code, String message) {

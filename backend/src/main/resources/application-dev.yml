@@ -19,5 +19,6 @@ logging:
 
 tpv:
   dev:
+    unlicensed-access-enabled: ${TPV_DEV_UNLICENSED_ACCESS_ENABLED:true}
     sample-data:
       enabled: ${TPV_DEV_SAMPLE_DATA_ENABLED:false}

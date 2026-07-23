@@ -1,8 +1,10 @@
 package com.tpverp.backend.verifactu;
 
 import com.tpverp.backend.organization.SpanishTaxId;
+import java.util.List;
 import java.util.Locale;
 import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
 import javax.security.auth.x500.X500Principal;
 import org.springframework.stereotype.Component;
 
@@ -12,23 +14,39 @@ public class CertificateTaxIdExtractor {
     // Extrae el identificador fiscal de los atributos normalizados usados en certificados espanoles.
     public String extract(X500Principal principal) {
         try {
-            for (var rdn : new LdapName(principal.getName(X500Principal.RFC2253)).getRdns()) {
-                var type = rdn.getType().toUpperCase(Locale.ROOT);
-                if (type.equals("SERIALNUMBER")
-                        || type.equals("2.5.4.5")
-                        || type.equals("2.5.4.97")) {
-                    var candidate = normalizeAttribute(attributeValue(rdn.getValue()));
-                    try {
-                        return SpanishTaxId.validate(candidate);
-                    } catch (IllegalArgumentException ignored) {
-                        // Continua por si el sujeto contiene otro atributo fiscal valido.
-                    }
-                }
+            var rdns = new LdapName(principal.getName(X500Principal.RFC2253)).getRdns();
+            var organizationTaxId = extractUniqueTaxId(
+                    rdns, List.of("2.5.4.97", "OID.2.5.4.97"));
+            if (organizationTaxId != null) {
+                return organizationTaxId;
+            }
+            var personalTaxId = extractUniqueTaxId(
+                    rdns, List.of("SERIALNUMBER", "2.5.4.5", "OID.2.5.4.5"));
+            if (personalTaxId != null) {
+                return personalTaxId;
             }
         } catch (javax.naming.InvalidNameException exception) {
             throw new IllegalArgumentException("El sujeto del certificado no es valido", exception);
         }
         throw new IllegalArgumentException("No se pudo extraer el NIF del certificado");
+    }
+
+    private static String extractUniqueTaxId(List<Rdn> rdns, List<String> acceptedTypes) {
+        String taxId = null;
+        for (var rdn : rdns) {
+            var type = rdn.getType().toUpperCase(Locale.ROOT);
+            if (!acceptedTypes.contains(type)) {
+                continue;
+            }
+            var candidate = SpanishTaxId.validate(
+                    normalizeAttribute(attributeValue(rdn.getValue())));
+            if (taxId != null && !taxId.equals(candidate)) {
+                throw new IllegalArgumentException(
+                        "El certificado contiene identificadores fiscales contradictorios");
+            }
+            taxId = candidate;
+        }
+        return taxId;
     }
 
     private static String normalizeAttribute(String value) {

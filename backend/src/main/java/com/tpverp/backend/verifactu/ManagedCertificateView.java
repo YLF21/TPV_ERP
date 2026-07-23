@@ -1,7 +1,7 @@
 package com.tpverp.backend.verifactu;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -23,17 +23,24 @@ public record ManagedCertificateView(
     public static ManagedCertificateView from(
             ManagedVerifactuCertificate certificate,
             Instant now,
-            ZoneId zoneId,
             VerifactuCertificateDeletionDecision deletion) {
         return new ManagedCertificateView(
                 certificate.getId(), certificate.getStatus(), certificate.getSubject(),
                 certificate.getIssuer(), certificate.getSerialNumber(), certificate.getTaxId(),
                 certificate.getFingerprint(), certificate.getValidFrom(), certificate.getValidUntil(),
                 validityStatus(certificate, now),
-                ChronoUnit.DAYS.between(
-                        now.atZone(zoneId).toLocalDate(),
-                        certificate.getValidUntil().atZone(zoneId).toLocalDate()),
+                remainingDays(certificate.getValidUntil(), now),
                 deletion.canDelete(), deletion.deleteBlockReason());
+    }
+
+    static long remainingDays(Instant validUntil, Instant now) {
+        var remaining = Duration.between(now, validUntil);
+        var wholeDays = remaining.toDays();
+        var remainder = remaining.minusDays(wholeDays);
+        if (remainder.isZero()) {
+            return wholeDays;
+        }
+        return wholeDays + (remaining.isNegative() ? -1 : 1);
     }
 
     private static ManagedCertificateValidityStatus validityStatus(

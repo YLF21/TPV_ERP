@@ -27,15 +27,17 @@ public class VerifactuPkcs12KeyStoreLoader {
 
     public KeyStore loadContent(byte[] content, char[] password) {
         if (content == null || content.length == 0) {
-            throw new IllegalArgumentException("certificado PKCS#12 obligatorio");
+            throw VerifactuCertificateImportException.of(
+                    VerifactuCertificateImportException.Failure.PASSWORD_OR_FILE_INVALID);
         }
         try (var input = new ByteArrayInputStream(content)) {
             var keyStore = KeyStore.getInstance("PKCS12");
             keyStore.load(input, password == null ? new char[0] : password.clone());
             return keyStore;
         } catch (IOException | GeneralSecurityException exception) {
-            throw new IllegalArgumentException(
-                    "No se pudo cargar el certificado PKCS#12", exception);
+            throw VerifactuCertificateImportException.of(
+                    VerifactuCertificateImportException.Failure.PASSWORD_OR_FILE_INVALID,
+                    exception);
         }
     }
 }

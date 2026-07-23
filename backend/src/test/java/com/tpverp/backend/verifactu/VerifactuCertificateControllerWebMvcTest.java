@@ -1,5 +1,6 @@
 package com.tpverp.backend.verifactu;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -67,7 +68,11 @@ class VerifactuCertificateControllerWebMvcTest {
                 VerifactuCertificateDeletionPolicy.VERIFACTU_ACTIVE);
         when(service.importCertificate(
                 any(), any(), eq(expectedId), eq("SUSTITUIR CERTIFICADO"), any()))
-                .thenReturn(response);
+                .thenAnswer(invocation -> {
+                    assertThat((char[]) invocation.getArgument(1))
+                            .containsExactly("secreto".toCharArray());
+                    return response;
+                });
 
         mvc.perform(multipart(PATH)
                         .file(file)
@@ -96,6 +101,29 @@ class VerifactuCertificateControllerWebMvcTest {
                 .andExpect(jsonPath("$.code").value("VERIFACTU_CERTIFICATE_DELETE_BLOCKED"))
                 .andExpect(jsonPath("$.deleteBlockReason")
                         .value("NON_FINAL_SUBMISSIONS_EXIST"));
+    }
+
+    @Test
+    void certificateImportFailureReturnsSafeLocalizedDetail() throws Exception {
+        when(service.list()).thenThrow(VerifactuCertificateApiException.badRequest(
+                "CERTIFICATE_VALIDATION_FAILED",
+                "message.verifactu.certificate.validation_failed",
+                Map.of("errors", List.of(
+                        Map.of("code", "CERTIFICATE_EXPIRED"),
+                        Map.of("code", "CERTIFICATE_TAX_ID_MISMATCH")))));
+
+        mvc.perform(get(PATH)
+                        .header("Accept-Language", "es")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code")
+                        .value("CERTIFICATE_VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.detail")
+                        .value("El certificado contiene uno o varios errores de validacion"))
+                .andExpect(jsonPath("$.errors[0].code")
+                        .value("CERTIFICATE_EXPIRED"))
+                .andExpect(jsonPath("$.errors[1].code")
+                        .value("CERTIFICATE_TAX_ID_MISMATCH"));
     }
 
     @EnableMethodSecurity

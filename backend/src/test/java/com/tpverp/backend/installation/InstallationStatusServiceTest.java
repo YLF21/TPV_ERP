@@ -9,6 +9,7 @@ import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.shared.access.OperationalMode;
 import java.time.Clock;
@@ -22,10 +23,11 @@ class InstallationStatusServiceTest {
 
     private final InstallationRepository installations = org.mockito.Mockito.mock(InstallationRepository.class);
     private final LicenseRepository licenses = org.mockito.Mockito.mock(LicenseRepository.class);
+    private final CompanyRepository companies = org.mockito.Mockito.mock(CompanyRepository.class);
 
     @Test
     void reportsUnlinkedWhenThereIsNoActiveLicense() {
-        var service = serviceAt("2026-06-20T00:00:00Z");
+        var service = serviceAt("2026-06-20T00:00:00Z", false);
         when(installations.findAll()).thenReturn(List.of(installation()));
         when(licenses.findAll()).thenReturn(List.of());
 
@@ -33,6 +35,29 @@ class InstallationStatusServiceTest {
 
         assertThat(status.mode()).isEqualTo(OperationalMode.UNLINKED);
         assertThat(status.activeLicenseReference()).isNull();
+    }
+
+    @Test
+    void reportsDevelopmentWhenExplicitUnlicensedDevAccessIsEnabled() {
+        var service = serviceAt("2026-06-20T00:00:00Z", true);
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of());
+        when(companies.findByTaxId(Company.DEMO_TAX_ID)).thenReturn(List.of(demoCompany()));
+
+        var status = service.status();
+
+        assertThat(status.mode()).isEqualTo(OperationalMode.DEVELOPMENT);
+        assertThat(status.activeLicenseReference()).isNull();
+    }
+
+    @Test
+    void doesNotEnableUnlicensedDevAccessForARealCompany() {
+        var service = serviceAt("2026-06-20T00:00:00Z", true);
+        when(installations.findAll()).thenReturn(List.of(installation()));
+        when(licenses.findAll()).thenReturn(List.of());
+        when(companies.findByTaxId(Company.DEMO_TAX_ID)).thenReturn(List.of());
+
+        assertThat(service.status().mode()).isEqualTo(OperationalMode.UNLINKED);
     }
 
     @Test
@@ -80,14 +105,31 @@ class InstallationStatusServiceTest {
     }
 
     private InstallationStatusService serviceAt(String now) {
+        return serviceAt(now, false);
+    }
+
+    private InstallationStatusService serviceAt(
+            String now,
+            boolean unlicensedDevelopmentAccessEnabled) {
         return new InstallationStatusService(
                 installations,
                 licenses,
-                Clock.fixed(Instant.parse(now), ZoneOffset.UTC));
+                companies,
+                Clock.fixed(Instant.parse(now), ZoneOffset.UTC),
+                unlicensedDevelopmentAccessEnabled);
     }
 
     private static Installation installation() {
         return new Installation("INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
+    }
+
+    private static Company demoCompany() {
+        return new Company(Company.DEMO_TAX_ID, "Empresa demo", Map.of(
+                "linea1", "Calle Demo",
+                "ciudad", "Las Palmas",
+                "codigoPostal", "35001",
+                "provincia", "Las Palmas",
+                "pais", "ES"));
     }
 
     private static License license(String validUntil, String lastSaasValidationAt) {

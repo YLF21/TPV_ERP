@@ -219,16 +219,46 @@ class VerifactuCertificateManagementServiceTest {
     void invalidPkcs12UsesStableApiCodeAndDoesNotTouchActiveCertificate() {
         when(organization.currentCompany().getTaxId()).thenReturn("B12345674");
         when(importer.importPkcs12(any(), any(), eq("B12345674")))
-                .thenThrow(new IllegalArgumentException(
-                        "No se pudo cargar el certificado PKCS#12"));
+                .thenThrow(VerifactuCertificateImportException.of(
+                        VerifactuCertificateImportException.Failure.PASSWORD_OR_FILE_INVALID));
 
         assertThatThrownBy(() -> service().importCertificate(
                 new byte[] {9}, "incorrecta".toCharArray(), null, null, authentication))
                 .isInstanceOf(VerifactuCertificateApiException.class)
-                .extracting(value -> ((VerifactuCertificateApiException) value).code())
-                .isEqualTo("VERIFACTU_CERTIFICATE_INVALID");
+                .satisfies(value -> {
+                    var exception = (VerifactuCertificateApiException) value;
+                    assertThat(exception.code()).isEqualTo("CERTIFICATE_VALIDATION_FAILED");
+                    assertThat(exception.properties()).containsEntry(
+                            "errors",
+                            java.util.List.of(java.util.Map.of(
+                                    "code", "CERTIFICATE_PASSWORD_OR_FILE_INVALID")));
+                });
         verify(certificates, never()).save(any());
         verify(secrets, never()).write(any(), any(), any());
+    }
+
+    @Test
+    void secureStorageFailureUsesStableServerCodeAndClearsPassword() {
+        stubImport();
+        when(certificates.findByCompanyIdAndStatus(companyId, ManagedCertificateStatus.ACTIVO))
+                .thenReturn(Optional.empty());
+        when(secrets.write(eq(companyId), any(), any()))
+                .thenThrow(new IllegalStateException("sensitive storage detail"));
+        var password = "secreto".toCharArray();
+
+        assertThatThrownBy(() -> service().importCertificate(
+                new byte[] {9}, password, null, null, authentication))
+                .isInstanceOf(VerifactuCertificateApiException.class)
+                .satisfies(value -> {
+                    var exception = (VerifactuCertificateApiException) value;
+                    assertThat(exception.status().value()).isEqualTo(500);
+                    assertThat(exception.code()).isEqualTo("CERTIFICATE_STORAGE_FAILED");
+                    assertThat(exception.getMessage()).isEqualTo(
+                            "message.verifactu.certificate.storage_failed");
+                });
+
+        assertThat(password).containsOnly('\0');
+        verify(certificates, never()).save(any());
     }
 
     private VerifactuCertificateManagementService service() {

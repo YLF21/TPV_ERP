@@ -12,7 +12,7 @@ public final class OperationalAccessPolicy {
 
 	public boolean isAllowed(OperationalMode mode, OperationCategory category) {
 		return switch (mode) {
-			case LICENSED, OFFLINE -> true;
+			case DEVELOPMENT, LICENSED, OFFLINE -> true;
 			case UNLINKED, RESTRICTED -> RESTRICTED_OPERATIONS.contains(category);
 		};
 	}

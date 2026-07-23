@@ -6,7 +6,6 @@ import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -67,9 +66,13 @@ public class VerifactuCertificateManagementService {
         try {
             try {
                 material = importer.importPkcs12(pkcs12, password, company.getTaxId());
-            } catch (IllegalArgumentException exception) {
+            } catch (VerifactuCertificateImportException exception) {
                 throw VerifactuCertificateApiException.badRequest(
-                        "VERIFACTU_CERTIFICATE_INVALID", exception.getMessage());
+                        "CERTIFICATE_VALIDATION_FAILED",
+                        "message.verifactu.certificate.validation_failed",
+                        Map.of("errors", exception.failures().stream()
+                                .map(failure -> Map.of("code", failure.apiCode()))
+                                .toList()));
             }
             companies.findForUpdate(company.getId())
                     .orElseThrow(() -> new IllegalStateException("La empresa no existe"));
@@ -79,7 +82,13 @@ public class VerifactuCertificateManagementService {
 
             byte[] privateKey = material.privateKeyPkcs8();
             try {
-                newSecret = secrets.write(company.getId(), certificateId, privateKey);
+                try {
+                    newSecret = secrets.write(company.getId(), certificateId, privateKey);
+                } catch (RuntimeException exception) {
+                    throw VerifactuCertificateApiException.internalServerError(
+                            "CERTIFICATE_STORAGE_FAILED",
+                            "message.verifactu.certificate.storage_failed");
+                }
             } finally {
                 Arrays.fill(privateKey, (byte) 0);
             }
@@ -205,9 +214,8 @@ public class VerifactuCertificateManagementService {
     private ManagedCertificateView view(
             ManagedVerifactuCertificate certificate,
             VerifactuCertificateDeletionDecision deletion) {
-        var store = organization.currentStore();
         return ManagedCertificateView.from(
-                certificate, Instant.now(clock), ZoneId.of(store.getTimezone()), deletion);
+                certificate, Instant.now(clock), deletion);
     }
 
     private void removePrevious(

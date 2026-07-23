@@ -2,6 +2,8 @@ package com.tpverp.backend.installation;
 
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
+import com.tpverp.backend.organization.Company;
+import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.shared.access.OperationalMode;
 import java.time.Clock;
 import java.time.Instant;
@@ -12,15 +14,21 @@ public class InstallationStatusService {
 
     private final InstallationRepository instalacionRepository;
     private final LicenseRepository licenciaRepository;
+    private final CompanyRepository empresaRepository;
     private final Clock clock;
+    private final boolean unlicensedDevelopmentAccessEnabled;
 
     public InstallationStatusService(
             InstallationRepository instalacionRepository,
             LicenseRepository licenciaRepository,
-            Clock clock) {
+            CompanyRepository empresaRepository,
+            Clock clock,
+            boolean unlicensedDevelopmentAccessEnabled) {
         this.instalacionRepository = instalacionRepository;
         this.licenciaRepository = licenciaRepository;
+        this.empresaRepository = empresaRepository;
         this.clock = clock;
+        this.unlicensedDevelopmentAccessEnabled = unlicensedDevelopmentAccessEnabled;
     }
 
     @Transactional(readOnly = true)
@@ -33,7 +41,9 @@ public class InstallationStatusService {
                 .orElse(null);
         OperationalMode mode;
         if (activeLicense == null) {
-            mode = OperationalMode.UNLINKED;
+            mode = unlicensedDevelopmentAccessEnabled && isDemoCompany()
+                    ? OperationalMode.DEVELOPMENT
+                    : OperationalMode.UNLINKED;
         } else if (activeLicense.isOperationalAt(now)) {
             mode = activeLicense.requiresOfflineExpiredWarningAt(now)
                     ? OperationalMode.OFFLINE
@@ -65,6 +75,10 @@ public class InstallationStatusService {
     private Installation currentInstallation() {
         return instalacionRepository.findAll().stream().findFirst()
                 .orElseThrow(() -> new IllegalStateException("La instalacion no esta inicializada"));
+    }
+
+    private boolean isDemoCompany() {
+        return !empresaRepository.findByTaxId(Company.DEMO_TAX_ID).isEmpty();
     }
 
     public record InstallationStatus(

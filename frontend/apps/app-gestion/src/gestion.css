@@ -1458,12 +1458,15 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 .gestion-verifactu-counts strong { color: var(--gestion-navy); font-size: 17px; }
 
 .gestion-verifactu-certificate {
+  height: 100%;
   min-height: 0;
+  box-sizing: border-box;
   display: grid;
   align-content: start;
   gap: 12px;
   padding-bottom: 8px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .gestion-verifactu-certificate-state {
@@ -1775,6 +1778,7 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   .gestion-verifactu-defective,
   .gestion-verifactu-certificate,
   .gestion-verifactu-diagnostics { overflow: visible; }
+  .gestion-verifactu-certificate { height: auto; }
   .gestion-verifactu-metrics { grid-template-columns: 1fr 1fr; }
   .gestion-verifactu-metric:nth-child(2) { border-right: 0; }
   .gestion-verifactu-metric:nth-child(-n + 2) { border-bottom: 1px solid #c9d1d8; }

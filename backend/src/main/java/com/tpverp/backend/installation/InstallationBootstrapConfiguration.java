@@ -95,7 +95,15 @@ class InstallationBootstrapConfiguration {
 	InstallationStatusService installationStatusService(
 			InstallationRepository instalacionRepository,
 			LicenseRepository licenciaRepository,
-			Clock clock) {
-		return new InstallationStatusService(instalacionRepository, licenciaRepository, clock);
+			CompanyRepository empresaRepository,
+			Clock clock,
+			@Value("${tpv.dev.unlicensed-access-enabled:false}")
+			boolean unlicensedDevelopmentAccessEnabled) {
+		return new InstallationStatusService(
+				instalacionRepository,
+				licenciaRepository,
+				empresaRepository,
+				clock,
+				unlicensedDevelopmentAccessEnabled);
 	}
 }

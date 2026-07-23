@@ -15,8 +15,61 @@ const MAX_CERTIFICATE_BYTES = 10 * 1024 * 1024;
 const REPLACE_CONFIRMATION = "SUSTITUIR CERTIFICADO";
 const DELETE_CONFIRMATION = "ELIMINAR CERTIFICADO";
 
+const CERTIFICATE_IMPORT_ERROR_KEYS: Record<string, string> = {
+  CERTIFICATE_PASSWORD_OR_FILE_INVALID: "passwordOrFileInvalid",
+  CERTIFICATE_TAX_ID_MISMATCH: "taxIdMismatch",
+  CERTIFICATE_TAX_ID_MISSING_OR_INVALID: "taxIdMissingOrInvalid",
+  CERTIFICATE_EXPIRED: "expired",
+  CERTIFICATE_NOT_YET_VALID: "notYetValid",
+  CERTIFICATE_PRIVATE_KEY_MISSING: "privateKeyMissing",
+  CERTIFICATE_MULTIPLE_PRIVATE_KEYS: "multiplePrivateKeys",
+  CERTIFICATE_CHAIN_INVALID: "chainInvalid",
+  CERTIFICATE_KEY_PAIR_MISMATCH: "keyPairMismatch",
+  CERTIFICATE_KEY_ALGORITHM_UNSUPPORTED: "keyAlgorithmUnsupported",
+  CERTIFICATE_PRIVATE_KEY_ENCODING_INVALID: "privateKeyEncodingInvalid",
+  CERTIFICATE_STRUCTURE_INVALID: "structureInvalid",
+  CERTIFICATE_STORAGE_FAILED: "storageFailed",
+  VERIFACTU_CERTIFICATE_REQUIRED: "required",
+  VERIFACTU_CERTIFICATE_TOO_LARGE: "tooLarge",
+  VERIFACTU_CERTIFICATE_READ_FAILED: "readFailed"
+};
+
 type DialogMode = "import" | "replace" | "delete" | null;
 type ResultKind = "imported" | "replaced" | "deleted" | null;
+
+type CertificateImportError = { key: string; code?: string };
+
+function certificateImportErrors(error: unknown): CertificateImportError[] {
+  const problem = isRecord(error) && isRecord(error.problem) ? error.problem : null;
+  if (!problem) return [{ key: "importError" }];
+
+  const nestedCodes = Array.isArray(problem.errors)
+    ? problem.errors
+        .filter(isRecord)
+        .map((item) => safeErrorCode(item.code))
+        .filter((code): code is string => Boolean(code))
+    : [];
+  const topLevelCode = safeErrorCode(problem.code);
+  const codes = nestedCodes.length > 0
+    ? nestedCodes
+    : topLevelCode && topLevelCode !== "CERTIFICATE_VALIDATION_FAILED"
+      ? [topLevelCode]
+      : [];
+  if (codes.length === 0) return [{ key: "importError" }];
+
+  return [...new Set(codes)].map((code) => ({
+    key: CERTIFICATE_IMPORT_ERROR_KEYS[code] ?? "unknownError",
+    ...(CERTIFICATE_IMPORT_ERROR_KEYS[code] ? {} : { code })
+  }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function safeErrorCode(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Z0-9_]{1,80}$/.test(value) ? value : null;
+}
 
 export function VerifactuCertificateView({
   locale,
@@ -127,11 +180,10 @@ export function VerifactuCertificateView({
           >
             {t(active ? "verifactu.certificate.replace" : "verifactu.certificate.import")}
           </button>
-          {active && (
+          {active?.canDelete && (
             <button
               type="button"
               className="danger"
-              disabled={!active.canDelete}
               onClick={() => { setResult(null); setDialog("delete"); }}
             >
               {t("verifactu.certificate.delete")}
@@ -231,7 +283,7 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
   const [confirmation, setConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [validation, setValidation] = useState<"required" | "tooLarge" | null>(null);
-  const [error, setError] = useState(false);
+  const [importErrors, setImportErrors] = useState<CertificateImportError[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function submit(event: FormEvent) {
@@ -250,7 +302,7 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
     if (active && confirmation !== REPLACE_CONFIRMATION) return;
     setSubmitting(true);
     setValidation(null);
-    setError(false);
+    setImportErrors([]);
     try {
       await importVerifactuCertificate(
         file,
@@ -259,8 +311,8 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
         token
       );
       onCompleted();
-    } catch {
-      setError(true);
+    } catch (error) {
+      setImportErrors(certificateImportErrors(error));
     } finally {
       clearSensitiveInput();
       setSubmitting(false);
@@ -289,7 +341,11 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
             type="file"
             aria-label={t("verifactu.certificate.file")}
             accept=".p12,.pfx,application/x-pkcs12"
-            onChange={(event) => { setFile(event.target.files?.[0] ?? null); setValidation(null); }}
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null);
+              setValidation(null);
+              setImportErrors([]);
+            }}
           />
           <small>{t("verifactu.certificate.fileHint")}</small>
         </label>
@@ -301,7 +357,11 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
             aria-label={t("verifactu.certificate.password")}
             autoComplete="new-password"
             value={password}
-            onChange={(event) => { setPassword(event.target.value); setValidation(null); }}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setValidation(null);
+              setImportErrors([]);
+            }}
           />
           <small>{t("verifactu.certificate.passwordHint")}</small>
         </label>
@@ -319,7 +379,19 @@ function CertificateImportDialog({ active, token, t, onClose, onCompleted }: {
           </label>
         )}
         {validation && <p className="gestion-inline-error" role="alert">{t(`verifactu.certificate.${validation}`)}</p>}
-        {error && <p className="gestion-inline-error" role="alert">{t("verifactu.certificate.importError")}</p>}
+        {importErrors.length > 0 && (
+          <div className="gestion-inline-error" role="alert">
+            <strong>{t("verifactu.certificate.validationErrorsTitle")}</strong>
+            <ul>
+              {importErrors.map((item, index) => (
+                <li key={`${item.code ?? item.key}-${index}`}>
+                  {t(`verifactu.certificate.${item.key}`)
+                    .replace("{code}", item.code ?? "")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <footer>
           <button type="button" disabled={submitting} onClick={onClose}>{t("verifactu.resolution.cancel")}</button>
           <button

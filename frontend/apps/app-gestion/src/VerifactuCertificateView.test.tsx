@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@tpverp/app-common";
 import { VerifactuCertificateView } from "./VerifactuCertificateView";
 import * as api from "./verifactuManagementApi";
 
@@ -51,7 +52,7 @@ describe("VerifactuCertificateView", () => {
     expect(await screen.findByText("CN=Empresa de prueba")).toBeInTheDocument();
     expect(screen.getByText("B12345674")).toBeInTheDocument();
     expect(screen.getByText("A".repeat(64))).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "verifactu.certificate.delete" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "verifactu.certificate.delete" })).not.toBeInTheDocument();
     expect(screen.getByText("verifactu.certificate.deleteBlocked")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("password");
     expect(document.body.textContent).not.toContain("privateKey");
@@ -78,6 +79,43 @@ describe("VerifactuCertificateView", () => {
     expect(fileInput.value).toBe("");
     expect(passwordInput.value).toBe("");
     expect(document.body.textContent).not.toContain("secret backend detail");
+    expect(document.body.textContent).not.toContain("top-secret");
+  });
+
+  it("shows every safe validation failure without exposing backend details", async () => {
+    vi.mocked(api.loadVerifactuCertificates).mockResolvedValue([]);
+    vi.mocked(api.importVerifactuCertificate).mockRejectedValueOnce(new ApiError(
+      "sensitive backend detail",
+      400,
+      {
+        code: "CERTIFICATE_VALIDATION_FAILED",
+        detail: "sensitive backend detail",
+        errors: [
+          { code: "CERTIFICATE_EXPIRED" },
+          { code: "CERTIFICATE_TAX_ID_MISMATCH" }
+        ]
+      }
+    ));
+    render(<VerifactuCertificateView locale="es" token="admin-token" revision={0} t={t} onChanged={vi.fn()} />);
+    await screen.findByText("verifactu.certificate.emptyTitle");
+
+    fireEvent.click(screen.getByRole("button", { name: "verifactu.certificate.import" }));
+    const fileInput = screen.getByLabelText("verifactu.certificate.file") as HTMLInputElement;
+    const passwordInput = screen.getByLabelText("verifactu.certificate.password") as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["pkcs12"], "empresa.p12", { type: "application/x-pkcs12" })] }
+    });
+    fireEvent.change(passwordInput, { target: { value: "top-secret" } });
+    fireEvent.submit(screen.getByRole("button", {
+      name: "verifactu.certificate.confirmImport"
+    }).closest("form")!);
+
+    expect(await screen.findByText("verifactu.certificate.validationErrorsTitle")).toBeInTheDocument();
+    expect(screen.getByText("verifactu.certificate.expired")).toBeInTheDocument();
+    expect(screen.getByText("verifactu.certificate.taxIdMismatch")).toBeInTheDocument();
+    expect(fileInput.value).toBe("");
+    expect(passwordInput.value).toBe("");
+    expect(document.body.textContent).not.toContain("sensitive backend detail");
     expect(document.body.textContent).not.toContain("top-secret");
   });
 

@@ -22,6 +22,12 @@ class OperationalAccessPolicyTest {
 	}
 
 	@ParameterizedTest
+	@EnumSource(OperationCategory.class)
+	void developmentModeAllowsEveryOperation(OperationCategory category) {
+		assertThat(policy.isAllowed(OperationalMode.DEVELOPMENT, category)).isTrue();
+	}
+
+	@ParameterizedTest
 	@EnumSource(
 			value = OperationCategory.class,
 			names = {"READ", "EXPORT_OR_PRINT", "LICENSE_MANAGEMENT", "BACKUP_OR_RESTORE"})
