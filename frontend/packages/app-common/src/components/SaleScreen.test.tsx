@@ -721,7 +721,7 @@ describe("SaleScreen", () => {
     expect(screen.queryByText(/Cliente: /)).not.toBeInTheDocument();
   });
 
-  it("delegates PageDown and F11 to the checkout actions and ignores F10, repeats, or open modals", async () => {
+  it("delegates PageDown and F11 to the checkout actions and ignores repeats or open modals", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -741,7 +741,6 @@ describe("SaleScreen", () => {
     expect(triggerCash).toHaveBeenCalledTimes(1);
     expect(triggerCard).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(window, { key: "F10" });
     fireEvent.keyDown(window, { key: "PageDown", repeat: true });
     expect(triggerCash).toHaveBeenCalledTimes(1);
 
@@ -749,6 +748,58 @@ describe("SaleScreen", () => {
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens management actions from F8, F9 and F10 while respecting modal guards", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/parked-sales")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/tickets")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customers/sale-options")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/vouchers")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    const onOpenCustomerReceivables = vi.fn();
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+        onOpenCustomerReceivables={onOpenCustomerReceivables}
+      />
+    );
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.keyDown(window, { key: "F8" });
+    expect(await screen.findByRole("dialog", { name: "Ventas aparcadas" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "F9" });
+    expect(await screen.findByRole("dialog", { name: "Gestión posterior de tickets" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "F10" });
+    expect(onOpenCustomerReceivables).toHaveBeenCalledWith(undefined);
   });
 
   it("loads the sale catalog from the fiscal sale endpoint", async () => {
@@ -1333,7 +1384,9 @@ describe("SaleScreen", () => {
     expect(html).toContain('class="sale-receivables-entry"');
     expect(html).toContain("F5");
     expect(html).toContain("AvPág");
-    expect(html).not.toContain("F10");
+    expect(html).toContain("F8");
+    expect(html).toContain("F9");
+    expect(html).toContain("F10");
     expect(html).toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Buscar producto"');
     expect(html).toContain('aria-label="Búsqueda y cobro"');

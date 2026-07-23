@@ -9,6 +9,7 @@ import {
   emptyPartyForm,
   filterPartyDirectoryEntries,
   memberActivationPath,
+  partyDirectoryGridTemplate,
   partyDirectoryColumnDefinitions,
   PartyDirectoryPanel,
   partyFormFromView,
@@ -21,6 +22,34 @@ const layoutSession: UserSession = {
 };
 
 describe("PartyDirectoryPanel", () => {
+  it("prioritizes email and location when distributing the available table width", () => {
+    expect(
+      partyDirectoryGridTemplate([
+        { key: "code", width: 105, visible: true },
+        { key: "name", width: 250, visible: true },
+        { key: "document", width: 160, visible: true },
+        { key: "phone", width: 130, visible: true },
+        { key: "email", width: 190, visible: true },
+        { key: "location", width: 150, visible: true },
+        { key: "status", width: 88, visible: true }
+      ])
+    ).toBe(
+      "105px minmax(250px, 1fr) 160px 130px minmax(190px, 1.35fr) minmax(150px, 1.5fr) 88px"
+    );
+  });
+
+  it("keeps wide email and location columns in the supplier directory", () => {
+    expect(partyDirectoryColumnDefinitions("suppliers")).toEqual([
+      { key: "code", defaultWidth: 105 },
+      { key: "name", defaultWidth: 250 },
+      { key: "document", defaultWidth: 160 },
+      { key: "phone", defaultWidth: 130 },
+      { key: "email", defaultWidth: 240 },
+      { key: "location", defaultWidth: 260 },
+      { key: "status", defaultWidth: 88 }
+    ]);
+  });
+
   it("builds the complete customer request", () => {
     expect(buildPartyRequest({
       ...emptyPartyForm, name: " Cliente Uno ", documentType: "NIF", documentNumber: " 123A ",

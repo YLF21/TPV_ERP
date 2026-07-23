@@ -41,7 +41,10 @@ export function SystemCompatibilityCard({ locale, token }: Props) {
 
   const labels = copy[locale];
   return (
-    <article className="settings-card settings-card-wide" aria-label={labels.title}>
+    <article
+      className="settings-card settings-card-wide system-compatibility-card"
+      aria-label={labels.title}
+    >
       <h3>{labels.title}</h3>
       {!state.backend && !state.error && <p>{labels.loading}</p>}
       {state.error && <p role="alert">{state.error}</p>}
@@ -56,7 +59,9 @@ export function SystemCompatibilityCard({ locale, token }: Props) {
             {state.evaluation.compatible ? labels.compatible : labels.incompatible}
           </p>
           <h4>{labels.capabilities}</h4>
-          <ul>{state.backend.capabilities.map(capability => <li key={capability}>{capability}</li>)}</ul>
+          <ul className="system-compatibility-capabilities">
+            {state.backend.capabilities.map(capability => <li key={capability}>{capability}</li>)}
+          </ul>
         </>
       )}
     </article>

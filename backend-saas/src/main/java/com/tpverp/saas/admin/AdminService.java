@@ -15,6 +15,8 @@ import com.tpverp.saas.tenant.SaasTenantUserRepository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -164,7 +166,7 @@ public class AdminService {
         return new SaasStatusResponse(
                 clock.instant(),
                 "saas-api-v1",
-                "V10__saas_phase9_erp_masters",
+                "V12__saas_phase10_operations_reports_integrations",
                 List.of(
                         "licenses",
                         "installations",
@@ -172,8 +174,12 @@ public class AdminService {
                         "support",
                         "health",
                         "billing",
+                        "subscriptions",
                         "tenant",
-                        "erp-masters"));
+                        "erp-masters",
+                        "erp-operations",
+                        "reports",
+                        "integrations"));
     }
 
     @Transactional(readOnly = true)
@@ -625,6 +631,10 @@ public class AdminService {
     @Transactional
     public BillingInvoiceResponse createBillingInvoice(UUID companyId, CreateBillingInvoiceRequest request) {
         ensureCompanyExists(companyId);
+        requirePositiveMoney(request.amount(), "Importe de factura no valido");
+        if (request.dueAt().isBefore(request.issuedAt())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El vencimiento no puede ser anterior a la emision");
+        }
         UUID invoiceId = UUID.randomUUID();
         try {
             jdbc.update("""
@@ -655,6 +665,7 @@ public class AdminService {
     @Transactional
     public BillingPaymentResponse createBillingPayment(UUID invoiceId, CreateBillingPaymentRequest request) {
         BillingInvoiceResponse invoice = billingInvoice(invoiceId);
+        requirePositiveMoney(request.amount(), "Importe de pago no valido");
         UUID paymentId = UUID.randomUUID();
         Instant now = clock.instant();
         jdbc.update("""
@@ -671,6 +682,253 @@ public class AdminService {
         updateInvoiceStatus(invoiceId, amount(invoice.amount()));
         audit.log("CREATE_BILLING_PAYMENT", "BILLING_INVOICE", invoiceId.toString());
         return billingPayment(paymentId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SalesDocumentResponse> salesDocuments(UUID companyId) {
+        ensureCompanyExists(companyId);
+        try {
+            return jdbc.query("""
+                    select id, company_id, store_id, document_number, customer_code, total, currency, status, issued_at, created_at
+                    from saas_sales_document
+                    where company_id = ?
+                    order by issued_at desc, document_number desc
+                    """, (rs, rowNum) -> salesDocument(rs), companyId);
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return List.of();
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public SalesDocumentResponse createSalesDocument(UUID companyId, CreateSalesDocumentRequest request) {
+        ensureCompanyExists(companyId);
+        requirePositiveMoney(request.total(), "Total de venta no valido");
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                insert into saas_sales_document(
+                    id, company_id, store_id, document_number, customer_code, total, currency, status, issued_at, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                id,
+                companyId,
+                request.storeId(),
+                request.documentNumber().trim(),
+                blankToNull(request.customerCode()),
+                money(request.total()),
+                defaultText(request.currency(), "EUR"),
+                defaultText(request.status(), "CONFIRMADA"),
+                request.issuedAt(),
+                clock.instant());
+        audit.log("CREATE_SALES_DOCUMENT", "COMPANY", companyId.toString());
+        return salesDocument(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InventoryMovementResponse> inventoryMovements(UUID companyId) {
+        ensureCompanyExists(companyId);
+        try {
+            return jdbc.query("""
+                    select id, company_id, warehouse_code, product_sku, movement_type, quantity, reason, moved_at, created_at
+                    from saas_inventory_movement
+                    where company_id = ?
+                    order by moved_at desc
+                    """, (rs, rowNum) -> inventoryMovement(rs), companyId);
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return List.of();
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public InventoryMovementResponse createInventoryMovement(UUID companyId, CreateInventoryMovementRequest request) {
+        ensureCompanyExists(companyId);
+        requirePositiveMoney(request.quantity(), "Cantidad de inventario no valida");
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                insert into saas_inventory_movement(
+                    id, company_id, warehouse_code, product_sku, movement_type, quantity, reason, moved_at, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                id,
+                companyId,
+                request.warehouseCode().trim(),
+                request.productSku().trim(),
+                defaultText(request.movementType(), "ENTRADA"),
+                money(request.quantity()),
+                blankToNull(request.reason()),
+                request.movedAt(),
+                clock.instant());
+        audit.log("CREATE_INVENTORY_MOVEMENT", "COMPANY", companyId.toString());
+        return inventoryMovement(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InventoryStockResponse> inventoryStock(UUID companyId) {
+        ensureCompanyExists(companyId);
+        try {
+            return jdbc.query("""
+                    select warehouse_code, product_sku,
+                           sum(case when upper(movement_type) in ('SALIDA', 'VENTA', 'AJUSTE_NEGATIVO')
+                               then -cast(quantity as decimal(19,2))
+                               else cast(quantity as decimal(19,2))
+                           end) as quantity
+                    from saas_inventory_movement
+                    where company_id = ?
+                    group by warehouse_code, product_sku
+                    order by warehouse_code asc, product_sku asc
+                    """, (rs, rowNum) -> new InventoryStockResponse(
+                    rs.getString("warehouse_code"),
+                    rs.getString("product_sku"),
+                    money(rs.getString("quantity"))), companyId);
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return List.of();
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionResponse> subscriptions() {
+        try {
+            return jdbc.query(subscriptionSql(""), (rs, rowNum) -> subscription(rs));
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return List.of();
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public SubscriptionResponse createSubscription(UUID companyId, CreateSubscriptionRequest request) {
+        ensureCompanyExists(companyId);
+        requirePositiveMoney(request.amount(), "Importe de suscripcion no valido");
+        if (request.nextBillingAt() != null && request.nextBillingAt().isBefore(request.startedAt())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La proxima facturacion no puede ser anterior al inicio");
+        }
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                insert into saas_subscription(
+                    id, company_id, plan_name, status, billing_cycle, amount, currency, started_at, next_billing_at, cancelled_at, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?)
+                """,
+                id,
+                companyId,
+                request.planName().trim(),
+                defaultText(request.status(), "ACTIVA"),
+                defaultText(request.billingCycle(), "MENSUAL"),
+                money(request.amount()),
+                defaultText(request.currency(), "EUR"),
+                request.startedAt(),
+                request.nextBillingAt(),
+                clock.instant());
+        jdbc.update("""
+                insert into saas_company_operations(company_id, plan_name, billing_status, renewal_date, monthly_price, support_status, updated_at)
+                values (?, ?, 'PENDIENTE', ?, ?, 'NORMAL', ?)
+                on conflict (company_id) do update set
+                    plan_name = excluded.plan_name,
+                    renewal_date = excluded.renewal_date,
+                    monthly_price = excluded.monthly_price,
+                    updated_at = excluded.updated_at
+                """, companyId, request.planName().trim(), request.nextBillingAt(), money(request.amount()), clock.instant());
+        audit.log("CREATE_SUBSCRIPTION", "COMPANY", companyId.toString());
+        return subscription(id);
+    }
+
+    @Transactional
+    public SubscriptionResponse cancelSubscription(UUID subscriptionId) {
+        jdbc.update("""
+                update saas_subscription
+                set status = 'CANCELADA', cancelled_at = ?
+                where id = ?
+                """, clock.instant(), subscriptionId);
+        audit.log("CANCEL_SUBSCRIPTION", "SUBSCRIPTION", subscriptionId.toString());
+        return subscription(subscriptionId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<IntegrationEndpointResponse> integrations() {
+        try {
+            return jdbc.query(integrationSql(""), (rs, rowNum) -> integration(rs));
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return List.of();
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public IntegrationEndpointResponse createIntegration(CreateIntegrationRequest request) {
+        if (request.companyId() != null) {
+            ensureCompanyExists(request.companyId());
+        }
+        if (request.targetUrl() != null && !request.targetUrl().isBlank()) {
+            requireValidUrl(request.targetUrl());
+        }
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                insert into saas_integration_endpoint(
+                    id, company_id, name, integration_type, status, target_url, api_key, last_sync_at, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, null, ?)
+                """,
+                id,
+                request.companyId(),
+                request.name().trim(),
+                defaultText(request.integrationType(), "WEBHOOK"),
+                defaultText(request.status(), "ACTIVA"),
+                blankToNull(request.targetUrl()),
+                blankToNull(request.apiKey()),
+                clock.instant());
+        audit.log("CREATE_INTEGRATION", "INTEGRATION", id.toString());
+        return integration(id);
+    }
+
+    @Transactional
+    public IntegrationEndpointResponse markIntegrationSynced(UUID integrationId) {
+        jdbc.update("update saas_integration_endpoint set last_sync_at = ? where id = ?", clock.instant(), integrationId);
+        audit.log("SYNC_INTEGRATION", "INTEGRATION", integrationId.toString());
+        return integration(integrationId);
+    }
+
+    @Transactional(readOnly = true)
+    public SaasAdvancedReportResponse advancedReports() {
+        try {
+            long subscriptionCount = count("select count(*) from saas_subscription");
+            String subscriptionMrr = scalarMoney("""
+                    select coalesce(sum(cast(amount as decimal(19,2))), 0)
+                    from saas_subscription
+                    where status = 'ACTIVA' and billing_cycle = 'MENSUAL'
+                    """);
+            String invoicedTotal = scalarMoney("select coalesce(sum(cast(amount as decimal(19,2))), 0) from saas_billing_invoice");
+            String paidTotal = scalarMoney("select coalesce(sum(cast(amount as decimal(19,2))), 0) from saas_billing_payment");
+            String salesTotal = scalarMoney("select coalesce(sum(cast(total as decimal(19,2))), 0) from saas_sales_document");
+            long integrationCount = count("select count(*) from saas_integration_endpoint");
+            long activeIntegrationCount = count("select count(*) from saas_integration_endpoint where status = 'ACTIVA'");
+            return new SaasAdvancedReportResponse(
+                    companies.count(),
+                    subscriptionCount,
+                    subscriptionMrr,
+                    count("select count(*) from saas_billing_invoice"),
+                    invoicedTotal,
+                    paidTotal,
+                    count("select count(*) from saas_sales_document"),
+                    salesTotal,
+                    count("select count(*) from saas_inventory_movement"),
+                    integrationCount,
+                    activeIntegrationCount);
+        } catch (BadSqlGrammarException exception) {
+            if (missingPhase11Tables(exception)) {
+                return new SaasAdvancedReportResponse(companies.count(), 0, "0.00", 0, "0.00", "0.00", 0, "0.00", 0, 0, 0);
+            }
+            throw exception;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -966,6 +1224,113 @@ public class AdminService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pago no existe"));
     }
 
+    private SalesDocumentResponse salesDocument(UUID id) {
+        return jdbc.query("""
+                select id, company_id, store_id, document_number, customer_code, total, currency, status, issued_at, created_at
+                from saas_sales_document
+                where id = ?
+                """, (rs, rowNum) -> salesDocument(rs), id).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Documento de venta no existe"));
+    }
+
+    private static SalesDocumentResponse salesDocument(ResultSet rs) throws SQLException {
+        return new SalesDocumentResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class),
+                rs.getObject("store_id", UUID.class),
+                rs.getString("document_number"),
+                rs.getString("customer_code"),
+                money(rs.getString("total")),
+                rs.getString("currency"),
+                rs.getString("status"),
+                rs.getTimestamp("issued_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant());
+    }
+
+    private InventoryMovementResponse inventoryMovement(UUID id) {
+        return jdbc.query("""
+                select id, company_id, warehouse_code, product_sku, movement_type, quantity, reason, moved_at, created_at
+                from saas_inventory_movement
+                where id = ?
+                """, (rs, rowNum) -> inventoryMovement(rs), id).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Movimiento de inventario no existe"));
+    }
+
+    private static InventoryMovementResponse inventoryMovement(ResultSet rs) throws SQLException {
+        return new InventoryMovementResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class),
+                rs.getString("warehouse_code"),
+                rs.getString("product_sku"),
+                rs.getString("movement_type"),
+                money(rs.getString("quantity")),
+                rs.getString("reason"),
+                rs.getTimestamp("moved_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant());
+    }
+
+    private SubscriptionResponse subscription(UUID id) {
+        return jdbc.query(subscriptionSql("where s.id = ?"), (rs, rowNum) -> subscription(rs), id).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Suscripcion no existe"));
+    }
+
+    private static String subscriptionSql(String where) {
+        return """
+                select s.id, s.company_id, c.name as company_name, s.plan_name, s.status, s.billing_cycle,
+                       s.amount, s.currency, s.started_at, s.next_billing_at, s.cancelled_at, s.created_at
+                from saas_subscription s
+                join saas_company c on c.id = s.company_id
+                """ + where + " order by s.created_at desc";
+    }
+
+    private static SubscriptionResponse subscription(ResultSet rs) throws SQLException {
+        return new SubscriptionResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class),
+                rs.getString("company_name"),
+                rs.getString("plan_name"),
+                rs.getString("status"),
+                rs.getString("billing_cycle"),
+                money(rs.getString("amount")),
+                rs.getString("currency"),
+                rs.getTimestamp("started_at").toInstant(),
+                rs.getTimestamp("next_billing_at") == null ? null : rs.getTimestamp("next_billing_at").toInstant(),
+                rs.getTimestamp("cancelled_at") == null ? null : rs.getTimestamp("cancelled_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant());
+    }
+
+    private IntegrationEndpointResponse integration(UUID id) {
+        return jdbc.query(integrationSql("where e.id = ?"), (rs, rowNum) -> integration(rs), id).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Integracion no existe"));
+    }
+
+    private static String integrationSql(String where) {
+        return """
+                select e.id, e.company_id, c.name as company_name, e.name, e.integration_type, e.status,
+                       e.target_url, e.api_key, e.last_sync_at, e.created_at
+                from saas_integration_endpoint e
+                left join saas_company c on c.id = e.company_id
+                """ + where + " order by e.created_at desc";
+    }
+
+    private static IntegrationEndpointResponse integration(ResultSet rs) throws SQLException {
+        return new IntegrationEndpointResponse(
+                rs.getObject("id", UUID.class),
+                rs.getObject("company_id", UUID.class),
+                rs.getString("company_name"),
+                rs.getString("name"),
+                rs.getString("integration_type"),
+                rs.getString("status"),
+                rs.getString("target_url"),
+                previewSecret(rs.getString("api_key")),
+                rs.getTimestamp("last_sync_at") == null ? null : rs.getTimestamp("last_sync_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant());
+    }
+
     private static String invoiceSql(String where) {
         return """
                 select i.id, i.company_id, c.name as company_name, i.number, i.concept,
@@ -1026,6 +1391,39 @@ public class AdminService {
                 || message.contains("not found")
                 || message.contains("no existe");
         return operationalTable && missingRelation;
+    }
+
+    private static boolean missingPhase11Tables(BadSqlGrammarException exception) {
+        String message = String.valueOf(exception.getMostSpecificCause().getMessage()).toLowerCase(Locale.ROOT);
+        boolean table = message.contains("saas_subscription")
+                || message.contains("saas_sales_document")
+                || message.contains("saas_inventory_movement")
+                || message.contains("saas_integration_endpoint");
+        boolean missingRelation = message.contains("does not exist")
+                || message.contains("not found")
+                || message.contains("no existe");
+        return table && missingRelation;
+    }
+
+    private long count(String sql) {
+        Long value = jdbc.queryForObject(sql, Long.class);
+        return value == null ? 0 : value;
+    }
+
+    private String scalarMoney(String sql) {
+        Object value = jdbc.queryForObject(sql, Object.class);
+        return money(value == null ? null : value.toString());
+    }
+
+    private static String previewSecret(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.length() <= 6) {
+            return "******";
+        }
+        return trimmed.substring(0, 3) + "..." + trimmed.substring(trimmed.length() - 3);
     }
 
     private List<CustomerHealthResponse> fallbackCustomerHealth(Instant now) {
@@ -1263,6 +1661,24 @@ public class AdminService {
             return new BigDecimal(value.trim().replace(",", "."));
         } catch (NumberFormatException exception) {
             return BigDecimal.ZERO;
+        }
+    }
+
+    private static void requirePositiveMoney(String value, String message) {
+        if (amount(value).compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+    }
+
+    private static void requireValidUrl(String value) {
+        try {
+            URI uri = new URI(value.trim());
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "URL de integracion no valida");
+            }
+        } catch (URISyntaxException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "URL de integracion no valida", exception);
         }
     }
 

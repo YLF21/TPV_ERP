@@ -164,6 +164,72 @@ public class AdminController {
         return service.createBillingPayment(invoiceId, request);
     }
 
+    @GetMapping("/companies/{companyId}/sales-documents")
+    public List<SalesDocumentResponse> salesDocuments(@PathVariable UUID companyId) {
+        return service.salesDocuments(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/sales-documents")
+    public SalesDocumentResponse createSalesDocument(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateSalesDocumentRequest request) {
+        return service.createSalesDocument(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/inventory-movements")
+    public List<InventoryMovementResponse> inventoryMovements(@PathVariable UUID companyId) {
+        return service.inventoryMovements(companyId);
+    }
+
+    @PostMapping("/companies/{companyId}/inventory-movements")
+    public InventoryMovementResponse createInventoryMovement(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateInventoryMovementRequest request) {
+        return service.createInventoryMovement(companyId, request);
+    }
+
+    @GetMapping("/companies/{companyId}/inventory-stock")
+    public List<InventoryStockResponse> inventoryStock(@PathVariable UUID companyId) {
+        return service.inventoryStock(companyId);
+    }
+
+    @GetMapping("/subscriptions")
+    public List<SubscriptionResponse> subscriptions() {
+        return service.subscriptions();
+    }
+
+    @PostMapping("/companies/{companyId}/subscriptions")
+    public SubscriptionResponse createSubscription(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateSubscriptionRequest request) {
+        return service.createSubscription(companyId, request);
+    }
+
+    @PostMapping("/subscriptions/{subscriptionId}/cancel")
+    public SubscriptionResponse cancelSubscription(@PathVariable UUID subscriptionId) {
+        return service.cancelSubscription(subscriptionId);
+    }
+
+    @GetMapping("/integrations")
+    public List<IntegrationEndpointResponse> integrations() {
+        return service.integrations();
+    }
+
+    @PostMapping("/integrations")
+    public IntegrationEndpointResponse createIntegration(@Valid @RequestBody CreateIntegrationRequest request) {
+        return service.createIntegration(request);
+    }
+
+    @PostMapping("/integrations/{integrationId}/sync")
+    public IntegrationEndpointResponse markIntegrationSynced(@PathVariable UUID integrationId) {
+        return service.markIntegrationSynced(integrationId);
+    }
+
+    @GetMapping("/reports/advanced")
+    public SaasAdvancedReportResponse advancedReports() {
+        return service.advancedReports();
+    }
+
     @PutMapping("/users/{username}/password")
     public void changePassword(
             @PathVariable String username,
