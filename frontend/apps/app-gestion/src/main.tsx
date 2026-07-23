@@ -6,6 +6,7 @@ import {
   PromotionListScreen,
   createTranslator,
   devTerminalContext,
+  loadTerminalIdentity,
   userCanManageWarehouses,
   visibleSalesReports,
   visibleStockViewsForSession,
@@ -22,7 +23,6 @@ import { visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
-import { resolveGestionTerminalIdentity } from "./terminalIdentity";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
 
@@ -77,13 +77,11 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     async function loadIdentity() {
-      const bridge = window.tpvDesktop?.terminalIdentity;
-      if (!bridge) {
-        if (!cancelled) setTerminalContext(import.meta.env.DEV ? devTerminalContext : null);
-        return;
-      }
-      const result = await bridge.load();
-      if (!cancelled) setTerminalContext(resolveGestionTerminalIdentity(result));
+      const identity = await loadTerminalIdentity(
+        window.tpvDesktop?.terminalIdentity,
+        import.meta.env.DEV ? devTerminalContext : null
+      );
+      if (!cancelled) setTerminalContext(identity);
     }
     void loadIdentity();
     return () => { cancelled = true; };

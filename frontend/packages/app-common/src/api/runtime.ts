@@ -12,8 +12,8 @@ export const frontendVersion = String(env.VITE_TPV_APP_VERSION ?? "0.0.1");
 export const devTerminalContext: TerminalContext = {
   storeName: String(env.VITE_TPV_STORE_NAME ?? "TIENDA DEMO"),
   terminalCode: String(env.VITE_TPV_TERMINAL_CODE ?? "SERVIDOR"),
-  terminalId: String(env.VITE_TPV_TERMINAL_ID ?? "06d2ce45-8ead-349d-b844-4ecdead5e1ec"),
+  terminalId: env.VITE_TPV_TERMINAL_ID ? String(env.VITE_TPV_TERMINAL_ID) : undefined,
   terminalCredential: env.VITE_TPV_TERMINAL_CREDENTIAL
     ? String(env.VITE_TPV_TERMINAL_CREDENTIAL)
-    : env.DEV ? "DEV-SERVER" : undefined
+    : undefined
 };

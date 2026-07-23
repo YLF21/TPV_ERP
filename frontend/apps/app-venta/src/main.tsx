@@ -6,10 +6,11 @@ import { LoginScreen } from "../../../packages/app-common/src/components/LoginSc
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
 import { readSaleInterfaceTouchMode } from "../../../packages/app-common/src/components/saleInterfacePreferences";
 import "../../../packages/app-common/src/styles/tpv.css";
-import type { LocaleCode, UserSession } from "../../../packages/app-common/src/types";
+import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
 import { ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
+import { loadTerminalIdentity } from "../../../packages/app-common/src/terminalIdentity";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
 
@@ -98,11 +99,25 @@ const WarehouseScreen = lazy(() =>
 
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
+  const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
   const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadIdentity() {
+      const identity = await loadTerminalIdentity(
+        window.tpvDesktop?.terminalIdentity,
+        import.meta.env.DEV ? devTerminalContext : null
+      );
+      if (!cancelled) setTerminalContext(identity);
+    }
+    void loadIdentity();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -139,12 +154,45 @@ export function App() {
     resetLocale();
   };
 
+  if (terminalContext === undefined) {
+    return <AppLoadingFallback locale={locale} />;
+  }
+
+  if (terminalContext === null) {
+    const copy = locale === "en"
+      ? {
+          title: "Terminal not configured",
+          detail: "APP VENTA has no valid terminal identity. Configure and approve this device before signing in.",
+          retry: "Retry"
+        }
+      : locale === "zh"
+        ? {
+            title: "终端未配置",
+            detail: "APP VENTA 没有有效的终端身份。请先配置并批准此设备，然后再登录。",
+            retry: "重试"
+          }
+        : {
+            title: "Terminal no configurado",
+            detail: "APP VENTA no dispone de una identidad de terminal válida. Configura y aprueba este equipo antes de iniciar sesión.",
+            retry: "Reintentar"
+          };
+    return (
+      <main className="settings-screen">
+        <section className="settings-card" role="alert">
+          <h1>{copy.title}</h1>
+          <p>{copy.detail}</p>
+          <button type="button" onClick={() => window.location.reload()}>{copy.retry}</button>
+        </section>
+      </main>
+    );
+  }
+
   if (!session) {
     return (
       <LoginScreen
         app="venta"
         locale={locale}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onLocaleChange={handleLocaleChange}
         onLogin={handleLogin}
       />
@@ -175,7 +223,7 @@ export function App() {
   const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
 
   if (screen === "customerReceivables" && canOpenCustomerReceivables) {
-    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={devTerminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
+    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={terminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
   }
 
   if (screen === "salesReport" && canOpenSalesReport) {
@@ -184,7 +232,7 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -198,8 +246,8 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
-        touchMode={readSaleInterfaceTouchMode("venta", devTerminalContext)}
+        terminalContext={terminalContext}
+        touchMode={readSaleInterfaceTouchMode("venta", terminalContext)}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -218,7 +266,7 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -233,7 +281,7 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -247,7 +295,7 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onBack={() => setScreen("home")}
         onLocaleChange={handleLocaleChange}
         onLogout={handleLogout}
@@ -261,7 +309,7 @@ export function App() {
         app="venta"
         locale={locale}
         session={session}
-        terminalContext={devTerminalContext}
+        terminalContext={terminalContext}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -276,7 +324,7 @@ export function App() {
       app="venta"
       locale={locale}
       session={session}
-      terminalContext={devTerminalContext}
+      terminalContext={terminalContext}
       canOpenSalesReport={canOpenSalesReport}
       onLocaleChange={handleLocaleChange}
       onLogout={handleLogout}

@@ -80,7 +80,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-beforeEach(() => { loginSession = session; });
+beforeEach(() => {
+  loginSession = session;
+  vi.stubGlobal("tpvDesktop", {
+    terminalIdentity: {
+      load: vi.fn().mockResolvedValue({
+        ok: true,
+        identity: {
+          storeName: "TIENDA DEMO",
+          terminalCode: "SERVIDOR",
+          terminalId: "terminal-real",
+          terminalCredential: "protected-secret"
+        }
+      })
+    }
+  });
+});
 
 describe("APP VENTA locale wiring", () => {
   it("shows a centered localized loading experience", () => {
@@ -91,11 +106,11 @@ describe("APP VENTA locale wiring", () => {
     expect(screen.getByText("TPV ERP")).toBeInTheDocument();
   });
 
-  it("loads the user's preference on login, persists changes, and resets to Spanish on logout", () => {
+  it("loads the user's preference on login, persists changes, and resets to Spanish on logout", async () => {
     localStorage.setItem(saleUserLocaleStorageKey(session), "en");
     render(<App />);
 
-    expect(screen.getByLabelText("login locale")).toHaveTextContent("es");
+    expect(await screen.findByLabelText("login locale")).toHaveTextContent("es");
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     expect(screen.getByLabelText("home locale")).toHaveTextContent("en");
 
@@ -108,7 +123,7 @@ describe("APP VENTA locale wiring", () => {
   });
 
   it("opens the customer receivables screen from home", async () => {
-    render(<App />); fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    render(<App />); fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open receivables" }));
     expect(await screen.findByLabelText("receivables")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Back home" }));
@@ -116,7 +131,7 @@ describe("APP VENTA locale wiring", () => {
   });
 
   it("opens filtered customer receivables from the sale sidebar", async () => {
-    render(<App />); fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    render(<App />); fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open sale receivables" }));
     expect(await screen.findByLabelText("receivables")).toHaveTextContent("customer-from-sale");
@@ -133,7 +148,7 @@ describe("APP VENTA locale wiring", () => {
     }), { status: 200 })));
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     expect(screen.getByRole("status")).toHaveTextContent("Comprobando compatibilidad");
     await waitFor(() => expect(screen.getByLabelText("home")).toBeVisible());
   });
@@ -143,7 +158,7 @@ describe("APP VENTA locale wiring", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("no son compatibles"));
     expect(screen.getByRole("alert")).toHaveTextContent("BACKEND_TOO_OLD");
     expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
@@ -157,8 +172,19 @@ describe("APP VENTA locale wiring", () => {
     }), { status: 200 })));
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("MISSING_CAPABILITIES"));
     expect(screen.queryByLabelText("home")).not.toBeInTheDocument();
+  });
+
+  it("blocks login when the protected terminal identity is missing", async () => {
+    vi.stubGlobal("tpvDesktop", {
+      terminalIdentity: { load: vi.fn().mockResolvedValue({ ok: true, identity: null }) }
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Terminal no configurado");
+    expect(screen.queryByRole("button", { name: "Log in" })).not.toBeInTheDocument();
   });
 });

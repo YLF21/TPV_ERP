@@ -1,6 +1,8 @@
 export { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth/auth";
 export { apiRequest, ApiConnectionError, ApiError } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
+export { loadTerminalIdentity, resolveTerminalIdentity } from "./terminalIdentity";
+export type { TerminalIdentityBridge, TerminalIdentityLoadResult } from "./terminalIdentity";
 export { AppFrame } from "./components/AppFrame";
 export { ErpSelect } from "./components/ErpSelect";
 export type { ErpSelectOption } from "./components/ErpSelect";
