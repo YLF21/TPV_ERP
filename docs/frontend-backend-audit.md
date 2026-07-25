@@ -64,7 +64,7 @@ mvn.cmd test
 $env:TPV_ERP_TEST_DB_URL = "jdbc:postgresql://127.0.0.1:5432/tpv_erp_test"
 $env:TPV_ERP_TEST_DB_USER = "tpv_erp"
 # TPV_ERP_TEST_DB_PASSWORD debe estar definida previamente en el entorno.
-mvn.cmd -Dtest=InventoryDocumentGatewayConcurrencyPostgreSqlTest test
+mvn.cmd -Dtest=InventoryDocumentGatewayConcurrencyPostgreSqlTest -Dgroups=integration -DexcludedGroups=none test
 ```
 
 ## Evidencia de esta ejecución (2026-07-25)
