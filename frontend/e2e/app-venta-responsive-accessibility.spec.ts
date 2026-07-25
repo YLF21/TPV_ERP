@@ -58,14 +58,15 @@ for (const viewport of viewports) {
       await expectWithinViewport(page.locator(".sale-ticket"), viewport);
       await expectWithinViewport(page.locator(".promotion-preview-panel"), viewport);
       await expectWithinViewport(page.locator(".report-footer-context"), viewport);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth))
-        .toBeLessThanOrEqual(viewport.width);
+      await expectNoHorizontalOverflow(page, viewport);
 
       await addProduct(page, products[0], locale);
+      await expectNoHorizontalOverflow(page, viewport);
 
       await page.keyboard.press("F2");
       const quantityDialog = page.getByRole("dialog", { name: localeLabels[locale].quantityDialog });
       await expectWithinViewport(quantityDialog, viewport);
+      await expectNoHorizontalOverflow(page, viewport);
       const quantityInput = quantityDialog.getByRole("spinbutton", {
         name: localeLabels[locale].quantityInput
       });
@@ -85,10 +86,11 @@ for (const viewport of viewports) {
       await page.keyboard.press("F6");
       const customerDialog = page.getByRole("dialog", { name: localeLabels[locale].customerDialog });
       await expectWithinViewport(customerDialog, viewport);
+      await expectNoHorizontalOverflow(page, viewport);
       await page.keyboard.press("Escape");
       await expect(customerDialog).toBeHidden();
 
-      expect(await unnamedInteractiveControls(page)).toEqual([]);
+      await expectInteractiveControlsToHaveAccessibleNames(page);
     });
   }
 }
@@ -118,29 +120,42 @@ async function expectWithinViewport(locator: Locator, viewport: { width: number;
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height);
 }
 
-async function unnamedInteractiveControls(page: Page) {
-  return page.locator("button, input:not([type='hidden']), select, textarea, [role='button'], [role='link']")
-    .evaluateAll((controls) => controls.flatMap((control) => {
-      const element = control as HTMLInputElement;
-      const style = window.getComputedStyle(element);
-      if (element.hidden || style.display === "none" || style.visibility === "hidden") return [];
+async function expectNoHorizontalOverflow(
+  page: Page,
+  viewport: { width: number }
+) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(viewport.width);
+}
 
-      const labelledBy = (element.getAttribute("aria-labelledby") ?? "")
-        .split(/\s+/)
-        .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
-        .join(" ");
-      const labelText = Array.from(element.labels ?? [])
-        .map((label) => label.textContent?.trim() ?? "")
-        .join(" ");
-      const name = [
-        element.getAttribute("aria-label"),
-        labelledBy,
-        labelText,
-        element.getAttribute("alt"),
-        element.getAttribute("title"),
-        element.value,
-        element.textContent
-      ].find((candidate) => candidate?.trim());
-      return name ? [] : [`${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}`];
-    }));
+async function expectInteractiveControlsToHaveAccessibleNames(page: Page) {
+  const controls = page.locator([
+    "button:visible",
+    "a[href]:visible",
+    "input:not([type='hidden']):visible",
+    "select:visible",
+    "textarea:visible",
+    "[role='button']:visible",
+    "[role='link']:visible",
+    "[role='checkbox']:visible",
+    "[role='radio']:visible",
+    "[role='switch']:visible",
+    "[role='slider']:visible",
+    "[role='spinbutton']:visible",
+    "[role='textbox']:visible",
+    "[role='combobox']:visible",
+    "[role='listbox']:visible",
+    "[role='option']:visible",
+    "[role='menuitem']:visible",
+    "[role='tab']:visible"
+  ].join(", "));
+
+  for (let index = 0; index < await controls.count(); index += 1) {
+    const control = controls.nth(index);
+    const description = await control.evaluate((element) =>
+      `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}`
+    );
+    await expect(control, `${description} must have an accessible name`)
+      .toHaveAccessibleName(/\S/);
+  }
 }
