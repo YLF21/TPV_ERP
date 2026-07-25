@@ -110,7 +110,7 @@ public class InventoryDocumentGateway implements StockDocumentGateway {
     }
 
     private void apply(java.util.UUID productId, java.util.UUID warehouseId, BigDecimal quantity) {
-        var stock = stockLevels.findByProductIdAndWarehouseId(productId, warehouseId)
+        var stock = stockLevels.findByProductIdAndWarehouseIdForUpdate(productId, warehouseId)
                 .orElseGet(() -> new StockLevel(productId, warehouseId));
         stock.apply(quantity);
         stockLevels.save(stock);

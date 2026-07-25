@@ -69,13 +69,15 @@ class InventoryDocumentGatewayTest {
         var document = confirmed(CommercialDocumentType.ALBARAN_VENTA, 3);
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
-        when(stockRepository.findByProductIdAndWarehouseId(
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
                 line.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
         when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
 
         assertThat(gateway.confirm(document)).isTrue();
 
         assertThat(stock.getQuantity()).isEqualByComparingTo("-3.000");
+        verify(stockRepository).findByProductIdAndWarehouseIdForUpdate(
+                line.getProductoId(), document.getAlmacenId());
         verify(movementRepository).save(any(StockMovement.class));
         verify(syncOutbox).enqueue(any());
     }
@@ -85,7 +87,7 @@ class InventoryDocumentGatewayTest {
         var document = confirmed(CommercialDocumentType.ALBARAN_COMPRA, 2);
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
-        when(stockRepository.findByProductIdAndWarehouseId(
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
                 line.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
         when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
 
@@ -117,7 +119,7 @@ class InventoryDocumentGatewayTest {
                 true, "IVA", new BigDecimal("21.00"), UUID.randomUUID(), null));
         var productLine = document.getLineas().getFirst();
         var stock = new StockLevel(productLine.getProductoId(), document.getAlmacenId());
-        when(stockRepository.findByProductIdAndWarehouseId(
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
                 productLine.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
         when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
 
@@ -133,7 +135,7 @@ class InventoryDocumentGatewayTest {
         var line = document.getLineas().getFirst();
         var stock = new StockLevel(line.getProductoId(), document.getAlmacenId());
         stock.apply(-2);
-        when(stockRepository.findByProductIdAndWarehouseId(
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
                 line.getProductoId(), document.getAlmacenId())).thenReturn(Optional.of(stock));
         when(movementRepository.existsByDocumentId(document.getId())).thenReturn(false);
 
@@ -158,7 +160,7 @@ class InventoryDocumentGatewayTest {
         when(movementRepository.findByDocumentIdAndCompensationOfIdIsNull(document.getId()))
                 .thenReturn(java.util.List.of(original));
         when(movementRepository.existsByCompensationOfId(original.getId())).thenReturn(false);
-        when(stockRepository.findByProductIdAndWarehouseId(
+        when(stockRepository.findByProductIdAndWarehouseIdForUpdate(
                 original.getProductId(), original.getWarehouseId())).thenReturn(Optional.of(stock));
 
         assertThat(gateway.cancel(document)).isTrue();
