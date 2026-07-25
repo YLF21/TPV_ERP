@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
+import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
 import { SaleScreen } from "./SaleScreen";
 
@@ -15,6 +16,7 @@ vi.mock("../api/client", async (importOriginal) => ({
 
 const session: UserSession = { username: "admin", displayName: "ADMIN", permissions: ["ADMIN"] };
 const terminal: TerminalContext = { storeName: "Tienda Principal", terminalCode: "01" };
+const t = createTranslator("es");
 const oldSession = {
   id: "task-4-old-session",
   total: "12.10",
@@ -101,9 +103,9 @@ describe("SaleScreen payment cleanup across restart", () => {
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
 
     fireEvent.keyDown(window, { key: "F12" });
-    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: t("sale.customer.title") })).toBeInTheDocument();
     fireEvent.click(screen.getByText("Cerrar", { selector: "button" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: t("sale.customer.title") })).not.toBeInTheDocument());
     fireEvent.keyDown(window, { key: "PageDown" });
     expect(await screen.findByRole("dialog", { name: "Cobro en efectivo" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
