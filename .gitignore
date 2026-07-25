@@ -10,3 +10,9 @@ frontend-saas/vite-cache/
 frontend/**/target/
 output/
 payment-terminal-bridge/**/target/
+
+# Local developer and tool artifacts
+*.log
+*.lnk
+.codex/
+.superpowers/brainstorm/
