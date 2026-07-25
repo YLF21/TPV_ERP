@@ -333,12 +333,12 @@ describe("SaleScreen", () => {
     expect(events).toEqual(["first:start", "first:end", "second:start"]);
     expect(onError).not.toHaveBeenCalled();
   });
-  function renderSaleScreen(onLogout = vi.fn(), locale: "es" | "en" | "zh" = "es") {
+  function renderSaleScreen(onLogout = vi.fn(), locale: "es" | "en" | "zh" = "es", screenSession: UserSession = session) {
     render(
       <SaleScreen
         app="venta"
         locale={locale}
-        session={session}
+        session={screenSession}
         terminalContext={terminalContext}
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -520,6 +520,173 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "Delete" });
     expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["es", {
+      productSearch: "Buscar producto",
+      close: "Cerrar",
+      cancel: "Cancelar",
+      save: "Guardar",
+      quantityTitle: "Cambiar cantidad",
+      quantityLabel: "Cantidad",
+      quantityInput: "Nueva cantidad",
+      discountTitle: "Aplicar descuento",
+      discountLabel: "Descuento (%)",
+      discountInput: "Nuevo descuento",
+      customerTitle: "Seleccionar cliente",
+      customerSearch: "Buscar cliente",
+      customerPlaceholder: "Nombre, documento o codigo",
+      customerLoading: "Cargando clientes...",
+      customerNone: "Sin cliente",
+      customerUnnamed: "Cliente sin nombre",
+      customerNoCode: "Sin codigo",
+      removeTitle: "Anular linea",
+      removeConfirm: "Se eliminara Cafe molido del ticket.",
+      removeAction: "Anular linea",
+    }],
+    ["en", {
+      productSearch: "Search product",
+      close: "Close",
+      cancel: "Cancel",
+      save: "Save",
+      quantityTitle: "Change quantity",
+      quantityLabel: "Quantity",
+      quantityInput: "New quantity",
+      discountTitle: "Apply discount",
+      discountLabel: "Discount (%)",
+      discountInput: "New discount",
+      customerTitle: "Select customer",
+      customerSearch: "Search customer",
+      customerPlaceholder: "Name, document or code",
+      customerLoading: "Loading customers...",
+      customerNone: "No customer",
+      customerUnnamed: "Unnamed customer",
+      customerNoCode: "No code",
+      removeTitle: "Remove line",
+      removeConfirm: "Cafe molido will be removed from the ticket.",
+      removeAction: "Remove line",
+    }],
+    ["zh", {
+      productSearch: "\u641c\u7d22\u5546\u54c1",
+      close: "\u5173\u95ed",
+      cancel: "\u53d6\u6d88",
+      save: "\u4fdd\u5b58",
+      quantityTitle: "\u66f4\u6539\u6570\u91cf",
+      quantityLabel: "\u6570\u91cf",
+      quantityInput: "\u65b0\u6570\u91cf",
+      discountTitle: "\u5e94\u7528\u6298\u6263",
+      discountLabel: "\u6298\u6263 (%)",
+      discountInput: "\u65b0\u6298\u6263",
+      customerTitle: "\u9009\u62e9\u5ba2\u6237",
+      customerSearch: "\u641c\u7d22\u5ba2\u6237",
+      customerPlaceholder: "\u540d\u79f0\u3001\u8bc1\u4ef6\u6216\u4ee3\u7801",
+      customerLoading: "\u6b63\u5728\u52a0\u8f7d\u5ba2\u6237...",
+      customerNone: "\u65e0\u5ba2\u6237",
+      customerUnnamed: "\u672a\u547d\u540d\u5ba2\u6237",
+      customerNoCode: "\u65e0\u4ee3\u7801",
+      removeTitle: "\u5220\u9664\u884c",
+      removeConfirm: "\u5c06\u4ece\u5c0f\u7968\u4e2d\u79fb\u9664 Cafe molido\u3002",
+      removeAction: "\u5220\u9664\u884c",
+    }],
+  ] as const)("localizes sale action dialogs in %s", async (locale, expected) => {
+    let resolveCustomers!: (response: Response) => void;
+    const customersResponse = new Promise<Response>((resolve) => { resolveCustomers = resolve; });
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/customers/sale-options")) return customersResponse;
+      return Promise.resolve(new Response(JSON.stringify([products[0]]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    }));
+    renderSaleScreen(vi.fn(), locale);
+    const search = await screen.findByRole("combobox", { name: expected.productSearch });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F2" });
+    let dialog = screen.getByRole("dialog", { name: expected.quantityTitle });
+    expect(within(dialog).getByText(expected.quantityLabel)).toBeInTheDocument();
+    expect(within(dialog).getByRole("spinbutton", { name: expected.quantityInput })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.close })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
+
+    fireEvent.keyDown(window, { key: "F7" });
+    dialog = screen.getByRole("dialog", { name: expected.discountTitle });
+    expect(within(dialog).getByText(expected.discountLabel)).toBeInTheDocument();
+    expect(within(dialog).getByRole("spinbutton", { name: expected.discountInput })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
+
+    fireEvent.keyDown(window, { key: "F6" });
+    dialog = screen.getByRole("dialog", { name: expected.customerTitle });
+    expect(within(dialog).getByText(expected.customerSearch)).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: expected.customerSearch })).toHaveAttribute("placeholder", expected.customerPlaceholder);
+    expect(within(dialog).getByText(expected.customerLoading)).toBeInTheDocument();
+    resolveCustomers(new Response(JSON.stringify([{ id: "anonymous" }]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    }));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: expected.customerNone })).toBeInTheDocument());
+    expect(within(dialog).getByText(expected.customerUnnamed)).toBeInTheDocument();
+    expect(within(dialog).getByText(expected.customerNoCode)).toBeInTheDocument();
+    const [closeIcon] = within(dialog).getAllByRole("button", { name: expected.close });
+    expect(closeIcon).toBeInTheDocument();
+    fireEvent.click(closeIcon);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+    dialog = screen.getByRole("dialog", { name: expected.removeTitle });
+    expect(within(dialog).getByText(expected.removeConfirm)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.removeAction })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", title: "Autorizacion de descuento", explanation: "El descuento del 10,00% supera tu limite del 5,00%.", managerUser: "Usuario responsable", managerPassword: "Contrasena del responsable", cancel: "Cancelar", authorize: "Autorizar" }],
+    ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", title: "Discount authorization", explanation: "The 10,00% discount exceeds your 5,00% limit.", managerUser: "Manager username", managerPassword: "Manager password", cancel: "Cancel", authorize: "Authorize" }],
+    ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", title: "\u6298\u6263\u6388\u6743", explanation: "10,00% \u7684\u6298\u6263\u8d85\u8fc7\u4e86\u60a8\u7684 5,00% \u9650\u5236\u3002", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", cancel: "\u53d6\u6d88", authorize: "\u6388\u6743" }],
+  ] as const)("localizes discount authorization in %s", async (locale, expected) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen(vi.fn(), locale, { ...session, permissions: ["APLICAR_DESCUENTO"], maxDiscountPercent: 5 });
+    const search = await screen.findByRole("combobox", { name: expected.productSearch });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    fireEvent.keyDown(window, { key: "F7" });
+    fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: expected.save }));
+
+    const dialog = screen.getByRole("dialog", { name: expected.title });
+    expect(within(dialog).getByText(expected.explanation)).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: expected.managerUser })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(expected.managerPassword)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: expected.authorize })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["es", { customerTitle: "Seleccionar cliente", customerLoadError: "No se pudieron cargar los clientes" }],
+    ["en", { customerTitle: "Select customer", customerLoadError: "Customers could not be loaded" }],
+    ["zh", { customerTitle: "\u9009\u62e9\u5ba2\u6237", customerLoadError: "\u65e0\u6cd5\u52a0\u8f7d\u5ba2\u6237" }],
+  ] as const)("localizes the customer loading error in %s", async (locale, expected) => {
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/customers/sale-options")) return Promise.reject(new Error("offline"));
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }));
+    renderSaleScreen(vi.fn(), locale);
+    fireEvent.keyDown(window, { key: "F6" });
+    const dialog = await screen.findByRole("dialog", { name: expected.customerTitle });
+    expect(await within(dialog).findByText(expected.customerLoadError)).toBeInTheDocument();
   });
 
   it("cancels remove-line confirmation with Escape without removing the line", async () => {

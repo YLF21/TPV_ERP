@@ -1836,81 +1836,81 @@ export function SaleScreen({
       </div>}
 
       {actionDialog === "quantity" && selectedLine && (
-        <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title={t("sale.quantity.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
             <label>
-              <span>Cantidad</span>
-              <input ref={quantityInputRef} aria-label="Nueva cantidad" type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
+              <span>{t("sale.quantity.label")}</span>
+              <input ref={quantityInputRef} aria-label={t("sale.quantity.inputAria")} type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
             </label>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
           </form>
         </SaleActionDialog>
       )}
 
       {actionDialog === "discount" && selectedLine && (
-        <SaleActionDialog title="Aplicar descuento" onClose={() => setActionDialog(null)}>
+        <SaleActionDialog title={t("sale.discount.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveDiscount(); }}>
             <label>
-              <span>Descuento (%)</span>
-              <input ref={discountInputRef} aria-label="Nuevo descuento" type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
+              <span>{t("sale.discount.label")}</span>
+              <input ref={discountInputRef} aria-label={t("sale.discount.inputAria")} type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
             </label>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
-            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button type="submit">Guardar</button></div>
+            <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
           </form>
         </SaleActionDialog>
       )}
 
       {actionDialog === "discountAuthorization" && selectedLine && (
-        <SaleActionDialog title="Autorizacion de descuento" onClose={() => { setManagerPassword(""); setActionDialog(null); }}>
+        <SaleActionDialog title={t("sale.discountAuthorization.title")} closeLabel={t("sale.dialog.close")} onClose={() => { setManagerPassword(""); setActionDialog(null); }}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); void authorizeDiscount(); }}>
             <p>
-              El descuento del {formatSaleAmount(discountAuthorizationPercent)}% supera tu limite del {formatSaleAmount(userDiscountLimit)}%.
+              {saleMainMessage(t, "sale.discountAuthorization.exceedsLimit", { discount: formatSaleAmount(discountAuthorizationPercent), limit: formatSaleAmount(userDiscountLimit) })}
             </p>
             <label>
-              <span>Usuario responsable</span>
+              <span>{t("sale.discountAuthorization.managerUser")}</span>
               <input autoFocus autoComplete="username" value={managerName} onChange={(event) => setManagerName(event.target.value)} />
             </label>
             <label>
-              <span>Contrasena del responsable</span>
+              <span>{t("sale.discountAuthorization.managerPassword")}</span>
               <input type="password" inputMode="numeric" autoComplete="current-password" value={managerPassword} onChange={(event) => setManagerPassword(event.target.value)} />
             </label>
             {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
             <div className="sale-action-buttons">
-              <button type="button" onClick={() => { setManagerPassword(""); setActionDialog(null); }}>Cancelar</button>
-              <button type="submit" disabled={managerAuthorizationBusy || !managerName.trim() || !managerPassword}>Autorizar</button>
+              <button type="button" onClick={() => { setManagerPassword(""); setActionDialog(null); }}>{t("sale.dialog.cancel")}</button>
+              <button type="submit" disabled={managerAuthorizationBusy || !managerName.trim() || !managerPassword}>{t("sale.discountAuthorization.authorize")}</button>
             </div>
           </form>
         </SaleActionDialog>
       )}
 
       {actionDialog === "customer" && (
-        <SaleActionDialog title="Seleccionar cliente" onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }} wide>
+        <SaleActionDialog title={t("sale.customer.title")} closeLabel={t("sale.dialog.close")} onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }} wide>
           <label>
-            <span>Buscar cliente</span>
-            <input aria-label="Buscar cliente" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="Nombre, documento o codigo" />
+            <span>{t("sale.customer.search")}</span>
+            <input aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
           </label>
-          {customerLoading && <p className="sale-search-status">Cargando clientes...</p>}
-          {customerError && <p className="sale-action-error">No se pudieron cargar los clientes</p>}
+          {customerLoading && <p className="sale-search-status">{t("sale.customer.loading")}</p>}
+          {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
           {!customerLoading && !customerError && (
             <div className="sale-customer-results">
-              {!pendingCustomerContinuation && <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>Sin cliente</button>}
+              {!pendingCustomerContinuation && <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>{t("sale.customer.none")}</button>}
               {customerResults.map((customer) => (
                 <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setLines((current) => applyMemberDiscounts(current, customer)); setActionDialog(null); if (pendingCustomerContinuation) { setPendingCustomerContinuation(false); void beginPendingSale(customer); } }}>
-                  <strong>{customer.fiscalName ?? "Cliente sin nombre"}</strong>
-                  <span>{customer.clientId ?? customer.documentNumber ?? "Sin codigo"}</span>
+                  <strong>{customer.fiscalName ?? t("sale.customer.unnamed")}</strong>
+                  <span>{customer.clientId ?? customer.documentNumber ?? t("sale.customer.noCode")}</span>
                 </button>
               ))}
             </div>
           )}
-          <div className="sale-action-buttons"><button type="button" onClick={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}>Cerrar</button></div>
+          <div className="sale-action-buttons"><button type="button" onClick={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}>{t("sale.dialog.close")}</button></div>
         </SaleActionDialog>
       )}
 
       {actionDialog === "remove" && selectedLine && (
-        <SaleActionDialog title="Anular linea" onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
-          <p>Se eliminara {selectedLine.product.name ?? "el producto"} del ticket.</p>
-          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>Cancelar</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>Anular linea</button></div>
+        <SaleActionDialog title={t("sale.removeLine.title")} closeLabel={t("sale.dialog.close")} onClose={() => setActionDialog(null)} onKeyDown={handleRemoveLineKeyDown}>
+          <p>{saleMainMessage(t, "sale.removeLine.confirm", { product: selectedLine.product.name ?? t("sale.removeLine.productFallback") })}</p>
+          <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button ref={removeConfirmButtonRef} type="button" className="danger" onClick={confirmRemoveLine}>{t("sale.removeLine.action")}</button></div>
         </SaleActionDialog>
       )}
 
@@ -1940,6 +1940,7 @@ export function SaleScreen({
       {pendingInactiveProduct && (
         <SaleActionDialog
           title={t("sale.inactiveProduct.title")}
+          closeLabel={t("sale.dialog.close")}
           onClose={cancelInactiveProduct}
           onConfirm={confirmInactiveProduct}
         >
@@ -1958,6 +1959,7 @@ export function SaleScreen({
 
 function SaleActionDialog({
   title,
+  closeLabel,
   children,
   onClose,
   onKeyDown,
@@ -1965,6 +1967,7 @@ function SaleActionDialog({
   wide = false
 }: {
   title: string;
+  closeLabel: string;
   children: React.ReactNode;
   onClose: () => void;
   onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
@@ -1988,7 +1991,7 @@ function SaleActionDialog({
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
-        <header><h2>{title}</h2><button type="button" aria-label="Cerrar" onClick={onClose}>x</button></header>
+        <header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>x</button></header>
         {children}
       </section>
     </div>
