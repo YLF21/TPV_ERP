@@ -1,9 +1,11 @@
 package com.tpverp.backend.catalog;
 
+import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.shared.access.OperationalMode;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,16 +20,19 @@ public class SaleProductCatalogService {
     private final CatalogService catalog;
     private final StoreTaxRepository taxes;
     private final LicenseRepository licenses;
+    private final InstallationStatusService installationStatus;
     private final CurrentOrganization organization;
 
     public SaleProductCatalogService(
             CatalogService catalog,
             StoreTaxRepository taxes,
             LicenseRepository licenses,
+            InstallationStatusService installationStatus,
             CurrentOrganization organization) {
         this.catalog = catalog;
         this.taxes = taxes;
         this.licenses = licenses;
+        this.installationStatus = installationStatus;
         this.organization = organization;
     }
 
@@ -45,7 +50,7 @@ public class SaleProductCatalogService {
 
         Map<UUID, StoreTax> taxesById = taxes.findAllById(taxIds).stream()
                 .collect(Collectors.toMap(StoreTax::getId, Function.identity()));
-        TaxRegime taxRegime = activeLicense(storeId).getRegimenImpuesto();
+        TaxRegime taxRegime = currentTaxRegime(storeId);
         if (taxRegime == null) {
             throw new IllegalStateException("Licencia sin regimen fiscal configurado");
         }
@@ -55,15 +60,21 @@ public class SaleProductCatalogService {
                 .toList();
     }
 
-    private License activeLicense(UUID storeId) {
+    private TaxRegime currentTaxRegime(UUID storeId) {
         License license = licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId).stream()
                 .filter(License::isActiva)
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No hay licencia activa para la tienda"));
+                .orElse(null);
+        if (license == null) {
+            if (installationStatus.status().mode() == OperationalMode.DEVELOPMENT) {
+                return TaxRegime.IVA;
+            }
+            throw new IllegalStateException("No hay licencia activa para la tienda");
+        }
         if (!storeId.equals(license.getTiendaId())) {
             throw new IllegalArgumentException("La licencia no pertenece a la tienda actual");
         }
-        return license;
+        return license.getRegimenImpuesto();
     }
 
     private static SaleProductView saleView(
@@ -101,6 +112,7 @@ public class SaleProductCatalogService {
                 product.isTaxesIncluded(),
                 product.getTaxId(),
                 tax.getPercentage(),
-                taxRegime);
+                taxRegime,
+                product.getPackageQuantity());
     }
 }

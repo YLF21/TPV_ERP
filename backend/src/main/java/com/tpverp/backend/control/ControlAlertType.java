@@ -21,7 +21,13 @@ public enum ControlAlertType {
     TICKET_CANCELLED(
             "Anulacion de ticket", ControlRuleParameterKind.NONE, Map.of(), true),
     INACTIVE_PRODUCT_SOLD(
-            "Venta de producto desactivado", ControlRuleParameterKind.NONE, Map.of(), true);
+            "Venta de producto desactivado", ControlRuleParameterKind.NONE, Map.of(), true),
+    MANUAL_NEGATIVE_QUANTITY(
+            "Devolucion manual sin ticket", ControlRuleParameterKind.NONE, Map.of(), true),
+    CASH_DRAWER_OPENED(
+            "Apertura manual del cajon", ControlRuleParameterKind.NONE, Map.of(), true),
+    PRODUCT_CATALOG_MODIFIED(
+            "Modificacion de producto desde venta", ControlRuleParameterKind.NONE, Map.of(), true);
 
     private final String systemName;
     private final ControlRuleParameterKind parameterKind;

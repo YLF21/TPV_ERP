@@ -55,6 +55,14 @@ public class CashController {
         return sessions.open(request.terminalId(), authentication);
     }
 
+    @PostMapping("/sessions/prepare-sales")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
+    public CashSalesSessionReadinessView prepareForSales(
+            @RequestBody CashOpenRequest request,
+            Authentication authentication) {
+        return sessions.prepareForSales(request.terminalId(), authentication);
+    }
+
     @PostMapping("/sessions/close")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashSessionView close(

@@ -37,7 +37,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
                 group by documento_id
             ) payment on payment.documento_id = document.id
             where document.cliente_id = :customerId
-              and document.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+              and (document.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+                  or (document.tipo = 'TICKET' and document.cuenta_cobrar = true))
               and document.estado in ('PENDIENTE','PARCIAL')
               and not exists (
                   select 1 from documento_relacion relation
@@ -58,7 +59,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
                 group by documento_id
             ) payment on payment.documento_id = document.id
             where document.cliente_id = :customerId
-              and document.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+              and (document.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+                  or (document.tipo = 'TICKET' and document.cuenta_cobrar = true))
               and document.estado in ('PENDIENTE','PARCIAL')
               and document.fecha_vencimiento < :businessDate
               and not exists (

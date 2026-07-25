@@ -45,9 +45,16 @@ public class PosCardService {
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
 
         var command=sales.authoritativeCommand(request.sale(),authentication);
-        var quotedTicket=request.sale().promotionalCouponCode()==null||request.sale().promotionalCouponCode().isBlank()
-                ?documents.quoteTicket(command,authentication)
-                :documents.quoteTicket(command,request.sale().promotionalCouponCode(),authentication); BigDecimal total=quotedTicket.getTotal();
+        var hasDiscount=request.sale().checkoutDiscountAmount()!=null
+                && Money.euros(request.sale().checkoutDiscountAmount()).signum()>0;
+        var quotedTicket=hasDiscount
+                ?documents.quoteTicket(command,request.sale().promotionalCouponCode(),
+                        request.sale().checkoutDiscountAmount(),authentication)
+                :request.sale().promotionalCouponCode()==null||request.sale().promotionalCouponCode().isBlank()
+                        ?documents.quoteTicket(command,authentication)
+                        :documents.quoteTicket(command,request.sale().promotionalCouponCode(),authentication);
+        sales.authorizeCheckoutDiscount(request.sale(),quotedTicket.getTotal(),authentication);
+        BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         var configuration=configurations.required(terminalId);
         validateConfiguration(configuration);
@@ -106,13 +113,19 @@ public class PosCardService {
     }
     private static String hash(PosCashController.SaleRequest sale,BigDecimal total){
         var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
-        var c=new StringBuilder(coupon.isEmpty()?"v1|":"v2-coupon|").append(sale.customerId()).append('|');
+        var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
+        var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
+        var c=new StringBuilder(hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
+        c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
         c.append(Money.euros(total));
-        sale.lines().forEach(l->c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString())
-                .append(':').append(l.discount().stripTrailingZeros().toPlainString()));
+        sale.lines().forEach(l->{c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString())
+                .append(':').append(l.discount().stripTrailingZeros().toPlainString())
+                .append(hasOpenPrice?":"+openPrice(l.openUnitPrice()):"");
+            if(hasSerialNumbers)c.append(':').append(PosCashService.canonicalSerialNumbers(l.serialNumbers()));});
         try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.toString().getBytes(StandardCharsets.UTF_8)));}
         catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }
+    private static String openPrice(BigDecimal value){return value==null?"-":Money.euros(value).toPlainString();}
     public record Result(PaymentTerminalOperationStatus status,UUID ticketId,String ticketNumber,BigDecimal total,String reference,String authorization,String message){}
 }

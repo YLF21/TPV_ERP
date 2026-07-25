@@ -1,7 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { PaymentAllocationPanel } from "./PaymentAllocationPanel";
+import {
+ LegacyPaymentAllocationPanel,
+ PaymentAllocationPanel,
+ type CheckoutMethod,
+} from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
 import { PaymentOperationPanel, type PaymentOperationEvent, type PaymentOperationView } from "./PaymentOperationPanel";
 import { CashPaymentDialog } from "./CashPaymentDialog";
@@ -9,19 +13,25 @@ import { IndividualPaymentActions } from "./IndividualPaymentActions";
 import { ManualCardReferenceDialog } from "./ManualCardReferenceDialog";
 import { getHardwareBridge } from "../hardware/hardware";
 import { loadPaymentOperationHistory, loadPaymentRefundLines, printPaymentReceipt, queryPaymentOperation, refundPaymentOperation, voidPaymentOperation, type PaymentRefundLineOption, type PaymentRefundLineSelection } from "../sale/paymentOperations";
+import {
+ defaultCheckoutPaymentMethodConfiguration,
+ loadPaymentMethods,
+ resolveCheckoutPaymentMethodConfiguration,
+} from "../sale/paymentMethods";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import type { LocaleCode, Permission, TerminalContext } from "../types";
 
 type Sale = {
   customerId: string | null;
-  lines: Array<{ productId: string; quantity: number; discount: number }>;
+  lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice?: number }>;
   promotionalCouponCode?: string;
+  checkoutDiscountAmount?: number;
 };
-export type ServerSession = { id: string; total: number | string; status: string; ticketId?: string; ticketNumber?: string; printTicket?: ConfirmedTicketPrintSnapshot; allocations: Array<{ id: string; idempotencyKey: string; kind: "CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"; amount: number|string; provider?: string; operationId?: string; status: string; reference?: string; authorization?: string; message?: string }> };
+export type ServerSession = { id: string; total: number | string; status: string; ticketId?: string; ticketNumber?: string; printTicket?: ConfirmedTicketPrintSnapshot; allocations: Array<{ id: string; idempotencyKey: string; kind: "CASH"|"MANUAL_CARD"|"INTEGRATED_CARD"|"VOUCHER"|"TRANSFER"|"PENDING"; amount: number|string; delivered?: number|string; change?: number|string; comment?: string; provider?: string; operationId?: string; status: string; voucherCode?: string; reference?: string; authorization?: string; message?: string }> };
 export type PaymentFinalizationSummary =
  | { kind: "CASH"; totalCents: number; receivedCents: number }
  | { kind: "CARD" | "VOUCHER" | "MIXED"; totalCents: number; receivedCents?: never };
-type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; testCashEnabled?: boolean; onCash?: () => void; onPending?: () => void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
+type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; customerSelected?: boolean; testCashEnabled?: boolean; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
 type AuthorizationAction = { kind: "VOID" | "REFUND"; amount: string; options: PaymentRefundLineOption[]; lines: PaymentRefundLineSelection[] };
 type CashAttemptMetadata = { sessionId?: string; receivedCents: number };
 class InvalidPaymentFinalizationSummaryError extends Error {}
@@ -29,12 +39,25 @@ class InvalidPaymentFinalizationSummaryError extends Error {}
 const uuid=()=>globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`;
 type EntryCleanupOutcome={next?:ServerSession;error?:unknown};
 const entryCleanupRegistry=new Map<string,Promise<EntryCleanupOutcome>>();
+const entryCleanupDurableRejections=new Map<string,EntryCleanupOutcome>();
 export const entryCleanupRegistrySizeForTest=()=>entryCleanupRegistry.size;
 function sharedEntryCleanup(sessionId:string,request:()=>Promise<ServerSession>):Promise<EntryCleanupOutcome>{
+ const durableRejection=entryCleanupDurableRejections.get(sessionId);
+ if(durableRejection)return Promise.resolve(durableRejection);
  const existing=entryCleanupRegistry.get(sessionId);if(existing)return existing;
- const created:Promise<EntryCleanupOutcome>=request().then(next=>({next} as EntryCleanupOutcome),error=>({error} as EntryCleanupOutcome)).finally(()=>{if(entryCleanupRegistry.get(sessionId)===created)entryCleanupRegistry.delete(sessionId);});entryCleanupRegistry.set(sessionId,created);return created;
+ const created:Promise<EntryCleanupOutcome>=request()
+  .then(next=>({next} as EntryCleanupOutcome),error=>({error} as EntryCleanupOutcome))
+  .then(outcome=>{
+   const durableLiveModeRejection=outcome.error instanceof ApiError&&outcome.error.status===409;
+   if(durableLiveModeRejection)entryCleanupDurableRejections.set(sessionId,outcome);
+   if(entryCleanupRegistry.get(sessionId)===created){
+    entryCleanupRegistry.delete(sessionId);
+   }
+   return outcome;
+  });
+ entryCleanupRegistry.set(sessionId,created);return created;
 }
-const map=(s:ServerSession):PaymentSession=>({id:s.id,totalCents:Math.round(Number(s.total)*100),status:s.status==="COVERED"||s.status==="FINALIZED"?"COVERED":s.status==="COMPENSATION_REQUIRED"?"COMPENSATION_REQUIRED":"COLLECTING",allocations:s.allocations.map(a=>({...a,amountCents:Math.round(Number(a.amount)*100),status:a.status as never}))});
+const map=(s:ServerSession):PaymentSession=>({id:s.id,totalCents:Math.round(Number(s.total)*100),status:s.status==="COVERED"||s.status==="FINALIZED"?"COVERED":s.status==="COMPENSATION_REQUIRED"?"COMPENSATION_REQUIRED":"COLLECTING",allocations:s.allocations.map(a=>({...a,amountCents:Math.round(Number(a.amount)*100),deliveredCents:a.delivered==null?undefined:Math.round(Number(a.delivered)*100),changeCents:a.change==null?undefined:Math.round(Number(a.change)*100),status:a.status as never}))});
 export const compensationGuidanceKey="payment.split.compensationGuidance";
 export type PaymentLogoutPreparation="READY"|"BLOCKED";
 export type SalePaymentCheckoutHandle={
@@ -43,6 +66,7 @@ export type SalePaymentCheckoutHandle={
  triggerCash():void;
  triggerCard():void;
  triggerPending():void;
+ openCheckout(method?:CheckoutMethod):void;
 };
 type CancellationResult="CANCELLED"|"NOT_CANCELLED"|"ERROR";
 export async function prepareAutomaticExit(cancel:()=>Promise<CancellationResult>,_discard:()=>Promise<boolean>){return await cancel()==="CANCELLED"?"READY" as const:"BLOCKED" as const;}
@@ -62,6 +86,9 @@ export function checkoutPresentation(status?:string|null,allocationStatuses:read
 }
 export function paymentSessionLocksSale(status:string|null|undefined){return !!status&&status!=="FINALIZED"&&status!=="CANCELLED";}
 export function canManuallyFinalizePayment(status:string|null|undefined,busy:boolean){return status==="COVERED"&&!busy;}
+export function shouldFinalizeAfterAllocation(status:string,unifiedCheckout:boolean,kind:string,finalizeWhenCovered:boolean){
+ return status==="COVERED"&&(!unifiedCheckout||kind==="INTEGRATED_CARD"||finalizeWhenCovered);
+}
 export function paymentSessionAfterFinalization<T>(ticketNumber:string|undefined,session:T){return ticketNumber?null:session;}
 export function paymentFinalizationSummary(session:ServerSession,cashAttempt?:CashAttemptMetadata):PaymentFinalizationSummary{
  const totalCents=Math.round(Number(session.total)*100);
@@ -69,22 +96,24 @@ export function paymentFinalizationSummary(session:ServerSession,cashAttempt?:Ca
  const hasCash=effective.some(allocation=>allocation.kind==="CASH");
  const hasCard=effective.some(allocation=>allocation.kind==="MANUAL_CARD"||allocation.kind==="INTEGRATED_CARD");
  const hasVoucher=effective.some(allocation=>allocation.kind==="VOUCHER");
- if([hasCash,hasCard,hasVoucher].filter(Boolean).length>1)return {kind:"MIXED",totalCents};
+ const hasOther=effective.some(allocation=>allocation.kind==="TRANSFER"||allocation.kind==="PENDING");
+ if([hasCash,hasCard,hasVoucher,hasOther].filter(Boolean).length>1)return {kind:"MIXED",totalCents};
  if(hasCard)return {kind:"CARD",totalCents};
  if(hasVoucher)return {kind:"VOUCHER",totalCents};
+ if(hasOther)return {kind:"MIXED",totalCents};
  if(!hasCash)throw new InvalidPaymentFinalizationSummaryError("covered_payment_has_no_effective_allocations");
- const authorizedCashCents=effective.filter(allocation=>allocation.kind==="CASH").reduce((sum,allocation)=>sum+Math.round(Number(allocation.amount)*100),0);
+ const authorizedCashCents=effective.filter(allocation=>allocation.kind==="CASH").reduce((sum,allocation)=>sum+Math.round(Number(allocation.delivered??allocation.amount)*100),0);
  const receivedCents=cashAttempt?.sessionId===session.id?cashAttempt.receivedCents:Math.min(totalCents,authorizedCashCents);
  return {kind:"CASH",totalCents,receivedCents};
 }
 export function stableAllocationAttempt<T>(stored:{sessionId:string;allocationId:string;input:T}|null,sessionId:string,input:T,generate:()=>string){return stored?.sessionId===sessionId&&JSON.stringify(stored.input)===JSON.stringify(input)?stored:{sessionId,allocationId:generate(),input};}
 export function allocationFailureIsSafePreEffect(error:ApiError){return [400,401,403,404,409,422].includes(error.status);}
-export function isMissingCashSessionError(message:string){return message.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es").includes("sesion de caja abierta");}
+export function isMissingCashSessionError(message:string){const normalized=message.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es");return normalized.includes("sesi")&&normalized.includes("de caja abierta");}
 export function shouldOfferTestCashSession(enabled:boolean,status:string|undefined,missing:boolean,terminalId?:string){return enabled&&status==="COVERED"&&missing&&Boolean(terminalId);}
 export async function authorizationPasswordIsEphemeral<T>(password:string,clear:(value:string)=>void,operation:(password:string)=>Promise<T>){clear("");try{return await operation(password);}finally{clear("");}}
 export async function compensationNoteIsEphemeral<T>(note:string,clear:(value:string)=>void,operation:(note:string)=>Promise<T>){const normalized=note.trim();clear("");try{return await operation(normalized);}finally{clear("");}}
 
-export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,totalCents,sale,token,permissions,terminal,disabled,testCashEnabled=false,onCash,onPending,onHydrationChange,onLockedChange,onFinalized},ref){
+export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,customerSelected=false,testCashEnabled=false,onCash,onPending,onDiscount,onHydrationChange,onLockedChange,onFinalized},ref){
  const t=createTranslator(locale);
  const pendingEnabled=permissions.includes("ADMIN")||permissions.includes("CUSTOMER_RECEIVABLES_CREATE");
  const [server,setServer]=useState<ServerSession|null>(null);const [providers,setProviders]=useState<string[]>([]);const [capabilities,setCapabilities]=useState<string[]>([]);const [manual,setManual]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [operation,setOperation]=useState<PaymentOperationView|null>(null);const [events,setEvents]=useState<PaymentOperationEvent[]>([]);
@@ -92,6 +121,8 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const [compensationDialog,setCompensationDialog]=useState(false);const [compensationNote,setCompensationNote]=useState("");
  const [cashOpen,setCashOpen]=useState(false);const cashGuardRef=useRef(false);const cashAttemptRef=useRef<CashAttemptMetadata|null>(null);
  const [manualCardOpen,setManualCardOpen]=useState(false);const cardGuardRef=useRef(false);
+ const [checkoutOpen,setCheckoutOpen]=useState(false);const [initialMethod,setInitialMethod]=useState<CheckoutMethod>("CASH");
+ const [paymentMethods,setPaymentMethods]=useState(defaultCheckoutPaymentMethodConfiguration);
  const [vouchers,setVouchers]=useState<Array<{code:string;balance:number|string}>>([]);
  const [voucherOpen,setVoucherOpen]=useState(false);const [voucherCode,setVoucherCode]=useState("");const [voucherAmount,setVoucherAmount]=useState("");
  const [safeRetry,setSafeRetry]=useState(false);
@@ -104,23 +135,113 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const simulatorDiscardAttemptedRef=useRef(new Set<string>());
  const storageKey=`tpverp.payment-session.${terminal.terminalId??terminal.terminalCode}`;const attemptKey=`${storageKey}.allocation-attempt`;
  useEffect(()=>{void apiRequest<{rules:{cardManualEnabled:boolean;integratedCardEnabled:boolean};providerDescriptors:Array<{provider:string;capabilities:string[]}>;configuration:{provider:string;enabled:boolean}}>("/terminal-configuration/payment",{token}).then(c=>{setManual(c.rules.cardManualEnabled);setProviders(c.rules.integratedCardEnabled&&c.configuration.enabled?[c.configuration.provider]:[]);setCapabilities(c.providerDescriptors.find(p=>p.provider===c.configuration.provider)?.capabilities??[]);}).catch(()=>{});},[token]);
+ useEffect(()=>{void loadPaymentMethods(token).then(methods=>setPaymentMethods(resolveCheckoutPaymentMethodConfiguration(methods))).catch(()=>setPaymentMethods(defaultCheckoutPaymentMethodConfiguration));},[token]);
  useEffect(()=>{void apiRequest<Array<{code:string;balance:number|string;status:string}>>("/vouchers",{token}).then(values=>setVouchers(values.filter(value=>value.status==="ACTIVE"))).catch(()=>setVouchers([]));},[token]);
  useEffect(()=>{let current=true;entryHydratedSessionIdRef.current=null;setHydrationComplete(false);void (async()=>{try{const active=await apiRequest<ServerSession|null>("/pos/payment-sessions/active",{token});if(current){if(active){entryHydratedSessionIdRef.current=active.id;setServer(active);globalThis.sessionStorage?.setItem(storageKey,active.id);}else{globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);}setHydrationComplete(true);}}catch{const id=globalThis.sessionStorage?.getItem(storageKey);if(id)try{const recovered=await apiRequest<ServerSession>(`/pos/payment-sessions/${id}`,{token});if(current){entryHydratedSessionIdRef.current=recovered.id;setServer(recovered);setHydrationComplete(true);}}catch{/* Recovery remains authoritative only after a successful response. */}}})();return()=>{current=false;};},[storageKey,attemptKey,token]);
  useEffect(()=>onHydrationChange?.(hydrationComplete),[hydrationComplete,onHydrationChange]);
  useEffect(()=>onLockedChange?.(paymentSessionLocksSale(server?.status),server?Math.round(Number(server.total)*100):undefined),[server,onLockedChange]);
+ useEffect(()=>{if(unifiedCheckout&&server&&server.status!=="FINALIZED"&&server.status!=="CANCELLED")setCheckoutOpen(true);},[server?.id,server?.status,unifiedCheckout]);
  function clearRecoveryStorage(expectedSessionId?:string){const storedSessionId=globalThis.sessionStorage?.getItem(storageKey);const ownsStoredSession=!expectedSessionId||storedSessionId===expectedSessionId;if(ownsStoredSession)globalThis.sessionStorage?.removeItem(storageKey);const storedAttempt=globalThis.localStorage?.getItem(attemptKey);let attemptSessionId:string|undefined;try{attemptSessionId=storedAttempt?(JSON.parse(storedAttempt) as {sessionId?:string}).sessionId:undefined;}catch{/* Legacy malformed attempts belong to the matching stored session only. */}if(!expectedSessionId||attemptSessionId===expectedSessionId||(ownsStoredSession&&!attemptSessionId))globalThis.localStorage?.removeItem(attemptKey);}
  function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setAuthorization(null);setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
  async function ensure(){if(server)return server;const id=uuid();const created=await apiRequest<ServerSession>("/pos/payment-sessions",{token,body:{sessionId:id,sale}});globalThis.sessionStorage?.setItem(storageKey,created.id);setServer(created);return created;}
- async function finish(next:ServerSession,cashAttempt?:CashAttemptMetadata){if(next.status!=="COVERED")return;const summary=paymentFinalizationSummary(next,cashAttempt);const done=await apiRequest<ServerSession>(`/pos/payment-sessions/${next.id}/finalize`,{token,method:"POST"});if(!done.ticketNumber||!done.printTicket)throw new InvalidPaymentFinalizationSummaryError("finalized_payment_has_no_print_snapshot");setServer(null);globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setTestCashRequired(false);setTestCashStatus("");setError("");if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;onFinalized(done.printTicket,summary);}
+ async function finish(next:ServerSession,cashAttempt?:CashAttemptMetadata){if(next.status!=="COVERED")return;const summary=paymentFinalizationSummary(next,cashAttempt);const done=await apiRequest<ServerSession>(`/pos/payment-sessions/${next.id}/finalize`,{token,method:"POST"});if(!done.ticketNumber||!done.printTicket)throw new InvalidPaymentFinalizationSummaryError("finalized_payment_has_no_print_snapshot");setServer(null);globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);setCashOpen(false);setCheckoutOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setTestCashRequired(false);setTestCashStatus("");setError("");if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;onFinalized(done.printTicket,summary);}
  function markTestCashRequirement(failure:unknown){const required=testCashEnabled&&failure instanceof ApiError&&isMissingCashSessionError(failure.message);setTestCashRequired(required);setTestCashStatus("");}
  async function openTestCashSession(){if(!testCashEnabled||!terminal.terminalId||busy)return;setBusy(true);setTestCashStatus("");try{await apiRequest("/cash/sessions/open",{token,body:{terminalId:terminal.terminalId}});setError("");setTestCashRequired(false);setTestCashStatus(t("payment.testCash.opened"));}catch(failure){setError(failure instanceof ApiError?failure.message:t("payment.testCash.error"));}finally{setBusy(false);}}
  async function retryFinish(){if(!server||server.status!=="COVERED")return;setBusy(true);setError("");const cashAttempt=cashAttemptRef.current?.sessionId===server.id?cashAttemptRef.current:undefined;try{await finish(server,cashAttempt);}catch(e){markTestCashRequirement(e);setError(e instanceof ApiError?e.message:t("payment.split.error.finalize"));}finally{setBusy(false);}}
- async function add(input:{kind:string;amountCents:number;provider?:string;reference?:string},cashAttempt?:CashAttemptMetadata){setBusy(true);setError("");setSafeRetry(false);let s:ServerSession|undefined;let allocationAccepted=false;try{s=await ensure();if(cashAttempt){cashAttempt.sessionId=s.id;cashAttemptRef.current=cashAttempt;}const recoveryInput={kind:input.kind,amountCents:input.amountCents,...(input.provider?{provider:input.provider}:{}),...(input.kind==="VOUCHER"&&input.reference?{reference:input.reference}:{})};const stored=globalThis.localStorage?.getItem(attemptKey);const parsed=stored?JSON.parse(stored) as {sessionId:string;allocationId:string;input:typeof recoveryInput}:null;const attempt=stableAllocationAttempt(parsed,s.id,recoveryInput,uuid);const allocationId=attempt.allocationId;globalThis.localStorage?.setItem(attemptKey,JSON.stringify(attempt));const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${s.id}/allocations`,{token,body:{allocationId,idempotencyKey:allocationId,kind:input.kind,amount:(input.amountCents/100).toFixed(2),provider:input.provider,reference:input.reference}});allocationAccepted=true;setServer(next);const allocationStatus=next.allocations.find(a=>a.id===allocationId)?.status;const safeTerminal=allocationStatus==="DECLINED"||allocationStatus==="ERROR";if(safeTerminal){globalThis.localStorage?.removeItem(attemptKey);if(input.kind==="CASH"){cashAttemptRef.current=null;cashGuardRef.current=false;setCashOpen(false);}else{cardGuardRef.current=false;setManualCardOpen(false);}}else if(next.status!=="COVERED"&&!next.allocations.some(a=>a.id===allocationId&&(a.status==="PENDING"||a.status==="TIMEOUT")))globalThis.localStorage?.removeItem(attemptKey);await finish(next,cashAttempt);}catch(e){markTestCashRequirement(e);if(e instanceof InvalidPaymentFinalizationSummaryError){setError(t("payment.split.error.finalize"));}else if(!allocationAccepted&&e instanceof ApiError&&allocationFailureIsSafePreEffect(e)){globalThis.localStorage?.removeItem(attemptKey);if(cashAttemptRef.current===cashAttempt)cashAttemptRef.current=null;if(cashAttempt)cashGuardRef.current=false;if(input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD")cardGuardRef.current=false;setSafeRetry(true);setError(e.message);}else{setError(e instanceof ApiError?`${e.message}. ${t("payment.split.error.uncertainSame")}`:t("payment.split.error.uncertain"));if(s&&!(allocationAccepted&&e instanceof ApiError&&e.status===409&&isMissingCashSessionError(e.message)))void apiRequest<ServerSession>("/pos/payment-sessions/active",{token}).then(active=>setServer(active)).catch(()=>{});}}finally{setBusy(false);}}
+ async function add(
+  input:{kind:string;amountCents:number;provider?:string;voucherCode?:string;reference?:string;deliveredCents?:number;changeCents?:number;comment?:string},
+  cashAttempt?:CashAttemptMetadata,
+  finalizeWhenCovered=false,
+ ){
+  setBusy(true);
+  setError("");
+  setSafeRetry(false);
+  let s:ServerSession|undefined;
+  let allocationAccepted=false;
+  try{
+   s=await ensure();
+   if(cashAttempt){
+    cashAttempt.sessionId=s.id;
+    cashAttemptRef.current=cashAttempt;
+   }
+   const recoveryInput={kind:input.kind,amountCents:input.amountCents,provider:input.provider};
+   const stored=globalThis.localStorage?.getItem(attemptKey);
+   const parsed=stored?JSON.parse(stored) as {sessionId:string;allocationId:string;input:typeof recoveryInput}:null;
+   const attempt=stableAllocationAttempt(parsed,s.id,recoveryInput,uuid);
+   const allocationId=attempt.allocationId;
+   globalThis.localStorage?.setItem(attemptKey,JSON.stringify(attempt));
+   const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${s.id}/allocations`,{
+    token,
+    body:{
+     allocationId,
+     idempotencyKey:allocationId,
+     kind:input.kind,
+     amount:(input.amountCents/100).toFixed(2),
+     provider:input.provider,
+     voucherCode:input.voucherCode,
+     reference:input.reference,
+     delivered:input.deliveredCents==null?undefined:(input.deliveredCents/100).toFixed(2),
+     change:input.changeCents==null?undefined:(input.changeCents/100).toFixed(2),
+     comment:input.comment,
+    },
+   });
+   allocationAccepted=true;
+   setServer(next);
+   const allocationStatus=next.allocations.find(a=>a.id===allocationId)?.status;
+   const safeTerminal=allocationStatus==="DECLINED"||allocationStatus==="ERROR";
+   if(safeTerminal){
+    globalThis.localStorage?.removeItem(attemptKey);
+    if(input.kind==="CASH"){
+     cashAttemptRef.current=null;
+     cashGuardRef.current=false;
+     setCashOpen(false);
+    }else{
+     cardGuardRef.current=false;
+     setManualCardOpen(false);
+    }
+   }else if(next.status!=="COVERED"&&!next.allocations.some(
+    a=>a.id===allocationId&&(a.status==="PENDING"||a.status==="TIMEOUT"),
+   )){
+    globalThis.localStorage?.removeItem(attemptKey);
+   }
+   if(shouldFinalizeAfterAllocation(
+    next.status,
+    unifiedCheckout,
+    input.kind,
+    finalizeWhenCovered,
+   )){
+    await finish(next,cashAttempt);
+   }
+  }catch(e){
+   markTestCashRequirement(e);
+   if(e instanceof InvalidPaymentFinalizationSummaryError){
+    setError(t("payment.split.error.finalize"));
+   }else if(!allocationAccepted&&e instanceof ApiError&&allocationFailureIsSafePreEffect(e)){
+    globalThis.localStorage?.removeItem(attemptKey);
+    if(cashAttemptRef.current===cashAttempt)cashAttemptRef.current=null;
+    if(cashAttempt)cashGuardRef.current=false;
+    if(input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD")cardGuardRef.current=false;
+    setSafeRetry(true);
+    setError(e.message);
+   }else{
+    setError(e instanceof ApiError
+     ?`${e.message}. ${t("payment.split.error.uncertainSame")}`
+     :t("payment.split.error.uncertain"));
+    if(s&&!(allocationAccepted&&e instanceof ApiError&&e.status===409&&isMissingCashSessionError(e.message))){
+     void apiRequest<ServerSession>("/pos/payment-sessions/active",{token})
+      .then(active=>setServer(active))
+      .catch(()=>{});
+    }
+   }
+  }finally{
+   setBusy(false);
+  }
+ }
  function confirmCash(receivedCents:number){if(cashGuardRef.current)return;cashGuardRef.current=true;const cashAttempt={receivedCents};cashAttemptRef.current=cashAttempt;void add({kind:"CASH",amountCents:totalCents},cashAttempt);}
  function startCard(){if(cardGuardRef.current)return;if(providers[0]){cardGuardRef.current=true;void add({kind:"INTEGRATED_CARD",amountCents:totalCents,provider:providers[0]});}else if(manual){setManualCardOpen(true);}}
  function confirmManualCard(reference:string){if(cardGuardRef.current)return;cardGuardRef.current=true;setManualCardOpen(false);void add({kind:"MANUAL_CARD",amountCents:totalCents,reference});}
- function openVoucher(){if(vouchers.length===0)return;const first=vouchers[0];setVoucherCode(first.code);setVoucherAmount((Math.min(totalCents,Math.round(Number(first.balance)*100))/100).toFixed(2));setVoucherOpen(true);}
- function confirmVoucher(){const voucher=vouchers.find(value=>value.code===voucherCode);const amountCents=Math.round(Number(voucherAmount.replace(",","."))*100);if(!voucher||amountCents<=0||amountCents>totalCents||amountCents>Math.round(Number(voucher.balance)*100))return;setVoucherOpen(false);void add({kind:"VOUCHER",amountCents,reference:voucherCode});}
+ function openVoucher(){if(!paymentMethods.voucherActive||vouchers.length===0)return;const first=vouchers[0];setVoucherCode(first.code);setVoucherAmount((Math.min(totalCents,Math.round(Number(first.balance)*100))/100).toFixed(2));setVoucherOpen(true);}
+ function confirmVoucher(){const voucher=vouchers.find(value=>value.code===voucherCode);const amountCents=Math.round(Number(voucherAmount.replace(",","."))*100);if(!voucher||amountCents<=0||amountCents>totalCents||amountCents>Math.round(Number(voucher.balance)*100))return;setVoucherOpen(false);void add({kind:"VOUCHER",amountCents,voucherCode});}
  async function query(allocationId:string){if(!server)return;setBusy(true);setError("");const queried=server.allocations.find(a=>a.id===allocationId||a.operationId===allocationId);const cashAttempt=queried?.kind==="CASH"&&cashAttemptRef.current?.sessionId===server.id?cashAttemptRef.current:undefined;try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/allocations/${allocationId}/query`,{token,method:"POST"});setServer(next);const resolved=next.allocations.find(a=>a.id===allocationId||a.operationId===allocationId);const safeTerminal=resolved?.status==="DECLINED"||resolved?.status==="ERROR";if(safeTerminal){globalThis.localStorage?.removeItem(attemptKey);if(resolved.kind==="CASH"){cashAttemptRef.current=null;cashGuardRef.current=false;setCashOpen(false);}else{cardGuardRef.current=false;setManualCardOpen(false);}}else if(next.status!=="COVERED"&&!(resolved?.status==="PENDING"||resolved?.status==="TIMEOUT"))globalThis.localStorage?.removeItem(attemptKey);await finish(next,cashAttempt);}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.query"));}finally{setBusy(false);}}
  async function cancel():Promise<CancellationResult>{
   if(!server)return "NOT_CANCELLED";
@@ -155,17 +276,19 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  function cleanupSingleFlight(sessionId:string,operation:()=>Promise<boolean>){const current=cleanupFlightRef.current;if(current?.sessionId===sessionId)return current.promise;const promise=operation().finally(()=>{if(cleanupFlightRef.current?.promise===promise)cleanupFlightRef.current=null;});cleanupFlightRef.current={sessionId,promise};return promise;}
  async function prepareExit(feedbackKey:"payment.pending.logoutError"|"payment.pending.shutdownBlocked"){exitFeedbackRef.current=feedbackKey;const disposition=paymentLogoutDisposition(server,hydrationComplete);if(disposition==="READY"){clearRecoveredSession(server?.id);return "READY" as const;}if(!server){setError(t(feedbackKey));return "BLOCKED" as const;}const cleaned=await cleanupSingleFlight(server.id,disposition==="AUTO_CANCEL"?async()=>await cancel()==="CANCELLED":()=>discardSimulator("application_shutdown",feedbackKey));if(cleaned)return "READY" as const;setError(t(feedbackKey));return "BLOCKED" as const;}
  function individualActionsAvailable(){return checkoutPresentation(server?.status,server?.allocations.map(allocation=>allocation.status),safeRetry)==="INDIVIDUAL_ACTIONS"&&!disabled&&!busy&&totalCents>0;}
- function triggerCash(){if(!individualActionsAvailable()||cashOpen||manualCardOpen)return;(onCash??(()=>setCashOpen(true)))();}
- function triggerCard(){if(!individualActionsAvailable()||cashOpen||manualCardOpen||(!manual&&providers.length===0))return;startCard();}
+ function openCheckout(method:CheckoutMethod="CASH"){if(disabled||busy||totalCents<=0)return;setInitialMethod(method);setCheckoutOpen(true);}
+ function triggerCash(){if(!paymentMethods.cashActive||!individualActionsAvailable()||cashOpen||manualCardOpen)return;(onCash??(()=>setCashOpen(true)))();}
+ function triggerCard(){if(!paymentMethods.cardActive||!individualActionsAvailable()||cashOpen||manualCardOpen||(!manual&&providers.length===0))return;startCard();}
  function triggerPending(){if(!pendingEnabled||!individualActionsAvailable()||cashOpen||manualCardOpen)return;onPending?.();}
- useImperativeHandle(ref,()=>({prepareLogout:()=>prepareExit("payment.pending.logoutError"),prepareApplicationClose:()=>prepareExit("payment.pending.shutdownBlocked"),triggerCash,triggerCard,triggerPending}));
+ async function clearCheckout(closeAfter:boolean){if(!server){if(closeAfter)setCheckoutOpen(false);return;}const result=await cancel();if(result==="CANCELLED"){setServer(null);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;if(closeAfter)setCheckoutOpen(false);}}
+ useImperativeHandle(ref,()=>({prepareLogout:()=>prepareExit("payment.pending.logoutError"),prepareApplicationClose:()=>prepareExit("payment.pending.shutdownBlocked"),triggerCash,triggerCard,triggerPending,openCheckout}));
  useEffect(()=>{if(!hydrationComplete||!server||entryHydratedSessionIdRef.current!==server.id||paymentLogoutDisposition(server,true)==="READY")return;let current=true;const sessionId=server.id;simulatorDiscardAttemptedRef.current.add(sessionId);setBusy(true);const cleanup=sharedEntryCleanup(sessionId,()=>apiRequest<ServerSession>(`/pos/payment-sessions/${sessionId}/simulator-discard`,{token,body:{reason:"sale_entry_cleanup"}}));const completion=cleanup.then(({next})=>next?.status==="CANCELLED");cleanupFlightRef.current={sessionId,promise:completion};void cleanup.then(({next,error})=>{if(!current||entryHydratedSessionIdRef.current!==sessionId)return;if(next){setServer(next);if(next.status==="CANCELLED")clearRecoveredSession(sessionId);else setError(t(exitFeedbackRef.current??"payment.pending.simulatorCleanupError"));}else if(error){simulatorDiscardAttemptedRef.current.delete(sessionId);setError(t(exitFeedbackRef.current??"payment.pending.simulatorCleanupError"));}}).finally(()=>{if(cleanupFlightRef.current?.promise===completion)cleanupFlightRef.current=null;if(current&&entryHydratedSessionIdRef.current===sessionId)setBusy(false);});return()=>{current=false;};},[hydrationComplete,server?.id,token]);
  async function acknowledge(){if(!server||!compensationNote.trim())return;setCompensationDialog(false);setBusy(true);await compensationNoteIsEphemeral(compensationNote,setCompensationNote,async note=>{try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/compensation-ack`,{token,body:{note}});setServer(next);if(next.status==="CANCELLED")clearRecoveredSession();}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.acknowledge"));}finally{setBusy(false);}});}
  async function manage(id:string){setBusy(true);try{const [op,history]=await Promise.all([apiRequest<PaymentOperationView>(`/payment-terminal/operations/${id}`,{token}),loadPaymentOperationHistory(id,token)]);setOperation(op);setEvents(history);}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.loadOperation"));}finally{setBusy(false);}}
  async function openRefundAuthorization(){if(!operation||busy)return;setBusy(true);setError("");try{const options=await loadPaymentRefundLines(operation.id,token);setAuthorizationPassword("");setAuthorization({kind:"REFUND",amount:"",options,lines:[]});}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.refund"));}finally{setBusy(false);}}
  async function authorize(){if(!authorization||!operation||!authorizationPassword)return;const action=authorization;setAuthorization(null);await authorizationPasswordIsEphemeral(authorizationPassword,setAuthorizationPassword,async password=>{try{const next=action.kind==="VOID"?await voidPaymentOperation(operation.id,token,password,uuid()):await refundPaymentOperation(operation.id,token,action.amount,password,uuid(),action.lines);setOperation(next);}catch(e){setError(e instanceof ApiError?e.message:t(action.kind==="VOID"?"payment.split.error.void":"payment.split.error.refund"));}});}
  function calculatedRefundAmount(options:PaymentRefundLineOption[],lines:PaymentRefundLineSelection[]){const amount=lines.reduce((sum,line)=>{const option=options.find(value=>value.lineId===line.lineId);const available=Number(option?.refundableQuantity??0);const quantity=Number(line.quantity.replace(",","."));return sum+(option&&available>0&&Number.isFinite(quantity)?Number(option.refundableTotal)*quantity/available:0);},0);return amount>0?amount.toFixed(2):"";}
- function toggleRefundLine(option:PaymentRefundLineOption,checked:boolean){if(!authorization||authorization.kind!=="REFUND")return;const lines=checked?[...authorization.lines,{lineId:option.lineId,quantity:String(option.refundableQuantity)}]:authorization.lines.filter(line=>line.lineId!==option.lineId);setAuthorization({...authorization,lines,amount:calculatedRefundAmount(authorization.options,lines)});}
+ function toggleRefundLine(option:PaymentRefundLineOption,checked:boolean){if(!authorization||authorization.kind!=="REFUND")return;const lines=checked?[...authorization.lines,{lineId:option.lineId,quantity:String(option.refundableQuantity),serialNumbers:option.refundableSerialNumbers??[]}]:authorization.lines.filter(line=>line.lineId!==option.lineId);setAuthorization({...authorization,lines,amount:calculatedRefundAmount(authorization.options,lines)});}
  function updateRefundLine(lineId:string,quantity:string){if(!authorization||authorization.kind!=="REFUND")return;const lines=authorization.lines.map(line=>line.lineId===lineId?{...line,quantity}:line);setAuthorization({...authorization,lines,amount:calculatedRefundAmount(authorization.options,lines)});}
  const cancelCashDialog=()=>{if(cashGuardRef.current)return;cashAttemptRef.current=null;setCashOpen(false);};
  const testCashOffered=shouldOfferTestCashSession(testCashEnabled,server?.status,testCashRequired,terminal.terminalId);
@@ -173,8 +296,10 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const manualCardDialog=manualCardOpen?<div className="sale-action-overlay manual-card-payment-overlay"><div className="manual-card-payment-dialog"><ManualCardReferenceDialog busy={busy} onCancel={()=>setManualCardOpen(false)} onConfirm={confirmManualCard}/></div></div>:null;
  const selectedVoucher=vouchers.find(value=>value.code===voucherCode);const voucherAmountCents=Math.round(Number(voucherAmount.replace(",","."))*100);const voucherDialog=voucherOpen?<div className="sale-action-overlay"><section className="sale-action-dialog voucher-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="voucher-payment-title"><header><h2 id="voucher-payment-title">{t("payment.voucher.title")}</h2><button type="button" aria-label={t("common.close")} onClick={()=>setVoucherOpen(false)}>×</button></header><label><span>{t("payment.voucher.code")}</span><select autoFocus value={voucherCode} onChange={event=>{const code=event.currentTarget.value;const voucher=vouchers.find(value=>value.code===code);setVoucherCode(code);if(voucher)setVoucherAmount((Math.min(totalCents,Math.round(Number(voucher.balance)*100))/100).toFixed(2));}}>{vouchers.map(voucher=><option key={voucher.code} value={voucher.code}>{voucher.code} · {Number(voucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</option>)}</select></label><label><span>{t("payment.voucher.amount")}</span><input inputMode="decimal" value={voucherAmount} onChange={event=>setVoucherAmount(event.currentTarget.value)}/></label>{selectedVoucher&&<p>{t("payment.voucher.balance")}: {Number(selectedVoucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</p>}<div className="sale-action-buttons"><button type="button" onClick={()=>setVoucherOpen(false)}>{t("common.cancel")}</button><button type="button" className="primary" disabled={voucherAmountCents<=0||voucherAmountCents>totalCents||voucherAmountCents>Math.round(Number(selectedVoucher?.balance??0)*100)} onClick={confirmVoucher}>{t("payment.voucher.apply")}</button></div></section></div>:null;
  const presentation=checkoutPresentation(server?.status,server?.allocations.map(allocation=>allocation.status),safeRetry);
- if(presentation==="INDIVIDUAL_ACTIONS")return <><IndividualPaymentActions locale={locale} disabled={!!disabled||totalCents<=0} busy={busy} cardEnabled={manual||providers.length>0} pendingEnabled={pendingEnabled} voucherEnabled={vouchers.length>0} onCash={onCash??(()=>setCashOpen(true))} onCard={startCard} onPending={onPending??(()=>{})} onVoucher={openVoucher}/>{cashDialog}{manualCardDialog}{voucherDialog}{error&&!cashOpen&&<p role="alert">{error}</p>}</>;
- if(presentation==="FINALIZE_RETRY")return <><div aria-busy={busy}><PaymentAllocationPanel locale={locale} session={map(server!)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)}/><button type="button" disabled={!canManuallyFinalizePayment(server!.status,busy)} onClick={()=>void retryFinish()}>{t("payment.split.finalize")}</button><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{error&&<p role="alert">{error}</p>}{testCashStatus&&<p className="test-cash-session-status" role="status">{testCashStatus}</p>}{shouldOfferTestCashSession(testCashEnabled,server!.status,testCashRequired,terminal.terminalId)&&<button className="test-cash-session-button" type="button" disabled={busy} onClick={()=>void openTestCashSession()}>{busy?t("payment.testCash.opening"):t("payment.testCash.open")}</button>}</div>{cashDialog}</>;
+ const activePresentation=!unifiedCheckout&&testCashEnabled&&cashOpen&&presentation==="FINALIZE_RETRY"?"INDIVIDUAL_ACTIONS":presentation;
+ if(checkoutOpen){const panelSession:PaymentSession=server?map(server):{id:"new",totalCents,status:"COLLECTING",allocations:[]};const checkoutAllowsAdd=!disabled&&(presentation==="INDIVIDUAL_ACTIONS"||presentation==="SPLIT");return <PaymentAllocationPanel locale={locale} session={panelSession} providers={providers} manualCardEnabled={manual} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive} voucherEnabled={paymentMethods.voucherActive} transferEnabled={paymentMethods.transferActive} manualCardRequiresReference={paymentMethods.cardRequiresReference} transferRequiresReference={paymentMethods.transferRequiresReference} vouchers={vouchers} interfaceMode={interfaceMode} initialMethod={initialMethod} customerSelected={customerSelected} pendingEnabled={pendingEnabled} checkoutDiscountCents={checkoutDiscountCents} busy={busy} error={error} allowAdd={checkoutAllowsAdd} onAdd={(input,options)=>void add(input,undefined,options?.finalizeWhenCovered)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} onClear={()=>void clearCheckout(false)} onClose={()=>void clearCheckout(true)} onAccept={()=>void retryFinish()} onDiscount={onDiscount}/>;}
+ if(activePresentation==="INDIVIDUAL_ACTIONS"&&!checkoutOpen)return <>{showIndividualActions&&<IndividualPaymentActions locale={locale} disabled={!!disabled||totalCents<=0} busy={busy} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive&&(manual||providers.length>0)} pendingEnabled={pendingEnabled} voucherEnabled={paymentMethods.voucherActive&&vouchers.length>0} onCash={unifiedCheckout?()=>openCheckout("CASH"):triggerCash} onCard={unifiedCheckout?()=>openCheckout("CARD"):triggerCard} onPending={unifiedCheckout?()=>openCheckout("PENDING"):triggerPending} onVoucher={unifiedCheckout?()=>openCheckout("VOUCHER"):openVoucher}/>} {cashDialog}{manualCardDialog}{voucherDialog}{error&&!cashOpen&&<p role="alert">{error}</p>}</>;
+ if(presentation==="FINALIZE_RETRY")return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server!)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)}/><button type="button" disabled={!canManuallyFinalizePayment(server!.status,busy)} onClick={()=>void retryFinish()}>{t("payment.split.finalize")}</button><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{error&&<p role="alert">{error}</p>}{testCashStatus&&<p className="test-cash-session-status" role="status">{testCashStatus}</p>}{shouldOfferTestCashSession(testCashEnabled,server!.status,testCashRequired,terminal.terminalId)&&<button className="test-cash-session-button" type="button" disabled={busy} onClick={()=>void openTestCashSession()}>{busy?t("payment.testCash.opening"):t("payment.testCash.open")}</button>}</div>{cashDialog}</>;
  if(!server)return null;
- return <><div aria-busy={busy}><PaymentAllocationPanel locale={locale} session={map(server)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} allowAdd={presentation!=="RECOVERY"}/><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{server.status==="COMPENSATION_REQUIRED"&&<div role="alert"><p>{t("payment.split.compensationGuidance")}</p>{(permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_REFUND"))&&<button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(true);}}>{t("payment.split.acknowledge")}</button>}</div>}{compensationDialog&&<div role="dialog" aria-modal="true" aria-label={t("payment.split.compensationDialogTitle")}><h3>{t("payment.split.compensationDialogTitle")}</h3><label>{t("payment.split.compensationNote")}<textarea value={compensationNote} onChange={e=>setCompensationNote(e.currentTarget.value)} autoComplete="off"/></label><button type="button" disabled={!compensationNote.trim()} onClick={()=>void acknowledge()}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(false);}}>{t("payment.split.cancel")}</button></div>}{operation&&<PaymentOperationPanel t={t} operation={operation} events={events} capabilities={capabilities} permissions={permissions} onQuery={()=>void queryPaymentOperation(operation.id,token).then(setOperation).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.operationQuery")))} onVoid={()=>{setAuthorizationPassword("");setAuthorization({kind:"VOID",amount:"",options:[],lines:[]});}} onRefund={()=>void openRefundAuthorization()} onPrintReceipt={()=>void printPaymentReceipt(operation.id,token,terminal,getHardwareBridge()).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.print")))}/>} {authorization&&<div role="dialog" aria-modal="true" aria-label={t(`payment.split.authorizationTitle.${authorization.kind}`)}><h3>{t(`payment.split.authorizationTitle.${authorization.kind}`)}</h3>{authorization.kind==="REFUND"&&<><label>{t("payment.split.refundAmount")}<input inputMode="decimal" value={authorization.amount} onChange={e=>setAuthorization({...authorization,amount:e.currentTarget.value})}/></label><fieldset><legend>{t("payment.split.refundLines")}</legend>{authorization.options.map(option=>{const selected=authorization.lines.find(line=>line.lineId===option.lineId);return <div key={option.lineId}><label><input type="checkbox" checked={!!selected} onChange={e=>toggleRefundLine(option,e.currentTarget.checked)}/>{option.code} · {option.name} ({t("payment.split.refundable")}: {String(option.refundableQuantity)})</label>{selected&&<input aria-label={`${option.name} ${t("payment.split.refundQuantity")}`} inputMode="decimal" value={selected.quantity} onChange={e=>updateRefundLine(option.lineId,e.currentTarget.value)}/>}</div>;})}</fieldset></>}<label>{t("payment.split.authorizationPassword")}<input type="password" autoComplete="current-password" value={authorizationPassword} onChange={e=>setAuthorizationPassword(e.currentTarget.value)}/></label><button type="button" onClick={()=>void authorize()} disabled={!authorizationPassword||(authorization.kind==="REFUND"&&(!authorization.amount||authorization.lines.some(line=>!line.quantity)))}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setAuthorizationPassword("");setAuthorization(null);}}>{t("payment.split.cancel")}</button></div>}{error&&<p role="alert">{error}</p>}</div>{cashDialog}</>;
+ return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} allowAdd={presentation!=="RECOVERY"}/><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{server.status==="COMPENSATION_REQUIRED"&&<div role="alert"><p>{t("payment.split.compensationGuidance")}</p>{(permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_REFUND"))&&<button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(true);}}>{t("payment.split.acknowledge")}</button>}</div>}{compensationDialog&&<div role="dialog" aria-modal="true" aria-label={t("payment.split.compensationDialogTitle")}><h3>{t("payment.split.compensationDialogTitle")}</h3><label>{t("payment.split.compensationNote")}<textarea value={compensationNote} onChange={e=>setCompensationNote(e.currentTarget.value)} autoComplete="off"/></label><button type="button" disabled={!compensationNote.trim()} onClick={()=>void acknowledge()}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(false);}}>{t("payment.split.cancel")}</button></div>}{operation&&<PaymentOperationPanel t={t} operation={operation} events={events} capabilities={capabilities} permissions={permissions} onQuery={()=>void queryPaymentOperation(operation.id,token).then(setOperation).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.operationQuery")))} onVoid={()=>{setAuthorizationPassword("");setAuthorization({kind:"VOID",amount:"",options:[],lines:[]});}} onRefund={()=>void openRefundAuthorization()} onPrintReceipt={()=>void printPaymentReceipt(operation.id,token,terminal,getHardwareBridge()).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.print")))}/>} {authorization&&<div role="dialog" aria-modal="true" aria-label={t(`payment.split.authorizationTitle.${authorization.kind}`)}><h3>{t(`payment.split.authorizationTitle.${authorization.kind}`)}</h3>{authorization.kind==="REFUND"&&<><label>{t("payment.split.refundAmount")}<input inputMode="decimal" value={authorization.amount} onChange={e=>setAuthorization({...authorization,amount:e.currentTarget.value})}/></label><fieldset><legend>{t("payment.split.refundLines")}</legend>{authorization.options.map(option=>{const selected=authorization.lines.find(line=>line.lineId===option.lineId);const serials=option.refundableSerialNumbers??[];return <div key={option.lineId}><label><input type="checkbox" checked={!!selected} onChange={e=>toggleRefundLine(option,e.currentTarget.checked)}/>{option.code} · {option.name} ({t("payment.split.refundable")}: {String(option.refundableQuantity)})</label>{serials.map(serial=><small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}{selected&&serials.length===0&&<input aria-label={`${option.name} ${t("payment.split.refundQuantity")}`} inputMode="decimal" value={selected.quantity} onChange={e=>updateRefundLine(option.lineId,e.currentTarget.value)}/>}</div>;})}</fieldset></>}<label>{t("payment.split.authorizationPassword")}<input type="password" autoComplete="current-password" value={authorizationPassword} onChange={e=>setAuthorizationPassword(e.currentTarget.value)} /></label><button type="button" onClick={()=>void authorize()} disabled={!authorizationPassword||(authorization.kind==="REFUND"&&(!authorization.amount||authorization.lines.some(line=>!line.quantity)))}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setAuthorizationPassword("");setAuthorization(null);}}>{t("payment.split.cancel")}</button></div>}{error&&<p role="alert">{error}</p>}</div>{cashDialog}</>;
 });

@@ -153,6 +153,77 @@ class ControlAlertDetectionServiceTest {
     }
 
     @Test
+    void recordsManualNegativeQuantityAsAControlAlert() {
+        var document = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 18), user.getId(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, new BigDecimal("-1"), "P-1", "Producto", "VENTA",
+                new BigDecimal("10"), BigDecimal.ZERO, true, "IGIC", new BigDecimal("7")));
+        document.confirm("T-NEG-1", user.getId(), NOW, false);
+        var rule = new ControlRule(store.getId(), ControlAlertType.MANUAL_NEGATIVE_QUANTITY,
+                true, Map.of(), user.getId(), NOW);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_NEGATIVE_QUANTITY)).thenReturn(List.of(rule));
+
+        service.detectConfirmedDocument(document, null, UUID.randomUUID(), authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.MANUAL_NEGATIVE_QUANTITY);
+        assertThat(event.getValue().getData().get("negativeLines")).asList().hasSize(1);
+    }
+
+    @Test
+    void recordsManualCashDrawerOpeningWithDelegatedAuthorizer() {
+        when(organization.currentStore()).thenReturn(store);
+        var rule = new ControlRule(store.getId(), ControlAlertType.CASH_DRAWER_OPENED,
+                true, Map.of(), user.getId(), NOW);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.CASH_DRAWER_OPENED)).thenReturn(List.of(rule));
+        var operationId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var authorizerId = UUID.randomUUID();
+
+        service.detectCashDrawerOpened(
+                operationId, terminalId, "01", authorizerId, "ENCARGADO", true, authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.CASH_DRAWER_OPENED);
+        assertThat(event.getValue().getSourceId()).isEqualTo(operationId);
+        assertThat(event.getValue().getTerminalId()).isEqualTo(terminalId);
+        assertThat(event.getValue().getData())
+                .containsEntry("authorizerName", "ENCARGADO")
+                .containsEntry("delegated", true);
+    }
+
+    @Test
+    void recordsProductCatalogModificationFromSale() {
+        when(organization.currentStore()).thenReturn(store);
+        var rule = new ControlRule(store.getId(), ControlAlertType.PRODUCT_CATALOG_MODIFIED,
+                true, Map.of(), user.getId(), NOW);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.PRODUCT_CATALOG_MODIFIED)).thenReturn(List.of(rule));
+        var operationId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+
+        service.detectProductCatalogModified(
+                operationId, productId, "A001", "Cafe", "PRODUCT_UPDATE",
+                terminalId, UUID.randomUUID(), "ENCARGADO", true, authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.PRODUCT_CATALOG_MODIFIED);
+        assertThat(event.getValue().getSourceId()).isEqualTo(operationId);
+        assertThat(event.getValue().getData())
+                .containsEntry("productId", productId.toString())
+                .containsEntry("productName", "Cafe")
+                .containsEntry("authorizerName", "ENCARGADO");
+    }
+
+    @Test
     void createsOnlyOneAlertWhenConsecutiveDeletionThresholdIsReached() {
         when(organization.currentStore()).thenReturn(store);
         var rule = new ControlRule(store.getId(), ControlAlertType.CONSECUTIVE_LINE_DELETIONS,

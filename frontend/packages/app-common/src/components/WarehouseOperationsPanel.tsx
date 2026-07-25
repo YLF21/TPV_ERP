@@ -629,7 +629,10 @@ export function WarehouseOperationsPanel({
           <ErpSelect
             aria-label={labels.status}
             value={statusFilter}
-            options={[{ value: "", label: labels.all }, ...statuses.map((status) => ({ value: status, label: status }))]}
+            options={[
+              { value: "", label: labels.all },
+              ...statuses.map((status) => ({ value: status, label: warehouseOperationsStatusLabel(status, t) }))
+            ]}
             onChange={setStatusFilter}
             onCommit={() => toolbarRef.current?.querySelector<HTMLElement>(".warehouse-document-actions button:not(:disabled)")?.focus()}
             onNavigatePrevious={() => searchRef.current?.focus()}
@@ -721,7 +724,7 @@ export function WarehouseOperationsPanel({
                       {column.key === "date" && warehouseOperationsFormatDate(document.date, dateFormatter)}
                       {column.key === "counterparty" && (counterparty || "-")}
                       {column.key === "warehouse" && (warehouseOperationsWarehouseLabel(document, warehouses) || "-")}
-                      {column.key === "status" && document.status}
+                      {column.key === "status" && warehouseOperationsStatusLabel(document.status, t)}
                       {column.key === "lines" && document.lines.length}
                       {column.key === "totalUnits" && numberFormatter.format(warehouseOperationsTotalUnits(document))}
                     </td>
@@ -840,11 +843,14 @@ function warehouseOperationsFormatDate(value: string, formatter: Intl.DateTimeFo
   return Number.isNaN(date.getTime()) ? value : formatter.format(date);
 }
 
-export function warehouseOperationsErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof TypeError || (error instanceof Error && error.message === "Failed to write request")) {
-    return fallback;
-  }
-  return error instanceof Error && error.message ? error.message : fallback;
+function warehouseOperationsStatusLabel(status: string, t: (key: string) => string) {
+  const key = `warehouseDocument.status.${status.trim().toLocaleUpperCase()}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
+}
+
+export function warehouseOperationsErrorMessage(_error: unknown, fallback: string) {
+  return fallback;
 }
 
 function warehouseOperationsReportError(error: unknown, callback: ((error: unknown) => void) | undefined) {

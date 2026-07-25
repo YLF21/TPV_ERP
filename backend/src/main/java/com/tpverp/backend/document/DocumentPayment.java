@@ -47,6 +47,8 @@ public class DocumentPayment {
     private String voucherCode;
     @Column(length = 128)
     private String referencia;
+    @Column(length = 512)
+    private String comentario;
     @Enumerated(EnumType.STRING)
     @Column(name = "terminal_pago_modo", length = 16)
     private PaymentCardMode cardMode;
@@ -88,7 +90,7 @@ public class DocumentPayment {
             UUID paymentTerminalId) {
         this(documento, metodoPago, posicion, importe, principal, entregado, cambio,
                 voucherCode, referencia, creadoEn, cardMode, paymentTerminalProvider,
-                paymentTerminalStatus, cardAuthorizationCode, paymentTerminalId, null);
+                paymentTerminalStatus, cardAuthorizationCode, paymentTerminalId, null, null);
     }
 
     public DocumentPayment(
@@ -108,6 +110,29 @@ public class DocumentPayment {
             String cardAuthorizationCode,
             UUID paymentTerminalId,
             UUID requestId) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio,
+                voucherCode, referencia, creadoEn, cardMode, paymentTerminalProvider,
+                paymentTerminalStatus, cardAuthorizationCode, paymentTerminalId, requestId, null);
+    }
+
+    public DocumentPayment(
+            CommercialDocument documento,
+            PaymentMethod metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String referencia,
+            Instant creadoEn,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId,
+            UUID requestId,
+            String comentario) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
@@ -121,6 +146,7 @@ public class DocumentPayment {
         this.cambio = nullableMoney(cambio);
         this.voucherCode = optionalCode(voucherCode);
         this.referencia = optionalReference(referencia);
+        this.comentario = optionalComment(comentario);
         this.cardMode = cardMode;
         this.paymentTerminalProvider = paymentTerminalProvider;
         this.paymentTerminalStatus = paymentTerminalStatus;
@@ -216,6 +242,10 @@ public class DocumentPayment {
         return referencia;
     }
 
+    public String getComentario() {
+        return comentario;
+    }
+
     public PaymentCardMode getCardMode() {
         return cardMode;
     }
@@ -309,5 +339,16 @@ public class DocumentPayment {
 
     private static String optionalReference(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String optionalComment(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        var normalized = value.trim();
+        if (normalized.length() > 512) {
+            throw new IllegalArgumentException("comentario no puede superar 512 caracteres");
+        }
+        return normalized;
     }
 }

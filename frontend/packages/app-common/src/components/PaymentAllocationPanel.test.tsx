@@ -1,88 +1,352 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
-import { ManualCardReferenceDialog, PaymentAllocationPanel, manualCardDialogState } from "./PaymentAllocationPanel";
+import { cleanup, createEvent, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  ManualCardReferenceDialog,
+  PaymentAllocationPanel,
+  hasLockedIntegratedPayment,
+  manualCardDialogState,
+} from "./PaymentAllocationPanel";
 import type { PaymentSession } from "../sale/paymentOrchestration";
-import { createTranslator } from "../i18n/LocalizedMessages";
 
 const session: PaymentSession = {
-  id: "sale-1", totalCents: 1200, status: "COLLECTING", allocations: [
-    { kind: "INTEGRATED_CARD", amountCents: 500, idempotencyKey: "op-1", operationId: "op-1", provider: "PAYCOMET", status: "APPROVED", authorization: "****1234" },
-    { kind: "INTEGRATED_CARD", amountCents: 700, idempotencyKey: "op-2", operationId: "op-2", provider: "PAYTEF", status: "DECLINED", message: "Denegada" }
-  ]
+  id: "sale-1",
+  totalCents: 1200,
+  status: "COLLECTING",
+  allocations: [
+    {
+      kind: "INTEGRATED_CARD",
+      amountCents: 500,
+      idempotencyKey: "op-1",
+      operationId: "op-1",
+      provider: "PAYCOMET",
+      status: "APPROVED",
+      authorization: "****1234",
+      reference: "DOC-01",
+      comment: "Pago principal",
+    },
+    {
+      kind: "INTEGRATED_CARD",
+      amountCents: 700,
+      idempotencyKey: "op-2",
+      operationId: "op-2",
+      provider: "PAYTEF",
+      status: "DECLINED",
+      message: "Denegada",
+    },
+  ],
 };
 
+afterEach(cleanup);
+
 describe("PaymentAllocationPanel", () => {
-  it("shows previous approvals after an intermediate decline and all enabled tender choices", () => {
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={["PAYTEF", "PAYCOMET"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
-    expect(html).toContain("PAYCOMET");
-    expect(html).toContain("APROBADO");
-    expect(html).toContain("El proveedor rechazó la operación");
-    expect(html).toContain("Efectivo");
-    expect(html).toContain("Tarjeta manual");
-    expect(html).toContain("PAYTEF");
-    expect(html).toContain("Pendiente: 7,00");
+  it("selects the payment method before accepting the entered amount", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    fireEvent.click(within(container).getByRole("button", { name: /Transferencia/ }));
+    expect(onAdd).not.toHaveBeenCalled();
+
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry input");
+    expect(amountInput).not.toBeNull();
+    fireEvent.change(amountInput!, { target: { value: "8,00" } });
+    fireEvent.keyDown(amountInput!, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "TRANSFER",
+      amountCents: 800,
+    }, { finalizeWhenCovered: true });
   });
 
-  it("offers query for timeout without a new charge action on that allocation", () => {
-    const timedOut = { ...session, allocations: [{ ...session.allocations[0], status: "TIMEOUT" as const }] };
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={timedOut} providers={["PAYTEF"]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
+  it("moves from card amount to required document and Enter submits the payment", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      manualCardRequiresReference
+      initialMethod="CARD"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+    const [amountInput, referenceInput] = Array.from(
+      container.querySelectorAll<HTMLInputElement>(".sale-checkout-entry input"),
+    );
+
+    fireEvent.keyDown(amountInput!, { key: "Enter" });
+
+    expect(onAdd).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(referenceInput));
+
+    fireEvent.change(referenceInput!, { target: { value: "DOC-42" } });
+    fireEvent.keyDown(referenceInput!, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "MANUAL_CARD",
+      amountCents: 1200,
+      reference: "DOC-42",
+    }, { finalizeWhenCovered: true });
+    await waitFor(() => expect(document.activeElement).toBe(amountInput));
+  });
+
+  it("submits manual card without a document when the method does not require it", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      manualCardRequiresReference={false}
+      initialMethod="CARD"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+
+    fireEvent.keyDown(amountInput, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "MANUAL_CARD",
+      amountCents: 1200,
+    }, { finalizeWhenCovered: true });
+  });
+
+  it("uses the voucher code without requiring an external document", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      vouchers={[{ code: "V-100", balance: 30 }]}
+      initialMethod="VOUCHER"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    const voucherInput = container.querySelector<HTMLInputElement>("#checkout-voucher-code")!;
+    fireEvent.keyDown(amountInput, { key: "Enter" });
+    await waitFor(() => expect(document.activeElement).toBe(voucherInput));
+    fireEvent.change(voucherInput, { target: { value: "V-100" } });
+    fireEvent.keyDown(voucherInput, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "VOUCHER",
+      amountCents: 1200,
+      voucherCode: "V-100",
+    }, { finalizeWhenCovered: true });
+  });
+
+  it("does not offer company-disabled payment methods", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      cashEnabled={false}
+      cardEnabled={false}
+      voucherEnabled={false}
+      transferEnabled={false}
+      vouchers={[{ code: "V-100", balance: 30 }]}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).queryByRole("button", { name: /Efectivo/ })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /Tarjeta/ })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /Vale/ })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /Transferencia/ })).toBeNull();
+    expect(within(container).getByRole("button", { name: /Pendiente/ })).toBeTruthy();
+  });
+
+  it("consumes a fast scanner burst without changing or submitting the amount", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry input");
+
+    let scanned = "";
+    for (const [index, key] of Array.from("8412345678901").entries()) {
+      const event = createEvent.keyDown(amountInput!, { key });
+      Object.defineProperty(event, "timeStamp", { value: 100 + index * 20 });
+      fireEvent(amountInput!, event);
+      scanned += key;
+      fireEvent.change(amountInput!, { target: { value: scanned } });
+    }
+    const enter = createEvent.keyDown(amountInput!, { key: "Enter" });
+    Object.defineProperty(enter, "timeStamp", { value: 370 });
+    fireEvent(amountInput!, enter);
+
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(amountInput?.value).toBe("12,00");
+    expect(within(container).getByRole("alert").textContent).toContain(
+      "Código de barras ignorado durante el cobro",
+    );
+  });
+
+  it("does not register a pending ticket without a selected customer", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      customerSelected={false}
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    fireEvent.click(within(container).getByRole("button", { name: /Pendiente/ }));
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry input");
+    fireEvent.keyDown(amountInput!, { key: "Enter" });
+
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(within(container).getByRole("alert").textContent).toContain("Selecciona un cliente");
+  });
+
+  it("renders the approved checkout layout, metadata columns and all methods", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es"
+      session={session}
+      providers={["PAYTEF"]}
+      manualCardEnabled
+      vouchers={[{ code: "V-1", balance: 20 }]}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+    expect(html).toContain("COBRO");
+    expect(html).toContain("Nº DOCUMENTO");
+    expect(html).toContain("COMENTARIO");
+    expect(html).toContain("DOC-01");
+    expect(html).toContain("Pago principal");
+    expect(html).toContain("TOTAL A COBRAR");
+    expect(html).toContain("COBRADO");
+    expect(html).toContain("FALTA");
+    expect(html).toContain("<kbd>*</kbd>");
+    expect(html).toContain("<kbd>F11</kbd>");
+  });
+
+  it("shows query for an uncertain integrated operation", () => {
+    const timedOut = {
+      ...session,
+      allocations: [{ ...session.allocations[0], status: "TIMEOUT" as const }],
+    };
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={timedOut} providers={["PAYTEF"]}
+      manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
     expect(html).toContain("Consultar estado");
-    expect(html).not.toContain("Reintentar cargo");
   });
 
-  it.each([
-    ["es", "Cobro pendiente", "Iniciar cobro pendiente", "Cobro dividido", "Pendiente: 7,00"],
-    ["en", "Pending payment", "Start pending payment", "Split payment", "Remaining: 7.00"],
-    ["zh", "待处理付款", "开始待处理付款", "分拆支付", "待付: 7.00"],
-  ] as const)("presents pending payment in %s without legacy split-payment copy", (locale, title, start, legacyTitle, remaining) => {
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale={locale} session={session} providers={[]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
-    expect(html).toContain(title);
-    expect(html).not.toContain(legacyTitle);
-    expect(html).toContain(remaining);
-    expect(createTranslator(locale)("payment.split.start")).toBe(start);
+  it("shows a synthetic fixed discount row and disables further discount after payment", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={session} providers={[]} manualCardEnabled
+      checkoutDiscountCents={200} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    expect(html).toContain("Descuento");
+    expect(html).toContain("-2,00 €");
+    expect(html).toMatch(/disabled=""><span>Descuento/);
   });
 
-  it("shows compensation explicitly and offers no new tender", () => {
-    const compensating = { ...session, status: "COMPENSATION_REQUIRED" as const };
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={compensating} providers={["PAYTEF"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()} />);
+  it("renders the numeric keypad only in touch mode and hides shortcut labels", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled interfaceMode="TOUCH" onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    expect(html).toContain("Teclado numérico");
+    expect(html).toContain("Exacto");
+    expect(html).toContain("50 €");
+    expect(html).not.toContain("<kbd>F11</kbd>");
+  });
+
+  it("disables pending when the operator lacks permission", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={{ ...session, allocations: [] }} providers={[]}
+      manualCardEnabled pendingEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
+    expect(html).toMatch(/disabled=""><span>Pendiente/);
+  });
+
+  it("blocks all method buttons when compensation is required", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es" session={{ ...session, status: "COMPENSATION_REQUIRED" }}
+      providers={["PAYTEF"]} manualCardEnabled onAdd={vi.fn()} onQuery={vi.fn()}
+    />);
     expect(html).toContain("Compensación obligatoria");
-    expect(html).not.toContain(">Efectivo<");
-    expect(html).not.toContain(">Tarjeta manual<");
-    expect(html).not.toContain(">PAYTEF</button>");
+    expect((html.match(/disabled=""/g) ?? []).length).toBeGreaterThanOrEqual(7);
   });
 
-  it("renders an accessible manual-card reference dialog without using a browser prompt", () => {
-    const source = PaymentAllocationPanel.toString();
-    expect(source).not.toContain("prompt");
+  it("recovers a legacy cash compensation with cash selected and cancellation available", () => {
+    const legacyCashSession: PaymentSession = {
+      ...session,
+      status: "COMPENSATION_REQUIRED",
+      allocations: [{
+        kind: "CASH",
+        amountCents: 1200,
+        deliveredCents: 1200,
+        changeCents: 0,
+        idempotencyKey: "cash-legacy",
+        status: "APPROVED",
+      }],
+    };
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={legacyCashSession} providers={["PAYTEF"]}
+      manualCardEnabled initialMethod="CARD" allowAdd={false}
+      onAdd={vi.fn()} onQuery={vi.fn()} onClear={vi.fn()} onClose={vi.fn()}
+    />);
 
-    const html = renderToStaticMarkup(<ManualCardReferenceDialog locale="es" reference="" onReferenceChange={vi.fn()} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    expect(within(container).getByRole("button", { name: /Efectivo/ }).classList.contains("selected")).toBe(true);
+    expect(within(container).getByRole("button", { name: /Tarjeta/ }).classList.contains("selected")).toBe(false);
+    expect((within(container).getByRole("button", { name: /Eliminar pagos/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(container).getAllByRole("button", { name: "CANCELAR" })
+      .every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("prevents clearing or closing while an integrated card result is locked", () => {
+    const lockedSession: PaymentSession = {
+      ...session,
+      status: "COMPENSATION_REQUIRED",
+      allocations: [{ ...session.allocations[0], status: "TIMEOUT" }],
+    };
+    const { container } = render(<PaymentAllocationPanel
+      locale="es" session={lockedSession} providers={["PAYTEF"]}
+      manualCardEnabled allowAdd={false}
+      onAdd={vi.fn()} onQuery={vi.fn()} onClear={vi.fn()} onClose={vi.fn()}
+    />);
+
+    expect(hasLockedIntegratedPayment(lockedSession.allocations)).toBe(true);
+    expect((within(container).getByRole("button", { name: /Eliminar pagos/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(container).getAllByRole("button", { name: "CANCELAR" })
+      .every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("keeps the legacy manual-card dialog accessible and ephemeral", () => {
+    const html = renderToStaticMarkup(<ManualCardReferenceDialog
+      locale="es" reference="" onReferenceChange={vi.fn()}
+      onCancel={vi.fn()} onConfirm={vi.fn()}
+    />);
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
-    expect(html).toContain("Referencia obligatoria de la tarjeta manual");
-    expect(html).toContain("Confirmar");
-    expect(html).toContain("Cancelar");
-    expect(html).toContain("disabled");
-  });
-
-  it("keeps the manual reference ephemeral and clears it on cancel and submit", () => {
-    expect(manualCardDialogState({ open: false, reference: "" }, { type: "open" })).toEqual({ open: true, reference: "" });
-    expect(manualCardDialogState({ open: true, reference: "  REF-42  " }, { type: "cancel" })).toEqual({ open: false, reference: "" });
-    expect(manualCardDialogState({ open: true, reference: "REF-42" }, { type: "submit" })).toEqual({ open: false, reference: "" });
-  });
-
-  it("uses a middle dot as the allocation separator", () => {
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="es" session={session} providers={[]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
-    expect(html).toContain(" · ");
-    expect(html).not.toContain("路");
-  });
-
-  it("does not expose a Spanish idempotency diagnostic when the interface is Chinese", () => {
-    const recovered = {
-      ...session,
-      allocations: [{ ...session.allocations[0], message: "Operacion recuperada por idempotencia" }],
-    };
-    const html = renderToStaticMarkup(<PaymentAllocationPanel locale="zh" session={recovered} providers={[]} manualCardEnabled={false} onAdd={vi.fn()} onQuery={vi.fn()} />);
-    expect(html).toContain("已安全恢复原支付操作");
-    expect(html).not.toContain("Operacion recuperada por idempotencia");
+    expect(html).toContain("Referencia obligatoria");
+    expect(manualCardDialogState(
+      { open: true, reference: "REF-42" },
+      { type: "submit" },
+    )).toEqual({ open: false, reference: "" });
   });
 });

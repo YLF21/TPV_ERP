@@ -4,12 +4,16 @@ import { devTerminalContext } from "../../../packages/app-common/src/api/runtime
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
 import { LoginScreen } from "../../../packages/app-common/src/components/LoginScreen";
 import { SessionHomeScreen } from "../../../packages/app-common/src/components/SessionHomeScreen";
-import { readSaleInterfaceTouchMode } from "../../../packages/app-common/src/components/saleInterfacePreferences";
+import {
+  defaultSaleInterfaceMode,
+  loadSaleInterfaceConfiguration,
+  type SaleInterfaceMode
+} from "../../../packages/app-common/src/components/saleInterfacePreferences";
 import "../../../packages/app-common/src/styles/tpv.css";
 import type { LocaleCode, TerminalContext, UserSession } from "../../../packages/app-common/src/types";
 import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
-import { ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
+import { apiRequest, ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
 import { loadTerminalIdentity } from "../../../packages/app-common/src/terminalIdentity";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
@@ -83,6 +87,11 @@ const CustomerReceivablesScreen = lazy(() =>
 const SaleScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SaleScreen").then(({ SaleScreen }) => ({ default: SaleScreen }))
 );
+const SalesDocumentScreen = lazy(() =>
+  import("../../../packages/app-common/src/components/SalesDocumentScreen").then(({ SalesDocumentScreen }) => ({
+    default: SalesDocumentScreen
+  }))
+);
 const SettingsScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SettingsScreen").then(({ SettingsScreen }) => ({
     default: SettingsScreen
@@ -97,6 +106,43 @@ const WarehouseScreen = lazy(() =>
   }))
 );
 
+type SalesDocumentBootstrap = {
+  locale: LocaleCode;
+  session: UserSession;
+  terminalContext: TerminalContext;
+};
+
+let salesDocumentBootstrapPromise: Promise<SalesDocumentBootstrap | null> | null = null;
+
+function SalesDocumentWindowApp() {
+  const [bootstrap, setBootstrap] = useState<SalesDocumentBootstrap | null | undefined>();
+
+  useEffect(() => {
+    salesDocumentBootstrapPromise ??=
+      window.tpvDesktop?.salesDocuments?.consumeBootstrap()
+      ?? Promise.resolve(null);
+    let active = true;
+    void salesDocumentBootstrapPromise.then((value) => {
+      if (active) setBootstrap(value);
+    });
+    return () => { active = false; };
+  }, []);
+
+  if (bootstrap === undefined) return <AppLoadingFallback />;
+  if (bootstrap === null) {
+    return (
+      <main className="settings-screen">
+        <section className="settings-card" role="alert">
+          <h1>No se pudo abrir la venta documental</h1>
+          <p>La sesión de la ventana no está disponible. Ciérrala y vuelve a usar Ctrl+F.</p>
+          <button type="button" onClick={() => window.close()}>Cerrar</button>
+        </section>
+      </main>
+    );
+  }
+  return <SalesDocumentScreen {...bootstrap} />;
+}
+
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
@@ -105,6 +151,8 @@ export function App() {
   const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
+  const [saleInterfaceMode, setSaleInterfaceMode] =
+    useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +191,22 @@ export function App() {
     return () => { active = false; };
   }, [session?.accessToken]);
 
+  useEffect(() => {
+    let active = true;
+    setSaleInterfaceMode(defaultSaleInterfaceMode);
+    if (!session?.accessToken || !terminalContext?.terminalId) {
+      return () => { active = false; };
+    }
+    void loadSaleInterfaceConfiguration(session.accessToken, apiRequest)
+      .then((configuration) => {
+        if (active) setSaleInterfaceMode(configuration.saleMode);
+      })
+      .catch(() => {
+        if (active) setSaleInterfaceMode(defaultSaleInterfaceMode);
+      });
+    return () => { active = false; };
+  }, [session?.accessToken, terminalContext?.terminalId]);
+
   const handleLocaleChange = (next: LocaleCode) => changeLocale(session, next);
   const handleLogin = (nextSession: UserSession) => {
     setSession(nextSession);
@@ -150,7 +214,9 @@ export function App() {
     setScreen("home");
   };
   const handleLogout = () => {
+    void window.tpvDesktop?.salesDocuments?.close();
     setSession(null);
+    setSaleInterfaceMode(defaultSaleInterfaceMode);
     resetLocale();
   };
 
@@ -247,7 +313,7 @@ export function App() {
         locale={locale}
         session={session}
         terminalContext={terminalContext}
-        touchMode={readSaleInterfaceTouchMode("venta", terminalContext)}
+        interfaceMode={saleInterfaceMode}
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
@@ -256,6 +322,17 @@ export function App() {
           setReceivablesReturnScreen("sale");
           setScreen("customerReceivables");
         }}
+        onOpenSalesDocumentWindow={window.tpvDesktop?.salesDocuments
+          ? () => {
+              void window.tpvDesktop?.salesDocuments?.open({
+                locale,
+                session,
+                terminalContext,
+              }).then((result) => {
+                if (!result.ok) window.alert(result.message);
+              });
+            }
+          : undefined}
       />
     );
   }
@@ -315,6 +392,7 @@ export function App() {
         onLocaleChange={handleLocaleChange}
         onOpenHardware={() => setScreen("hardwareSettings")}
         onOpenReports={() => setScreen("salesReport")}
+        onSaleInterfaceModeChange={setSaleInterfaceMode}
       />
     );
   }
@@ -338,11 +416,14 @@ export function App() {
   );
 }
 
+const isSalesDocumentWindow =
+  new URLSearchParams(window.location.search).get("window") === "sales-document";
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LazyModuleErrorBoundary>
       <Suspense fallback={<AppLoadingFallback />}>
-        <App />
+        {isSalesDocumentWindow ? <SalesDocumentWindowApp /> : <App />}
       </Suspense>
     </LazyModuleErrorBoundary>
   </StrictMode>

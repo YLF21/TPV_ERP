@@ -83,21 +83,21 @@ const productMappingFields: MappingField[] = [
 ];
 
 const sharedExcelFieldOrder: MappingField[] = [
-  field("code", "Codigo", "Code", "编码", ["codigo", "code"]),
-  field("barcode", "Codigo de barras", "Barcode", "条码", ["codigo de barras", "codigo barras", "barcode", "ean"]),
+  field("code", "Código", "Code", "编码", ["codigo", "code"]),
+  field("barcode", "Código de barras", "Barcode", "条码", ["codigo de barras", "codigo barras", "barcode", "ean"]),
   field("name", "Nombre", "Name", "名称", ["nombre", "producto", "product", "name"], "name"),
-  field("description", "Descripcion", "Description", "描述", ["descripcion", "description"], "description"),
+  field("description", "Descripción", "Description", "描述", ["descripcion", "description"], "description"),
   field("quantity", "Cantidad", "Quantity", "数量", ["cantidad", "quantity", "unidades", "uds"]),
-  field("purchaseDiscountPercent", "Descuento compra", "Purchase discount", "采购折扣", ["descuento compra", "purchase discount", "purchase discount percent"], "purchaseDiscountPercent"),
-  field("productType", "Tipo producto", "Product type", "商品类型", ["tipo producto", "tipo", "product type", "producttype"], "productType"),
+  field("purchaseDiscountPercent", "Descuento de compra", "Purchase discount", "采购折扣", ["descuento compra", "purchase discount", "purchase discount percent"], "purchaseDiscountPercent"),
+  field("productType", "Tipo de producto", "Product type", "商品类型", ["tipo producto", "tipo", "product type", "producttype"], "productType"),
   field("familyId", "Familia", "Family", "类别", ["familia", "family", "family id", "familyid"], "familyId"),
   field("subfamilyId", "Subfamilia", "Subfamily", "子类别", ["subfamilia", "subfamily", "subfamily id", "subfamilyid"], "subfamilyId"),
-  field("purchasePrice", "Precio compra", "Purchase price", "采购价", ["precio compra", "compra", "purchase price", "cost"], "purchasePrice"),
-  field("salePrice", "Precio venta", "Sale price", "售价", ["precio venta", "venta", "sale price", "price"], "salePrice"),
-  field("memberPrice", "Precio socio", "Member price", "会员价", ["precio socio", "member price", "memberprice"], "memberPrice"),
-  field("wholesalePrice", "Precio mayor", "Wholesale price", "批发价", ["precio mayor", "wholesale price", "wholesaleprice"], "wholesalePrice"),
-  field("offerPrice", "Precio oferta", "Offer price", "促销价", ["precio oferta", "offer price", "offerprice"], "offerPrice"),
-  field("offerDiscountPercent", "Descuento oferta %", "Offer discount %", "促销折扣%", ["descuento oferta", "descuento oferta %", "offer discount", "offer discount percent"], "offerDiscountPercent"),
+  field("purchasePrice", "Precio de compra", "Purchase price", "采购价", ["precio compra", "compra", "purchase price", "cost"], "purchasePrice"),
+  field("salePrice", "Precio de venta", "Sale price", "售价", ["precio venta", "venta", "sale price", "price"], "salePrice"),
+  field("memberPrice", "Precio de socio", "Member price", "会员价", ["precio socio", "member price", "memberprice"], "memberPrice"),
+  field("wholesalePrice", "Precio mayorista", "Wholesale price", "批发价", ["precio mayor", "wholesale price", "wholesaleprice"], "wholesalePrice"),
+  field("offerPrice", "Precio de oferta", "Offer price", "促销价", ["precio oferta", "offer price", "offerprice"], "offerPrice"),
+  field("offerDiscountPercent", "Descuento de oferta %", "Offer discount %", "促销折扣%", ["descuento oferta", "descuento oferta %", "offer discount", "offer discount percent"], "offerDiscountPercent"),
   field("offerActive", "Oferta activa", "Offer active", "促销启用", ["oferta activa", "offer active", "offeractive"], "offerActive"),
   field("offerFrom", "Oferta desde", "Offer from", "促销开始", ["oferta desde", "offer from", "offerfrom"], "offerFrom"),
   field("offerUntil", "Oferta hasta", "Offer until", "促销结束", ["oferta hasta", "offer until", "offeruntil"], "offerUntil"),
@@ -106,8 +106,8 @@ const sharedExcelFieldOrder: MappingField[] = [
   field("taxId", "Impuestos", "Tax", "税", ["impuestos", "impuesto", "tax", "tax id", "taxid", "iva"], "taxId"),
   field("taxesIncluded", "Impuestos incluidos", "Taxes included", "含税", ["impuestos incluidos", "iva incluido", "taxes included", "taxesincluded"], "taxesIncluded"),
   field("packageQuantity", "Cantidad por paquete", "Package quantity", "每包数量", ["cantidad por paquete", "package quantity", "pack quantity"], "packageQuantity"),
-  field("stockMin", "Stock min", "Stock min", "最低库存", ["stock min", "stock minimo", "stock mínimo", "minimum stock"], "stockMin"),
-  field("stockMax", "Stock max", "Stock max", "最高库存", ["stock max", "stock maximo", "stock máximo", "maximum stock"], "stockMax")
+  field("stockMin", "Stock mínimo", "Minimum stock", "最低库存", ["stock min", "stock minimo", "stock mínimo", "minimum stock"], "stockMin"),
+  field("stockMax", "Stock máximo", "Maximum stock", "最高库存", ["stock max", "stock maximo", "stock máximo", "maximum stock"], "stockMax")
 ];
 
 type SharedExcelImportStoredSettings = {
@@ -196,7 +196,7 @@ export function SharedExcelImportDialog({
       return;
     }
     let cancelled = false;
-    setStatus("Leyendo Excel...");
+    setStatus(t("sharedExcel.status.reading"));
     void readExcelSheet(selectedFile)
       .then((nextSheet) => {
         if (!cancelled) {
@@ -205,9 +205,9 @@ export function SharedExcelImportDialog({
           setStatus("");
         }
       })
-      .catch((error) => {
+      .catch(() => {
         if (!cancelled) {
-          setStatus(error instanceof Error ? error.message : "No se pudo leer el Excel");
+          setStatus(t("sharedExcel.status.readError"));
         }
       });
     return () => {
@@ -276,7 +276,7 @@ export function SharedExcelImportDialog({
     setStartRow(2);
     setUpdateFields({});
     setAppliedRows(null);
-    setStatus("Relleno limpiado");
+    setStatus(t("sharedExcel.status.cleared"));
   }
 
   async function applyMapping() {
@@ -306,7 +306,12 @@ export function SharedExcelImportDialog({
         : nextAcceptedRows.length > 0
           ? "accepted"
           : "errors");
-    setStatus(`Aplicado: ${nextAcceptedRows.length} aceptadas, ${nextMissingRows.length} no existentes, ${nextPriceChangedRows.length} con precio compra distinto, ${nextErrorRows.length} errores`);
+    setStatus(interpolateMessage(t("sharedExcel.status.applied"), {
+      accepted: nextAcceptedRows.length,
+      missing: nextMissingRows.length,
+      changed: nextPriceChangedRows.length,
+      errors: nextErrorRows.length
+    }));
   }
 
   function openExcelFile(fileToOpen: File | null) {
@@ -386,23 +391,23 @@ export function SharedExcelImportDialog({
             <span>{selectedFile?.name ?? excelImportAccept}</span>
           </div>
           <div className="shared-excel-toolbar-actions">
-            <button type="button" onClick={() => fileInputRef.current?.click()}>Abrir Excel</button>
-            <button type="button" onClick={() => openExcelFile(selectedFile)}>Abrir edicion</button>
+            <button type="button" onClick={() => fileInputRef.current?.click()}>{t("sharedExcel.open")}</button>
+            <button type="button" onClick={() => openExcelFile(selectedFile)}>{t("sharedExcel.openEdit")}</button>
             <button type="button" onClick={() => {
               setRefreshToken((value) => value + 1);
-              setStatus("Excel refrescado y clasificado");
-            }}>Refrescar</button>
-            <button type="button" onClick={clearMapping}>Limpiar</button>
-            <button type="button" onClick={onClose}>Regreso [Esc]</button>
+              setStatus(t("sharedExcel.status.refreshed"));
+            }}>{t("sharedExcel.refresh")}</button>
+            <button type="button" onClick={clearMapping}>{t("common.clear")}</button>
+            <button type="button" onClick={onClose}>{t("sharedExcel.back")}</button>
           </div>
         </header>
 
         <div className="shared-excel-top-pane">
           {sheet.length === 0 ? (
             <div className="shared-excel-empty-preview">
-              <h3>{summaryTitle(locale)}</h3>
+              <h3>{t("sharedExcel.summary.title")}</h3>
               <ol>
-                {summaryItems(locale).map((item) => <li key={item}>{item}</li>)}
+                {summaryItems(t).map((item) => <li key={item}>{item}</li>)}
               </ol>
             </div>
           ) : (
@@ -440,7 +445,7 @@ export function SharedExcelImportDialog({
             <div className="shared-excel-config">
               <div className="shared-excel-config-bar">
                 <label>
-                  <span>Producto empieza en fila</span>
+                  <span>{t("sharedExcel.startRow")}</span>
                   <input
                     type="number"
                     min={2}
@@ -451,24 +456,24 @@ export function SharedExcelImportDialog({
                     }}
                   />
                 </label>
-                <span>{previewRows.length} filas detectadas</span>
-                <span>{previewAcceptedRows.length} aceptadas</span>
-                <span>{previewMissingRows.length} no existentes</span>
+                <span>{interpolateMessage(t("sharedExcel.detectedRows"), { count: previewRows.length })}</span>
+                <span>{interpolateMessage(t("sharedExcel.acceptedRows"), { count: previewAcceptedRows.length })}</span>
+                <span>{interpolateMessage(t("sharedExcel.missingRows"), { count: previewMissingRows.length })}</span>
               </div>
               <div className="shared-excel-options">
-                <label><input type="checkbox" checked={autoAddMissing} onChange={(event) => setAutoAddMissing(event.target.checked)} /> Auto añadir productos no existentes</label>
-                <label><input type="checkbox" checked={generateSummaryDocument} onChange={(event) => setGenerateSummaryDocument(event.target.checked)} /> Generar documento resumen</label>
-                <label><input type="checkbox" checked={showOnlyImported} onChange={(event) => setShowOnlyImported(event.target.checked)} /> Mostrar solo importados</label>
-                <label><input type="checkbox" checked={skipZeroPriceUpdate} onChange={(event) => setSkipZeroPriceUpdate(event.target.checked)} /> Si precio nuevo es 0, no actualizar</label>
-                <label><input type="checkbox" checked={updateSupplier} onChange={(event) => setUpdateSupplier(event.target.checked)} /> Actualizar proveedor del producto</label>
+                <label><input type="checkbox" checked={autoAddMissing} onChange={(event) => setAutoAddMissing(event.target.checked)} /> {t("sharedExcel.option.autoAdd")}</label>
+                <label><input type="checkbox" checked={generateSummaryDocument} onChange={(event) => setGenerateSummaryDocument(event.target.checked)} /> {t("sharedExcel.option.summaryDocument")}</label>
+                <label><input type="checkbox" checked={showOnlyImported} onChange={(event) => setShowOnlyImported(event.target.checked)} /> {t("sharedExcel.option.onlyImported")}</label>
+                <label><input type="checkbox" checked={skipZeroPriceUpdate} onChange={(event) => setSkipZeroPriceUpdate(event.target.checked)} /> {t("sharedExcel.option.skipZeroPrice")}</label>
+                <label><input type="checkbox" checked={updateSupplier} onChange={(event) => setUpdateSupplier(event.target.checked)} /> {t("sharedExcel.option.updateSupplier")}</label>
                 <label>
-                  <span>Precio documento desde</span>
+                  <span>{t("sharedExcel.priceSource")}</span>
                   <select value={priceSource} onChange={(event) => setPriceSource(event.target.value as SharedExcelImportPriceSource)}>
-                    <option value="purchasePrice">Precio compra</option>
-                    <option value="salePrice">Precio venta</option>
-                    <option value="memberPrice">Precio socio</option>
-                    <option value="wholesalePrice">Precio mayor</option>
-                    <option value="offerPrice">Precio oferta</option>
+                    <option value="purchasePrice">{t("sharedExcel.price.purchase")}</option>
+                    <option value="salePrice">{t("sharedExcel.price.sale")}</option>
+                    <option value="memberPrice">{t("sharedExcel.price.member")}</option>
+                    <option value="wholesalePrice">{t("sharedExcel.price.wholesale")}</option>
+                    <option value="offerPrice">{t("sharedExcel.price.offer")}</option>
                   </select>
                 </label>
               </div>
@@ -489,13 +494,13 @@ export function SharedExcelImportDialog({
                         setAppliedRows(null);
                       }}
                     />
-                    {field.updateKey ? renderUpdateCheckbox(field.updateKey, fieldLabel(field, locale), updateFields, setUpdateFields) : <span />}
+                    {field.updateKey ? renderUpdateCheckbox(field.updateKey, fieldLabel(field, locale), updateFields, setUpdateFields, t) : <span />}
                   </label>
                 ))}
               </div>
               <div className="shared-excel-config-actions">
-                <button type="button" onClick={clearMapping}>Limpiar</button>
-                <button type="button" onClick={() => void applyMapping()}>Aplicar</button>
+                <button type="button" onClick={clearMapping}>{t("common.clear")}</button>
+                <button type="button" onClick={() => void applyMapping()}>{t("common.apply")}</button>
               </div>
             </div>
           ) : (
@@ -507,37 +512,42 @@ export function SharedExcelImportDialog({
               onPointerUp={endDragScroll}
             >
               {activePanel === "summary" && renderResultTable({
-                title: "Documento resumen",
+                title: t("sharedExcel.result.summary"),
                 rows: existingRows,
                 actions: null,
-                summaryMode: true
+                summaryMode: true,
+                t
               })}
               {activePanel === "missing" && renderResultTable({
-                title: autoAddMissing ? "Productos no existentes para auto añadir" : "Productos no importables",
+                title: autoAddMissing ? t("sharedExcel.result.missingAuto") : t("sharedExcel.result.missing"),
                 rows: missingRows,
                 actions: (
                   <>
-                    {onAddMissingAuto && <button type="button" onClick={() => onAddMissingAuto(missingRows)}>Anadir automatico</button>}
+                    {onAddMissingAuto && <button type="button" onClick={() => onAddMissingAuto(missingRows)}>{t("sharedExcel.autoAdd")}</button>}
                   </>
                 ),
-                reviewRow: onReviewMissing
+                reviewRow: onReviewMissing,
+                t
               })}
               {activePanel === "priceChanged" && renderResultTable({
-                title: "Productos con precio compra distinto",
+                title: t("sharedExcel.result.purchaseChanged"),
                 rows: priceChangedRows,
-                actions: <button type="button" onClick={() => onImportAccepted(acceptedRowsWithQuantity(priceChangedRows))}>Actualizar</button>,
+                actions: <button type="button" onClick={() => onImportAccepted(acceptedRowsWithQuantity(priceChangedRows))}>{t("sharedExcel.update")}</button>,
                 currentPurchasePrice,
-                showPurchasePriceDiff: true
+                showPurchasePriceDiff: true,
+                t
               })}
               {activePanel === "accepted" && renderResultTable({
-                title: "Productos aceptados",
+                title: t("sharedExcel.result.accepted"),
                 rows: acceptedRows,
-                actions: <button type="button" onClick={importAccepted}>Importar Excel al documento</button>
+                actions: <button type="button" onClick={importAccepted}>{t("sharedExcel.importDocument")}</button>,
+                t
               })}
               {activePanel === "errors" && renderResultTable({
-                title: "Filas con errores",
+                title: t("sharedExcel.result.errors"),
                 rows: errorRows,
-                actions: null
+                actions: null,
+                t
               })}
             </div>
           )}
@@ -545,13 +555,13 @@ export function SharedExcelImportDialog({
 
         {status && <p className="shared-excel-status" role="status">{status}</p>}
 
-        <nav className="shared-excel-bottom-tabs" aria-label="Apartados de importacion Excel">
-          {renderPanelTab("mapping", "Configuracion archivo", activePanel, setActivePanel)}
-          {renderPanelTab("summary", `Documento resumen (${existingRows.length})`, activePanel, setActivePanel)}
-          {renderPanelTab("missing", `Productos no importables (${missingRows.length})`, activePanel, setActivePanel)}
-          {renderPanelTab("priceChanged", `Precio compra cambiado (${priceChangedRows.length})`, activePanel, setActivePanel)}
-          {renderPanelTab("accepted", `Productos importables (${acceptedRows.length})`, activePanel, setActivePanel)}
-          {renderPanelTab("errors", `Errores (${errorRows.length})`, activePanel, setActivePanel)}
+        <nav className="shared-excel-bottom-tabs" aria-label={t("sharedExcel.sections")}>
+          {renderPanelTab("mapping", t("sharedExcel.tab.configuration"), activePanel, setActivePanel)}
+          {renderPanelTab("summary", interpolateMessage(t("sharedExcel.tab.summary"), { count: existingRows.length }), activePanel, setActivePanel)}
+          {renderPanelTab("missing", interpolateMessage(t("sharedExcel.tab.missing"), { count: missingRows.length }), activePanel, setActivePanel)}
+          {renderPanelTab("priceChanged", interpolateMessage(t("sharedExcel.tab.purchaseChanged"), { count: priceChangedRows.length }), activePanel, setActivePanel)}
+          {renderPanelTab("accepted", interpolateMessage(t("sharedExcel.tab.accepted"), { count: acceptedRows.length }), activePanel, setActivePanel)}
+          {renderPanelTab("errors", interpolateMessage(t("sharedExcel.tab.errors"), { count: errorRows.length }), activePanel, setActivePanel)}
         </nav>
       </section>
     </div>
@@ -579,57 +589,16 @@ function fieldLabel(field: MappingField, locale: LocaleCode) {
   return field.translatedLabels?.[locale] ?? field.label;
 }
 
-function summaryTitle(locale: LocaleCode) {
-  if (locale === "zh") return "导入说明";
-  if (locale === "en") return "Import summary";
-  return "Resumen de importacion";
-}
-
-function summaryItems(locale: LocaleCode) {
-  if (locale === "zh") {
-    return [
-      "点击 Abrir Excel 在此窗口选择文件。",
-      "只处理 Excel 的第一个工作表，并允许 Z 之后的列。",
-      "刷新分类前请输入商品开始的行号。",
-      "商品通过编码或条码识别。",
-      "勾选属性表示可以更新商品主档。",
-      "Impuestos incluidos 使用 1 表示是，0 表示否。",
-      "Usar precio 决定销售使用的价格：NORMAL=售价，MEMBER_PRICE=会员价，OFFER_PRICE=促销价，OFFER_DISCOUNT=按促销折扣计算。",
-      "Prohibido descuento 使用 1 表示禁止再打折，0 表示允许正常折扣。",
-      "Oferta activa 使用 1 启用促销，0 关闭促销；启用时会使用促销价或促销折扣以及日期范围。"
-    ];
-  }
-  if (locale === "en") {
-    return [
-      "Click Abrir Excel to select the file from this window.",
-      "Only the first Excel sheet is processed, and columns after Z are allowed.",
-      "Set the first product row before refreshing the classification.",
-      "Products are identified by code or barcode.",
-      "Check an attribute when it is allowed to update the product master.",
-      "Taxes included uses 1 for true and 0 for false.",
-      "Use price defines the selling price mode: NORMAL=sale price, MEMBER_PRICE=member price, OFFER_PRICE=offer price, OFFER_DISCOUNT=calculated from offer discount.",
-      "Discount prohibited uses 1 to block further discounts and 0 to allow normal discounts.",
-      "Offer active uses 1 to enable the offer and 0 to disable it; enabled offers use offer price or discount plus date range."
-    ];
-  }
-  return [
-    "Pulsa Abrir Excel para seleccionar el archivo desde esta ventana.",
-    "Se procesa la primera hoja del Excel y se admiten columnas posteriores a Z.",
-    "Indica la fila donde empiezan los productos antes de refrescar la clasificacion.",
-    "El producto se identifica por codigo o codigo de barras.",
-    "Marca el check de cada atributo si puede actualizar el producto maestro.",
-    "Impuestos incluidos usa 1 para verdadero y 0 para falso.",
-    "Usar precio define la tarifa activa: NORMAL=precio venta, MEMBER_PRICE=precio socio, OFFER_PRICE=precio oferta y OFFER_DISCOUNT=calculo por descuento oferta.",
-    "Prohibido descuento usa 1 para bloquear descuentos adicionales y 0 para permitir descuento normal.",
-    "Oferta activa usa 1 para activar la oferta y 0 para desactivarla; si esta activa usa precio oferta o descuento oferta con su rango de fechas."
-  ];
+function summaryItems(t: (key: string) => string) {
+  return Array.from({ length: 9 }, (_, index) => t(`sharedExcel.summary.${index + 1}`));
 }
 
 function renderUpdateCheckbox(
   field: SharedExcelImportUpdateField,
   label: string,
   updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>>,
-  setUpdateFields: (updater: (current: Partial<Record<SharedExcelImportUpdateField, boolean>>) => Partial<Record<SharedExcelImportUpdateField, boolean>>) => void
+  setUpdateFields: (updater: (current: Partial<Record<SharedExcelImportUpdateField, boolean>>) => Partial<Record<SharedExcelImportUpdateField, boolean>>) => void,
+  t: (key: string) => string
 ) {
   return (
     <input
@@ -639,7 +608,7 @@ function renderUpdateCheckbox(
         ...current,
         [field]: event.target.checked
       }))}
-      aria-label={`Actualizar ${label}`}
+      aria-label={interpolateMessage(t("sharedExcel.updateField"), { field: label })}
     />
   );
 }
@@ -718,7 +687,8 @@ function renderResultTable({
   reviewRow,
   currentPurchasePrice,
   showPurchasePriceDiff = false,
-  summaryMode = false
+  summaryMode = false,
+  t
 }: {
   title: string;
   rows: ExcelImportClassifiedRow[];
@@ -727,6 +697,7 @@ function renderResultTable({
   currentPurchasePrice?: (product: ExcelImportProductIdentity) => string | number | null | undefined;
   showPurchasePriceDiff?: boolean;
   summaryMode?: boolean;
+  t: (key: string) => string;
 }) {
   const colSpan = (reviewRow ? 7 : 6) + (showPurchasePriceDiff ? 1 : 0) + (summaryMode ? 1 : 0);
   return (
@@ -734,27 +705,27 @@ function renderResultTable({
       <header>
         <h3>{title}</h3>
         <span>{rows.length}</span>
-        <button type="button" onClick={() => exportRows(title, rows)}>Exportar</button>
+        <button type="button" onClick={() => exportRows(title, rows)}>{t("sharedExcel.export")}</button>
         {actions}
       </header>
       <table>
         <thead>
           <tr>
-            <th>Fila</th>
-            <th>Codigo</th>
-            <th>Codigo barras</th>
-            <th>Nombre</th>
+            <th>{t("sharedExcel.column.row")}</th>
+            <th>{t("sharedExcel.column.code")}</th>
+            <th>{t("sharedExcel.column.barcode")}</th>
+            <th>{t("sharedExcel.column.name")}</th>
             {showPurchasePriceDiff ? (
               <>
-                <th>Precio compra actual</th>
-                <th>Precio compra nuevo</th>
+                <th>{t("sharedExcel.column.currentPurchasePrice")}</th>
+                <th>{t("sharedExcel.column.newPurchasePrice")}</th>
               </>
             ) : (
-              <th>Precio compra</th>
+              <th>{t("sharedExcel.column.purchasePrice")}</th>
             )}
-            <th>Precio venta</th>
-            {summaryMode && <th>Estado</th>}
-            {reviewRow && <th>Revisar</th>}
+            <th>{t("sharedExcel.column.salePrice")}</th>
+            {summaryMode && <th>{t("sharedExcel.column.status")}</th>}
+            {reviewRow && <th>{t("sharedExcel.column.review")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -773,15 +744,15 @@ function renderResultTable({
                 <td>{row.draft.purchasePrice}</td>
               )}
               <td>{row.draft.salePrice}</td>
-              {summaryMode && <td>{row.status === "purchasePriceChanged" ? "Precio compra cambiado" : "Existente"}</td>}
+              {summaryMode && <td>{t(row.status === "purchasePriceChanged" ? "sharedExcel.status.purchaseChanged" : "sharedExcel.status.existing")}</td>}
               {reviewRow && (
-                <td><button type="button" onClick={() => reviewRow(row)}>Manual</button></td>
+                <td><button type="button" onClick={() => reviewRow(row)}>{t("sharedExcel.manual")}</button></td>
               )}
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={colSpan}>Sin filas</td>
+              <td colSpan={colSpan}>{t("sharedExcel.emptyRows")}</td>
             </tr>
           )}
         </tbody>
@@ -818,4 +789,11 @@ function exportRows(title: string, rows: ExcelImportClassifiedRow[]) {
   link.download = `${title.toLowerCase().replace(/\s+/g, "-")}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function interpolateMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template
+  );
 }

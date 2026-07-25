@@ -86,6 +86,8 @@ public class CommercialDocument {
     private LocalDate fechaVencimiento;
     @Column(name = "origen_stock", nullable = false)
     private boolean origenStock;
+    @Column(name = "cuenta_cobrar", nullable = false)
+    private boolean cuentaCobrar;
     @OneToMany(mappedBy = "documento", cascade = CascadeType.ALL, orphanRemoval = true,
             fetch = FetchType.LAZY)
     @OrderBy("posicion")
@@ -318,9 +320,21 @@ public class CommercialDocument {
         estado = isReceivableDocument() ? DocumentStatus.PENDIENTE : DocumentStatus.CONFIRMADO;
     }
 
+    public void markTicketReceivable() {
+        if (tipo != CommercialDocumentType.TICKET || estado != DocumentStatus.BORRADOR) {
+            throw new IllegalStateException("only_draft_ticket_can_be_receivable");
+        }
+        if (clienteId == null) {
+            throw new IllegalStateException("customer_receivable_customer_required");
+        }
+        cuentaCobrar = true;
+    }
+
     // Cancels a confirmed ticket without removing its number or content.
     public void cancel(UUID userId, Instant cancelledAt, String reason) {
-        if (tipo != CommercialDocumentType.TICKET || estado != DocumentStatus.CONFIRMADO) {
+        if (tipo != CommercialDocumentType.TICKET
+                || (estado != DocumentStatus.CONFIRMADO
+                && !(estado == DocumentStatus.PENDIENTE && getPaidTotal().signum() == 0))) {
             throw new IllegalStateException("solo se puede anular un ticket confirmado");
         }
         motivoAnulacion = required(reason, "motivo");
@@ -419,9 +433,14 @@ public class CommercialDocument {
         origenStock = stockOrigin;
     }
 
-    private boolean isReceivableDocument() {
+    public boolean isReceivableDocument() {
         return tipo == CommercialDocumentType.ALBARAN_VENTA
-                || tipo == CommercialDocumentType.FACTURA_VENTA;
+                || tipo == CommercialDocumentType.FACTURA_VENTA
+                || (tipo == CommercialDocumentType.TICKET && cuentaCobrar);
+    }
+
+    public boolean isCuentaCobrar() {
+        return cuentaCobrar;
     }
 
     private boolean isEditableConfirmedDocument() {

@@ -1,6 +1,7 @@
 package com.tpverp.backend.security.api;
 
 import com.tpverp.backend.installation.InstallationStatusService;
+import com.tpverp.backend.catalog.ProductEditAuthorizationService;
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.shared.access.OperationalAccessFilter;
@@ -27,11 +28,13 @@ class SecurityConfiguration {
 			HttpSecurity http,
 			UserSessionRepository sesionRepository,
 			AuthenticationService authenticationService,
+			ProductEditAuthorizationService productEditAuthorizations,
 			InstallationStatusService installationStatusService,
 			Environment environment) throws Exception {
 
 		var bearerFilter = new BearerSessionFilter(sesionRepository, authenticationService);
 		var temporaryPasswordFilter = new TemporaryPasswordFilter();
+		var productEditAuthorizationFilter = new ProductEditAuthorizationFilter(productEditAuthorizations);
 		var operationalFilter = new OperationalAccessFilter(
 				installationStatusService, new OperationalAccessPolicy());
 		var publicPaths = publicPaths(environment);
@@ -48,7 +51,8 @@ class SecurityConfiguration {
 						.requestMatchers(publicPaths.toArray(String[]::new)).permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class)
-				.addFilterAfter(temporaryPasswordFilter, BearerSessionFilter.class)
+				.addFilterAfter(productEditAuthorizationFilter, BearerSessionFilter.class)
+				.addFilterAfter(temporaryPasswordFilter, ProductEditAuthorizationFilter.class)
 				.addFilterAfter(operationalFilter, TemporaryPasswordFilter.class)
 				.build();
 	}

@@ -27,7 +27,8 @@ public record TicketPrintView(
                 document.getId(), document.getNumero(), document.getConfirmadoEn(),
                 document.getLineas().stream()
                         .map(line -> new Line(line.getNombre(), line.getCantidad(),
-                                line.getPrecioUnitario(), line.getTotal()))
+                                line.getPrecioUnitario(), line.getTotal(),
+                                line.getSerialNumbers()))
                         .toList(),
                 refundPayouts == null || refundPayouts.isEmpty()
                         ? document.getPagos().stream()
@@ -45,7 +46,16 @@ public record TicketPrintView(
                 document.getTotal());
     }
 
-    public record Line(String name, BigDecimal quantity, BigDecimal price, BigDecimal total) {}
+    public record Line(
+            String name,
+            BigDecimal quantity,
+            BigDecimal price,
+            BigDecimal total,
+            List<String> serialNumbers) {
+        public Line(String name, BigDecimal quantity, BigDecimal price, BigDecimal total) {
+            this(name, quantity, price, total, List.of());
+        }
+    }
 
     public record Payment(String method, BigDecimal amount) {}
 }

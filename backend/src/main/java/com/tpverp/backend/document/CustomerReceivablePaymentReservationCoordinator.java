@@ -170,8 +170,7 @@ public class CustomerReceivablePaymentReservationCoordinator {
     }
 
     private static void requireCollectable(CommercialDocument document) {
-        if (document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
-                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
+        if (!document.isReceivableDocument()) {
             throw new IllegalStateException("message.document.only_receivable_document_can_be_paid");
         }
         if (document.getClienteId() == null) {

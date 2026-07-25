@@ -54,11 +54,13 @@ class CashPaymentRecorderTest {
     }
 
     @Test
-    void cashPaymentCreatesCashMovement() {
+    void cashPaymentCreatesCashMovementWhenDrawerOpeningIsDisabled() {
         var fixture = fixture();
         var session = openSession(fixture);
         var document = document(fixture);
-        document.addPayment(payment(document, cashMethod(fixture), 1, "10.00", true));
+        var cashWithoutDrawer = new PaymentMethod(
+                fixture.store.getEmpresa().getId(), "EFECTIVO", true, false, false);
+        document.addPayment(payment(document, cashWithoutDrawer, 1, "10.00", true));
         when(fixture.sessions.findByTerminalIdAndStatus(
                 fixture.terminalId, CashSessionStatus.ABIERTA)).thenReturn(Optional.of(session));
         when(fixture.movements.existsByDocumentoPagoId(document.getPagos().getFirst().getId()))
@@ -110,20 +112,16 @@ class CashPaymentRecorderTest {
     }
 
     @Test
-    void configuredDrawerMethodCreatesCashMovement() {
+    void configuredNonCashDrawerMethodDoesNotCreateCashMovement() {
         var fixture = fixture();
-        var session = openSession(fixture);
         var document = document(fixture);
         var custom = new PaymentMethod(fixture.store.getEmpresa().getId(), "OTRO", true, false, true);
         document.addPayment(payment(document, custom, 1, "10.00", true));
-        when(fixture.sessions.findByTerminalIdAndStatus(
-                fixture.terminalId, CashSessionStatus.ABIERTA)).thenReturn(Optional.of(session));
-        when(fixture.movements.existsByDocumentoPagoId(document.getPagos().getFirst().getId()))
-                .thenReturn(false);
 
         fixture.recorder.recordDocumentPayments(fixture.terminalId, document);
 
-        assertThat(captureMovement(fixture).getAmount()).isEqualByComparingTo("10.00");
+        verify(fixture.sessions, never()).findByTerminalIdAndStatus(any(), any());
+        verify(fixture.movements, never()).save(any(CashMovement.class));
     }
 
     @Test

@@ -55,6 +55,23 @@ class SalePaymentSessionControllerContractTest {
   verifyNoInteractions(fixture.service);
  }
 
+ @Test void manualCardAllocationAcceptsAnOmittedReference() throws Exception {
+  var fixture=httpFixture();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
+  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.MANUAL_CARD),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
+
+  fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/allocations",sessionId)
+      .contentType(MediaType.APPLICATION_JSON)
+      .content("""
+          {
+            "allocationId": "%s",
+            "idempotencyKey": "%s",
+            "kind": "MANUAL_CARD",
+            "amount": 10.00
+          }
+          """.formatted(allocationId,allocationId)))
+    .andExpect(status().isOk());
+ }
+
  @Test void missingOrOutOfScopeDiscardReturnsNotFound() throws Exception {
   var fixture=httpFixture();when(fixture.service.discardSimulation(any(),eq("application_shutdown"),any())).thenThrow(new NoSuchElementException());
   fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/simulator-discard",UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"application_shutdown\"}"))

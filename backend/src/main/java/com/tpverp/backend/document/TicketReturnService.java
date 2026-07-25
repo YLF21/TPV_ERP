@@ -126,6 +126,13 @@ public class TicketReturnService {
         return documents.cardRefundLineOptions(ticketId);
     }
 
+    public ReturnPreview preview(String ticketNumber) {
+        var ticket = documents.ticketForReturnByNumber(ticketNumber);
+        return new ReturnPreview(
+                ticket,
+                documents.cardRefundLineOptions(ticket.getId()));
+    }
+
     public record CardPayout(
             UUID originalPaymentId,
             UUID operationId,
@@ -137,5 +144,10 @@ public class TicketReturnService {
             CommercialDocument document,
             List<RefundTender> payouts,
             Optional<Voucher> voucher) {
+    }
+
+    public record ReturnPreview(
+            CommercialDocument ticket,
+            List<DocumentService.CardRefundLineOption> lines) {
     }
 }

@@ -4,13 +4,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsScreen } from "./SettingsScreen";
 import {
-  readSaleInterfaceTouchMode,
-  saleInterfaceTouchModeStorageKey,
-  saveSaleInterfaceTouchMode
+  loadSaleInterfaceConfiguration,
+  saveSaleInterfaceConfiguration
 } from "./saleInterfacePreferences";
 import type { TerminalContext, UserSession } from "../types";
 import { persistCashInputModeSelection } from "../sale/cashInputMode";
 import { readSalesReportOutputPreferences } from "./salesReportOutputPreferences";
+import type { apiRequest } from "../api/client";
 
 function storageWith(value: string | null): Storage {
   return {
@@ -130,31 +130,90 @@ describe("SettingsScreen", () => {
     expect(html).not.toContain("Interfaz de venta");
   });
 
-  it("persists touch mode by app and terminal", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        removeItem: (key: string) => {
-          values.delete(key);
-        },
-        setItem: (key: string, value: string) => {
-          values.set(key, value);
-        }
-      }
+  it("loads and saves the typed mode through the current-terminal API", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ terminalId: "terminal-1", saleMode: "KEYBOARD" })
+      .mockResolvedValueOnce({ terminalId: "terminal-1", saleMode: "TOUCH" });
+
+    await expect(loadSaleInterfaceConfiguration("token", request)).resolves.toEqual({
+      terminalId: "terminal-1",
+      saleMode: "KEYBOARD"
     });
+    await expect(saveSaleInterfaceConfiguration("TOUCH", "token", request)).resolves.toEqual({
+      terminalId: "terminal-1",
+      saleMode: "TOUCH"
+    });
+    expect(request).toHaveBeenNthCalledWith(1, "/terminal-configuration/interface", { token: "token" });
+    expect(request).toHaveBeenNthCalledWith(2, "/terminal-configuration/interface", {
+      token: "token",
+      method: "PATCH",
+      body: { saleMode: "TOUCH" }
+    });
+  });
 
-    const ventaKey = saleInterfaceTouchModeStorageKey("venta", terminalContext);
-    const gestionKey = saleInterfaceTouchModeStorageKey("gestion", terminalContext);
+  it("changes the sales presentation for the current terminal with permission", async () => {
+    const requestMock = vi.fn((path: string, options?: { method?: string }) => {
+      if (path === "/terminal-configuration/interface") {
+        return Promise.resolve({
+          terminalId: "terminal-1",
+          saleMode: options?.method === "PATCH" ? "TOUCH" : "KEYBOARD"
+        });
+      }
+      return Promise.reject(new Error("not_part_of_test"));
+    });
+    const request = requestMock as unknown as typeof apiRequest;
+    const onSaleInterfaceModeChange = vi.fn();
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={{ ...terminalContext, terminalId: "terminal-1" }}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onSaleInterfaceModeChange={onSaleInterfaceModeChange}
+        request={request}
+      />
+    );
 
-    saveSaleInterfaceTouchMode("venta", terminalContext, true);
-    expect(values.get(ventaKey)).toBe("enabled");
-    expect(values.has(gestionKey)).toBe(false);
-    expect(readSaleInterfaceTouchMode("venta", terminalContext)).toBe(true);
-    expect(readSaleInterfaceTouchMode("gestion", terminalContext)).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
+    expect(await screen.findByRole("radio", { name: /Ordenador con teclado/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: /Pantalla táctil/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar para esta terminal" }));
 
-    saveSaleInterfaceTouchMode("venta", terminalContext, false);
-    expect(values.has(ventaKey)).toBe(false);
+    await waitFor(() => expect(requestMock).toHaveBeenCalledWith(
+      "/terminal-configuration/interface",
+      { token: "token", method: "PATCH", body: { saleMode: "TOUCH" } }
+    ));
+    expect(onSaleInterfaceModeChange).toHaveBeenCalledWith("TOUCH");
+  });
+
+  it("keeps the terminal interface read-only without the configuration permission", async () => {
+    const requestMock = vi.fn((path: string) => path === "/terminal-configuration/interface"
+      ? Promise.resolve({ terminalId: "terminal-1", saleMode: "TOUCH" })
+      : Promise.reject(new Error("not_part_of_test")));
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={{
+          username: "venta",
+          displayName: "VENTA",
+          permissions: ["VENTA"],
+          accessToken: "token"
+        }}
+        terminalContext={{ ...terminalContext, terminalId: "terminal-1" }}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        request={requestMock as unknown as typeof apiRequest}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
+    const touchOption = await screen.findByRole("radio", { name: /Pantalla táctil/ });
+    expect((touchOption.closest("fieldset") as HTMLFieldSetElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Guardar para esta terminal" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Solo un administrador/)).toBeTruthy();
   });
 
   it("shows the active user settings and changes the authenticated password", async () => {

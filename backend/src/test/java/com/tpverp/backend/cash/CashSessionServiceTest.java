@@ -42,6 +42,58 @@ class CashSessionServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-25T09:30:00Z");
 
     @Test
+    void prepareForSalesBlocksWhenManualCashSessionIsRequired() {
+        var fixture = serviceFixture();
+        var config = new CashStoreConfig(fixture.store.getId());
+        config.update(BigDecimal.ZERO, false, false, false, true);
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+
+        var readiness = fixture.service.prepareForSales(
+                fixture.terminal.getId(),
+                salesAuthentication(fixture.user));
+
+        assertThat(readiness.cashSessionRequired()).isTrue();
+        assertThat(readiness.open()).isFalse();
+        assertThat(readiness.session()).isNull();
+        verify(fixture.sessions, never()).save(any(CashSession.class));
+    }
+
+    @Test
+    void prepareForSalesAutomaticallyOpensFirstSessionWithZeroFund() {
+        var fixture = serviceFixture();
+
+        var readiness = fixture.service.prepareForSales(
+                fixture.terminal.getId(),
+                salesAuthentication(fixture.user));
+
+        assertThat(readiness.cashSessionRequired()).isFalse();
+        assertThat(readiness.open()).isTrue();
+        assertThat(readiness.session().openingFund()).isEqualByComparingTo("0.00");
+        verify(fixture.sessions).save(any(CashSession.class));
+    }
+
+    @Test
+    void prepareForSalesAutomaticallyKeepsPreviousClosingFund() {
+        var fixture = serviceFixture();
+        var previous = closedSession(
+                fixture.store.getId(),
+                fixture.terminal.getId(),
+                fixture.user.getId(),
+                "37.50");
+        when(fixture.sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                fixture.terminal.getId(),
+                CashSessionStatus.CERRADA))
+                .thenReturn(Optional.of(previous));
+
+        var readiness = fixture.service.prepareForSales(
+                fixture.terminal.getId(),
+                salesAuthentication(fixture.user));
+
+        assertThat(readiness.open()).isTrue();
+        assertThat(readiness.session().openingFund()).isEqualByComparingTo("37.50");
+    }
+
+    @Test
     void secondMismatchClosesSessionAndStoresDiscrepancy() {
         var session = openSession();
 
@@ -684,6 +736,8 @@ class CashSessionServiceTest {
         var passwordEncoder = mock(PasswordEncoder.class);
         var syncOutbox = mock(SyncOutboxService.class);
         when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId())).thenReturn(Optional.of(terminal));
+        when(terminals.findForCashSessionPreparation(terminal.getId(), store.getId()))
+                .thenReturn(Optional.of(terminal));
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(any())).thenReturn(user);
         when(configs.findById(store.getId())).thenReturn(Optional.of(new CashStoreConfig(store.getId())));

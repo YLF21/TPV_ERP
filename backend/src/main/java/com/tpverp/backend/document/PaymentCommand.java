@@ -19,7 +19,27 @@ public record PaymentCommand(
         PaymentTerminalOperationStatus paymentTerminalStatus,
         String cardAuthorizationCode,
         UUID paymentTerminalId,
-        UUID requestId) {
+        UUID requestId,
+        String comment) {
+
+    public PaymentCommand(
+            UUID metodoPagoId,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String reference,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId,
+            UUID requestId) {
+        this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
+                cardMode, paymentTerminalProvider, paymentTerminalStatus,
+                cardAuthorizationCode, paymentTerminalId, requestId, null);
+    }
 
     public PaymentCommand(
             UUID metodoPagoId,
@@ -36,7 +56,7 @@ public record PaymentCommand(
             UUID paymentTerminalId) {
         this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
                 cardMode, paymentTerminalProvider, paymentTerminalStatus,
-                cardAuthorizationCode, paymentTerminalId, null);
+                cardAuthorizationCode, paymentTerminalId, null, null);
     }
 
     public PaymentCommand(
@@ -67,6 +87,6 @@ public record PaymentCommand(
             String voucherCode,
             String reference) {
         this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 }

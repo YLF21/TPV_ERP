@@ -667,8 +667,8 @@ function RelatedDocumentDialog({ document, t, onClose }: { document: RelatedDocu
   return (
     <div className="gestion-modal-backdrop" role="presentation">
       <section className="gestion-document-dialog" role="dialog" aria-modal="true" aria-labelledby="related-document-title">
-        <header><div><span>{document.type}</span><h2 id="related-document-title">{document.number}</h2></div><button type="button" aria-label={t("common.close")} onClick={onClose}>×</button></header>
-        <dl><div><dt>{t("gestion.controlDocument.status")}</dt><dd>{document.status}</dd></div><div><dt>{t("gestion.controlDocument.date")}</dt><dd>{document.date}</dd></div><div><dt>{t("gestion.controlDocument.customer")}</dt><dd>{document.customerId || "—"}</dd></div></dl>
+        <header><div><span>{localizedDocumentType(document.type, t)}</span><h2 id="related-document-title">{document.number}</h2></div><button type="button" aria-label={t("common.close")} onClick={onClose}>×</button></header>
+        <dl><div><dt>{t("gestion.controlDocument.status")}</dt><dd>{localizedDocumentStatus(document.status, t)}</dd></div><div><dt>{t("gestion.controlDocument.date")}</dt><dd>{formatDocumentDate(document.date)}</dd></div><div><dt>{t("gestion.controlDocument.customer")}</dt><dd>{document.customerId || "—"}</dd></div></dl>
         <div className="gestion-document-lines"><table><thead><tr><th>{t("gestion.controlDocument.product")}</th><th>{t("gestion.controlDocument.quantity")}</th><th>{t("gestion.controlDocument.price")}</th><th>{t("gestion.controlDocument.discount")}</th><th>{t("gestion.controlDocument.total")}</th></tr></thead><tbody>{document.lines.map((line) => <tr key={`${line.position}:${line.productId ?? line.code ?? line.name}`}><td>{line.name}</td><td>{formatNumber(line.quantity)}</td><td>{formatCurrency(line.unitPrice, document.currency)}</td><td>{`${formatNumber(line.discount)} %`}</td><td>{formatCurrency(line.total, document.currency)}</td></tr>)}</tbody></table></div>
         <div className="gestion-document-bottom"><section><h3>{t("gestion.controlDocument.payments")}</h3>{document.payments.length === 0 ? <p>—</p> : document.payments.map((payment) => <p key={`${payment.position}:${payment.paymentMethodId ?? payment.paymentMethod}`}><span>{payment.paymentMethod}</span><strong>{formatCurrency(payment.amount, document.currency)}</strong></p>)}</section><dl><div><dt>{t("gestion.controlDocument.subtotal")}</dt><dd>{formatCurrency(document.baseTotal, document.currency)}</dd></div><div><dt>{t("gestion.controlDocument.discount")}</dt><dd>{`${formatNumber(document.globalDiscount)} %`}</dd></div><div><dt>{t("gestion.controlDocument.tax")}</dt><dd>{formatCurrency(document.taxTotal, document.currency)}</dd></div><div className="total"><dt>{t("gestion.controlDocument.total")}</dt><dd>{formatCurrency(document.total, document.currency)}</dd></div></dl></div>
       </section>
@@ -802,6 +802,22 @@ function alertSummary(alert: ControlAlert, t: Translator): string {
   if (alert.type === "MANUAL_PRICE_CHANGED" || alert.type === "MANUAL_PRICE_CHANGE_OVER_PERCENT") {
     return t("gestion.controlAlerts.summaryManualPrice");
   }
+  if (alert.type === "MANUAL_NEGATIVE_QUANTITY") {
+    return interpolate(t("gestion.controlAlerts.summaryManualNegative"), {
+      count: String(Array.isArray(data.negativeLines) ? data.negativeLines.length : 0)
+    });
+  }
+  if (alert.type === "CASH_DRAWER_OPENED") {
+    return interpolate(t("gestion.controlAlerts.summaryCashDrawer"), {
+      authorizer: alertDataText(alert, "authorizerName") || "—"
+    });
+  }
+  if (alert.type === "PRODUCT_CATALOG_MODIFIED") {
+    return interpolate(t("gestion.controlAlerts.summaryProductModified"), {
+      product: alertDataText(alert, "productName") || alertDataText(alert, "productCode") || "—",
+      authorizer: alertDataText(alert, "authorizerName") || "—"
+    });
+  }
   const lines = Array.isArray(data.lines) ? data.lines : [];
   return interpolate(t("gestion.controlAlerts.summarySaleCleared"), { count: String(typeof data.lineCount === "number" ? data.lineCount : lines.length), total: formatUnknownNumber(data.total) });
 }
@@ -825,4 +841,35 @@ function formatCurrency(value: number, currency = "EUR") {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 3 }).format(value ?? 0);
+}
+
+function formatDocumentDate(value: string) {
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("es-ES", { dateStyle: "short" }).format(date);
+}
+
+function localizedDocumentType(type: string, t: Translator) {
+  const key = `salesReport.activity.documentType.${type.trim().toLocaleUpperCase()}`;
+  const translated = t(key);
+  return translated === key ? type : translated;
+}
+
+function localizedDocumentStatus(status: string, t: Translator) {
+  const statusKeys: Record<string, string> = {
+    BORRADOR: "salesReport.status.draft",
+    PENDIENTE: "salesReport.status.pending",
+    PARCIAL: "salesReport.status.partial",
+    CONFIRMADA: "salesReport.status.confirmed",
+    CONFIRMADO: "salesReport.status.confirmed",
+    ANULADA: "salesReport.status.cancelled",
+    ANULADO: "salesReport.status.cancelled",
+    FACTURADA: "salesReport.status.invoiced",
+    FACTURADO: "salesReport.status.invoiced",
+    PAGADA: "salesReport.status.paid",
+    PAGADO: "salesReport.status.paid"
+  };
+  const key = statusKeys[status.trim().toLocaleUpperCase()];
+  return key ? t(key) : status;
 }

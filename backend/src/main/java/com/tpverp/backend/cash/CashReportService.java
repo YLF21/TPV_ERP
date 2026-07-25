@@ -2,12 +2,14 @@ package com.tpverp.backend.cash;
 
 import com.tpverp.backend.document.Money;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.security.application.PermissionChecks;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,11 +81,16 @@ public class CashReportService {
         permissions.requireConfigPermission(authentication);
         request.validateComplete();
         var config = configForCurrentStore();
+        if (config.isCashSessionRequired() != request.cashSessionRequired()
+                && !PermissionChecks.hasRole(authentication, "ADMIN")) {
+            throw new AccessDeniedException("Solo un administrador puede cambiar la politica de sesion de caja");
+        }
         config.update(
                 request.discrepancyTolerance(),
                 request.requireEntryBreakdown(),
                 request.requireWithdrawalBreakdown(),
-                request.requireClosingBreakdown());
+                request.requireClosingBreakdown(),
+                request.cashSessionRequired());
         return CashStoreConfigView.from(configs.save(config));
     }
 

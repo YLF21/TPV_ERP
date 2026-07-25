@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record DocumentLineCommand(
@@ -17,7 +18,28 @@ public record DocumentLineCommand(
         DocumentLineType lineType,
         UUID promotionId,
         UUID promotionVersionId,
-        UUID promotionalCouponId) {
+        UUID promotionalCouponId,
+        List<String> serialNumbers) {
+
+    public DocumentLineCommand(
+            UUID productoId,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                promotionId, promotionVersionId, promotionalCouponId, List.of());
+    }
 
     public DocumentLineCommand(
             UUID productoId,
@@ -32,7 +54,7 @@ public record DocumentLineCommand(
             BigDecimal porcentajeImpuesto) {
         this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
                 descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
-                DocumentLineType.PRODUCT, null, null, null);
+                DocumentLineType.PRODUCT, null, null, null, List.of());
     }
 
     public DocumentLineCommand(
@@ -54,14 +76,14 @@ public record DocumentLineCommand(
         return new DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, price, descuento,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                promotionId, promotionVersionId, promotionalCouponId);
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
         return new DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, precioUnitario, discount,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                promotionId, promotionVersionId, promotionalCouponId);
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers);
     }
 
     public void requireClientProductLine() {
@@ -85,7 +107,7 @@ public record DocumentLineCommand(
                 line.getDescuento(), line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                 line.getLineType(), line.getPromotionId(), line.getPromotionVersionId(),
-                line.getPromotionalCouponId());
+                line.getPromotionalCouponId(), line.getSerialNumbers());
     }
 
     // Converts validated input into a line with a fiscal snapshot.
@@ -96,10 +118,12 @@ public record DocumentLineCommand(
                     regimenImpuesto, porcentajeImpuesto, promotionId,
                     promotionVersionId, promotionalCouponId);
         }
-        return new DocumentLine(
+        var line = new DocumentLine(
                 document, productoId, position, cantidad, codigo, nombre, tarifa,
                 precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
                 porcentajeImpuesto);
+        line.assignSerialNumbers(serialNumbers);
+        return line;
     }
 
     DocumentLine toEntity(CommercialDocument document) {

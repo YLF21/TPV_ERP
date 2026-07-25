@@ -18,6 +18,8 @@ export type OpenedParkedSale = {
       productoId: string;
       cantidad: number | string;
       descuento: number | string;
+      precioUnitario?: number | string | null;
+      serialNumbers?: string[];
     }>;
   };
   comment?: string | null;

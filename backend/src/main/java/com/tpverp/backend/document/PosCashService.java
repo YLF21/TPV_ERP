@@ -9,6 +9,7 @@ import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -99,9 +100,13 @@ public class PosCashService {
     @Transactional(readOnly = true)
     public Quote quote(PosCashController.SaleRequest request, Authentication authentication) {
         var command = authoritativeCommand(request, authentication);
-        var ticket = hasText(request.promotionalCouponCode())
-                ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
-                : documents.quoteTicket(command, authentication);
+        var ticket = hasCheckoutDiscount(request)
+                ? documents.quoteTicket(command, request.promotionalCouponCode(),
+                        request.checkoutDiscountAmount(), authentication)
+                : hasText(request.promotionalCouponCode())
+                        ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
+                        : documents.quoteTicket(command, authentication);
+        authorizeCheckoutDiscount(request, ticket.getTotal(), authentication);
         var catalog = products.findAllByStoreIdAndIdIn(
                         ticket.getTiendaId(),
                         request.lines().stream().map(PosCashController.LineRequest::productId).toList())
@@ -140,10 +145,13 @@ public class PosCashService {
             return resultFrom(existing);
         }
         var command = authoritativeCommand(request.sale(), authentication);
-        var quote = hasText(request.sale().promotionalCouponCode())
-                ? documents.quoteTicket(
-                command, request.sale().promotionalCouponCode(), authentication)
-                : documents.quoteTicket(command, authentication);
+        var quote = hasCheckoutDiscount(request.sale())
+                ? documents.quoteTicket(command, request.sale().promotionalCouponCode(),
+                        request.sale().checkoutDiscountAmount(), authentication)
+                : hasText(request.sale().promotionalCouponCode())
+                        ? documents.quoteTicket(command, request.sale().promotionalCouponCode(), authentication)
+                        : documents.quoteTicket(command, authentication);
+        authorizeCheckoutDiscount(request.sale(), quote.getTotal(), authentication);
         var total = quote.getTotal();
         var received = Money.euros(request.received());
         if (received.compareTo(total) < 0) {
@@ -157,10 +165,13 @@ public class PosCashService {
                 .orElseThrow(() -> new IllegalStateException("El metodo EFECTIVO no esta activo"));
         var change = Money.euros(received.subtract(total));
         var payment = List.of(new PaymentCommand(cash.getId(), total, true, received, change));
-        var ticket = hasText(request.sale().promotionalCouponCode())
-                ? documents.createTicket(
-                command, payment, request.sale().promotionalCouponCode(), authentication)
-                : documents.createTicket(command, payment, authentication);
+        var ticket = hasCheckoutDiscount(request.sale())
+                ? documents.createTicket(command, payment, request.sale().promotionalCouponCode(),
+                        request.sale().checkoutDiscountAmount(), authentication)
+                : hasText(request.sale().promotionalCouponCode())
+                        ? documents.createTicket(command, payment,
+                                request.sale().promotionalCouponCode(), authentication)
+                        : documents.createTicket(command, payment, authentication);
         var printTicket = TicketPrintView.from(ticket);
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
@@ -194,10 +205,12 @@ public class PosCashService {
             var tax = taxes.findById(product.getTaxId())
                     .filter(value -> value.getStoreId().equals(store.getId()) && value.isActive())
                     .orElseThrow(() -> new IllegalStateException("El impuesto del producto no esta activo"));
+            var unitPrice = authoritativeUnitPrice(product.getSalePrice(), line.openUnitPrice());
             return new DocumentLineCommand(
                     product.getId(), line.quantity(), product.getCode(), product.getName(), null,
-                    product.getSalePrice(), line.discount(), product.isTaxesIncluded(),
-                    "IVA", tax.getPercentage());
+                    unitPrice, line.discount(), product.isTaxesIncluded(),
+                    "IVA", tax.getPercentage(), DocumentLineType.PRODUCT,
+                    null, null, null, line.serialNumbers());
         }).toList();
         return new DocumentCommand(
                 warehouse.getId(), CommercialDocumentType.TICKET,
@@ -208,6 +221,53 @@ public class PosCashService {
     @Transactional(readOnly = true)
     DocumentCommand authoritativeCommand(PosCashController.SaleRequest request) {
         return authoritativeCommand(request, null);
+    }
+
+    void authorizeCheckoutDiscount(
+            PosCashController.SaleRequest request,
+            BigDecimal discountedTotal,
+            Authentication authentication) {
+        if (discountAuthorizations == null || !hasCheckoutDiscount(request)) {
+            return;
+        }
+        var discount = Money.euros(request.checkoutDiscountAmount());
+        var totalBeforeCheckoutDiscount = Money.euros(discountedTotal).add(discount);
+        if (totalBeforeCheckoutDiscount.signum() <= 0) {
+            throw new IllegalArgumentException("El descuento de cobro no puede cubrir todo el ticket");
+        }
+        var percent = discount
+                .multiply(new BigDecimal("100"))
+                .divide(totalBeforeCheckoutDiscount, 2, RoundingMode.HALF_UP);
+        discountAuthorizations.enforce(
+                percent, request.discountAuthorizationToken(), authentication);
+    }
+
+    static BigDecimal authoritativeUnitPrice(
+            BigDecimal catalogSalePrice,
+            BigDecimal requestedOpenUnitPrice) {
+        if (catalogSalePrice == null) {
+            throw new IllegalStateException("El precio de venta del producto no esta configurado");
+        }
+        var normalizedCatalogPrice = Money.euros(catalogSalePrice);
+        if (normalizedCatalogPrice.signum() != 0) {
+            if (requestedOpenUnitPrice != null) {
+                throw new IllegalArgumentException(
+                        "El precio abierto solo se admite en productos con precio de venta 0");
+            }
+            return normalizedCatalogPrice;
+        }
+        if (requestedOpenUnitPrice == null) {
+            throw new IllegalArgumentException(
+                    "Debe indicar el precio para el producto con precio de venta 0");
+        }
+        if (requestedOpenUnitPrice.scale() > 2) {
+            throw new IllegalArgumentException("El precio abierto admite un maximo de 2 decimales");
+        }
+        var normalizedOpenPrice = Money.euros(requestedOpenUnitPrice);
+        if (normalizedOpenPrice.signum() <= 0) {
+            throw new IllegalArgumentException("El precio abierto debe ser mayor que 0");
+        }
+        return normalizedOpenPrice;
     }
 
     public record Quote(
@@ -617,19 +677,39 @@ public class PosCashService {
     }
 
     static String requestHash(PosCashController.CashRequest request) {
+        if (!hasCheckoutDiscount(request.sale())) {
+            return legacyRequestHash(request);
+        }
         var couponCode = normalize(request.sale().promotionalCouponCode());
-        var canonical = new StringBuilder(couponCode.isEmpty() ? "v1|" : "v2-coupon|")
+        var hasOpenPrice = request.sale().lines().stream()
+                .anyMatch(line -> line.openUnitPrice() != null);
+        var hasSerialNumbers = request.sale().lines().stream()
+                .anyMatch(line -> line.serialNumbers() != null && !line.serialNumbers().isEmpty());
+        var canonical = new StringBuilder(hasSerialNumbers
+                ? "v5-checkout-serials|"
+                : hasOpenPrice
+                ? "v4-checkout-discount-open-price|"
+                : "v4-checkout-discount|")
                 .append(request.sale().customerId()).append('|');
         if (!couponCode.isEmpty()) {
             canonical.append(couponCode).append('|');
         }
         canonical
+                .append(request.sale().checkoutDiscountAmount() == null
+                        ? "0.00" : Money.euros(request.sale().checkoutDiscountAmount()))
+                .append('|')
                 .append(Money.euros(request.received())).append('|')
                 .append(Money.euros(request.quotedTotal()));
-        request.sale().lines().forEach(line -> canonical.append('|')
-                .append(line.productId()).append(':')
-                .append(line.quantity().stripTrailingZeros().toPlainString()).append(':')
-                .append(line.discount().stripTrailingZeros().toPlainString()));
+        request.sale().lines().forEach(line -> {
+            canonical.append('|')
+                    .append(line.productId()).append(':')
+                    .append(line.quantity().stripTrailingZeros().toPlainString()).append(':')
+                    .append(line.discount().stripTrailingZeros().toPlainString())
+                    .append(hasOpenPrice ? ":" + normalizedOpenPrice(line.openUnitPrice()) : "");
+            if (hasSerialNumbers) {
+                canonical.append(':').append(canonicalSerialNumbers(line.serialNumbers()));
+            }
+        });
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(canonical.toString().getBytes(StandardCharsets.UTF_8)));
@@ -642,8 +722,54 @@ public class PosCashService {
         return value == null || value.isBlank() ? "" : value.trim();
     }
 
+    private static String legacyRequestHash(PosCashController.CashRequest request) {
+        var couponCode = normalize(request.sale().promotionalCouponCode());
+        var hasOpenPrice = request.sale().lines().stream()
+                .anyMatch(line -> line.openUnitPrice() != null);
+        var hasSerialNumbers = request.sale().lines().stream()
+                .anyMatch(line -> line.serialNumbers() != null && !line.serialNumbers().isEmpty());
+        var canonical = new StringBuilder(hasSerialNumbers
+                ? "v4-serials|"
+                : hasOpenPrice
+                ? "v3-open-price|"
+                : couponCode.isEmpty() ? "v1|" : "v2-coupon|")
+                .append(request.sale().customerId()).append('|');
+        if (!couponCode.isEmpty()) canonical.append(couponCode).append('|');
+        canonical.append(Money.euros(request.received())).append('|')
+                .append(Money.euros(request.quotedTotal()));
+        request.sale().lines().forEach(line -> {
+            canonical.append('|')
+                    .append(line.productId()).append(':')
+                    .append(line.quantity().stripTrailingZeros().toPlainString()).append(':')
+                    .append(line.discount().stripTrailingZeros().toPlainString())
+                    .append(hasOpenPrice ? ":" + normalizedOpenPrice(line.openUnitPrice()) : "");
+            if (hasSerialNumbers) {
+                canonical.append(':').append(canonicalSerialNumbers(line.serialNumbers()));
+            }
+        });
+        return hashText(canonical.toString());
+    }
+
+    static String canonicalSerialNumbers(List<String> values) {
+        if (values == null || values.isEmpty()) return "-";
+        return values.stream()
+                .map(value -> java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        value.trim().getBytes(StandardCharsets.UTF_8)))
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(","));
+    }
+
+    private static String normalizedOpenPrice(BigDecimal value) {
+        return value == null ? "-" : Money.euros(value).toPlainString();
+    }
+
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private static boolean hasCheckoutDiscount(PosCashController.SaleRequest request) {
+        return request.checkoutDiscountAmount() != null
+                && Money.euros(request.checkoutDiscountAmount()).signum() > 0;
     }
 
     private Result resultFrom(PosCashCheckout checkout) {

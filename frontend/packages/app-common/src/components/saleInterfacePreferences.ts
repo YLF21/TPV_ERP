@@ -1,33 +1,40 @@
-import type { AppKind, TerminalContext } from "../types";
+import { apiRequest } from "../api/client";
 
-const touchModeValue = "enabled";
+export type SaleInterfaceMode = "KEYBOARD" | "TOUCH";
 
-export function saleInterfaceTouchModeStorageKey(app: AppKind, terminalContext: TerminalContext) {
-  const terminalKey = terminalContext.terminalId || terminalContext.terminalCode || "unknown";
-  return `tpv-erp:${app}:terminal:${terminalKey}:sale-interface:touch-mode`;
+export type SaleInterfaceConfiguration = {
+  terminalId: string;
+  saleMode: SaleInterfaceMode;
+};
+
+export const defaultSaleInterfaceMode: SaleInterfaceMode = "KEYBOARD";
+
+export function isSaleInterfaceMode(value: unknown): value is SaleInterfaceMode {
+  return value === "KEYBOARD" || value === "TOUCH";
 }
 
-export function readSaleInterfaceTouchMode(app: AppKind, terminalContext: TerminalContext) {
-  if (typeof window === "undefined") {
-    return false;
+export async function loadSaleInterfaceConfiguration(
+  token: string,
+  request: typeof apiRequest = apiRequest
+): Promise<SaleInterfaceConfiguration> {
+  const configuration = await request<SaleInterfaceConfiguration>(
+    "/terminal-configuration/interface",
+    { token }
+  );
+  if (!configuration?.terminalId || !isSaleInterfaceMode(configuration.saleMode)) {
+    throw new Error("invalid_terminal_interface_configuration");
   }
-
-  return window.localStorage.getItem(saleInterfaceTouchModeStorageKey(app, terminalContext)) === touchModeValue;
+  return configuration;
 }
 
-export function saveSaleInterfaceTouchMode(
-  app: AppKind,
-  terminalContext: TerminalContext,
-  enabled: boolean
-) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const key = saleInterfaceTouchModeStorageKey(app, terminalContext);
-  if (enabled) {
-    window.localStorage.setItem(key, touchModeValue);
-  } else {
-    window.localStorage.removeItem(key);
-  }
+export async function saveSaleInterfaceConfiguration(
+  saleMode: SaleInterfaceMode,
+  token: string,
+  request: typeof apiRequest = apiRequest
+): Promise<SaleInterfaceConfiguration> {
+  return request<SaleInterfaceConfiguration>("/terminal-configuration/interface", {
+    token,
+    method: "PATCH",
+    body: { saleMode }
+  });
 }

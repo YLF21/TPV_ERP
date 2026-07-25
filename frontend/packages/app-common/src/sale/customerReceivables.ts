@@ -12,6 +12,7 @@ export type PendingSaleLine = {
   taxesIncluded: boolean;
   taxRegime: string;
   taxPercentage: string;
+  serialNumbers?: string[];
 };
 
 export type PendingSaleDraft = {
@@ -24,6 +25,7 @@ export type PendingSaleDraft = {
   globalDiscount: string;
   lines: PendingSaleLine[];
   creditOverride?: { reason: string };
+  completionMode?: "DRAFT" | "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
 };
 
 export type PendingPaymentAllocation = {
@@ -90,6 +92,7 @@ export function pendingCreateBody(draft: PendingSaleDraft, payments: PendingPaym
       promotionId: null,
       promotionVersionId: null,
       promotionalCouponId: null,
+      ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
     })),
     payments: approved.map((payment, index) => ({
       kind: payment.kind === "INTEGRATED_CARD" ? "INTEGRATED_CARD" : "STANDARD",

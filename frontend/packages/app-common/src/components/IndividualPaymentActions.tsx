@@ -5,6 +5,7 @@ type Props = {
   locale?: LocaleCode;
   disabled: boolean;
   busy: boolean;
+  cashEnabled?: boolean;
   cardEnabled: boolean;
   pendingEnabled?: boolean;
   voucherEnabled?: boolean;
@@ -17,7 +18,7 @@ type Props = {
 export function IndividualPaymentActions(props: Props) {
   const t = createTranslator(props.locale ?? "es");
   return <div className="sale-payment-actions individual-payment-actions">
-    <button type="button" disabled={props.disabled || props.busy} onClick={props.onCash}>
+    <button type="button" disabled={props.disabled || props.busy || props.cashEnabled === false} onClick={props.onCash}>
       <span>{t("payment.individual.cash")}</span><kbd>{t("sale.main.pageDownKey")}</kbd>
     </button>
     <button type="button" disabled={props.disabled || props.busy || !props.cardEnabled} onClick={props.onCard}>

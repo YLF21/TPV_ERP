@@ -20,12 +20,12 @@ export function verifactuEndpointLabel(
 
 export function formatVerifactuDateTime(
   value: string | null | undefined,
-  locale: LocaleCode
+  _locale: LocaleCode
 ) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(date);
+  return new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 export function humanizeVerifactuValue(value: string) {

@@ -20,8 +20,7 @@ public record CustomerReceivableView(
 
     public static CustomerReceivableView from(
             CommercialDocument document, String customerName, LocalDate businessDate) {
-        if (document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
-                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
+        if (!document.isReceivableDocument()) {
             throw new IllegalArgumentException(
                     "message.document.only_receivable_document_can_be_paid");
         }

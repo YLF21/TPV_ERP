@@ -40,6 +40,7 @@ public class CorePermissionBootstrap {
     public static final String GESTION_VENTAS = "GESTION_VENTAS";
     public static final String CAMBIAR_PRECIO = "CAMBIAR_PRECIO";
     public static final String APLICAR_DESCUENTO = "APLICAR_DESCUENTO";
+    public static final String ABRIR_CAJON = "ABRIR_CAJON";
     public static final String GESTION_CUENTAS = "GESTION_CUENTAS";
     public static final String CASH_READ = "CASH_READ";
     public static final String CASH_OPERATE = "CASH_OPERATE";
@@ -106,6 +107,7 @@ public class CorePermissionBootstrap {
                 permission(GESTION_VENTAS, "document.permissions.sales.manage", "DOCUMENTS"),
                 permission(CAMBIAR_PRECIO, "document.permissions.sales.changePrice", "DOCUMENTS"),
                 permission(APLICAR_DESCUENTO, "document.permissions.sales.applyDiscount", "DOCUMENTS"),
+                permission(ABRIR_CAJON, "cash.permissions.openDrawer", "CASH"),
                 permission(GESTION_CUENTAS, "cash.permissions.accounting", "CASH"),
                 permission(CASH_READ, "cash.permissions.read", "CASH"),
                 permission(CASH_OPERATE, "cash.permissions.operate", "CASH"),

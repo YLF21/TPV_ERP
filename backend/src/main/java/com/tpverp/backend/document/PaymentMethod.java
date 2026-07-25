@@ -97,6 +97,14 @@ public class PaymentMethod {
         return abreCajaRegistradora;
     }
 
+    /**
+     * Identifies the operational cash method independently from whether a
+     * particular checkout should physically open its drawer.
+     */
+    public boolean isCash() {
+        return "EFECTIVO".equals(nombre);
+    }
+
     private static String required(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("nombre es obligatorio");

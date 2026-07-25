@@ -9,9 +9,11 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
@@ -49,6 +51,8 @@ class DocumentFiscalIntegrationTest {
     private ApplicationEventPublisher events;
     @Mock
     private SalesInvoiceRectificationService rectifications;
+    @Mock
+    private InstallationStatusService installationStatus;
 
     private DocumentFiscalIntegration integration;
     private Store store;
@@ -70,6 +74,8 @@ class DocumentFiscalIntegrationTest {
         lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
         lenient().when(installations.findAll()).thenReturn(List.of(installation));
+        lenient().when(installationStatus.status()).thenReturn(installationStatus(
+                OperationalMode.LICENSED));
         var fiscalRecord = org.mockito.Mockito.mock(
                 com.tpverp.backend.verifactu.FiscalRecord.class);
         lenient().when(fiscalRecord.getId()).thenReturn(UUID.randomUUID());
@@ -80,7 +86,41 @@ class DocumentFiscalIntegrationTest {
                 .thenReturn(fiscalRecord);
         integration = new DocumentFiscalIntegration(
                 fiscalRecords, recordRepository, organization, installations, events,
-                rectifications);
+                rectifications, installationStatus);
+    }
+
+    @Test
+    void developmentModeSkipsEveryFiscalMutation() {
+        when(installationStatus.status()).thenReturn(installationStatus(
+                OperationalMode.DEVELOPMENT));
+        var ticket = confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN);
+        var invoice = confirmed(CommercialDocumentType.FACTURA_VENTA, BigDecimal.TEN);
+        var salesRectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, BigDecimal.ONE.negate());
+        var ticketRectification = confirmed(
+                CommercialDocumentType.TICKET, BigDecimal.ONE.negate());
+
+        integration.registerAlta(ticket, false);
+        integration.registerAlta(salesRectification, false);
+        integration.registerTicketCancellation(ticket);
+        integration.registerInvoiceFromTicket(invoice, ticket);
+        integration.registerTicketRectification(ticketRectification, ticket);
+
+        verify(fiscalRecords, never()).register(any());
+        verify(fiscalRecords, never()).registerSubstitution(any(), any());
+        verify(fiscalRecords, never()).registerRectification(any(), any(), any());
+        verify(rectifications, never()).validateBeforeConfirmation(any());
+    }
+
+    @Test
+    void offlineModeKeepsFiscalRegistrationEnabled() {
+        when(installationStatus.status()).thenReturn(installationStatus(
+                OperationalMode.OFFLINE));
+
+        integration.registerAlta(
+                confirmed(CommercialDocumentType.TICKET, BigDecimal.TEN), false);
+
+        verify(fiscalRecords).register(any());
     }
 
     @Test
@@ -195,5 +235,16 @@ class DocumentFiscalIntegrationTest {
                 true, "IVA", BigDecimal.ZERO).toEntity(document));
         document.confirm("NUM", UUID.randomUUID(), Instant.parse("2026-06-08T12:00:00Z"), false);
         return document;
+    }
+
+    private InstallationStatusService.InstallationStatus installationStatus(
+            OperationalMode mode) {
+        return new InstallationStatusService.InstallationStatus(
+                UUID.randomUUID(),
+                "INSTALL",
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-08-03T13:20:22Z"),
+                mode,
+                mode == OperationalMode.DEVELOPMENT ? null : "LICENSE");
     }
 }

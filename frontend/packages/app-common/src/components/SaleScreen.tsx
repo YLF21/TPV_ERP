@@ -5,7 +5,6 @@ import { ApiError, apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { ProductCreateDialog } from "./ProductCreateDialog";
 import { CashPaymentDialog } from "./CashPaymentDialog";
 import { CashPaymentResultDialog } from "./CashPaymentResultDialog";
 import { CardPaymentDialog } from "./CardPaymentDialog";
@@ -15,6 +14,12 @@ import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
 import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
+import {
+  KeyboardSaleCommandBar,
+  TouchSaleActionPanel,
+  type SaleCommandLabels
+} from "./SaleCommandPresentation";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import {
   printConfirmedTicketAutomatically,
   retryConfirmedTicketPrint,
@@ -37,6 +42,29 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ParkedSalesDialog, type OpenedParkedSale } from "./ParkedSalesDialog";
 import { TicketManagementDialog } from "./TicketManagementDialog";
 import { VerifactuPosIndicator } from "./VerifactuPosIndicator";
+import {
+  SaleProductSearchDialog,
+  filterSaleProductSearch,
+} from "./SaleProductSearchDialog";
+import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
+import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
+import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
+import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
+import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
+import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
+import { SaleCashSessionDialog } from "./SaleCashSessionDialog";
+import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import { TicketReturnDialog } from "./TicketReturnDialog";
+import {
+  CashDrawerResultReportingError,
+  executeAuthorizedCashDrawerOpen,
+} from "../sale/cashDrawer";
+import {
+  authorizeProductEdit,
+  productEditDialogValue,
+  revokeProductEditAuthorization,
+} from "../sale/productEdit";
+import { prepareCashSessionForSales } from "../sale/cashSessions";
 
 export type SaleProduct = {
   id: string;
@@ -59,11 +87,14 @@ export type SaleProduct = {
   taxRegime: "IVA" | "IGIC";
   taxPercentage: number | string;
   rate?: string | null;
+  packageQuantity?: number | string | null;
 };
 
 export type SaleLine = {
   product: SaleProduct;
   quantity: number;
+  openUnitPrice?: number;
+  serialNumbers?: string[];
   // Operator-entered discount. Member benefit is kept separately.
   discountPercent: number;
   memberDiscountPercent?: number;
@@ -159,14 +190,7 @@ function normalizedSearchValue(value: string | null | undefined) {
 }
 
 export function filterSaleProducts(products: SaleProduct[], query: string, limit = 10) {
-  const normalizedQuery = normalizedSearchValue(query);
-  if (!normalizedQuery) {
-    return [];
-  }
-  return products
-    .filter((product) => [product.code, product.barcode, product.barcode2, product.name]
-      .some((value) => normalizedSearchValue(value).includes(normalizedQuery)))
-    .slice(0, limit);
+  return filterSaleProductSearch(products, query, limit);
 }
 
 export function saleSelectableProducts(products: SaleProduct[], allowInactiveProductSales: boolean) {
@@ -178,23 +202,53 @@ export function selectSaleProduct(products: SaleProduct[], query: string) {
   if (!normalizedQuery) {
     return undefined;
   }
-  const exact = products.find((product) => [product.code, product.barcode, product.barcode2]
+  return products.find((product) => [product.code, product.barcode, product.barcode2]
     .some((value) => normalizedSearchValue(value) === normalizedQuery));
-  return exact ?? filterSaleProducts(products, query)[0];
 }
 
-export function addSaleLine(lines: SaleLine[], product: SaleProduct) {
+export function isSalesDocumentShortcut(event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "metaKey">) {
+  return event.ctrlKey
+    && !event.altKey
+    && !event.metaKey
+    && event.key.toLocaleLowerCase() === "f";
+}
+
+export function saleQuickOperand(value: string) {
+  if (!/^\d+$/.test(value)) return null;
+  const operand = Number(value);
+  return Number.isSafeInteger(operand) ? operand : null;
+}
+
+export function salePauseQuantity(value: string) {
+  if (value === "-1") return -1;
+  return saleQuickOperand(value);
+}
+
+export function addSaleLine(
+  lines: SaleLine[],
+  product: SaleProduct,
+  openUnitPrice?: number,
+  quantity = 1,
+) {
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+    throw new Error("invalid_quantity");
+  }
   const existing = lines.find((line) => line.product.id === product.id);
   if (!existing) {
-    return [...lines, { product, quantity: 1, discountPercent: 0 }];
+    return [...lines, {
+      product,
+      quantity,
+      discountPercent: 0,
+      ...(openUnitPrice != null ? { openUnitPrice } : {}),
+    }];
   }
   return lines.map((line) => line.product.id === product.id
-    ? { ...line, quantity: Math.min(9999, line.quantity + 1) }
+    ? { ...line, quantity: Math.min(9999, line.quantity + quantity) }
     : line);
 }
 
 export function updateSaleLineQuantity(lines: SaleLine[], productId: string, quantity: number) {
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+  if (!Number.isInteger(quantity) || quantity === 0 || quantity < -1 || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
   return lines.map((line) => line.product.id === productId ? { ...line, quantity } : line);
@@ -261,7 +315,29 @@ function saleShortcutTargetIsEditable(target: EventTarget | null) {
 }
 
 export function saleLineSubtotal(line: SaleLine, activeMember = false) {
-  return effectiveSaleProductPrice(line.product, activeMember) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+  return saleLineUnitPrice(line, activeMember) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
+}
+
+export function updateSaleLineSerialNumbers(
+  lines: SaleLine[],
+  productId: string,
+  serialNumbers: string[],
+) {
+  return lines.map((line) => line.product.id === productId
+    ? { ...line, serialNumbers: [...serialNumbers] }
+    : line);
+}
+
+export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
+  return line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
+}
+
+export function saleProductRequiresOpenPrice(product: SaleProduct) {
+  if (product.salePrice == null || (typeof product.salePrice === "string" && !product.salePrice.trim())) {
+    return false;
+  }
+  const price = Number(product.salePrice);
+  return Number.isFinite(price) && price === 0;
 }
 
 export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lineCount:number, reservedTotalCents:number|null){
@@ -614,9 +690,10 @@ export function pendingSaleDraftForCustomer(
       productId: line.product.id, quantity: line.quantity,
       code: line.product.code ?? line.product.barcode ?? line.product.id,
       name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
-      price: effectiveSaleProductPrice(line.product, customer.activeMember === true).toFixed(2),
+      price: saleLineUnitPrice(line, customer.activeMember === true).toFixed(2),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
       discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
+      serialNumbers: line.serialNumbers ?? [],
     })),
   };
 }
@@ -626,11 +703,12 @@ type SaleScreenProps = {
   locale: LocaleCode;
   session: UserSession;
   terminalContext: TerminalContext;
-  touchMode?: boolean;
+  interfaceMode?: SaleInterfaceMode;
   onBack: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenCustomerReceivables?: (customerId?: string) => void;
+  onOpenSalesDocumentWindow?: () => void;
 };
 
 export function SaleScreen({
@@ -638,17 +716,77 @@ export function SaleScreen({
   locale,
   session,
   terminalContext,
-  touchMode = false,
+  interfaceMode = "KEYBOARD",
   onBack,
   onLocaleChange,
   onLogout,
-  onOpenCustomerReceivables
+  onOpenCustomerReceivables,
+  onOpenSalesDocumentWindow,
 }: SaleScreenProps) {
   const t = createTranslator(locale);
-  const [productCreateOpen, setProductCreateOpen] = useState(false);
+  const commandLabels: SaleCommandLabels = {
+    shortcuts: t("sale.main.shortcuts"),
+    priceLookup: t("sale.shortcut.priceLookup"),
+    calculator: t("sale.shortcut.calculator"),
+    cashDrawer: t("sale.shortcut.cashDrawer"),
+    logout: t("sale.shortcut.logout"),
+    selectedStock: t("sale.shortcut.selectedStock"),
+    productSales: t("sale.shortcut.productSales"),
+    editProduct: t("sale.shortcut.editProduct"),
+    ticketReturn: t("sale.shortcut.ticketReturn"),
+    cancelTicket: t("sale.shortcut.cancelTicket"),
+    cancelOtherTicket: t("sale.shortcut.cancelOtherTicket"),
+    convertInvoice: t("sale.shortcut.convertInvoice"),
+    checkout: t("sale.shortcut.checkout"),
+    setQuantity: t("sale.shortcut.setQuantity"),
+    selectItem: t("sale.shortcut.selectItem"),
+    temporaryName: t("sale.shortcut.temporaryName"),
+    desiredPrice: t("sale.shortcut.desiredPrice"),
+    temporaryPrice: t("sale.shortcut.temporaryPrice"),
+    printMethod: t("sale.shortcut.printMethod"),
+    saleComment: t("sale.shortcut.saleComment"),
+    serialNumber: t("sale.shortcut.serialNumber"),
+    parkSale: t("sale.shortcut.parkSale"),
+    lineDiscount: t("sale.shortcut.lineDiscount"),
+    saleDiscount: t("sale.shortcut.saleDiscount"),
+    nextPackage: t("sale.shortcut.nextPackage"),
+    nextUnits: t("sale.shortcut.nextUnits"),
+    addQuantity: t("sale.shortcut.addQuantity"),
+    subtractQuantity: t("sale.shortcut.subtractQuantity"),
+    document: t("salesDocument.shortcut"),
+    search: t("sale.main.search"),
+    quantity: t("sale.main.quantity"),
+    discount: t("sale.main.discount"),
+    customer: t("sale.main.customer"),
+    removeLine: t("sale.main.removeLine"),
+    deleteKey: t("sale.main.deleteKey"),
+    parkedSales: t("sale.main.parkedSales"),
+    parkedSalesHint: t("sale.main.parkedSalesHint"),
+    manageTickets: t("sale.main.manageTickets"),
+    manageTicketsHint: t("sale.main.manageTicketsHint"),
+    receivables: t("receivables.title"),
+    cash: t("sale.main.cash"),
+    card: t("sale.main.card"),
+    pending: t("sale.main.pending"),
+    pageDownKey: t("sale.main.pageDownKey"),
+    operations: t("sale.main.management")
+  };
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [allowInactiveProductSales, setAllowInactiveProductSales] = useState(false);
   const [pendingInactiveProduct, setPendingInactiveProduct] = useState<SaleProduct | null>(null);
+  const [pendingOpenPriceProduct, setPendingOpenPriceProduct] = useState<SaleProduct | null>(null);
+  const [pendingOpenPriceQuantity, setPendingOpenPriceQuantity] = useState(1);
+  const [nextScanQuantity, setNextScanQuantity] = useState(1);
+  const [nextScanMode, setNextScanMode] = useState<"UNIT" | "PACKAGE">("UNIT");
+  const [shortcutStatus, setShortcutStatus] = useState("");
+  const [cashDrawerAuthorizationOpen, setCashDrawerAuthorizationOpen] = useState(false);
+  const [cashDrawerBusy, setCashDrawerBusy] = useState(false);
+  const [cashDrawerError, setCashDrawerError] = useState("");
+  const [productEditAuthorizationOpen, setProductEditAuthorizationOpen] = useState(false);
+  const [productEditBusy, setProductEditBusy] = useState(false);
+  const [productEditError, setProductEditError] = useState("");
+  const [productEditAuthorizationId, setProductEditAuthorizationId] = useState("");
+  const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -706,6 +844,10 @@ export function SaleScreen({
   const [cardOpening, setCardOpening] = useState(false);
   const [paymentLocked, setPaymentLocked] = useState(false);
   const [paymentHydrated, setPaymentHydrated] = useState(false);
+  const [cashSessionState, setCashSessionState] =
+    useState<"LOADING" | "OPEN" | "REQUIRED" | "ERROR">("LOADING");
+  const [cashSessionError, setCashSessionError] = useState("");
+  const [cashSessionCloseOpen, setCashSessionCloseOpen] = useState(false);
   const [reservedPaymentTotalCents, setReservedPaymentTotalCents] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
@@ -713,14 +855,18 @@ export function SaleScreen({
   const [authoritativeQuote, setAuthoritativeQuote] = useState<PosAuthoritativeQuote | null>(null);
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
-  const [couponInput, setCouponInput] = useState("");
-  const [promotionalCouponCode, setPromotionalCouponCode] = useState("");
-  const [couponStatus, setCouponStatus] = useState<"idle" | "validating" | "applied" | "error">("idle");
-  const [couponMessage, setCouponMessage] = useState("");
+  const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
   const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
+  const [ticketReturnOpen, setTicketReturnOpen] = useState(false);
+  const [serialNumberOpen, setSerialNumberOpen] = useState(false);
+  const [productSearchOpen, setProductSearchOpen] = useState(false);
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productSearchPurpose, setProductSearchPurpose] = useState<"ADD" | "HISTORY">("ADD");
+  const [consultationMode, setConsultationMode] = useState<"PRICE" | "STOCK" | null>(null);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [salesHistoryProduct, setSalesHistoryProduct] = useState<SaleProduct | null>(null);
   const [verifactuRefreshSignal, setVerifactuRefreshSignal] = useState(0);
-  const [selectedSearchProductId, setSelectedSearchProductId] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
@@ -741,7 +887,6 @@ export function SaleScreen({
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
   );
-  const results = useMemo(() => filterSaleProducts(selectableProducts, query), [query, selectableProducts]);
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const activeMember = selectedCustomer?.activeMember === true;
@@ -756,13 +901,57 @@ export function SaleScreen({
   const canOpenCustomerReceivables = Boolean(onOpenCustomerReceivables)
     && hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
   const userDiscountLimit = session.permissions.includes("ADMIN") ? 100 : Number(session.maxDiscountPercent ?? 0);
-  const searchResultsVisible = !catalogLoading && !catalogError && query.trim().length > 0 && results.length > 0;
-  const activeSearchProductId = results.some((product) => product.id === selectedSearchProductId)
-    ? selectedSearchProductId
-    : results[0]?.id ?? "";
-  const activeSearchResultId = activeSearchProductId
-    ? `sale-product-result-${encodeURIComponent(activeSearchProductId)}`
-    : undefined;
+  const cashSessionReady = cashSessionState === "OPEN";
+  const cashSessionCopy = locale === "en"
+    ? {
+        close: "Close register",
+        unavailable: "Cash register unavailable",
+        retry: "Retry",
+        exit: "Exit Sales",
+        loading: "Preparing cash register…",
+        error: "The cash session could not be prepared.",
+      }
+    : locale === "zh"
+      ? {
+          close: "关闭收银会话",
+          unavailable: "收银会话不可用",
+          retry: "重试",
+          exit: "退出销售",
+          loading: "正在准备收银会话…",
+          error: "无法准备收银会话。",
+        }
+      : {
+          close: "Cerrar caja",
+          unavailable: "Caja no disponible",
+          retry: "Reintentar",
+          exit: "Salir de Ventas",
+          loading: "Preparando caja…",
+          error: "No se pudo preparar la sesión de caja.",
+        };
+
+  async function prepareSalesCashSession() {
+    if (!terminalContext.terminalId || !session.accessToken) {
+      setCashSessionError(cashSessionCopy.error);
+      setCashSessionState("ERROR");
+      return;
+    }
+    setCashSessionState("LOADING");
+    setCashSessionError("");
+    try {
+      const readiness = await prepareCashSessionForSales(
+        terminalContext.terminalId,
+        session.accessToken,
+      );
+      setCashSessionState(readiness.open ? "OPEN" : "REQUIRED");
+    } catch (failure) {
+      setCashSessionError(failure instanceof Error ? failure.message : cashSessionCopy.error);
+      setCashSessionState("ERROR");
+    }
+  }
+
+  useEffect(() => {
+    void prepareSalesCashSession();
+  }, [session.accessToken, terminalContext.terminalId]);
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
@@ -791,6 +980,10 @@ export function SaleScreen({
 
   async function handleSaleLogout() {
     if (logoutInProgressRef.current) return;
+    if (lines.length > 0) {
+      setShortcutStatus("No se puede cerrar sesión mientras el carrito tenga productos");
+      return;
+    }
     logoutInProgressRef.current = true;
     try {
       const result = await paymentCheckoutRef.current?.prepareLogout();
@@ -857,12 +1050,36 @@ export function SaleScreen({
     return () => { root.removeEventListener("keydown", blockEscape); deactivate(); };
   }, [pendingRecoveryBlocked]);
 
-  function addProduct(product: SaleProduct) {
+  function addProduct(product: SaleProduct, openUnitPrice?: number, quantity = 1) {
     deletionControl.reset("PRODUCT_ADDED");
-    setLines((current) => applyMemberDiscounts(addSaleLine(current, product), selectedCustomer));
+    setLines((current) => applyMemberDiscounts(
+      addSaleLine(current, product, openUnitPrice, quantity),
+      selectedCustomer,
+    ));
     setSelectedProductId(product.id);
     setQuery("");
+    setShortcutStatus("");
     searchInputRef.current?.focus();
+  }
+
+  function requestPriceOrAddProduct(product: SaleProduct) {
+    const packageQuantity = Number(product.packageQuantity ?? 1);
+    const quantity = nextScanMode === "PACKAGE"
+      ? nextScanQuantity * (Number.isFinite(packageQuantity) && packageQuantity > 0 ? packageQuantity : 1)
+      : nextScanQuantity;
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+      setShortcutStatus("La cantidad resultante del paquete no es válida");
+      return;
+    }
+    const existingLine = lines.find((line) => line.product.id === product.id);
+    if (saleProductRequiresOpenPrice(product) && !existingLine) {
+      setPendingOpenPriceQuantity(quantity);
+      setPendingOpenPriceProduct(product);
+      return;
+    }
+    addProduct(product, undefined, quantity);
   }
 
   useEffect(() => {
@@ -885,7 +1102,7 @@ export function SaleScreen({
       setPendingInactiveProduct(product);
       return;
     }
-    addProduct(product);
+    requestPriceOrAddProduct(product);
   }
 
   function confirmInactiveProduct() {
@@ -894,12 +1111,27 @@ export function SaleScreen({
     }
     const product = pendingInactiveProduct;
     setPendingInactiveProduct(null);
-    addProduct(product);
+    requestPriceOrAddProduct(product);
   }
 
   function cancelInactiveProduct() {
     setPendingInactiveProduct(null);
     queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function cancelOpenPrice() {
+    setPendingOpenPriceProduct(null);
+    setPendingOpenPriceQuantity(1);
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function confirmOpenPrice(price: number) {
+    if (!pendingOpenPriceProduct) return;
+    const product = pendingOpenPriceProduct;
+    const quantity = pendingOpenPriceQuantity;
+    setPendingOpenPriceProduct(null);
+    setPendingOpenPriceQuantity(1);
+    addProduct(product, price, quantity);
   }
 
   function openQuantityDialog() {
@@ -1035,7 +1267,7 @@ export function SaleScreen({
             code: removedLine.product.code ?? "",
             name: removedLine.product.name ?? "",
             quantity: removedLine.quantity,
-            unitPrice: effectiveSaleProductPrice(removedLine.product, activeMember),
+            unitPrice: saleLineUnitPrice(removedLine, activeMember),
           }],
         },
       }),
@@ -1056,21 +1288,181 @@ export function SaleScreen({
   }
 
   function submitSearch() {
-    const selected = results.find((product) => product.id === activeSearchProductId)
-      ?? selectSaleProduct(selectableProducts, query);
+    const selected = selectSaleProduct(selectableProducts, query);
     if (selected) {
       requestAddProduct(selected);
+      return;
+    }
+    if (!query.trim()) return;
+    setProductSearchPurpose("ADD");
+    setProductSearchQuery(query);
+    setProductSearchOpen(true);
+  }
+
+  function openProductSalesHistory() {
+    if (paymentLocked) return;
+    const product = selectSaleProduct(selectableProducts, query) ?? selectedLine?.product;
+    if (product) {
+      setSalesHistoryProduct(product);
+      return;
+    }
+    setProductSearchPurpose("HISTORY");
+    setProductSearchQuery(query);
+    setProductSearchOpen(true);
+  }
+
+  function clearQuickEntry(message = "") {
+    setQuery("");
+    setShortcutStatus(message);
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function quickOperand() {
+    return saleQuickOperand(query);
+  }
+
+  function applyPauseQuantity() {
+    if (!selectedLine || paymentLocked) return;
+    const quantity = salePauseQuantity(query);
+    if (quantity == null) {
+      setShortcutStatus("Introduce una cantidad y pulsa Pausa");
+      return;
+    }
+    if (quantity === 0) {
+      confirmRemoveLine();
+      clearQuickEntry();
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, quantity));
+    clearQuickEntry(quantity === -1
+      ? "Devolución manual -1 aplicada; se registrará como alerta de control"
+      : "");
+  }
+
+  function addToSelectedQuantity() {
+    if (!selectedLine || paymentLocked) return;
+    const operand = quickOperand();
+    if (operand == null || operand < 1) {
+      setShortcutStatus("Introduce la cantidad que quieres sumar");
+      return;
+    }
+    const result = selectedLine.quantity + operand;
+    if (result > 9999) {
+      setShortcutStatus("La cantidad no puede superar 9999");
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, result));
+    clearQuickEntry();
+  }
+
+  function subtractFromSelectedQuantity() {
+    if (!selectedLine || paymentLocked) return;
+    const operand = quickOperand();
+    if (operand == null || operand < 1) {
+      setShortcutStatus("Introduce la cantidad que quieres restar");
+      return;
+    }
+    const result = selectedLine.quantity - operand;
+    if (result < 0) {
+      setShortcutStatus("Ctrl+- no permite dejar una cantidad negativa");
+      return;
+    }
+    if (result === 0) {
+      confirmRemoveLine();
+      clearQuickEntry();
+      return;
+    }
+    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, result));
+    clearQuickEntry();
+  }
+
+  function prepareNextProductQuantity(asPackage: boolean) {
+    if (paymentLocked) return;
+    const operand = quickOperand();
+    if (operand == null || operand < 1) {
+      setShortcutStatus(asPackage
+        ? "Introduce el número de paquetes antes de *"
+        : "Introduce la cantidad antes de +");
+      return;
+    }
+    if (asPackage) {
+      setNextScanQuantity(operand);
+      setNextScanMode("PACKAGE");
+      clearQuickEntry(`${operand} paquete(s) para el próximo producto`);
+      return;
+    }
+    setNextScanQuantity(operand);
+    setNextScanMode("UNIT");
+    clearQuickEntry(`${operand} unidad(es) para el próximo producto`);
+  }
+
+  function applyQuickLineDiscount() {
+    if (!selectedLine || paymentLocked || !canApplyManualDiscount
+      || saleProductBlocksManualDiscount(selectedLine.product)) return;
+    const discount = quickOperand();
+    if (discount == null || discount < 0 || discount > 100) {
+      setShortcutStatus("Introduce un descuento entre 0 y 100");
+      return;
+    }
+    setDiscountInput(String(discount));
+    clearQuickEntry();
+    if (discount > userDiscountLimit) {
+      setDiscountAuthorizationPercent(discount);
+      setManagerName("");
+      setManagerPassword("");
+      setActionDialog("discountAuthorization");
+      return;
+    }
+    setLines((current) => updateSaleLineDiscount(current, selectedLine.product.id, discount));
+    setDiscountAuthorizationToken("");
+  }
+
+  function applyQuickGlobalDiscount() {
+    if (lines.length === 0 || paymentLocked || !canApplyManualDiscount) return;
+    const discount = quickOperand();
+    if (discount == null || discount < 0 || discount > 100) {
+      setShortcutStatus("Introduce un descuento entre 0 y 100");
+      return;
+    }
+    if (discount > userDiscountLimit) {
+      setShortcutStatus("El descuento global necesita autorización");
+      return;
+    }
+    try {
+      setLines((current) => current.reduce(
+        (updated, line) => updateSaleLineDiscount(updated, line.product.id, discount),
+        current,
+      ));
+      setDiscountAuthorizationToken("");
+      clearQuickEntry("Descuento aplicado a toda la compra");
+    } catch (error) {
+      setShortcutStatus(error instanceof Error && error.message === "discount_blocked"
+        ? t("sale.discountBlocked")
+        : "No se pudo aplicar el descuento global");
     }
   }
 
-  function moveSearchSelection(key: "ArrowUp" | "ArrowDown") {
-    const nextId = saleSearchSelectionAfterArrow(results, activeSearchProductId, key);
-    if (!nextId) return;
-    setSelectedSearchProductId(nextId);
-    queueMicrotask(() => {
-      document.getElementById(`sale-product-result-${encodeURIComponent(nextId)}`)
-        ?.scrollIntoView?.({ block: "nearest" });
-    });
+  function applyDesiredLinePrice() {
+    if (!selectedLine || paymentLocked || !canApplyManualDiscount
+      || saleProductBlocksManualDiscount(selectedLine.product)) return;
+    const desiredPrice = quickOperand();
+    const currentPrice = saleLineUnitPrice(selectedLine, activeMember);
+    if (desiredPrice == null || desiredPrice < 0 || desiredPrice > currentPrice || currentPrice <= 0) {
+      setShortcutStatus("Introduce un precio final válido para la línea");
+      return;
+    }
+    const discount = Math.round((1 - desiredPrice / currentPrice) * 10_000) / 100;
+    setDiscountInput(String(discount));
+    clearQuickEntry();
+    if (discount > userDiscountLimit) {
+      setDiscountAuthorizationPercent(discount);
+      setManagerName("");
+      setManagerPassword("");
+      setActionDialog("discountAuthorization");
+      return;
+    }
+    setLines((current) => updateSaleLineDiscount(current, selectedLine.product.id, discount));
+    setDiscountAuthorizationToken("");
   }
 
   function cashSaleRequest() {
@@ -1079,30 +1471,13 @@ export function SaleScreen({
       lines: lines.map((line) => ({
         productId: line.product.id,
         quantity: line.quantity,
-        discount: line.discountPercent
+        discount: line.discountPercent,
+        ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
+        ...(line.openUnitPrice != null ? { openUnitPrice: line.openUnitPrice } : {})
       })),
       ...(discountAuthorizationToken ? { discountAuthorizationToken } : {}),
-      ...(promotionalCouponCode ? { promotionalCouponCode } : {})
+      ...(checkoutDiscountCents > 0 ? { checkoutDiscountAmount: checkoutDiscountCents / 100 } : {})
     };
-  }
-
-  function applyCoupon() {
-    const code = couponInput.trim();
-    if (!code || paymentLocked || lines.length === 0) return;
-    if (code === promotionalCouponCode && couponStatus === "applied") {
-      setCouponMessage(t("sale.coupon.applied"));
-      return;
-    }
-    setCouponMessage("");
-    setCouponStatus("validating");
-    setPromotionalCouponCode(code);
-  }
-
-  function removeCoupon() {
-    setCouponInput("");
-    setPromotionalCouponCode("");
-    setCouponStatus("idle");
-    setCouponMessage("");
   }
 
   function clearCurrentSale() {
@@ -1111,8 +1486,102 @@ export function SaleScreen({
     setSelectedCustomer(null);
     setQuery("");
     setDiscountAuthorizationToken("");
-    removeCoupon();
+    setCheckoutDiscountCents(0);
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    setShortcutStatus("");
     deletionControl.reset("CART_EMPTIED");
+  }
+
+  async function openCashDrawer(authorizerUsername?: string, authorizerPassword?: string) {
+    if (!terminalContext.terminalId) {
+      const message = t("sale.cashDrawer.terminalRequired");
+      if (cashDrawerAuthorizationOpen) setCashDrawerError(message);
+      else setShortcutStatus(message);
+      return;
+    }
+    setCashDrawerBusy(true);
+    setCashDrawerError("");
+    setShortcutStatus("");
+    try {
+      await executeAuthorizedCashDrawerOpen({
+        terminalId: terminalContext.terminalId,
+        token: session.accessToken,
+        authorizerUsername,
+        authorizerPassword,
+      });
+      setCashDrawerAuthorizationOpen(false);
+      setShortcutStatus(t("sale.cashDrawer.opened"));
+    } catch (error) {
+      const message = error instanceof CashDrawerResultReportingError
+        ? t("sale.cashDrawer.openedUnreported")
+        : error instanceof Error ? error.message : t("sale.cashDrawer.error");
+      if (cashDrawerAuthorizationOpen) setCashDrawerError(message);
+      else setShortcutStatus(message);
+    } finally {
+      setCashDrawerBusy(false);
+    }
+  }
+
+  function startCashDrawerOpening() {
+    if (cashDrawerBusy) return;
+    if (hasPermission(session, "ABRIR_CAJON")) {
+      void openCashDrawer();
+      return;
+    }
+    setCashDrawerError("");
+    setCashDrawerAuthorizationOpen(true);
+  }
+
+  async function openProductEditor(authorizerUsername?: string, authorizerPassword?: string) {
+    if (!selectedLine || paymentLocked) {
+      setShortcutStatus(t("sale.productEdit.selectLine"));
+      return;
+    }
+    setProductEditBusy(true);
+    setProductEditError("");
+    setShortcutStatus("");
+    try {
+      const authorization = await authorizeProductEdit(
+        selectedLine.product.id,
+        session.accessToken,
+        authorizerUsername,
+        authorizerPassword,
+      );
+      setProductEditAuthorizationOpen(false);
+      setProductEditAuthorizationId(authorization.operationId);
+      setEditingProduct(productEditDialogValue(authorization.product));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("sale.productEdit.error");
+      if (productEditAuthorizationOpen) setProductEditError(message);
+      else setShortcutStatus(message);
+    } finally {
+      setProductEditBusy(false);
+    }
+  }
+
+  function startProductEditing() {
+    if (productEditBusy) return;
+    if (!selectedLine || paymentLocked) {
+      setShortcutStatus(t("sale.productEdit.selectLine"));
+      return;
+    }
+    if (hasPermission(session, "GESTION_PRODUCTO")) {
+      void openProductEditor();
+      return;
+    }
+    setProductEditError("");
+    setProductEditAuthorizationOpen(true);
+  }
+
+  function closeProductEditor() {
+    const operationId = productEditAuthorizationId;
+    setEditingProduct(null);
+    setProductEditAuthorizationId("");
+    if (operationId) {
+      void revokeProductEditAuthorization(operationId, session.accessToken);
+    }
+    searchInputRef.current?.focus();
   }
 
   async function recoverParkedSale(opened: OpenedParkedSale) {
@@ -1122,13 +1591,20 @@ export function SaleScreen({
       return [{
         product,
         quantity: Number(line.cantidad),
-        discountPercent: Number(line.descuento)
+        discountPercent: Number(line.descuento),
+        serialNumbers: line.serialNumbers ?? [],
+        ...(Number(product.salePrice) === 0 && Number(line.precioUnitario) > 0
+          ? { openUnitPrice: Number(line.precioUnitario) }
+          : {})
       } satisfies SaleLine];
     });
     setLines(recoveredLines);
     setSelectedProductId(recoveredLines[0]?.product.id ?? null);
     setDiscountAuthorizationToken("");
-    removeCoupon();
+    setCheckoutDiscountCents(0);
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    setShortcutStatus("");
     setParkedSalesOpen(false);
     const customerId = opened.document.clienteId;
     if (customerId) {
@@ -1157,10 +1633,7 @@ export function SaleScreen({
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
       setDiscountAuthorizationToken("");
-      setCouponInput("");
-      setPromotionalCouponCode("");
-      setCouponStatus("idle");
-      setCouponMessage("");
+      setCheckoutDiscountCents(0);
       return;
     }
     setAuthoritativeQuoteLoading(true);
@@ -1175,27 +1648,17 @@ export function SaleScreen({
           throw new Error(t("sale.quote.invalidResponse"));
         }
         setAuthoritativeQuote(quote);
-        if (promotionalCouponCode) {
-          setCouponStatus("applied");
-          setCouponMessage(t("sale.coupon.applied"));
-        }
       }).catch((error) => {
         if (generation === quoteGenerationRef.current) {
           setAuthoritativeQuote(null);
-          if (promotionalCouponCode) {
-            setCouponStatus("error");
-            setCouponMessage(t("sale.coupon.invalid"));
-            setPromotionalCouponCode("");
-          } else {
-            setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.quote.error"));
-          }
+          setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.quote.error"));
         }
       }).finally(() => {
         if (generation === quoteGenerationRef.current) setAuthoritativeQuoteLoading(false);
       });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [discountAuthorizationToken, lines, promotionalCouponCode, selectedCustomer?.id, session.accessToken]);
+  }, [checkoutDiscountCents, discountAuthorizationToken, lines, selectedCustomer?.id, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
@@ -1243,7 +1706,8 @@ export function SaleScreen({
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
       setQuery(transition.query);
-      removeCoupon();
+      setNextScanQuantity(1);
+      setNextScanMode("UNIT");
       deletionControl.reset("SALE_FINALIZED");
       setVerifactuRefreshSignal((current) => current + 1);
       startAutomaticTicketPrint(result.printTicket);
@@ -1287,7 +1751,8 @@ export function SaleScreen({
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
           setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
-          removeCoupon();
+          setNextScanQuantity(1);
+          setNextScanMode("UNIT");
           deletionControl.reset("SALE_FINALIZED");
           setVerifactuRefreshSignal((current) => current + 1);
         }
@@ -1333,12 +1798,65 @@ export function SaleScreen({
 
   useEffect(() => {
     function handleSaleShortcut(event: KeyboardEvent) {
+      if (!cashSessionReady) return;
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (pendingRecoveryBlocked) return;
-      if (saleShortcutTargetIsEditable(event.target)) {
-        const saleFunctionKeyFromProductSearch = event.target === searchInputRef.current
-          && ["F2", "F5", "F6", "F7", "F8", "F9", "F10", "PageDown", "F11", "F12"].includes(event.key);
-        if (!saleFunctionKeyFromProductSearch) return;
+      if (isSalesDocumentShortcut(event)) {
+        if (!paymentLocked && onOpenSalesDocumentWindow) {
+          event.preventDefault();
+          onOpenSalesDocumentWindow();
+        }
+        return;
+      }
+
+      if (event.ctrlKey && !event.altKey && !event.metaKey) {
+        const lowerKey = event.key.toLocaleLowerCase();
+        if (lowerKey === "g") {
+          if (!paymentLocked) {
+            event.preventDefault();
+            setParkedSalesOpen(true);
+          }
+          return;
+        }
+        if (lowerKey === "n") {
+          if (selectedLine && !paymentLocked) {
+            event.preventDefault();
+            setSerialNumberOpen(true);
+          }
+          return;
+        }
+        if (event.key === "+") {
+          event.preventDefault();
+          addToSelectedQuantity();
+          return;
+        }
+        if (event.key === "-") {
+          event.preventDefault();
+          subtractFromSelectedQuantity();
+          return;
+        }
+        if (event.key === "/") {
+          event.preventDefault();
+          applyQuickGlobalDiscount();
+          return;
+        }
+        if (event.key === "F11") {
+          if (paymentHydrated && !paymentLocked) {
+            event.preventDefault();
+            setTicketManagementOpen(true);
+          }
+          return;
+        }
+        // Ctrl+C/V/X/Z/Y and every other standard editing shortcut remain native.
+        return;
+      }
+
+      if (saleShortcutTargetIsEditable(event.target) && event.target !== searchInputRef.current) {
+        return;
+      }
+      if (event.target === searchInputRef.current
+        && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        return;
       }
 
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -1350,63 +1868,90 @@ export function SaleScreen({
 
       let handled = true;
       switch (event.key) {
+        case "F1":
+          setConsultationMode("PRICE");
+          break;
         case "F2":
-          if (!selectedLine || paymentLocked) return;
-          openQuantityDialog();
+          setCalculatorOpen(true);
+          break;
+        case "F3":
+          startCashDrawerOpening();
+          break;
+        case "F4":
+          void handleSaleLogout();
           break;
         case "F5":
-          if (catalogLoading || catalogError || paymentLocked) return;
-          searchInputRef.current?.focus();
+          if (!selectedLine || paymentLocked) return;
+          setConsultationMode("STOCK");
           break;
         case "F6":
+          openProductSalesHistory();
+          break;
+        case "F7":
+          startProductEditing();
+          break;
+        case "F10":
+          if (!paymentHydrated || paymentLocked) return;
+          setTicketReturnOpen(true);
+          break;
+        case "F11":
+        case "F12":
+          if (!paymentHydrated || paymentLocked) return;
+          setTicketManagementOpen(true);
+          break;
+        case "End":
           if (paymentLocked) return;
           openCustomerDialog();
           break;
-        case "F7":
-          if (!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
-          openDiscountDialog();
+        case "Pause":
+          applyPauseQuantity();
           break;
-        case "Delete":
-          if (!selectedLine || paymentLocked) return;
-          setActionDialog("remove");
-          break;
-        case "F8":
-          if (paymentLocked) return;
-          setParkedSalesOpen(true);
-          break;
-        case "F9":
-          if (paymentLocked) return;
-          setTicketManagementOpen(true);
-          break;
-        case "F10":
-          if (paymentLocked || !canOpenCustomerReceivables) return;
-          onOpenCustomerReceivables?.(selectedCustomer?.id);
+        case "PageUp":
+          applyDesiredLinePrice();
           break;
         case "PageDown":
           if (paymentActionsDisabled || paymentLocked) return;
-          paymentCheckoutRef.current?.triggerCash();
+          if (paymentCheckoutRef.current?.openCheckout) {
+            paymentCheckoutRef.current.openCheckout("CASH");
+          } else {
+            paymentCheckoutRef.current?.triggerCash();
+          }
           break;
-        case "F11":
-          if (paymentActionsDisabled || paymentLocked) return;
-          paymentCheckoutRef.current?.triggerCard();
+        case "+":
+          prepareNextProductQuantity(false);
           break;
-        case "F12":
-          if (paymentActionsDisabled || paymentLocked || !paymentHydrated) return;
-          openPendingSale();
+        case "*":
+          prepareNextProductQuantity(true);
+          break;
+        case "/":
+          applyQuickLineDiscount();
           break;
         default:
           handled = false;
       }
-      if (handled) event.preventDefault();
+      if (handled) {
+        event.preventDefault();
+        return;
+      }
+
+      if (!event.altKey && !event.metaKey && !event.ctrlKey && event.key.length === 1
+        && event.target !== searchInputRef.current && !saleShortcutTargetIsEditable(event.target)) {
+        event.preventDefault();
+        setQuery((current) => current + event.key);
+        setShortcutStatus("");
+        searchInputRef.current?.focus();
+      }
     }
 
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [authoritativeQuoteReady, authoritativeTotal, canApplyManualDiscount, canOpenCustomerReceivables, catalogError, catalogLoading, lines, onOpenCustomerReceivables, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingOpening, pendingRecoveryBlocked, recoveredPendingSale, selectedCustomer, selectedLine, selectedProductId]);
+  }, [activeMember, canApplyManualDiscount, cashDrawerBusy, lines, onOpenSalesDocumentWindow,
+    cashSessionReady, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingRecoveryBlocked, query,
+    selectedLine, selectedProductId, userDiscountLimit]);
 
   return (
-    <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>
-      <div aria-hidden={pendingRecoveryBlocked || undefined} style={{ display: "contents" }}><SessionTopControls
+    <main className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
+      <div aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined} style={{ display: "contents" }}><SessionTopControls
         locale={locale}
         session={session}
         languageLabel={t("login.language")}
@@ -1422,12 +1967,25 @@ export function SaleScreen({
         onPrepareShutdown={handleApplicationClose}
         onBrowserClose={onLogout}
       /></div>
-      <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || undefined}>
+      <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined}>
         <header className="work-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
           <h1 className="report-title">{t("sale.main.screen")}</h1>
+          <button
+            type="button"
+            className="sale-cash-session-action"
+            disabled={!cashSessionReady || lines.length > 0 || paymentLocked || !paymentHydrated}
+            title={lines.length > 0
+              ? "El carrito debe estar vacío para cerrar la caja"
+              : paymentLocked || !paymentHydrated
+                ? "Finaliza el cobro activo antes de cerrar la caja"
+                : undefined}
+            onClick={() => setCashSessionCloseOpen(true)}
+          >
+            {cashSessionCopy.close}
+          </button>
           {app === "venta" && hasPermission(session, "VENTA") && (
             <VerifactuPosIndicator
               token={session.accessToken ?? ""}
@@ -1462,6 +2020,8 @@ export function SaleScreen({
                   <div>
                     <strong className="product-name-text">{line.name}</strong>
                     <span>{line.code}</span>
+                    {(lines.find((candidate) => candidate.product.id === line.productId)?.serialNumbers ?? [])
+                      .map((serial) => <small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}
                   </div>
                   <span>
                     {Number(line.quantity)} x {formatSaleAmount(Number(line.baseUnitPrice))}
@@ -1494,9 +2054,12 @@ export function SaleScreen({
                   <div>
                     <strong className="product-name-text">{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
                     <span>{line.product.code ?? line.product.barcode ?? t("sale.main.missingCode")}</span>
+                    {(line.serialNumbers ?? []).map((serial) => (
+                      <small className="sale-line-serial" key={serial}>S/N: {serial}</small>
+                    ))}
                   </div>
                   <span>
-                    {line.quantity} x {formatSaleAmount(effectiveSaleProductPrice(line.product, activeMember))}
+                    {line.quantity} x {formatSaleAmount(saleLineUnitPrice(line, activeMember))}
                     {effectiveSaleLineDiscount(line) > 0 && (
                       <small>
                         {line.memberDiscountPercent != null
@@ -1523,24 +2086,13 @@ export function SaleScreen({
             {authoritativeQuoteLoading && <small aria-live="polite">{t("sale.quote.loading")}</small>}
             {authoritativeQuoteError && <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>}
           </footer>
-          <div className="work-panel-heading sale-product-heading">
-            <div>
-              <h2>{t("sale.main.product")}</h2>
-              <span>{t("sale.main.quickEntry")}</span>
-            </div>
-            <button type="button" className="stock-add-product-button" onClick={() => setProductCreateOpen(true)}>
-              {t("product.create.button")}
-            </button>
-          </div>
           <label className="work-search">
-            <span>{t("sale.main.searchProduct")} <kbd>F5</kbd></span>
+            <span>{t("sale.main.searchProduct")}</span>
             <input
               ref={searchInputRef}
               aria-label={t("sale.main.searchProduct")}
-              aria-activedescendant={searchResultsVisible ? activeSearchResultId : undefined}
-              aria-autocomplete="list"
-              aria-controls="sale-product-results"
-              aria-expanded={searchResultsVisible}
+              aria-expanded={productSearchOpen}
+              aria-haspopup="dialog"
               autoComplete="off"
               disabled={catalogLoading || catalogError || paymentLocked}
               placeholder={t("sale.main.searchPlaceholder")}
@@ -1548,11 +2100,6 @@ export function SaleScreen({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
-                if (searchResultsVisible && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-                  event.preventDefault();
-                  moveSearchSelection(event.key);
-                  return;
-                }
                 if (event.key === "Enter") {
                   event.preventDefault();
                   submitSearch();
@@ -1560,13 +2107,7 @@ export function SaleScreen({
               }}
             />
           </label>
-          <div
-            aria-label={searchResultsVisible ? t("sale.main.searchProduct") : undefined}
-            aria-live="polite"
-            className="sale-search-results"
-            id="sale-product-results"
-            role={searchResultsVisible ? "listbox" : undefined}
-          >
+          <div aria-live="polite" className="sale-search-results">
             {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
             {catalogError && (
               <div className="sale-search-status sale-search-error">
@@ -1574,111 +2115,52 @@ export function SaleScreen({
                 <button type="button" onClick={() => setCatalogReload((value) => value + 1)}>{t("sale.main.retry")}</button>
               </div>
             )}
-            {!catalogLoading && !catalogError && query.trim() && results.length === 0 && (
-              <p className="sale-search-status">{t("sale.main.noProducts")}</p>
-            )}
-            {!catalogLoading && !catalogError && results.map((product) => (
-              <button
-                aria-selected={product.id === activeSearchProductId}
-                className={`sale-search-result${product.id === activeSearchProductId ? " selected" : ""}`}
-                id={`sale-product-result-${encodeURIComponent(product.id)}`}
-                role="option"
-                type="button"
-                disabled={paymentLocked}
-                key={product.id}
-                onClick={() => requestAddProduct(product)}
-                onMouseEnter={() => setSelectedSearchProductId(product.id)}
-              >
-                <span>
-                  <strong className="product-name-text">{product.name ?? t("sale.main.unnamedProduct")}</strong>
-                  <small>
-                    {product.code ?? product.barcode ?? t("sale.main.missingCode")}
-                    {product.active === false ? ` · ${t("stock.status.inactive")}` : ""}
-                  </small>
-                </span>
-                <b>{formatSaleAmount(effectiveSaleProductPrice(product, activeMember))}</b>
-              </button>
-            ))}
+            <p className="sale-next-quantity">
+              {t("sale.main.quantity")}: {nextScanQuantity}
+              {nextScanMode === "PACKAGE"
+                ? ` ${t(nextScanQuantity === 1 ? "sale.quantity.package" : "sale.quantity.packages")}`
+                : ""}
+            </p>
+            {shortcutStatus && <p className="sale-search-status" role="status">{shortcutStatus}</p>}
           </div>
-          <div className="sale-quick-grid">
-            <button type="button" disabled={!selectedLine || paymentLocked} onClick={openQuantityDialog}>
-              <span>{t("sale.main.quantity")}</span>
-              <kbd>F2</kbd>
-            </button>
-            <button
-              type="button"
-              disabled={!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)}
-              title={!canApplyManualDiscount
+          {interfaceMode === "TOUCH" && (
+            <TouchSaleActionPanel
+              labels={commandLabels}
+              paymentLocked={paymentLocked}
+              searchDisabled={catalogLoading || Boolean(catalogError) || paymentLocked}
+              quantityDisabled={!selectedLine || paymentLocked}
+              editProductDisabled={!selectedLine || paymentLocked || productEditBusy}
+              serialNumberDisabled={!selectedLine || paymentLocked}
+              ticketReturnDisabled={paymentLocked || !paymentHydrated}
+              discountDisabled={
+                !selectedLine
+                || paymentLocked
+                || !canApplyManualDiscount
+                || saleProductBlocksManualDiscount(selectedLine.product)
+              }
+              discountTitle={!canApplyManualDiscount
                 ? "No tienes el permiso APLICAR_DESCUENTO"
-                : selectedLine && saleProductBlocksManualDiscount(selectedLine.product) ? t("sale.discountBlocked") : undefined}
-              onClick={openDiscountDialog}
-            >
-              <span>{t("sale.main.discount")}</span>
-              <kbd>F7</kbd>
-            </button>
-            <button type="button" disabled={paymentLocked} onClick={() => openCustomerDialog()}>
-              <span>{t("sale.main.customer")}</span>
-              <kbd>F6</kbd>
-            </button>
-            <button type="button" disabled={!selectedLine || paymentLocked} onClick={() => setActionDialog("remove")}>
-              <span>{t("sale.main.removeLine")}</span>
-              <kbd>{t("sale.main.deleteKey")}</kbd>
-            </button>
-          </div>
-          <section className="sale-management-actions" aria-label={t("sale.main.management")}>
-            <h2>{t("sale.main.management")}</h2>
-            <div className="sale-secondary-actions">
-              <button type="button" disabled={paymentLocked} onClick={() => setParkedSalesOpen(true)}>
-                <span>{t("sale.main.parkedSales")}</span>
-                <small>{t("sale.main.parkedSalesHint")}</small>
-                <kbd aria-hidden="true">F8</kbd>
-              </button>
-              <button type="button" disabled={paymentLocked} onClick={() => setTicketManagementOpen(true)}>
-                <span>{t("sale.main.manageTickets")}</span>
-                <small>{t("sale.main.manageTicketsHint")}</small>
-                <kbd aria-hidden="true">F9</kbd>
-              </button>
-            </div>
-          </section>
-          <section className="sale-coupon" aria-label={t("sale.coupon.title")}>
-            <h2>{t("sale.coupon.title")}</h2>
-            <form onSubmit={(event) => { event.preventDefault(); applyCoupon(); }}>
-              <label htmlFor="sale-promotional-coupon">{t("sale.coupon.label")}</label>
-              <div>
-                <input
-                  id="sale-promotional-coupon"
-                  autoComplete="off"
-                  disabled={paymentLocked || lines.length === 0 || couponStatus === "validating"}
-                  placeholder={t("sale.coupon.placeholder")}
-                  value={couponInput}
-                  onChange={(event) => {
-                    setCouponInput(event.target.value);
-                    if (couponStatus === "error") {
-                      setCouponStatus("idle");
-                      setCouponMessage("");
-                    }
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={paymentLocked || lines.length === 0 || !couponInput.trim() || couponStatus === "validating"}
-                >
-                  {t(couponStatus === "validating" ? "sale.coupon.validating" : "sale.coupon.apply")}
-                </button>
-                {promotionalCouponCode && couponStatus === "applied" && (
-                  <button type="button" className="sale-coupon-remove" onClick={removeCoupon}>
-                    {t("sale.coupon.remove")}
-                  </button>
-                )}
-              </div>
-              {couponMessage && (
-                <p className={couponStatus === "error" ? "sale-action-error" : "sale-coupon-success"}
-                  role={couponStatus === "error" ? "alert" : "status"}>
-                  {couponMessage}
-                </p>
-              )}
-            </form>
-          </section>
+                : selectedLine && saleProductBlocksManualDiscount(selectedLine.product)
+                  ? t("sale.discountBlocked")
+                  : undefined}
+              documentAvailable={Boolean(onOpenSalesDocumentWindow)}
+              receivablesAvailable={canOpenCustomerReceivables}
+              receivablesCustomer={selectedCustomer?.fiscalName ?? undefined}
+              onSearch={() => searchInputRef.current?.focus()}
+              onCashDrawer={startCashDrawerOpening}
+              onEditProduct={startProductEditing}
+              onSerialNumber={() => setSerialNumberOpen(true)}
+              onTicketReturn={() => setTicketReturnOpen(true)}
+              onDocument={() => onOpenSalesDocumentWindow?.()}
+              onQuantity={openQuantityDialog}
+              onDiscount={openDiscountDialog}
+              onCustomer={() => openCustomerDialog()}
+              onRemoveLine={() => setActionDialog("remove")}
+              onParkedSales={() => setParkedSalesOpen(true)}
+              onManageTickets={() => setTicketManagementOpen(true)}
+              onReceivables={() => onOpenCustomerReceivables?.(selectedCustomer?.id)}
+            />
+          )}
           <section className="sale-payment" aria-label={t("sale.main.payment")}>
             <h2>{t("sale.main.payment")}</h2>
             <SalePaymentCheckout
@@ -1690,9 +2172,15 @@ export function SaleScreen({
               permissions={session.permissions}
               terminal={terminalContext}
               disabled={paymentActionsDisabled || !paymentHydrated}
+              showIndividualActions={interfaceMode === "TOUCH"}
+              unifiedCheckout
+              interfaceMode={interfaceMode}
+              customerSelected={Boolean(selectedCustomer)}
+              checkoutDiscountCents={checkoutDiscountCents}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               onCash={() => void openCashDialog()}
               onPending={openPendingSale}
+              onDiscount={setCheckoutDiscountCents}
               onHydrationChange={setPaymentHydrated}
               onLockedChange={(locked, reservedTotalCents) => {
                 setPaymentLocked(locked);
@@ -1708,13 +2196,11 @@ export function SaleScreen({
                 setSelectedProductId(null);
                 setSelectedCustomer(null);
                 setQuery("");
-                removeCoupon();
+                setNextScanQuantity(1);
+                setNextScanMode("UNIT");
+                setCheckoutDiscountCents(0);
                 setReservedPaymentTotalCents(null);
                 const result = paymentResultFromFinalization(printTicket, summary);
-                if (summary.kind === "CARD") {
-                  setCashResult({ ...result, printStatus: "SKIPPED" });
-                  return;
-                }
                 setCashResult({ ...result, printStatus: "PRINTING" });
                 startAutomaticTicketPrint(printTicket);
               }}
@@ -1722,19 +2208,6 @@ export function SaleScreen({
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
             {pendingError && <p className="sale-payment-status" role="alert">{pendingError}</p>}
           </section>
-          {canOpenCustomerReceivables && (
-            <section className="sale-receivables-entry" aria-label={t("receivables.title")}>
-              <button
-                type="button"
-                disabled={paymentLocked}
-                onClick={() => onOpenCustomerReceivables?.(selectedCustomer?.id)}
-              >
-                <span>{t("receivables.title")}</span>
-                {selectedCustomer?.fiscalName && <small>{selectedCustomer.fiscalName}</small>}
-                <kbd aria-hidden="true">F10</kbd>
-              </button>
-            </section>
-          )}
           {pendingPrintRetry && (
             <aside className="sale-sidebar-print-retry" aria-hidden={pendingRecoveryBlocked || undefined}>
               <p role="alert">{t("payment.result.printFailed")}</p>
@@ -1743,28 +2216,54 @@ export function SaleScreen({
           )}
         </section>
 
-        <nav className="sale-shortcut-bar" aria-label={t("sale.main.shortcuts")}>
-          <span><kbd>F5</kbd> {t("sale.main.search")}</span>
-          <span><kbd>F2</kbd> {t("sale.main.quantity")}</span>
-          <span><kbd>F7</kbd> {t("sale.main.discount")}</span>
-          <span><kbd>F6</kbd> {t("sale.main.customer")}</span>
-          <span><kbd>{t("sale.main.deleteKey")}</kbd> {t("sale.main.removeLine")}</span>
-          <span><kbd>F8</kbd> {t("sale.main.parkedSales")}</span>
-          <span><kbd>F9</kbd> {t("sale.main.manageTickets")}</span>
-          {canOpenCustomerReceivables && <span><kbd>F10</kbd> {t("receivables.title")}</span>}
-          <span><kbd>{t("sale.main.pageDownKey")}</kbd> {t("sale.main.cash")}</span>
-          <span><kbd>F11</kbd> {t("sale.main.card")}</span>
-          <span><kbd>F12</kbd> {t("sale.main.pending")}</span>
-        </nav>
+        {interfaceMode === "KEYBOARD" && (
+          <KeyboardSaleCommandBar
+            labels={commandLabels}
+            documentAvailable={Boolean(onOpenSalesDocumentWindow)}
+          />
+        )}
 
         <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
       </section>
 
+      <SaleCashDrawerAuthorizationDialog
+        open={cashDrawerAuthorizationOpen}
+        busy={cashDrawerBusy}
+        error={cashDrawerError}
+        t={t}
+        onCancel={() => {
+          if (cashDrawerBusy) return;
+          setCashDrawerAuthorizationOpen(false);
+          setCashDrawerError("");
+        }}
+        onAuthorize={(username, password) => void openCashDrawer(username, password)}
+      />
+
+      <SaleCashDrawerAuthorizationDialog
+        open={productEditAuthorizationOpen}
+        busy={productEditBusy}
+        error={productEditError}
+        t={t}
+        translationPrefix="sale.productEdit"
+        onCancel={() => {
+          if (productEditBusy) return;
+          setProductEditAuthorizationOpen(false);
+          setProductEditError("");
+        }}
+        onAuthorize={(username, password) => void openProductEditor(username, password)}
+      />
+
       <ProductCreateDialog
-        open={productCreateOpen}
+        open={Boolean(editingProduct && productEditAuthorizationId)}
         locale={locale}
         token={session.accessToken}
-        onClose={() => setProductCreateOpen(false)}
+        operationalAuthorizationId={productEditAuthorizationId}
+        editProduct={editingProduct}
+        onClose={closeProductEditor}
+        onCreated={() => {
+          setCatalogReload((current) => current + 1);
+          setShortcutStatus(t("sale.productEdit.saved"));
+        }}
       />
 
       {cashDialogOpen && (
@@ -1820,7 +2319,7 @@ export function SaleScreen({
         onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedProductId(null);
           setPendingPrintRetry(() => retry ?? null);
-          setSelectedCustomer(null); setQuery(""); removeCoupon(); searchInputRef.current?.focus();
+          setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT"); searchInputRef.current?.focus();
           setVerifactuRefreshSignal((current) => current + 1);
         }}
       />}
@@ -1834,6 +2333,98 @@ export function SaleScreen({
           <footer><button type="button" onClick={() => void navigator.clipboard?.writeText(pendingRecovery.raw)}>{t("pendingSale.recoveryCopy")}</button></footer>
         </section>
       </div>}
+      {productSearchOpen && (
+        <SaleProductSearchDialog
+          initialQuery={productSearchQuery}
+          labels={{
+            title: t("sale.searchDialog.title"),
+            query: t("sale.searchDialog.query"),
+            code: t("sale.searchDialog.code"),
+            barcode: t("sale.searchDialog.barcode"),
+            barcode2: t("sale.searchDialog.barcode2"),
+            name: t("sale.searchDialog.name"),
+            price: t("sale.searchDialog.price"),
+            empty: t("sale.searchDialog.empty"),
+            close: t("common.close"),
+            unnamedProduct: t("sale.main.unnamedProduct"),
+            missingCode: t("sale.main.missingCode"),
+          }}
+          products={selectableProducts}
+          onClose={() => {
+            setProductSearchOpen(false);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+          onSelect={(product) => {
+            setProductSearchOpen(false);
+            if (productSearchPurpose === "HISTORY") {
+              setSalesHistoryProduct(product);
+              return;
+            }
+            requestAddProduct(product);
+          }}
+        />
+      )}
+
+      {consultationMode && (
+        <SaleProductConsultationDialog
+          mode={consultationMode}
+          products={selectableProducts}
+          initialProduct={consultationMode === "STOCK" ? selectedLine?.product : selectSaleProduct(selectableProducts, query)}
+          token={session.accessToken}
+          onClose={() => {
+            setConsultationMode(null);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
+      {calculatorOpen && (
+        <SaleCalculatorDialog
+          taxRegime={(selectedLine?.product.taxRegime ?? products[0]?.taxRegime ?? "IVA") as "IVA" | "IGIC"}
+          onClose={() => {
+            setCalculatorOpen(false);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
+      {salesHistoryProduct && (
+        <div className="sale-action-overlay" role="presentation">
+          <section className="sale-action-dialog wide sale-sales-history-dialog" role="dialog" aria-modal="true"
+            aria-label={`Ventas de ${salesHistoryProduct.name ?? "producto"}`}>
+            <header>
+              <h2>Histórico de venta · {salesHistoryProduct.name ?? salesHistoryProduct.code}</h2>
+              <button type="button" aria-label="Cerrar" onClick={() => setSalesHistoryProduct(null)}>×</button>
+            </header>
+            <StockSalesHistoryPanel
+              productId={salesHistoryProduct.id}
+              productName={salesHistoryProduct.name ?? salesHistoryProduct.code ?? ""}
+              locale={locale}
+              app={app}
+              username={session.username}
+              accessToken={session.accessToken}
+              onClose={() => setSalesHistoryProduct(null)}
+            />
+          </section>
+        </div>
+      )}
+
+      {pendingOpenPriceProduct && (
+        <SaleOpenPriceDialog
+          productName={pendingOpenPriceProduct.name ?? t("sale.main.unnamedProduct")}
+          labels={{
+            title: t("sale.openPrice.title"),
+            product: t("sale.openPrice.product"),
+            price: t("sale.openPrice.price"),
+            placeholder: t("sale.openPrice.placeholder"),
+            invalid: t("sale.openPrice.invalid"),
+            cancel: t("common.cancel"),
+            accept: t("sale.openPrice.accept"),
+          }}
+          onCancel={cancelOpenPrice}
+          onAccept={confirmOpenPrice}
+        />
+      )}
 
       {actionDialog === "quantity" && selectedLine && (
         <SaleActionDialog title="Cambiar cantidad" onClose={() => setActionDialog(null)}>
@@ -1937,6 +2528,35 @@ export function SaleScreen({
         />
       )}
 
+      {ticketReturnOpen && (
+        <TicketReturnDialog
+          token={session.accessToken}
+          locale={locale}
+          terminalContext={terminalContext}
+          onClose={() => setTicketReturnOpen(false)}
+          onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
+        />
+      )}
+
+      {serialNumberOpen && selectedLine && (
+        <SaleSerialNumberDialog
+          locale={locale}
+          productName={selectedLine.product.name ?? selectedLine.product.code ?? ""}
+          quantity={selectedLine.quantity}
+          initialSerialNumbers={selectedLine.serialNumbers ?? []}
+          onCancel={() => setSerialNumberOpen(false)}
+          onConfirm={(serialNumbers) => {
+            setLines((current) => updateSaleLineSerialNumbers(
+              current,
+              selectedLine.product.id,
+              serialNumbers,
+            ));
+            setSerialNumberOpen(false);
+            setShortcutStatus(t("sale.serialNumber.saved"));
+          }}
+        />
+      )}
+
       {pendingInactiveProduct && (
         <SaleActionDialog
           title={t("sale.inactiveProduct.title")}
@@ -1951,6 +2571,50 @@ export function SaleScreen({
             <button type="button" autoFocus onClick={confirmInactiveProduct}>{t("sale.inactiveProduct.continue")}</button>
           </div>
         </SaleActionDialog>
+      )}
+
+      {cashSessionState === "REQUIRED" && terminalContext.terminalId && session.accessToken && (
+        <SaleCashSessionDialog
+          locale={locale}
+          mode="OPEN"
+          terminalId={terminalContext.terminalId}
+          token={session.accessToken}
+          onExitSales={onBack}
+          onOpened={() => setCashSessionState("OPEN")}
+        />
+      )}
+
+      {(cashSessionState === "LOADING" || cashSessionState === "ERROR") && (
+        <div className="sale-cash-session-overlay" role="presentation">
+          <section
+            className="sale-cash-session-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={cashSessionState === "LOADING" ? cashSessionCopy.loading : cashSessionCopy.unavailable}
+          >
+            <header>
+              <h2>{cashSessionState === "LOADING" ? cashSessionCopy.loading : cashSessionCopy.unavailable}</h2>
+            </header>
+            {cashSessionState === "ERROR" && <p className="sale-cash-session-error" role="alert">{cashSessionError}</p>}
+            <footer>
+              <button type="button" className="secondary" onClick={onBack}>{cashSessionCopy.exit}</button>
+              {cashSessionState === "ERROR" && (
+                <button type="button" onClick={() => void prepareSalesCashSession()}>{cashSessionCopy.retry}</button>
+              )}
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {cashSessionCloseOpen && cashSessionReady && terminalContext.terminalId && session.accessToken && (
+        <SaleCashSessionDialog
+          locale={locale}
+          mode="CLOSE"
+          terminalId={terminalContext.terminalId}
+          token={session.accessToken}
+          onCancel={() => setCashSessionCloseOpen(false)}
+          onClosed={onBack}
+        />
       )}
     </main>
   );

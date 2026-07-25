@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
@@ -34,6 +35,26 @@ class CustomerPendingSaleControllerContractTest {
 
         assertThat(invoice.directo()).isTrue();
         assertThat(note.directo()).isTrue();
+    }
+
+    @Test
+    void legacyReceivableEndpointRejectsDocumentCheckoutModes() {
+        var base = request(CommercialDocumentType.FACTURA_VENTA);
+        var documentRequest = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                base.payments(), base.quotedTotal(), base.creditOverride(),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT);
+        var controller = new CustomerPendingSaleController(
+                org.mockito.Mockito.mock(CustomerPendingSaleService.class),
+                org.mockito.Mockito.mock(CustomerReceivablePrintService.class));
+
+        assertThatThrownBy(() -> controller.quote(
+                documentRequest,
+                org.mockito.Mockito.mock(
+                        org.springframework.security.core.Authentication.class)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("sales_document_checkout_endpoint_required");
     }
 
     private static CustomerPendingSaleController.CreateRequest request(

@@ -30,12 +30,12 @@ describe("SharedExcelImportDialog", () => {
       />
     );
 
-    expect(html).toContain("Resumen de importacion");
+    expect(html).toContain("Resumen de importación");
     expect(html).toContain("Pulsa Abrir Excel");
-    expect(html).toContain("Impuestos incluidos usa 1 para verdadero y 0 para falso");
+    expect(html).toContain("Impuestos incluidos utiliza 1 para verdadero y 0 para falso");
     expect(html).toContain("Usar precio define la tarifa activa");
-    expect(html).toContain("Prohibido descuento usa 1");
-    expect(html).toContain("Oferta activa usa 1");
+    expect(html).toContain("Prohibido descuento utiliza 1");
+    expect(html).toContain("Oferta activa utiliza 1");
   });
 
   it("renders fullscreen preview, mapping controls and bottom sections", () => {
@@ -57,21 +57,21 @@ describe("SharedExcelImportDialog", () => {
 
     expect(html).toContain('class="filter-dialog shared-excel-dialog"');
     expect(html).toContain("Abrir Excel");
-    expect(html).toContain("Abrir edicion");
-    expect(html).toContain("Regreso [Esc]");
+    expect(html).toContain("Abrir edición");
+    expect(html).toContain("Volver [Esc]");
     expect(html).toContain("Limpiar");
     expect(html).toContain("Aplicar");
     expect(html).toContain("Generar documento resumen");
-    expect(html).toContain("Codigo");
-    expect(html).toContain("Codigo de barras");
-    expect(html).toContain("Producto empieza en fila");
-    expect(html).toContain("Precio socio");
+    expect(html).toContain("Código");
+    expect(html).toContain("Código de barras");
+    expect(html).toContain("Los productos empiezan en la fila");
+    expect(html).toContain("Precio de socio");
     expect(html).not.toContain('value="A"');
     expect(html).not.toContain('value="F"');
     expect(html).toContain("Productos no importables (0)");
     expect(html).toContain("Productos importables (0)");
     expect(html).toContain("Errores (0)");
-    expect(html).toContain("Configuracion archivo");
+    expect(html).toContain("Configuración del archivo");
     expect(html).toContain("NOPE");
   });
 
@@ -127,5 +127,24 @@ describe("SharedExcelImportDialog", () => {
 
     expect(html).toContain("Errores (0)");
     expect(html).not.toContain("product-1");
+  });
+
+  it.each([
+    ["en", "Import summary", "Open Excel"],
+    ["zh", "导入说明", "打开 Excel"]
+  ] as const)("renders the complete import entry point in %s", (locale, heading, action) => {
+    const html = renderToStaticMarkup(
+      <SharedExcelImportDialog
+        open
+        locale={locale}
+        products={[]}
+        onClose={vi.fn()}
+        onImportAccepted={vi.fn()}
+      />
+    );
+
+    expect(html).toContain(heading);
+    expect(html).toContain(action);
+    expect(html).not.toContain("Resumen de importación");
   });
 });

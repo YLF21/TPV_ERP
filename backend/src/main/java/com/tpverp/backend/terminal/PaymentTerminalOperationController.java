@@ -60,7 +60,8 @@ public class PaymentTerminalOperationController {
     public OperationView refund(@PathVariable UUID id,@Valid @RequestBody RefundRequest request,Authentication authentication){
         reauthentication.require(authentication, request.password());
         var lines=request.lines()==null?List.<PaymentTerminalRefundLineSelection>of():request.lines().stream()
-                .map(line->new PaymentTerminalRefundLineSelection(line.lineId(),line.quantity())).toList();
+                .map(line->new PaymentTerminalRefundLineSelection(
+                        line.lineId(), line.quantity(), line.serialNumbers())).toList();
         return OperationView.from(service.refund(id,request.operationId(),request.idempotencyKey(),request.amount(),lines,authentication)); }
 
     @GetMapping("/operations/{id}/refund-lines")
@@ -89,8 +90,14 @@ public class PaymentTerminalOperationController {
     public record RefundRequest(@NotNull UUID operationId,@NotBlank String idempotencyKey,
             String password,@NotNull @DecimalMin(value="0.01") BigDecimal amount,
             @Valid List<RefundLineRequest> lines) {}
-    public record RefundLineRequest(@NotNull UUID lineId,
-            @NotNull @DecimalMin(value="0.001") BigDecimal quantity) {}
+    public record RefundLineRequest(
+            @NotNull UUID lineId,
+            @NotNull @DecimalMin(value="0.001") BigDecimal quantity,
+            List<String> serialNumbers) {
+        public RefundLineRequest(UUID lineId, BigDecimal quantity) {
+            this(lineId, quantity, List.of());
+        }
+    }
     public record ReconciliationRequest(@NotNull UUID reconciliationId) {}
     public record OperationView(UUID id,UUID terminalId,UUID storeId,PaymentTerminalProvider provider,PaymentTerminalMode mode,
             PaymentTerminalOperationType type,UUID originalOperationId,BigDecimal amount,String currency,BigDecimal refundedAmount,
