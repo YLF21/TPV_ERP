@@ -731,6 +731,7 @@ export function SaleScreen({
   const cardSubmissionRef = useRef(false);
   const cardOpeningRef = useRef({ current: false, generation: 0 });
   const paymentCheckoutRef = useRef<SalePaymentCheckoutHandle>(null);
+  const saleShortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const blockedRecoveryDialogRef = useRef<HTMLElement>(null);
   const deletionControlRef = useRef<SaleDeletionControlSequence | null>(null);
   if (!deletionControlRef.current) deletionControlRef.current = new SaleDeletionControlSequence();
@@ -1333,78 +1334,81 @@ export function SaleScreen({
       .finally(() => setCardSubmitting(false));
   }
 
-  useEffect(() => {
-    function handleSaleShortcut(event: KeyboardEvent) {
-      if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      if (pendingRecoveryBlocked) return;
-      if (saleShortcutTargetIsEditable(event.target)) {
-        const saleFunctionKeyFromProductSearch = event.target === searchInputRef.current
-          && ["F2", "F5", "F6", "F7", "F8", "F9", "F10", "PageDown", "F11", "F12"].includes(event.key);
-        if (!saleFunctionKeyFromProductSearch) return;
-      }
-
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        if (paymentLocked || lines.length === 0) return;
-        setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
-        event.preventDefault();
-        return;
-      }
-
-      let handled = true;
-      switch (event.key) {
-        case "F2":
-          if (!selectedLine || paymentLocked) return;
-          openQuantityDialog();
-          break;
-        case "F5":
-          if (catalogLoading || catalogError || paymentLocked) return;
-          searchInputRef.current?.focus();
-          break;
-        case "F6":
-          if (paymentLocked) return;
-          openCustomerDialog();
-          break;
-        case "F7":
-          if (!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
-          openDiscountDialog();
-          break;
-        case "Delete":
-          if (!selectedLine || paymentLocked) return;
-          setActionDialog("remove");
-          break;
-        case "F8":
-          if (paymentLocked) return;
-          setParkedSalesOpen(true);
-          break;
-        case "F9":
-          if (paymentLocked) return;
-          setTicketManagementOpen(true);
-          break;
-        case "F10":
-          if (paymentLocked || !canOpenCustomerReceivables) return;
-          onOpenCustomerReceivables?.(selectedCustomer?.id);
-          break;
-        case "PageDown":
-          if (paymentActionsDisabled || paymentLocked) return;
-          paymentCheckoutRef.current?.triggerCash();
-          break;
-        case "F11":
-          if (paymentActionsDisabled || paymentLocked) return;
-          paymentCheckoutRef.current?.triggerCard();
-          break;
-        case "F12":
-          if (paymentActionsDisabled || paymentLocked || !paymentHydrated) return;
-          openPendingSale();
-          break;
-        default:
-          handled = false;
-      }
-      if (handled) event.preventDefault();
+  saleShortcutHandlerRef.current = (event: KeyboardEvent) => {
+    if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+    if (pendingRecoveryBlocked) return;
+    if (saleShortcutTargetIsEditable(event.target)) {
+      const saleFunctionKeyFromProductSearch = event.target === searchInputRef.current
+        && ["F2", "F5", "F6", "F7", "F8", "F9", "F10", "PageDown", "F11", "F12"].includes(event.key);
+      if (!saleFunctionKeyFromProductSearch) return;
     }
 
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (paymentLocked || lines.length === 0) return;
+      setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
+      event.preventDefault();
+      return;
+    }
+
+    let handled = true;
+    switch (event.key) {
+      case "F2":
+        if (!selectedLine || paymentLocked) return;
+        openQuantityDialog();
+        break;
+      case "F5":
+        if (catalogLoading || catalogError || paymentLocked) return;
+        searchInputRef.current?.focus();
+        break;
+      case "F6":
+        if (paymentLocked) return;
+        openCustomerDialog();
+        break;
+      case "F7":
+        if (!selectedLine || paymentLocked || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
+        openDiscountDialog();
+        break;
+      case "Delete":
+        if (!selectedLine || paymentLocked) return;
+        setActionDialog("remove");
+        break;
+      case "F8":
+        if (paymentLocked) return;
+        setParkedSalesOpen(true);
+        break;
+      case "F9":
+        if (paymentLocked) return;
+        setTicketManagementOpen(true);
+        break;
+      case "F10":
+        if (paymentLocked || !canOpenCustomerReceivables) return;
+        onOpenCustomerReceivables?.(selectedCustomer?.id);
+        break;
+      case "PageDown":
+        if (paymentActionsDisabled || paymentLocked) return;
+        paymentCheckoutRef.current?.triggerCash();
+        break;
+      case "F11":
+        if (paymentActionsDisabled || paymentLocked) return;
+        paymentCheckoutRef.current?.triggerCard();
+        break;
+      case "F12":
+        if (paymentActionsDisabled || paymentLocked || !paymentHydrated) return;
+        openPendingSale();
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) event.preventDefault();
+  };
+
+  useEffect(() => {
+    function handleSaleShortcut(event: KeyboardEvent) {
+      saleShortcutHandlerRef.current(event);
+    }
     window.addEventListener("keydown", handleSaleShortcut);
     return () => window.removeEventListener("keydown", handleSaleShortcut);
-  }, [authoritativeQuoteReady, authoritativeTotal, canApplyManualDiscount, canOpenCustomerReceivables, catalogError, catalogLoading, lines, onOpenCustomerReceivables, paymentActionsDisabled, paymentHydrated, paymentLocked, pendingOpening, pendingRecoveryBlocked, recoveredPendingSale, selectedCustomer, selectedLine, selectedProductId]);
+  }, []);
 
   return (
     <main className={`sale-screen work-screen ${touchMode ? "touch-mode" : "keyboard-mode"}`}>

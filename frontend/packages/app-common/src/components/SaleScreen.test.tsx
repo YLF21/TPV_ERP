@@ -71,7 +71,7 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, trigge
   triggerCash: vi.fn(),
   triggerCard: vi.fn(),
   triggerPending: vi.fn(),
-  checkoutHandle: { attached: true },
+  checkoutHandle: { attached: true, dispatchCashShortcutOnEnable: false },
   checkoutProps: {
     current: null as CheckoutMockProps | null,
   },
@@ -81,10 +81,11 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, trigge
 }));
 
 vi.mock("./SalePaymentCheckout", async () => {
-  const { forwardRef, useEffect, useImperativeHandle } = await import("react");
+  const { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } = await import("react");
   return {
     SalePaymentCheckout: forwardRef<SalePaymentCheckoutHandle, CheckoutMockProps>(function MockSalePaymentCheckout(props, ref) {
       checkoutProps.current = props;
+      const wasDisabled = useRef(true);
       useEffect(() => { props.onHydrationChange?.(true); props.onLockedChange?.(false); }, []);
       useImperativeHandle(checkoutHandle.attached ? ref : null, () => ({
         prepareApplicationClose,
@@ -93,6 +94,12 @@ vi.mock("./SalePaymentCheckout", async () => {
         triggerCard,
         triggerPending,
       }) as unknown as SalePaymentCheckoutHandle);
+      useLayoutEffect(() => {
+        if (checkoutHandle.dispatchCashShortcutOnEnable && wasDisabled.current && !props.disabled) {
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown" }));
+        }
+        wasDisabled.current = Boolean(props.disabled);
+      }, [props.disabled]);
       return <button type="button" disabled={props.disabled} onClick={props.onCash}>Efectivo <kbd>AvPág</kbd></button>;
     })
   };
@@ -115,6 +122,7 @@ afterEach(() => {
   triggerCard.mockReset();
   triggerPending.mockReset();
   checkoutHandle.attached = true;
+  checkoutHandle.dispatchCashShortcutOnEnable = false;
   checkoutProps.current = null;
   verifactuIndicatorProps.current = null;
   localStorage.clear();
@@ -975,6 +983,35 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F6" });
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "PageDown" });
+    expect(triggerCash).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the latest payment state when a shortcut arrives during the enabled commit", async () => {
+    checkoutHandle.dispatchCashShortcutOnEnable = true;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled());
     expect(triggerCash).toHaveBeenCalledTimes(1);
   });
 
