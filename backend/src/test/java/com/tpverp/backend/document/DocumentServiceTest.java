@@ -48,6 +48,7 @@ import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
+import com.tpverp.backend.terminal.StorePaymentConfiguration;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalPaymentConfiguration;
@@ -485,6 +486,60 @@ class DocumentServiceTest {
         assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("15.00"),
                 List.of(new PaymentTerminalRefundLineSelection(line.getId(), new BigDecimal("3.000")))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("saldo reembolsable");
+    }
+
+    @Test
+    void serializedReturnOnlyOffersSerialNumbersNotPreviouslyReturned() {
+        var original = new CommercialDocument(store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.now(), user.getId(), BigDecimal.ZERO);
+        var line = new DocumentLine(original, UUID.randomUUID(), 1, new BigDecimal("2.000"),
+                "P-SN", "Producto con serie", "VENTA", new BigDecimal("5.00"),
+                BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
+        line.assignSerialNumbers(List.of("SN-001", "SN-002"));
+        original.addLine(line);
+        original.confirm("001-260608-00002", user.getId(), NOW, false);
+        when(documentRepository.findById(original.getId())).thenReturn(Optional.of(original));
+        when(documentRepository.confirmedRefundedQuantity(line.getId()))
+                .thenReturn(new BigDecimal("1.000"));
+        when(documentRepository.confirmedRefundedSerialNumbers(line.getId()))
+                .thenReturn(List.of("sn-001"));
+
+        assertThat(service.cardRefundLineOptions(original.getId())).singleElement().satisfies(option -> {
+            assertThat(option.refundableQuantity()).isEqualByComparingTo("1.000");
+            assertThat(option.refundableSerialNumbers()).containsExactly("SN-002");
+        });
+
+        service.validateApprovedCardRefund(
+                original.getId(),
+                new BigDecimal("5.00"),
+                List.of(new PaymentTerminalRefundLineSelection(
+                        line.getId(), BigDecimal.ONE, List.of("SN-002"))));
+        assertThatThrownBy(() -> service.validateApprovedCardRefund(
+                original.getId(),
+                new BigDecimal("5.00"),
+                List.of(new PaymentTerminalRefundLineSelection(
+                        line.getId(), BigDecimal.ONE, List.of("SN-001")))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no esta disponible");
+    }
+
+    @Test
+    void documentLineRequiresOneUniqueSerialNumberPerWholeUnit() {
+        var document = new CommercialDocument(store.getId(), UUID.randomUUID(),
+                CommercialDocumentType.TICKET, LocalDate.now(), user.getId(), BigDecimal.ZERO);
+        var line = new DocumentLine(document, UUID.randomUUID(), 1, new BigDecimal("2.000"),
+                "P-SN", "Producto con serie", "VENTA", BigDecimal.ONE,
+                BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
+
+        line.assignSerialNumbers(List.of("SN-A", "SN-B"));
+
+        assertThat(line.getSerialNumbers()).containsExactly("SN-A", "SN-B");
+        assertThatThrownBy(() -> line.assignSerialNumbers(List.of("SN-A")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Cada unidad");
+        assertThatThrownBy(() -> line.assignSerialNumbers(List.of("SN-A", "sn-a")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unicos");
     }
 
     @Test
@@ -1020,6 +1075,23 @@ class DocumentServiceTest {
     }
 
     @Test
+    void pendingInvoiceQuoteRejectsCustomerWithoutCompleteFiscalData() {
+        var customer = new Customer(
+                store.getEmpresa(), "Cliente incompleto", DocumentType.NIF,
+                "12345678Z", null, null, null, null,
+                CustomerRate.VENTA, BigDecimal.ZERO);
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId()))
+                .thenReturn(Optional.of(customer));
+
+        assertThatThrownBy(() -> service.quotePendingSale(
+                command(CommercialDocumentType.FACTURA_VENTA, lines(), customer.getId()),
+                LocalDate.of(2026, 7, 8), authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("El cliente no tiene datos fiscales completos");
+    }
+
+    @Test
     void pendingSaleRejectsInvalidTypeMissingOrInactiveCustomerDueDateZeroDuplicateAndOverpayment() {
         var customer = completeCustomer();
         customer.deactivate();
@@ -1203,6 +1275,32 @@ class DocumentServiceTest {
     }
 
     @Test
+    void manualCardReferenceUsesThePaymentMethodInsteadOfTheLegacyStoreFlag() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var card = new PaymentMethod(
+                store.getEmpresa().getId(), "TARJETA", true, false, false);
+        var legacyRules = org.mockito.Mockito.mock(StorePaymentConfiguration.class);
+        when(legacyRules.isCardManualEnabled()).thenReturn(true);
+        when(storePaymentConfigurations.findByStoreId(store.getId()))
+                .thenReturn(Optional.of(legacyRules));
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(card.getId())).thenReturn(Optional.of(card));
+        when(documentRepository.save(invoice)).thenReturn(invoice);
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        card.getId(), new BigDecimal("10.00"), true,
+                        null, null, null, null, PaymentCardMode.MANUAL,
+                        null, null, null, null)),
+                authentication());
+
+        assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        verify(legacyRules, never()).isCardManualReferenceRequired();
+    }
+
+    @Test
     void integratedCardPaymentMustMatchCurrentEnabledTerminalConfiguration() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
@@ -1300,7 +1398,7 @@ class DocumentServiceTest {
     }
 
     @Test
-    void nonDrawerPaymentRejectsDeliveredAmountAndChange() {
+    void nonCashPaymentRejectsDeliveredAmountAndChange() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
         var card = new PaymentMethod(store.getEmpresa().getId(), "TARJETA", true);
@@ -1314,7 +1412,32 @@ class DocumentServiceTest {
                         new BigDecimal("10.00"), BigDecimal.ZERO)),
                 authentication()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("message.payment.cash_amounts_only_for_cash_drawer");
+                .hasMessageContaining("message.payment.cash_amounts_only_for_cash_method");
+    }
+
+    @Test
+    void cashPaymentAllowsDeliveredAmountAndChangeWhenDrawerOpeningIsDisabled() {
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        var cash = new PaymentMethod(
+                store.getEmpresa().getId(), "EFECTIVO", true, false, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(documentRepository.save(invoice)).thenReturn(invoice);
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true,
+                        new BigDecimal("20.00"), new BigDecimal("10.00"))),
+                authentication());
+
+        assertThat(paid.getPagos()).singleElement().satisfies(payment -> {
+            assertThat(payment.getMetodoPago().isCash()).isTrue();
+            assertThat(payment.getMetodoPago().isAbreCajaRegistradora()).isFalse();
+            assertThat(payment.getEntregado()).isEqualByComparingTo("20.00");
+            assertThat(payment.getCambio()).isEqualByComparingTo("10.00");
+        });
     }
 
     @Test

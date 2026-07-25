@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.shared.access.OperationalMode;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -32,6 +35,9 @@ class SaleProductCatalogServiceTest {
 
     @Mock
     private LicenseRepository licenses;
+
+    @Mock
+    private InstallationStatusService installationStatus;
 
     @Mock
     private CurrentOrganization organization;
@@ -133,6 +139,36 @@ class SaleProductCatalogServiceTest {
     }
 
     @Test
+    void usesDemoFiscalRegimeWithoutLicenseOnlyInDevelopmentMode() {
+        configuredStoreAndProduct();
+        when(product.getStoreId()).thenReturn(storeId);
+        when(product.isTaxesIncluded()).thenReturn(true);
+        when(taxes.findAllById(List.of(taxId))).thenReturn(List.of(tax));
+        when(tax.getId()).thenReturn(taxId);
+        when(tax.getStoreId()).thenReturn(storeId);
+        when(tax.getPercentage()).thenReturn(new BigDecimal("21.00"));
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
+        configuredOperationalMode(OperationalMode.DEVELOPMENT);
+
+        assertThat(service.products()).singleElement().satisfies(view -> {
+            assertThat(view.taxPercentage()).isEqualByComparingTo("21.00");
+            assertThat(view.taxRegime()).isEqualTo("IVA");
+        });
+    }
+
+    @Test
+    void rejectsMissingLicenseOutsideDevelopmentMode() {
+        configuredStoreAndProduct();
+        when(taxes.findAllById(List.of(taxId))).thenReturn(List.of());
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
+        configuredOperationalMode(OperationalMode.UNLINKED);
+
+        assertThatThrownBy(() -> service.products())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No hay licencia activa");
+    }
+
+    @Test
     void skipsAInactiveNewestLicenseAndSelectsTheNextActiveLicense() {
         License olderLicense = org.mockito.Mockito.mock(License.class);
         configuredStoreAndProduct();
@@ -176,5 +212,15 @@ class SaleProductCatalogServiceTest {
         when(value.isActiva()).thenReturn(true);
         when(value.getTiendaId()).thenReturn(storeId);
         when(value.getRegimenImpuesto()).thenReturn(taxRegime);
+    }
+
+    private void configuredOperationalMode(OperationalMode mode) {
+        when(installationStatus.status()).thenReturn(new InstallationStatusService.InstallationStatus(
+                UUID.randomUUID(),
+                "INST-TEST",
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-31T00:00:00Z"),
+                mode,
+                null));
     }
 }

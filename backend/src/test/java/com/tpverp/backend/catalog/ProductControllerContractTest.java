@@ -68,13 +68,15 @@ class ProductControllerContractTest {
                 true,
                 TAX_ID,
                 new BigDecimal("21.00"),
-                "IVA")));
+                "IVA",
+                new BigDecimal("6"))));
 
         mvc.perform(get("/api/v1/products/sale")
                         .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].taxPercentage").value(21.00))
-                .andExpect(jsonPath("$[0].taxRegime").value("IVA"));
+                .andExpect(jsonPath("$[0].taxRegime").value("IVA"))
+                .andExpect(jsonPath("$[0].packageQuantity").value(6));
     }
 
     @Test

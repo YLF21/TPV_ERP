@@ -89,14 +89,24 @@ class SalePaymentSessionTest {
         assertThatThrownBy(()->session.addAllocation(UUID.randomUUID(),"cash-key",SalePaymentAllocationKind.CASH,new BigDecimal("1.00"),null,null)).isInstanceOf(IllegalStateException.class);
     }
 
-    @Test void rejectsOverAllocationAndCannotCancelApprovedPartialSession() {
+    @Test void rejectsOverAllocationAndCanClearApprovedCashSession() {
         var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
         var cash=session.addAllocation(UUID.randomUUID(),"cash",SalePaymentAllocationKind.CASH,new BigDecimal("6.00"),null,null);cash.approve(null,null,null);
         assertThatThrownBy(()->session.addAllocation(UUID.randomUUID(),"too-much",SalePaymentAllocationKind.MANUAL_CARD,new BigDecimal("5.00"),null,"MANUAL")).isInstanceOf(IllegalArgumentException.class);
         session.cancel();
-        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COMPENSATION_REQUIRED);
-        assertThatThrownBy(()->session.acknowledgeCompensation(" ",UUID.randomUUID())).hasMessage("compensation_note_required");
-        session.acknowledgeCompensation("Efectivo devuelto y firmado",UUID.randomUUID());
+        assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+    }
+
+    @Test void repairsLegacyCashCompensationWhenCancellationIsRetried() throws Exception {
+        var session=SalePaymentSession.reserve(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",new BigDecimal("10.00"));
+        session.addAllocation(UUID.randomUUID(),"cash",SalePaymentAllocationKind.CASH,new BigDecimal("10.00"),null,null)
+                .approve(null,null,null);
+        var status=SalePaymentSession.class.getDeclaredField("status");
+        status.setAccessible(true);
+        status.set(session,SalePaymentSessionStatus.COMPENSATION_REQUIRED);
+
+        session.cancel();
+
         assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
     }
 

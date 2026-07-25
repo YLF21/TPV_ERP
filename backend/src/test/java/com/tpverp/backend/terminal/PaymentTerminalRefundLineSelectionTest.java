@@ -33,4 +33,20 @@ class PaymentTerminalRefundLineSelectionTest {
         assertThatThrownBy(() -> new PaymentTerminalRefundLineSelection(line, new BigDecimal("0.000")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void serialNumbersAreCanonicalAndSurviveRecoveryParsing() {
+        var line = UUID.randomUUID();
+        var selection = new PaymentTerminalRefundLineSelection(
+                line, new BigDecimal("2"), List.of("SN/002", "SN-001"));
+
+        var canonical = PaymentTerminalRefundLineSelection.canonical(List.of(selection));
+
+        assertThat(PaymentTerminalRefundLineSelection.parse(canonical)).singleElement()
+                .satisfies(parsed -> {
+                    assertThat(parsed.lineId()).isEqualTo(line);
+                    assertThat(parsed.quantity()).isEqualByComparingTo("2.000");
+                    assertThat(parsed.serialNumbers()).containsExactlyInAnyOrder("SN-001", "SN/002");
+                });
+    }
 }

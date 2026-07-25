@@ -11,7 +11,9 @@ const es = {
   summaryTicketCancelled: "Ticket {document}. Motivo: {reason}.", summarySaleCleared: "Venta en curso borrada con {count} l\u00edneas e importe {total}.",
   backToRules: "Volver a reglas", dateFilter: "Periodo de supervisi\u00f3n", from: "Desde", to: "Hasta", quickRanges: "Periodos r\u00e1pidos", today: "Hoy", lastSevenDays: "7 d\u00edas", currentMonth: "Este mes",
   ruleBlocks: "Reglas de control", total: "Alertas del periodo", newCount: "Nuevas", openList: "Ver alertas",
-  summaryConsecutiveDeletions: "{count} l\u00edneas eliminadas de forma consecutiva.", summaryProductDiscount: "Descuento manual aplicado a {count} l\u00edneas de producto.", summaryManualPrice: "Cambio manual de precio registrado."
+  summaryConsecutiveDeletions: "{count} l\u00edneas eliminadas de forma consecutiva.", summaryProductDiscount: "Descuento manual aplicado a {count} l\u00edneas de producto.", summaryManualPrice: "Cambio manual de precio registrado.",
+  summaryManualNegative: "Devoluci\u00f3n manual registrada con {count} l\u00edneas negativas.", summaryCashDrawer: "Apertura manual del caj\u00f3n autorizada por {authorizer}.",
+  summaryProductModified: "Producto {product} modificado desde APP VENTA. Autorizado por {authorizer}."
 };
 
 const en = {
@@ -25,7 +27,9 @@ const en = {
   summaryTicketCancelled: "Ticket {document}. Reason: {reason}.", summarySaleCleared: "Open sale cleared with {count} lines and amount {total}.",
   backToRules: "Back to rules", dateFilter: "Supervision period", from: "From", to: "To", quickRanges: "Quick periods", today: "Today", lastSevenDays: "7 days", currentMonth: "This month",
   ruleBlocks: "Control rules", total: "Period alerts", newCount: "New", openList: "View alerts",
-  summaryConsecutiveDeletions: "{count} lines deleted consecutively.", summaryProductDiscount: "Manual discount applied to {count} product lines.", summaryManualPrice: "Manual price change recorded."
+  summaryConsecutiveDeletions: "{count} lines deleted consecutively.", summaryProductDiscount: "Manual discount applied to {count} product lines.", summaryManualPrice: "Manual price change recorded.",
+  summaryManualNegative: "Manual return recorded with {count} negative lines.", summaryCashDrawer: "Manual cash drawer opening authorized by {authorizer}.",
+  summaryProductModified: "Product {product} modified from APP VENTA. Authorized by {authorizer}."
 };
 
 const zh = {
@@ -39,7 +43,9 @@ const zh = {
   summaryTicketCancelled: "\u5c0f\u7968 {document}. \u539f\u56e0: {reason}.", summarySaleCleared: "\u5df2\u6e05\u9664\u5305\u542b {count} \u884c\u3001\u91d1\u989d {total} \u7684\u672a\u5b8c\u6210\u9500\u552e.",
   backToRules: "\u8fd4\u56de\u89c4\u5219", dateFilter: "\u76d1\u7763\u671f\u95f4", from: "\u5f00\u59cb", to: "\u7ed3\u675f", quickRanges: "\u5feb\u901f\u671f\u95f4", today: "\u4eca\u5929", lastSevenDays: "7\u5929", currentMonth: "\u672c\u6708",
   ruleBlocks: "\u63a7\u5236\u89c4\u5219", total: "\u671f\u95f4\u8b66\u62a5", newCount: "\u65b0\u5efa", openList: "\u67e5\u770b\u8b66\u62a5",
-  summaryConsecutiveDeletions: "\u8fde\u7eed\u5220\u9664 {count} \u884c\u3002", summaryProductDiscount: "\u5bf9 {count} \u4e2a\u5546\u54c1\u884c\u5e94\u7528\u4e86\u624b\u52a8\u6298\u6263\u3002", summaryManualPrice: "\u5df2\u8bb0\u5f55\u624b\u52a8\u4ef7\u683c\u66f4\u6539\u3002"
+  summaryConsecutiveDeletions: "\u8fde\u7eed\u5220\u9664 {count} \u884c\u3002", summaryProductDiscount: "\u5bf9 {count} \u4e2a\u5546\u54c1\u884c\u5e94\u7528\u4e86\u624b\u52a8\u6298\u6263\u3002", summaryManualPrice: "\u5df2\u8bb0\u5f55\u624b\u52a8\u4ef7\u683c\u66f4\u6539\u3002",
+  summaryManualNegative: "\u5df2\u8bb0\u5f55\u5305\u542b {count} \u4e2a\u8d1f\u6570\u884c\u7684\u624b\u52a8\u9000\u8d27\u3002", summaryCashDrawer: "\u7531 {authorizer} \u6388\u6743\u624b\u52a8\u6253\u5f00\u94b1\u7bb1\u3002",
+  summaryProductModified: "\u5546\u54c1 {product} \u5df2\u4ece APP VENTA \u4fee\u6539\uff0c\u6388\u6743\u4eba\uff1a{authorizer}\u3002"
 };
 
 const localeValues = { es, en, zh } as const;
@@ -47,19 +53,19 @@ const localeValues = { es, en, zh } as const;
 const fixed = {
   es: {
     actions: ["Marcar revisada", "Cerrar alerta", "Descartar alerta"], columns: ["Fecha y hora", "Empleado", "Terminal", "Venta / ticket", "Detalle", "Estado"],
-    statuses: ["Nueva", "Revisada", "Cerrada", "Descartada"], types: ["Eliminaci\u00f3n completa de carrito", "Eliminaci\u00f3n de l\u00edneas consecutivas", "Cambio manual de precio superior al porcentaje", "Cambio manual de precio", "Descuento manual superior al porcentaje", "Descuento manual aplicado a producto", "Anulaci\u00f3n de ticket", "Venta de producto desactivado"],
+    statuses: ["Nueva", "Revisada", "Cerrada", "Descartada"], types: ["Eliminaci\u00f3n completa de carrito", "Eliminaci\u00f3n de l\u00edneas consecutivas", "Cambio manual de precio superior al porcentaje", "Cambio manual de precio", "Descuento manual superior al porcentaje", "Descuento manual aplicado a producto", "Anulaci\u00f3n de ticket", "Venta de producto desactivado", "Devoluci\u00f3n manual sin ticket", "Apertura manual del caj\u00f3n", "Modificaci\u00f3n de producto desde venta"],
     rule: ["Reglas de alertas", "Reglas configuradas", "Nueva regla", "No hay reglas configuradas", "Modificar regla", "Crear regla", "Tipo de control", "Porcentaje l\u00edmite", "Este tipo no necesita par\u00e1metros adicionales.", "Activa", "Inactiva", "Activar", "Desactivar", "No se pudo guardar o actualizar la regla"],
     document: ["Estado", "Fecha", "Cliente", "Producto", "Cantidad", "Precio", "Descuento", "Total", "Pagos", "Subtotal", "Impuestos"]
   },
   en: {
     actions: ["Mark reviewed", "Close alert", "Dismiss alert"], columns: ["Date and time", "Employee", "Terminal", "Sale / ticket", "Details", "Status"],
-    statuses: ["New", "Reviewed", "Closed", "Dismissed"], types: ["Full cart deletion", "Consecutive line deletion", "Manual price change above percentage", "Manual price change", "Manual discount above percentage", "Manual product discount", "Ticket cancelled", "Inactive product sold"],
+    statuses: ["New", "Reviewed", "Closed", "Dismissed"], types: ["Full cart deletion", "Consecutive line deletion", "Manual price change above percentage", "Manual price change", "Manual discount above percentage", "Manual product discount", "Ticket cancelled", "Inactive product sold", "Manual return without ticket", "Manual cash drawer opening", "Product modified from sale"],
     rule: ["Alert rules", "Configured rules", "New rule", "No rules configured", "Edit rule", "Create rule", "Control type", "Percentage limit", "This type requires no additional parameters.", "Active", "Inactive", "Activate", "Deactivate", "The rule could not be saved or updated"],
     document: ["Status", "Date", "Customer", "Product", "Quantity", "Price", "Discount", "Total", "Payments", "Subtotal", "Tax"]
   },
   zh: {
     actions: ["\u6807\u8bb0\u5df2\u5ba1\u6838", "\u5173\u95ed\u8b66\u62a5", "\u5ffd\u7565\u8b66\u62a5"], columns: ["\u65e5\u671f\u548c\u65f6\u95f4", "\u5458\u5de5", "\u7ec8\u7aef", "\u9500\u552e / \u5c0f\u7968", "\u8be6\u60c5", "\u72b6\u6001"],
-    statuses: ["\u65b0\u5efa", "\u5df2\u5ba1\u6838", "\u5df2\u5173\u95ed", "\u5df2\u5ffd\u7565"], types: ["\u5220\u9664\u6574\u4e2a\u8d2d\u7269\u8f66", "\u8fde\u7eed\u5220\u9664\u884c", "\u624b\u52a8\u6539\u4ef7\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u6539\u4ef7", "\u624b\u52a8\u6298\u6263\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u5546\u54c1\u6298\u6263", "\u5c0f\u7968\u5df2\u53d6\u6d88", "\u552e\u51fa\u5df2\u505c\u7528\u5546\u54c1"],
+    statuses: ["\u65b0\u5efa", "\u5df2\u5ba1\u6838", "\u5df2\u5173\u95ed", "\u5df2\u5ffd\u7565"], types: ["\u5220\u9664\u6574\u4e2a\u8d2d\u7269\u8f66", "\u8fde\u7eed\u5220\u9664\u884c", "\u624b\u52a8\u6539\u4ef7\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u6539\u4ef7", "\u624b\u52a8\u6298\u6263\u8d85\u8fc7\u767e\u5206\u6bd4", "\u624b\u52a8\u5546\u54c1\u6298\u6263", "\u5c0f\u7968\u5df2\u53d6\u6d88", "\u552e\u51fa\u5df2\u505c\u7528\u5546\u54c1", "\u65e0\u5c0f\u7968\u624b\u52a8\u9000\u8d27", "\u624b\u52a8\u6253\u5f00\u94b1\u7bb1", "\u4ece\u9500\u552e\u4fee\u6539\u5546\u54c1"],
     rule: ["\u8b66\u62a5\u89c4\u5219", "\u5df2\u914d\u7f6e\u89c4\u5219", "\u65b0\u5efa\u89c4\u5219", "\u5c1a\u672a\u914d\u7f6e\u89c4\u5219", "\u7f16\u8f91\u89c4\u5219", "\u521b\u5efa\u89c4\u5219", "\u63a7\u5236\u7c7b\u578b", "\u767e\u5206\u6bd4\u9650\u5236", "\u6b64\u7c7b\u578b\u65e0\u9700\u5176\u4ed6\u53c2\u6570\u3002", "\u542f\u7528", "\u505c\u7528", "\u542f\u7528", "\u505c\u7528", "\u65e0\u6cd5\u4fdd\u5b58\u6216\u66f4\u65b0\u89c4\u5219"],
     document: ["\u72b6\u6001", "\u65e5\u671f", "\u5ba2\u6237", "\u5546\u54c1", "\u6570\u91cf", "\u4ef7\u683c", "\u6298\u6263", "\u5408\u8ba1", "\u652f\u4ed8", "\u5c0f\u8ba1", "\u7a0e\u989d"]
   }
@@ -73,7 +79,7 @@ export function controlMessages(locale: LocaleCode): Record<string, string> {
   ["REVIEW", "CLOSE", "DISMISS"].forEach((key, index) => { result[`gestion.controlAlerts.action.${key}`] = data.actions[index]; });
   ["occurredAt", "username", "terminal", "document", "detail", "status"].forEach((key, index) => { result[`gestion.controlAlerts.column.${key}`] = data.columns[index]; });
   ["NEW", "REVIEWED", "CLOSED", "DISMISSED"].forEach((key, index) => { result[`gestion.controlAlerts.status.${key}`] = data.statuses[index]; });
-  ["SALE_SCREEN_CLEARED", "CONSECUTIVE_LINE_DELETIONS", "MANUAL_PRICE_CHANGE_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "MANUAL_DISCOUNT_OVER_PERCENT", "PRODUCT_DISCOUNT_APPLIED", "TICKET_CANCELLED", "INACTIVE_PRODUCT_SOLD"].forEach((key, index) => { result[`gestion.controlAlerts.type.${key}`] = data.types[index]; });
+  ["SALE_SCREEN_CLEARED", "CONSECUTIVE_LINE_DELETIONS", "MANUAL_PRICE_CHANGE_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "MANUAL_DISCOUNT_OVER_PERCENT", "PRODUCT_DISCOUNT_APPLIED", "TICKET_CANCELLED", "INACTIVE_PRODUCT_SOLD", "MANUAL_NEGATIVE_QUANTITY", "CASH_DRAWER_OPENED", "PRODUCT_CATALOG_MODIFIED"].forEach((key, index) => { result[`gestion.controlAlerts.type.${key}`] = data.types[index]; });
   ["title", "list", "new", "empty", "edit", "create", "type", "threshold", "noConfig", "active", "inactive", "activate", "deactivate", "error"].forEach((key, index) => { result[`gestion.controlRules.${key}`] = data.rule[index]; });
   result["gestion.controlRules.name"] = locale === "es" ? "Nombre" : locale === "en" ? "Name" : "\u540d\u79f0";
   const ruleExtra = locale === "es" ? {

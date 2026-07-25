@@ -42,6 +42,18 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void exposesExactTicketReturnPreviewWithRefundPermission() throws NoSuchMethodException {
+        var method = TicketController.class.getDeclaredMethod(
+                "returnPreview", String.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/return-preview");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("PAYMENT_TERMINAL_REFUND");
+        assertThat(method.getParameters()[0].getAnnotation(RequestParam.class)).isNotNull();
+    }
+
+    @Test
     void salesManagementCanListPaymentMethods() throws NoSuchMethodException {
         var method = PaymentMethodController.class.getDeclaredMethod("list", UUID.class);
 

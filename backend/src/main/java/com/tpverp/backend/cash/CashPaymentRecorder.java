@@ -34,7 +34,7 @@ public class CashPaymentRecorder {
         openSession(terminalId);
     }
 
-    // Records only positive payments whose method opens the cash drawer.
+    // Records positive cash payments independently from physical drawer opening.
     public void recordDocumentPayments(UUID terminalId, CommercialDocument document) {
         if (document.getPagos().stream().noneMatch(this::isRecordableCashDrawerPayment)) {
             return;
@@ -94,7 +94,7 @@ public class CashPaymentRecorder {
     }
 
     private boolean isRecordableCashDrawerPayment(DocumentPayment payment) {
-        return payment.getMetodoPago().isAbreCajaRegistradora()
+        return payment.getMetodoPago().isCash()
                 && Money.euros(payment.getImporte()).signum() > 0;
     }
 }

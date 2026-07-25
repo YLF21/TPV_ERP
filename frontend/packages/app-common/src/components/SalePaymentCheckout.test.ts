@@ -19,6 +19,7 @@ import {
  prepareAutomaticExit,
  stableAllocationAttempt,
  shouldOfferTestCashSession,
+ shouldFinalizeAfterAllocation,
 } from "./SalePaymentCheckout";
 import { SalePaymentCheckout, type SalePaymentCheckoutHandle, type ServerSession } from "./SalePaymentCheckout";
 import { ApiError } from "../api/client";
@@ -59,6 +60,103 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(shouldOfferTestCashSession(true, "COLLECTING", true, "terminal-1")).toBe(false);
   expect(shouldOfferTestCashSession(true, "COVERED", false, "terminal-1")).toBe(false);
   expect(shouldOfferTestCashSession(true, "COVERED", true, undefined)).toBe(false);
+ });
+ it("auto-finalizes only a covered Enter flow in unified checkout", () => {
+  expect(shouldFinalizeAfterAllocation("COVERED", true, "CASH", true)).toBe(true);
+ expect(shouldFinalizeAfterAllocation("COLLECTING", true, "CASH", true)).toBe(false);
+  expect(shouldFinalizeAfterAllocation("COVERED", true, "CASH", false)).toBe(false);
+  expect(shouldFinalizeAfterAllocation("COVERED", true, "MANUAL_CARD", true)).toBe(true);
+  expect(shouldFinalizeAfterAllocation("COVERED", true, "INTEGRATED_CARD", false)).toBe(true);
+ });
+ it("finalizes a covered unified checkout when the operator presses Enter", async () => {
+  const collecting={id:"session-unified-enter",total:"12.10",status:"COLLECTING",allocations:[]};
+  const covered={
+   ...collecting,
+   status:"COVERED",
+   allocations:[{
+    id:"cash-enter",
+    idempotencyKey:"cash-enter",
+    kind:"CASH",
+    amount:"12.10",
+    delivered:"12.10",
+    change:"0.00",
+    status:"APPROVED",
+   }],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/session-unified-enter/allocations")return covered;
+   if(path==="/pos/payment-sessions/session-unified-enter/finalize")return {...covered,status:"FINALIZED",ticketNumber:"T-ENTER",printTicket:printTicket("T-ENTER")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,
+   locale:"es",
+   totalCents:1210,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],
+   terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,
+   onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByRole("textbox",{name:/IMPORTE/});
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(
+   printTicket("T-ENTER"),
+   {kind:"CASH",totalCents:1210,receivedCents:1210},
+  ));
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/finalize"))).toHaveLength(1);
+ });
+ it("keeps a partial Enter checkout open and returns focus to the remaining amount", async () => {
+  const collecting={id:"session-unified-partial",total:"12.10",status:"COLLECTING",allocations:[]};
+  const partial={
+   ...collecting,
+   allocations:[{
+    id:"cash-partial",
+    idempotencyKey:"cash-partial",
+    kind:"CASH",
+    amount:"5.00",
+    delivered:"5.00",
+    change:"0.00",
+    status:"APPROVED",
+   }],
+  };
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/session-unified-partial/allocations")return partial;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,
+   locale:"es",
+   totalCents:1210,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],
+   terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,
+   onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByRole("textbox",{name:/IMPORTE/});
+  fireEvent.change(amount,{target:{value:"5,00"}});
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  await waitFor(()=>expect(amount).toHaveValue("7,10"));
+  await waitFor(()=>expect(amount).toHaveFocus());
+  expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/finalize"))).toHaveLength(0);
  });
  it("classifies logout safety from hydration, session, and allocation state",()=>{
   const sessionWith=(statuses:string[])=>({id:"session",total:"12.10",status:"COLLECTING",allocations:statuses.map((status,index)=>({id:`a-${index}`,idempotencyKey:`a-${index}`,kind:"CASH" as const,amount:"1.00",status}))});
@@ -286,7 +384,12 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
    if(path==="/pos/payment-sessions/active")return session;
-   if(path.endsWith("/simulator-discard")){expect(options?.body).toEqual({reason:"application_shutdown"});return {...session,status:"CANCELLED"};}
+   if(path.endsWith("/simulator-discard")){
+    expect(options?.body).toEqual({
+     reason: expect.stringMatching(/^(application_shutdown|sale_entry_cleanup)$/),
+    });
+    return {...session,status:"CANCELLED"};
+   }
    throw new Error(`unexpected request ${path}`);
   });
   const ref=createRef<SalePaymentCheckoutHandle>();const onLockedChange=vi.fn();
@@ -710,7 +813,9 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  fireEvent.click(await screen.findByRole("button",{name:/Tarjeta.*F11/}));
+  const cardButton=await screen.findByRole("button",{name:/Tarjeta.*F11/});
+  await waitFor(()=>expect(cardButton).toBeEnabled());
+  fireEvent.click(cardButton);
   await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
@@ -763,7 +868,9 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    throw new Error(`unexpected request ${path}`);
   });
   render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
-  fireEvent.click(await screen.findByRole("button",{name:/Tarjeta.*F11/}));
+  const cardButton=await screen.findByRole("button",{name:/Tarjeta.*F11/});
+  await waitFor(()=>expect(cardButton).toBeEnabled());
+  fireEvent.click(cardButton);
   await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());
   fireEvent.click(screen.getByRole("button",{name:"Consultar estado"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:"Consultar estado"})).toBeEnabled());

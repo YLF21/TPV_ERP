@@ -43,6 +43,7 @@ class CorePermissionBootstrapTest {
                 "GESTION_VENTAS",
                 "CAMBIAR_PRECIO",
                 "APLICAR_DESCUENTO",
+                "ABRIR_CAJON",
                 "GESTION_CUENTAS",
                 "CONFIGURACION_TERMINAL",
                 "GESTION_USUARIO",

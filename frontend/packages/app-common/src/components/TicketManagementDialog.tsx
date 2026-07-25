@@ -220,7 +220,11 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
       }
       setRefundPrepared(true);
       setRefundOptions(options);
-      setRefundLines(options.map((option) => ({ lineId: option.lineId, quantity: String(option.refundableQuantity) })));
+      setRefundLines(options.map((option) => ({
+        lineId: option.lineId,
+        quantity: String(option.refundableQuantity),
+        serialNumbers: option.refundableSerialNumbers ?? [],
+      })));
       setRefundCardAmounts(cardAmounts);
       setRefundCashAmount(remaining.toFixed(2));
       setRefundVoucherAmount("0.00");
@@ -403,8 +407,12 @@ export function TicketManagementDialog({ token, locale, terminalContext, permiss
                   <button type="button" className="primary ticket-action-full" title={canRefundTicket ? undefined : t("ticketManagement.permission.refund")} disabled={busy || !canRefundTicket || selected.estado !== "CONFIRMADO"} onClick={() => void prepareRefund()}>{t("ticketManagement.refund.prepare")}</button>
                   {refundPrepared && <div className="ticket-refund-lines">
                     {refundOptions.map((option) => <label key={option.lineId}>
-                      <span>{option.code} · {option.name} ({interpolate(t("ticketManagement.refund.max"), { quantity: option.refundableQuantity })})</span>
-                      <input type="number" min="0" max={Number(option.refundableQuantity)} step="0.001" value={refundLines.find((line) => line.lineId === option.lineId)?.quantity ?? "0"} onChange={(event) => updateRefundQuantity(option.lineId, event.target.value)} />
+                      <span>{option.code} · {option.name} ({interpolate(t("ticketManagement.refund.max"), { quantity: option.refundableQuantity })})
+                        {(option.refundableSerialNumbers ?? []).map((serial) => <small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}
+                      </span>
+                      {(option.refundableSerialNumbers ?? []).length === 0
+                        ? <input type="number" min="0" max={Number(option.refundableQuantity)} step="0.001" value={refundLines.find((line) => line.lineId === option.lineId)?.quantity ?? "0"} onChange={(event) => updateRefundQuantity(option.lineId, event.target.value)} />
+                        : <strong>{String(option.refundableQuantity)}</strong>}
                     </label>)}
                     <strong>{t("ticketManagement.refund.amount")}: {formatTicketAmount(refundAmount, locale)}</strong>
                     <div className="ticket-refund-payouts">

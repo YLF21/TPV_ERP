@@ -11,6 +11,7 @@ export type ProductCreateDialogProps = {
   open: boolean;
   locale: LocaleCode;
   token?: string;
+  operationalAuthorizationId?: string;
   editProduct?: ProductCreateEditProduct | null;
   initialForm?: Partial<ProductCreateFormState>;
   onClose: () => void;
@@ -143,9 +144,10 @@ type SaveProductOptions = {
   imageFile: File | null;
   productId?: string;
   initialData?: ProductCreateInitialData;
-  createProduct?: (body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
-  updateProduct?: (productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) => Promise<ProductCreateResponse>;
-  uploadImage?: (productId: string, file: File, token: string) => Promise<void>;
+  requestHeaders?: Record<string, string>;
+  createProduct?: (body: ReturnType<typeof buildCreateProductRequest>, token: string, headers?: Record<string, string>) => Promise<ProductCreateResponse>;
+  updateProduct?: (productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string, headers?: Record<string, string>) => Promise<ProductCreateResponse>;
+  uploadImage?: (productId: string, file: File, token: string, headers?: Record<string, string>) => Promise<void>;
 };
 
 export type SaveProductResult = {
@@ -581,13 +583,14 @@ function selectedDaysText(count: number, locale: LocaleCode) {
   return `${count} días seleccionados`;
 }
 
-async function uploadProductImage(productId: string, file: File, token: string) {
+async function uploadProductImage(productId: string, file: File, token: string, headers?: Record<string, string>) {
   const body = new FormData();
   body.append("file", file);
   const response = await fetch(`${apiBaseUrl}${productImageUploadPath(productId)}`, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${token}`
+      Authorization: `Bearer ${token}`,
+      ...headers,
     },
     body
   });
@@ -603,19 +606,21 @@ async function uploadProductImage(productId: string, file: File, token: string) 
   }
 }
 
-async function createProductRequest(body: ReturnType<typeof buildCreateProductRequest>, token: string) {
+async function createProductRequest(body: ReturnType<typeof buildCreateProductRequest>, token: string, headers?: Record<string, string>) {
   return apiRequest<ProductCreateResponse>("/products/management", {
     method: "POST",
     token,
-    body
+    body,
+    headers
   });
 }
 
-async function updateProductRequest(productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string) {
+async function updateProductRequest(productId: string, body: ReturnType<typeof buildCreateProductRequest>, token: string, headers?: Record<string, string>) {
   return apiRequest<ProductCreateResponse>(`/products/management/${encodeURIComponent(productId)}`, {
     method: "PUT",
     token,
-    body
+    body,
+    headers
   });
 }
 
@@ -625,18 +630,27 @@ export async function saveProductWithOptionalImage({
   imageFile,
   productId,
   initialData,
+  requestHeaders,
   createProduct = createProductRequest,
   updateProduct = updateProductRequest,
   uploadImage = uploadProductImage
 }: SaveProductOptions): Promise<SaveProductResult> {
   const product = productId
-    ? await updateProduct(productId, buildCreateProductRequest(form, initialData), token)
-    : await createProduct(buildCreateProductRequest(form, initialData), token);
+    ? requestHeaders
+      ? await updateProduct(productId, buildCreateProductRequest(form, initialData), token, requestHeaders)
+      : await updateProduct(productId, buildCreateProductRequest(form, initialData), token)
+    : requestHeaders
+      ? await createProduct(buildCreateProductRequest(form, initialData), token, requestHeaders)
+      : await createProduct(buildCreateProductRequest(form, initialData), token);
   if (!imageFile) {
     return { product, imageUploadFailed: false };
   }
   try {
-    await uploadImage(product.id, imageFile, token);
+    if (requestHeaders) {
+      await uploadImage(product.id, imageFile, token, requestHeaders);
+    } else {
+      await uploadImage(product.id, imageFile, token);
+    }
     return { product, imageUploadFailed: false };
   } catch {
     return { product, imageUploadFailed: true };
@@ -687,12 +701,16 @@ export function ProductCreateDialog({
   open,
   locale,
   token,
+  operationalAuthorizationId,
   editProduct,
   initialForm,
   onClose,
   onCreated
 }: ProductCreateDialogProps) {
   const t = createTranslator(locale);
+  const requestHeaders = operationalAuthorizationId
+    ? { "X-Operational-Authorization": operationalAuthorizationId }
+    : undefined;
   const initialFormSignature = JSON.stringify(initialForm ?? {});
   const [form, setForm] = useState<ProductCreateFormState>(() => createProductFormFromInitial(editProduct, initialForm));
   const [families, setFamilies] = useState<FamilyView[]>([]);
@@ -800,7 +818,7 @@ export function ProductCreateDialog({
     let active = true;
     let objectUrl = "";
     void fetch(`${apiBaseUrl}${productImageReadPath(editProduct.id)}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, ...requestHeaders }
     }).then((response) => {
       if (!response.ok) throw new Error("product_image_unavailable");
       return response.blob();
@@ -815,7 +833,7 @@ export function ProductCreateDialog({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [editProduct?.id, editProduct?.imageId, open, token]);
+  }, [editProduct?.id, editProduct?.imageId, open, operationalAuthorizationId, token]);
 
   useEffect(() => {
     if (!open || !token || !editProduct?.id) {
@@ -824,7 +842,10 @@ export function ProductCreateDialog({
     }
 
     let cancelled = false;
-    apiRequest<ProductSupplierView[]>(`/products/${encodeURIComponent(editProduct.id)}/suppliers`, { token })
+    apiRequest<ProductSupplierView[]>(`/products/${encodeURIComponent(editProduct.id)}/suppliers`, {
+      token,
+      headers: requestHeaders
+    })
       .then((nextSuppliers) => {
         if (!cancelled) {
           setProductSuppliers(nextSuppliers);
@@ -839,7 +860,7 @@ export function ProductCreateDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, token, editProduct?.id, locale]);
+  }, [open, token, editProduct?.id, operationalAuthorizationId, locale]);
 
   useEffect(() => {
     if (!open || !token) {
@@ -1348,7 +1369,8 @@ export function ProductCreateDialog({
         token,
         imageFile,
         productId: editProduct?.id,
-        initialData: editProduct?.initialData
+        initialData: editProduct?.initialData,
+        requestHeaders
       });
       onCreated?.(result.product);
       resetDialogState();
@@ -1384,7 +1406,8 @@ export function ProductCreateDialog({
     try {
       const product = await apiRequest<ProductCreateResponse>(productImageReadPath(editProduct.id), {
         method: "DELETE",
-        token
+        token,
+        headers: requestHeaders
       });
       setExistingImagePreview("");
       onCreated?.(product);
@@ -1423,6 +1446,7 @@ export function ProductCreateDialog({
           {
             method: "PUT",
             token,
+            headers: requestHeaders,
             body: { supplierReference: selected.supplierReference ?? null, principal: true }
           }
         );
@@ -1432,13 +1456,14 @@ export function ProductCreateDialog({
           {
             method: "PUT",
             token,
+            headers: requestHeaders,
             body: { supplierReference: currentPrincipal.supplierReference ?? null, principal: false }
           }
         );
       }
       const nextSuppliers = await apiRequest<ProductSupplierView[]>(
         `/products/${encodeURIComponent(editProduct.id)}/suppliers`,
-        { token }
+        { token, headers: requestHeaders }
       );
       setProductSuppliers(nextSuppliers);
       setSelectedPrincipalSupplierId(nextSuppliers.find((supplier) => supplier.principal)?.supplierId ?? "");

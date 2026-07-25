@@ -21,7 +21,10 @@ public interface DocumentPaymentRepository extends JpaRepository<DocumentPayment
             where document.tiendaId = :storeId
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado not in (
                   com.tpverp.backend.document.DocumentStatus.BORRADOR,
                   com.tpverp.backend.document.DocumentStatus.ANULADO)
@@ -61,7 +64,10 @@ public interface DocumentPaymentRepository extends JpaRepository<DocumentPayment
               and document.clienteId is not null
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado not in (
                   com.tpverp.backend.document.DocumentStatus.BORRADOR,
                   com.tpverp.backend.document.DocumentStatus.ANULADO)

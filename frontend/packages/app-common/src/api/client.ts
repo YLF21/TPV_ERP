@@ -4,6 +4,7 @@ type ApiRequestOptions = {
   method?: string;
   token?: string;
   body?: unknown;
+  headers?: Record<string, string>;
 };
 
 export class ApiError extends Error {
@@ -43,6 +44,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         ...(!multipart ? { "Content-Type": "application/json" } : {}),
         "X-Request-ID": requestId,
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...options.headers,
       },
       body: serializeRequestBody(options.body)
     });

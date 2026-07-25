@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -40,23 +41,55 @@ public class PosCashController {
             UUID customerId,
             @NotEmpty List<@Valid LineRequest> lines,
             String discountAuthorizationToken,
-            String promotionalCouponCode) {
+            String promotionalCouponCode,
+            @DecimalMin("0.00") BigDecimal checkoutDiscountAmount) {
         public SaleRequest(UUID customerId, List<LineRequest> lines) {
-            this(customerId, lines, null, null);
+            this(customerId, lines, null, null, null);
         }
 
         public SaleRequest(
                 UUID customerId,
                 List<LineRequest> lines,
                 String discountAuthorizationToken) {
-            this(customerId, lines, discountAuthorizationToken, null);
+            this(customerId, lines, discountAuthorizationToken, null, null);
+        }
+
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken,
+                String promotionalCouponCode) {
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode, null);
         }
     }
 
     public record LineRequest(
             @NotNull UUID productId,
-            @NotNull @DecimalMin("0.01") BigDecimal quantity,
-            @NotNull @DecimalMin("0.00") BigDecimal discount) {}
+            @NotNull BigDecimal quantity,
+            @NotNull @DecimalMin("0.00") BigDecimal discount,
+            BigDecimal openUnitPrice,
+            List<String> serialNumbers) {
+        public LineRequest(
+                UUID productId,
+                BigDecimal quantity,
+                BigDecimal discount,
+                BigDecimal openUnitPrice) {
+            this(productId, quantity, discount, openUnitPrice, List.of());
+        }
+
+        public LineRequest(
+                UUID productId,
+                BigDecimal quantity,
+                BigDecimal discount) {
+            this(productId, quantity, discount, null, List.of());
+        }
+
+        @AssertTrue(message = "La cantidad debe ser positiva o exactamente -1")
+        public boolean isQuantityAllowed() {
+            return quantity != null
+                    && (quantity.signum() > 0 || quantity.compareTo(BigDecimal.ONE.negate()) == 0);
+        }
+    }
 
     public record CashRequest(
             @NotNull UUID checkoutId,

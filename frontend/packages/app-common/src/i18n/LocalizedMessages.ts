@@ -7,11 +7,12 @@ import { securityMessages } from "./SecurityMessages";
 import { warehouseManagementMessages } from "./WarehouseMessages";
 import { verifactuManagementMessages } from "./VerifactuMessages";
 import { rectificationMessages } from "./RectificationMessages";
+import { sharedManagementMessages } from "./SharedManagementMessages";
 
 export const messages: Record<LocaleCode, Record<string, string>> = {
-  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...verifactuManagementMessages("es"), ...rectificationMessages("es") },
-  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...verifactuManagementMessages("en"), ...rectificationMessages("en") },
-  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...verifactuManagementMessages("zh"), ...rectificationMessages("zh") }
+  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...verifactuManagementMessages("es"), ...rectificationMessages("es"), ...sharedManagementMessages("es") },
+  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...verifactuManagementMessages("en"), ...rectificationMessages("en"), ...sharedManagementMessages("en") },
+  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...verifactuManagementMessages("zh"), ...rectificationMessages("zh"), ...sharedManagementMessages("zh") }
 };
 
 export class LocalizedMessages {

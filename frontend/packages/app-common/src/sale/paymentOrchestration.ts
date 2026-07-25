@@ -1,14 +1,18 @@
 import { ApiError } from "../api/client";
 
-export type AllocationKind = "CASH" | "MANUAL_CARD" | "INTEGRATED_CARD" | "VOUCHER";
+export type AllocationKind = "CASH" | "MANUAL_CARD" | "INTEGRATED_CARD" | "VOUCHER" | "TRANSFER" | "PENDING";
 export type AllocationStatus = "READY" | "PENDING" | "APPROVED" | "DECLINED" | "TIMEOUT" | "ERROR" | "CANCELLED";
 
 export type PaymentAllocation = {
   kind: AllocationKind;
   amountCents: number;
+  deliveredCents?: number;
+  changeCents?: number;
+  comment?: string;
   idempotencyKey: string;
   status: AllocationStatus;
   provider?: string;
+  voucherCode?: string;
   reference?: string;
   authorization?: string;
   operationId?: string;

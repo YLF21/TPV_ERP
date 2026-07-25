@@ -62,8 +62,8 @@ describe("WarehouseDocumentDialog", () => {
     expect(html).toContain("Archivo");
     expect(html).toContain("Guardar F9");
     expect(html).toContain("Salir Esc");
-    expect(html).toContain("Cliente/Destino");
-    expect(html).toContain("Descuento total documento %");
+    expect(html).toContain("Cliente/destino");
+    expect(html).toContain("Descuento total del documento %");
     expect(html).toContain("Importe total");
     expect(html).not.toContain("Acciones");
     expect(html).not.toContain("Eliminar</button>");
@@ -89,8 +89,31 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html).toContain("Entrada almacén");
-    expect(html).toContain("Proveedor/Origen");
+    expect(html).toContain("Proveedor/origen");
     expect(html).not.toContain("Cliente</span>");
+  });
+
+  it("translates the warehouse document to English while retaining Spanish number formatting", () => {
+    const html = renderToStaticMarkup(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        token="token"
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    expect(html).toContain("File");
+    expect(html).toContain("Customer/destination");
+    expect(html).toContain("Total document discount %");
+    expect(html).toContain("0,00");
+    expect(html).not.toContain("Cliente/destino");
   });
 
   it("keeps draft saving available and hides confirmation without explicit permission", () => {
@@ -184,7 +207,7 @@ describe("WarehouseDocumentDialog", () => {
     expect(documentTotalAfterDiscount(lineTotal, "5")).toBe(152);
   });
 
-  it("keeps backend conflict detail when available", () => {
+  it("uses the translated conflict message instead of exposing backend copy", () => {
     expect(warehouseDocumentRequestErrorMessage(
       new ApiError("La operacion entra en conflicto con los datos existentes", 409, { code: "DATA_INTEGRITY_CONFLICT" }),
       "No se pudo confirmar",
@@ -192,7 +215,7 @@ describe("WarehouseDocumentDialog", () => {
         integrityConflict: "Revisa el documento",
         stateConflict: "Recarga el borrador"
       }
-    )).toBe("La operacion entra en conflicto con los datos existentes");
+    )).toBe("Revisa el documento");
   });
 
   it("persists output line order and widths while keeping existing and new rows aligned", async () => {

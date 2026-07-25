@@ -163,7 +163,8 @@ public class PromotionCatalogGateway {
                     DocumentLineType.PRODUCT,
                     null,
                     null,
-                    null);
+                    null,
+                    pricedLine.serialNumbers());
         }
 
         public void validateTaxSnapshot(

@@ -105,7 +105,17 @@ public class CustomerPendingSaleService {
     public CustomerReceivableView create(
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication) {
+        var document = createDocument(request, authentication);
+        return views.receivableView(document, request.date());
+    }
+
+    @Transactional
+    public CommercialDocument createDocument(
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
         Objects.requireNonNull(request, "request");
+        var completionMode = request.completionMode();
+        validateCompletionMode(request, completionMode);
         var terminalId = currentTerminal.terminalId(authentication);
         var storeId = organization.currentStore().getId();
         var userId = organization.currentUser(authentication).getId();
@@ -128,7 +138,13 @@ public class CustomerPendingSaleService {
 
         var total = authoritativeQuote(request, authentication).getTotal();
         requireQuotedTotal(request, total);
-        var credit = assessCredit(request, total, authentication, true);
+        if (completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY
+                && declaredPayments(request).compareTo(total) != 0) {
+            throw new IllegalArgumentException("sales_document_checkout_payment_total_mismatch");
+        }
+        var credit = completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                ? null
+                : assessCredit(request, total, authentication, true);
         var hash = CustomerPendingSaleRequestHasher.hash(request, total);
 
         if (existing.isEmpty()) {
@@ -150,6 +166,10 @@ public class CustomerPendingSaleService {
         try {
             reservations.lockOwned(checkout.getId(), owner);
             var declaredCard = integratedCardPayment(request);
+            if (completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                    && declaredCard.isPresent()) {
+                throw new IllegalArgumentException("sales_document_draft_cannot_have_payments");
+            }
             var durableCharge = terminalOperations.find(request.checkoutId())
                     .filter(CustomerPendingSaleService::isDurableCharge);
             if (durableCharge.isPresent() && declaredCard.isEmpty()) {
@@ -165,7 +185,11 @@ public class CustomerPendingSaleService {
                         declaredCard.orElseThrow().amount(), terminalId, storeId);
             }
             var commands = paymentCommands(request, cardOperation, terminalId);
-            var document = documents.createPendingSale(
+            var document = completionMode
+                    == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                    ? documents.createPendingSaleDraft(
+                    request.toCommand(), request.dueDate(), authentication)
+                    : documents.createPendingSale(
                     request.toCommand(), request.dueDate(), commands, authentication);
             if (cardOperation != null) {
                 var payment = document.getPagos().stream()
@@ -178,12 +202,26 @@ public class CustomerPendingSaleService {
             }
             checkout.complete(document.getId(), Instant.now(clock));
             checkouts.save(checkout);
-            if (credit.overrideUsed()) {
+            if (credit != null && credit.overrideUsed()) {
                 recordCreditOverride(request, document, credit);
             }
-            return views.receivableView(document, request.date());
+            return document;
         } catch (RuntimeException failure) {
             throw failure;
+        }
+    }
+
+    private static void validateCompletionMode(
+            CustomerPendingSaleController.CreateRequest request,
+            CustomerPendingSaleController.SalesDocumentCompletionMode completionMode) {
+        var payments = request.payments() == null ? List.of() : request.payments();
+        if ((completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                || completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING)
+                && !payments.isEmpty()) {
+            throw new IllegalArgumentException(
+                    completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
+                            ? "sales_document_draft_cannot_have_payments"
+                            : "sales_document_pending_cannot_have_payments");
         }
     }
 
@@ -198,7 +236,7 @@ public class CustomerPendingSaleService {
                 : new IllegalStateException("payment_operation_resolution_required");
     }
 
-    private Optional<CustomerReceivableView> replayIfCompleted(
+    private Optional<CommercialDocument> replayIfCompleted(
             CustomerPendingSaleCheckout checkout,
             String hash,
             UUID storeId,
@@ -211,8 +249,7 @@ public class CustomerPendingSaleService {
             throw new IllegalStateException("pending_sale_checkout_idempotency_conflict");
         }
         if (!checkout.isCompleted()) return Optional.empty();
-        return Optional.of(views.receivableView(
-                documents.find(checkout.getDocumentId()), request.date()));
+        return Optional.of(documents.find(checkout.getDocumentId()));
     }
 
     private CommercialDocument authoritativeQuote(

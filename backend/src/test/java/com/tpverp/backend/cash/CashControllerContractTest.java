@@ -70,6 +70,8 @@ class CashControllerContractTest {
                 "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("open", PostMapping.class, new String[] {"/sessions/open"},
                 "VENTA", "CASH_OPERATE");
+        assertEndpoint("prepareForSales", PostMapping.class, new String[] {"/sessions/prepare-sales"},
+                "VENTA", "CASH_OPERATE");
         assertEndpoint("close", PostMapping.class, new String[] {"/sessions/close"},
                 "VENTA", "CASH_OPERATE");
         assertEndpoint("entry", PostMapping.class, new String[] {"/movements/entry"},
@@ -137,7 +139,7 @@ class CashControllerContractTest {
     @Test
     void adminCanUpdateCashConfig() throws Exception {
         when(reports.updateConfig(any(), any())).thenReturn(new CashStoreConfigView(
-                STORE_ID, new BigDecimal("1.50"), true, false, true));
+                STORE_ID, new BigDecimal("1.50"), true, false, true, true));
 
         mvc.perform(put("/api/v1/cash/config")
                         .with(user("admin").roles("ADMIN"))
@@ -148,20 +150,22 @@ class CashControllerContractTest {
                                   "discrepancyTolerance": 1.50,
                                   "requireEntryBreakdown": true,
                                   "requireWithdrawalBreakdown": false,
-                                  "requireClosingBreakdown": true
+                                  "requireClosingBreakdown": true,
+                                  "cashSessionRequired": true
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.discrepancyTolerance").value(1.50))
                 .andExpect(jsonPath("$.requireEntryBreakdown").value(true))
                 .andExpect(jsonPath("$.requireWithdrawalBreakdown").value(false))
-                .andExpect(jsonPath("$.requireClosingBreakdown").value(true));
+                .andExpect(jsonPath("$.requireClosingBreakdown").value(true))
+                .andExpect(jsonPath("$.cashSessionRequired").value(true));
     }
 
     @Test
     void omittedCashConfigBooleanBindsAsNullForValidation() throws Exception {
         when(reports.updateConfig(any(), any())).thenReturn(new CashStoreConfigView(
-                STORE_ID, new BigDecimal("1.50"), true, false, true));
+                STORE_ID, new BigDecimal("1.50"), true, false, true, false));
 
         mvc.perform(put("/api/v1/cash/config")
                         .with(user("admin").roles("ADMIN"))

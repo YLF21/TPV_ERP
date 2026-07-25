@@ -1,6 +1,11 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hardwareRouteColumnDefinitions, HardwareSettingsScreen } from "./HardwareSettingsScreen";
+import { defaultHardwareConfig } from "../hardware/hardware";
+import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext, UserSession } from "../types";
 
 const session: UserSession = {
@@ -13,6 +18,11 @@ const terminalContext: TerminalContext = {
   storeName: "Tienda Principal",
   terminalCode: "01"
 };
+
+afterEach(() => {
+  cleanup();
+  Reflect.deleteProperty(window, "tpvDesktop");
+});
 
 describe("HardwareSettingsScreen", () => {
   it("defines a persistent configurable layout for every print route field", () => {
@@ -84,5 +94,65 @@ describe("HardwareSettingsScreen", () => {
 
     expect(html).toContain('class="erp-select__trigger"');
     expect(html).not.toContain("<select");
+  });
+
+  it("verifies a scanner with the fixed automatic timing rule", async () => {
+    const testScannerInput = vi.fn(async (code: string) => ({
+      ok: true as const,
+      code,
+      readAt: "2026-07-25T12:00:00Z",
+    }));
+    const hardware: HardwareBridge = {
+      listPrinters: vi.fn(async () => ({ ok: true as const, printers: [] })),
+      listCustomerDisplays: vi.fn(async () => ({ ok: true as const, displays: [] })),
+      getHardwareConfig: vi.fn(async () => defaultHardwareConfig),
+      saveHardwareConfig: vi.fn(async () => ({ ok: true as const })),
+      printTicket: vi.fn(async () => ({ ok: true as const })),
+      printA4Document: vi.fn(async () => ({ ok: true as const })),
+      openCashDrawer: vi.fn(async () => ({ ok: true as const })),
+      testScannerInput,
+      openCustomerDisplay: vi.fn(async () => ({ ok: true as const })),
+      closeCustomerDisplay: vi.fn(async () => ({ ok: true as const })),
+      updateCustomerDisplay: vi.fn(async () => ({ ok: true as const })),
+    };
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      value: { hardware },
+    });
+    render(<HardwareSettingsScreen
+      app="venta"
+      locale="es"
+      session={session}
+      terminalContext={terminalContext}
+      onBack={vi.fn()}
+      onLocaleChange={vi.fn()}
+      onLogout={vi.fn()}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Escáner código de barras" }));
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    const input = screen.getByPlaceholderText("Escanea o escribe código y pulsa Enter");
+    fireEvent.change(input, { target: { value: "12345" } });
+    const ordinaryEnter = createEvent.keyDown(input, { key: "Enter" });
+    Object.defineProperty(ordinaryEnter, "timeStamp", { value: 1000 });
+    fireEvent(input, ordinaryEnter);
+
+    expect(testScannerInput).not.toHaveBeenCalled();
+    expect(screen.getAllByText("La lectura no cumple los tiempos configurados del escáner")).toHaveLength(2);
+
+    let scanned = "";
+    for (const [index, key] of Array.from("841234").entries()) {
+      const event = createEvent.keyDown(input, { key });
+      Object.defineProperty(event, "timeStamp", { value: 2000 + index * 20 });
+      fireEvent(input, event);
+      scanned += key;
+      fireEvent.change(input, { target: { value: scanned } });
+    }
+    const scannerEnter = createEvent.keyDown(input, { key: "Enter" });
+    Object.defineProperty(scannerEnter, "timeStamp", { value: 2120 });
+    fireEvent(input, scannerEnter);
+
+    await waitFor(() => expect(testScannerInput).toHaveBeenCalledWith("841234"));
+    expect(await screen.findAllByText("Lector verificado por velocidad de escritura")).toHaveLength(2);
   });
 });

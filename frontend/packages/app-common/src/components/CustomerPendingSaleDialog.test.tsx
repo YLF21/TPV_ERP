@@ -79,6 +79,76 @@ describe("customer receivable checkout helpers", () => {
 });
 
 describe("CustomerPendingSaleDialog", () => {
+  it("uses the document checkout endpoint without payment controls for pending confirmation", async () => {
+    const documentDraft: PendingSaleDraft = {
+      ...draft,
+      type: "FACTURA_VENTA",
+      completionMode: "CONFIRM_PENDING",
+    };
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        document: { id: "document-1", numero: "FV-2026-1" },
+        printDocument: {},
+      });
+    const onSuccess = vi.fn();
+
+    render(
+      <CustomerPendingSaleDialog
+        customerName="Cliente"
+        draft={documentDraft}
+        endpointBase="/pos/sales-document-checkouts"
+        allowPayments={false}
+        lockDocumentType
+        title="Confirmar documento pendiente"
+        confirmLabel="Confirmar pendiente"
+        paymentMethods={{}}
+        request={request}
+        onCancel={vi.fn()}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Confirmar documento pendiente" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /añadir efectivo/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar pendiente" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/pos/sales-document-checkouts",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          completionMode: "CONFIRM_PENDING",
+          payments: [],
+          quotedTotal: "10.00",
+        }),
+      }),
+    ));
+    expect(onSuccess).toHaveBeenCalledWith({
+      documentId: "document-1",
+      documentNumber: "FV-2026-1",
+    });
+  });
+
+  it("keeps confirm-and-collect disabled until the full authoritative total is allocated", async () => {
+    const request = vi.fn().mockResolvedValue({ total: "10.00" });
+    render(
+      <CustomerPendingSaleDialog
+        customerName="Cliente"
+        draft={{ ...draft, completionMode: "CONFIRM_AND_PAY" }}
+        endpointBase="/pos/sales-document-checkouts"
+        requireFullPayment
+        paymentMethods={{}}
+        request={request}
+        confirmLabel="Confirmar y cobrar"
+        onCancel={vi.fn()}
+        onSuccess={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "Confirmar y cobrar" })).toBeDisabled();
+  });
+
   it("shows the authoritative credit exposure and requires an auditable supervisor reason", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({

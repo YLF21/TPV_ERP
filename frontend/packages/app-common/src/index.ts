@@ -39,6 +39,20 @@ export { createTranslator, LocalizedMessages, messages } from "./i18n/LocalizedM
 export type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "./types";
 export { addLocalDays, pendingCreateBody, pendingSummary } from "./sale/customerReceivables";
 export type { PendingPaymentAllocation, PendingSaleDraft } from "./sale/customerReceivables";
+export {
+  defaultCheckoutPaymentMethodConfiguration,
+  isReferenceConfigurablePaymentMethod,
+  loadPaymentMethods,
+  managedCheckoutPaymentMethodNames,
+  referenceConfigurablePaymentMethodNames,
+  resolveCheckoutPaymentMethodConfiguration,
+  setPaymentMethodActive,
+  setPaymentMethodReferenceRequirement,
+} from "./sale/paymentMethods";
+export type {
+  CheckoutPaymentMethodConfiguration,
+  PaymentMethodView,
+} from "./sale/paymentMethods";
 export type {
   PromotionPreview,
   PromotionPreviewAppliedPromotion,

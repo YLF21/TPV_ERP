@@ -36,6 +36,7 @@ public class CustomerPendingSaleController {
     @PreAuthorize(CREATE_PERMISSION)
     public CustomerPendingSaleService.Quote quote(
             @Valid @RequestBody CreateRequest request, Authentication authentication) {
+        requireLegacyPendingSale(request);
         return service.quote(request, authentication);
     }
 
@@ -43,6 +44,7 @@ public class CustomerPendingSaleController {
     @PreAuthorize(CREATE_PERMISSION)
     public PaymentTerminalResult chargeCard(
             @Valid @RequestBody CardChargeRequest request, Authentication authentication) {
+        requireLegacyPendingSale(request.sale());
         return service.chargeCard(request, authentication);
     }
 
@@ -50,8 +52,16 @@ public class CustomerPendingSaleController {
     @PreAuthorize(CREATE_PERMISSION)
     public CreateResponse create(
             @Valid @RequestBody CreateRequest request, Authentication authentication) {
+        requireLegacyPendingSale(request);
         var receivable = service.create(request, authentication);
         return new CreateResponse(receivable, printing.document(receivable.documentId()));
+    }
+
+    private static void requireLegacyPendingSale(CreateRequest request) {
+        if (request.completionMode() != null) {
+            throw new IllegalArgumentException(
+                    "sales_document_checkout_endpoint_required");
+        }
     }
 
     public record CreateResponse(CustomerReceivableView receivable,
@@ -68,7 +78,23 @@ public class CustomerPendingSaleController {
             @NotEmpty @Valid List<DocumentRequest.LineRequest> lines,
             List<@Valid PaymentItem> payments,
             @NotNull @DecimalMin("0.00") BigDecimal quotedTotal,
-            @Valid CreditOverride creditOverride) {
+            @Valid CreditOverride creditOverride,
+            SalesDocumentCompletionMode completionMode) {
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride, null);
+        }
 
         public CreateRequest(
                 UUID checkoutId,
@@ -82,7 +108,7 @@ public class CustomerPendingSaleController {
                 List<PaymentItem> payments,
                 BigDecimal quotedTotal) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
-                    globalDiscount, lines, payments, quotedTotal, null);
+                    globalDiscount, lines, payments, quotedTotal, null, null);
         }
 
         DocumentCommand toCommand() {
@@ -125,6 +151,12 @@ public class CustomerPendingSaleController {
     public enum PaymentKind {
         STANDARD,
         INTEGRATED_CARD
+    }
+
+    public enum SalesDocumentCompletionMode {
+        DRAFT,
+        CONFIRM_PENDING,
+        CONFIRM_AND_PAY
     }
 
     public record CardChargeRequest(

@@ -65,6 +65,7 @@ public class ControlAlertDetectionService {
         detectManualDiscount(document, manualDiscounts, terminalId, user.getId(), user.getUserName(), now);
         detectProductDiscount(document, manualDiscounts, terminalId, user.getId(), user.getUserName(), now);
         detectInactiveProducts(document, terminalId, user.getId(), user.getUserName(), now);
+        detectManualNegativeQuantity(document, terminalId, user.getId(), user.getUserName(), now);
     }
 
     @Transactional
@@ -222,6 +223,85 @@ public class ControlAlertDetectionService {
         data.put("documentNumber", document.getNumero());
         data.put("discountedLines", discountedLines);
         for (var rule : activeRules(document.getTiendaId(), ControlAlertType.PRODUCT_DISCOUNT_APPLIED)) {
+            emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
+                    userId, userName, now, data);
+        }
+    }
+
+    @Transactional
+    public void detectCashDrawerOpened(
+            UUID operationId,
+            UUID terminalId,
+            String terminalName,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        var storeId = organization.currentStore().getId();
+        var user = organization.currentUser(authentication);
+        var now = clock.instant();
+        var data = new LinkedHashMap<String, Object>();
+        data.put("terminalCode", terminalName);
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
+        for (var rule : activeRules(storeId, ControlAlertType.CASH_DRAWER_OPENED)) {
+            emit(rule, "CASH_DRAWER", operationId, null, null, terminalId,
+                    user.getId(), user.getUserName(), now, data);
+        }
+    }
+
+    @Transactional
+    public void detectProductCatalogModified(
+            UUID operationId,
+            UUID productId,
+            String productCode,
+            String productName,
+            String mutation,
+            UUID terminalId,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        var storeId = organization.currentStore().getId();
+        var user = organization.currentUser(authentication);
+        var now = clock.instant();
+        var data = new LinkedHashMap<String, Object>();
+        data.put("productId", productId.toString());
+        data.put("productCode", productCode == null ? "" : productCode);
+        data.put("productName", productName);
+        data.put("mutation", mutation);
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
+        for (var rule : activeRules(storeId, ControlAlertType.PRODUCT_CATALOG_MODIFIED)) {
+            emit(rule, "PRODUCT_CATALOG", operationId, null, null, terminalId,
+                    user.getId(), user.getUserName(), now, data);
+        }
+    }
+
+    private void detectManualNegativeQuantity(
+            CommercialDocument document,
+            UUID terminalId,
+            UUID userId,
+            String userName,
+            java.time.Instant now) {
+        var negativeLines = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> line.getCantidad().signum() < 0)
+                .map(line -> Map.<String, Object>of(
+                        "position", line.getPosicion(),
+                        "productId", line.getProductoId().toString(),
+                        "code", line.getCodigo(),
+                        "name", line.getNombre(),
+                        "quantity", line.getCantidad()))
+                .toList();
+        if (negativeLines.isEmpty()) return;
+        var data = new LinkedHashMap<String, Object>();
+        data.put("documentType", document.getTipo().name());
+        data.put("documentNumber", document.getNumero());
+        data.put("negativeLines", negativeLines);
+        for (var rule : activeRules(document.getTiendaId(), ControlAlertType.MANUAL_NEGATIVE_QUANTITY)) {
             emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
                     userId, userName, now, data);
         }

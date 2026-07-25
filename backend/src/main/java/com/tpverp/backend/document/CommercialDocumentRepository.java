@@ -53,7 +53,10 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             where document.tiendaId = :storeId
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
@@ -78,7 +81,10 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             where document.tiendaId = :storeId
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL,
@@ -106,7 +112,10 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.clienteId = :customerId
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL,
@@ -134,7 +143,10 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.tiendaId = :storeId
               and document.tipo in (
                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                  com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                  com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado in (
                   com.tpverp.backend.document.DocumentStatus.PENDIENTE,
                   com.tpverp.backend.document.DocumentStatus.PARCIAL)
@@ -159,7 +171,10 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.clienteId is not null
               and document.tipo in (
                 com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
-                com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+                com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                com.tpverp.backend.document.CommercialDocumentType.TICKET)
+              and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
+                  or document.cuentaCobrar = true)
               and document.estado not in (
                 com.tpverp.backend.document.DocumentStatus.BORRADOR,
                 com.tpverp.backend.document.DocumentStatus.ANULADO)
@@ -194,6 +209,21 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     List<CommercialDocument> findAllByTiendaIdAndTipoInOrderByFechaDesc(
             UUID tiendaId, Collection<CommercialDocumentType> tipos);
+
+    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
+    Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
+            UUID tiendaId, CommercialDocumentType tipo, String numero);
+
+    @Query("""
+            select serial
+              from DocumentLine line
+              join line.serialNumbers serial
+             where line.originalDocumentLineId = :lineId
+               and line.documento.estado not in (
+                   com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                   com.tpverp.backend.document.DocumentStatus.ANULADO)
+            """)
+    List<String> confirmedRefundedSerialNumbers(@Param("lineId") UUID lineId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     @Query("""

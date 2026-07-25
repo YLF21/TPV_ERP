@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { UserSession } from "@tpverp/app-common";
+import { ApiError, type UserSession } from "@tpverp/app-common";
 import { SecurityAdministrationScreen, canManageRoles, canManageUsers } from "./SecurityAdministrationScreen";
 import * as api from "./securityAdministrationApi";
 
@@ -124,9 +124,13 @@ describe("SecurityAdministrationScreen", () => {
 
   it("keeps the delete dialog open when the backend reports assigned users", async () => {
     vi.mocked(api.deleteSecurityRole).mockRejectedValueOnce(
-      new Error("El rol está asignado a 1 usuario. Reasígnalo antes de eliminar el rol.")
+      new ApiError("backend copy", 409, { code: "ROLE_IN_USE", assignedUsers: 1 })
     );
-    render(<SecurityAdministrationScreen mode="roles" session={session(["ROLES_MANAGE"])} t={(key) => key} />);
+    render(<SecurityAdministrationScreen
+      mode="roles"
+      session={session(["ROLES_MANAGE"])}
+      t={(key) => key === "gestion.roles.inUse.one" ? "El rol está asignado a 1 usuario." : key}
+    />);
 
     fireEvent.click(await screen.findByRole("button", { name: /CAJA/ }));
     fireEvent.click(screen.getByRole("button", { name: "gestion.roles.delete" }));

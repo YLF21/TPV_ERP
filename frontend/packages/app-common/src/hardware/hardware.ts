@@ -77,6 +77,7 @@ export type TicketLinePrint = {
   price: number;
   total: number;
   taxesIncluded?: boolean;
+  serialNumbers?: string[];
 };
 
 export type TicketPaymentPrint = {

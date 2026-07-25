@@ -25,8 +25,11 @@ function sortedWarehouses(warehouses: WarehouseManagementRecord[]) {
   ));
 }
 
-function operationErrorMessage(error: unknown, fallback: string) {
-  return error instanceof ApiError || error instanceof Error ? error.message : fallback;
+function operationErrorMessage(error: unknown, fallback: string, conflict?: string) {
+  if (conflict && error instanceof ApiError && error.status === 409) {
+    return conflict;
+  }
+  return fallback;
 }
 
 export function WarehouseManagementScreen({ session, t }: WarehouseManagementScreenProps) {
@@ -145,7 +148,11 @@ export function WarehouseManagementScreen({ session, t }: WarehouseManagementScr
         : t("warehouse.management.deactivated"));
       setPendingActiveChange(null);
     } catch (error) {
-      setConfirmationError(operationErrorMessage(error, t("warehouse.management.statusError")));
+      setConfirmationError(operationErrorMessage(
+        error,
+        t("warehouse.management.statusError"),
+        pendingActiveChange.active ? t("warehouse.management.zeroStockWarning") : undefined
+      ));
     } finally {
       setSaving(false);
     }

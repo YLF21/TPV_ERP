@@ -9,11 +9,18 @@ import {
   type CashInputMode
 } from "../sale/cashInputMode";
 import { PaymentTerminalSettings } from "./PaymentTerminalSettings";
-import { readSaleInterfaceTouchMode, saveSaleInterfaceTouchMode } from "./saleInterfacePreferences";
+import {
+  defaultSaleInterfaceMode,
+  loadSaleInterfaceConfiguration,
+  saveSaleInterfaceConfiguration,
+  type SaleInterfaceMode
+} from "./saleInterfacePreferences";
 import { SystemCompatibilityCard } from "./SystemCompatibilityCard";
 import { CashOperationsCard } from "./CashOperationsCard";
+import { CashPolicySettingsCard } from "./CashPolicySettingsCard";
 import { OperationalStatusCard } from "./OperationalStatusCard";
 import { apiRequest, ApiError } from "../api/client";
+import { hasPermission } from "../auth/auth";
 import {
   readSalesReportOutputPreferences,
   saveSalesReportOutputPreferences,
@@ -33,6 +40,7 @@ type SettingsScreenProps = {
   onLogout?: () => void;
   onOpenHardware?: () => void;
   onOpenReports?: () => void;
+  onSaleInterfaceModeChange?: (mode: SaleInterfaceMode) => void;
   request?: typeof apiRequest;
 };
 
@@ -54,6 +62,7 @@ export function SettingsScreen({
   onLogout,
   onOpenHardware,
   onOpenReports,
+  onSaleInterfaceModeChange,
   request = apiRequest
 }: SettingsScreenProps) {
   const t = createTranslator(locale);
@@ -61,9 +70,13 @@ export function SettingsScreen({
     app === "venta" ? ["terminal", "saleInterface", "user", "reports", "system"] : baseSettingsSections;
   const [selectedSection, setSelectedSection] = useState<SettingsSection>("terminal");
   const [cashInputMode, setCashInputMode] = useState<CashInputMode>(() => readCashInputMode());
-  const [touchModeEnabled, setTouchModeEnabled] = useState(() =>
-    readSaleInterfaceTouchMode(app, terminalContext)
-  );
+  const [saleInterfaceMode, setSaleInterfaceMode] = useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
+  const [savedSaleInterfaceMode, setSavedSaleInterfaceMode] =
+    useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
+  const [saleInterfaceLoading, setSaleInterfaceLoading] = useState(app === "venta");
+  const [saleInterfaceSaving, setSaleInterfaceSaving] = useState(false);
+  const [saleInterfaceMessage, setSaleInterfaceMessage] =
+    useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [reportPreferences, setReportPreferences] = useState(() =>
     readSalesReportOutputPreferences(app, session.username, terminalContext)
   );
@@ -83,16 +96,56 @@ export function SettingsScreen({
   };
 
   useEffect(() => {
-    setTouchModeEnabled(readSaleInterfaceTouchMode(app, terminalContext));
-  }, [app, terminalContext.terminalCode, terminalContext.terminalId]);
+    let active = true;
+    if (app !== "venta" || !session.accessToken) {
+      setSaleInterfaceMode(defaultSaleInterfaceMode);
+      setSavedSaleInterfaceMode(defaultSaleInterfaceMode);
+      setSaleInterfaceLoading(false);
+      return () => { active = false; };
+    }
+    setSaleInterfaceLoading(true);
+    setSaleInterfaceMessage(null);
+    void loadSaleInterfaceConfiguration(session.accessToken, request)
+      .then((configuration) => {
+        if (!active) return;
+        setSaleInterfaceMode(configuration.saleMode);
+        setSavedSaleInterfaceMode(configuration.saleMode);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSaleInterfaceMode(defaultSaleInterfaceMode);
+        setSavedSaleInterfaceMode(defaultSaleInterfaceMode);
+        setSaleInterfaceMessage({ kind: "error", text: t("settings.saleInterface.loadError") });
+      })
+      .finally(() => {
+        if (active) setSaleInterfaceLoading(false);
+      });
+    return () => { active = false; };
+  }, [app, request, session.accessToken, terminalContext.terminalId]);
 
   useEffect(() => {
     setReportPreferences(readSalesReportOutputPreferences(app, session.username, terminalContext));
   }, [app, session.username, terminalContext.terminalCode, terminalContext.terminalId]);
 
-  function updateTouchMode(enabled: boolean) {
-    setTouchModeEnabled(enabled);
-    saveSaleInterfaceTouchMode(app, terminalContext, enabled);
+  async function saveSaleInterfaceMode() {
+    if (!session.accessToken || !hasPermission(session, "CONFIGURACION_TERMINAL")) return;
+    setSaleInterfaceSaving(true);
+    setSaleInterfaceMessage(null);
+    try {
+      const configuration = await saveSaleInterfaceConfiguration(
+        saleInterfaceMode,
+        session.accessToken,
+        request
+      );
+      setSaleInterfaceMode(configuration.saleMode);
+      setSavedSaleInterfaceMode(configuration.saleMode);
+      onSaleInterfaceModeChange?.(configuration.saleMode);
+      setSaleInterfaceMessage({ kind: "success", text: t("settings.saleInterface.saved") });
+    } catch {
+      setSaleInterfaceMessage({ kind: "error", text: t("settings.saleInterface.saveError") });
+    } finally {
+      setSaleInterfaceSaving(false);
+    }
   }
 
   function settingsSectionLabel(section: SettingsSection) {
@@ -244,22 +297,83 @@ export function SettingsScreen({
                   request={request}
                 />
               ) : null}
+              {app === "gestion" && hasPermission(session, "ADMIN") ? (
+                <CashPolicySettingsCard
+                  locale={locale}
+                  token={session.accessToken}
+                  request={request}
+                />
+              ) : null}
               <PaymentTerminalSettings locale={locale} token={session.accessToken} />
             </div>
           )}
           {selectedSection === "saleInterface" && (
             <div className="settings-grid">
-              <article className="settings-card settings-card-wide">
+              <article className="settings-card settings-card-wide settings-sale-interface-card">
                 <h3>{t("settings.saleInterface")}</h3>
                 <p>{t("settings.saleInterface.description")}</p>
-                <label className="settings-toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={touchModeEnabled}
-                    onChange={(event) => updateTouchMode(event.currentTarget.checked)}
-                  />
-                  {t("settings.saleInterface.touchMode")}
-                </label>
+                {saleInterfaceLoading ? (
+                  <p role="status">{t("settings.saleInterface.loading")}</p>
+                ) : (
+                  <>
+                    <fieldset
+                      className="settings-sale-interface-options"
+                      disabled={saleInterfaceSaving || !hasPermission(session, "CONFIGURACION_TERMINAL")}
+                    >
+                      <legend>{t("settings.saleInterface.mode")}</legend>
+                      <label className={saleInterfaceMode === "KEYBOARD" ? "selected" : ""}>
+                        <input
+                          type="radio"
+                          name="sale-interface-mode"
+                          value="KEYBOARD"
+                          checked={saleInterfaceMode === "KEYBOARD"}
+                          onChange={() => setSaleInterfaceMode("KEYBOARD")}
+                        />
+                        <span>
+                          <strong>{t("settings.saleInterface.keyboard")}</strong>
+                          <small>{t("settings.saleInterface.keyboardHelp")}</small>
+                        </span>
+                      </label>
+                      <label className={saleInterfaceMode === "TOUCH" ? "selected" : ""}>
+                        <input
+                          type="radio"
+                          name="sale-interface-mode"
+                          value="TOUCH"
+                          checked={saleInterfaceMode === "TOUCH"}
+                          onChange={() => setSaleInterfaceMode("TOUCH")}
+                        />
+                        <span>
+                          <strong>{t("settings.saleInterface.touch")}</strong>
+                          <small>{t("settings.saleInterface.touchHelp")}</small>
+                        </span>
+                      </label>
+                    </fieldset>
+                    {!hasPermission(session, "CONFIGURACION_TERMINAL") && (
+                      <p className="settings-report-note">{t("settings.saleInterface.permission")}</p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={
+                        saleInterfaceSaving
+                        || saleInterfaceMode === savedSaleInterfaceMode
+                        || !hasPermission(session, "CONFIGURACION_TERMINAL")
+                      }
+                      onClick={() => void saveSaleInterfaceMode()}
+                    >
+                      {saleInterfaceSaving
+                        ? t("settings.saleInterface.saving")
+                        : t("settings.saleInterface.save")}
+                    </button>
+                  </>
+                )}
+                {saleInterfaceMessage && (
+                  <p
+                    className={`settings-user-message ${saleInterfaceMessage.kind}`}
+                    role={saleInterfaceMessage.kind === "error" ? "alert" : "status"}
+                  >
+                    {saleInterfaceMessage.text}
+                  </p>
+                )}
               </article>
             </div>
           )}

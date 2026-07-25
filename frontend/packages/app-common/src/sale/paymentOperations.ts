@@ -19,13 +19,19 @@ export type PaymentRefundLineOption = {
   lineId: string;
   code: string;
   name: string;
-  lineType: "PRODUCT" | "PROMOTION" | "PROMOTIONAL_COUPON";
+  lineType: "PRODUCT" | "PROMOTION" | "PROMOTIONAL_COUPON" | "MANUAL_DISCOUNT";
   purchasedQuantity: number | string;
   refundableQuantity: number | string;
   unitPrice: number | string;
   refundableTotal: number | string;
+  serialNumbers?: string[];
+  refundableSerialNumbers?: string[];
 };
-export type PaymentRefundLineSelection = { lineId: string; quantity: string };
+export type PaymentRefundLineSelection = {
+  lineId: string;
+  quantity: string;
+  serialNumbers?: string[];
+};
 
 export const loadPaymentRefundLines = (id: string, token: string | undefined, request: Request = apiRequest) =>
   request<PaymentRefundLineOption[]>(path(id, "/refund-lines"), { token });

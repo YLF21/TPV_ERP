@@ -14,17 +14,27 @@ final class CustomerPendingSaleRequestHasher {
     static String hash(
             CustomerPendingSaleController.CreateRequest request,
             BigDecimal authoritativeTotal) {
-        var canonical = new Canonical().add("v2")
+        var hasSerialNumbers = request.lines() != null && request.lines().stream()
+                .anyMatch(line -> line.serialNumbers() != null && !line.serialNumbers().isEmpty());
+        var canonical = new Canonical().add(hasSerialNumbers
+                        ? request.completionMode() == null ? "v4-serials" : "v4-sales-document-serials"
+                        : request.completionMode() == null ? "v2" : "v3-sales-document")
                 .add(request.checkoutId()).add(request.type()).add(request.customerId())
                 .add(request.dueDate()).add(request.warehouseId()).add(request.date())
                 .add(decimal(request.globalDiscount()))
                 .add(Money.euros(authoritativeTotal).toPlainString());
+        if (request.completionMode() != null) {
+            canonical.add(request.completionMode());
+        }
         var lines = request.lines() == null ? java.util.List.<DocumentRequest.LineRequest>of()
                 : request.lines();
         canonical.add(lines.size());
         for (var line : lines) {
             canonical.add(line.productoId()).add(decimal(line.cantidad()))
                     .add(decimal(line.descuento()));
+            if (hasSerialNumbers) {
+                canonical.add(PosCashService.canonicalSerialNumbers(line.serialNumbers()));
+            }
         }
         var payments = request.payments() == null
                 ? java.util.List.<CustomerPendingSaleController.PaymentItem>of()

@@ -52,6 +52,16 @@ class LocalizedMessagesTest {
     }
 
     @Test
+    void translatesMissingOpenCashSessionConflict() {
+        var detail = "No hay una sesion de caja abierta";
+
+        assertEquals("No hay una sesión de caja abierta",
+                messages.legacy(detail, SupportedLanguage.ES).orElseThrow());
+        assertEquals("There is no open cash session",
+                messages.legacy(detail, SupportedLanguage.EN).orElseThrow());
+    }
+
+    @Test
     void translatesConfirmedTicketPrintRequirement() {
         var key = "message.document.print_ticket_requires_confirmed_document";
 

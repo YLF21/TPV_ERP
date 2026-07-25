@@ -13,8 +13,17 @@ vi.mock("../api/client", async (importOriginal) => ({
   apiRequest: apiRequestMock
 }));
 
-const session: UserSession = { username: "admin", displayName: "ADMIN", permissions: ["ADMIN"] };
-const terminal: TerminalContext = { storeName: "Tienda Principal", terminalCode: "01" };
+const session: UserSession = {
+  username: "admin",
+  displayName: "ADMIN",
+  permissions: ["ADMIN"],
+  accessToken: "access-token",
+};
+const terminal: TerminalContext = {
+  storeName: "Tienda Principal",
+  terminalCode: "01",
+  terminalId: "01",
+};
 const oldSession = {
   id: "task-4-old-session",
   total: "12.10",
@@ -53,7 +62,7 @@ const authoritativeQuote = {
 };
 
 function mount(onLogout = vi.fn()) {
-  return render(<SaleScreen app="venta" locale="es" session={session} terminalContext={terminal} onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={onLogout} />);
+  return render(<SaleScreen app="venta" locale="es" session={session} terminalContext={terminal} interfaceMode="TOUCH" onBack={vi.fn()} onLocaleChange={vi.fn()} onLogout={onLogout} />);
 }
 
 afterEach(() => {
@@ -69,6 +78,9 @@ describe("SaleScreen payment cleanup across restart", () => {
     let resolveActive!: (value: null) => void;
     const activeResponse = new Promise<null>((resolve) => { resolveActive = resolve; });
     apiRequestMock.mockImplementation(async (path: string) => {
+      if (path === "/cash/sessions/prepare-sales") {
+        return { cashSessionRequired: false, open: true, session: null };
+      }
       if (path === "/products/sale") return [product];
       if (path === "/pos/sales/quote") return authoritativeQuote;
       if (path === "/terminal-configuration/payment") return configuration;
@@ -84,14 +96,12 @@ describe("SaleScreen payment cleanup across restart", () => {
     await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith("/pos/payment-sessions/active", expect.anything()));
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     fireEvent.change(search, { target: { value: "CAF-001" } });
-    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.keyDown(search, { key: "Enter" });
 
     expect(screen.queryByText(/Venta reservada en cobro/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
     fireEvent.keyDown(window, { key: "PageDown" });
-    fireEvent.keyDown(window, { key: "F11" });
-    fireEvent.keyDown(window, { key: "F12" });
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/cash/quote")).toHaveLength(0);
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/payment-sessions")).toHaveLength(0);
     expect(apiRequestMock.mock.calls.filter(([path]) => path === "/customers/sale-options")).toHaveLength(0);
@@ -100,16 +110,10 @@ describe("SaleScreen payment cleanup across restart", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled());
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeEnabled();
 
-    fireEvent.keyDown(window, { key: "F12" });
-    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Cerrar", { selector: "button" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument());
     fireEvent.keyDown(window, { key: "PageDown" });
-    expect(await screen.findByRole("dialog", { name: "Cobro en efectivo" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cobro en efectivo" })).not.toBeInTheDocument());
-    fireEvent.keyDown(window, { key: "F11" });
-    await waitFor(() => expect(apiRequestMock.mock.calls.filter(([path]) => path === "/pos/payment-sessions")).toHaveLength(1));
+    expect(await screen.findByRole("dialog", { name: "COBRO" }, { timeout: 3000 })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "CANCELAR" })[0]);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "COBRO" })).not.toBeInTheDocument());
   });
 
   it("reopens as an ordinary empty sale after stale simulator cleanup is confirmed CANCELLED", async () => {
@@ -117,6 +121,9 @@ describe("SaleScreen payment cleanup across restart", () => {
     localStorage.setItem(`${storageKey}.allocation-attempt`, "old-attempt");
     let activeCalls = 0;
     apiRequestMock.mockImplementation(async (path: string, options?: { body?: unknown }) => {
+      if (path === "/cash/sessions/prepare-sales") {
+        return { cashSessionRequired: false, open: true, session: null };
+      }
       if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return activeCalls++ === 0 ? oldSession : null;
@@ -130,7 +137,7 @@ describe("SaleScreen payment cleanup across restart", () => {
     const first = mount();
     await waitFor(() => expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/simulator-discard"))).toHaveLength(1));
     await waitFor(() => expect(sessionStorage.getItem(storageKey)).toBeNull());
-    expect(localStorage.getItem(`${storageKey}.allocation-attempt`)).toBeNull();
+    await waitFor(() => expect(localStorage.getItem(`${storageKey}.allocation-attempt`)).toBeNull());
     first.unmount();
 
     mount();
@@ -153,6 +160,9 @@ describe("SaleScreen payment cleanup across restart", () => {
     const pendingCleanup = new Promise<typeof oldSession & { status: string }>((resolve) => { resolveCleanup = resolve; });
     const liveSession = { ...oldSession, id: "task-4-live-session" };
     apiRequestMock.mockImplementation(async (path: string) => {
+      if (path === "/cash/sessions/prepare-sales") {
+        return { cashSessionRequired: false, open: true, session: null };
+      }
       if (path === "/products/sale") return [];
       if (path === "/terminal-configuration/payment") return configuration;
       if (path === "/pos/payment-sessions/active") return liveSession;

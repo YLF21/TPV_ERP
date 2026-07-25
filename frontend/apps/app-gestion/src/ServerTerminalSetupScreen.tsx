@@ -80,7 +80,7 @@ export function ServerTerminalSetupScreen({
     } catch (caught) {
       setError(caught instanceof ApiError && caught.status === 401
         ? t("gestion.serverSetup.invalidAdmin")
-        : caught instanceof Error ? caught.message : t("gestion.serverSetup.error"));
+        : t("gestion.serverSetup.error"));
     } finally {
       if (token) {
         void apiRequest("/auth/logout", { method: "POST", token }).catch(() => undefined);

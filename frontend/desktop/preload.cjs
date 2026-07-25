@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld("tpvDesktop", {
     load: () => ipcRenderer.invoke("tpv:terminal-identity:load"),
     save: (identity) => ipcRenderer.invoke("tpv:terminal-identity:save", identity)
   },
+  salesDocuments: {
+    open: (bootstrap) => ipcRenderer.invoke("tpv:sales-documents:open", bootstrap),
+    consumeBootstrap: () => ipcRenderer.invoke("tpv:sales-documents:consume-bootstrap"),
+    close: () => ipcRenderer.invoke("tpv:sales-documents:close")
+  },
   reports: {
     saveFile: (request) => ipcRenderer.invoke("tpv:reports:save-file", request),
     exportPdf: (defaultFileName) => ipcRenderer.invoke("tpv:reports:export-pdf", defaultFileName),

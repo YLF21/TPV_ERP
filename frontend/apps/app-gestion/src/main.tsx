@@ -24,6 +24,7 @@ import { GestionDashboard } from "./GestionDashboard";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
+import { PaymentMethodSettingsScreen } from "./PaymentMethodSettingsScreen";
 import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
 
 const StockScreen = lazy(() =>
@@ -56,7 +57,7 @@ const VerifactuManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "promotions" | "sales" | "stock" | "users" | "roles";
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -108,7 +109,13 @@ function App() {
   }
 
   return (
-    <AppFrame titleKey="gestion.title" locale={locale} session={session} onLogout={() => setSession(null)}>
+    <AppFrame
+      titleKey="gestion.title"
+      locale={locale}
+      session={session}
+      onLocaleChange={setLocale}
+      onLogout={() => setSession(null)}
+    >
       <GestionScreen
         locale={locale}
         session={session}
@@ -126,6 +133,7 @@ function App() {
         onOpenPromotions={() => setModule("promotions")}
         onOpenUsers={() => setModule("users")}
         onOpenRoles={() => setModule("roles")}
+        onOpenPaymentMethods={() => setModule("paymentMethods")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -151,6 +159,7 @@ function GestionScreen({
   onOpenPromotions,
   onOpenUsers,
   onOpenRoles,
+  onOpenPaymentMethods,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -168,6 +177,7 @@ function GestionScreen({
   onOpenPromotions: () => void;
   onOpenUsers: () => void;
   onOpenRoles: () => void;
+  onOpenPaymentMethods: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -175,7 +185,11 @@ function GestionScreen({
   const t = createTranslator(locale);
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
-  const effectiveModule = module === "verifactu" && !verifactuAllowed ? "dashboard" : module;
+  const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
+  const effectiveModule = (module === "verifactu" && !verifactuAllowed)
+    || (module === "paymentMethods" && !canConfigurePaymentMethods)
+    ? "dashboard"
+    : module;
   const canManageProducts = session.permissions.includes("ADMIN")
     || session.permissions.includes("GESTION_PRODUCTO");
   const reports = visibleSalesReports(session).all;
@@ -277,6 +291,17 @@ function GestionScreen({
       : []),
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
+      : []),
+    ...(canConfigurePaymentMethods
+      ? [{
+          key: "configuration",
+          label: t("gestion.configuration.navigation"),
+          children: [{
+            key: "paymentMethods",
+            label: t("gestion.paymentMethods.navigation"),
+            onOpen: onOpenPaymentMethods
+          }]
+        }]
       : [])
   ];
 
@@ -355,6 +380,8 @@ function GestionScreen({
     content = <SecurityAdministrationScreen mode="users" session={session} t={t} />;
   } else if (effectiveModule === "roles" && modules.includes("gestion.roles")) {
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
+  } else if (effectiveModule === "paymentMethods" && canConfigurePaymentMethods) {
+    content = <PaymentMethodSettingsScreen session={session} t={t} />;
   } else {
     content = (
       <GestionDashboard

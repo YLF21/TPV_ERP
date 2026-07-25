@@ -23,5 +23,6 @@ public record SaleProductView(
         boolean taxesIncluded,
         UUID taxId,
         BigDecimal taxPercentage,
-        String taxRegime) {
+        String taxRegime,
+        BigDecimal packageQuantity) {
 }
