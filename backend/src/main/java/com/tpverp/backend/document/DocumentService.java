@@ -321,7 +321,7 @@ public class DocumentService {
     public List<CommercialDocument> listDeliveryNotes(
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
                 documentTypes(includeSalesDocuments, includePurchaseDocuments,
                         SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
@@ -1467,7 +1467,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public List<CommercialDocument> listTickets() {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(), List.of(CommercialDocumentType.TICKET));
     }
 
@@ -1571,7 +1571,7 @@ public class DocumentService {
     public List<CommercialDocument> listInvoices(
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
                 documentTypes(includeSalesDocuments, includePurchaseDocuments,
                         SALES_INVOICES, PURCHASE_INVOICES));

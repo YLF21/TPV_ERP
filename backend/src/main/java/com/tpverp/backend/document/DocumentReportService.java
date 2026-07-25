@@ -7,6 +7,7 @@ import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.shared.api.PagedResult;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -132,7 +133,8 @@ public class DocumentReportService {
         var values = parsedCursor.date() == null
                 ? documents.findReportDocuments(store.getId(), types, pageRequest)
                 : documents.findReportDocumentsAfter(
-                        store.getId(), types, parsedCursor.date(), parsedCursor.id(), pageRequest);
+                        store.getId(), types, parsedCursor.date(),
+                        parsedCursor.occurredAt(), parsedCursor.id(), pageRequest);
         var hasMore = values.size() > limit;
         var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
         var customerIndex = customers.findAllById(values.stream()
@@ -200,19 +202,24 @@ public class DocumentReportService {
 
     private static Cursor parseCursor(String cursor) {
         if (cursor == null || cursor.isBlank()) {
-            return new Cursor(null, null);
+            return new Cursor(null, null, null);
         }
-        var parts = cursor.split("\\|", 2);
-        if (parts.length != 2) {
+        var parts = cursor.split("\\|", 3);
+        if (parts.length != 3) {
             throw new IllegalArgumentException("cursor invalido");
         }
-        return new Cursor(LocalDate.parse(parts[0]), UUID.fromString(parts[1]).toString());
+        return new Cursor(
+                LocalDate.parse(parts[0]),
+                Instant.parse(parts[1]),
+                UUID.fromString(parts[2]).toString());
     }
 
     private static String cursorFor(CommercialDocument document) {
-        return document.getFecha() + "|" + document.getId();
+        return document.getFecha()
+                + "|" + document.getOperationalOccurredAt()
+                + "|" + document.getId();
     }
 
-    private record Cursor(LocalDate date, String id) {
+    private record Cursor(LocalDate date, Instant occurredAt, String id) {
     }
 }

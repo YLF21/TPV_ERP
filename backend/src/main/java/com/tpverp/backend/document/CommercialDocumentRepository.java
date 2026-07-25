@@ -207,8 +207,18 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     Optional<CommercialDocument> findByIdAndTiendaId(UUID id, UUID tiendaId);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
-    List<CommercialDocument> findAllByTiendaIdAndTipoInOrderByFechaDesc(
-            UUID tiendaId, Collection<CommercialDocumentType> tipos);
+    @Query("""
+            select document
+            from CommercialDocument document
+            where document.tiendaId = :storeId
+              and document.tipo in :types
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
+            """)
+    List<CommercialDocument> findAllByStoreAndTypesOrderByRecency(
+            @Param("storeId") UUID storeId,
+            @Param("types") Collection<CommercialDocumentType> types);
 
     @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
     Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
@@ -231,7 +241,9 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             from CommercialDocument document
             where document.tiendaId = :storeId
               and document.tipo in :types
-            order by document.fecha desc, cast(document.id as string) desc
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
             """)
     List<CommercialDocument> findReportDocuments(
             @Param("storeId") UUID storeId,
@@ -246,14 +258,26 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.tipo in :types
               and (
                   document.fecha < :cursorDate
-                  or (document.fecha = :cursorDate and cast(document.id as string) < :cursorId)
+                  or (
+                      document.fecha = :cursorDate
+                      and (
+                          coalesce(document.confirmadoEn, document.creadoEn) < :cursorOccurredAt
+                          or (
+                              coalesce(document.confirmadoEn, document.creadoEn) = :cursorOccurredAt
+                              and cast(document.id as string) < :cursorId
+                          )
+                      )
+                  )
               )
-            order by document.fecha desc, cast(document.id as string) desc
+            order by document.fecha desc,
+                     coalesce(document.confirmadoEn, document.creadoEn) desc,
+                     cast(document.id as string) desc
             """)
     List<CommercialDocument> findReportDocumentsAfter(
             @Param("storeId") UUID storeId,
             @Param("types") Collection<CommercialDocumentType> types,
             @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorOccurredAt") Instant cursorOccurredAt,
             @Param("cursorId") String cursorId,
             Pageable pageable);
 
