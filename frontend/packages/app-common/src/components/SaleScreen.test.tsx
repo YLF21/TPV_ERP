@@ -484,6 +484,7 @@ describe("SaleScreen", () => {
   });
 
   it("focuses product search with F5 and opens customer selection with F6", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -496,7 +497,19 @@ describe("SaleScreen", () => {
     expect(search).toHaveFocus();
 
     fireEvent.keyDown(window, { key: "F6" });
-    expect(screen.getByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Seleccionar cliente" });
+    const customerSearch = await within(dialog).findByRole("textbox", { name: "Buscar cliente" });
+    expect(customerSearch).toHaveFocus();
+
+    const closeButtons = within(dialog).getAllByRole("button", { name: "Cerrar" });
+    closeButtons[0].focus();
+    await user.tab({ shift: true });
+    expect(closeButtons.at(-1)).toHaveFocus();
+
+    customerSearch.focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    expect(search).toHaveFocus();
   });
 
   it("opens quantity, discount and remove-line dialogs from their shortcuts", async () => {

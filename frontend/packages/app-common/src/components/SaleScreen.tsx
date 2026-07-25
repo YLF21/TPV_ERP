@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -722,6 +722,7 @@ export function SaleScreen({
   const [verifactuRefreshSignal, setVerifactuRefreshSignal] = useState(0);
   const [selectedSearchProductId, setSelectedSearchProductId] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const customerSearchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
   const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -1889,10 +1890,16 @@ export function SaleScreen({
       )}
 
       {actionDialog === "customer" && (
-        <SaleActionDialog title={t("sale.customer.title")} closeLabel={t("sale.dialog.close")} onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }} wide>
+        <SaleActionDialog
+          title={t("sale.customer.title")}
+          closeLabel={t("sale.dialog.close")}
+          initialFocusRef={customerSearchInputRef}
+          onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}
+          wide
+        >
           <label>
             <span>{t("sale.customer.search")}</span>
-            <input aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
+            <input ref={customerSearchInputRef} aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
           </label>
           {customerLoading && <p className="sale-search-status">{t("sale.customer.loading")}</p>}
           {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
@@ -1968,6 +1975,7 @@ function SaleActionDialog({
   onClose,
   onKeyDown,
   onConfirm,
+  initialFocusRef,
   wide = false
 }: {
   title: string;
@@ -1976,8 +1984,19 @@ function SaleActionDialog({
   onClose: () => void;
   onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
   onConfirm?: () => void;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   wide?: boolean;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const root = dialogRef.current;
+    if (!root) return;
+    const deactivate = activateModalFocusTrap(root as unknown as ModalFocusRoot, document);
+    initialFocusRef?.current?.focus();
+    return deactivate;
+  }, [initialFocusRef]);
+
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     onKeyDown?.(event);
     if (event.defaultPrevented || event.repeat) return;
@@ -1994,7 +2013,7 @@ function SaleActionDialog({
 
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
+      <section ref={dialogRef} className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
         <header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>x</button></header>
         {children}
       </section>

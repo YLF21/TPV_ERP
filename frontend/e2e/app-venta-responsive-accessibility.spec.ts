@@ -22,18 +22,21 @@ const localeLabels = {
     quantityDialog: "Cambiar cantidad",
     quantityInput: "Nueva cantidad",
     customerDialog: "Seleccionar cliente",
+    customerSearch: "Buscar cliente",
     searchProduct: "Buscar producto"
   },
   en: {
     quantityDialog: "Change quantity",
     quantityInput: "New quantity",
     customerDialog: "Select customer",
+    customerSearch: "Search customer",
     searchProduct: "Search product"
   },
   zh: {
     quantityDialog: "\u66f4\u6539\u6570\u91cf",
     quantityInput: "\u65b0\u6570\u91cf",
     customerDialog: "\u9009\u62e9\u5ba2\u6237",
+    customerSearch: "\u641c\u7d22\u5ba2\u6237",
     searchProduct: "\u641c\u7d22\u5546\u54c1"
   }
 } as const;
@@ -87,8 +90,14 @@ for (const viewport of viewports) {
       const customerDialog = page.getByRole("dialog", { name: localeLabels[locale].customerDialog });
       await expectWithinViewport(customerDialog, viewport);
       await expectNoHorizontalOverflow(page, viewport);
+      await expect(customerDialog.getByRole("textbox", {
+        name: localeLabels[locale].customerSearch
+      })).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(customerDialog).toBeHidden();
+      await expect(page.getByRole("combobox", {
+        name: localeLabels[locale].searchProduct
+      })).toBeFocused();
 
       await expectInteractiveControlsToHaveAccessibleNames(page);
     });
