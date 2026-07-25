@@ -1866,7 +1866,10 @@ export function SaleScreen({
         <SaleActionDialog title={t("sale.discountAuthorization.title")} closeLabel={t("sale.dialog.close")} onClose={() => { setManagerPassword(""); setActionDialog(null); }}>
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); void authorizeDiscount(); }}>
             <p>
-              {saleMainMessage(t, "sale.discountAuthorization.exceedsLimit", { discount: formatSaleAmount(discountAuthorizationPercent), limit: formatSaleAmount(userDiscountLimit) })}
+              {saleMainMessage(t, "sale.discountAuthorization.exceedsLimit", {
+                discount: formatSalePercentage(discountAuthorizationPercent, locale),
+                limit: formatSalePercentage(userDiscountLimit, locale),
+              })}
             </p>
             <label>
               <span>{t("sale.discountAuthorization.managerUser")}</span>
@@ -2003,5 +2006,16 @@ function formatSaleAmount(value: number | string | null | undefined) {
   return Number(value ?? 0).toLocaleString("es-ES", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
+  });
+}
+
+function formatSalePercentage(
+  value: number | string | null | undefined,
+  locale: LocaleCode,
+) {
+  const numberLocale = locale === "es" ? "es-ES" : locale === "zh" ? "zh-CN" : "en-US";
+  return Number(value ?? 0).toLocaleString(numberLocale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }

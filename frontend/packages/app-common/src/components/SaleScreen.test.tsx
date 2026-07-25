@@ -519,7 +519,7 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Anular línea" })).toBeInTheDocument();
   });
 
   it.each([
@@ -531,21 +531,21 @@ describe("SaleScreen", () => {
       quantityTitle: "Cambiar cantidad",
       quantityLabel: "Cantidad",
       quantityInput: "Nueva cantidad",
-      quantityInvalid: "La cantidad debe ser un numero entero entre 1 y 9999",
+      quantityInvalid: "La cantidad debe ser un número entero entre 1 y 9999",
       discountTitle: "Aplicar descuento",
       discountLabel: "Descuento (%)",
       discountInput: "Nuevo descuento",
       discountInvalid: "El descuento debe estar entre 0 y 100",
       customerTitle: "Seleccionar cliente",
       customerSearch: "Buscar cliente",
-      customerPlaceholder: "Nombre, documento o codigo",
+      customerPlaceholder: "Nombre, documento o código",
       customerLoading: "Cargando clientes...",
       customerNone: "Sin cliente",
       customerUnnamed: "Cliente sin nombre",
-      customerNoCode: "Sin codigo",
-      removeTitle: "Anular linea",
-      removeConfirm: "Se eliminara Cafe molido del ticket.",
-      removeAction: "Anular linea",
+      customerNoCode: "Sin código",
+      removeTitle: "Anular línea",
+      removeConfirm: "Se eliminará Cafe molido del ticket.",
+      removeAction: "Anular línea",
     }],
     ["en", {
       productSearch: "Search product",
@@ -666,9 +666,9 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", title: "Autorizacion de descuento", explanation: "El descuento del 10,00% supera tu limite del 5,00%.", managerUser: "Usuario responsable", managerPassword: "Contrasena del responsable", cancel: "Cancelar", authorize: "Autorizar" }],
-    ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", title: "Discount authorization", explanation: "The 10,00% discount exceeds your 5,00% limit.", managerUser: "Manager username", managerPassword: "Manager password", cancel: "Cancel", authorize: "Authorize" }],
-    ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", title: "\u6298\u6263\u6388\u6743", explanation: "10,00% \u7684\u6298\u6263\u8d85\u8fc7\u4e86\u60a8\u7684 5,00% \u9650\u5236\u3002", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", cancel: "\u53d6\u6d88", authorize: "\u6388\u6743" }],
+    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", title: "Autorización de descuento", explanation: "El descuento del 10,00% supera tu límite del 5,00%.", managerUser: "Usuario responsable", managerPassword: "Contraseña del responsable", cancel: "Cancelar", authorize: "Autorizar" }],
+    ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", title: "Discount authorization", explanation: "The 10.00% discount exceeds your 5.00% limit.", managerUser: "Manager username", managerPassword: "Manager password", cancel: "Cancel", authorize: "Authorize" }],
+    ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", title: "\u6298\u6263\u6388\u6743", explanation: "10.00% \u7684\u6298\u6263\u8d85\u8fc7\u4e86\u60a8\u7684 5.00% \u9650\u5236\u3002", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", cancel: "\u53d6\u6d88", authorize: "\u6388\u6743" }],
   ] as const)("localizes discount authorization in %s", async (locale, expected) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
@@ -693,7 +693,7 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", managerUser: "Usuario responsable", managerPassword: "Contrasena del responsable", authorize: "Autorizar", error: "No se pudo autorizar el descuento" }],
+    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", managerUser: "Usuario responsable", managerPassword: "Contraseña del responsable", authorize: "Autorizar", error: "No se pudo autorizar el descuento" }],
     ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", managerUser: "Manager username", managerPassword: "Manager password", authorize: "Authorize", error: "The discount could not be authorized" }],
     ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", authorize: "\u6388\u6743", error: "\u65e0\u6cd5\u6388\u6743\u6298\u6263" }],
   ] as const)("localizes the discount authorization fallback in %s", async (locale, expected) => {
@@ -750,10 +750,10 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Anular línea" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Anular línea" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
   });
 
@@ -770,10 +770,10 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    expect(screen.getByRole("dialog", { name: "Anular linea" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Anular línea" })).toBeInTheDocument();
     await user.keyboard("{Enter}");
 
-    expect(screen.queryByRole("dialog", { name: "Anular linea" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Anular línea" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
   });
 
@@ -801,7 +801,7 @@ describe("SaleScreen", () => {
     }
 
     fireEvent.keyDown(window, { key: "Delete" });
-    fireEvent.click(screen.getByRole("button", { name: "Anular linea" }));
+    fireEvent.click(screen.getByRole("button", { name: "Anular línea" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/sale-line-deletions"))).toBe(true));
     const [, request] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/sale-line-deletions"))!;
@@ -848,7 +848,7 @@ describe("SaleScreen", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Pan integral/ }));
 
     fireEvent.keyDown(window, { key: "Delete" });
-    fireEvent.click(screen.getByRole("button", { name: "Anular linea" }));
+    fireEvent.click(screen.getByRole("button", { name: "Anular línea" }));
 
     expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
