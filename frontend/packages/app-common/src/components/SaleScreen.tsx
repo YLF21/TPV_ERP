@@ -919,10 +919,11 @@ export function SaleScreen({
   function saveQuantity() {
     if (!selectedProductId) return;
     try {
-      setLines((current) => updateSaleLineQuantity(current, selectedProductId, Number(quantityInput)));
+      const nextLines = updateSaleLineQuantity(lines, selectedProductId, Number(quantityInput));
+      setLines(nextLines);
       setActionDialog(null);
     } catch {
-      setActionError("La cantidad debe ser un numero entero entre 1 y 9999");
+      setActionError(t("sale.quantity.invalid"));
     }
   }
 
@@ -945,7 +946,7 @@ export function SaleScreen({
     } catch (error) {
       setActionError(error instanceof Error && error.message === "discount_blocked"
         ? t("sale.discountBlocked")
-        : "El descuento debe estar entre 0 y 100");
+        : t("sale.discount.invalid"));
     }
   }
 
@@ -968,7 +969,7 @@ export function SaleScreen({
       setActionDialog(null);
     } catch (error) {
       setManagerPassword("");
-      setActionError(error instanceof Error ? error.message : "No se pudo autorizar el descuento");
+      setActionError(t("sale.discountAuthorization.error"));
     } finally {
       setManagerAuthorizationBusy(false);
     }

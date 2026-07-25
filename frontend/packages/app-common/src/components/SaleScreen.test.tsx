@@ -531,9 +531,11 @@ describe("SaleScreen", () => {
       quantityTitle: "Cambiar cantidad",
       quantityLabel: "Cantidad",
       quantityInput: "Nueva cantidad",
+      quantityInvalid: "La cantidad debe ser un numero entero entre 1 y 9999",
       discountTitle: "Aplicar descuento",
       discountLabel: "Descuento (%)",
       discountInput: "Nuevo descuento",
+      discountInvalid: "El descuento debe estar entre 0 y 100",
       customerTitle: "Seleccionar cliente",
       customerSearch: "Buscar cliente",
       customerPlaceholder: "Nombre, documento o codigo",
@@ -553,9 +555,11 @@ describe("SaleScreen", () => {
       quantityTitle: "Change quantity",
       quantityLabel: "Quantity",
       quantityInput: "New quantity",
+      quantityInvalid: "Quantity must be a whole number between 1 and 9999",
       discountTitle: "Apply discount",
       discountLabel: "Discount (%)",
       discountInput: "New discount",
+      discountInvalid: "Discount must be between 0 and 100",
       customerTitle: "Select customer",
       customerSearch: "Search customer",
       customerPlaceholder: "Name, document or code",
@@ -575,9 +579,11 @@ describe("SaleScreen", () => {
       quantityTitle: "\u66f4\u6539\u6570\u91cf",
       quantityLabel: "\u6570\u91cf",
       quantityInput: "\u65b0\u6570\u91cf",
+      quantityInvalid: "\u6570\u91cf\u5fc5\u987b\u662f 1 \u5230 9999 \u4e4b\u95f4\u7684\u6574\u6570",
       discountTitle: "\u5e94\u7528\u6298\u6263",
       discountLabel: "\u6298\u6263 (%)",
       discountInput: "\u65b0\u6298\u6263",
+      discountInvalid: "\u6298\u6263\u5fc5\u987b\u5728 0 \u5230 100 \u4e4b\u95f4",
       customerTitle: "\u9009\u62e9\u5ba2\u6237",
       customerSearch: "\u641c\u7d22\u5ba2\u6237",
       customerPlaceholder: "\u540d\u79f0\u3001\u8bc1\u4ef6\u6216\u4ee3\u7801",
@@ -590,6 +596,7 @@ describe("SaleScreen", () => {
       removeAction: "\u5220\u9664\u884c",
     }],
   ] as const)("localizes sale action dialogs in %s", async (locale, expected) => {
+    const user = userEvent.setup();
     let resolveCustomers!: (response: Response) => void;
     const customersResponse = new Promise<Response>((resolve) => { resolveCustomers = resolve; });
     vi.stubGlobal("fetch", vi.fn((url: string) => {
@@ -613,6 +620,12 @@ describe("SaleScreen", () => {
     expect(within(dialog).getByRole("button", { name: expected.close })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
+    const quantityInput = within(dialog).getByRole("spinbutton", { name: expected.quantityInput });
+    await user.clear(quantityInput);
+    await user.type(quantityInput, "0");
+    await waitFor(() => expect(quantityInput).toHaveValue(0));
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(await within(dialog).findByText(expected.quantityInvalid)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
 
     fireEvent.keyDown(window, { key: "F7" });
@@ -621,6 +634,12 @@ describe("SaleScreen", () => {
     expect(within(dialog).getByRole("spinbutton", { name: expected.discountInput })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.save })).toBeInTheDocument();
+    const discountInput = within(dialog).getByRole("spinbutton", { name: expected.discountInput });
+    await user.clear(discountInput);
+    await user.type(discountInput, "101");
+    await waitFor(() => expect(discountInput).toHaveValue(101));
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(await within(dialog).findByText(expected.discountInvalid)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: expected.cancel }));
 
     fireEvent.keyDown(window, { key: "F6" });
@@ -671,6 +690,35 @@ describe("SaleScreen", () => {
     expect(within(dialog).getByLabelText(expected.managerPassword)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: expected.authorize })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", managerUser: "Usuario responsable", managerPassword: "Contrasena del responsable", authorize: "Autorizar", error: "No se pudo autorizar el descuento" }],
+    ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", managerUser: "Manager username", managerPassword: "Manager password", authorize: "Authorize", error: "The discount could not be authorized" }],
+    ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", authorize: "\u6388\u6743", error: "\u65e0\u6cd5\u6388\u6743\u6298\u6263" }],
+  ] as const)("localizes the discount authorization fallback in %s", async (locale, expected) => {
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/pos/discount-authorizations")) return Promise.resolve(new Response("", { status: 500 }));
+      return Promise.resolve(new Response(JSON.stringify([products[0]]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+    }));
+    renderSaleScreen(vi.fn(), locale, { ...session, permissions: ["APLICAR_DESCUENTO"], maxDiscountPercent: 5 });
+    const search = await screen.findByRole("combobox", { name: expected.productSearch });
+    await waitFor(() => expect(search).toBeEnabled());
+    fireEvent.change(search, { target: { value: "CAF-001" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Cafe molido/ }));
+    fireEvent.keyDown(window, { key: "F7" });
+    fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: expected.save }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: expected.managerUser }), { target: { value: "manager" } });
+    fireEvent.change(within(dialog).getByLabelText(expected.managerPassword), { target: { value: "1234" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: expected.authorize }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(expected.error);
   });
 
   it.each([
