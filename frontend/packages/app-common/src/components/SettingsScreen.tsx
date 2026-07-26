@@ -141,8 +141,13 @@ export function SettingsScreen({
       setSavedSaleInterfaceMode(configuration.saleMode);
       onSaleInterfaceModeChange?.(configuration.saleMode);
       setSaleInterfaceMessage({ kind: "success", text: t("settings.saleInterface.saved") });
-    } catch {
-      setSaleInterfaceMessage({ kind: "error", text: t("settings.saleInterface.saveError") });
+    } catch (failure) {
+      setSaleInterfaceMessage({
+        kind: "error",
+        text: failure instanceof ApiError
+          ? `${t("settings.saleInterface.saveError")} ${failure.message}`
+          : t("settings.saleInterface.saveError")
+      });
     } finally {
       setSaleInterfaceSaving(false);
     }

@@ -49,8 +49,10 @@ class ProductControllerContractTest {
 
     @Test
     void saleListIncludesAuthoritativeTaxSnapshot() throws Exception {
+        UUID imageId = UUID.randomUUID();
         when(saleCatalog.products()).thenReturn(List.of(new SaleProductView(
                 UUID.randomUUID(),
+                imageId,
                 true,
                 "A001",
                 null,
@@ -74,6 +76,7 @@ class ProductControllerContractTest {
         mvc.perform(get("/api/v1/products/sale")
                         .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].imageId").value(imageId.toString()))
                 .andExpect(jsonPath("$[0].taxPercentage").value(21.00))
                 .andExpect(jsonPath("$[0].taxRegime").value("IVA"))
                 .andExpect(jsonPath("$[0].packageQuantity").value(6));

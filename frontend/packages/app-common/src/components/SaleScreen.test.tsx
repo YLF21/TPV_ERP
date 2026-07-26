@@ -26,8 +26,12 @@ import {
   cardTransportFailureOutcome,
   buildCardChargeBody,
   runGuardedCardOpening,
+  saleCartImageColumnWidth,
+  saleCartColumnDefinitions,
+  saleCartSpecialPrice,
   saleMainMessage,
   saleMainProductCount,
+  visibleSaleCartColumns,
   pendingSaleDraftForCustomer,
   saleSelectableProducts,
   effectiveSaleLineDiscount,
@@ -309,6 +313,128 @@ describe("SaleScreen", () => {
       ...valid,
       lineBreakdown: [{ ...valid.lineBreakdown[0], finalSubtotal: "9.99" }],
     })).toBe(false);
+  });
+
+  it("keeps every requested cart column visible by default", () => {
+    expect(saleCartColumnDefinitions.map((column) => column.key)).toEqual([
+      "image",
+      "code",
+      "name",
+      "quantity",
+      "salePrice",
+      "discount",
+      "specialPrice",
+      "total",
+    ]);
+  });
+
+  it("keeps the image column fixed even when a saved user preference contains another width", () => {
+    expect(saleCartImageColumnWidth).toBe(58);
+
+    const columns = visibleSaleCartColumns([
+      { key: "image", width: 180, visible: true },
+      { key: "name", width: 320, visible: true },
+    ]);
+
+    expect(columns).toEqual([
+      { key: "image", width: saleCartImageColumnWidth, visible: true },
+      { key: "name", width: 320, visible: true },
+    ]);
+  });
+
+  it("shows the authoritative offer price below its compact offer label", () => {
+    const offerProduct: SaleProduct = {
+      ...products[0],
+      priceUseMode: "OFFER_DISCOUNT",
+      offerActive: true,
+      offerDiscountPercent: 20,
+    };
+    const quoteLine = {
+      ...authoritativeQuote(offerProduct, "8.00").lineBreakdown[0],
+      baseUnitPrice: "8.00",
+      priceSource: "OFERTA",
+    };
+
+    expect(saleCartSpecialPrice(offerProduct, false, quoteLine)).toEqual({
+      type: "OFFER_DISCOUNT",
+      unitPrice: 8,
+      discountPercent: 20,
+    });
+  });
+
+  it("renders the adjustable cart table with a thumbnail and stacked special price", async () => {
+    const offerProduct: SaleProduct = {
+      ...products[0],
+      imageId: "image-1",
+      priceUseMode: "OFFER_PRICE",
+      offerActive: true,
+      offerPrice: 8,
+    };
+    const offerQuote = authoritativeQuote(offerProduct, "8.00");
+    offerQuote.lineBreakdown[0] = {
+      ...offerQuote.lineBreakdown[0],
+      baseUnitPrice: "8.00",
+      priceSource: "OFERTA",
+      finalSubtotal: "8.00",
+    };
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cart-product");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([offerProduct]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(offerQuote), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/products/coffee/image")) {
+        return new Response("image", {
+          status: 200,
+          headers: { "Content-Type": "image/webp" },
+        });
+      }
+      return new Response("", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+
+    const table = await screen.findByRole("table", { name: "Líneas del ticket" });
+    expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Imagen",
+      "Código",
+      "Nombre",
+      "Cantidad",
+      "Precio",
+      "Descuento",
+      "Precio especial",
+      "Total",
+    ]);
+    expect(await within(table).findByText("P.Oferta")).toBeInTheDocument();
+    expect(table.querySelector(".sale-cart-special strong")?.textContent).toBe("8,00 €/ud");
+    expect(table.querySelector(".sale-cart-discount")?.textContent).toBe("");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/coffee/image?thumbnail=true"))).toBe(true));
+    await waitFor(() => expect(createObjectUrl).toHaveBeenCalled());
+    await waitFor(() => expect(table.querySelector("img.sale-cart-thumbnail")).not.toBeNull());
+    expect(within(table).queryByRole("button", { name: "Redimensionar Imagen" })).not.toBeInTheDocument();
+
+    createObjectUrl.mockRestore();
+    revokeObjectUrl.mockRestore();
   });
 
   it("blocks every payment while the authoritative quote is unresolved", async () => {

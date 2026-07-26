@@ -172,6 +172,7 @@ public class SaleProductCatalogService {
         tax.requireSelectable();
         return new SaleProductView(
                 product.getId(),
+                product.getImageId(),
                 product.isActive(),
                 product.getCode(),
                 product.getBarcode(),
