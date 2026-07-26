@@ -435,9 +435,11 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
         <SaleProductSearchDialog
           initialQuery={query}
           products={products}
+          token={session.accessToken}
           labels={{
             title: t("sale.searchDialog.title"),
             query: t("sale.searchDialog.query"),
+            image: t("sale.searchDialog.image"),
             code: t("sale.searchDialog.code"),
             barcode: t("sale.searchDialog.barcode"),
             barcode2: t("sale.searchDialog.barcode2"),

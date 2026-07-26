@@ -419,7 +419,13 @@ export function App() {
 const isSalesDocumentWindow =
   new URLSearchParams(window.location.search).get("window") === "sales-document";
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root")!;
+const rootStore = globalThis as typeof globalThis & {
+  __tpvAppVentaStableRoot?: ReturnType<typeof createRoot>;
+};
+const appRoot = rootStore.__tpvAppVentaStableRoot ?? createRoot(rootElement);
+rootStore.__tpvAppVentaStableRoot = appRoot;
+appRoot.render(
   <StrictMode>
     <LazyModuleErrorBoundary>
       <Suspense fallback={<AppLoadingFallback />}>

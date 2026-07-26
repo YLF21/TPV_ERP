@@ -47,6 +47,7 @@ import {
   SaleProductSearchDialog,
   filterSaleProductSearch,
 } from "./SaleProductSearchDialog";
+import { SaleProductInformationDialog } from "./SaleProductInformationDialog";
 import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
 import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
@@ -71,6 +72,7 @@ import {
   revokeProductEditAuthorization,
 } from "../sale/productEdit";
 import { prepareCashSessionForSales } from "../sale/cashSessions";
+import { userCanManageStockProducts } from "./stockAccess";
 
 export type SaleProduct = {
   id: string;
@@ -1007,6 +1009,7 @@ export function SaleScreen({
     definitions: saleCartColumnDefinitions,
   });
   const [authoritativeQuote, setAuthoritativeQuote] = useState<PosAuthoritativeQuote | null>(null);
+  const [authoritativeQuoteRequestKey, setAuthoritativeQuoteRequestKey] = useState("");
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
@@ -1016,7 +1019,9 @@ export function SaleScreen({
   const [serialNumberOpen, setSerialNumberOpen] = useState(false);
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
   const [productSearchPurpose, setProductSearchPurpose] = useState<"ADD" | "HISTORY">("ADD");
+  const [productInformationProduct, setProductInformationProduct] = useState<SaleProduct | null>(null);
   const [consultationMode, setConsultationMode] = useState<"PRICE" | "STOCK" | null>(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [salesHistoryProduct, setSalesHistoryProduct] = useState<SaleProduct | null>(null);
@@ -1048,8 +1053,11 @@ export function SaleScreen({
   const activeMember = selectedCustomer?.activeMember === true;
   const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
+  const currentSaleRequest = cashSaleRequest();
+  const currentSaleRequestKey = JSON.stringify(currentSaleRequest);
   const total = saleTotal(lines, activeMember);
-  const authoritativeQuoteReady = isCompleteAuthoritativeQuote(authoritativeQuote);
+  const authoritativeQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
+    && isCompleteAuthoritativeQuote(authoritativeQuote);
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
   const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
   const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
@@ -1114,12 +1122,17 @@ export function SaleScreen({
     const memberDiscount = authoritativeLine
       ? finiteAmount(authoritativeLine.memberDiscountPercent)
       : finiteAmount(localLine.memberDiscountPercent);
-    const discountText = memberDiscount > 0 && memberDiscount >= manualDiscount
-      ? `${t("sale.main.member")} ${formatSaleAmount(memberDiscount)}%`
-      : manualDiscount > 0
-        ? `${formatSaleAmount(manualDiscount)}%`
-        : "";
     const specialPrice = saleCartSpecialPrice(product, activeMember, authoritativeLine);
+    const offerDiscount = specialPrice?.type === "OFFER_DISCOUNT"
+      ? finiteAmount(specialPrice.discountPercent)
+      : 0;
+    const discountText = offerDiscount > 0
+      ? `${formatSaleAmount(offerDiscount)}%`
+      : memberDiscount > 0 && memberDiscount >= manualDiscount
+        ? `${t("sale.main.member")} ${formatSaleAmount(memberDiscount)}%`
+        : manualDiscount > 0
+          ? `${formatSaleAmount(manualDiscount)}%`
+          : "";
     const totalAmount = authoritativeLine
       ? finiteAmount(authoritativeLine.finalSubtotal)
       : saleLineSubtotal(localLine, activeMember);
@@ -1178,7 +1191,7 @@ export function SaleScreen({
         const specialLabel = specialPrice?.type === "MEMBER_PRICE"
           ? t("sale.cart.special.member")
           : specialPrice?.type === "OFFER_DISCOUNT"
-            ? `${t("sale.cart.special.offerDiscount")} ${formatSaleAmount(specialPrice.discountPercent)}%`
+            ? t("sale.cart.special.offerDiscount")
             : t("sale.cart.special.offerPrice");
         return (
           <td className="sale-cart-special" data-column-key={column} key={column}>
@@ -1580,6 +1593,7 @@ export function SaleScreen({
     if (!query.trim()) return;
     setProductSearchPurpose("ADD");
     setProductSearchQuery(query);
+    setProductSearchSelectedId("");
     setProductSearchOpen(true);
   }
 
@@ -1592,7 +1606,25 @@ export function SaleScreen({
     }
     setProductSearchPurpose("HISTORY");
     setProductSearchQuery(query);
+    setProductSearchSelectedId("");
     setProductSearchOpen(true);
+  }
+
+  function openProductInformation(product: SaleProduct) {
+    setProductSearchSelectedId(product.id);
+    setProductSearchOpen(false);
+    setProductInformationProduct(product);
+  }
+
+  function closeProductInformation() {
+    setProductInformationProduct(null);
+    setProductSearchOpen(true);
+  }
+
+  function addProductFromInformation(product: SaleProduct) {
+    setProductInformationProduct(null);
+    setProductSearchOpen(false);
+    requestAddProduct(product);
   }
 
   function clearQuickEntry(message = "") {
@@ -1914,6 +1946,7 @@ export function SaleScreen({
     const generation = ++quoteGenerationRef.current;
     if (lines.length === 0) {
       setAuthoritativeQuote(null);
+      setAuthoritativeQuoteRequestKey("");
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
       setDiscountAuthorizationToken("");
@@ -1925,16 +1958,18 @@ export function SaleScreen({
     const timer = window.setTimeout(() => {
       apiRequest<PosAuthoritativeQuote>("/pos/sales/quote", {
         token: session.accessToken,
-        body: cashSaleRequest()
+        body: currentSaleRequest
       }).then((quote) => {
         if (generation !== quoteGenerationRef.current) return;
         if (!isCompleteAuthoritativeQuote(quote)) {
           throw new Error(t("sale.quote.invalidResponse"));
         }
         setAuthoritativeQuote(quote);
+        setAuthoritativeQuoteRequestKey(currentSaleRequestKey);
       }).catch((error) => {
         if (generation === quoteGenerationRef.current) {
           setAuthoritativeQuote(null);
+          setAuthoritativeQuoteRequestKey("");
           setAuthoritativeQuoteError(error instanceof Error ? error.message : t("sale.quote.error"));
         }
       }).finally(() => {
@@ -1942,7 +1977,7 @@ export function SaleScreen({
       });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [checkoutDiscountCents, discountAuthorizationToken, lines, selectedCustomer?.id, session.accessToken]);
+  }, [currentSaleRequestKey, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
@@ -2282,55 +2317,51 @@ export function SaleScreen({
         </header>
 
         <section className="sale-ticket work-panel" aria-label={t("sale.main.ticket")}>
-          <header className="work-panel-heading">
-            <h2>{t("sale.main.lines")}</h2>
-            <span>{selectedCustomer
-              ? saleMainMessage(t, "sale.main.selectedCustomer", { name: selectedCustomer.fiscalName ?? "" })
-              : lines.length === 0
-                ? paymentLocked ? t("payment.split.reservedTicket") : t("sale.main.noSale")
-                : saleMainProductCount(t, lines.length)}</span>
-          </header>
-          {lines.length === 0 ? (
-            <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : t("sale.main.noSale")}</div>
-          ) : (
-            <div className="sale-ticket-lines sale-cart-table-scroll">
-              <table
-                className="sale-cart-table"
-                aria-label={t("sale.main.ticketLines")}
-                style={{ width: Math.max(cartTableWidth, 720) }}
-              >
-                <colgroup>
+          <div className="sale-ticket-lines sale-cart-table-scroll">
+            <table
+              className="sale-cart-table"
+              aria-label={t("sale.main.ticketLines")}
+              style={{ width: Math.max(cartTableWidth, 720) }}
+            >
+              <colgroup>
+                {visibleCartColumns.map((column) => (
+                  <col key={column.key} style={{ width: column.width }} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
                   {visibleCartColumns.map((column) => (
-                    <col key={column.key} style={{ width: column.width }} />
+                    <TableLayoutHeaderCell
+                      column={column}
+                      key={column.key}
+                      resizable={column.key !== "image"}
+                      resizeLabel={`${t("stock.columns.resize")} ${cartColumnLabel(column.key)}`}
+                      onReorder={cartTableLayout.reorderColumns}
+                      onMove={cartTableLayout.moveColumn}
+                      onResize={cartTableLayout.resizeColumn}
+                    >
+                      {cartColumnLabel(column.key)}
+                    </TableLayoutHeaderCell>
                   ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {visibleCartColumns.map((column) => (
-                      <TableLayoutHeaderCell
-                        column={column}
-                        key={column.key}
-                        resizable={column.key !== "image"}
-                        resizeLabel={`${t("stock.columns.resize")} ${cartColumnLabel(column.key)}`}
-                        onReorder={cartTableLayout.reorderColumns}
-                        onMove={cartTableLayout.moveColumn}
-                        onResize={cartTableLayout.resizeColumn}
-                      >
-                        {cartColumnLabel(column.key)}
-                      </TableLayoutHeaderCell>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {authoritativeLineBreakdown
-                    ? authoritativeLineBreakdown.map((line) => {
-                        const localLine = lines.find((candidate) => candidate.product.id === line.productId);
-                        return localLine ? renderCartRow(localLine, line) : null;
-                      })
-                    : lines.map((line) => renderCartRow(line))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              </thead>
+              <tbody>
+                {authoritativeLineBreakdown
+                  ? authoritativeLineBreakdown.map((line) => {
+                      const localLine = lines.find((candidate) => candidate.product.id === line.productId);
+                      return localLine ? renderCartRow(localLine, line) : null;
+                    })
+                  : lines.map((line) => renderCartRow(line))}
+                <tr className="sale-cart-grid-filler" aria-hidden="true">
+                  {visibleCartColumns.map((column) => (
+                    <td data-column-key={column.key} key={column.key} />
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {paymentLocked && lines.length === 0 && (
+            <p className="sale-ticket-recovery-guidance">{t("payment.split.reservedTicketGuidance")}</p>
           )}
           <PromotionPreviewPanel locale={locale} preview={authoritativeQuote?.promotionPreview ?? null} />
         </section>
@@ -2339,7 +2370,6 @@ export function SaleScreen({
           <footer className="sale-total">
             <span>{t("sale.main.total")}</span>
             <strong>{formatSaleAmount(displayedTotal)}</strong>
-            {authoritativeQuoteLoading && <small aria-live="polite">{t("sale.quote.loading")}</small>}
             {authoritativeQuoteError && <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>}
           </footer>
           <label className="work-search">
@@ -2589,12 +2619,15 @@ export function SaleScreen({
           <footer><button type="button" onClick={() => void navigator.clipboard?.writeText(pendingRecovery.raw)}>{t("pendingSale.recoveryCopy")}</button></footer>
         </section>
       </div>}
-      {productSearchOpen && (
+      {productSearchOpen && !productInformationProduct && (
         <SaleProductSearchDialog
           initialQuery={productSearchQuery}
+          initialSelectedId={productSearchSelectedId}
+          interfaceMode={interfaceMode}
           labels={{
             title: t("sale.searchDialog.title"),
             query: t("sale.searchDialog.query"),
+            image: t("sale.searchDialog.image"),
             code: t("sale.searchDialog.code"),
             barcode: t("sale.searchDialog.barcode"),
             barcode2: t("sale.searchDialog.barcode2"),
@@ -2606,6 +2639,10 @@ export function SaleScreen({
             missingCode: t("sale.main.missingCode"),
           }}
           products={selectableProducts}
+          token={session.accessToken}
+          onInspect={openProductInformation}
+          onQueryChange={setProductSearchQuery}
+          onSelectionChange={setProductSearchSelectedId}
           onClose={() => {
             setProductSearchOpen(false);
             queueMicrotask(() => searchInputRef.current?.focus());
@@ -2618,6 +2655,18 @@ export function SaleScreen({
             }
             requestAddProduct(product);
           }}
+        />
+      )}
+
+      {productInformationProduct && (
+        <SaleProductInformationDialog
+          product={productInformationProduct}
+          locale={locale}
+          token={session.accessToken}
+          interfaceMode={interfaceMode}
+          canManageProducts={userCanManageStockProducts(session)}
+          onAdd={addProductFromInformation}
+          onClose={closeProductInformation}
         />
       )}
 
