@@ -105,6 +105,7 @@ export type TicketPrintRequest = {
 
 export type A4DocumentPrintRequest = {
   documentType: Exclude<PrintableDocumentType, "TICKET">;
+  locale?: "es" | "en" | "zh";
   title: string;
   storeName: string;
   terminalCode: string;
@@ -116,10 +117,12 @@ export type A4DocumentPrintRequest = {
   total: number;
   issuer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
   customer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  metadata?: Array<{ label: string; value: string }>;
+  notes?: string[];
   labels: {
     terminal: string; description: string; quantity: string; unitPrice: string;
     base: string; tax: string; taxIncluded: string; yes: string; no: string; mixed: string; total: string;
-    issuer?: string; customer?: string; taxId?: string;
+    issuer?: string; customer?: string; taxId?: string; notes?: string; print?: string; close?: string;
   };
 };
 

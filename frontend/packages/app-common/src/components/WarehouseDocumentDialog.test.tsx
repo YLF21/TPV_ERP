@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
+import type { HardwareBridge } from "../hardware/hardware";
 import { tableLayoutStorageKey, writeStoredTableLayout } from "./tableLayoutPreferences";
 import {
   buildWarehouseDocumentCommand,
@@ -15,6 +16,11 @@ import {
   warehouseDocumentPath,
   WarehouseDocumentDialog
 } from "./WarehouseDocumentDialog";
+
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, apiRequest: vi.fn(actual.apiRequest) };
+});
 
 const products = [{ id: "product-1", code: "A001", barcode: "841000000001", name: "Cafe molido", salePrice: 4.5 }];
 const warehouses = [{ id: "warehouse-1", name: "GENERAL" }];
@@ -32,14 +38,41 @@ const lines = [
   }
 ];
 
+const existingDocument = {
+  id: "output-1",
+  number: "SAL-2026-000001",
+  warehouseId: "warehouse-1",
+  date: "2026-07-26",
+  destination: "Cliente SL",
+  concept: "Rotura",
+  status: "BORRADOR",
+  lines: [{ productId: "product-1", quantity: 3 }]
+};
+
+function installHardwareBridge(overrides: Partial<HardwareBridge> = {}) {
+  const hardware = {
+    getHardwareConfig: vi.fn().mockResolvedValue({ a4PrinterName: "A4 oficina" }),
+    printA4Document: vi.fn().mockResolvedValue({ ok: true }),
+    ...overrides
+  } as unknown as HardwareBridge;
+  Object.defineProperty(window, "tpvDesktop", {
+    configurable: true,
+    value: { hardware }
+  });
+  return hardware;
+}
+
 describe("WarehouseDocumentDialog", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(apiRequest).mockReset();
   });
 
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(window, "tpvDesktop");
   });
 
   it("renders output mode with document workspace and file actions", () => {
@@ -318,5 +351,288 @@ describe("WarehouseDocumentDialog", () => {
     );
 
     expect(html.indexOf('data-column-key="quantity"')).toBeLessThan(html.indexOf('data-column-key="code"'));
+  });
+
+  it("prints a complete warehouse document through the desktop bridge", async () => {
+    const hardware = installHardwareBridge();
+    const { getByRole, getByText } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        terminalContext={{ terminalCode: "CAJA-1", storeName: "TIENDA DEMO" }}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect((getByRole("button", { name: "Print" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(getByRole("button", { name: "Print" }));
+
+    await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
+    expect(hardware.printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentType: "REPORT",
+        locale: "en",
+        title: "Warehouse output",
+        storeName: "TIENDA DEMO",
+        terminalCode: "CAJA-1",
+        lines: [expect.objectContaining({
+          name: "A001 - Cafe molido",
+          quantity: 3,
+          price: 4.5,
+          total: 13.5
+        })]
+      }),
+      expect.objectContaining({ a4PrinterName: "A4 oficina" })
+    );
+    expect(getByText("Document sent to the printer")).toBeTruthy();
+  });
+
+  it("prevents duplicate desktop print requests while hardware is pending", async () => {
+    let resolveConfig!: (config: { a4PrinterName: string }) => void;
+    const configPending = new Promise<{ a4PrinterName: string }>((resolve) => {
+      resolveConfig = resolve;
+    });
+    const hardware = installHardwareBridge({
+      getHardwareConfig: vi.fn().mockReturnValue(configPending)
+    });
+    const { getByRole } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    const printButton = await waitFor(() => getByRole("button", { name: "Print" }));
+    await act(async () => {
+      printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(hardware.getHardwareConfig).toHaveBeenCalledOnce();
+    expect((printButton as HTMLButtonElement).disabled).toBe(true);
+
+    resolveConfig({ a4PrinterName: "A4 oficina" });
+    await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
+    await waitFor(() => expect((printButton as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("uses a localized print error instead of exposing the hardware message", async () => {
+    const hardwareMessage = "No se pudo abrir la cola tecnica";
+    installHardwareBridge({
+      printA4Document: vi.fn().mockResolvedValue({
+        ok: false,
+        code: "PRINT_FAILED",
+        message: hardwareMessage
+      })
+    });
+    const { getByRole, getByText, queryByText } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+
+    await waitFor(() => expect(getByText("The document could not be printed")).toBeTruthy());
+    expect(queryByText(hardwareMessage)).toBeNull();
+  });
+
+  it("opens an isolated localized browser preview and reports popup blocking", async () => {
+    const write = vi.fn();
+    const print = vi.fn();
+    const previewWindow = {
+      opener: window,
+      document: { open: vi.fn(), write, close: vi.fn() },
+      setTimeout: (callback: () => void) => {
+        callback();
+        return 1;
+      },
+      focus: vi.fn(),
+      print
+    } as unknown as Window;
+    const open = vi.spyOn(window, "open").mockReturnValue(previewWindow);
+    const { getByRole, getByText } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+
+    expect(open).toHaveBeenCalledWith("", "_blank", "popup=yes,width=1040,height=820");
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('<html lang="en">'));
+    expect(print).toHaveBeenCalledOnce();
+    expect(getByText("Print preview")).toBeTruthy();
+
+    await waitFor(() => expect((getByRole("button", { name: "Print" }) as HTMLButtonElement).disabled).toBe(false));
+    open.mockReturnValue(null);
+    fireEvent.click(getByRole("button", { name: "Print" }));
+    expect(getByText("The browser blocked the print preview")).toBeTruthy();
+  });
+
+  it("prevents duplicate browser auto-print windows during preview startup", async () => {
+    const previewWindow = {
+      opener: window,
+      document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
+      setTimeout: vi.fn(),
+      focus: vi.fn(),
+      print: vi.fn()
+    } as unknown as Window;
+    const open = vi.spyOn(window, "open").mockReturnValue(previewWindow);
+    const { getByRole } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    const printButton = await waitFor(() => getByRole("button", { name: "Print" }));
+    await act(async () => {
+      printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      printButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(open).toHaveBeenCalledOnce();
+    expect((printButton as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect((printButton as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("prevents duplicate manual preview windows during preview startup", async () => {
+    const previewWindow = {
+      opener: window,
+      document: { open: vi.fn(), write: vi.fn(), close: vi.fn() }
+    } as unknown as Window;
+    const open = vi.spyOn(window, "open").mockReturnValue(previewWindow);
+    const { getAllByRole, getByRole } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={existingDocument}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(getByRole("button", { name: "File" }));
+    const previewButton = getByRole("button", { name: "Preview Ctrl+P" });
+    const printButton = getAllByRole("button", { name: "Print" }).at(-1) as HTMLButtonElement;
+    await act(async () => {
+      previewButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      previewButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(open).toHaveBeenCalledOnce();
+    expect((printButton as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect((printButton as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("prints the document number returned by saving even without onSaved", async () => {
+    const hardware = installHardwareBridge();
+    vi.mocked(apiRequest).mockResolvedValue({
+      ...existingDocument,
+      number: "SAL-2026-000099"
+    });
+    const { getByRole } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        token="token"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={{ ...existingDocument, number: null }}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Save F9" })));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledOnce());
+    fireEvent.click(getByRole("button", { name: "Print" }));
+
+    await waitFor(() => expect(hardware.printA4Document).toHaveBeenCalledOnce());
+    expect(hardware.printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.arrayContaining([
+          { label: "Document number", value: "SAL-2026-000099" }
+        ])
+      }),
+      expect.anything()
+    );
+  });
+
+  it("blocks printing when a document line cannot resolve its product", async () => {
+    const hardware = installHardwareBridge();
+    const { getByRole, getByText } = render(
+      <WarehouseDocumentDialog
+        mode="output"
+        open
+        locale="en"
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        document={{
+          ...existingDocument,
+          lines: [{ productId: "missing-product", quantity: 2 }]
+        }}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Print" })));
+
+    expect(getByText("Product not found")).toBeTruthy();
+    expect(hardware.getHardwareConfig).not.toHaveBeenCalled();
+    expect(hardware.printA4Document).not.toHaveBeenCalled();
   });
 });

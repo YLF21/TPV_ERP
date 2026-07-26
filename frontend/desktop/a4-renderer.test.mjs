@@ -12,6 +12,8 @@ describe("A4 desktop renderer", () => {
       customer: { name: "Customer <SL>", taxId: "B987", address: { line1: "Customer Street", postalCode: "41001", city: "Sevilla", province: "Sevilla", country: "ES" } },
       lines: [{ name: "Coffee <b>", quantity: 2, price: 10, total: 20 }],
       subtotal: 16.53, tax: 3.47, taxIncluded: true, total: 20,
+      metadata: [{ label: "Warehouse", value: "General <north>" }],
+      notes: ["Handle with care & verify"],
       labels: { terminal: "Terminal", description: "Description", quantity: "Quantity",
         unitPrice: "Unit price", base: "Base", tax: "Tax", taxIncluded: "Tax included",
         yes: "Yes", no: "No", total: "Total" }
@@ -27,6 +29,9 @@ describe("A4 desktop renderer", () => {
     expect(html).toContain("Customer &lt;SL&gt;");
     expect(html).toContain("B987");
     expect(html).toContain("Customer Street");
+    expect(html).toContain("Warehouse");
+    expect(html).toContain("General &lt;north&gt;");
+    expect(html).toContain("Handle with care &amp; verify");
     expect(html).not.toContain("Descripcion");
     expect(html).not.toContain("<script>");
   });

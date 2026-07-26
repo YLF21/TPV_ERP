@@ -22,6 +22,12 @@ import {
   type WarehouseDocumentLineDraft,
   type WarehouseImportProduct
 } from "./warehouseDocumentImport";
+import {
+  buildWarehouseA4Document,
+  hasDesktopHardwareBridge,
+  openWarehouseDocumentPreview,
+  printWarehouseA4Document
+} from "../warehouse/warehouseDocumentPrinting";
 
 export type WarehouseDocumentMode = "input" | "output";
 
@@ -106,6 +112,7 @@ const warehouseDocumentColumns = [
 ] as const;
 
 type WarehouseDocumentColumnKey = typeof warehouseDocumentColumns[number]["key"];
+const printStartupGuardMs = 350;
 
 export function warehouseDocumentPath(mode: WarehouseDocumentMode) {
   return mode === "input" ? "/warehouse-inputs" : "/warehouse-outputs";
@@ -228,7 +235,11 @@ export function WarehouseDocumentDialog({
 }: WarehouseDocumentDialogProps) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const printingRef = useRef(false);
+  const printGuardTimerRef = useRef<number | null>(null);
+  const printActionMountedRef = useRef(true);
   const [documentId, setDocumentId] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [documentStatus, setDocumentStatus] = useState("BORRADOR");
   const [warehouseId, setWarehouseId] = useState("");
   const [partnerId, setPartnerId] = useState("");
@@ -243,6 +254,7 @@ export function WarehouseDocumentDialog({
   const [manualQuantity, setManualQuantity] = useState("1");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [excelCreatedProducts, setExcelCreatedProducts] = useState<WarehouseImportProduct[]>([]);
   const [manualMissingRows, setManualMissingRows] = useState<ExcelImportClassifiedRow[]>([]);
@@ -267,6 +279,18 @@ export function WarehouseDocumentDialog({
   const fileMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    printActionMountedRef.current = true;
+    return () => {
+      printActionMountedRef.current = false;
+      if (printGuardTimerRef.current !== null) {
+        window.clearTimeout(printGuardTimerRef.current);
+        printGuardTimerRef.current = null;
+      }
+      printingRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -275,6 +299,7 @@ export function WarehouseDocumentDialog({
       || warehouses.find((warehouse) => warehouse.active !== false)?.id
       || "";
     setDocumentId(document?.id ?? "");
+    setDocumentNumber(document?.number ?? "");
     setDocumentStatus(document?.status ?? "BORRADOR");
     setWarehouseId(initialWarehouse);
     setPartnerId(document?.supplierId ?? "");
@@ -290,6 +315,12 @@ export function WarehouseDocumentDialog({
     setManualDiscountPercent("0");
     setManualQuantity("1");
     setStatus("");
+    if (printGuardTimerRef.current !== null) {
+      window.clearTimeout(printGuardTimerRef.current);
+      printGuardTimerRef.current = null;
+    }
+    printingRef.current = false;
+    setPrinting(false);
     setExcelImportOpen(false);
     setExcelCreatedProducts([]);
     setManualMissingRows([]);
@@ -463,15 +494,172 @@ export function WarehouseDocumentDialog({
     setStatus(t("warehouseDocument.status.noDiscounts"));
   }
 
-  function printDocument() {
+  function buildPrintRequest() {
+    const invalidLine = lines.find((line) => (
+      !line.valid || !importProducts.some((candidate) => candidate.id === line.productId)
+    ));
+    if (invalidLine) {
+      setStatus(t(invalidLine.errorKey || "warehouseDocument.error.productNotFound"));
+      return null;
+    }
+
+    const warehouse = warehouses.find((option) => option.id === warehouseId);
+    const warehouseLabel = warehouse?.name ?? warehouse?.nombre ?? warehouseId;
+    const discount = parseDocumentDiscountPercent(documentDiscountPercent);
+    const printLines = lines.map((line) => {
+      const product = importProducts.find((candidate) => candidate.id === line.productId)!;
+      const unitPrice = documentProductPrice(product, documentPriceMode);
+      return {
+        code: product.code ?? product.barcode ?? product.reference ?? line.importedProduct ?? "",
+        name: product.name ?? line.productLabel,
+        quantity: line.quantity,
+        unitPrice,
+        total: documentLineTotal(unitPrice, line.quantity, line.discountPercent ?? "0")
+      };
+    });
+
+    return buildWarehouseA4Document({
+      title: documentTypeLabel,
+      locale,
+      storeName: terminalContext?.storeName ?? "",
+      terminalCode: terminalContext?.terminalCode ?? "",
+      documentNumber,
+      issuedAt: date,
+      warehouse: warehouseLabel,
+      partnerLabel,
+      partner: selectedPartner ? partnerName(selectedPartner) : partnerText,
+      discountPercent: discount,
+      lines: printLines,
+      subtotal: documentSubtotal,
+      total: documentTotal,
+      notes: concept.trim() ? [concept.trim()] : [],
+      labels: {
+        documentNumber: t("warehouseDocument.print.documentNumber"),
+        warehouse: t("warehouseDocument.print.warehouse"),
+        discount: t("warehouseDocument.print.discount"),
+        partner: t("warehouseDocument.print.partner"),
+        terminal: t("warehouseDocument.print.terminal"),
+        description: t("warehouseDocument.print.description"),
+        quantity: t("warehouseDocument.print.quantity"),
+        unitPrice: t("warehouseDocument.print.unitPrice"),
+        base: t("warehouseDocument.print.base"),
+        tax: t("warehouseDocument.print.tax"),
+        taxIncluded: t("warehouseDocument.print.taxIncluded"),
+        yes: t("warehouseDocument.print.yes"),
+        no: t("warehouseDocument.print.no"),
+        mixed: t("warehouseDocument.print.mixed"),
+        total: t("warehouseDocument.print.total"),
+        print: t("warehouseDocument.print.print"),
+        close: t("warehouseDocument.print.close"),
+        notes: t("warehouseDocument.print.notes")
+      }
+    });
+  }
+
+  function beginPrintAction() {
+    if (printingRef.current) {
+      return false;
+    }
+    if (printGuardTimerRef.current !== null) {
+      window.clearTimeout(printGuardTimerRef.current);
+      printGuardTimerRef.current = null;
+    }
+    printingRef.current = true;
+    setPrinting(true);
+    return true;
+  }
+
+  function releasePrintAction() {
+    if (printGuardTimerRef.current !== null) {
+      window.clearTimeout(printGuardTimerRef.current);
+      printGuardTimerRef.current = null;
+    }
+    printingRef.current = false;
+    if (printActionMountedRef.current) {
+      setPrinting(false);
+    }
+  }
+
+  function releasePrintActionAfterStartup() {
+    if (printGuardTimerRef.current !== null) {
+      window.clearTimeout(printGuardTimerRef.current);
+    }
+    printGuardTimerRef.current = window.setTimeout(() => {
+      printGuardTimerRef.current = null;
+      printingRef.current = false;
+      if (printActionMountedRef.current) {
+        setPrinting(false);
+      }
+    }, printStartupGuardMs);
+  }
+
+  async function printDocument() {
+    if (printingRef.current) {
+      return;
+    }
     setFileMenuOpen(false);
-    window.print();
+    const request = buildPrintRequest();
+    if (!request) {
+      return;
+    }
+
+    if (!beginPrintAction()) {
+      return;
+    }
+    let deferReleaseForStartup = false;
+    try {
+      if (!hasDesktopHardwareBridge()) {
+        const opened = openWarehouseDocumentPreview(request, { autoPrint: true });
+        deferReleaseForStartup = true;
+        if (printActionMountedRef.current) {
+          setStatus(t(opened
+            ? "warehouseDocument.status.printPreview"
+            : "warehouseDocument.status.previewBlocked"));
+        }
+        return;
+      }
+
+      const result = await printWarehouseA4Document(request);
+      if (printActionMountedRef.current) {
+        setStatus(result.ok
+          ? t("warehouseDocument.status.printed")
+          : t("warehouseDocument.status.printError"));
+      }
+    } catch {
+      if (printActionMountedRef.current) {
+        setStatus(t("warehouseDocument.status.printError"));
+      }
+    } finally {
+      if (deferReleaseForStartup) {
+        releasePrintActionAfterStartup();
+      } else {
+        releasePrintAction();
+      }
+    }
   }
 
   function previewDocument() {
+    if (printingRef.current) {
+      return;
+    }
     setFileMenuOpen(false);
-    setStatus(t("warehouseDocument.status.printPreview"));
-    window.print();
+    const request = buildPrintRequest();
+    if (!request) {
+      return;
+    }
+    if (!beginPrintAction()) {
+      return;
+    }
+    try {
+      const opened = openWarehouseDocumentPreview(request);
+      if (printActionMountedRef.current) {
+        setStatus(t(opened
+          ? "warehouseDocument.status.printPreview"
+          : "warehouseDocument.status.previewBlocked"));
+      }
+    } finally {
+      releasePrintActionAfterStartup();
+    }
   }
 
   function exportDocumentExcel() {
@@ -710,6 +898,7 @@ export function WarehouseDocumentDialog({
       body: buildWarehouseDocumentCommand(mode, draft)
     });
     setDocumentId(saved.id);
+    setDocumentNumber(saved.number ?? documentNumber);
     setDocumentStatus(saved.status ?? "BORRADOR");
     onSaved?.(saved);
     return saved;
@@ -747,6 +936,7 @@ export function WarehouseDocumentDialog({
         return;
       }
       const confirmed = await apiRequest<WarehouseDocumentView>(`${warehouseDocumentPath(mode)}/${id}/confirm`, { token, method: "POST" });
+      setDocumentNumber(confirmed.number ?? saved?.number ?? documentNumber);
       setDocumentStatus(confirmed.status ?? "CONFIRMADA");
       setStatus(t("warehouseDocument.confirmed"));
       onConfirmed(confirmed);
@@ -819,8 +1009,8 @@ export function WarehouseDocumentDialog({
                 <button type="button" onClick={openPartnerList}>{partnerLabel}</button>
                 <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>{t("common.save")}</button>
                 <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>{t("common.confirm")}</button>
-                <button type="button" onClick={previewDocument}>{t("warehouseDocument.menu.previewShortcut")}</button>
-                <button type="button" onClick={printDocument}>{t("salesReport.print")}</button>
+                <button type="button" disabled={printing} onClick={previewDocument}>{t("warehouseDocument.menu.previewShortcut")}</button>
+                <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
                 <button type="button" disabled={readOnly} onClick={clearAllLines}>{t("warehouseDocument.menu.clearLines")}</button>
                 <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{t("warehouseDocument.menu.clearDiscounts")}</button>
                 <button type="button" disabled={readOnly} onClick={() => { setFileMenuOpen(false); setExcelImportOpen(true); }}>{t("warehouseDocument.importExcel")}</button>
@@ -838,7 +1028,7 @@ export function WarehouseDocumentDialog({
               </div>
             )}
           </div>
-          <button type="button" onClick={printDocument}>{t("salesReport.print")}</button>
+          <button type="button" disabled={printing} onClick={printDocument}>{t("salesReport.print")}</button>
           <button type="button" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{t("warehouseDocument.menu.saveShortcut")}</button>
           <button type="button" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
           <button type="button" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button>
@@ -847,7 +1037,7 @@ export function WarehouseDocumentDialog({
         <div className="warehouse-document-workspace">
           <aside className="warehouse-document-sidebar">
             <div className="warehouse-document-total">
-              <span>{documentTypeLabel}{document?.number ? ` / ${document.number}` : ""}</span>
+              <span>{documentTypeLabel}{documentNumber ? ` / ${documentNumber}` : ""}</span>
               <strong>{formatDocumentAmount(documentTotal)}</strong>
               <em>{interpolateMessage(t("warehouseDocument.totalUnits"), { quantity: totalUnits.toLocaleString("es-ES") })}</em>
               <small>{t("warehouseDocument.subtotal")}: {formatDocumentAmount(documentSubtotal)}</small>
@@ -1048,7 +1238,7 @@ function decimalDocumentNumber(value: string | number | null | undefined) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function documentDiscountPercent(value: string | number | null | undefined) {
+function parseDocumentDiscountPercent(value: string | number | null | undefined) {
   const number = decimalDocumentNumber(value);
   if (number < 0) return 0;
   if (number > 100) return 100;
@@ -1056,19 +1246,19 @@ function documentDiscountPercent(value: string | number | null | undefined) {
 }
 
 export function documentLineTotal(price: number, quantity: number, discountPercent: string | number | null | undefined) {
-  const discount = documentDiscountPercent(discountPercent);
+  const discount = parseDocumentDiscountPercent(discountPercent);
   const total = price * quantity * (1 - discount / 100);
   return Number.isFinite(total) ? total : 0;
 }
 
 export function documentTotalAfterDiscount(subtotal: number, discountPercent: string | number | null | undefined) {
-  const discount = documentDiscountPercent(discountPercent);
+  const discount = parseDocumentDiscountPercent(discountPercent);
   const total = subtotal * (1 - discount / 100);
   return Number.isFinite(total) ? total : 0;
 }
 
 function formatDocumentDiscount(value: string | number | null | undefined) {
-  return `${formatDocumentAmount(documentDiscountPercent(value))}%`;
+  return `${formatDocumentAmount(parseDocumentDiscountPercent(value))}%`;
 }
 
 function formatDocumentAmount(value: number) {
