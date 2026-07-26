@@ -1,24 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../api/client";
-import { apiBaseUrl } from "../api/runtime";
+import { useMemo } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { StockInventoryRow } from "./StockScreen";
+import {
+  calculateNetPurchasePrice,
+  useProductInformationResources,
+} from "./productInformationResources";
 
-type ProductSupplierView = {
-  supplierId: string;
-  legalName: string;
-  documentType?: string | null;
-  documentNumber?: string | null;
-  active: boolean;
-  supplierReference?: string | null;
-  principal: boolean;
-  lastSupplier: boolean;
-  grossPurchasePrice?: number | string | null;
-  purchaseDiscount?: number | string | null;
-  netPurchasePrice?: number | string | null;
-  lastEntryAt?: string | null;
-};
+export {
+  calculateNetPurchasePrice,
+  sortProductInformationSuppliers,
+} from "./productInformationResources";
 
 type StockProductInformationPanelProps = {
   product: StockInventoryRow;
@@ -33,31 +25,6 @@ type InformationField = {
   value: string;
   wide?: boolean;
 };
-
-export function sortProductInformationSuppliers(suppliers: ProductSupplierView[]) {
-  return [...suppliers].sort((left, right) => {
-    const principal = Number(right.principal) - Number(left.principal);
-    if (principal !== 0) return principal;
-    const last = Number(right.lastSupplier) - Number(left.lastSupplier);
-    if (last !== 0) return last;
-    return left.legalName.localeCompare(right.legalName, undefined, { sensitivity: "base" });
-  });
-}
-
-function numericValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(String(value).replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function calculateNetPurchasePrice(purchasePrice: unknown, discountPercent: unknown) {
-  const price = numericValue(purchasePrice);
-  if (price === null) return null;
-  const discount = discountPercent === null || discountPercent === undefined || discountPercent === ""
-    ? 0
-    : numericValue(discountPercent);
-  return discount === null ? null : price * (1 - discount / 100);
-}
 
 function valueOrDash(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
@@ -108,9 +75,12 @@ export function StockProductInformationPanel({
   canViewPurchaseFields
 }: StockProductInformationPanelProps) {
   const t = createTranslator(locale);
-  const [imageSource, setImageSource] = useState("");
-  const [suppliers, setSuppliers] = useState<ProductSupplierView[]>([]);
-  const [supplierState, setSupplierState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const { imageSource, suppliers, supplierState } = useProductInformationResources({
+    productId: product.productId,
+    imageId: product.imageId,
+    token,
+    canReadSuppliers,
+  });
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { minimumFractionDigits: 2, maximumFractionDigits: 2 }
@@ -119,56 +89,6 @@ export function StockProductInformationPanel({
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { dateStyle: "short" }
   ), [locale]);
-
-  useEffect(() => {
-    if (!product.imageId || !token) {
-      setImageSource("");
-      return;
-    }
-    let active = true;
-    let objectUrl = "";
-    void fetch(`${apiBaseUrl}/products/${encodeURIComponent(product.productId)}/image`, {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then((response) => {
-      if (!response.ok) throw new Error("product_image_unavailable");
-      return response.blob();
-    }).then((blob) => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(blob);
-      setImageSource(objectUrl);
-    }).catch(() => {
-      if (active) setImageSource("");
-    });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [product.imageId, product.productId, token]);
-
-  useEffect(() => {
-    if (!token || !canReadSuppliers) {
-      setSuppliers([]);
-      setSupplierState("idle");
-      return;
-    }
-    let active = true;
-    setSupplierState("loading");
-    void apiRequest<ProductSupplierView[]>(
-      `/products/${encodeURIComponent(product.productId)}/suppliers`,
-      { token }
-    ).then((values) => {
-      if (!active) return;
-      setSuppliers(sortProductInformationSuppliers(values));
-      setSupplierState("loaded");
-    }).catch(() => {
-      if (!active) return;
-      setSuppliers([]);
-      setSupplierState("error");
-    });
-    return () => {
-      active = false;
-    };
-  }, [canReadSuppliers, product.productId, token]);
 
   function decimal(value: unknown) {
     if (value === null || value === undefined || value === "") return "-";

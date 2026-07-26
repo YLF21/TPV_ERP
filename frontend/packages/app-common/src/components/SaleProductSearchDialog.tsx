@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { apiBaseUrl } from "../api/runtime";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 
 export type SaleProductSearchOption = {
   id: string;
+  imageId?: string | null;
   code?: string | null;
   barcode?: string | null;
   barcode2?: string | null;
@@ -13,6 +16,7 @@ export type SaleProductSearchOption = {
 type SaleProductSearchLabels = {
   title: string;
   query: string;
+  image: string;
   code: string;
   barcode: string;
   barcode2: string;
@@ -26,9 +30,15 @@ type SaleProductSearchLabels = {
 
 type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   initialQuery: string;
+  initialSelectedId?: string;
+  interfaceMode?: SaleInterfaceMode;
   labels: SaleProductSearchLabels;
   products: T[];
+  token?: string;
   onClose: () => void;
+  onInspect?: (product: T) => void;
+  onQueryChange?: (query: string) => void;
+  onSelectionChange?: (productId: string) => void;
   onSelect: (product: T) => void;
 };
 
@@ -51,15 +61,23 @@ export function filterSaleProductSearch<T extends SaleProductSearchOption>(
 
 export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   initialQuery,
+  initialSelectedId = "",
+  interfaceMode,
   labels,
   products,
+  token,
   onClose,
+  onInspect,
+  onQueryChange,
+  onSelectionChange,
   onSelect,
 }: SaleProductSearchDialogProps<T>) {
   const [query, setQuery] = useState(initialQuery);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(initialSelectedId);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const touchClickTimerRef = useRef<number | null>(null);
+  const lastPointerTypeRef = useRef("mouse");
   const results = useMemo(() => filterSaleProductSearch(products, query), [products, query]);
   const activeId = results.some((product) => product.id === selectedId)
     ? selectedId
@@ -71,18 +89,31 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
     const deactivate = activateModalFocusTrap(root as unknown as ModalFocusRoot, document);
     inputRef.current?.focus();
     inputRef.current?.select();
-    return deactivate;
+    return () => {
+      deactivate();
+      if (touchClickTimerRef.current !== null) {
+        window.clearTimeout(touchClickTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
-    if (activeId !== selectedId) setSelectedId(activeId);
-  }, [activeId, selectedId]);
+    if (activeId !== selectedId) {
+      setSelectedId(activeId);
+      onSelectionChange?.(activeId);
+    }
+  }, [activeId, onSelectionChange, selectedId]);
+
+  function selectProduct(productId: string) {
+    setSelectedId(productId);
+    onSelectionChange?.(productId);
+  }
 
   function moveSelection(offset: -1 | 1) {
     if (results.length === 0) return;
     const index = Math.max(0, results.findIndex((product) => product.id === activeId));
     const next = results[Math.min(Math.max(index + offset, 0), results.length - 1)];
-    setSelectedId(next.id);
+    selectProduct(next.id);
     queueMicrotask(() => {
       document.getElementById(`sale-product-search-option-${encodeURIComponent(next.id)}`)
         ?.scrollIntoView?.({ block: "nearest" });
@@ -101,11 +132,47 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
       moveSelection(event.key === "ArrowUp" ? -1 : 1);
       return;
     }
-    if (event.key === "Enter" && activeId) {
+    if ((event.key === "Enter" || event.key === "Insert") && activeId) {
       event.preventDefault();
       const product = results.find((candidate) => candidate.id === activeId);
-      if (product) onSelect(product);
+      if (!product) return;
+      if (interfaceMode === "KEYBOARD") {
+        if (event.key === "Insert") onSelect(product);
+        else onInspect?.(product);
+        return;
+      }
+      if (event.key === "Enter") onSelect(product);
     }
+  }
+
+  function handleProductClick(product: T) {
+    selectProduct(product.id);
+    if (interfaceMode === "KEYBOARD") return;
+    if (interfaceMode !== "TOUCH" || !onInspect) {
+      onSelect(product);
+      return;
+    }
+    if (lastPointerTypeRef.current === "mouse") return;
+    if (touchClickTimerRef.current !== null) {
+      window.clearTimeout(touchClickTimerRef.current);
+    }
+    touchClickTimerRef.current = window.setTimeout(() => {
+      touchClickTimerRef.current = null;
+      onInspect(product);
+    }, 300);
+  }
+
+  function handleProductDoubleClick(product: T) {
+    if (interfaceMode === "KEYBOARD" || lastPointerTypeRef.current === "mouse") {
+      onInspect?.(product);
+      return;
+    }
+    if (interfaceMode !== "TOUCH") return;
+    if (touchClickTimerRef.current !== null) {
+      window.clearTimeout(touchClickTimerRef.current);
+      touchClickTimerRef.current = null;
+    }
+    onSelect(product);
   }
 
   return (
@@ -139,14 +206,18 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
             autoComplete="off"
             value={query}
             onChange={(event) => {
-              setQuery(event.target.value);
+              const nextQuery = event.target.value;
+              setQuery(nextQuery);
+              onQueryChange?.(nextQuery);
               setSelectedId("");
+              onSelectionChange?.("");
             }}
           />
         </label>
 
         <div className="sale-product-search-table" role="listbox" aria-label={labels.title}>
           <div className="sale-product-search-head" aria-hidden="true">
+            <span>{labels.image}</span>
             <span>{labels.code}</span>
             <span>{labels.barcode}</span>
             <span>{labels.barcode2}</span>
@@ -163,9 +234,14 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
                 aria-selected={product.id === activeId}
                 className={`sale-product-search-row${product.id === activeId ? " selected" : ""}`}
                 key={product.id}
-                onClick={() => onSelect(product)}
-                onMouseEnter={() => setSelectedId(product.id)}
+                onPointerDown={(event) => {
+                  lastPointerTypeRef.current = event.pointerType || "mouse";
+                }}
+                onClick={() => handleProductClick(product)}
+                onDoubleClick={() => handleProductDoubleClick(product)}
+                onMouseEnter={() => selectProduct(product.id)}
               >
+                <SaleProductSearchThumbnail product={product} token={token} />
                 <span>{product.code || labels.missingCode}</span>
                 <span>{product.barcode || "—"}</span>
                 <span>{product.barcode2 || "—"}</span>
@@ -177,6 +253,67 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
         </div>
       </section>
     </div>
+  );
+}
+
+function SaleProductSearchThumbnail({
+  product,
+  token,
+}: {
+  product: SaleProductSearchOption;
+  token?: string;
+}) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === "undefined");
+  const [source, setSource] = useState("");
+
+  useEffect(() => {
+    if (visible || !product.imageId || !token || !imageRef.current || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisible(true);
+      observer.disconnect();
+    }, { rootMargin: "80px" });
+    observer.observe(imageRef.current);
+    return () => observer.disconnect();
+  }, [product.imageId, token, visible]);
+
+  useEffect(() => {
+    if (!visible || !product.imageId || !token) {
+      setSource("");
+      return;
+    }
+    const controller = new AbortController();
+    let objectUrl = "";
+    void fetch(`${apiBaseUrl}/products/${encodeURIComponent(product.id)}/image?thumbnail=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("product_image_unavailable");
+      objectUrl = URL.createObjectURL(await response.blob());
+      setSource(objectUrl);
+    }).catch(() => {
+      if (!controller.signal.aborted) setSource("");
+    });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [product.id, product.imageId, token, visible]);
+
+  if (!product.imageId) {
+    return <span className="sale-product-search-thumbnail-placeholder" aria-hidden="true" />;
+  }
+
+  return (
+    <img
+      ref={imageRef}
+      className="sale-product-search-thumbnail"
+      src={source || undefined}
+      alt=""
+    />
   );
 }
 
