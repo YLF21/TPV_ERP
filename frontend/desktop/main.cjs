@@ -85,6 +85,8 @@ const defaultHardwareConfig = {
 
 let mainWindow;
 let customerDisplayWindow;
+let salesDocumentWindow;
+const salesDocumentBootstraps = new Map();
 
 if (!appUrl) {
   throw new Error("TPV_DESKTOP_APP_URL is required");
@@ -107,6 +109,49 @@ function createWindow() {
   });
 
   mainWindow.loadURL(appUrl);
+}
+
+function createSalesDocumentWindow(bootstrap) {
+  if (salesDocumentWindow && !salesDocumentWindow.isDestroyed()) {
+    if (salesDocumentWindow.isMinimized()) salesDocumentWindow.restore();
+    salesDocumentWindow.focus();
+    return { ok: true, focused: true };
+  }
+  if (!bootstrap?.session?.accessToken || !bootstrap?.terminalContext?.terminalCode) {
+    return structuredError(
+      "SALES_DOCUMENT_BOOTSTRAP_INVALID",
+      "No se puede abrir la ventana documental sin una sesion y terminal validos"
+    );
+  }
+  salesDocumentWindow = new BrowserWindow({
+    title: `${appName} - Factura / Albaran`,
+    width: 1380,
+    height: 860,
+    minWidth: 1050,
+    minHeight: 700,
+    show: false,
+    parent: mainWindow,
+    modal: false,
+    autoHideMenuBar: true,
+    backgroundColor: "#e8edf3",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  const salesDocumentWebContentsId = salesDocumentWindow.webContents.id;
+  salesDocumentBootstraps.set(salesDocumentWebContentsId, structuredClone(bootstrap));
+  const target = new URL(appUrl);
+  target.searchParams.set("window", "sales-document");
+  salesDocumentWindow.loadURL(target.toString());
+  salesDocumentWindow.once("ready-to-show", () => salesDocumentWindow?.show());
+  salesDocumentWindow.on("closed", () => {
+    salesDocumentBootstraps.delete(salesDocumentWebContentsId);
+    salesDocumentWindow = undefined;
+  });
+  return { ok: true, focused: false };
 }
 
 function hardwareConfigPath() {
@@ -213,6 +258,9 @@ function structuredError(code, message) {
 
 function normalizeHardwareConfig(config) {
   const nextConfig = { ...defaultHardwareConfig, ...config };
+  delete nextConfig.scannerMinimumLength;
+  delete nextConfig.scannerMaximumInterKeyMs;
+  delete nextConfig.scannerMaximumDurationMs;
   if (config?.ticketPrinterMode === "ESCPOS") {
     nextConfig.ticketPrinterDriver = "ESCPOS_RAW";
     nextConfig.ticketPrinterConnection =
@@ -228,10 +276,14 @@ function normalizeHardwareConfig(config) {
     nextConfig.cashDrawerOpeningPaymentMethods = ["EFECTIVO"];
   }
   const configuredRoutes = Array.isArray(config?.documentPrintRoutes) ? config.documentPrintRoutes : [];
-  nextConfig.documentPrintRoutes = defaultHardwareConfig.documentPrintRoutes.map((defaultRoute) => ({
-    ...defaultRoute,
-    ...(configuredRoutes.find((route) => route.documentType === defaultRoute.documentType) || {})
-  }));
+  nextConfig.documentPrintRoutes = defaultHardwareConfig.documentPrintRoutes.map((defaultRoute) => {
+    const configuredRoute = configuredRoutes.find((route) => route.documentType === defaultRoute.documentType) || {};
+    return {
+      ...defaultRoute,
+      ...configuredRoute,
+      ...(defaultRoute.documentType === "TICKET" ? { printAutomatically: true } : {})
+    };
+  });
   return nextConfig;
 }
 
@@ -269,7 +321,7 @@ function legacyRenderTicketHtml(ticket) {
     .map(
       (line) => `
         <tr>
-          <td>${escapeHtml(line.name)}</td>
+          <td>${escapeHtml(line.name)}${(line.serialNumbers || []).map((serial) => `<div class="serial">S/N: ${escapeHtml(serial)}</div>`).join("")}</td>
           <td class="right">${escapeHtml(line.quantity)}</td>
           <td class="right">${formatMoney(line.price)}</td>
           <td class="right">${formatMoney(line.total)}</td>
@@ -298,6 +350,7 @@ function legacyRenderTicketHtml(ticket) {
     table { width: 100%; border-collapse: collapse; }
     th { border-bottom: 1px solid #000; text-align: left; }
     td { padding: 2px 0; }
+    .serial { font-size: 10px; margin-top: 1px; }
     .right { text-align: right; }
     .separator { border-top: 1px dashed #000; margin: 8px 0; }
     .row { display: flex; justify-content: space-between; gap: 8px; }
@@ -722,6 +775,22 @@ ipcMain.handle("tpv:hardware:close-customer-display", () => {
 });
 
 ipcMain.handle("tpv:hardware:update-customer-display", (_event, state) => loadCustomerDisplayState(state));
+
+ipcMain.handle("tpv:sales-documents:open", (_event, bootstrap) =>
+  createSalesDocumentWindow(bootstrap));
+
+ipcMain.handle("tpv:sales-documents:consume-bootstrap", (event) => {
+  const bootstrap = salesDocumentBootstraps.get(event.sender.id) ?? null;
+  salesDocumentBootstraps.delete(event.sender.id);
+  return bootstrap;
+});
+
+ipcMain.handle("tpv:sales-documents:close", () => {
+  if (salesDocumentWindow && !salesDocumentWindow.isDestroyed()) {
+    salesDocumentWindow.close();
+  }
+  return { ok: true };
+});
 
 app.whenReady().then(createWindow);
 

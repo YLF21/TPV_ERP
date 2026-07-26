@@ -8,7 +8,8 @@ public record CashStoreConfigView(
         BigDecimal discrepancyTolerance,
         boolean requireEntryBreakdown,
         boolean requireWithdrawalBreakdown,
-        boolean requireClosingBreakdown) {
+        boolean requireClosingBreakdown,
+        boolean cashSessionRequired) {
 
     static CashStoreConfigView from(CashStoreConfig config) {
         return new CashStoreConfigView(
@@ -16,6 +17,7 @@ public record CashStoreConfigView(
                 config.getDiscrepancyTolerance(),
                 config.isRequireEntryBreakdown(),
                 config.isRequireWithdrawalBreakdown(),
-                config.isRequireClosingBreakdown());
+                config.isRequireClosingBreakdown(),
+                config.isCashSessionRequired());
     }
 }

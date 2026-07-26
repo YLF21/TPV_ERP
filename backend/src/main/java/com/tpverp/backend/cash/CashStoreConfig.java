@@ -30,6 +30,9 @@ public class CashStoreConfig {
     @Column(name = "requiere_desglose_cierre", nullable = false)
     private boolean requireClosingBreakdown;
 
+    @Column(name = "sesion_caja_obligatoria", nullable = false)
+    private boolean cashSessionRequired;
+
     @Version
     private long version;
 
@@ -60,11 +63,16 @@ public class CashStoreConfig {
         return requireClosingBreakdown;
     }
 
+    public boolean isCashSessionRequired() {
+        return cashSessionRequired;
+    }
+
     public void update(
             BigDecimal discrepancyTolerance,
             boolean requireEntryBreakdown,
             boolean requireWithdrawalBreakdown,
-            boolean requireClosingBreakdown) {
+            boolean requireClosingBreakdown,
+            boolean cashSessionRequired) {
         var tolerance = Money.euros(discrepancyTolerance);
         if (tolerance.signum() < 0) {
             throw new IllegalArgumentException("tolerancia_descuadre no puede ser negativa");
@@ -73,5 +81,6 @@ public class CashStoreConfig {
         this.requireEntryBreakdown = requireEntryBreakdown;
         this.requireWithdrawalBreakdown = requireWithdrawalBreakdown;
         this.requireClosingBreakdown = requireClosingBreakdown;
+        this.cashSessionRequired = cashSessionRequired;
     }
 }

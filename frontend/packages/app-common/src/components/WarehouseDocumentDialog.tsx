@@ -96,13 +96,13 @@ export type WarehouseDocumentDraft = {
 };
 
 const warehouseDocumentColumns = [
-  { key: "code", label: "Codigo", defaultWidth: 180 },
-  { key: "barcode", label: "Codigo de barra", defaultWidth: 200 },
-  { key: "name", label: "Nombre", defaultWidth: 260 },
-  { key: "discount", label: "Descuento", defaultWidth: 150 },
-  { key: "price", label: "Precio", defaultWidth: 120 },
+  { key: "code", labelKey: "warehouseDocument.column.code", defaultWidth: 180 },
+  { key: "barcode", labelKey: "warehouseDocument.column.barcode", defaultWidth: 200 },
+  { key: "name", labelKey: "warehouseDocument.column.name", defaultWidth: 260 },
+  { key: "discount", labelKey: "warehouseDocument.column.discount", defaultWidth: 150 },
+  { key: "price", labelKey: "warehouseDocument.column.price", defaultWidth: 120 },
   { key: "quantity", labelKey: "warehouseDocument.quantity", defaultWidth: 170 },
-  { key: "total", label: "Importe total", defaultWidth: 160 }
+  { key: "total", labelKey: "warehouseDocument.column.total", defaultWidth: 160 }
 ] as const;
 
 type WarehouseDocumentColumnKey = typeof warehouseDocumentColumns[number]["key"];
@@ -122,13 +122,13 @@ export function warehouseDocumentRequestErrorMessage(
   if (error instanceof ApiError) {
     const code = typeof error.problem?.code === "string" ? error.problem.code : "";
     if (error.status === 409 && code === "DATA_INTEGRITY_CONFLICT") {
-      return error.message || messages.integrityConflict;
+      return messages.integrityConflict;
     }
     if (error.status === 409 && code === "STATE_CONFLICT") {
-      return error.message || messages.stateConflict;
+      return messages.stateConflict;
     }
   }
-  return error instanceof Error ? error.message : fallback;
+  return fallback;
 }
 
 export function canConfirmWarehouseDocument(draft: Pick<WarehouseDocumentDraft, "warehouseId" | "partnerId" | "partnerText" | "lines">) {
@@ -341,7 +341,7 @@ export function WarehouseDocumentDialog({
       setStatus(t("product.create.saveError"));
       return [];
     }
-    setStatus(`Creando ${rows.length} productos...`);
+    setStatus(interpolateMessage(t("warehouseDocument.status.creatingProducts"), { count: rows.length }));
     const defaults = await loadProductCreateDefaults(token);
     const created: ExcelImportProductIdentity[] = [];
     for (const row of rows) {
@@ -361,14 +361,14 @@ export function WarehouseDocumentDialog({
       setExcelCreatedProducts((current) => [...current, createdProduct]);
       created.push({ id: product.id, code: product.code ?? row.draft.code, barcode: row.draft.barcode });
     }
-    setStatus(`${created.length} productos creados`);
+    setStatus(interpolateMessage(t("warehouseDocument.status.productsCreated"), { count: created.length }));
     return created;
   }
 
   function addMissingProductsManual(rows: ExcelImportClassifiedRow[]) {
     setManualMissingRows(rows);
     setManualMissingIndex(0);
-    setStatus(`${rows.length} productos pendientes de revisar`);
+    setStatus(interpolateMessage(t("warehouseDocument.status.productsPendingReview"), { count: rows.length }));
   }
 
   function closeManualMissingProduct() {
@@ -390,7 +390,7 @@ export function WarehouseDocumentDialog({
     const nextIndex = manualMissingIndex + 1;
     if (nextIndex >= manualMissingRows.length) {
       closeManualMissingProduct();
-      setStatus("Productos no existentes revisados");
+      setStatus(t("warehouseDocument.status.missingReviewed"));
       return;
     }
     setManualMissingIndex(nextIndex);
@@ -447,18 +447,20 @@ export function WarehouseDocumentDialog({
     setFileMenuOpen(false);
     const trigger = dialogRef.current?.querySelector<HTMLElement>("[data-warehouse-partner-trigger]");
     trigger?.focus();
-    setStatus(mode === "input" ? "Listado de proveedores" : "Listado de clientes");
+    setStatus(t(mode === "input"
+      ? "warehouseDocument.status.supplierList"
+      : "warehouseDocument.status.customerList"));
   }
 
   function clearAllLines() {
     setLines([]);
     setFileMenuOpen(false);
-    setStatus("Articulos eliminados");
+    setStatus(t("warehouseDocument.status.linesCleared"));
   }
 
   function clearAllDiscounts() {
     setFileMenuOpen(false);
-    setStatus("Este documento no tiene descuentos aplicados");
+    setStatus(t("warehouseDocument.status.noDiscounts"));
   }
 
   function printDocument() {
@@ -468,20 +470,26 @@ export function WarehouseDocumentDialog({
 
   function previewDocument() {
     setFileMenuOpen(false);
-    setStatus("Vista previa de impresion");
+    setStatus(t("warehouseDocument.status.printPreview"));
     window.print();
   }
 
   function exportDocumentExcel() {
     setFileMenuOpen(false);
     const csv = [
-      ["Fila", "Codigo", "Articulo", "Cantidad", "Estado"].join(";"),
+      [
+        t("sharedExcel.column.row"),
+        t("sharedExcel.column.code"),
+        t("warehouseDocument.column.name"),
+        t("warehouseDocument.quantity"),
+        t("sharedExcel.column.status")
+      ].join(";"),
       ...lines.map((line, index) => [
         index + 1,
         csvCell(importProducts.find((product) => product.id === line.productId)?.code ?? line.importedProduct),
         csvCell(line.productLabel),
         line.quantity,
-        line.valid ? "Correcto" : t(line.errorKey)
+        line.valid ? t("warehouseDocument.import.correct") : t(line.errorKey)
       ].join(";"))
     ].join("\n");
     const link = globalThis.document.createElement("a");
@@ -489,7 +497,7 @@ export function WarehouseDocumentDialog({
     link.download = `${documentTypeLabel.toLowerCase().replace(/\s+/g, "-")}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
-    setStatus("Excel exportado");
+    setStatus(t("warehouseDocument.status.exported"));
   }
 
   function updateLine(index: number, productId: string, quantity: number) {
@@ -805,35 +813,35 @@ export function WarehouseDocumentDialog({
       <section className="warehouse-document-dialog warehouse-document-dialog-v2">
         <header className="warehouse-document-topbar">
           <div className="warehouse-document-file-menu" ref={fileMenuRef}>
-            <button type="button" onClick={() => setFileMenuOpen((current) => !current)}>Archivo</button>
+            <button type="button" onClick={() => setFileMenuOpen((current) => !current)}>{t("warehouseDocument.menu.file")}</button>
             {fileMenuOpen && (
               <div className="warehouse-document-menu" role="menu">
                 <button type="button" onClick={openPartnerList}>{partnerLabel}</button>
-                <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>Guardar</button>
-                <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>Confirmar</button>
-                <button type="button" onClick={previewDocument}>Vista previa Ctrl+P</button>
-                <button type="button" onClick={printDocument}>Imprimir</button>
-                <button type="button" disabled={readOnly} onClick={clearAllLines}>Eliminar todos los articulos</button>
-                <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>Eliminar todos los descuentos</button>
-                <button type="button" disabled={readOnly} onClick={() => { setFileMenuOpen(false); setExcelImportOpen(true); }}>Importar Excel</button>
-                <button type="button" onClick={exportDocumentExcel}>Exportar Excel</button>
+                <button type="button" disabled={!canSaveDraft} onClick={() => { setFileMenuOpen(false); void saveDraft(); }}>{t("common.save")}</button>
+                <button type="button" disabled={!canSubmitConfirmation} onClick={() => { setFileMenuOpen(false); void confirmDocument(); }}>{t("common.confirm")}</button>
+                <button type="button" onClick={previewDocument}>{t("warehouseDocument.menu.previewShortcut")}</button>
+                <button type="button" onClick={printDocument}>{t("salesReport.print")}</button>
+                <button type="button" disabled={readOnly} onClick={clearAllLines}>{t("warehouseDocument.menu.clearLines")}</button>
+                <button type="button" disabled={readOnly} onClick={clearAllDiscounts}>{t("warehouseDocument.menu.clearDiscounts")}</button>
+                <button type="button" disabled={readOnly} onClick={() => { setFileMenuOpen(false); setExcelImportOpen(true); }}>{t("warehouseDocument.importExcel")}</button>
+                <button type="button" onClick={exportDocumentExcel}>{t("warehouseDocument.menu.exportExcel")}</button>
                 <div className="warehouse-document-submenu">
-                  <button type="button" aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>Usar precio</button>
+                  <button type="button" aria-expanded={priceMenuOpen} onClick={() => setPriceMenuOpen((current) => !current)}>{t("warehouseDocument.menu.usePrice")}</button>
                   {priceMenuOpen && (
                     <div className="warehouse-document-submenu-panel" role="menu">
-                      <button type="button" onClick={() => { setDocumentPriceMode("sale"); setPriceMenuOpen(false); setFileMenuOpen(false); }}>Precio venta</button>
-                      <button type="button" onClick={() => { setDocumentPriceMode("minor"); setPriceMenuOpen(false); setFileMenuOpen(false); }}>Precio mayor</button>
+                      <button type="button" onClick={() => { setDocumentPriceMode("sale"); setPriceMenuOpen(false); setFileMenuOpen(false); }}>{t("warehouseDocument.price.sale")}</button>
+                      <button type="button" onClick={() => { setDocumentPriceMode("minor"); setPriceMenuOpen(false); setFileMenuOpen(false); }}>{t("warehouseDocument.price.wholesale")}</button>
                     </div>
                   )}
                 </div>
-                <button type="button" onClick={onClose}>Salir</button>
+                <button type="button" onClick={onClose}>{t("warehouseDocument.menu.exit")}</button>
               </div>
             )}
           </div>
-          <button type="button" onClick={printDocument}>Imprimir</button>
-          <button type="button" disabled={!canSaveDraft} onClick={() => void saveDraft()}>Guardar F9</button>
-          <button type="button" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>Confirmar</button>
-          <button type="button" onClick={onClose}>Salir Esc</button>
+          <button type="button" onClick={printDocument}>{t("salesReport.print")}</button>
+          <button type="button" disabled={!canSaveDraft} onClick={() => void saveDraft()}>{t("warehouseDocument.menu.saveShortcut")}</button>
+          <button type="button" disabled={!canSubmitConfirmation} onClick={() => void confirmDocument()}>{t("common.confirm")}</button>
+          <button type="button" onClick={onClose}>{t("warehouseDocument.menu.exitShortcut")}</button>
         </header>
 
         <div className="warehouse-document-workspace">
@@ -841,9 +849,9 @@ export function WarehouseDocumentDialog({
             <div className="warehouse-document-total">
               <span>{documentTypeLabel}{document?.number ? ` / ${document.number}` : ""}</span>
               <strong>{formatDocumentAmount(documentTotal)}</strong>
-              <em>{totalUnits.toLocaleString(locale === "zh" ? "zh-CN" : "es-ES")} {t("warehouseDocument.quantity")} total</em>
-              <small>Subtotal: {formatDocumentAmount(documentSubtotal)}</small>
-              <small>Descuento documento: {formatDocumentDiscount(documentDiscountPercent)}</small>
+              <em>{interpolateMessage(t("warehouseDocument.totalUnits"), { quantity: totalUnits.toLocaleString("es-ES") })}</em>
+              <small>{t("warehouseDocument.subtotal")}: {formatDocumentAmount(documentSubtotal)}</small>
+              <small>{t("warehouseDocument.documentDiscount")}: {formatDocumentDiscount(documentDiscountPercent)}</small>
             </div>
 
             <div className="warehouse-document-field">
@@ -868,7 +876,7 @@ export function WarehouseDocumentDialog({
             </div>
 
             <div className="warehouse-document-partner-panel">
-              <span>{mode === "input" ? "Proveedor/Origen" : "Cliente/Destino"}</span>
+              <span>{t(mode === "input" ? "warehouseDocument.partner.input" : "warehouseDocument.partner.output")}</span>
               <div className="warehouse-document-field">
                 <ErpSelect
                   aria-label={partnerLabel}
@@ -887,12 +895,14 @@ export function WarehouseDocumentDialog({
                   onNavigatePrevious={() => moveFromActiveControl("previous")}
                 />
               </div>
-              <button type="button" data-warehouse-partner-trigger onClick={openPartnerList}>Listado {partnerLabel.toLowerCase()}</button>
-              <p>{selectedPartner ? partnerName(selectedPartner) : partnerText || "Sin tercero asignado para documento de almacen"}</p>
+              <button type="button" data-warehouse-partner-trigger onClick={openPartnerList}>
+                {interpolateMessage(t("warehouseDocument.partnerList"), { partner: partnerLabel.toLocaleLowerCase(locale) })}
+              </button>
+              <p>{selectedPartner ? partnerName(selectedPartner) : partnerText || t("warehouseDocument.noPartner")}</p>
             </div>
 
             <label className="warehouse-document-discount">
-              <span>Descuento total documento %</span>
+              <span>{t("warehouseDocument.totalDiscount")}</span>
               <input
                 type="number"
                 min="0"
@@ -905,7 +915,7 @@ export function WarehouseDocumentDialog({
             </label>
 
             <label className="warehouse-document-comments">
-              <span>Comentarios</span>
+              <span>{t("warehouseDocument.comments")}</span>
               <textarea value={concept} disabled={readOnly} onChange={(event) => setConcept(event.target.value)} />
             </label>
 
@@ -916,11 +926,11 @@ export function WarehouseDocumentDialog({
               </label>
               <div className="warehouse-document-state">
                 <span>{t("salesReport.column.status")}</span>
-                <strong>{documentStatus}</strong>
+                <strong>{warehouseDocumentStatusLabel(documentStatus, t)}</strong>
               </div>
               <div className="warehouse-document-state">
-                <span>Usar precio</span>
-                <strong>{documentPriceMode === "sale" ? "Precio venta" : "Precio menor"}</strong>
+                <span>{t("warehouseDocument.menu.usePrice")}</span>
+                <strong>{t(documentPriceMode === "sale" ? "warehouseDocument.price.sale" : "warehouseDocument.price.wholesale")}</strong>
               </div>
             </div>
             {status && <p className="warehouse-document-status" aria-live="polite">{status}</p>}
@@ -938,7 +948,7 @@ export function WarehouseDocumentDialog({
                   <tr>
                     {visibleColumns.map((column) => {
                       const definition = warehouseDocumentColumns.find((candidate) => candidate.key === column.key);
-                      const label = definition && "labelKey" in definition ? t(definition.labelKey) : definition?.label ?? column.key;
+                      const label = definition ? t(definition.labelKey) : column.key;
                       return (
                         <TableLayoutHeaderCell
                           column={column}
@@ -1066,6 +1076,19 @@ function formatDocumentAmount(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+function interpolateMessage(template: string, values: Record<string, string | number>) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template
+  );
+}
+
+function warehouseDocumentStatusLabel(status: string, t: (key: string) => string) {
+  const key = `warehouseDocument.status.${status.trim().toLocaleUpperCase()}`;
+  const translated = t(key);
+  return translated === key ? status : translated;
 }
 
 function csvCell(value: unknown) {

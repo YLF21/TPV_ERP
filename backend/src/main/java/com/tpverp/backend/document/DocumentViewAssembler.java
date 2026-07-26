@@ -59,11 +59,14 @@ public class DocumentViewAssembler {
         }
 
         return documents.stream()
-                .map(document -> DocumentView.from(
-                        document,
-                        customerNames.get(document.getClienteId()),
-                        qrUrlResolver.apply(document.getId()),
-                        attributionIndex.get(document.getId())))
+                .map(document -> {
+                    var customerId = document.getClienteId();
+                    return DocumentView.from(
+                            document,
+                            customerId == null ? null : customerNames.get(customerId),
+                            qrUrlResolver.apply(document.getId()),
+                            attributionIndex.get(document.getId()));
+                })
                 .toList();
     }
 

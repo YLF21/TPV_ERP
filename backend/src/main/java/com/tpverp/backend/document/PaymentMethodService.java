@@ -57,6 +57,9 @@ public class PaymentMethodService {
         var method = repository.findByIdAndEmpresaId(
                         id, organization.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
+        if ("VALE".equals(method.getNombre()) && requiresReference) {
+            throw new IllegalArgumentException("voucher_external_reference_not_configurable");
+        }
         method.configure(requiresReference, opensCashDrawer);
         return method;
     }

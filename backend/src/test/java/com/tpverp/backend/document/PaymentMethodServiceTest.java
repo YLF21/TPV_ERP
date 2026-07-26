@@ -60,6 +60,18 @@ class PaymentMethodServiceTest {
     }
 
     @Test
+    void voucherCannotEnableAnExternalDocumentReference() {
+        var companyId = currentCompany();
+        var method = new PaymentMethod(companyId, "VALE", true);
+        when(repository.findByIdAndEmpresaId(method.getId(), companyId)).thenReturn(Optional.of(method));
+
+        assertThatThrownBy(() -> service().configure(method.getId(), true, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("voucher_external_reference_not_configurable");
+        assertThat(method.isRequiereReferencia()).isFalse();
+    }
+
+    @Test
     void rejectsCompanyFromAnotherTenant() {
         currentCompany();
         var foreignCompanyId = UUID.randomUUID();

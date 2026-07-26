@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { UserSession } from "@tpverp/app-common";
+import { ApiError, type UserSession } from "@tpverp/app-common";
 import { WarehouseManagementScreen } from "./WarehouseManagementScreen";
 import * as api from "./warehouseManagementApi";
 
@@ -110,16 +110,21 @@ describe("WarehouseManagementScreen", () => {
 
   it("keeps the confirmation open when a warehouse still has stock", async () => {
     vi.mocked(api.setManagedWarehouseActive).mockRejectedValueOnce(
-      new Error("Solo se puede desactivar un almacén con stock cero")
+      new ApiError("backend copy", 409, { code: "STATE_CONFLICT" })
     );
-    render(<WarehouseManagementScreen session={session(["GESTION_ALMACEN"])} t={t} />);
+    render(<WarehouseManagementScreen
+      session={session(["GESTION_ALMACEN"])}
+      t={(key) => key === "warehouse.management.zeroStockWarning"
+        ? "Solo se puede desactivar si su stock total es cero."
+        : key}
+    />);
     fireEvent.click(await screen.findByRole("row", { name: /SECUNDARIO/ }));
     fireEvent.click(screen.getByRole("button", { name: "warehouse.management.deactivate" }));
 
     const dialog = screen.getByRole("dialog", { name: "warehouse.management.dialog.deactivate" });
     fireEvent.click(within(dialog).getByRole("button", { name: "warehouse.management.deactivate" }));
 
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("stock cero");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("stock total es cero");
     expect(screen.getByRole("dialog", { name: "warehouse.management.dialog.deactivate" })).toBeInTheDocument();
   });
 

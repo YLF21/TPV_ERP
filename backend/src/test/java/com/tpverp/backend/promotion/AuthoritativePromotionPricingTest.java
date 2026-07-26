@@ -93,6 +93,35 @@ class AuthoritativePromotionPricingTest {
     }
 
     @Test
+    void zeroCatalogPricePreservesValidatedOpenPrice() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(product.getSalePrice()).thenReturn(BigDecimal.ZERO);
+        var line = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P-OPEN", "Producto abierto", null,
+                new BigDecimal("7.25"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"));
+
+        var priced = service().priceLine(
+                product, DATE, AuthoritativePromotionPricing.CustomerContext.anonymous(), line);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("7.25");
+        assertThat(priced.tarifa()).isEqualTo("VENTA");
+    }
+
+    @Test
+    void zeroCatalogPriceRejectsMissingOpenPrice() {
+        when(product.getSalePrice()).thenReturn(BigDecimal.ZERO);
+        var line = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P-OPEN", "Producto abierto", null,
+                null, BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().priceLine(
+                product, DATE, AuthoritativePromotionPricing.CustomerContext.anonymous(), line))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Debe indicar el precio");
+    }
+
+    @Test
     void activeCategoryDiscountSurvivesFinalPricingForNormalProduct() {
         when(customers.findByIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(customer));
         when(members.findByCustomerIdAndCompanyId(CUSTOMER_ID, COMPANY_ID)).thenReturn(Optional.of(member));

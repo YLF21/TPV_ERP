@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.Company;
@@ -106,6 +107,26 @@ class DocumentViewTest {
         assertThat(views.getFirst().customerName()).isEqualTo("CLIENTE ORO DEMO");
         assertThat(views.getFirst().qrUrl()).isEqualTo("qr:" + document.getId());
         verify(customers).findByCompanyIdAndIdIn(companyId, Set.of(customerId));
+    }
+
+    @Test
+    void assemblerSupportsTicketListsWithoutCustomer() {
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 25), UUID.randomUUID(), BigDecimal.ZERO);
+        var customers = mock(CustomerRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var attributions = mock(DocumentAttributionResolver.class);
+        when(attributions.resolve(List.of(document))).thenReturn(Map.of(
+                document.getId(), DocumentAttributionResolver.Attribution.empty(document)));
+
+        var views = new DocumentViewAssembler(customers, organization, attributions)
+                .documentViews(List.of(document), id -> null);
+
+        assertThat(views).hasSize(1);
+        assertThat(views.getFirst().customerId()).isNull();
+        assertThat(views.getFirst().customerName()).isNull();
+        verifyNoInteractions(customers, organization);
     }
 
     @Test

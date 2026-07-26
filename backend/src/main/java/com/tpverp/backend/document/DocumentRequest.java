@@ -41,14 +41,36 @@ public record DocumentRequest(
             DocumentLineType lineType,
             UUID promotionId,
             UUID promotionVersionId,
-            UUID promotionalCouponId) {
+            UUID promotionalCouponId,
+            List<String> serialNumbers) {
+
+        public LineRequest(
+                UUID productoId,
+                BigDecimal cantidad,
+                String codigo,
+                String nombre,
+                String tarifa,
+                BigDecimal precioUnitario,
+                BigDecimal descuento,
+                boolean impuestosIncluidos,
+                String regimenImpuesto,
+                BigDecimal porcentajeImpuesto,
+                DocumentLineType lineType,
+                UUID promotionId,
+                UUID promotionVersionId,
+                UUID promotionalCouponId) {
+            this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                    impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                    promotionId, promotionVersionId, promotionalCouponId, List.of());
+        }
 
         DocumentLineCommand toCommand() {
             var resolvedType = lineType == null ? DocumentLineType.PRODUCT : lineType;
             var command = new DocumentLineCommand(
                     productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
                     descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
-                    resolvedType, promotionId, promotionVersionId, promotionalCouponId);
+                    resolvedType, promotionId, promotionVersionId, promotionalCouponId,
+                    serialNumbers);
             command.requireClientProductLine();
             return command;
         }

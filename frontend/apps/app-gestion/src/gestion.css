@@ -1800,3 +1800,225 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   .gestion-verifactu-certificate-actions { grid-template-columns: 1fr; }
   .gestion-verifactu-certificate-buttons { justify-content: flex-start; }
 }
+
+.gestion-payment-methods-workspace {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 18px;
+}
+
+.gestion-payment-methods-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--gestion-border);
+  background: var(--gestion-panel);
+}
+
+.gestion-payment-methods-header > div > span {
+  color: var(--gestion-navy-2);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gestion-payment-methods-header h2 {
+  margin: 4px 0 5px;
+  color: var(--gestion-navy);
+  font-size: 21px;
+}
+
+.gestion-payment-methods-header p,
+.gestion-payment-methods-header aside small {
+  margin: 0;
+  color: var(--gestion-muted);
+  line-height: 1.45;
+}
+
+.gestion-payment-methods-header aside {
+  width: min(330px, 38%);
+  display: grid;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 3px solid var(--gestion-navy-2);
+}
+
+.gestion-payment-methods-header aside strong {
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-label);
+  text-transform: uppercase;
+}
+
+.gestion-payment-methods-message {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid;
+  background: #fff;
+  font-weight: 800;
+}
+
+.gestion-payment-methods-message.success {
+  border-color: #72a387;
+  color: var(--gestion-positive);
+}
+
+.gestion-payment-methods-message.error {
+  border-color: #d79999;
+  color: var(--gestion-negative);
+}
+
+.gestion-payment-methods-panel {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--gestion-border-dark);
+  background: var(--gestion-panel);
+}
+
+.gestion-payment-methods-row {
+  min-width: 760px;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: minmax(240px, 1.25fr) 180px 230px 150px;
+  align-items: center;
+  border-bottom: 1px solid var(--gestion-border);
+}
+
+.gestion-payment-methods-row:nth-child(odd):not(.head) {
+  background: #f7f9fb;
+}
+
+.gestion-payment-methods-row.head {
+  min-height: 38px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #dfe5eb;
+  color: #344b62;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.gestion-payment-methods-row > span {
+  min-width: 0;
+  padding: 9px 13px;
+}
+
+.gestion-payment-method-name {
+  display: grid;
+  gap: 3px;
+}
+
+.gestion-payment-method-name strong {
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-control);
+}
+
+.gestion-payment-method-name small,
+.gestion-payment-methods-row > span:last-child small {
+  color: var(--gestion-muted);
+}
+
+.gestion-payment-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.gestion-payment-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gestion-payment-switch i {
+  width: 34px;
+  height: 18px;
+  position: relative;
+  border: 1px solid var(--gestion-border-dark);
+  background: #d4dbe2;
+}
+
+.gestion-payment-switch i::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  border: 1px solid #748291;
+  background: #fff;
+}
+
+.gestion-payment-switch input:checked + i {
+  border-color: #155d34;
+  background: #2e7b4d;
+}
+
+.gestion-payment-switch input:checked + i::after {
+  left: 18px;
+  border-color: #fff;
+}
+
+.gestion-payment-switch input:focus-visible + i {
+  outline: 2px solid #2b74b8;
+  outline-offset: 2px;
+}
+
+.gestion-payment-switch input:disabled ~ * {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gestion-payment-switch b {
+  font-size: var(--gestion-font-label);
+}
+
+.gestion-payment-not-applicable {
+  color: var(--gestion-muted);
+  font-style: italic;
+}
+
+.gestion-payment-methods-row em {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 3px 6px;
+  border: 1px solid var(--gestion-border);
+  background: #edf1f5;
+  color: #3e5266;
+  font-size: var(--gestion-font-micro);
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gestion-payment-methods-row em.system {
+  border-color: #7c91a7;
+  background: #e2e9f0;
+  color: var(--gestion-navy);
+}
+
+.gestion-payment-methods-state {
+  margin: 0;
+  padding: 28px 18px;
+  color: var(--gestion-muted);
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .gestion-payment-methods-header {
+    display: grid;
+  }
+
+  .gestion-payment-methods-header aside {
+    width: auto;
+  }
+}

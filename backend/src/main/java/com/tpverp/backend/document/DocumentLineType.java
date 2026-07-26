@@ -3,5 +3,6 @@ package com.tpverp.backend.document;
 public enum DocumentLineType {
     PRODUCT,
     PROMOTION,
-    PROMOTIONAL_COUPON
+    PROMOTIONAL_COUPON,
+    MANUAL_DISCOUNT
 }

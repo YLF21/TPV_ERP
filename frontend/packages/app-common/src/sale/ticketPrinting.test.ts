@@ -58,16 +58,16 @@ describe("confirmed ticket printing", () => {
     }, expect.objectContaining({ documentPrintRoutes: expect.any(Array) }));
   });
 
-  it("skips automatic printing when the ticket route disables it", async () => {
-    const printTicket = vi.fn();
+  it("prints confirmed tickets even when a legacy route disabled automatic printing", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
     const hardware = {
       getHardwareConfig: vi.fn().mockResolvedValue(hardwareConfig(false)),
       printTicket
     } as unknown as HardwareBridge;
 
     await expect(printConfirmedTicketAutomatically(snapshot, terminal, hardware))
-      .resolves.toEqual({ status: "SKIPPED" });
-    expect(printTicket).not.toHaveBeenCalled();
+      .resolves.toEqual({ status: "PRINTED" });
+    expect(printTicket).toHaveBeenCalledOnce();
   });
 
   it("returns a structured failure when hardware rejects the ticket", async () => {

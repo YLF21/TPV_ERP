@@ -57,8 +57,8 @@ class CashReportServiceTest {
                 .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
 
         assertThatThrownBy(() -> fixture.service().updateConfig(
-                new CashStoreConfigRequest(new BigDecimal("-0.01"), true, false, true),
-                new TestingAuthenticationToken("admin", "token")))
+                new CashStoreConfigRequest(new BigDecimal("-0.01"), true, false, true, false),
+                adminAuthentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tolerancia_descuadre");
     }
@@ -70,8 +70,8 @@ class CashReportServiceTest {
                 .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
 
         assertThatThrownBy(() -> fixture.service().updateConfig(
-                new CashStoreConfigRequest(new BigDecimal("1.00"), true, null, true),
-                new TestingAuthenticationToken("admin", "token")))
+                new CashStoreConfigRequest(new BigDecimal("1.00"), true, null, true, false),
+                adminAuthentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("requireWithdrawalBreakdown");
     }
@@ -83,10 +83,30 @@ class CashReportServiceTest {
                 .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
 
         assertThatThrownBy(() -> fixture.service().updateConfig(
-                new CashStoreConfigRequest(null, true, false, true),
-                new TestingAuthenticationToken("admin", "token")))
+                new CashStoreConfigRequest(null, true, false, true, false),
+                adminAuthentication()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("discrepancyTolerance");
+    }
+
+    @Test
+    void onlyAdminCanChangeCashSessionPolicy() {
+        var fixture = fixture();
+        when(fixture.configs().findById(fixture.store().getId()))
+                .thenReturn(Optional.of(new CashStoreConfig(fixture.store().getId())));
+
+        assertThatThrownBy(() -> fixture.service().updateConfig(
+                new CashStoreConfigRequest(new BigDecimal("1.00"), true, false, true, true),
+                new TestingAuthenticationToken("accounting", "token")))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
+                .hasMessageContaining("administrador");
+    }
+
+    private static TestingAuthenticationToken adminAuthentication() {
+        return new TestingAuthenticationToken(
+                "admin",
+                "token",
+                "ROLE_ADMIN");
     }
 
     private static CashMovement movement(

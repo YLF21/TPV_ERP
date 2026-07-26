@@ -299,8 +299,8 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
         return;
       }
       onSaved(saved);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("gestion.security.saveError"));
+    } catch {
+      setError(t("gestion.security.saveError"));
     } finally {
       setSaving(false);
     }
@@ -308,7 +308,7 @@ function UserActionDialog({ kind, user, roles, token, t, onClose, onSaved }: {
 
   const title = t(`gestion.users.dialog.${kind}`);
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} closeLabel={t("common.close")} onClose={onClose}>
       <form className="gestion-security-form" onSubmit={submit}>
         {(kind === "create" || kind === "identity") && (
           <>
@@ -518,10 +518,10 @@ function CreateRoleDialog({ token, t, onClose, onCreated }: { token?: string; t:
     setSaving(true);
     setError("");
     try { onCreated(await createSecurityRole(name, token)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t("gestion.security.saveError")); }
+    catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
-  return <Modal title={t("gestion.roles.dialog.create")} onClose={onClose}><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
+  return <Modal title={t("gestion.roles.dialog.create")} closeLabel={t("common.close")} onClose={onClose}><form className="gestion-security-form" onSubmit={submit}><label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>{error && <p className="gestion-inline-error" role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>{t("common.cancel")}</button><button type="submit" className="primary" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></footer></form></Modal>;
 }
 
 function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
@@ -539,11 +539,11 @@ function RenameRoleDialog({ role, token, t, onClose, onRenamed }: {
     setSaving(true);
     setError("");
     try { onRenamed(await renameSecurityRole(role.id, name, token)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t("gestion.security.saveError")); }
+    catch { setError(t("gestion.security.saveError")); }
     finally { setSaving(false); }
   }
   return (
-    <Modal title={t("gestion.roles.dialog.rename")} onClose={onClose}>
+    <Modal title={t("gestion.roles.dialog.rename")} closeLabel={t("common.close")} onClose={onClose}>
       <form className="gestion-security-form" onSubmit={submit}>
         <label><span>{t("gestion.roles.field.name")}</span><input autoFocus required value={name} onChange={(event) => setName(event.target.value)} /></label>
         {error && <p className="gestion-inline-error" role="alert">{error}</p>}
@@ -569,13 +569,13 @@ function DeleteRoleDialog({ role, token, t, onClose, onDeleted }: {
       await deleteSecurityRole(role.id, token);
       onDeleted();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("gestion.security.saveError"));
+      setError(roleDeletionError(reason, t));
     } finally {
       setDeleting(false);
     }
   }
   return (
-    <Modal title={t("gestion.roles.dialog.delete")} onClose={onClose}>
+    <Modal title={t("gestion.roles.dialog.delete")} closeLabel={t("common.close")} onClose={onClose}>
       <div className="gestion-confirm-content">
         <p>{t("gestion.roles.deleteConfirm").replace("{name}", role.name)}</p>
         <p className="gestion-confirm-warning">{t("gestion.roles.deleteRequirement")}</p>
@@ -593,12 +593,27 @@ function SecurityHeader({ eyebrow, title, subtitle, children }: { eyebrow: strin
   return <header className="gestion-dashboard-toolbar gestion-security-header"><div><span className="gestion-eyebrow">{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div><div className="gestion-dashboard-actions">{children}</div></header>;
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return <div className="gestion-modal-backdrop"><section className="gestion-security-dialog" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label="Cerrar" onClick={onClose}>×</button></header>{children}</section></div>;
+function roleDeletionError(reason: unknown, t: Translator) {
+  const problem = reason && typeof reason === "object" && "problem" in reason
+    && reason.problem && typeof reason.problem === "object"
+    ? reason.problem as Record<string, unknown>
+    : null;
+  if (problem?.code === "ROLE_IN_USE") {
+    const assignedUsers = Number(problem.assignedUsers);
+    if (Number.isFinite(assignedUsers) && assignedUsers >= 0) {
+      return t(assignedUsers === 1 ? "gestion.roles.inUse.one" : "gestion.roles.inUse.many")
+        .replace("{count}", String(assignedUsers));
+    }
+  }
+  return t("gestion.security.saveError");
+}
+
+function Modal({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
+  return <div className="gestion-modal-backdrop"><section className="gestion-security-dialog" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>×</button></header>{children}</section></div>;
 }
 
 function ConfirmDialog({ title, text, t, onCancel, onConfirm }: { title: string; text: string; t: Translator; onCancel: () => void; onConfirm: () => void }) {
-  return <Modal title={title} onClose={onCancel}><div className="gestion-confirm-content"><p>{text}</p><footer><button type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
+  return <Modal title={title} closeLabel={t("common.close")} onClose={onCancel}><div className="gestion-confirm-content"><p>{text}</p><footer><button type="button" onClick={onCancel}>{t("common.cancel")}</button><button type="button" className="primary" onClick={onConfirm}>{t("common.confirm")}</button></footer></div></Modal>;
 }
 
 function SecurityState({ error = false, children }: { error?: boolean; children: ReactNode }) {

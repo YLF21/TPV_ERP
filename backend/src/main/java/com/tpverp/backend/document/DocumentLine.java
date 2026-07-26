@@ -1,17 +1,24 @@
 package com.tpverp.backend.document;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -39,6 +46,13 @@ public class DocumentLine {
     private UUID promotionalCouponId;
     @Column(name = "original_document_line_id")
     private UUID originalDocumentLineId;
+    @ElementCollection
+    @CollectionTable(
+            name = "documento_linea_numero_serie",
+            joinColumns = @JoinColumn(name = "documento_linea_id"))
+    @OrderColumn(name = "posicion")
+    @Column(name = "numero_serie", nullable = false, length = 128)
+    private List<String> serialNumbers = new ArrayList<>();
     @Column(nullable = false)
     private int posicion;
     @Column(nullable = false, precision = 19, scale = 3)
@@ -138,15 +152,13 @@ public class DocumentLine {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
-        if (promotionalCouponId == null && promotionId == null) {
-            throw new IllegalArgumentException("promotionId es obligatorio");
-        }
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
         this.productoId = null;
-        this.lineType = promotionalCouponId == null
-                ? DocumentLineType.PROMOTION
-                : DocumentLineType.PROMOTIONAL_COUPON;
+        this.lineType = promotionalCouponId != null
+                ? DocumentLineType.PROMOTIONAL_COUPON
+                : promotionId != null ? DocumentLineType.PROMOTION
+                : DocumentLineType.MANUAL_DISCOUNT;
         this.promotionId = promotionId;
         this.promotionVersionId = promotionVersionId;
         this.promotionalCouponId = promotionalCouponId;
@@ -194,6 +206,18 @@ public class DocumentLine {
                 regimenImpuesto, porcentajeImpuesto, promotionId, promotionVersionId, couponId);
     }
 
+    static DocumentLine manualDiscount(
+            CommercialDocument documento,
+            int posicion,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto) {
+        return new DocumentLine(
+                documento, posicion, "DESCUENTO", amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, null, null, null);
+    }
+
     public CommercialDocument getDocumento() {
         return documento;
     }
@@ -209,6 +233,23 @@ public class DocumentLine {
     public void identifyRefundOf(UUID originalLineId) {
         if (originalDocumentLineId != null) throw new IllegalStateException("La linea ya identifica su origen fiscal");
         originalDocumentLineId = Objects.requireNonNull(originalLineId, "originalLineId");
+    }
+
+    public List<String> getSerialNumbers() {
+        return List.copyOf(serialNumbers);
+    }
+
+    public void assignSerialNumbers(Collection<String> values) {
+        var normalized = normalizeSerialNumbers(values);
+        if (!normalized.isEmpty()) {
+            var units = cantidad.abs().stripTrailingZeros();
+            if (units.scale() > 0 || units.intValueExact() != normalized.size()) {
+                throw new IllegalArgumentException(
+                        "Cada unidad con numero de serie debe tener un S/N distinto");
+            }
+        }
+        serialNumbers.clear();
+        serialNumbers.addAll(normalized);
     }
 
     public UUID getProductoId() {
@@ -331,5 +372,22 @@ public class DocumentLine {
 
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static List<String> normalizeSerialNumbers(Collection<String> values) {
+        if (values == null || values.isEmpty()) return List.of();
+        var normalized = new ArrayList<String>();
+        var unique = new java.util.HashSet<String>();
+        for (var value : values) {
+            var serial = required(value, "numeroSerie");
+            if (serial.length() > 128) {
+                throw new IllegalArgumentException("El numero de serie no puede superar 128 caracteres");
+            }
+            if (!unique.add(serial.toUpperCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("Los numeros de serie de una linea deben ser unicos");
+            }
+            normalized.add(serial);
+        }
+        return List.copyOf(normalized);
     }
 }

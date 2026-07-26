@@ -1,7 +1,9 @@
 package com.tpverp.backend.document;
 
 import com.tpverp.backend.installation.InstallationRepository;
+import com.tpverp.backend.installation.InstallationStatusService;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.shared.access.OperationalMode;
 import com.tpverp.backend.verifactu.FiscalDocumentType;
 import com.tpverp.backend.verifactu.FiscalRecordCommand;
 import com.tpverp.backend.verifactu.FiscalRecordOperation;
@@ -27,6 +29,7 @@ public class DocumentFiscalIntegration {
     private final InstallationRepository installations;
     private final ApplicationEventPublisher events;
     private final SalesInvoiceRectificationService rectifications;
+    private final InstallationStatusService installationStatus;
 
     public DocumentFiscalIntegration(
             FiscalRecordService fiscalRecords,
@@ -34,17 +37,22 @@ public class DocumentFiscalIntegration {
             CurrentOrganization organization,
             InstallationRepository installations,
             ApplicationEventPublisher events,
-            SalesInvoiceRectificationService rectifications) {
+            SalesInvoiceRectificationService rectifications,
+            InstallationStatusService installationStatus) {
         this.fiscalRecords = fiscalRecords;
         this.recordRepository = recordRepository;
         this.organization = organization;
         this.installations = installations;
         this.events = events;
         this.rectifications = rectifications;
+        this.installationStatus = installationStatus;
     }
 
     // Registers the sales document fiscal creation when VERI*FACTU is active.
     public void registerAlta(CommercialDocument document, boolean invoiceFromTicket) {
+        if (skipFiscalRegistration()) {
+            return;
+        }
         if (document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA) {
             registerSalesRectification(document);
             return;
@@ -61,10 +69,16 @@ public class DocumentFiscalIntegration {
 
     // Registers fiscal cancellation while preserving the original ticket type.
     public void registerTicketCancellation(CommercialDocument ticket) {
+        if (skipFiscalRegistration()) {
+            return;
+        }
         register(ticket, FiscalRecordOperation.ANULACION, ticketType(ticket));
     }
 
     public void registerInvoiceFromTicket(CommercialDocument invoice, CommercialDocument ticket) {
+        if (skipFiscalRegistration()) {
+            return;
+        }
         try {
             var record = fiscalRecords.registerSubstitution(
                     command(invoice, FiscalRecordOperation.ALTA, FiscalDocumentType.F3),
@@ -78,6 +92,9 @@ public class DocumentFiscalIntegration {
 
     public void registerTicketRectification(
             CommercialDocument rectification, CommercialDocument original) {
+        if (skipFiscalRegistration()) {
+            return;
+        }
         registerRectification(rectification, original.getId(), FiscalDocumentType.R5,
                 FiscalRectificationMethod.I);
     }
@@ -155,5 +172,9 @@ public class DocumentFiscalIntegration {
                 .orElseThrow(() -> new IllegalStateException(
                         "La instalacion no esta inicializada"))
                 .getId();
+    }
+
+    private boolean skipFiscalRegistration() {
+        return installationStatus.status().mode() == OperationalMode.DEVELOPMENT;
     }
 }

@@ -20,6 +20,7 @@ export type ConfirmedTicketPrintSnapshot = {
     quantity: NumericValue;
     price: NumericValue;
     total: NumericValue;
+    serialNumbers?: string[];
   }>;
   payments: Array<{
     method: string;
@@ -41,7 +42,7 @@ export type PendingCommercialDocumentPrintSnapshot = {
   issueDate?: string;
   issuer?: FiscalPartySnapshot;
   customer?: FiscalPartySnapshot;
-  lines: Array<{ name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean }>;
+  lines: Array<{ name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean; serialNumbers?: string[] }>;
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
   total: NumericValue;
@@ -83,7 +84,8 @@ function ticketPrintRequest(
       name: line.name,
       quantity: Number(line.quantity),
       price: Number(line.price),
-      total: Number(line.total)
+      total: Number(line.total),
+      ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
     })),
     payments: snapshot.payments.map((payment) => ({
       method: payment.method,
@@ -119,8 +121,6 @@ export async function printConfirmedTicketAutomatically(
 ): Promise<TicketPrintOutcome> {
   try {
     const config = await hardware.getHardwareConfig();
-    const route = config.documentPrintRoutes.find((item) => item.documentType === "TICKET");
-    if (route?.printAutomatically === false) return { status: "SKIPPED" };
     return await sendConfirmedTicket(snapshot, terminal, hardware, config);
   } catch (error) {
     return failedOutcome(error);
@@ -175,7 +175,8 @@ export async function printPendingCommercialDocument(
         },
         lines: snapshot.lines.map((line) => ({
           name: line.name, quantity: Number(line.quantity), price: Number(line.unitPrice ?? line.price),
-          total: Number(line.total), taxesIncluded: line.taxesIncluded
+          total: Number(line.total), taxesIncluded: line.taxesIncluded,
+          ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
         })),
         payments: [], total: Number(snapshot.total)
       }, config);
@@ -193,7 +194,8 @@ export async function printPendingCommercialDocument(
         name: line.name,
         quantity: Number(line.quantity),
         price: Number(line.unitPrice ?? line.price),
-        total: Number(line.total), taxesIncluded: line.taxesIncluded
+        total: Number(line.total), taxesIncluded: line.taxesIncluded,
+        ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
       })),
       subtotal: Number(snapshot.baseTotal ?? snapshot.total),
       tax: Number(snapshot.taxTotal ?? 0),

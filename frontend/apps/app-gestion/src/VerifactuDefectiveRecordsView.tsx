@@ -227,7 +227,7 @@ function selectedLabel(options: readonly { value: string; label: string }[], val
   return options.find((option) => option.value === value)?.label ?? "—";
 }
 
-function formatDate(value: string, locale: LocaleCode) {
+function formatDate(value: string, _locale: LocaleCode) {
   const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(locale, { dateStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("es-ES", { dateStyle: "short" }).format(date);
 }

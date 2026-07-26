@@ -135,7 +135,8 @@ public class ParkedSale {
                 type,
                 uuid(value.get("promocionId")),
                 uuid(value.get("promocionVersionId")),
-                uuid(value.get("cuponPromocionalId")));
+                uuid(value.get("cuponPromocionalId")),
+                stringList(value.get("numerosSerie")));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -167,7 +168,14 @@ public class ParkedSale {
         value.put("impuestosIncluidos", line.impuestosIncluidos());
         value.put("regimenImpuesto", line.regimenImpuesto());
         value.put("porcentajeImpuesto", line.porcentajeImpuesto().toPlainString());
+        value.put("numerosSerie", line.serialNumbers() == null
+                ? List.of() : List.copyOf(line.serialNumbers()));
         return value;
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> values)) return List.of();
+        return values.stream().map(String::valueOf).toList();
     }
 
     private static BigDecimal total(DocumentCommand command, UUID userId, UUID storeId) {

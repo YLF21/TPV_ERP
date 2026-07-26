@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
@@ -17,6 +17,11 @@ import {
   defaultHardwareConfig,
   getHardwareBridge
 } from "../hardware/hardware";
+import {
+  defaultScannerTimingConfig,
+  idleScannerTimingCapture,
+  scannerTimingKeyDecision
+} from "../hardware/scannerTimingDetection";
 import type {
   CashDrawerPaymentMethod,
   CustomerDisplayScreen,
@@ -100,6 +105,7 @@ export function HardwareSettingsScreen({
   const [customerDisplays, setCustomerDisplays] = useState<CustomerDisplayScreen[]>([]);
   const [status, setStatus] = useState(t("hardware.status.ready"));
   const [scannerValue, setScannerValue] = useState("");
+  const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const [lastScan, setLastScan] = useState("");
   const [diagnostics, setDiagnostics] = useState<Partial<Record<HardwareDiagnosticKey, HardwareDiagnosticResult>>>({});
   const [selectedSection, setSelectedSection] = useState<HardwareSectionKey>("cashDrawer");
@@ -211,7 +217,8 @@ export function HardwareSettingsScreen({
     if (result.ok) {
       setLastScan(`${result.code} · ${new Date(result.readAt).toLocaleTimeString()}`);
       setScannerValue("");
-      setStatus(t("hardware.status.scannerRead"));
+      scannerCaptureRef.current = idleScannerTimingCapture;
+      setStatus(t("hardware.status.scannerTimingVerified"));
       return;
     }
     setStatus(result.message);
@@ -351,7 +358,8 @@ export function HardwareSettingsScreen({
         <label className="hardware-route-check" key={columnKey}>
           <input
             type="checkbox"
-            checked={route.printAutomatically}
+            checked={route.documentType === "TICKET" || route.printAutomatically}
+            disabled={route.documentType === "TICKET"}
             onChange={(event) => updateDocumentRoute(route.documentType, { printAutomatically: event.target.checked })}
           />
           <span>{t("hardware.route.autoShort")}</span>
@@ -570,14 +578,30 @@ export function HardwareSettingsScreen({
               ] satisfies readonly ErpSelectOption[]}
             />
           </label>
+          <p className="hardware-device-summary">{t("hardware.scannerTimingHelp")}</p>
           <label>
             <span>{t("hardware.scannerTest")}</span>
             <input
+              autoFocus
               value={scannerValue}
               onChange={(event) => setScannerValue(event.target.value)}
               onKeyDown={(event) => {
+                const decision = scannerTimingKeyDecision(
+                  scannerCaptureRef.current,
+                  event.key,
+                  defaultScannerTimingConfig,
+                  event.timeStamp,
+                  scannerValue
+                );
+                scannerCaptureRef.current = decision.next;
                 if (event.key === "Enter") {
-                  void testScanner(scannerValue);
+                  event.preventDefault();
+                  if (!decision.detected) {
+                    setScannerValue("");
+                    setStatus(t("hardware.status.scannerTimingNotDetected"));
+                    return;
+                  }
+                  void testScanner(decision.completedCode ?? scannerValue);
                 }
               }}
               placeholder={t("hardware.scannerPlaceholder")}

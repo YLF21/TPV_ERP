@@ -66,7 +66,7 @@ public class CashSessionService {
     @Transactional
     public CashSessionView open(UUID terminalId, Authentication authentication) {
         permissions.requireSalesPermission(authentication);
-        var terminal = validateTerminal(terminalId);
+        var terminal = validateTerminalForCashSessionPreparation(terminalId);
         if (sessions.findByTerminalIdAndStatus(terminal.getId(), CashSessionStatus.ABIERTA).isPresent()) {
             throw new IllegalStateException("Ya existe una sesion de caja abierta para la terminal");
         }
@@ -79,10 +79,39 @@ public class CashSessionService {
             throw new IllegalStateException("La primera apertura requiere una entrada entre sesiones");
         }
         var user = organization.currentUser(authentication);
-        var session = CashSession.open(
-                terminal.getTienda().getId(), terminal.getId(), user.getId(), Instant.now(clock),
+        var session = createSession(
+                terminal,
+                user,
                 calculator.nextOpeningFund(terminal.getId()));
         return view(sessions.save(session), permissions.canSeeExpectedTotals(authentication));
+    }
+
+    // Prepara la entrada a Ventas: bloquea si la politica exige apertura manual y,
+    // en caso contrario, abre automaticamente conservando el fondo del cierre anterior.
+    @Transactional
+    public CashSalesSessionReadinessView prepareForSales(
+            UUID terminalId,
+            Authentication authentication) {
+        permissions.requireSalesPermission(authentication);
+        var terminal = validateTerminalForCashSessionPreparation(terminalId);
+        var existing = sessions.findByTerminalIdAndStatus(terminal.getId(), CashSessionStatus.ABIERTA);
+        var cashConfig = config(terminal.getTienda().getId());
+        if (existing.isPresent()) {
+            return readiness(cashConfig, existing.get(), authentication);
+        }
+        if (cashConfig.isCashSessionRequired()) {
+            return new CashSalesSessionReadinessView(true, false, null);
+        }
+        var hasPreviousClosed = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                terminal.getId(), CashSessionStatus.CERRADA).isPresent();
+        var betweenSessions = movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(terminal.getId());
+        var firstOpening = !hasPreviousClosed && betweenSessions.isEmpty();
+        var openingFund = firstOpening ? Money.euros("0") : calculator.nextOpeningFund(terminal.getId());
+        var session = createSession(
+                terminal,
+                organization.currentUser(authentication),
+                openingFund);
+        return readiness(cashConfig, sessions.save(session), authentication);
     }
 
     // Records a manual entry in an open session after validating accounting authorization.
@@ -223,9 +252,38 @@ public class CashSessionService {
         return terminal;
     }
 
+    private Terminal validateTerminalForCashSessionPreparation(UUID terminalId) {
+        var store = organization.currentStore();
+        var terminal = terminals.findForCashSessionPreparation(terminalId, store.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Terminal no encontrada"));
+        if (!terminal.isActiva() || !terminal.isAprobada()) {
+            throw new IllegalStateException("Terminal no activa o no aprobada");
+        }
+        return terminal;
+    }
+
     private CashSession openSession(UUID terminalId) {
         return sessions.findByTerminalIdAndStatus(terminalId, CashSessionStatus.ABIERTA)
                 .orElseThrow(() -> new IllegalStateException("No hay una sesion de caja abierta"));
+    }
+
+    private CashSession createSession(Terminal terminal, UserAccount user, BigDecimal openingFund) {
+        return CashSession.open(
+                terminal.getTienda().getId(),
+                terminal.getId(),
+                user.getId(),
+                Instant.now(clock),
+                openingFund);
+    }
+
+    private CashSalesSessionReadinessView readiness(
+            CashStoreConfig cashConfig,
+            CashSession session,
+            Authentication authentication) {
+        return new CashSalesSessionReadinessView(
+                cashConfig.isCashSessionRequired(),
+                true,
+                view(session, permissions.canSeeExpectedTotals(authentication)));
     }
 
     private CashSessionView view(CashSession session, boolean includeExpectedTotals) {

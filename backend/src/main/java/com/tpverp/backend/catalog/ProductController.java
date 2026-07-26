@@ -67,6 +67,13 @@ public class ProductController {
         return saleCatalog.products();
     }
 
+    @GetMapping("/sale/price-consultation")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + PRODUCTS_READ + "','"
+            + GESTION_VENTAS + "','" + VENTA + "')")
+    public SalePriceConsultationView salePriceConsultation(@RequestParam String identifier) {
+        return saleCatalog.priceByIdentifier(identifier);
+    }
+
     @GetMapping("/management/{productId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + GESTION_PRODUCTO + "')")
     public ProductView managementGet(@PathVariable UUID productId) {

@@ -209,6 +209,7 @@ public class DocumentService {
         var document = createDraft(command, authentication, context);
         applyDirectPromotions(document, promotionContext(document, context));
         document.setDueDate(Objects.requireNonNull(dueDate, "dueDate"));
+        validatePendingSaleCustomer(document, customer);
         return document;
     }
 
@@ -234,6 +235,7 @@ public class DocumentService {
                 .map(payment -> resolvePayment(document, payment, terminalId))
                 .toList();
         requirePaymentTotalAtMost(resolved, document.getTotal());
+        validatePendingSaleCustomer(document, customer);
         if (!resolved.isEmpty()) {
             appendPayments(document, resolved);
             if (document.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
@@ -258,11 +260,38 @@ public class DocumentService {
         return saved;
     }
 
+    @Transactional
+    CommercialDocument createPendingSaleDraft(
+            DocumentCommand command,
+            LocalDate dueDate,
+            Authentication authentication) {
+        requirePendingSaleType(command);
+        requireDocumentWritePermission(
+                command.tipo(), authentication,
+                command.tipo() == CommercialDocumentType.FACTURA_VENTA
+                        ? CorePermissionBootstrap.INVOICES_WRITE
+                        : CorePermissionBootstrap.DELIVERY_NOTES_WRITE);
+        var document = quotePendingSale(command, dueDate, authentication);
+        var saved = documents.save(document);
+        recordCreated(saved);
+        return saved;
+    }
+
     private static void requirePendingSaleType(DocumentCommand command) {
         Objects.requireNonNull(command, "command");
         if (command.tipo() != CommercialDocumentType.ALBARAN_VENTA
                 && command.tipo() != CommercialDocumentType.FACTURA_VENTA) {
             throw new IllegalArgumentException("message.document.invalid_pending_sale_type");
+        }
+    }
+
+    private static void validatePendingSaleCustomer(
+            CommercialDocument document,
+            com.tpverp.backend.party.Customer customer) {
+        if (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                && !customer.hasCompleteFiscalData()) {
+            throw new IllegalStateException(
+                    "El cliente no tiene datos fiscales completos");
         }
     }
 
@@ -292,7 +321,7 @@ public class DocumentService {
     public List<CommercialDocument> listDeliveryNotes(
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
                 documentTypes(includeSalesDocuments, includePurchaseDocuments,
                         SALES_DELIVERY_NOTES, PURCHASE_DELIVERY_NOTES));
@@ -383,6 +412,15 @@ public class DocumentService {
             DocumentCommand command,
             String promotionalCouponCode,
             Authentication authentication) {
+        return quoteTicket(command, promotionalCouponCode, null, authentication);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument quoteTicket(
+            DocumentCommand command,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -391,6 +429,7 @@ public class DocumentService {
         applyDirectPromotions(ticket, promotionContext(ticket, customer));
         applyPromotionalCouponPreview(
                 ticket, customer, promotionalCouponCode, authentication);
+        applyCheckoutDiscount(ticket, checkoutDiscountAmount);
         validateInactiveSaleProducts(ticket);
         return ticket;
     }
@@ -410,6 +449,16 @@ public class DocumentService {
             List<PaymentCommand> payments,
             String promotionalCouponCode,
             Authentication authentication) {
+        return createTicket(command, payments, promotionalCouponCode, null, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createTicket(
+            DocumentCommand command,
+            List<PaymentCommand> payments,
+            String promotionalCouponCode,
+            BigDecimal checkoutDiscountAmount,
+            Authentication authentication) {
         if (command.tipo() != CommercialDocumentType.TICKET) {
             throw new IllegalArgumentException("message.document.invalid_ticket_type");
         }
@@ -425,6 +474,7 @@ public class DocumentService {
             applyPromotionalCouponRedemption(
                     ticket, customer, promotionalCouponCode, authentication);
         }
+        applyCheckoutDiscount(ticket, checkoutDiscountAmount);
         validateInactiveSaleProducts(ticket);
         if (ticket.getTotal().signum() >= 0) {
             requirePaymentsPresent(payments);
@@ -500,6 +550,68 @@ public class DocumentService {
         cashPayments.recordDocumentPayments(terminalId, saved);
         memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
                 saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
+        fiscalIntegration.registerAlta(saved, false);
+        enqueueConfirmedDocument(saved, terminalId);
+        controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
+        return saved;
+    }
+
+    @Transactional
+    public CommercialDocument createPendingTicketFromSnapshot(
+            ApprovedCardTicketSnapshot snapshot,
+            List<PaymentCommand> payments,
+            Authentication authentication) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        var customer = requireActiveCustomer(Objects.requireNonNull(
+                snapshot.customerId(), "pending ticket customer"));
+        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                snapshot.globalDiscount());
+        var store = organization.currentStore();
+        if (!store.getId().equals(snapshot.storeId())) {
+            throw new IllegalStateException("La instantanea pertenece a otra tienda");
+        }
+        var ticket = new CommercialDocument(snapshot.storeId(), snapshot.warehouseId(),
+                CommercialDocumentType.TICKET, snapshot.date(),
+                organization.currentUser(authentication).getId(), snapshot.globalDiscount());
+        ticket.setParties(customer.getId(), null, null);
+        snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
+        validateInactiveSaleProducts(ticket);
+        if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
+                || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
+                || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
+            throw new IllegalStateException("La instantanea fiscal no cuadra con sus lineas");
+        }
+        var commands = List.copyOf(payments == null ? List.of() : payments);
+        requirePositiveUniquePayments(commands);
+        requirePaymentTotalAtMost(commands, ticket.getTotal());
+        validateAndConsumeSnapshotCoupon(ticket, authentication);
+        var terminalId = currentTerminal.terminalId(authentication);
+        var resolved = commands.stream()
+                .map(payment -> resolvePayment(ticket, payment, terminalId))
+                .toList();
+        requirePaymentTotalAtMost(resolved, ticket.getTotal());
+        if (!resolved.isEmpty()) {
+            appendPayments(ticket, resolved);
+            if (ticket.getPagos().stream().noneMatch(DocumentPayment::isPrincipal)) {
+                throw new IllegalArgumentException("se requiere un pago principal");
+            }
+        }
+        ticket.setDueDate(ticket.getFecha().plusDays(customer.getPaymentTermDays()));
+        ticket.markTicketReceivable();
+        ticket.assignOriginTerminal(terminalId);
+        ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(),
+                Instant.now(clock), false);
+        documents.saveAndFlush(ticket);
+        recordCreated(ticket);
+        recordConfirmed(ticket, terminalId);
+        ticket.setStockOrigin(stockGateway.confirm(ticket));
+        ticket.updatePaymentStatus();
+        var saved = documents.save(ticket);
+        cashPayments.recordDocumentPayments(terminalId, saved);
+        if (!resolved.isEmpty()) {
+            memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+                    saved, loyaltyAccrualCommandTotal(resolved)));
+        }
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
@@ -659,6 +771,51 @@ public class DocumentService {
         }
     }
 
+    private static void applyCheckoutDiscount(
+            CommercialDocument ticket,
+            BigDecimal requestedDiscount) {
+        if (requestedDiscount == null || requestedDiscount.signum() == 0) {
+            return;
+        }
+        var discount = Money.euros(requestedDiscount);
+        if (discount.signum() <= 0 || discount.compareTo(ticket.getTotal()) >= 0) {
+            throw new IllegalArgumentException("checkout_discount_exceeds_total");
+        }
+        var sources = ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> line.getTotal().signum() > 0)
+                .toList();
+        if (sources.isEmpty()) {
+            throw new IllegalStateException("checkout_discount_without_eligible_lines");
+        }
+        var gross = sources.stream().map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var remaining = discount;
+        var position = ticket.getLineas().stream().mapToInt(DocumentLine::getPosicion)
+                .max().orElse(0) + 1;
+        for (int index = 0; index < sources.size() && remaining.signum() > 0; index++) {
+            var source = sources.get(index);
+            var allocated = index == sources.size() - 1
+                    ? remaining
+                    : Money.euros(discount.multiply(source.getTotal())
+                    .divide(gross, Money.SCALE + 4, Money.ROUNDING)).min(remaining);
+            if (allocated.signum() <= 0) {
+                continue;
+            }
+            ticket.addLine(DocumentLine.manualDiscount(
+                    ticket,
+                    position++,
+                    allocated.negate(),
+                    source.isImpuestosIncluidos(),
+                    source.getRegimenImpuesto(),
+                    source.getPorcentajeImpuesto()));
+            remaining = Money.euros(remaining.subtract(allocated));
+        }
+        if (remaining.signum() != 0) {
+            throw new IllegalStateException("checkout_discount_allocation_mismatch");
+        }
+    }
+
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
@@ -689,9 +846,36 @@ public class DocumentService {
             var availableTotal = purchased.signum() == 0 ? BigDecimal.ZERO : Money.euros(
                     line.getTotal().multiply(factor).multiply(available)
                             .divide(purchased, Money.SCALE + 4, Money.ROUNDING)).abs();
+            var returnedSerials = documents.confirmedRefundedSerialNumbers(line.getId()).stream()
+                    .map(DocumentService::normalizedSerial)
+                    .collect(java.util.stream.Collectors.toSet());
+            var refundableSerials = line.getSerialNumbers().stream()
+                    .filter(serial -> !returnedSerials.contains(normalizedSerial(serial)))
+                    .toList();
+            if (!line.getSerialNumbers().isEmpty()) {
+                available = BigDecimal.valueOf(refundableSerials.size()).setScale(3, Money.ROUNDING);
+                availableTotal = purchased.signum() == 0 ? BigDecimal.ZERO : Money.euros(
+                        line.getTotal().multiply(factor).multiply(available)
+                                .divide(purchased, Money.SCALE + 4, Money.ROUNDING)).abs();
+            }
             return new CardRefundLineOption(line.getId(), line.getCodigo(), line.getNombre(), line.getLineType(),
-                    purchased, available, line.getPrecioUnitario(), availableTotal);
+                    purchased, available, line.getPrecioUnitario(), availableTotal,
+                    line.getSerialNumbers(), refundableSerials);
         }).filter(option -> option.refundableQuantity().signum() > 0).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument ticketForReturnByNumber(String ticketNumber) {
+        if (ticketNumber == null || ticketNumber.isBlank()) {
+            throw new IllegalArgumentException("El codigo de ticket es obligatorio");
+        }
+        var ticket = documents.findByTiendaIdAndTipoAndNumeroIgnoreCase(
+                        organization.currentStore().getId(),
+                        CommercialDocumentType.TICKET,
+                        ticketNumber.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Ticket no encontrado"));
+        requireRefundableDocument(ticket);
+        return ticket;
     }
 
     @Transactional(readOnly = true)
@@ -772,7 +956,8 @@ public class DocumentService {
                 throw new IllegalArgumentException("La devolucion parcial requiere desglose explicito de lineas y cantidades");
             }
             return new RefundPlan(amount, original.getLineas().stream()
-                    .map(line -> new SelectedRefundLine(line, line.getCantidad().abs())).toList());
+                    .map(line -> new SelectedRefundLine(
+                            line, line.getCantidad().abs(), line.getSerialNumbers())).toList());
         }
         PaymentTerminalRefundLineSelection.canonical(selections);
         var source = original.getLineas().stream().collect(java.util.stream.Collectors.toMap(DocumentLine::getId, line -> line));
@@ -789,7 +974,9 @@ public class DocumentService {
             if (line.getLineType() != DocumentLineType.PRODUCT && request.quantity().compareTo(purchased) != 0) {
                 throw new IllegalArgumentException("Las promociones y cupones solo admiten devolucion completa");
             }
-            selected.add(new SelectedRefundLine(line, request.quantity()));
+            var requestedSerials = request.serialNumbers() == null ? List.<String>of() : request.serialNumbers();
+            validateRefundSerialNumbers(line, request.quantity(), requestedSerials);
+            selected.add(new SelectedRefundLine(line, request.quantity(), requestedSerials));
         }
         var plan = new RefundPlan(amount, List.copyOf(selected));
         buildRefundPreview(original, plan);
@@ -828,7 +1015,8 @@ public class DocumentService {
             line = new DocumentLineCommand(command.productoId(), selected.quantity().negate(), command.codigo(),
                     command.nombre(), command.tarifa(), command.precioUnitario(), command.descuento(),
                     command.impuestosIncluidos(), command.regimenImpuesto(), command.porcentajeImpuesto(),
-                    command.lineType(), command.promotionId(), command.promotionVersionId(), command.promotionalCouponId())
+                    command.lineType(), command.promotionId(), command.promotionVersionId(),
+                    command.promotionalCouponId(), selected.serialNumbers())
                     .toEntity(refund);
         } else {
             line = DocumentLine.special(refund, refund.getLineas().size() + 1, source.getNombre(),
@@ -842,9 +1030,59 @@ public class DocumentService {
 
     public record CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
             BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
-            BigDecimal refundableTotal) { }
-    private record SelectedRefundLine(DocumentLine source, BigDecimal quantity) { }
+            BigDecimal refundableTotal, List<String> serialNumbers,
+            List<String> refundableSerialNumbers) {
+        public CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
+                BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
+                BigDecimal refundableTotal) {
+            this(lineId, code, name, lineType, purchasedQuantity, refundableQuantity,
+                    unitPrice, refundableTotal, List.of(), List.of());
+        }
+    }
+    private record SelectedRefundLine(
+            DocumentLine source,
+            BigDecimal quantity,
+            List<String> serialNumbers) { }
     private record RefundPlan(BigDecimal amount, List<SelectedRefundLine> lines) { }
+
+    private void validateRefundSerialNumbers(
+            DocumentLine line,
+            BigDecimal quantity,
+            List<String> requestedSerials) {
+        if (line.getSerialNumbers().isEmpty()) {
+            if (!requestedSerials.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "La linea " + line.getCodigo() + " no tiene numeros de serie");
+            }
+            return;
+        }
+        if (quantity.stripTrailingZeros().scale() > 0
+                || quantity.intValueExact() != requestedSerials.size()) {
+            throw new IllegalArgumentException(
+                    "La cantidad devuelta debe coincidir con los S/N seleccionados de " + line.getCodigo());
+        }
+        var available = new java.util.HashMap<String, String>();
+        var returned = documents.confirmedRefundedSerialNumbers(line.getId()).stream()
+                .map(DocumentService::normalizedSerial)
+                .collect(java.util.stream.Collectors.toSet());
+        line.getSerialNumbers().forEach(serial -> {
+            if (!returned.contains(normalizedSerial(serial))) {
+                available.put(normalizedSerial(serial), serial);
+            }
+        });
+        var unique = new java.util.HashSet<String>();
+        for (var serial : requestedSerials) {
+            var normalized = normalizedSerial(serial);
+            if (!unique.add(normalized) || !available.containsKey(normalized)) {
+                throw new IllegalArgumentException(
+                        "El S/N " + serial + " no esta disponible para devolver");
+            }
+        }
+    }
+
+    private static String normalizedSerial(String value) {
+        return value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
+    }
 
     private PromotionContext promotionContext(CommercialDocument document) {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
@@ -1229,7 +1467,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public List<CommercialDocument> listTickets() {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(), List.of(CommercialDocumentType.TICKET));
     }
 
@@ -1333,7 +1571,7 @@ public class DocumentService {
     public List<CommercialDocument> listInvoices(
             boolean includeSalesDocuments,
             boolean includePurchaseDocuments) {
-        return documents.findAllByTiendaIdAndTipoInOrderByFechaDesc(
+        return documents.findAllByStoreAndTypesOrderByRecency(
                 organization.currentStore().getId(),
                 documentTypes(includeSalesDocuments, includePurchaseDocuments,
                         SALES_INVOICES, PURCHASE_INVOICES));
@@ -1382,8 +1620,7 @@ public class DocumentService {
             List<PaymentCommand> payments,
             Authentication authentication) {
         Objects.requireNonNull(document, "document");
-        if ((document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
-                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA)
+        if (!document.isReceivableDocument()
                 || (document.getEstado() != DocumentStatus.PENDIENTE
                 && document.getEstado() != DocumentStatus.PARCIAL)) {
             throw new IllegalStateException(
@@ -1745,7 +1982,7 @@ public class DocumentService {
                     command.reference(), Instant.now(clock), command.cardMode(),
                     command.paymentTerminalProvider(), command.paymentTerminalStatus(),
                     command.cardAuthorizationCode(), command.paymentTerminalId(),
-                    command.requestId()));
+                    command.requestId(), command.comment()));
             hasPrincipal = hasPrincipal || principal;
         }
     }
@@ -1799,7 +2036,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "metodo de pago activo no encontrado"));
         requireReferenceIfNeeded(method, command);
-        requireCashAmountsOnlyForDrawerMethods(method, command);
+        requireCashAmountsOnlyForCashMethods(method, command);
         command = validateCardTerminalPayment(method, command, terminalId);
         if (MEMBER_BALANCE_METHOD.equals(method.getNombre())) {
             rejectVoucherCode(command, "codigo de vale no permitido con SALDO_MIEMBRO");
@@ -1807,7 +2044,7 @@ public class DocumentService {
             return new PaymentCommand(
                     command.metodoPagoId(), consumed, command.principal(),
                     command.entregado(), command.cambio(), null, command.reference(),
-                    null, null, null, null, null, command.requestId());
+                    null, null, null, null, null, command.requestId(), command.comment());
         }
         if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
@@ -1823,7 +2060,8 @@ public class DocumentService {
                 command.metodoPagoId(), result.consumedAmount(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), command.paymentTerminalId(), command.requestId());
+                command.cardAuthorizationCode(), command.paymentTerminalId(), command.requestId(),
+                command.comment());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
 
@@ -1885,16 +2123,17 @@ public class DocumentService {
     }
 
     private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
-        if (method.isRequiereReferencia()
+        if (!VOUCHER_METHOD.equals(method.getNombre())
+                && method.isRequiereReferencia()
                 && (command.reference() == null || command.reference().isBlank())) {
             throw new IllegalArgumentException("message.payment.reference_required");
         }
     }
 
-    private static void requireCashAmountsOnlyForDrawerMethods(PaymentMethod method, PaymentCommand command) {
-        if (!method.isAbreCajaRegistradora()
+    private static void requireCashAmountsOnlyForCashMethods(PaymentMethod method, PaymentCommand command) {
+        if (!method.isCash()
                 && (command.entregado() != null || command.cambio() != null)) {
-            throw new IllegalArgumentException("message.payment.cash_amounts_only_for_cash_drawer");
+            throw new IllegalArgumentException("message.payment.cash_amounts_only_for_cash_method");
         }
     }
 
@@ -1920,10 +2159,6 @@ public class DocumentService {
         if (command.cardMode() == PaymentCardMode.MANUAL) {
             if (!storeRules.isCardManualEnabled()) {
                 throw new IllegalArgumentException("message.payment_terminal.manual_card_disabled");
-            }
-            if (storeRules.isCardManualReferenceRequired()
-                    && (command.reference() == null || command.reference().isBlank())) {
-                throw new IllegalArgumentException("message.payment.reference_required");
             }
             return withCurrentTerminal(command, currentTerminalId);
         }

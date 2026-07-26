@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.tpverp.backend.terminal.PaymentTerminalReauthenticationService;
 import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
@@ -73,6 +74,12 @@ public class TicketController {
         return returns.options(id);
     }
 
+    @GetMapping("/return-preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    public ReturnPreviewView returnPreview(@RequestParam String ticketNumber) {
+        return ReturnPreviewView.from(returns.preview(ticketNumber));
+    }
+
     @PostMapping("/{id}/returns")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
     public ReturnView createReturn(
@@ -91,7 +98,8 @@ public class TicketController {
         var lines = new java.util.ArrayList<PaymentTerminalRefundLineSelection>();
         if (request.lines() != null) {
             for (var line : request.lines()) {
-                lines.add(new PaymentTerminalRefundLineSelection(line.lineId(), line.quantity()));
+                lines.add(new PaymentTerminalRefundLineSelection(
+                        line.lineId(), line.quantity(), line.serialNumbers()));
             }
         }
         var result = returns.create(
@@ -174,7 +182,11 @@ public class TicketController {
 
     public record ReturnLineRequest(
             @NotNull UUID lineId,
-            @NotNull @DecimalMin("0.001") BigDecimal quantity) {
+            @NotNull @DecimalMin("0.001") BigDecimal quantity,
+            List<String> serialNumbers) {
+        public ReturnLineRequest(UUID lineId, BigDecimal quantity) {
+            this(lineId, quantity, List.of());
+        }
     }
 
     public record ReturnPayoutView(
@@ -187,6 +199,28 @@ public class TicketController {
             return new ReturnPayoutView(
                     payout.getType().name(), payout.getAmount(), payout.getOriginalPaymentId(),
                     payout.getTerminalOperationId(), payout.getReference());
+        }
+    }
+
+    public record ReturnPreviewView(
+            UUID ticketId,
+            String ticketNumber,
+            java.time.LocalDate date,
+            BigDecimal total,
+            List<DocumentService.CardRefundLineOption> lines,
+            List<DocumentView.PaymentView> payments) {
+        static ReturnPreviewView from(TicketReturnService.ReturnPreview preview) {
+            var ticket = preview.ticket();
+            return new ReturnPreviewView(
+                    ticket.getId(),
+                    ticket.getNumero(),
+                    ticket.getFecha(),
+                    ticket.getTotal(),
+                    preview.lines(),
+                    ticket.getPagos().stream()
+                            .sorted(java.util.Comparator.comparingInt(DocumentPayment::getPosicion))
+                            .map(DocumentView.PaymentView::from)
+                            .toList());
         }
     }
 

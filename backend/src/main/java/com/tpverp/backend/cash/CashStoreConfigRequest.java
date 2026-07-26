@@ -6,7 +6,8 @@ public record CashStoreConfigRequest(
         BigDecimal discrepancyTolerance,
         Boolean requireEntryBreakdown,
         Boolean requireWithdrawalBreakdown,
-        Boolean requireClosingBreakdown) {
+        Boolean requireClosingBreakdown,
+        Boolean cashSessionRequired) {
 
     void validateComplete() {
         if (discrepancyTolerance == null) {
@@ -20,6 +21,9 @@ public record CashStoreConfigRequest(
         }
         if (requireClosingBreakdown == null) {
             throw new IllegalArgumentException("requireClosingBreakdown es obligatorio");
+        }
+        if (cashSessionRequired == null) {
+            throw new IllegalArgumentException("cashSessionRequired es obligatorio");
         }
     }
 }

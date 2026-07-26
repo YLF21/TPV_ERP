@@ -54,8 +54,12 @@ public class AuthoritativePromotionPricing {
             LocalDate documentDate,
             CustomerContext customer,
             DocumentLineCommand line) {
-        var price = basePrice(product, documentDate, customer);
-        var rate = rate(product, documentDate, customer);
+        var catalogSalePrice = requiredPrice(product.getSalePrice(), "precio de venta");
+        var usesOpenPrice = catalogSalePrice.signum() == 0;
+        var price = usesOpenPrice
+                ? requiredOpenPrice(line.precioUnitario())
+                : basePrice(product, documentDate, customer);
+        var rate = usesOpenPrice ? "VENTA" : rate(product, documentDate, customer);
         var priced = line.withPrice(price, rate);
         var categoryDiscount = customer.categoryDiscountPercent();
         if (product.getDiscountType() == DiscountType.NONE && categoryDiscount.signum() == 0) {
@@ -134,6 +138,21 @@ public class AuthoritativePromotionPricing {
             throw new IllegalStateException(field + " no configurado");
         }
         return Money.euros(value);
+    }
+
+    private static BigDecimal requiredOpenPrice(BigDecimal value) {
+        if (value == null) {
+            throw new IllegalArgumentException(
+                    "Debe indicar el precio para el producto con precio de venta 0");
+        }
+        if (value.scale() > 2) {
+            throw new IllegalArgumentException("El precio abierto admite un maximo de 2 decimales");
+        }
+        var price = Money.euros(value);
+        if (price.signum() <= 0) {
+            throw new IllegalArgumentException("El precio abierto debe ser mayor que 0");
+        }
+        return price;
     }
 
     private static boolean isPositive(BigDecimal value) {

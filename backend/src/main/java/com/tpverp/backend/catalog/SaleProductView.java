@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record SaleProductView(
         UUID id,
+        UUID imageId,
         boolean active,
         String code,
         String barcode,
@@ -23,5 +24,6 @@ public record SaleProductView(
         boolean taxesIncluded,
         UUID taxId,
         BigDecimal taxPercentage,
-        String taxRegime) {
+        String taxRegime,
+        BigDecimal packageQuantity) {
 }

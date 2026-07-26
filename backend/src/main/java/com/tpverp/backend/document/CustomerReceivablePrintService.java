@@ -93,10 +93,16 @@ public class CustomerReceivablePrintService {
     }
 
     public record Line(String code, String name, BigDecimal quantity, BigDecimal unitPrice,
-            boolean taxesIncluded, BigDecimal base, BigDecimal tax, BigDecimal total) {
+            boolean taxesIncluded, BigDecimal base, BigDecimal tax, BigDecimal total,
+            List<String> serialNumbers) {
+        public Line(String code, String name, BigDecimal quantity, BigDecimal unitPrice,
+                boolean taxesIncluded, BigDecimal base, BigDecimal tax, BigDecimal total) {
+            this(code, name, quantity, unitPrice, taxesIncluded, base, tax, total, List.of());
+        }
+
         static Line from(DocumentLine line) { return new Line(line.getCodigo(), line.getNombre(),
                 line.getCantidad(), line.getPrecioUnitario(), line.isImpuestosIncluidos(),
-                line.getBase(), line.getImpuesto(), line.getTotal()); }
+                line.getBase(), line.getImpuesto(), line.getTotal(), line.getSerialNumbers()); }
     }
     public record CommercialDocumentPrint(UUID documentId, CommercialDocumentType documentType,
             String documentNumber, LocalDate issueDate, Instant issuedAt, UUID customerId,

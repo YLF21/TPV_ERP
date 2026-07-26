@@ -1,5 +1,5 @@
 import type { HardwareBridge } from "./hardware/hardware";
-import type { TerminalContext } from "./types";
+import type { LocaleCode, TerminalContext, UserSession } from "./types";
 
 type DesktopResult = { ok: true; canceled?: boolean; filePath?: string } | { ok: false; code: string; message: string };
 
@@ -10,6 +10,19 @@ declare global {
       terminalIdentity?: {
         load: () => Promise<DesktopResult & { identity?: TerminalContext | null }>;
         save: (identity: TerminalContext) => Promise<DesktopResult>;
+      };
+      salesDocuments?: {
+        open: (bootstrap: {
+          locale: LocaleCode;
+          session: UserSession;
+          terminalContext: TerminalContext;
+        }) => Promise<DesktopResult & { focused?: boolean }>;
+        consumeBootstrap: () => Promise<{
+          locale: LocaleCode;
+          session: UserSession;
+          terminalContext: TerminalContext;
+        } | null>;
+        close: () => Promise<DesktopResult>;
       };
       reports?: {
         saveFile: (request: {

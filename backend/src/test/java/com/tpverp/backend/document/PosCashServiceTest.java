@@ -35,6 +35,35 @@ import org.springframework.security.core.Authentication;
 class PosCashServiceTest {
 
     @Test
+    void checkoutFixedDiscountIsAuthorizedUsingItsEffectivePercentage() {
+        var authorizations = mock(DiscountAuthorizationService.class);
+        var authentication = mock(Authentication.class);
+        var service = new PosCashService(
+                mock(DocumentService.class),
+                mock(ProductRepository.class),
+                mock(StoreTaxRepository.class),
+                mock(WarehouseRepository.class),
+                mock(PaymentMethodRepository.class),
+                mock(CurrentOrganization.class),
+                mock(PosCashCheckoutRepository.class),
+                new PosCashTicketSnapshot(),
+                mock(CurrentTerminal.class),
+                authorizations);
+        var sale = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO)),
+                "manager-token",
+                null,
+                new BigDecimal("20.00"));
+
+        service.authorizeCheckoutDiscount(sale, new BigDecimal("80.00"), authentication);
+
+        verify(authorizations).enforce(
+                new BigDecimal("20.00"), "manager-token", authentication);
+    }
+
+    @Test
     void authoritativeQuoteReconcilesMemberManualPromotionCouponTaxAndRoundingPerProduct() {
         var storeId = UUID.randomUUID();
         var customerId = UUID.randomUUID();
@@ -124,6 +153,70 @@ class PosCashServiceTest {
 
         assertThat(PosCashService.requestHash(coupon))
                 .isNotEqualTo(PosCashService.requestHash(legacy));
+    }
+
+    @Test
+    void openPriceIsAcceptedOnlyWhenCatalogSalePriceIsZero() {
+        assertThat(PosCashService.authoritativeUnitPrice(
+                BigDecimal.ZERO, new BigDecimal("7.25")))
+                .isEqualByComparingTo("7.25");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> PosCashService.authoritativeUnitPrice(
+                        new BigDecimal("10.00"), new BigDecimal("7.25")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("solo se admite");
+    }
+
+    @Test
+    void zeroPricedProductRequiresPositiveOpenPriceWithAtMostTwoDecimals() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> PosCashService.authoritativeUnitPrice(BigDecimal.ZERO, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Debe indicar el precio");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> PosCashService.authoritativeUnitPrice(
+                        BigDecimal.ZERO, BigDecimal.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("mayor que 0");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> PosCashService.authoritativeUnitPrice(
+                        BigDecimal.ZERO, new BigDecimal("1.001")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maximo de 2 decimales");
+    }
+
+    @Test
+    void cashIdempotencyHashIncludesOpenPriceWithoutChangingLegacyCanonical() {
+        var checkoutId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var legacy = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO))),
+                BigDecimal.TEN,
+                new BigDecimal("7.25"));
+        var openPrice = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO,
+                                new BigDecimal("7.25")))),
+                BigDecimal.TEN,
+                new BigDecimal("7.25"));
+        var changedOpenPrice = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO,
+                                new BigDecimal("8.25")))),
+                BigDecimal.TEN,
+                new BigDecimal("7.25"));
+
+        assertThat(PosCashService.requestHash(openPrice))
+                .isNotEqualTo(PosCashService.requestHash(legacy))
+                .isNotEqualTo(PosCashService.requestHash(changedOpenPrice));
     }
 
     @Test

@@ -276,6 +276,60 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
+    void documentDraftUsesDraftPersistenceAndSkipsCustomerCreditConsumption() {
+        var request = withCompletionMode(
+                request(List.of(), new BigDecimal("100.00")),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT);
+        var quoted = document(new BigDecimal("100.00"));
+        var saved = document(new BigDecimal("100.00"));
+        when(documents.quotePendingSale(any(), eq(request.dueDate()), eq(authentication)))
+                .thenReturn(quoted);
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.createPendingSaleDraft(
+                any(), eq(request.dueDate()), eq(authentication))).thenReturn(saved);
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        assertThat(service.createDocument(request, authentication)).isSameAs(saved);
+
+        verify(documents).createPendingSaleDraft(
+                any(), eq(request.dueDate()), eq(authentication));
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(customers, never()).findLockedByIdAndCompanyId(any(), any());
+    }
+
+    @Test
+    void pendingDocumentRejectsAnyPaymentBeforeCreatingACommercialDocument() {
+        var request = withCompletionMode(
+                request(List.of(standardPayment(new BigDecimal("10.00"))),
+                        new BigDecimal("100.00")),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING);
+
+        assertThatThrownBy(() -> service.createDocument(request, authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("sales_document_pending_cannot_have_payments");
+
+        verify(documents, never()).quotePendingSale(any(), any(), any());
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmAndPayRequiresAllocationsForTheFullAuthoritativeTotal() {
+        var request = withCompletionMode(
+                request(List.of(standardPayment(new BigDecimal("99.00"))),
+                        new BigDecimal("100.00")),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY);
+        stubQuote(request, new BigDecimal("100.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createDocument(request, authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("sales_document_checkout_payment_total_mismatch");
+
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+    }
+
+    @Test
     void completedCheckoutReplaysWithoutCreatingAgain() {
         var request = request(List.of(), new BigDecimal("100.00"));
         var hash = CustomerPendingSaleRequestHasher.hash(
@@ -421,6 +475,19 @@ class CustomerPendingSaleServiceTest {
         assertThat(CustomerPendingSaleRequestHasher.hash(original, original.quotedTotal()))
                 .isNotEqualTo(CustomerPendingSaleRequestHasher.hash(
                         redistributed, redistributed.quotedTotal()));
+    }
+
+    @Test
+    void canonicalHashDistinguishesDocumentCompletionModes() {
+        var base = request(List.of(), new BigDecimal("100.00"));
+        var draft = withCompletionMode(
+                base, CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT);
+        var pending = withCompletionMode(
+                base, CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING);
+
+        assertThat(CustomerPendingSaleRequestHasher.hash(draft, draft.quotedTotal()))
+                .isNotEqualTo(CustomerPendingSaleRequestHasher.hash(
+                        pending, pending.quotedTotal()));
     }
 
     @Test
@@ -604,7 +671,16 @@ class CustomerPendingSaleServiceTest {
                 List.of(new CustomerPendingSaleController.PaymentItem(
                         CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
                         UUID.randomUUID(), amount, true, null, null, null, null,
-                        requestId, operationId)), base.quotedTotal());
+                requestId, operationId)), base.quotedTotal());
+    }
+
+    private CustomerPendingSaleController.CreateRequest withCompletionMode(
+            CustomerPendingSaleController.CreateRequest base,
+            CustomerPendingSaleController.SalesDocumentCompletionMode completionMode) {
+        return new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                base.payments(), base.quotedTotal(), base.creditOverride(), completionMode);
     }
 
     private CustomerPendingSaleController.CreateRequest replaceStandardPayment(

@@ -54,7 +54,7 @@ class ControlRuleServiceTest {
 
         var catalog = service.catalog();
 
-        assertThat(catalog).hasSize(8);
+        assertThat(catalog).hasSize(11);
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.TICKET_CANCELLED)
                 .singleElement().satisfies(item -> {
                     assertThat(item.name()).isEqualTo(ControlAlertType.TICKET_CANCELLED.systemName());
@@ -70,6 +70,21 @@ class ControlRuleServiceTest {
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.MANUAL_PRICE_CHANGED)
                 .singleElement().extracting(ControlRuleService.RuleCatalogView::supported)
                 .isEqualTo(false);
+        assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.MANUAL_NEGATIVE_QUANTITY)
+                .singleElement().satisfies(item -> {
+                    assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
+                    assertThat(item.supported()).isTrue();
+                });
+        assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.CASH_DRAWER_OPENED)
+                .singleElement().satisfies(item -> {
+                    assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
+                    assertThat(item.supported()).isTrue();
+                });
+        assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.PRODUCT_CATALOG_MODIFIED)
+                .singleElement().satisfies(item -> {
+                    assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
+                    assertThat(item.supported()).isTrue();
+                });
     }
 
     @Test

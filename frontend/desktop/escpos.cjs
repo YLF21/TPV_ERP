@@ -61,6 +61,9 @@ function buildTicketBuffer(ticket) {
   for (const [index, item] of (ticket.lines || []).entries()) {
     chunks.push(line(String(raw?.lineNames?.[index] || item.name || "").slice(0, 42)));
     chunks.push(line(padColumns(`${item.quantity} x ${money(item.price)}`, money(item.total))));
+    for (const serial of (item.serialNumbers || [])) {
+      chunks.push(line(`  S/N: ${String(serial).slice(0, 35)}`));
+    }
   }
 
   chunks.push(line("------------------------------------------"));

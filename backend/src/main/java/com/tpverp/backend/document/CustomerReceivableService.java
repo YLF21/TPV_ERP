@@ -363,8 +363,7 @@ public class CustomerReceivableService {
     }
 
     private static void requireReceivableType(CommercialDocument document) {
-        if (document.getTipo() != CommercialDocumentType.ALBARAN_VENTA
-                && document.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
+        if (!document.isReceivableDocument()) {
             throw new IllegalStateException(
                     "message.document.only_receivable_document_can_be_paid");
         }
