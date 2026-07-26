@@ -783,6 +783,7 @@ export class MessagesEs {
     "sale.priceConsultation.loading": "Consultando precio…",
     "sale.priceConsultation.notFound": "PRODUCTO NO ENCONTRADO",
     "sale.priceConsultation.error": "No se pudo consultar el precio",
+    "sale.priceConsultation.imageLoading": "Cargando imagen",
     "sale.priceConsultation.salePrice": "Precio de venta",
     "sale.priceConsultation.memberPrice": "Precio socio",
     "sale.priceConsultation.offerPrice": "Precio oferta",

@@ -102,6 +102,7 @@ public class SaleProductCatalogService {
                 product.getId(),
                 product.getCode(),
                 product.getName(),
+                product.getImageId() != null,
                 product.getSalePrice(),
                 activePriceType,
                 activePriceType == PriceUseMode.MEMBER_PRICE ? product.getMemberPrice() : null,

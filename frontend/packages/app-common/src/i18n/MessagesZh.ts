@@ -173,6 +173,7 @@ export class MessagesZh {
     "sale.priceConsultation.loading": "正在查询价格…",
     "sale.priceConsultation.notFound": "未找到商品",
     "sale.priceConsultation.error": "无法查询价格",
+    "sale.priceConsultation.imageLoading": "正在加载图片",
     "sale.priceConsultation.salePrice": "销售价格",
     "sale.priceConsultation.memberPrice": "会员价格",
     "sale.priceConsultation.offerPrice": "优惠价格",

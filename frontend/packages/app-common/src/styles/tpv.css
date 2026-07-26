@@ -17723,6 +17723,13 @@ textarea:focus,
   cursor: text;
 }
 
+.sale-price-consultation-form.has-result {
+  min-height: 330px;
+  place-items: stretch;
+  padding: 28px 32px 32px;
+  background: #f7f9fb;
+}
+
 .sale-price-consultation-capture {
   position: absolute !important;
   width: 1px !important;
@@ -17785,9 +17792,65 @@ textarea:focus,
   color: #a22118;
 }
 
+.sale-price-consultation-product {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.sale-price-consultation-details {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 22px;
+}
+
+.sale-price-consultation-product .sale-price-consultation-display {
+  justify-items: start;
+  text-align: left;
+}
+
+.sale-price-consultation-image {
+  width: 180px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #aeb9c6;
+  background: #e8edf2;
+  color: #617286;
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: .035em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.sale-price-consultation-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #fff;
+}
+
+.sale-price-consultation-image.loading {
+  background:
+    linear-gradient(100deg, transparent 35%, rgba(255,255,255,.72) 50%, transparent 65%),
+    #e8edf2;
+  background-size: 220% 100%;
+  animation: sale-price-image-loading 1.1s linear infinite;
+}
+
+@keyframes sale-price-image-loading {
+  to { background-position-x: -220%; }
+}
+
 .sale-price-consultation-result {
   display: grid;
-  padding: 24px 38px 30px;
+  padding: 0;
 }
 
 .sale-price-consultation-result dl {
@@ -17832,15 +17895,37 @@ textarea:focus,
   font-weight: 950;
 }
 
-@media (max-width: 640px) {
+@media screen and (max-width: 640px) {
   .sale-action-dialog.sale-price-consultation {
     width: calc(100vw - 20px);
   }
 
-  .sale-price-consultation-form,
-  .sale-price-consultation-result {
+  .sale-price-consultation-form {
     padding-left: 18px;
     padding-right: 18px;
+  }
+
+  .sale-price-consultation-form.has-result {
+    padding: 22px 18px 26px;
+  }
+
+  .sale-price-consultation-product {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 18px;
+  }
+
+  .sale-price-consultation-details {
+    width: 100%;
+  }
+
+  .sale-price-consultation-product .sale-price-consultation-display {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .sale-price-consultation-image {
+    width: 160px;
   }
 
   .sale-price-consultation-result dl {

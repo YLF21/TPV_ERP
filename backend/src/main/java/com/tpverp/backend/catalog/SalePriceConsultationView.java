@@ -8,6 +8,7 @@ public record SalePriceConsultationView(
         UUID productId,
         String code,
         String name,
+        boolean hasImage,
         BigDecimal salePrice,
         PriceUseMode activePriceType,
         BigDecimal memberPrice,

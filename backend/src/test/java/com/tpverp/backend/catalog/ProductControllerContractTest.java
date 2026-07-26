@@ -86,6 +86,7 @@ class ProductControllerContractTest {
                 productId,
                 "A001",
                 "Cafe",
+                true,
                 new BigDecimal("10.00"),
                 PriceUseMode.OFFER_DISCOUNT,
                 null,
@@ -98,6 +99,7 @@ class ProductControllerContractTest {
                         .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productId").value(productId.toString()))
+                .andExpect(jsonPath("$.hasImage").value(true))
                 .andExpect(jsonPath("$.salePrice").value(10.00))
                 .andExpect(jsonPath("$.activePriceType").value("OFFER_DISCOUNT"))
                 .andExpect(jsonPath("$.offerDiscountPercent").value(20.00))

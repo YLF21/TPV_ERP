@@ -1,5 +1,6 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { LocaleCode } from "../types";
 
@@ -7,6 +8,7 @@ export type SalePriceConsultation = {
   productId: string;
   code?: string | null;
   name?: string | null;
+  hasImage: boolean;
   salePrice: number | string;
   activePriceType: "NORMAL" | "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
   memberPrice?: number | string | null;
@@ -57,6 +59,46 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
   const [result, setResult] = useState<SalePriceConsultation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [imageSource, setImageSource] = useState("");
+  const [imageState, setImageState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+
+  useEffect(() => {
+    if (!result) {
+      setImageSource("");
+      setImageState("idle");
+      return;
+    }
+    if (!result.hasImage || !token) {
+      setImageSource("");
+      setImageState("unavailable");
+      return;
+    }
+
+    let active = true;
+    let objectUrl = "";
+    setImageSource("");
+    setImageState("loading");
+    void fetch(`${apiBaseUrl}/products/${encodeURIComponent(result.productId)}/image?thumbnail=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((response) => {
+      if (!response.ok) throw new Error("product_image_unavailable");
+      return response.blob();
+    }).then((blob) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setImageSource(objectUrl);
+      setImageState("ready");
+    }).catch(() => {
+      if (!active) return;
+      setImageSource("");
+      setImageState("unavailable");
+    });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [result, token]);
 
   async function consult(event: FormEvent) {
     event.preventDefault();
@@ -110,7 +152,7 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
         </header>
 
         <form
-          className="sale-price-consultation-form"
+          className={`sale-price-consultation-form${result ? " has-result" : ""}`}
           onSubmit={(event) => void consult(event)}
           onPointerDown={() => queueMicrotask(() => inputRef.current?.focus())}
         >
@@ -131,53 +173,74 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
             }}
             aria-label={t("sale.priceConsultation.identifier")}
           />
-          <div className="sale-price-consultation-display" aria-live="polite">
-            <p className={visibleIdentifier ? "code" : "prompt"}>
-              {visibleIdentifier || t("sale.priceConsultation.scanPrompt")}
-            </p>
-            {loading && <p className="status">{t("sale.priceConsultation.loading")}</p>}
-            {!loading && error && <p className="status error" role="alert">{error}</p>}
+          <div className={result ? "sale-price-consultation-product" : undefined}>
             {!loading && !error && result && (
-              <p className="name">{result.name ?? t("sale.main.unnamedProduct")}</p>
+              <div
+                className={`sale-price-consultation-image ${imageState}`}
+                aria-label={imageState === "loading"
+                  ? t("sale.priceConsultation.imageLoading")
+                  : imageState === "ready"
+                    ? result.name ?? t("sale.main.unnamedProduct")
+                    : t("product.image.empty")}
+                aria-busy={imageState === "loading"}
+              >
+                {imageSource
+                  ? <img src={imageSource} alt={result.name ?? t("sale.main.unnamedProduct")} />
+                  : imageState === "loading"
+                    ? <span>{t("sale.priceConsultation.imageLoading")}</span>
+                    : <span>{t("product.image.empty")}</span>}
+              </div>
             )}
+            <div className="sale-price-consultation-details">
+              <div className="sale-price-consultation-display" aria-live="polite">
+                <p className={visibleIdentifier ? "code" : "prompt"}>
+                  {visibleIdentifier || t("sale.priceConsultation.scanPrompt")}
+                </p>
+                {loading && <p className="status">{t("sale.priceConsultation.loading")}</p>}
+                {!loading && error && <p className="status error" role="alert">{error}</p>}
+                {!loading && !error && result && (
+                  <p className="name">{result.name ?? t("sale.main.unnamedProduct")}</p>
+                )}
+              </div>
+
+              {!loading && !error && result && (
+                <div className="sale-price-consultation-result">
+                  <dl>
+                    <div className="primary">
+                      <dt>{t("sale.priceConsultation.salePrice")}</dt>
+                      <dd>{money(result.salePrice, locale)}</dd>
+                    </div>
+                    {result.activePriceType === "MEMBER_PRICE" && result.memberPrice != null && (
+                      <div className="special">
+                        <dt>{t("sale.priceConsultation.memberPrice")}</dt>
+                        <dd>{money(result.memberPrice, locale)}</dd>
+                      </div>
+                    )}
+                    {result.activePriceType === "OFFER_PRICE" && result.offerPrice != null && (
+                      <div className="special">
+                        <dt>{t("sale.priceConsultation.offerPrice")}</dt>
+                        <dd>{money(result.offerPrice, locale)}</dd>
+                      </div>
+                    )}
+                    {result.activePriceType === "OFFER_DISCOUNT" && result.offerDiscountPercent != null && (
+                      <div className="special">
+                        <dt>{t("sale.priceConsultation.offerDiscount")}</dt>
+                        <dd>{percentage(result.offerDiscountPercent, locale)}%</dd>
+                      </div>
+                    )}
+                    {(result.activePriceType === "OFFER_PRICE"
+                      || result.activePriceType === "OFFER_DISCOUNT") && result.offerUntil && (
+                      <div>
+                        <dt>{t("sale.priceConsultation.offerUntil")}</dt>
+                        <dd>{date(result.offerUntil, locale)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              )}
+            </div>
           </div>
         </form>
-
-        {!loading && !error && result && (
-          <div className="sale-price-consultation-result">
-            <dl>
-              <div className="primary">
-                <dt>{t("sale.priceConsultation.salePrice")}</dt>
-                <dd>{money(result.salePrice, locale)}</dd>
-              </div>
-              {result.activePriceType === "MEMBER_PRICE" && result.memberPrice != null && (
-                <div className="special">
-                  <dt>{t("sale.priceConsultation.memberPrice")}</dt>
-                  <dd>{money(result.memberPrice, locale)}</dd>
-                </div>
-              )}
-              {result.activePriceType === "OFFER_PRICE" && result.offerPrice != null && (
-                <div className="special">
-                  <dt>{t("sale.priceConsultation.offerPrice")}</dt>
-                  <dd>{money(result.offerPrice, locale)}</dd>
-                </div>
-              )}
-              {result.activePriceType === "OFFER_DISCOUNT" && result.offerDiscountPercent != null && (
-                <div className="special">
-                  <dt>{t("sale.priceConsultation.offerDiscount")}</dt>
-                  <dd>{percentage(result.offerDiscountPercent, locale)}%</dd>
-                </div>
-              )}
-              {(result.activePriceType === "OFFER_PRICE"
-                || result.activePriceType === "OFFER_DISCOUNT") && result.offerUntil && (
-                <div>
-                  <dt>{t("sale.priceConsultation.offerUntil")}</dt>
-                  <dd>{date(result.offerUntil, locale)}</dd>
-                </div>
-              )}
-            </dl>
-          </div>
-        )}
       </section>
     </div>
   );

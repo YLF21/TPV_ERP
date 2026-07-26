@@ -73,6 +73,49 @@ describe("SalePriceConsultationDialog", () => {
     expect(screen.queryByText("Precio de venta")).not.toBeInTheDocument();
   });
 
+  it("loads the authenticated product thumbnail when the consulted product has an image", async () => {
+    const NativeUrl = URL;
+    const createObjectURL = vi.fn(() => "blob:product-thumbnail");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      const parsed = new NativeUrl(url, "http://localhost");
+      if (parsed.pathname.endsWith("/price-consultation")) {
+        return jsonResponse({
+          productId: "product-image",
+          code: "IMG-1",
+          name: "Producto con imagen",
+          hasImage: true,
+          salePrice: 12,
+          activePriceType: "NORMAL",
+        });
+      }
+      return {
+        ok: true,
+        blob: async () => new Blob(["image"], { type: "image/webp" }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
+
+    await user.type(screen.getByRole("textbox", { name: /digo del producto/ }), "IMG-1{Enter}");
+
+    const image = await screen.findByRole("img", { name: "Producto con imagen" });
+    expect(image).toHaveAttribute("src", "blob:product-thumbnail");
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const imageRequest = new NativeUrl(String(fetchMock.mock.calls[1]?.[0]), "http://localhost");
+    expect(imageRequest.pathname).toBe("/api/v1/products/product-image/image");
+    expect(imageRequest.searchParams.get("thumbnail")).toBe("true");
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual({ Authorization: "Bearer token" });
+
+    await user.type(screen.getByRole("textbox", { name: /digo del producto/ }), "SIGUIENTE");
+
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:product-thumbnail"));
+    expect(screen.queryByRole("img", { name: "Producto con imagen" })).not.toBeInTheDocument();
+  });
+
   it("shows an active offer discount and its end date without unrelated prices", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
       productId: "product-2",

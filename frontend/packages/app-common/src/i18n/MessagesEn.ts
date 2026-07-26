@@ -779,6 +779,7 @@ export class MessagesEn {
     "sale.priceConsultation.loading": "Checking price…",
     "sale.priceConsultation.notFound": "PRODUCT NOT FOUND",
     "sale.priceConsultation.error": "The price could not be checked",
+    "sale.priceConsultation.imageLoading": "Loading image",
     "sale.priceConsultation.salePrice": "Sale price",
     "sale.priceConsultation.memberPrice": "Member price",
     "sale.priceConsultation.offerPrice": "Offer price",

@@ -213,10 +213,12 @@ class SaleProductCatalogServiceTest {
         configuredPriceLookup("MEMBER-1");
         when(product.getPriceUseMode()).thenReturn(PriceUseMode.MEMBER_PRICE);
         when(product.getMemberPrice()).thenReturn(new BigDecimal("8.50"));
+        when(product.getImageId()).thenReturn(UUID.randomUUID());
 
         var result = service.priceByIdentifier(" MEMBER-1 ");
 
         assertThat(result.salePrice()).isEqualByComparingTo("10.00");
+        assertThat(result.hasImage()).isTrue();
         assertThat(result.activePriceType()).isEqualTo(PriceUseMode.MEMBER_PRICE);
         assertThat(result.memberPrice()).isEqualByComparingTo("8.50");
         assertThat(result.offerPrice()).isNull();
@@ -236,6 +238,7 @@ class SaleProductCatalogServiceTest {
 
         var result = service.priceByIdentifier("OFFER-1");
 
+        assertThat(result.hasImage()).isFalse();
         assertThat(result.activePriceType()).isEqualTo(PriceUseMode.OFFER_PRICE);
         assertThat(result.offerPrice()).isEqualByComparingTo("7.50");
         assertThat(result.offerUntil()).isEqualTo(LocalDate.of(2026, 7, 31));
