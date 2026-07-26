@@ -53,6 +53,7 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
   const requestGeneration = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const [identifier, setIdentifier] = useState("");
+  const [submittedIdentifier, setSubmittedIdentifier] = useState("");
   const [result, setResult] = useState<SalePriceConsultation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +63,8 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
     const value = identifier.trim();
     if (!value || loading) return;
     const generation = ++requestGeneration.current;
+    setSubmittedIdentifier(value);
+    setIdentifier("");
     setLoading(true);
     setError("");
     setResult(null);
@@ -72,10 +75,8 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
       );
       if (generation !== requestGeneration.current) return;
       setResult(product);
-      setIdentifier("");
     } catch (requestError) {
       if (generation !== requestGeneration.current) return;
-      setIdentifier("");
       setError(requestError instanceof ApiError && requestError.status === 404
         ? t("sale.priceConsultation.notFound")
         : t("sale.priceConsultation.error"));
@@ -86,6 +87,8 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
       }
     }
   }
+
+  const visibleIdentifier = identifier || submittedIdentifier;
 
   return (
     <div className="sale-action-overlay" role="presentation">
@@ -106,41 +109,42 @@ export function SalePriceConsultationDialog({ locale, token, onClose }: Props) {
           <button type="button" aria-label={t("common.close")} onClick={onClose}>×</button>
         </header>
 
-        <form className="sale-price-consultation-form" onSubmit={(event) => void consult(event)}>
-          <p className="sale-price-consultation-prompt">
-            {t("sale.priceConsultation.scanPrompt")}
-          </p>
-          <label>
-            {t("sale.priceConsultation.identifier")}
-            <input
-              ref={inputRef}
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              value={identifier}
-              onChange={(event) => setIdentifier(event.target.value)}
-              placeholder={t("sale.priceConsultation.placeholder")}
-              aria-label={t("sale.priceConsultation.identifier")}
-            />
-          </label>
-        </form>
-
-        {loading && (
-          <div className="sale-price-consultation-state" role="status">
-            {t("sale.priceConsultation.loading")}
+        <form
+          className="sale-price-consultation-form"
+          onSubmit={(event) => void consult(event)}
+          onPointerDown={() => queueMicrotask(() => inputRef.current?.focus())}
+        >
+          <input
+            ref={inputRef}
+            className="sale-price-consultation-capture"
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            value={identifier}
+            onChange={(event) => {
+              if (submittedIdentifier || result || error) {
+                setSubmittedIdentifier("");
+                setResult(null);
+                setError("");
+              }
+              setIdentifier(event.target.value);
+            }}
+            aria-label={t("sale.priceConsultation.identifier")}
+          />
+          <div className="sale-price-consultation-display" aria-live="polite">
+            <p className={visibleIdentifier ? "code" : "prompt"}>
+              {visibleIdentifier || t("sale.priceConsultation.scanPrompt")}
+            </p>
+            {loading && <p className="status">{t("sale.priceConsultation.loading")}</p>}
+            {!loading && error && <p className="status error" role="alert">{error}</p>}
+            {!loading && !error && result && (
+              <p className="name">{result.name ?? t("sale.main.unnamedProduct")}</p>
+            )}
           </div>
-        )}
-
-        {!loading && error && (
-          <div className="sale-price-consultation-state error" role="alert">{error}</div>
-        )}
+        </form>
 
         {!loading && !error && result && (
           <div className="sale-price-consultation-result">
-            <div className="sale-price-consultation-product">
-              <strong>{result.name ?? t("sale.main.unnamedProduct")}</strong>
-              <span>{result.code ?? "—"}</span>
-            </div>
             <dl>
               <div className="primary">
                 <dt>{t("sale.priceConsultation.salePrice")}</dt>

@@ -23,6 +23,8 @@ describe("SalePriceConsultationDialog", () => {
     render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
 
     expect(screen.getByText("ESCANEA PARA CONSULTAR PRECIO")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Código del producto" }))
+      .toHaveClass("sale-price-consultation-capture");
     expect(screen.getByRole("textbox", { name: "Código del producto" })).toHaveFocus();
     expect(screen.queryByText("Precio de venta")).not.toBeInTheDocument();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
@@ -46,14 +48,29 @@ describe("SalePriceConsultationDialog", () => {
     const user = userEvent.setup();
     render(<SalePriceConsultationDialog locale="es" token="token" onClose={vi.fn()} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Código del producto" }), "MANUAL-001{Enter}");
+    const input = screen.getByRole("textbox", { name: "Código del producto" });
+    await user.type(input, "MANUAL-001");
 
-    expect(await screen.findByText("Producto socio")).toBeVisible();
+    expect(screen.queryByText("ESCANEA PARA CONSULTAR PRECIO")).not.toBeInTheDocument();
+    const scannedCode = screen.getByText("MANUAL-001");
+    expect(scannedCode).toBeVisible();
+
+    await user.keyboard("{Enter}");
+
+    const productName = await screen.findByText("Producto socio");
+    expect(productName).toBeVisible();
+    expect(scannedCode.nextElementSibling).toBe(productName);
     expect(screen.getByText(/10,00/)).toBeVisible();
     expect(screen.getByText(/8,50/)).toBeVisible();
     expect(screen.getByText("Precio socio")).toBeVisible();
     expect(screen.queryByText("Precio oferta")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Código del producto" })).toHaveValue("");
+    expect(input).toHaveValue("");
+
+    await user.type(input, "SIGUIENTE");
+
+    expect(screen.getByText("SIGUIENTE")).toBeVisible();
+    expect(screen.queryByText("Producto socio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Precio de venta")).not.toBeInTheDocument();
   });
 
   it("shows an active offer discount and its end date without unrelated prices", async () => {
@@ -91,7 +108,10 @@ describe("SalePriceConsultationDialog", () => {
     const input = screen.getByRole("textbox", { name: "Código del producto" });
     await user.type(input, "NO-EXISTE{Enter}");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("PRODUCTO NO ENCONTRADO");
+    const scannedCode = screen.getByText("NO-EXISTE");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("PRODUCTO NO ENCONTRADO");
+    expect(scannedCode.nextElementSibling).toBe(alert);
     await waitFor(() => expect(input).toHaveFocus());
     expect(input).toHaveValue("");
 
