@@ -10,7 +10,6 @@ type StockPage = {
 };
 
 type Props = {
-  mode: "PRICE" | "STOCK";
   products: SaleProduct[];
   initialProduct?: SaleProduct | null;
   token?: string;
@@ -32,7 +31,6 @@ function money(value: unknown) {
 }
 
 export function SaleProductConsultationDialog({
-  mode,
   products,
   initialProduct = null,
   token,
@@ -77,9 +75,9 @@ export function SaleProductConsultationDialog({
   return (
     <div className="sale-action-overlay" role="presentation">
       <section className="sale-action-dialog wide sale-product-consultation" role="dialog" aria-modal="true"
-        aria-label={mode === "PRICE" ? "Consulta de precio" : "Consulta de stock"}>
+        aria-label="Consulta de stock">
         <header>
-          <h2>{mode === "PRICE" ? "Consulta de precio" : "Consulta de stock"}</h2>
+          <h2>Consulta de stock</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose}>×</button>
         </header>
         <label>

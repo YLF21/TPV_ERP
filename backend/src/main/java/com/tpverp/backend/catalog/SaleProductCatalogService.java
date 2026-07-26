@@ -6,8 +6,12 @@ import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.shared.access.OperationalMode;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -22,18 +26,27 @@ public class SaleProductCatalogService {
     private final LicenseRepository licenses;
     private final InstallationStatusService installationStatus;
     private final CurrentOrganization organization;
+    private final ProductIdentifierRepository identifiers;
+    private final ProductRepository products;
+    private final Clock clock;
 
     public SaleProductCatalogService(
             CatalogService catalog,
             StoreTaxRepository taxes,
             LicenseRepository licenses,
             InstallationStatusService installationStatus,
-            CurrentOrganization organization) {
+            CurrentOrganization organization,
+            ProductIdentifierRepository identifiers,
+            ProductRepository products,
+            Clock clock) {
         this.catalog = catalog;
         this.taxes = taxes;
         this.licenses = licenses;
         this.installationStatus = installationStatus;
         this.organization = organization;
+        this.identifiers = identifiers;
+        this.products = products;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -58,6 +71,69 @@ public class SaleProductCatalogService {
         return products.stream()
                 .map(product -> saleView(product, storeId, taxesById, taxRegime.name()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public SalePriceConsultationView priceByIdentifier(String rawIdentifier) {
+        String identifier = rawIdentifier == null ? "" : rawIdentifier.trim();
+        if (identifier.isEmpty()) {
+            throw new IllegalArgumentException("message.product.code_or_barcode_required");
+        }
+
+        var store = organization.currentStore();
+        UUID storeId = store.getId();
+        List<UUID> productIds = identifiers.findAllByStoreIdAndValor(storeId, identifier).stream()
+                .map(ProductIdentifier::getProductId)
+                .distinct()
+                .toList();
+        if (productIds.size() > 1) {
+            throw new IllegalStateException("Identificador asignado a varios productos");
+        }
+        Product product = productIds.stream()
+                .findFirst()
+                .flatMap(products::findById)
+                .filter(value -> storeId.equals(value.getStoreId()))
+                .filter(Product::isActive)
+                .orElseThrow(NoSuchElementException::new);
+
+        LocalDate businessDate = LocalDate.now(clock.withZone(ZoneId.of(store.getTimezone())));
+        PriceUseMode activePriceType = activePriceType(product, businessDate);
+        return new SalePriceConsultationView(
+                product.getId(),
+                product.getCode(),
+                product.getName(),
+                product.getSalePrice(),
+                activePriceType,
+                activePriceType == PriceUseMode.MEMBER_PRICE ? product.getMemberPrice() : null,
+                activePriceType == PriceUseMode.OFFER_PRICE ? product.getOfferPrice() : null,
+                activePriceType == PriceUseMode.OFFER_DISCOUNT ? product.getOfferDiscountPercent() : null,
+                activePriceType == PriceUseMode.OFFER_PRICE
+                        || activePriceType == PriceUseMode.OFFER_DISCOUNT
+                        ? product.getOfferUntil() : null);
+    }
+
+    private static PriceUseMode activePriceType(Product product, LocalDate businessDate) {
+        PriceUseMode mode = product.getPriceUseMode() == null ? PriceUseMode.NORMAL : product.getPriceUseMode();
+        if (mode == PriceUseMode.MEMBER_PRICE) {
+            return product.getMemberPrice() == null ? PriceUseMode.NORMAL : mode;
+        }
+        if (mode != PriceUseMode.OFFER_PRICE && mode != PriceUseMode.OFFER_DISCOUNT) {
+            return PriceUseMode.NORMAL;
+        }
+        boolean current = product.isOfferActive()
+                && product.getOfferFrom() != null
+                && !businessDate.isBefore(product.getOfferFrom())
+                && (product.getOfferUntil() == null || !businessDate.isAfter(product.getOfferUntil()));
+        if (!current) {
+            return PriceUseMode.NORMAL;
+        }
+        if (mode == PriceUseMode.OFFER_PRICE && product.getOfferPrice() == null) {
+            return PriceUseMode.NORMAL;
+        }
+        if (mode == PriceUseMode.OFFER_DISCOUNT && product.getOfferDiscountPercent() == null) {
+            return PriceUseMode.NORMAL;
+        }
+        return mode;
     }
 
     private TaxRegime currentTaxRegime(UUID storeId) {

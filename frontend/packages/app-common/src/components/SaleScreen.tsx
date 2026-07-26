@@ -49,6 +49,7 @@ import {
 import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
 import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
+import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
@@ -2365,11 +2366,21 @@ export function SaleScreen({
         />
       )}
 
-      {consultationMode && (
+      {consultationMode === "PRICE" && (
+        <SalePriceConsultationDialog
+          locale={locale}
+          token={session.accessToken}
+          onClose={() => {
+            setConsultationMode(null);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
+      {consultationMode === "STOCK" && (
         <SaleProductConsultationDialog
-          mode={consultationMode}
           products={selectableProducts}
-          initialProduct={consultationMode === "STOCK" ? selectedLine?.product : selectSaleProduct(selectableProducts, query)}
+          initialProduct={selectedLine?.product}
           token={session.accessToken}
           onClose={() => {
             setConsultationMode(null);

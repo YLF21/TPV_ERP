@@ -80,6 +80,35 @@ class ProductControllerContractTest {
     }
 
     @Test
+    void salePriceConsultationUsesAnExactIdentifierAndReturnsOnlyActivePriceData() throws Exception {
+        UUID productId = UUID.randomUUID();
+        when(saleCatalog.priceByIdentifier("8410000000001")).thenReturn(new SalePriceConsultationView(
+                productId,
+                "A001",
+                "Cafe",
+                new BigDecimal("10.00"),
+                PriceUseMode.OFFER_DISCOUNT,
+                null,
+                null,
+                new BigDecimal("20.00"),
+                LocalDate.of(2026, 7, 31)));
+
+        mvc.perform(get("/api/v1/products/sale/price-consultation")
+                        .param("identifier", "8410000000001")
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.productId").value(productId.toString()))
+                .andExpect(jsonPath("$.salePrice").value(10.00))
+                .andExpect(jsonPath("$.activePriceType").value("OFFER_DISCOUNT"))
+                .andExpect(jsonPath("$.offerDiscountPercent").value(20.00))
+                .andExpect(jsonPath("$.offerUntil").value("2026-07-31"))
+                .andExpect(jsonPath("$.memberPrice").doesNotExist())
+                .andExpect(jsonPath("$.offerPrice").doesNotExist());
+
+        verify(saleCatalog).priceByIdentifier("8410000000001");
+    }
+
+    @Test
     void publicProductReadDoesNotExposePurchaseFields() throws Exception {
         var product = productWithPurchasePrice();
         when(service.product(product.getId())).thenReturn(product);
