@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { apiBaseUrl } from "../api/runtime";
 import { hasPermission } from "../auth/auth";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -49,12 +50,17 @@ import {
 import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
 import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
+import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
 import { SaleCashSessionDialog } from "./SaleCashSessionDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { visibleTableColumns } from "./tableLayoutPreferences";
+import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { TicketReturnDialog } from "./TicketReturnDialog";
+import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
   CashDrawerResultReportingError,
   executeAuthorizedCashDrawerOpen,
@@ -68,6 +74,7 @@ import { prepareCashSessionForSales } from "../sale/cashSessions";
 
 export type SaleProduct = {
   id: string;
+  imageId?: string | null;
   active?: boolean | null;
   code?: string | null;
   barcode?: string | null;
@@ -154,6 +161,146 @@ type AuthoritativeSaleLine = {
   roundingAdjustment: number | string;
   finalSubtotal: number | string;
 };
+
+export type SaleCartColumnKey =
+  | "image"
+  | "code"
+  | "name"
+  | "quantity"
+  | "salePrice"
+  | "discount"
+  | "specialPrice"
+  | "total";
+
+export const saleCartTableKey = "sale.cart";
+export const saleCartImageColumnWidth = 58;
+export const saleCartColumnDefinitions = [
+  { key: "image", defaultWidth: saleCartImageColumnWidth },
+  { key: "code", defaultWidth: 112 },
+  { key: "name", defaultWidth: 260 },
+  { key: "quantity", defaultWidth: 86 },
+  { key: "salePrice", defaultWidth: 112 },
+  { key: "discount", defaultWidth: 116 },
+  { key: "specialPrice", defaultWidth: 154 },
+  { key: "total", defaultWidth: 116 },
+] as const satisfies readonly TableColumnDefinition<SaleCartColumnKey>[];
+
+export function visibleSaleCartColumns(
+  layout: TableLayout<SaleCartColumnKey>,
+): TableLayout<SaleCartColumnKey> {
+  return visibleTableColumns(layout).map((column) => (
+    column.key === "image"
+      ? { ...column, width: saleCartImageColumnWidth }
+      : column
+  ));
+}
+
+type SaleCartSpecialPrice = {
+  type: "MEMBER_PRICE" | "OFFER_PRICE" | "OFFER_DISCOUNT";
+  unitPrice: number;
+  discountPercent?: number;
+};
+
+function finiteAmount(value: number | string | null | undefined, fallback = 0) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : fallback;
+}
+
+export function saleCartSpecialPrice(
+  product: SaleProduct,
+  activeMember: boolean,
+  authoritativeLine?: AuthoritativeSaleLine,
+): SaleCartSpecialPrice | null {
+  const mode = String(product.priceUseMode ?? "NORMAL").toUpperCase();
+  if (authoritativeLine) {
+    const source = String(authoritativeLine.priceSource ?? "").toUpperCase();
+    if (source === "MEMBER" || source === "MEMBER_PRICE") {
+      return {
+        type: "MEMBER_PRICE",
+        unitPrice: finiteAmount(authoritativeLine.baseUnitPrice),
+      };
+    }
+    if (
+      source === "OFERTA"
+      || source === "OFFER"
+      || source === "OFFER_PRICE"
+      || source === "OFFER_DISCOUNT"
+    ) {
+      const offerType = source === "OFFER_DISCOUNT" || mode === "OFFER_DISCOUNT"
+        ? "OFFER_DISCOUNT"
+        : "OFFER_PRICE";
+      return {
+        type: offerType,
+        unitPrice: finiteAmount(authoritativeLine.baseUnitPrice),
+        ...(offerType === "OFFER_DISCOUNT"
+          ? { discountPercent: finiteAmount(product.offerDiscountPercent) }
+          : {}),
+      };
+    }
+    return null;
+  }
+
+  if (
+    activeMember
+    && String(product.discountType ?? "").toUpperCase() === "MEMBER_PRICE"
+    && finiteAmount(product.memberPrice) > 0
+  ) {
+    return {
+      type: "MEMBER_PRICE",
+      unitPrice: finiteAmount(product.memberPrice),
+    };
+  }
+  if ((mode === "OFFER_PRICE" || mode === "OFFER_DISCOUNT") && saleOfferIsCurrent(product)) {
+    return {
+      type: mode,
+      unitPrice: effectiveSaleProductPrice(product, activeMember),
+      ...(mode === "OFFER_DISCOUNT"
+        ? { discountPercent: finiteAmount(product.offerDiscountPercent) }
+        : {}),
+    };
+  }
+  return null;
+}
+
+type SaleCartProductThumbnailProps = {
+  product: SaleProduct;
+  token?: string;
+};
+
+function SaleCartProductThumbnail({
+  product,
+  token,
+}: SaleCartProductThumbnailProps) {
+  const [source, setSource] = useState("");
+
+  useEffect(() => {
+    if (!product.imageId || !token) {
+      setSource("");
+      return;
+    }
+    let active = true;
+    let objectUrl = "";
+    setSource("");
+    void fetch(`${apiBaseUrl}/products/${encodeURIComponent(product.id)}/image?thumbnail=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((response) => {
+      if (!response.ok) throw new Error("product_image_unavailable");
+      return response.blob();
+    }).then((blob) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setSource(objectUrl);
+    }).catch(() => {
+      if (active) setSource("");
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [product.id, product.imageId, token]);
+
+  return source ? <img className="sale-cart-thumbnail" src={source} alt="" /> : null;
+}
 
 export function isCompleteAuthoritativeQuote(
   quote: PosAuthoritativeQuote | null | undefined,
@@ -852,6 +999,13 @@ export function SaleScreen({
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [catalogReload, setCatalogReload] = useState(0);
+  const cartTableLayout = useTableLayoutPreference({
+    app,
+    username: session.username,
+    accessToken: catalogLoading ? undefined : session.accessToken,
+    tableKey: saleCartTableKey,
+    definitions: saleCartColumnDefinitions,
+  });
   const [authoritativeQuote, setAuthoritativeQuote] = useState<PosAuthoritativeQuote | null>(null);
   const [authoritativeQuoteLoading, setAuthoritativeQuoteLoading] = useState(false);
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
@@ -890,6 +1044,8 @@ export function SaleScreen({
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => line.product.id === selectedProductId);
   const activeMember = selectedCustomer?.activeMember === true;
+  const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
+  const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
   const total = saleTotal(lines, activeMember);
   const authoritativeQuoteReady = isCompleteAuthoritativeQuote(authoritativeQuote);
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
@@ -928,6 +1084,131 @@ export function SaleScreen({
           loading: "Preparando caja…",
           error: "No se pudo preparar la sesión de caja.",
         };
+
+  function cartColumnLabel(column: SaleCartColumnKey) {
+    return t(`sale.cart.column.${column}`);
+  }
+
+  function renderCartRow(localLine: SaleLine, authoritativeLine?: AuthoritativeSaleLine) {
+    const product = localLine.product;
+    const name = authoritativeLine?.name ?? product.name ?? t("sale.main.unnamedProduct");
+    const code = authoritativeLine?.code
+      ?? product.code
+      ?? product.barcode
+      ?? t("sale.main.missingCode");
+    const quantity = finiteAmount(authoritativeLine?.quantity ?? localLine.quantity);
+    const appliedUnitPrice = finiteAmount(
+      authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(localLine, activeMember),
+    );
+    const catalogSalePrice = authoritativeLine
+      ? finiteAmount(authoritativeLine.normalUnitPrice)
+      : finiteAmount(product.salePrice);
+    const displayedSalePrice = catalogSalePrice === 0 && localLine.openUnitPrice != null
+      ? appliedUnitPrice
+      : catalogSalePrice;
+    const manualDiscount = authoritativeLine
+      ? finiteAmount(authoritativeLine.manualDiscountPercent)
+      : finiteAmount(localLine.discountPercent);
+    const memberDiscount = authoritativeLine
+      ? finiteAmount(authoritativeLine.memberDiscountPercent)
+      : finiteAmount(localLine.memberDiscountPercent);
+    const discountText = memberDiscount > 0 && memberDiscount >= manualDiscount
+      ? `${t("sale.main.member")} ${formatSaleAmount(memberDiscount)}%`
+      : manualDiscount > 0
+        ? `${formatSaleAmount(manualDiscount)}%`
+        : "";
+    const specialPrice = saleCartSpecialPrice(product, activeMember, authoritativeLine);
+    const totalAmount = authoritativeLine
+      ? finiteAmount(authoritativeLine.finalSubtotal)
+      : saleLineSubtotal(localLine, activeMember);
+    const selectionLabel = `${name} ${quantity} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
+    const selected = selectedProductId === product.id;
+
+    function renderCell(column: SaleCartColumnKey) {
+      if (column === "image") {
+        return (
+          <td className="sale-cart-image-cell" data-column-key={column} key={column}>
+            <SaleCartProductThumbnail
+              product={product}
+              token={session.accessToken}
+            />
+          </td>
+        );
+      }
+      if (column === "code") {
+        return <td className="sale-cart-code" data-column-key={column} key={column}>{code}</td>;
+      }
+      if (column === "name") {
+        return (
+          <td className="sale-cart-name" data-column-key={column} key={column}>
+            <button
+              type="button"
+              className="sale-cart-select"
+              aria-label={selectionLabel}
+              aria-pressed={selected}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedProductId(product.id);
+              }}
+            >
+              <strong className="product-name-text">{name}</strong>
+              {(localLine.serialNumbers ?? []).map((serial) => (
+                <small className="sale-line-serial" key={serial}>S/N: {serial}</small>
+              ))}
+            </button>
+          </td>
+        );
+      }
+      if (column === "quantity") {
+        return <td className="sale-cart-number sale-cart-quantity" data-column-key={column} key={column}>{quantity}</td>;
+      }
+      if (column === "salePrice") {
+        return (
+          <td className="sale-cart-number sale-cart-sale-price" data-column-key={column} key={column}>
+            {formatSaleAmount(displayedSalePrice)} €
+          </td>
+        );
+      }
+      if (column === "discount") {
+        return <td className="sale-cart-discount" data-column-key={column} key={column}>{discountText}</td>;
+      }
+      if (column === "specialPrice") {
+        const specialLabel = specialPrice?.type === "MEMBER_PRICE"
+          ? t("sale.cart.special.member")
+          : specialPrice?.type === "OFFER_DISCOUNT"
+            ? `${t("sale.cart.special.offerDiscount")} ${formatSaleAmount(specialPrice.discountPercent)}%`
+            : t("sale.cart.special.offerPrice");
+        return (
+          <td className="sale-cart-special" data-column-key={column} key={column}>
+            {specialPrice ? (
+              <>
+                <small>{specialLabel}</small>
+                <strong>
+                  {formatSaleAmount(specialPrice.unitPrice)} €
+                  <span>{t("sale.cart.perUnit")}</span>
+                </strong>
+              </>
+            ) : null}
+          </td>
+        );
+      }
+      return (
+        <td className="sale-cart-number sale-cart-total" data-column-key={column} key={column}>
+          {formatSaleAmount(totalAmount)} €
+        </td>
+      );
+    }
+
+    return (
+      <tr
+        className={`sale-cart-row${selected ? " selected" : ""}`}
+        key={product.id}
+        onClick={() => setSelectedProductId(product.id)}
+      >
+        {visibleCartColumns.map((column) => renderCell(column.key))}
+      </tr>
+    );
+  }
 
   async function prepareSalesCashSession() {
     if (!terminalContext.terminalId || !session.accessToken) {
@@ -2008,72 +2289,43 @@ export function SaleScreen({
           {lines.length === 0 ? (
             <div className="sale-ticket-lines sale-empty-state">{paymentLocked ? t("payment.split.reservedTicketGuidance") : t("sale.main.noSale")}</div>
           ) : (
-            <div className="sale-ticket-lines" aria-label={t("sale.main.ticketLines")}>
-              {authoritativeLineBreakdown ? authoritativeLineBreakdown.map((line) => (
-                <button
-                  type="button"
-                  className={`sale-ticket-line authoritative${selectedProductId === line.productId ? " selected" : ""}`}
-                  key={line.lineId}
-                  aria-pressed={selectedProductId === line.productId}
-                  onClick={() => setSelectedProductId(line.productId)}
-                >
-                  <div>
-                    <strong className="product-name-text">{line.name}</strong>
-                    <span>{line.code}</span>
-                    {(lines.find((candidate) => candidate.product.id === line.productId)?.serialNumbers ?? [])
-                      .map((serial) => <small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}
-                  </div>
-                  <span>
-                    {Number(line.quantity)} x {formatSaleAmount(Number(line.baseUnitPrice))}
-                    {Number(line.memberPriceSaving) > 0 && (
-                      <small>{saleMainMessage(t, "sale.quote.memberPriceSaving", { amount: formatSaleAmount(Number(line.memberPriceSaving)) })}</small>
-                    )}
-                    {Number(line.memberDiscount) > 0 && (
-                      <small>{saleMainMessage(t, "sale.quote.memberDiscount", { percent: formatSaleAmount(Number(line.memberDiscountPercent)), amount: formatSaleAmount(Number(line.memberDiscount)) })}</small>
-                    )}
-                    {Number(line.manualDiscount) > 0 && (
-                      <small>{saleMainMessage(t, "sale.quote.manualDiscount", { percent: formatSaleAmount(Number(line.manualDiscountPercent)), amount: formatSaleAmount(Number(line.manualDiscount)) })}</small>
-                    )}
-                    {Number(line.promotionDiscount) > 0 && (
-                      <small>{saleMainMessage(t, "sale.quote.promotionDiscount", { amount: formatSaleAmount(Number(line.promotionDiscount)) })}</small>
-                    )}
-                    {Number(line.couponDiscount) > 0 && (
-                      <small>{saleMainMessage(t, "sale.quote.couponDiscount", { amount: formatSaleAmount(Number(line.couponDiscount)) })}</small>
-                    )}
-                  </span>
-                  <b>{formatSaleAmount(Number(line.finalSubtotal))}</b>
-                </button>
-              )) : lines.map((line) => (
-                <button
-                  type="button"
-                  className={`sale-ticket-line${selectedProductId === line.product.id ? " selected" : ""}`}
-                  key={line.product.id}
-                  aria-pressed={selectedProductId === line.product.id}
-                  onClick={() => setSelectedProductId(line.product.id)}
-                >
-                  <div>
-                    <strong className="product-name-text">{line.product.name ?? t("sale.main.unnamedProduct")}</strong>
-                    <span>{line.product.code ?? line.product.barcode ?? t("sale.main.missingCode")}</span>
-                    {(line.serialNumbers ?? []).map((serial) => (
-                      <small className="sale-line-serial" key={serial}>S/N: {serial}</small>
+            <div className="sale-ticket-lines sale-cart-table-scroll">
+              <table
+                className="sale-cart-table"
+                aria-label={t("sale.main.ticketLines")}
+                style={{ width: Math.max(cartTableWidth, 720) }}
+              >
+                <colgroup>
+                  {visibleCartColumns.map((column) => (
+                    <col key={column.key} style={{ width: column.width }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {visibleCartColumns.map((column) => (
+                      <TableLayoutHeaderCell
+                        column={column}
+                        key={column.key}
+                        resizable={column.key !== "image"}
+                        resizeLabel={`${t("stock.columns.resize")} ${cartColumnLabel(column.key)}`}
+                        onReorder={cartTableLayout.reorderColumns}
+                        onMove={cartTableLayout.moveColumn}
+                        onResize={cartTableLayout.resizeColumn}
+                      >
+                        {cartColumnLabel(column.key)}
+                      </TableLayoutHeaderCell>
                     ))}
-                  </div>
-                  <span>
-                    {line.quantity} x {formatSaleAmount(saleLineUnitPrice(line, activeMember))}
-                    {effectiveSaleLineDiscount(line) > 0 && (
-                      <small>
-                        {line.memberDiscountPercent != null
-                          && line.memberDiscountPercent >= line.discountPercent
-                          && line.memberDiscountPercent > 0
-                          ? ` - ${t("sale.main.member")} ${formatSaleAmount(line.memberDiscountPercent)}%`
-                          : ` - ${formatSaleAmount(line.discountPercent)}%`}
-                      </small>
-                    )}
-                    {saleProductBlocksManualDiscount(line.product) && <small> {t("sale.discountBlockedShort")}</small>}
-                  </span>
-                  <b>{formatSaleAmount(saleLineSubtotal(line, activeMember))}</b>
-                </button>
-              ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {authoritativeLineBreakdown
+                    ? authoritativeLineBreakdown.map((line) => {
+                        const localLine = lines.find((candidate) => candidate.product.id === line.productId);
+                        return localLine ? renderCartRow(localLine, line) : null;
+                      })
+                    : lines.map((line) => renderCartRow(line))}
+                </tbody>
+              </table>
             </div>
           )}
           <PromotionPreviewPanel locale={locale} preview={authoritativeQuote?.promotionPreview ?? null} />
@@ -2365,11 +2617,21 @@ export function SaleScreen({
         />
       )}
 
-      {consultationMode && (
+      {consultationMode === "PRICE" && (
+        <SalePriceConsultationDialog
+          locale={locale}
+          token={session.accessToken}
+          onClose={() => {
+            setConsultationMode(null);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
+      {consultationMode === "STOCK" && (
         <SaleProductConsultationDialog
-          mode={consultationMode}
           products={selectableProducts}
-          initialProduct={consultationMode === "STOCK" ? selectedLine?.product : selectSaleProduct(selectableProducts, query)}
+          initialProduct={selectedLine?.product}
           token={session.accessToken}
           onClose={() => {
             setConsultationMode(null);

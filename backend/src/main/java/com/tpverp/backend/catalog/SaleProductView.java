@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record SaleProductView(
         UUID id,
+        UUID imageId,
         boolean active,
         String code,
         String barcode,

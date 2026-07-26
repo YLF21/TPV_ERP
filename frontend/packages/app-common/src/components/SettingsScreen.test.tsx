@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ import {
 import type { TerminalContext, UserSession } from "../types";
 import { persistCashInputModeSelection } from "../sale/cashInputMode";
 import { readSalesReportOutputPreferences } from "./salesReportOutputPreferences";
+import { ApiError } from "../api/client";
 import type { apiRequest } from "../api/client";
 
 function storageWith(value: string | null): Storage {
@@ -186,6 +188,43 @@ describe("SettingsScreen", () => {
       { token: "token", method: "PATCH", body: { saleMode: "TOUCH" } }
     ));
     expect(onSaleInterfaceModeChange).toHaveBeenCalledWith("TOUCH");
+  });
+
+  it("shows the safe API reference when saving the sales interface fails", async () => {
+    const requestMock = vi.fn((path: string, options?: { method?: string }) => {
+      if (path !== "/terminal-configuration/interface") {
+        return Promise.reject(new Error("not_part_of_test"));
+      }
+      if (options?.method === "PATCH") {
+        return Promise.reject(new ApiError(
+          "No se pudo completar la operación (Ref: interface-save-ref)",
+          500,
+          undefined,
+          "interface-save-ref"
+        ));
+      }
+      return Promise.resolve({ terminalId: "terminal-1", saleMode: "KEYBOARD" });
+    });
+
+    render(
+      <SettingsScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={{ ...terminalContext, terminalId: "terminal-1" }}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        request={requestMock as unknown as typeof apiRequest}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Interfaz de venta" }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Pantalla táctil/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar para esta terminal" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudo guardar la interfaz de venta. No se pudo completar la operación (Ref: interface-save-ref)"
+    );
   });
 
   it("keeps the terminal interface read-only without the configuration permission", async () => {
