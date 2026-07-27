@@ -450,8 +450,22 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     </header>
     <div className="party-directory-toolbar">
       <input aria-label={t("party.search")} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("party.search")} />
-      <ErpSelect value={statusFilter} onChange={(value) => setStatusFilter(value as PartyStatusFilter)} options={["all", "active", "inactive"].map((value) => ({ value, label: t(`party.filter.status.${value}`) }))} />
-      <span>{t("party.results").replace("{count}", String(rows.length))}</span>
+      <label className="party-directory-status-filter">
+        <span>{t("party.column.status")}</span>
+        <ErpSelect
+          className="erp-select--compact"
+          value={statusFilter}
+          aria-label={t("party.column.status")}
+          onChange={(value) => setStatusFilter(value as PartyStatusFilter)}
+          options={["all", "active", "inactive"].map((value) => ({
+            value,
+            label: t(`party.filter.status.${value}`)
+          }))}
+        />
+      </label>
+      <span className="party-directory-result-count">
+        {t("party.results").replace("{count}", String(rows.length))}
+      </span>
     </div>
     <div className="party-directory-table" role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>

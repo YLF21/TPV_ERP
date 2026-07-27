@@ -131,6 +131,7 @@ public class WarehouseInputService {
             throw new IllegalStateException("La entrada ya tiene movimientos de stock");
         }
         var confirmationStocks = stocksForConfirmation(input);
+        input.snapshotPurchasePrices(purchasePricesForConfirmation(input));
         var counter = counters.findByTiendaIdAndTipoAndPeriodo(
                         input.getStoreId(), "ENT", Integer.toString(input.getDate().getYear()))
                 .orElseGet(() -> DocumentCounter.entradaAlmacen(
@@ -205,6 +206,14 @@ public class WarehouseInputService {
             }
             result.put(productId, stock);
         });
+        return result;
+    }
+
+    private Map<UUID, BigDecimal> purchasePricesForConfirmation(WarehouseInput input) {
+        var result = new LinkedHashMap<UUID, BigDecimal>();
+        input.getLines().forEach(line -> result.computeIfAbsent(
+                line.getProductId(),
+                productId -> product(productId, input.getStoreId()).getPurchasePrice()));
         return result;
     }
 

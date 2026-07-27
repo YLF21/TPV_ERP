@@ -2,6 +2,7 @@ package com.tpverp.backend.excel;
 
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.document.DocumentReportService;
 import com.tpverp.backend.document.DocumentReportView;
 import com.tpverp.backend.document.DocumentService;
@@ -39,7 +40,7 @@ public class SalesReportExcelExportService {
     private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter DISPLAY_TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static final Set<String> ALLOWED_COLUMNS = Set.of(
-            "date", "time", "ticket", "invoice", "invoiced", "deliveryNote", "terminal", "user",
+            "date", "time", "ticket", "invoice", "invoiced", "deliveryNote", "documentType", "terminal", "user",
             "productCount", "customer", "customerName", "supplier", "supplierName", "comment",
             "warehouse", "input", "output", "total", "pending", "payment", "status", "reason",
             "origin", "dueDate", "tickets");
@@ -52,6 +53,7 @@ public class SalesReportExcelExportService {
     private final DocumentReportService documentReports;
     private final WarehouseInputService warehouseInputs;
     private final WarehouseOutputService warehouseOutputs;
+    private final WarehouseRepository warehouses;
     private final CurrentOrganization organization;
     private final DocumentAttributionResolver attributions;
     private final AuditService auditService;
@@ -61,6 +63,7 @@ public class SalesReportExcelExportService {
             DocumentReportService documentReports,
             WarehouseInputService warehouseInputs,
             WarehouseOutputService warehouseOutputs,
+            WarehouseRepository warehouses,
             CurrentOrganization organization,
             DocumentAttributionResolver attributions,
             AuditService auditService) {
@@ -68,6 +71,7 @@ public class SalesReportExcelExportService {
         this.documentReports = documentReports;
         this.warehouseInputs = warehouseInputs;
         this.warehouseOutputs = warehouseOutputs;
+        this.warehouses = warehouses;
         this.organization = organization;
         this.attributions = attributions;
         this.auditService = auditService;
@@ -98,10 +102,20 @@ public class SalesReportExcelExportService {
                     documentReports.allDeliveryNotes(true, false), false, false);
             case "salesReport.inputDeliveryNotes" -> documentRows(
                     documentReports.allDeliveryNotes(false, true), false, true);
-            case "salesReport.warehouseOutputs" -> warehouseOutputs.list().stream()
-                    .map(WarehouseOutputView::from).map(this::outputRow).toList();
-            case "salesReport.inputWarehouse" -> warehouseInputs.list().stream()
-                    .map(WarehouseInputView::from).map(this::inputRow).toList();
+            case "salesReport.warehouseOutputs" -> {
+                var warehouseNames = warehouseNames();
+                yield warehouseOutputs.list().stream()
+                        .map(WarehouseOutputView::from)
+                        .map(value -> outputRow(value, warehouseNames))
+                        .toList();
+            }
+            case "salesReport.inputWarehouse" -> {
+                var warehouseNames = warehouseNames();
+                yield warehouseInputs.list().stream()
+                        .map(WarehouseInputView::from)
+                        .map(value -> inputRow(value, warehouseNames))
+                        .toList();
+            }
             case "salesReport.dailySales" -> dailyRows();
             default -> throw new IllegalArgumentException("Informe no soportado");
         };
@@ -130,6 +144,7 @@ public class SalesReportExcelExportService {
             var row = baseRow(value.fecha(), value.usuarioNombre(),
                     value.terminalOrigenNombre(), value.ocurridoEn());
             row.put(invoice ? "invoice" : "deliveryNote", value.numero());
+            row.put("documentType", value.tipo().name());
             row.put("status", value.estado().name());
             row.put("comment", value.numeroExterno());
             row.put("pending", value.pendiente());
@@ -172,27 +187,41 @@ public class SalesReportExcelExportService {
         row.put("total", ((BigDecimal) row.get("total")).add(amount(source.get("total"))));
     }
 
-    private Map<String, Object> outputRow(WarehouseOutputView value) {
+    private Map<String, Object> outputRow(
+            WarehouseOutputView value,
+            Map<java.util.UUID, String> warehouseNames) {
         var row = baseRow(value.date(), "", "", null);
         row.put("output", text(value.number(), id(value.id())));
-        row.put("warehouse", id(value.warehouseId()));
+        row.put("warehouse", warehouseNames.getOrDefault(value.warehouseId(), id(value.warehouseId())));
         row.put("productCount", value.lines().stream().mapToInt(line -> line.quantity()).sum());
         row.put("comment", value.concept());
         row.put("reason", text(value.destination(), value.status().name()));
-        row.put("total", BigDecimal.ZERO);
+        row.put("total", value.lines().stream()
+                .map(line -> amount(line.saleTotal()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         return row;
     }
 
-    private Map<String, Object> inputRow(WarehouseInputView value) {
+    private Map<String, Object> inputRow(
+            WarehouseInputView value,
+            Map<java.util.UUID, String> warehouseNames) {
         var row = baseRow(value.date(), "", "", null);
         row.put("input", text(value.number(), id(value.id())));
-        row.put("warehouse", id(value.warehouseId()));
+        row.put("warehouse", warehouseNames.getOrDefault(value.warehouseId(), id(value.warehouseId())));
         row.put("supplier", id(value.supplierId()));
         row.put("productCount", value.lines().stream().mapToInt(line -> line.quantity()).sum());
         row.put("comment", value.concept());
         row.put("origin", text(value.origin(), value.status().name()));
-        row.put("total", BigDecimal.ZERO);
+        row.put("total", value.lines().stream()
+                .map(line -> amount(line.purchaseTotal()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         return row;
+    }
+
+    private Map<java.util.UUID, String> warehouseNames() {
+        return warehouses.findAll().stream().collect(java.util.stream.Collectors.toMap(
+                com.tpverp.backend.catalog.Warehouse::getId,
+                com.tpverp.backend.catalog.Warehouse::getName));
     }
 
     private Map<String, Object> baseRow(
@@ -242,6 +271,8 @@ public class SalesReportExcelExportService {
             headerStyle.setFont(headerFont);
             headerStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            var currencyStyle = workbook.createCellStyle();
+            currencyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-es-ES]"));
             var header = sheet.createRow(0);
             for (int column = 0; column < request.columns().size(); column++) {
                 var cell = header.createCell(column);
@@ -254,8 +285,14 @@ public class SalesReportExcelExportService {
                 for (int column = 0; column < request.columns().size(); column++) {
                     Object value = source.get(request.columns().get(column).key());
                     var cell = excelRow.createCell(column);
-                    if (value instanceof Number number) cell.setCellValue(number.doubleValue());
-                    else cell.setCellValue(value == null ? "" : String.valueOf(value));
+                    if (value instanceof Number number) {
+                        cell.setCellValue(number.doubleValue());
+                        if (Set.of("total", "pending").contains(request.columns().get(column).key())) {
+                            cell.setCellStyle(currencyStyle);
+                        }
+                    } else {
+                        cell.setCellValue(value == null ? "" : String.valueOf(value));
+                    }
                 }
             }
             sheet.createFreezePane(0, 1);

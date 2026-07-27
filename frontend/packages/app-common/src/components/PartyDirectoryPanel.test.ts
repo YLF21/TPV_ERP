@@ -165,7 +165,7 @@ describe("PartyDirectoryPanel", () => {
       locale: "es",
       session: layoutSession
     }));
-    expect(html.match(/class="erp-select"/g)).toHaveLength(1);
+    expect(html.match(/class="erp-select(?: [^"]*)?"/g)).toHaveLength(1);
   });
 
   it("offers only active customers that are not active members", () => {

@@ -15959,10 +15959,19 @@ textarea:focus,
 }
 /* Shared customer, member and supplier directory */
 .party-directory-heading { flex: 0 0 auto; }
-.party-directory-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; background: #f8fafc; }
-.party-directory-toolbar input { width: min(360px, 42%); height: 34px; padding: 0 10px; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; }
-.party-directory-toolbar .erp-select { min-width: 145px; }
-.party-directory-toolbar span { margin-left: auto; color: #475569; font-size: 12px; }
+.party-directory-toolbar { display: grid; grid-template-columns: minmax(280px, 420px) 220px minmax(90px, 1fr); align-items: end; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; background: #f8fafc; }
+.party-directory-toolbar > input { width: 100%; height: 36px; padding: 0 11px; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; box-sizing: border-box; }
+.party-directory-toolbar > input:focus-visible { border-color: #244e86; box-shadow: 0 0 0 3px rgba(36, 78, 134, .14); outline: none; }
+.party-directory-status-filter { display: grid; min-width: 0; gap: 4px; }
+.party-directory-status-filter > span { margin: 0; color: #475569; font-size: 11px; font-weight: 800; line-height: 1; }
+.party-directory-status-filter .erp-select { width: 100%; min-width: 0; }
+.party-directory-status-filter .erp-select__trigger { border-radius: 4px; }
+.party-directory-status-filter .erp-select__arrow { border-radius: 0 4px 4px 0; }
+.party-directory-result-count { align-self: center; justify-self: end; margin: 14px 0 0; color: #475569; font-size: 12px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .party-directory-toolbar { grid-template-columns: minmax(0, 1fr) 190px; }
+  .party-directory-result-count { grid-column: 1 / -1; justify-self: start; margin: 0; }
+}
 .party-directory-table { min-height: 0; overflow: auto; background: #fff; }
 .party-directory-row { display: grid; width: 100%; grid-template-columns: 105px minmax(190px, 1.4fr) minmax(150px, 1fr) 130px minmax(170px, 1fr) minmax(140px, .9fr) 88px; min-width: 1050px; border-bottom: 1px solid #dbe3ec; }
 .party-directory-row > * { min-width: 0; padding: 9px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-right: 1px solid #e5eaf0; }

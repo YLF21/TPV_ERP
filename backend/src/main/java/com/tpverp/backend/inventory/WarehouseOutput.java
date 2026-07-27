@@ -10,10 +10,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -140,6 +142,14 @@ public class WarehouseOutput {
         confirmedBy = Objects.requireNonNull(userId, "userId");
         confirmedAt = Objects.requireNonNull(when, "when");
         estado = WarehouseOutputStatus.CONFIRMADA;
+    }
+
+    public void snapshotSalePrices(Map<UUID, BigDecimal> salePrices) {
+        requireDraft();
+        Objects.requireNonNull(salePrices, "salePrices");
+        lines.forEach(line -> line.snapshotSaleUnitPrice(Objects.requireNonNull(
+                salePrices.get(line.getProductId()),
+                "Falta el precio de venta del producto " + line.getProductId())));
     }
 
     private void requireDraft() {

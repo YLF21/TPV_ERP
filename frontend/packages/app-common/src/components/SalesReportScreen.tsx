@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
+import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -9,6 +10,7 @@ import {
   saveReportVisualizationPreference
 } from "./salesReportVisualizationPreferences";
 import { SalesInvoiceRectificationDialog } from "./SalesInvoiceRectificationDialog";
+import { ErpSelect } from "./ErpSelect";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -376,7 +378,14 @@ type WarehouseOutputView = {
   concepto?: string | null;
   status?: string;
   estado?: string;
-  lines?: Array<{ productId?: string; productoId?: string; quantity?: number | string; cantidad?: number | string }>;
+  lines?: Array<{
+    productId?: string;
+    productoId?: string;
+    quantity?: number | string;
+    cantidad?: number | string;
+    saleUnitPrice?: number | string;
+    saleTotal?: number | string;
+  }>;
 };
 
 type WarehouseInputView = {
@@ -395,7 +404,20 @@ type WarehouseInputView = {
   concepto?: string | null;
   status?: string;
   estado?: string;
-  lines?: Array<{ productId?: string; productoId?: string; quantity?: number | string; cantidad?: number | string }>;
+  lines?: Array<{
+    productId?: string;
+    productoId?: string;
+    quantity?: number | string;
+    cantidad?: number | string;
+    purchaseUnitPrice?: number | string;
+    purchaseTotal?: number | string;
+  }>;
+};
+
+type ReportWarehouseOption = {
+  id: string;
+  name?: string | null;
+  nombre?: string | null;
 };
 
 type StockMovementView = {
@@ -774,6 +796,31 @@ function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, st
   );
 }
 
+const REPORT_MONETARY_ATTRIBUTES = new Set(["total", "pending", "invoicedTicketTotal"]);
+
+export function formatReportDisplayValue(
+  attribute: string,
+  value: string,
+  locale: LocaleCode
+) {
+  if (!REPORT_MONETARY_ATTRIBUTES.has(attribute) || !value.trim()) {
+    return value;
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return value;
+  }
+  return new Intl.NumberFormat(
+    locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
+    {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }
+  ).format(amount);
+}
+
 function formatBackendDate(value: string | undefined) {
   if (!value) {
     return "";
@@ -813,8 +860,28 @@ function sumOutputQuantity(output: WarehouseOutputView) {
   return (output.lines ?? []).reduce((sum, line) => sum + Number(line.quantity ?? line.cantidad ?? 0), 0);
 }
 
+function sumOutputSaleTotal(output: WarehouseOutputView) {
+  return (output.lines ?? []).reduce((sum, line) => {
+    const persistedTotal = Number(line.saleTotal);
+    if (Number.isFinite(persistedTotal)) return sum + persistedTotal;
+    const quantity = Number(line.quantity ?? line.cantidad ?? 0);
+    const unitPrice = Number(line.saleUnitPrice ?? 0);
+    return sum + (Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : 0);
+  }, 0);
+}
+
 function sumInputQuantity(input: WarehouseInputView) {
   return (input.lines ?? []).reduce((sum, line) => sum + Number(line.quantity ?? line.cantidad ?? 0), 0);
+}
+
+function sumInputPurchaseTotal(input: WarehouseInputView) {
+  return (input.lines ?? []).reduce((sum, line) => {
+    const persistedTotal = Number(line.purchaseTotal);
+    if (Number.isFinite(persistedTotal)) return sum + persistedTotal;
+    const quantity = Number(line.quantity ?? line.cantidad ?? 0);
+    const unitPrice = Number(line.purchaseUnitPrice ?? 0);
+    return sum + (Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : 0);
+  }, 0);
 }
 
 function movementType(movement: StockMovementView) {
@@ -1022,11 +1089,17 @@ export function buildDocumentReports(
   stockMovements: StockMovementView[],
   warehouseInputs: WarehouseInputView[],
   _session: UserSession,
-  _terminalContext: TerminalContext
+  _terminalContext: TerminalContext,
+  warehouses: ReportWarehouseOption[] = []
 ): Partial<Record<string, ReportSample>> {
   const unavailable = "salesReport.value.unavailable";
   const terminal = unavailable;
   const user = unavailable;
+  const warehouseNames = new Map(warehouses.map((warehouse) => [
+    warehouse.id,
+    warehouse.name ?? warehouse.nombre ?? warehouse.id
+  ]));
+  const warehouseName = (warehouseId: string) => warehouseNames.get(warehouseId) ?? warehouseId;
   const ticketRows = tickets.map((document) => ({
     __documentId: document.id || "",
     date: formatBackendDate(document.fecha),
@@ -1110,11 +1183,11 @@ export function buildDocumentReports(
     output: output.number || output.numero || output.id || "",
     terminal,
     user,
-    warehouse: output.warehouseId || output.almacenId || "",
+    warehouse: warehouseName(output.warehouseId || output.almacenId || ""),
     productCount: formatQuantity(sumOutputQuantity(output)),
     comment: output.concept || output.concepto || "",
     reason: output.destination || output.destino || output.status || output.estado || "",
-    total: "0.00"
+    total: formatAmount(sumOutputSaleTotal(output))
   }));
   const inputWarehouseRows = warehouseInputs.map((input) => ({
     date: formatBackendDate(input.date ?? input.fecha),
@@ -1122,11 +1195,11 @@ export function buildDocumentReports(
     input: input.number || input.numero || input.id || "",
     terminal,
     user,
-    warehouse: input.warehouseId || input.almacenId || "",
+    warehouse: warehouseName(input.warehouseId || input.almacenId || ""),
     productCount: formatQuantity(sumInputQuantity(input)),
     comment: input.concept || input.concepto || "",
     origin: input.origin || input.origen || input.supplierId || input.proveedorId || input.status || input.estado || "",
-    total: "0.00"
+    total: formatAmount(sumInputPurchaseTotal(input))
   }));
   const salesDocuments = [...tickets, ...invoices.filter(isSalesDocument)];
   const dailyRows = buildDailySalesRows(ticketRows, invoiceRows, user, terminal);
@@ -1401,6 +1474,7 @@ export function SalesReportScreen({
   const [openFilterControl, setOpenFilterControl] = useState<keyof ReportFilters | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [remoteReports, setRemoteReports] = useState<Partial<Record<string, ReportSample>>>({});
+  const [reportWarehouses, setReportWarehouses] = useState<ReportWarehouseOption[]>([]);
   const [dailyCommercialReport, setDailyCommercialReport] = useState<DailyCommercialReport | null>(null);
   const [dailyReportLoading, setDailyReportLoading] = useState(false);
   const [dailyReportError, setDailyReportError] = useState("");
@@ -1533,6 +1607,7 @@ export function SalesReportScreen({
     let cancelled = false;
     if (!session.accessToken) {
       setRemoteReports({});
+      setReportWarehouses([]);
       setReportPages({});
       setReportLoadErrors({});
       setReportLoading(false);
@@ -1547,12 +1622,13 @@ export function SalesReportScreen({
       setReportLoading(true);
       setReportLoadErrors({});
       try {
-        const [ticketResource, invoiceResource, deliveryNoteResource, warehouseOutputResource, warehouseInputResource] = await Promise.all([
+        const [ticketResource, invoiceResource, deliveryNoteResource, warehouseOutputResource, warehouseInputResource, warehouseResource] = await Promise.all([
           loadReportResource<DocumentView[]>(request, "/tickets", token, []),
           loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("invoices"), token, { items: [], nextCursor: null, hasMore: false }),
           loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("deliveryNotes"), token, { items: [], nextCursor: null, hasMore: false }),
           loadReportResource<PagedResult<WarehouseOutputView>>(request, reportPagePath("warehouseOutputs"), token, { items: [], nextCursor: null, hasMore: false }),
-          loadReportResource<PagedResult<WarehouseInputView>>(request, reportPagePath("warehouseInputs"), token, { items: [], nextCursor: null, hasMore: false })
+          loadReportResource<PagedResult<WarehouseInputView>>(request, reportPagePath("warehouseInputs"), token, { items: [], nextCursor: null, hasMore: false }),
+          loadReportResource<ReportWarehouseOption[]>(request, "/warehouses", token, [])
         ]);
         if (!cancelled) {
           const tickets = ticketResource.value;
@@ -1560,6 +1636,8 @@ export function SalesReportScreen({
           const deliveryNotes = deliveryNoteResource.value;
           const warehouseOutputs = warehouseOutputResource.value;
           const warehouseInputs = warehouseInputResource.value;
+          const warehouses = Array.isArray(warehouseResource.value) ? warehouseResource.value : [];
+          setReportWarehouses(warehouses);
           const loadError = t("salesReport.loadError");
           setReportLoadErrors({
             ...(ticketResource.failed ? { "salesReport.tickets": loadError } : {}),
@@ -1588,7 +1666,8 @@ export function SalesReportScreen({
             [],
             warehouseInputs.items,
             session,
-            terminalContext
+            terminalContext,
+            warehouses
           ));
         }
       } catch {
@@ -1725,21 +1804,23 @@ export function SalesReportScreen({
   }
 
   async function exportPdfReport() {
-    setPrintMenuOpen(false);
     if (!window.tpvDesktop?.reports) {
+      flushSync(() => setPrintMenuOpen(false));
       window.print();
       return;
     }
+    setPrintMenuOpen(false);
     const result = await window.tpvDesktop.reports.exportPdf(reportFileName("pdf"));
     if (!result.ok) window.alert(`${t("salesReport.exportFailed")}: ${result.message}`);
   }
 
   async function printCurrentReport() {
-    setPrintMenuOpen(false);
     if (!window.tpvDesktop?.reports) {
+      flushSync(() => setPrintMenuOpen(false));
       window.print();
       return;
     }
+    setPrintMenuOpen(false);
     const result = await window.tpvDesktop.reports.print();
     if (!result.ok) window.alert(`${t("salesReport.printFailed")}: ${result.message}`);
   }
@@ -1794,7 +1875,8 @@ export function SalesReportScreen({
         [],
         pageKey === "warehouseInputs" ? nextPage.items as WarehouseInputView[] : [],
         session,
-        terminalContext
+        terminalContext,
+        reportWarehouses
       );
       const affectedReportsByPageKey: Record<ReportPageKey, string[]> = {
         invoices: ["salesReport.invoices", "salesReport.inputInvoices"],
@@ -2075,36 +2157,15 @@ export function SalesReportScreen({
   }
 
   function renderSelectFilter(field: SelectFilterKey, label: string, options: FilterOption[], wide = false) {
-    const isOpen = openFilterControl === field;
     return (
-      <div className={`filter-field ${wide ? "filter-wide" : ""} ${isOpen ? "open" : ""}`}>
-        <span>{label}</span>
-        <button
-          type="button"
-          className="filter-select-button"
-          aria-expanded={isOpen}
-          onClick={() => setOpenFilterControl((current) => (current === field ? null : field))}
-        >
-          <span>{selectedOptionLabel(options, draftFilters[field])}</span>
-          <span className="filter-control-arrow">v</span>
-        </button>
-        {isOpen && (
-          <div className="filter-popover">
-            {options.map((option) => (
-              <button
-                type="button"
-                className={draftFilters[field] === option.value ? "selected" : ""}
-                key={option.value || "all"}
-                onClick={() => {
-                  updateDraftFilter(field, option.value);
-                  setOpenFilterControl(null);
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        )}
+      <div className={`filter-field report-filter-select ${wide ? "filter-wide" : ""}`}>
+        <span id={`report-filter-${field}-label`}>{label}</span>
+        <ErpSelect
+          value={draftFilters[field]}
+          options={options}
+          aria-labelledby={`report-filter-${field}-label`}
+          onChange={(value) => updateDraftFilter(field, value)}
+        />
       </div>
     );
   }
@@ -2591,15 +2652,20 @@ export function SalesReportScreen({
                     </button>
                   </div>
                 )}
-                <table
-                  className="report-table"
-                  style={{ width: `${reportTableWidth}px`, minWidth: "100%" }}
-                >
-                  <colgroup>
-                    {visibleColumnLayout.map((column) => (
-                      <col key={column.key} style={{ width: column.width }} />
-                    ))}
-                  </colgroup>
+              <table
+                className="report-table"
+                data-report-key={selectedReport}
+                style={{ width: `${reportTableWidth}px`, minWidth: "100%" }}
+              >
+                <colgroup>
+                  {visibleColumnLayout.map((column) => (
+                    <col
+                      key={column.key}
+                      data-column-key={column.key}
+                      style={{ width: column.width }}
+                    />
+                  ))}
+                </colgroup>
                   <thead>
                     <tr>
                       {visibleColumnLayout.map((column) => (
@@ -2652,9 +2718,13 @@ export function SalesReportScreen({
                           }
                         }}
                       >
-                        {visibleColumnLayout.map((column) => (
-                          <td key={column.key}>{t(row[column.key] ?? "")}</td>
-                        ))}
+                    {visibleColumnLayout.map((column) => (
+                      <td key={column.key} data-column-key={column.key}>
+                        {REPORT_MONETARY_ATTRIBUTES.has(column.key)
+                          ? formatReportDisplayValue(column.key, row[column.key] ?? "", locale)
+                          : t(row[column.key] ?? "")}
+                      </td>
+                    ))}
                       </tr>
                     ))}
                   </tbody>
@@ -2662,8 +2732,12 @@ export function SalesReportScreen({
               </div>
               <div className="report-total-row">
                 <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>
-                {invoicedTicketTotal && <strong>{`${t("salesReport.invoicedTicketTotal")}: ${invoicedTicketTotal}`}</strong>}
-                <strong className="report-main-total">{`${t("salesReport.total")}: ${t(filteredTotals.total ?? "0.00")}`}</strong>
+                {invoicedTicketTotal && (
+                  <strong>{`${t("salesReport.invoicedTicketTotal")}: ${formatReportDisplayValue("invoicedTicketTotal", invoicedTicketTotal, locale)}`}</strong>
+                )}
+                <strong className="report-main-total">
+                  {`${t("salesReport.total")}: ${formatReportDisplayValue("total", filteredTotals.total ?? "0.00", locale)}`}
+                </strong>
               </div>
             </div>
           )}

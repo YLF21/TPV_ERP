@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.PriceTier;
 import com.tpverp.backend.catalog.Warehouse;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.Company;
@@ -72,7 +73,8 @@ class WarehouseOutputServiceTest {
         user = new UserAccount(store, "ADMIN", "hash", role);
         product = new Product(
                 store.getId(), UUID.randomUUID(), null, UUID.randomUUID(),
-                "Producto", null, java.math.BigDecimal.ZERO, true);
+                "Producto", null, new java.math.BigDecimal("4.20"), true);
+        product.setPrice(PriceTier.VENTA, new java.math.BigDecimal("10.25"));
         warehouse = Warehouse.general(store.getId());
         lenient().when(organization.currentStore()).thenReturn(store);
         lenient().when(organization.currentCompany()).thenReturn(store.getEmpresa());
@@ -100,6 +102,44 @@ class WarehouseOutputServiceTest {
     }
 
     @Test
+    void snapshotsSalePriceForEveryRepeatedProductLine() {
+        var output = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(
+                        new WarehouseOutputLineCommand(product.getId(), 2),
+                        new WarehouseOutputLineCommand(product.getId(), 3)));
+
+        output.snapshotSalePrices(Map.of(product.getId(), new java.math.BigDecimal("10.25")));
+
+        assertThat(output.getLines())
+                .extracting(WarehouseOutputLine::getSaleTotal)
+                .containsExactly(
+                        new java.math.BigDecimal("20.50"),
+                        new java.math.BigDecimal("30.75"));
+    }
+
+    @Test
+    void confirmedOutputCannotReplaceItsHistoricalSalePrice() {
+        var output = new WarehouseOutput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
+        output.replace(
+                "TALLER", "Consumo",
+                List.of(new WarehouseOutputLineCommand(product.getId(), 1)));
+        output.snapshotSalePrices(Map.of(product.getId(), new java.math.BigDecimal("10.25")));
+        output.confirm("SAL-2026-000001", user.getId(), Instant.parse("2026-06-09T10:00:00Z"));
+
+        assertThatThrownBy(() -> output.snapshotSalePrices(
+                Map.of(product.getId(), new java.math.BigDecimal("99.00"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inmutable");
+        assertThat(output.getLines()).singleElement()
+                .extracting(WarehouseOutputLine::getSaleUnitPrice)
+                .isEqualTo(new java.math.BigDecimal("10.25"));
+    }
+
+    @Test
     void confirmsWithAnnualNumberAndRemovesStock() {
         var output = new WarehouseOutput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 9), user.getId());
@@ -108,6 +148,7 @@ class WarehouseOutputServiceTest {
                 List.of(new WarehouseOutputLineCommand(product.getId(), 3)));
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "SAL", "2026"))
                 .thenReturn(Optional.empty());
@@ -119,6 +160,11 @@ class WarehouseOutputServiceTest {
         var confirmed = service.confirm(output.getId(), authentication());
 
         assertThat(confirmed.getNumber()).isEqualTo("SAL-2026-000001");
+        assertThat(confirmed.getLines()).singleElement()
+                .satisfies(line -> {
+                    assertThat(line.getSaleUnitPrice()).isEqualByComparingTo("10.25");
+                    assertThat(line.getSaleTotal()).isEqualByComparingTo("30.75");
+                });
         assertThat(stock.getQuantity()).isEqualByComparingTo("-3");
         org.mockito.Mockito.verify(syncOutbox).enqueue(any());
     }
@@ -134,6 +180,7 @@ class WarehouseOutputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 6, 1), user.getId());
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(outputs.findById(output.getId())).thenReturn(Optional.of(output));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "SAL", "2026"))
                 .thenReturn(Optional.empty());
