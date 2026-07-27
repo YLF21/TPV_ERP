@@ -34,6 +34,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
   const [languageOpen, setLanguageOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
 
@@ -69,6 +70,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
       rememberUser(normalizedUsername);
       onLogin(session);
     } catch (caught) {
+      const invalidCredentials = caught instanceof ApiError && caught.status === 401;
       if (caught instanceof ApiConnectionError) {
         setBackendOnline(false);
       }
@@ -81,6 +83,10 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
               ? t("login.invalid")
               : t("login.connectionError");
       setError(message);
+      if (invalidCredentials) {
+        setPassword("");
+        window.requestAnimationFrame(() => passwordInputRef.current?.focus());
+      }
     } finally {
       setLoading(false);
     }
@@ -177,6 +183,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
         <label>
           <span>{t("login.password")}</span>
           <input
+            ref={passwordInputRef}
             value={password}
             disabled={loading}
             onChange={(event) => setPassword(event.target.value)}
