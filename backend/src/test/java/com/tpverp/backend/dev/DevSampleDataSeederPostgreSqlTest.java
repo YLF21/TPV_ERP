@@ -79,8 +79,35 @@ class DevSampleDataSeederPostgreSqlTest {
         assertThat(count("producto")).isGreaterThanOrEqualTo(7);
         assertThat(count("cliente")).isGreaterThanOrEqualTo(1);
         assertThat(count("proveedor")).isGreaterThanOrEqualTo(1);
-        assertThat(count("salida_almacen")).isGreaterThanOrEqualTo(1);
+        assertThat(count("salida_almacen")).isGreaterThanOrEqualTo(7);
+        assertThat(count("entrada_almacen")).isGreaterThanOrEqualTo(6);
         assertThat(count("terminal")).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void seedsValuedWarehouseInputsAndOutputsAcrossSeveralDates() {
+        assertThat(jdbc.queryForObject("""
+                select count(distinct fecha)
+                from entrada_almacen
+                where numero like 'ENT-2026-9%'
+                """, Integer.class)).isGreaterThanOrEqualTo(5);
+        assertThat(jdbc.queryForObject("""
+                select count(distinct fecha)
+                from salida_almacen
+                where numero like 'SAL-2026-9%'
+                """, Integer.class)).isGreaterThanOrEqualTo(5);
+        assertThat(jdbc.queryForObject("""
+                select sum(linea.cantidad * linea.precio_unitario_compra)
+                from entrada_almacen_linea linea
+                join entrada_almacen entrada on entrada.id = linea.entrada_id
+                where entrada.numero like 'ENT-2026-9%'
+                """, BigDecimal.class)).isGreaterThan(BigDecimal.ZERO);
+        assertThat(jdbc.queryForObject("""
+                select sum(linea.cantidad * linea.precio_unitario_venta)
+                from salida_almacen_linea linea
+                join salida_almacen salida on salida.id = linea.salida_id
+                where salida.numero like 'SAL-2026-9%'
+                """, BigDecimal.class)).isGreaterThan(BigDecimal.ZERO);
     }
 
     @Test

@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
   canConfirmSalesInvoiceRectification,
   canManageSalesInvoiceRectification,
   canOpenOperationalTimeline,
+  formatReportDisplayValue,
   isPurchaseDocumentReport,
   isWarehouseDocumentReport,
   moveReportColumnBeforeTotal,
@@ -65,7 +66,24 @@ function createTableLayoutController(
   };
 }
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("SalesReportScreen", () => {
+  it("formats every report amount as euros and preserves non-monetary values", () => {
+    expect(formatReportDisplayValue("pending", "-12.10", "es")).toBe(
+      new Intl.NumberFormat("es-ES", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(-12.1)
+    );
+    expect(formatReportDisplayValue("total", "60.50", "en")).toContain("€");
+    expect(formatReportDisplayValue("productCount", "60.50", "es")).toBe("60.50");
+  });
+
   it("maps existing warehouse endpoints into output and input warehouse reports", () => {
     const reports = buildDocumentReports(
       [],
@@ -80,7 +98,12 @@ describe("SalesReportScreen", () => {
           destination: "Rotura",
           concept: "Salida por rotura",
           status: "CONFIRMADA",
-          lines: [{ productId: "product-1", quantity: 3 }]
+          lines: [{
+            productId: "product-1",
+            quantity: 3,
+            saleUnitPrice: 10.25,
+            saleTotal: 30.75
+          }]
         }
       ],
       [
@@ -105,22 +128,28 @@ describe("SalesReportScreen", () => {
           origin: "Proveedor General",
           concept: "Entrada por compra",
           status: "CONFIRMADA",
-          lines: [{ productId: "product-1", quantity: 6 }]
+          lines: [{
+            productId: "product-1",
+            quantity: 6,
+            purchaseUnitPrice: 4.2,
+            purchaseTotal: 25.2
+          }]
         }
       ],
       session,
-      terminalContext
+      terminalContext,
+      [{ id: "warehouse-1", name: "GENERAL" }]
     );
 
     expect(reports["salesReport.warehouseOutputs"]?.rows).toEqual([
       expect.objectContaining({
         date: "05/07/2026",
         output: "SAL-0001",
-        warehouse: "warehouse-1",
+        warehouse: "GENERAL",
         productCount: "3",
         comment: "Salida por rotura",
         reason: "Rotura",
-        total: "0.00"
+        total: "30.75"
       })
     ]);
     expect(reports["salesReport.inputWarehouse"]?.rows).toEqual([
@@ -128,13 +157,80 @@ describe("SalesReportScreen", () => {
         date: "06/07/2026",
         time: "",
         input: "ENT-0001",
-        warehouse: "warehouse-1",
+        warehouse: "GENERAL",
         productCount: "6",
         comment: "Entrada por compra",
         origin: "Proveedor General",
-        total: "0.00"
+        total: "25.20"
       })
     ]);
+  });
+
+  it("sums every historical line in warehouse input and output reports", () => {
+    const reports = buildDocumentReports(
+      [],
+      [],
+      [],
+      [{
+        id: "output",
+        number: "SAL-2",
+        date: "2026-07-07",
+        warehouseId: "warehouse-1",
+        lines: [
+          { quantity: 2, saleUnitPrice: 10.25, saleTotal: 20.5 },
+          { quantity: 3, saleUnitPrice: 5, saleTotal: 15 }
+        ]
+      }],
+      [],
+      [{
+        id: "input",
+        number: "ENT-2",
+        date: "2026-07-07",
+        warehouseId: "warehouse-1",
+        lines: [
+          { quantity: 2, purchaseUnitPrice: 4.2, purchaseTotal: 8.4 },
+          { quantity: 3, purchaseUnitPrice: 2, purchaseTotal: 6 }
+        ]
+      }],
+      session,
+      terminalContext,
+      [{ id: "warehouse-1", nombre: "ALMACÉN CENTRAL" }]
+    );
+
+    expect(reports["salesReport.warehouseOutputs"]?.rows[0]).toEqual(expect.objectContaining({
+      warehouse: "ALMACÉN CENTRAL",
+      productCount: "5",
+      total: "35.50"
+    }));
+    expect(reports["salesReport.inputWarehouse"]?.rows[0]).toEqual(expect.objectContaining({
+      warehouse: "ALMACÉN CENTRAL",
+      productCount: "5",
+      total: "14.40"
+    }));
+  });
+
+  it("calculates warehouse totals from unit prices when the API omits derived line totals", () => {
+    const reports = buildDocumentReports(
+      [],
+      [],
+      [],
+      [{
+        id: "output",
+        warehouseId: "warehouse-1",
+        lines: [{ quantity: 3, saleUnitPrice: 10.25 }]
+      }],
+      [],
+      [{
+        id: "input",
+        warehouseId: "warehouse-1",
+        lines: [{ quantity: 4, purchaseUnitPrice: 4.2 }]
+      }],
+      session,
+      terminalContext
+    );
+
+    expect(reports["salesReport.warehouseOutputs"]?.rows[0]?.total).toBe("30.75");
+    expect(reports["salesReport.inputWarehouse"]?.rows[0]?.total).toBe("16.80");
   });
 
   it("separates warehouse and purchase document creation reports", () => {
@@ -496,6 +592,52 @@ describe("SalesReportScreen", () => {
     await waitFor(() => {
       expect(request.mock.calls.filter(([path]) => String(path).startsWith("/warehouse-outputs"))).toHaveLength(2);
     });
+  });
+
+  it("closes the print actions before opening the browser print dialog", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/tickets") return Promise.resolve([]);
+      if (path.startsWith("/warehouse-outputs")) return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    const previousDesktop = window.tpvDesktop;
+    window.tpvDesktop = undefined;
+    localStorage.clear();
+    const printSpy = vi.spyOn(window, "print").mockImplementation(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    try {
+      render(
+        <SalesReportScreen
+          app="venta"
+          locale="es"
+          session={{
+            username: "warehouse",
+            displayName: "ALMACÉN",
+            permissions: ["GESTION_ALMACEN"],
+            accessToken: "token"
+          }}
+          terminalContext={terminalContext}
+          request={request}
+          initialReport="salesReport.warehouseOutputs"
+          onBack={vi.fn()}
+          onLocaleChange={vi.fn()}
+        />
+      );
+
+      await screen.findByRole("heading", { name: "Salida almacén" });
+      fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Imprimir PDF" }));
+
+      expect(printSpy).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    } finally {
+      printSpy.mockRestore();
+      window.tpvDesktop = previousDesktop;
+      localStorage.clear();
+    }
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {

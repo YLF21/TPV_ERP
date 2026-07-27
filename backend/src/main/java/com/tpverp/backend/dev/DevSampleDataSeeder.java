@@ -77,7 +77,7 @@ public class DevSampleDataSeeder {
         seedParties();
         seedDocuments();
         synchronizeDocumentCounters();
-        seedWarehouseOutput();
+        seedWarehouseDocuments();
     }
 
     private void synchronizeDocumentCounters() {
@@ -735,27 +735,150 @@ public class DevSampleDataSeeder {
         };
     }
 
-    private void seedWarehouseOutput() {
-        UUID outputId = id("warehouse-output");
+    private void seedWarehouseDocuments() {
+        seedWarehouseOutput(
+                "warehouse-output", "SAL-2026-000001", TODAY,
+                "MERMA PRUEBAS", "Salida de almacen de prueba frontend",
+                PRODUCT_A, 1, "12.10", 0);
+        seedWarehouseOutput(
+                "warehouse-output-900001", "SAL-2026-900001", TODAY.minusDays(1),
+                "CONSUMO INTERNO", "Material utilizado por el equipo",
+                PRODUCT_B, 6, "6.05", 1);
+        seedWarehouseOutput(
+                "warehouse-output-900002", "SAL-2026-900002", TODAY.minusDays(2),
+                "ROTURA", "Unidades dañadas durante la manipulación",
+                PRODUCT_MEMBER, 2, "9.90", 2);
+        seedWarehouseOutput(
+                "warehouse-output-900003", "SAL-2026-900003", TODAY.minusDays(3),
+                "CADUCIDAD", "Retirada preventiva de producto",
+                PRODUCT_OFFER, 4, "2.80", 3);
+        seedWarehouseOutput(
+                "warehouse-output-900004", "SAL-2026-900004", TODAY.minusDays(5),
+                "PROMOCIÓN", "Muestras entregadas en campaña",
+                PRODUCT_OFFER_DISCOUNT, 8, "3.00", 5);
+        seedWarehouseOutput(
+                "warehouse-output-900005", "SAL-2026-900005", TODAY.minusDays(7),
+                "TRASPASO EXTERNO", "Material enviado a exposición",
+                PRODUCT_WHOLESALE, 12, "1.35", 7);
+        seedWarehouseOutput(
+                "warehouse-output-900006", "SAL-2026-900006", TODAY.minusDays(10),
+                "AJUSTE INVENTARIO", "Regularización de conteo físico",
+                PRODUCT_NO_DISCOUNT, 3, "1.20", 10);
+
+        seedWarehouseInput(
+                "warehouse-input-900001", "ENT-2026-900001", TODAY,
+                "PROVEEDOR HABITUAL", "Reposición semanal de café",
+                PRODUCT_A, 24, "3.50", 0);
+        seedWarehouseInput(
+                "warehouse-input-900002", "ENT-2026-900002", TODAY.minusDays(1),
+                "PEDIDO PROGRAMADO", "Entrada de bebidas",
+                PRODUCT_B, 48, "1.20", 1);
+        seedWarehouseInput(
+                "warehouse-input-900003", "ENT-2026-900003", TODAY.minusDays(2),
+                "COMPRA PROMOCIONAL", "Entrada para campaña de socios",
+                PRODUCT_MEMBER, 12, "4.20", 2);
+        seedWarehouseInput(
+                "warehouse-input-900004", "ENT-2026-900004", TODAY.minusDays(4),
+                "REPOSICIÓN URGENTE", "Reposición de producto en oferta",
+                PRODUCT_OFFER, 18, "1.10", 4);
+        seedWarehouseInput(
+                "warehouse-input-900005", "ENT-2026-900005", TODAY.minusDays(6),
+                "PEDIDO MAYORISTA", "Entrada de leche por volumen",
+                PRODUCT_WHOLESALE, 36, "0.65", 6);
+        seedWarehouseInput(
+                "warehouse-input-900006", "ENT-2026-900006", TODAY.minusDays(9),
+                "REGULARIZACIÓN", "Existencias localizadas en inventario",
+                PRODUCT_NO_DISCOUNT, 10, "0.55", 9);
+    }
+
+    private void seedWarehouseOutput(
+            String key,
+            String number,
+            LocalDate date,
+            String destination,
+            String concept,
+            UUID productId,
+            int quantity,
+            String saleUnitPrice,
+            int daysAgo) {
+        UUID outputId = id(key);
+        Timestamp occurredAt = ts(NOW.minusSeconds(daysAgo * 86_400L));
+        String movementKey = key.equals("warehouse-output") ? "stock-move-output" : key + "-movement";
         jdbc.update("""
                 insert into salida_almacen
                     (id, tienda_id, almacen_id, numero, fecha, estado, destino, concepto,
                      creada_por, confirmada_por, confirmada_en)
-                values (?, ?, ?, 'SAL-2026-000001', ?, 'CONFIRMADA', 'MERMA PRUEBAS',
-                    'Salida de almacen de prueba frontend', ?, ?, ?)
-                on conflict (id) do nothing
-                """, outputId, STORE, WAREHOUSE, TODAY, USER, USER, ts(NOW));
+                values (?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?, ?, ?, ?)
+                on conflict (id) do update
+                set fecha = excluded.fecha,
+                    destino = excluded.destino,
+                    concepto = excluded.concepto
+                """, outputId, STORE, WAREHOUSE, number, date, destination, concept,
+                USER, USER, occurredAt);
         jdbc.update("""
-                insert into salida_almacen_linea (id, salida_id, producto_id, cantidad)
-                values (?, ?, ?, 1)
-                on conflict (id) do nothing
-                """, id("warehouse-output-line"), outputId, PRODUCT_A);
+                insert into salida_almacen_linea
+                    (id, salida_id, producto_id, cantidad, precio_unitario_venta)
+                values (?, ?, ?, ?, ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    precio_unitario_venta = excluded.precio_unitario_venta
+                """, id(key + "-line"), outputId, productId, quantity, new BigDecimal(saleUnitPrice));
         jdbc.update("""
                 insert into movimiento_stock
                     (id, producto_id, almacen_id, usuario_id, salida_almacen_id, tipo, cantidad, creado_en)
-                values (?, ?, ?, ?, ?, 'SALIDA_ALMACEN', -1.000, ?)
-                on conflict (id) do nothing
-                """, id("stock-move-output"), PRODUCT_A, WAREHOUSE, USER, outputId, ts(NOW));
+                values (?, ?, ?, ?, ?, 'SALIDA_ALMACEN', ?, ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    creado_en = excluded.creado_en
+                """, id(movementKey), productId, WAREHOUSE, USER, outputId,
+                BigDecimal.valueOf(-quantity), occurredAt);
+    }
+
+    private void seedWarehouseInput(
+            String key,
+            String number,
+            LocalDate date,
+            String origin,
+            String concept,
+            UUID productId,
+            int quantity,
+            String purchaseUnitPrice,
+            int daysAgo) {
+        UUID inputId = id(key);
+        Timestamp occurredAt = ts(NOW.minusSeconds(daysAgo * 86_400L));
+        jdbc.update("""
+                insert into entrada_almacen
+                    (id, tienda_id, almacen_id, proveedor_id, numero, fecha, estado, origen,
+                     concepto, creada_por, confirmada_por, confirmada_en)
+                values (?, ?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?, ?, ?, ?)
+                on conflict (id) do update
+                set fecha = excluded.fecha,
+                    proveedor_id = excluded.proveedor_id,
+                    origen = excluded.origen,
+                    concepto = excluded.concepto
+                """, inputId, STORE, WAREHOUSE, SUPPLIER, number, date, origin, concept,
+                USER, USER, occurredAt);
+        jdbc.update("""
+                insert into entrada_almacen_linea
+                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra)
+                values (?, ?, ?, ?, ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    precio_unitario_compra = excluded.precio_unitario_compra
+                """, id(key + "-line"), inputId, productId, quantity, new BigDecimal(purchaseUnitPrice));
+        jdbc.update("""
+                insert into movimiento_stock
+                    (id, producto_id, almacen_id, usuario_id, entrada_almacen_id, tipo, cantidad, creado_en)
+                values (?, ?, ?, ?, ?, 'ENTRADA_ALMACEN', ?, ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    creado_en = excluded.creado_en
+                """, id(key + "-movement"), productId, WAREHOUSE, USER, inputId,
+                BigDecimal.valueOf(quantity), occurredAt);
     }
 
     private static UUID id(String value) {

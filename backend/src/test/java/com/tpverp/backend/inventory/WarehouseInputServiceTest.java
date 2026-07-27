@@ -79,7 +79,7 @@ class WarehouseInputServiceTest {
         user = new UserAccount(store, "ADMIN", "hash", role);
         product = new Product(
                 store.getId(), UUID.randomUUID(), null, UUID.randomUUID(),
-                "Producto", null, BigDecimal.ZERO, true);
+                "Producto", null, new BigDecimal("4.20"), true);
         warehouse = Warehouse.general(store.getId());
         supplier = new Supplier(
                 store.getEmpresa(), "Proveedor SL", null, DocumentType.NIF,
@@ -113,6 +113,42 @@ class WarehouseInputServiceTest {
     }
 
     @Test
+    void snapshotsPurchasePriceForEveryRepeatedProductLine() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(
+                supplier.getId(), "Proveedor SL", "Compra",
+                List.of(
+                        new WarehouseInputLineCommand(product.getId(), 2),
+                        new WarehouseInputLineCommand(product.getId(), 3)));
+
+        input.snapshotPurchasePrices(Map.of(product.getId(), new BigDecimal("4.20")));
+
+        assertThat(input.getLines())
+                .extracting(WarehouseInputLine::getPurchaseTotal)
+                .containsExactly(new BigDecimal("8.40"), new BigDecimal("12.60"));
+    }
+
+    @Test
+    void confirmedInputCannotReplaceItsHistoricalPurchasePrice() {
+        var input = new WarehouseInput(
+                store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
+        input.replace(
+                supplier.getId(), "Proveedor SL", "Compra",
+                List.of(new WarehouseInputLineCommand(product.getId(), 1)));
+        input.snapshotPurchasePrices(Map.of(product.getId(), new BigDecimal("4.20")));
+        input.confirm("ENT-2026-000001", user.getId(), Instant.parse("2026-07-08T10:00:00Z"));
+
+        assertThatThrownBy(() -> input.snapshotPurchasePrices(
+                Map.of(product.getId(), new BigDecimal("99.00"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inmutable");
+        assertThat(input.getLines()).singleElement()
+                .extracting(WarehouseInputLine::getPurchaseUnitPrice)
+                .isEqualTo(new BigDecimal("4.20"));
+    }
+
+    @Test
     void confirmsWithAnnualNumberAndAddsStock() {
         var input = new WarehouseInput(
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 8), user.getId());
@@ -121,6 +157,7 @@ class WarehouseInputServiceTest {
                 List.of(new WarehouseInputLineCommand(product.getId(), 5)));
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
@@ -132,6 +169,11 @@ class WarehouseInputServiceTest {
         var confirmed = service.confirm(input.getId(), authentication());
 
         assertThat(confirmed.getNumber()).isEqualTo("ENT-2026-000001");
+        assertThat(confirmed.getLines()).singleElement()
+                .satisfies(line -> {
+                    assertThat(line.getPurchaseUnitPrice()).isEqualByComparingTo("4.20");
+                    assertThat(line.getPurchaseTotal()).isEqualByComparingTo("21.00");
+                });
         assertThat(stock.getQuantity()).isEqualByComparingTo("5");
         var movement = ArgumentCaptor.forClass(StockMovement.class);
         verify(movements).save(movement.capture());
@@ -151,6 +193,7 @@ class WarehouseInputServiceTest {
                 store.getId(), warehouse.getId(), LocalDate.of(2026, 7, 1), user.getId());
         var stock = new StockLevel(product.getId(), warehouse.getId());
         when(inputs.findById(input.getId())).thenReturn(Optional.of(input));
+        when(products.findById(product.getId())).thenReturn(Optional.of(product));
         when(warehouses.findById(warehouse.getId())).thenReturn(Optional.of(warehouse));
         when(counters.findByTiendaIdAndTipoAndPeriodo(store.getId(), "ENT", "2026"))
                 .thenReturn(Optional.empty());
