@@ -204,7 +204,13 @@ export function useTableLayoutPreference<Key extends string = string>({
   }, [updateLayout]);
 
   const resizeColumn = useCallback((columnKey: Key, width: number) => {
-    updateLayout((layout) => resizeTableColumn(layout, columnKey, width));
+    const definition = definitionsRef.current.find((candidate) => candidate.key === columnKey);
+    updateLayout((layout) => resizeTableColumn(
+      layout,
+      columnKey,
+      width,
+      definition?.minWidth
+    ));
   }, [updateLayout]);
 
   const toggleColumnVisibility = useCallback((columnKey: Key) => {

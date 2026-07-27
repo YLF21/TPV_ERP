@@ -143,9 +143,10 @@ describe("SaleScreen payment cleanup across restart", () => {
     mount();
     await waitFor(() => expect(activeCalls).toBe(2));
     expect(await screen.findByText("0,00", { selector: ".sale-total strong" })).toBeInTheDocument();
-    expect(screen.getAllByText("Sin venta iniciada").length).toBeGreaterThan(0);
+    expect(screen.getByRole("table", { name: "Líneas del ticket" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Líneas del ticket" }).querySelectorAll(".sale-cart-row")).toHaveLength(0);
     expect(screen.queryByText("Cobro pendiente")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Venta reservada en cobro/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/El ticket está reservado/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Efectivo/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Tarjeta/ })).toBeDisabled();
   });
@@ -177,7 +178,7 @@ describe("SaleScreen payment cleanup across restart", () => {
 
     await screen.findByText("12,10", { selector: ".sale-total strong" });
     await waitFor(() => expect(discardCalls).toBe(1));
-    expect(screen.getByText(/Venta reservada en cobro/)).toBeInTheDocument();
+    expect(screen.getByText(/El ticket está reservado/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Apagar" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí" }));

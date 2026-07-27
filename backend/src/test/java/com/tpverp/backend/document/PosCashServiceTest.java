@@ -187,6 +187,45 @@ class PosCashServiceTest {
     }
 
     @Test
+    void authoritativeQuoteKeepsRepeatedOpenPriceProductAsSeparateLines() {
+        var storeId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var product = mock(Product.class);
+        when(product.getId()).thenReturn(productId);
+        when(product.getSalePrice()).thenReturn(BigDecimal.ZERO);
+        var ticket = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 7, 27), UUID.randomUUID(), BigDecimal.ZERO);
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 1, BigDecimal.ONE, "OPEN-1", "Producto abierto",
+                null, new BigDecimal("1.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00")));
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 2, BigDecimal.ONE, "OPEN-1", "Producto abierto",
+                null, new BigDecimal("2.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00")));
+        var request = new PosCashController.SaleRequest(null, List.of(
+                new PosCashController.LineRequest(
+                        productId, BigDecimal.ONE, BigDecimal.ZERO, new BigDecimal("1.00")),
+                new PosCashController.LineRequest(
+                        productId, BigDecimal.ONE, BigDecimal.ZERO, new BigDecimal("2.00"))));
+
+        var quote = PosCashService.Quote.from(
+                ticket, request, Map.of(productId, product),
+                AuthoritativePromotionPricing.CustomerContext.anonymous());
+
+        assertThat(quote.lineBreakdown())
+                .extracting(
+                        PosCashService.AuthoritativeLineBreakdown::lineId,
+                        PosCashService.AuthoritativeLineBreakdown::baseUnitPrice)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                "product:" + productId + ":1", new BigDecimal("1.00")),
+                        org.assertj.core.groups.Tuple.tuple(
+                                "product:" + productId + ":2", new BigDecimal("2.00")));
+    }
+
+    @Test
     void cashIdempotencyHashIncludesOpenPriceWithoutChangingLegacyCanonical() {
         var checkoutId = UUID.randomUUID();
         var productId = UUID.randomUUID();

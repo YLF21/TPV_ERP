@@ -8,6 +8,7 @@ export type TableColumnDefinition<Key extends string = string> = {
   key: Key;
   defaultWidth: number;
   defaultVisible?: boolean;
+  minWidth?: number;
 };
 
 export type TableColumnLayout<Key extends string = string> = {
@@ -64,14 +65,21 @@ function ensureOneVisible<Key extends string>(layout: TableLayout<Key>): TableLa
   return layout.map((column, index) => index === 0 ? { ...column, visible: true } : column);
 }
 
-export function clampTableColumnWidth(width: unknown, fallback = TABLE_COLUMN_MIN_WIDTH): number {
-  const safeFallback = typeof fallback === "number" && Number.isFinite(fallback)
-    ? Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(TABLE_COLUMN_MIN_WIDTH, Math.round(fallback)))
+export function clampTableColumnWidth(
+  width: unknown,
+  fallback = TABLE_COLUMN_MIN_WIDTH,
+  minimum = TABLE_COLUMN_MIN_WIDTH
+): number {
+  const safeMinimum = typeof minimum === "number" && Number.isFinite(minimum)
+    ? Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(32, Math.round(minimum)))
     : TABLE_COLUMN_MIN_WIDTH;
+  const safeFallback = typeof fallback === "number" && Number.isFinite(fallback)
+    ? Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(safeMinimum, Math.round(fallback)))
+    : safeMinimum;
   if (typeof width !== "number" || !Number.isFinite(width)) {
     return safeFallback;
   }
-  return Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(TABLE_COLUMN_MIN_WIDTH, Math.round(width)));
+  return Math.min(TABLE_COLUMN_MAX_WIDTH, Math.max(safeMinimum, Math.round(width)));
 }
 
 export function createDefaultTableLayout<Key extends string>(
@@ -79,7 +87,11 @@ export function createDefaultTableLayout<Key extends string>(
 ): TableLayout<Key> {
   const layout = uniqueDefinitions(definitions).map((definition) => ({
     key: definition.key,
-    width: clampTableColumnWidth(definition.defaultWidth),
+    width: clampTableColumnWidth(
+      definition.defaultWidth,
+      definition.defaultWidth,
+      definition.minWidth
+    ),
     visible: definition.defaultVisible !== false
   }));
   return ensureOneVisible(layout);
@@ -92,6 +104,9 @@ export function sanitizeSavedTableLayout<Key extends string>(
   const defaults = createDefaultTableLayout(definitions);
   const defaultsByKey = new Map<string, TableColumnLayout<Key>>(
     defaults.map((column) => [column.key, column])
+  );
+  const definitionsByKey = new Map<string, TableColumnDefinition<Key>>(
+    uniqueDefinitions(definitions).map((definition) => [definition.key, definition])
   );
   const seen = new Set<string>();
   const sanitized: TableColumnLayout<Key>[] = [];
@@ -108,7 +123,11 @@ export function sanitizeSavedTableLayout<Key extends string>(
       seen.add(candidate.key);
       sanitized.push({
         key: fallback.key,
-        width: clampTableColumnWidth(candidate.width, fallback.width),
+        width: clampTableColumnWidth(
+          candidate.width,
+          fallback.width,
+          definitionsByKey.get(candidate.key)?.minWidth
+        ),
         visible: typeof candidate.visible === "boolean" ? candidate.visible : fallback.visible
       });
     }
@@ -164,13 +183,14 @@ export function moveTableColumnByKeyboard<Key extends string>(
 export function resizeTableColumn<Key extends string>(
   layout: TableLayout<Key>,
   columnKey: Key,
-  width: number
+  width: number,
+  minimum = TABLE_COLUMN_MIN_WIDTH
 ): TableLayout<Key> {
   const index = layout.findIndex((column) => column.key === columnKey);
   if (index < 0) {
     return layout;
   }
-  const nextWidth = clampTableColumnWidth(width, layout[index].width);
+  const nextWidth = clampTableColumnWidth(width, layout[index].width, minimum);
   if (nextWidth === layout[index].width) {
     return layout;
   }

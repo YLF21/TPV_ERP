@@ -18506,6 +18506,13 @@ textarea:focus,
   font-weight: 900;
 }
 
+.sale-cart-barcode {
+  color: #314962;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+}
+
 .sale-cart-name {
   padding: 4px 8px !important;
   white-space: normal !important;
@@ -18564,6 +18571,12 @@ textarea:focus,
   font-weight: 950;
 }
 
+.sale-cart-package {
+  color: #3f566e;
+  font-size: 14px;
+  font-weight: 900;
+}
+
 .sale-cart-sale-price {
   font-size: 15px;
   font-weight: 900;
@@ -18616,4 +18629,202 @@ textarea:focus,
   color: #081f3b;
   font-size: 17px;
   font-weight: 950;
+}
+
+/* Sales command bar: dense desktop ERP menus with real command bindings. */
+.sale-screen .work-shell {
+  grid-template-rows: 36px minmax(0, 1fr) !important;
+}
+
+.sale-screen .sale-command-topbar {
+  position: relative;
+  /* Keep Sales below the global user/language menus (layer 30). */
+  z-index: 20;
+  min-width: 0;
+  min-height: 36px !important;
+  height: 36px;
+  display: flex !important;
+  align-items: stretch;
+  gap: 0 !important;
+  margin: 0 0 4px !important;
+  padding: 0 !important;
+  overflow: visible;
+  border: 1px solid #9eacbb;
+  background: #f8fafc;
+}
+
+.sale-command-screen-title {
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sale-command-menus {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.sale-command-menu {
+  position: relative;
+  display: flex;
+}
+
+.sale-command-menu-trigger {
+  min-width: 118px;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 0;
+  border-right: 1px solid #aeb9c5;
+  border-radius: 0;
+  background: #f8fafc;
+  color: #102d50;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.025em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sale-command-menu-trigger:hover,
+.sale-command-menu-trigger:focus-visible,
+.sale-command-menu-trigger.open {
+  background: #12365e;
+  color: #fff;
+  outline: none;
+}
+
+.sale-command-menu-popover {
+  width: max-content;
+  min-width: 310px;
+  max-width: min(430px, calc(100vw - 24px));
+  position: absolute;
+  z-index: 1500;
+  top: calc(100% + 1px);
+  left: -1px;
+  display: grid;
+  padding: 4px 0;
+  border: 1px solid #75899f;
+  border-top: 3px solid #12365e;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(13, 36, 63, 0.24);
+}
+
+.sale-command-menu:last-child .sale-command-menu-popover {
+  right: -1px;
+  left: auto;
+}
+
+.sale-command-menu-item {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 26px;
+  padding: 5px 10px 5px 12px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #152c47;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sale-command-menu-item > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sale-command-menu-item kbd {
+  min-width: 56px !important;
+  border-color: #b9c4cf !important;
+  background: #f2f5f8 !important;
+  color: #40546b !important;
+  white-space: nowrap;
+}
+
+.sale-command-menu-item:hover:not(:disabled),
+.sale-command-menu-item:focus-visible {
+  background: #e6f0fa;
+  color: #0b3765;
+  outline: 2px solid #2b6da8;
+  outline-offset: -2px;
+}
+
+.sale-command-menu-item:disabled {
+  background: #f7f8fa;
+  color: #8a96a4;
+  cursor: not-allowed;
+}
+
+.sale-command-menu-separator {
+  height: 1px;
+  margin: 4px 9px;
+  background: #ccd5df;
+}
+
+.sale-command-menu-check {
+  width: 22px;
+  color: #0c5c38;
+  font-size: 16px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.sale-command-topbar > .verifactu-pos {
+  margin-left: auto;
+}
+
+.sale-command-topbar .verifactu-pos__trigger {
+  min-height: 34px;
+  height: 34px;
+  border-width: 0 0 2px 1px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.sale-command-topbar .verifactu-pos__trigger-copy span {
+  display: none;
+}
+
+.sale-screen.touch-mode .sale-command-menu-trigger {
+  min-height: 42px;
+  padding: 0 14px;
+  font-size: 12px;
+  touch-action: manipulation;
+}
+
+.sale-screen.touch-mode .work-shell {
+  grid-template-rows: 44px minmax(0, 1fr) !important;
+}
+
+.sale-screen.touch-mode .sale-command-topbar {
+  min-height: 44px !important;
+  height: 44px;
+}
+
+.sale-screen.touch-mode .sale-command-topbar .verifactu-pos__trigger {
+  min-height: 42px;
+  height: 42px;
+}
+
+@media (max-width: 1060px) {
+  .sale-command-menu-trigger {
+    min-width: 96px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
 }

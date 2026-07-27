@@ -28,6 +28,7 @@ import {
   runGuardedCardOpening,
   saleCartImageColumnWidth,
   saleCartColumnDefinitions,
+  saleCartLineIdentity,
   saleCartSpecialPrice,
   saleMainMessage,
   saleMainProductCount,
@@ -55,6 +56,7 @@ import {
   selectSaleProduct,
   updateSaleLineDiscount,
   updateSaleLineQuantity,
+  updateSaleLineSerialNumbers,
   type SaleCustomer,
   type SaleProduct
 } from "./SaleScreen";
@@ -327,8 +329,10 @@ describe("SaleScreen", () => {
     expect(saleCartColumnDefinitions.map((column) => column.key)).toEqual([
       "image",
       "code",
+      "barcode",
       "name",
       "quantity",
+      "package",
       "salePrice",
       "discount",
       "specialPrice",
@@ -426,11 +430,13 @@ describe("SaleScreen", () => {
     expect(within(table).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
       "Imagen",
       "Código",
+      "Código de barras",
       "Nombre",
-      "Cantidad",
+      "Cant.",
+      "Paquete",
       "Precio",
-      "Descuento",
-      "Precio especial",
+      "Dto.",
+      "P.Especial",
       "Total",
     ]);
     expect(await within(table).findByText("%Oferta")).toBeInTheDocument();
@@ -2125,12 +2131,14 @@ describe("SaleScreen", () => {
     expect(html).not.toContain('class="work-panel-heading sale-product-heading"');
     expect(html).not.toContain("Líneas de venta");
     expect(html).toContain("Cobro");
-    expect(html).toContain('class="sale-shortcut-bar keyboard-sale-command-bar"');
+    expect(html).toContain('class="sale-command-menus"');
+    expect(html).not.toContain('class="sale-shortcut-bar keyboard-sale-command-bar"');
     expect(html).not.toContain('class="touch-sale-actions"');
-    expect(html).toContain("F5");
-    expect(html).toContain("AvPág");
-    expect(html).toContain("F10");
-    expect(html).toContain("Ctrl+-");
+    expect(html).toContain("SISTEMA");
+    expect(html).toContain("FACTURA/TICKET");
+    expect(html).toContain("DOCUMENTO");
+    expect(html).toContain("PRODUCTO");
+    expect(html).toContain("VISUALIZACIÓN");
     expect(html).toContain("Cantidad: 1");
     expect(html).not.toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Líneas del ticket"');
@@ -2176,8 +2184,8 @@ describe("SaleScreen", () => {
 
   it.each([
     ["es", ["Venta", "Buscar producto", "Cobro"], null],
-    ["en", ["Sale", "Search product", "Payment"], ["Sale", "Current ticket", "Search and payment", "Search product", "Payment", "Sale shortcuts"]],
-    ["zh", ["销售", "搜索商品", "收款"], ["销售", "当前小票", "商品搜索与收款", "搜索商品", "收款", "销售快捷键"]],
+    ["en", ["Sale", "Search product", "Payment"], ["Sale", "Current ticket", "Search and payment", "Search product", "Payment", "Sale commands"]],
+    ["zh", ["销售", "搜索商品", "收款"], ["销售", "当前小票", "商品搜索与收款", "搜索商品", "收款", "销售命令"]],
   ] as const)("localizes the main sale view in %s", (locale, labels, ariaLabels) => {
     const html = renderToStaticMarkup(
       <SaleScreen
@@ -2507,26 +2515,57 @@ describe("SaleScreen", () => {
     const repeated = addSaleLine(first, products[0]);
     const completed = addSaleLine(repeated, products[1]);
 
-    expect(completed).toEqual([
+    expect(completed.map(({ cartLineId: _cartLineId, ...line }) => line)).toEqual([
       { product: products[0], quantity: 2, discountPercent: 0 },
       { product: products[1], quantity: 1, discountPercent: 0 }
     ]);
     expect(saleTotal(completed)).toBe(22.5);
   });
 
-  it("keeps the first open price when the same zero-priced product is repeated", () => {
+  it("keeps every open-price occurrence as an independent cart line", () => {
     const openProduct = { ...products[0], id: "open", salePrice: 0 };
     const first = addSaleLine([], openProduct, 7.25);
-    const repeated = addSaleLine(first, openProduct);
+    const repeated = addSaleLine(first, openProduct, 2);
 
-    expect(repeated).toEqual([{
-      product: openProduct,
-      quantity: 2,
-      discountPercent: 0,
-      openUnitPrice: 7.25,
-    }]);
+    expect(repeated).toHaveLength(2);
+    expect(repeated[0]).toMatchObject({
+      product: openProduct, quantity: 1, discountPercent: 0, openUnitPrice: 7.25,
+    });
+    expect(repeated[1]).toMatchObject({
+      product: openProduct, quantity: 1, discountPercent: 0, openUnitPrice: 2,
+    });
+    expect(saleCartLineIdentity(repeated[0])).not.toBe(saleCartLineIdentity(repeated[1]));
     expect(saleLineUnitPrice(repeated[0])).toBe(7.25);
-    expect(saleTotal(repeated)).toBe(14.5);
+    expect(saleLineUnitPrice(repeated[1])).toBe(2);
+    expect(saleTotal(repeated)).toBe(9.25);
+  });
+
+  it("updates and removes only the selected occurrence of a repeated open-price product", () => {
+    const openProduct = { ...products[0], id: "open-lines", salePrice: 0 };
+    const lines = addSaleLine(
+      addSaleLine([], openProduct, 1),
+      openProduct,
+      2,
+    );
+    const firstId = saleCartLineIdentity(lines[0]);
+    const secondId = saleCartLineIdentity(lines[1]);
+
+    const withQuantity = updateSaleLineQuantity(lines, firstId, 3);
+    const withDiscount = updateSaleLineDiscount(withQuantity, secondId, 10);
+    const withSerial = updateSaleLineSerialNumbers(withDiscount, secondId, ["SN-2"]);
+
+    expect(withSerial[0]).toMatchObject({
+      quantity: 3,
+      openUnitPrice: 1,
+      discountPercent: 0,
+    });
+    expect(withSerial[1]).toMatchObject({
+      quantity: 1,
+      openUnitPrice: 2,
+      discountPercent: 10,
+      serialNumbers: ["SN-2"],
+    });
+    expect(removeSaleLine(withSerial, firstId)).toEqual([withSerial[1]]);
   });
 
   it("requires an open price only for an explicit zero catalog price", () => {
@@ -2537,7 +2576,7 @@ describe("SaleScreen", () => {
     expect(saleProductRequiresOpenPrice({ ...products[0], salePrice: "invalid" })).toBe(false);
   });
 
-  it("asks for an open price once and reuses it when the product is repeated", async () => {
+  it("asks for an open price every time and sends repeated products as separate lines", async () => {
     const openProduct = {
       ...products[0],
       id: "open-product",
@@ -2555,8 +2594,32 @@ describe("SaleScreen", () => {
         });
       }
       if (path.endsWith("/pos/sales/quote")) {
-        quoteBodies.push(JSON.parse(String(options?.body)) as Record<string, unknown>);
-        return new Response(JSON.stringify(authoritativeQuote(openProduct, "7.25")), {
+        const body = JSON.parse(String(options?.body)) as {
+          lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice: number }>;
+        };
+        quoteBodies.push(body as unknown as Record<string, unknown>);
+        const total = body.lines.reduce(
+          (sum, line) => sum + line.quantity * line.openUnitPrice,
+          0,
+        );
+        const breakdown = body.lines.map((line, index) => ({
+          ...authoritativeQuote(openProduct, line.openUnitPrice.toFixed(2)).lineBreakdown[0],
+          lineId: `product:${openProduct.id}:${index + 1}`,
+          position: index + 1,
+          quantity: line.quantity.toFixed(3),
+          normalUnitPrice: "0.00",
+          baseUnitPrice: line.openUnitPrice.toFixed(2),
+          baseSubtotal: (line.quantity * line.openUnitPrice).toFixed(2),
+          finalSubtotal: (line.quantity * line.openUnitPrice).toFixed(2),
+        }));
+        return new Response(JSON.stringify({
+          total: total.toFixed(2),
+          productTotal: total.toFixed(2),
+          promotionPreview: { appliedPromotions: [] },
+          pricingVersion: 1,
+          quoteFingerprint: `quote-${body.lines.length}-${total}`,
+          lineBreakdown: breakdown,
+        }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -2571,7 +2634,7 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "OPEN-001");
     const priceDialog = await screen.findByRole("dialog", { name: "Introducir precio" });
     fireEvent.change(within(priceDialog).getByLabelText("Precio de venta"), {
-      target: { value: "7,25" },
+      target: { value: "1,00" },
     });
     fireEvent.click(within(priceDialog).getByRole("button", { name: "Añadir" }));
 
@@ -2581,25 +2644,33 @@ describe("SaleScreen", () => {
         productId: "open-product",
         quantity: 1,
         discount: 0,
-        openUnitPrice: 7.25,
+        openUnitPrice: 1,
       }],
     });
     expect(checkoutProps.current?.sale?.lines[0]).toMatchObject({
       productId: "open-product",
       quantity: 1,
-      openUnitPrice: 7.25,
+      openUnitPrice: 1,
     });
 
     submitQuickEntry(search, "OPEN-001");
-    expect(screen.queryByRole("dialog", { name: "Introducir precio" })).not.toBeInTheDocument();
+    const secondPriceDialog = await screen.findByRole("dialog", { name: "Introducir precio" });
+    fireEvent.change(within(secondPriceDialog).getByLabelText("Precio de venta"), {
+      target: { value: "2,00" },
+    });
+    fireEvent.click(within(secondPriceDialog).getByRole("button", { name: "Añadir" }));
+
     await waitFor(() => expect(quoteBodies).toHaveLength(2));
     expect(quoteBodies[1]).toMatchObject({
-      lines: [{
-        productId: "open-product",
-        quantity: 2,
-        openUnitPrice: 7.25,
-      }],
+      lines: [
+        { productId: "open-product", quantity: 1, openUnitPrice: 1 },
+        { productId: "open-product", quantity: 1, openUnitPrice: 2 },
+      ],
     });
+    expect(checkoutProps.current?.sale?.lines).toMatchObject([
+      { productId: "open-product", quantity: 1, openUnitPrice: 1 },
+      { productId: "open-product", quantity: 1, openUnitPrice: 2 },
+    ]);
   });
 
   it("uses a valid member price only for an active member", () => {
@@ -2653,35 +2724,39 @@ describe("SaleScreen", () => {
 
   it("supports positive quantities and only the explicit -1 manual return", () => {
     const lines = addSaleLine([], products[0]);
+    const lineId = saleCartLineIdentity(lines[0]);
 
-    expect(updateSaleLineQuantity(lines, "coffee", 4)[0].quantity).toBe(4);
-    expect(updateSaleLineQuantity(lines, "coffee", -1)[0].quantity).toBe(-1);
-    expect(() => updateSaleLineQuantity(lines, "coffee", 0)).toThrow("invalid_quantity");
-    expect(() => updateSaleLineQuantity(lines, "coffee", -2)).toThrow("invalid_quantity");
-    expect(() => updateSaleLineQuantity(lines, "coffee", 1.5)).toThrow("invalid_quantity");
+    expect(updateSaleLineQuantity(lines, lineId, 4)[0].quantity).toBe(4);
+    expect(updateSaleLineQuantity(lines, lineId, -1)[0].quantity).toBe(-1);
+    expect(() => updateSaleLineQuantity(lines, lineId, 0)).toThrow("invalid_quantity");
+    expect(() => updateSaleLineQuantity(lines, lineId, -2)).toThrow("invalid_quantity");
+    expect(() => updateSaleLineQuantity(lines, lineId, 1.5)).toThrow("invalid_quantity");
     expect(saleQuickOperand("5")).toBe(5);
     expect(saleQuickOperand("-1")).toBeNull();
     expect(salePauseQuantity("-1")).toBe(-1);
   });
 
   it("applies a line discount and recalculates subtotal and total", () => {
-    const lines = updateSaleLineQuantity(addSaleLine([], products[0]), "coffee", 2);
-    const discounted = updateSaleLineDiscount(lines, "coffee", 25);
+    const initial = addSaleLine([], products[0]);
+    const lineId = saleCartLineIdentity(initial[0]);
+    const lines = updateSaleLineQuantity(initial, lineId, 2);
+    const discounted = updateSaleLineDiscount(lines, lineId, 25);
 
     expect(discounted[0].discountPercent).toBe(25);
     expect(saleLineSubtotal(discounted[0])).toBe(15);
     expect(saleTotal(discounted)).toBe(15);
-    expect(() => updateSaleLineDiscount(lines, "coffee", 101)).toThrow("invalid_discount");
-    expect(() => updateSaleLineDiscount(lines, "coffee", 12.345)).toThrow("invalid_discount");
+    expect(() => updateSaleLineDiscount(lines, lineId, 101)).toThrow("invalid_discount");
+    expect(() => updateSaleLineDiscount(lines, lineId, 12.345)).toThrow("invalid_discount");
   });
 
   it("blocks manual discounts when the backend discount type is NONE", () => {
     const blockedProduct: SaleProduct = { ...products[0], discountType: "NONE" };
     const lines = addSaleLine([], blockedProduct);
+    const lineId = saleCartLineIdentity(lines[0]);
 
     expect(saleProductBlocksManualDiscount(blockedProduct)).toBe(true);
-    expect(() => updateSaleLineDiscount(lines, "coffee", 10)).toThrow("discount_blocked");
-    expect(updateSaleLineDiscount(lines, "coffee", 0)[0].discountPercent).toBe(0);
+    expect(() => updateSaleLineDiscount(lines, lineId, 10)).toThrow("discount_blocked");
+    expect(updateSaleLineDiscount(lines, lineId, 0)[0].discountPercent).toBe(0);
   });
 
   it("keeps the next available line selected after removal", () => {
@@ -2697,14 +2772,16 @@ describe("SaleScreen", () => {
 
   it("selects ticket lines after vertical arrows and stops at the boundaries", () => {
     const lines = addSaleLine(addSaleLine([], products[0]), products[1]);
+    const coffeeLineId = saleCartLineIdentity(lines[0]);
+    const breadLineId = saleCartLineIdentity(lines[1]);
 
     expect(saleLineSelectionAfterArrow([], null, "ArrowDown")).toBeNull();
-    expect(saleLineSelectionAfterArrow(lines, null, "ArrowDown")).toBe("coffee");
-    expect(saleLineSelectionAfterArrow(lines, null, "ArrowUp")).toBe("bread");
-    expect(saleLineSelectionAfterArrow(lines, "coffee", "ArrowDown")).toBe("bread");
-    expect(saleLineSelectionAfterArrow(lines, "bread", "ArrowUp")).toBe("coffee");
-    expect(saleLineSelectionAfterArrow(lines, "coffee", "ArrowUp")).toBe("coffee");
-    expect(saleLineSelectionAfterArrow(lines, "bread", "ArrowDown")).toBe("bread");
+    expect(saleLineSelectionAfterArrow(lines, null, "ArrowDown")).toBe(coffeeLineId);
+    expect(saleLineSelectionAfterArrow(lines, null, "ArrowUp")).toBe(breadLineId);
+    expect(saleLineSelectionAfterArrow(lines, coffeeLineId, "ArrowDown")).toBe(breadLineId);
+    expect(saleLineSelectionAfterArrow(lines, breadLineId, "ArrowUp")).toBe(coffeeLineId);
+    expect(saleLineSelectionAfterArrow(lines, coffeeLineId, "ArrowUp")).toBe(coffeeLineId);
+    expect(saleLineSelectionAfterArrow(lines, breadLineId, "ArrowDown")).toBe(breadLineId);
   });
 
   it("selects product search results after vertical arrows and stops at the boundaries", () => {
@@ -2724,7 +2801,7 @@ describe("SaleScreen", () => {
   it("removes only the requested sale line", () => {
     const lines = addSaleLine(addSaleLine([], products[0]), products[1]);
 
-    expect(removeSaleLine(lines, "coffee")).toEqual([{ product: products[1], quantity: 1, discountPercent: 0 }]);
+    expect(removeSaleLine(lines, saleCartLineIdentity(lines[0]))).toEqual([lines[1]]);
   });
 
   it("filters customers by name, document or client code", () => {
@@ -2751,7 +2828,8 @@ describe("SaleScreen", () => {
   });
 
   it("preserves a greater manual discount when a member is selected or removed", () => {
-    const manuallyDiscounted = updateSaleLineDiscount(addSaleLine([], memberDiscountProduct), "member-coffee", 8);
+    const added = addSaleLine([], memberDiscountProduct);
+    const manuallyDiscounted = updateSaleLineDiscount(added, saleCartLineIdentity(added[0]), 8);
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
 
     const withMember = applyMemberDiscounts(manuallyDiscounted, bronze);
@@ -2764,7 +2842,8 @@ describe("SaleScreen", () => {
   });
 
   it("uses a greater member tier discount than the manual discount", () => {
-    const manuallyDiscounted = updateSaleLineDiscount(addSaleLine([], memberDiscountProduct), "member-coffee", 3);
+    const added = addSaleLine([], memberDiscountProduct);
+    const manuallyDiscounted = updateSaleLineDiscount(added, saleCartLineIdentity(added[0]), 3);
     const bronze: SaleCustomer = { id: "bronze", activeMember: true, memberDiscountPercent: 5 };
 
     expect(effectiveSaleLineDiscount(applyMemberDiscounts(manuallyDiscounted, bronze)[0])).toBe(5);
@@ -3066,14 +3145,14 @@ describe("SaleScreen", () => {
       cashDialogOpen: false,
       cashResult: result,
       lines: [],
-      selectedProductId: null,
+      selectedLineId: null,
       selectedCustomer: null,
       query: ""
     });
   });
 
   it("keeps the sale snapshot and dialog on a payment error", () => {
-    const snapshot = { cashDialogOpen: true, lines: [{ id: "line" }], selectedProductId: "coffee" };
+    const snapshot = { cashDialogOpen: true, lines: [{ id: "line" }], selectedLineId: "line-coffee" };
     expect(cashPaymentErrorTransition(snapshot, "Servidor no disponible")).toEqual({
       ...snapshot,
       cashError: "Servidor no disponible"

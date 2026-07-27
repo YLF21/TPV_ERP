@@ -16,10 +16,13 @@ import { SessionTopControls } from "./SessionTopControls";
 import { queryPaymentOperation } from "../sale/paymentOperations";
 import { SalePaymentCheckout, type PaymentFinalizationSummary, type SalePaymentCheckoutHandle } from "./SalePaymentCheckout";
 import {
-  KeyboardSaleCommandBar,
   TouchSaleActionPanel,
   type SaleCommandLabels
 } from "./SaleCommandPresentation";
+import {
+  SaleCommandMenuBar,
+  type SaleCommandMenu,
+} from "./SaleCommandMenuBar";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import {
   printConfirmedTicketAutomatically,
@@ -100,6 +103,11 @@ export type SaleProduct = {
 };
 
 export type SaleLine = {
+  /**
+   * Client-side identity of the cart row. It must not be confused with the
+   * product id: an open-price product may occur more than once in one sale.
+   */
+  cartLineId?: string;
   product: SaleProduct;
   quantity: number;
   openUnitPrice?: number;
@@ -167,24 +175,28 @@ type AuthoritativeSaleLine = {
 export type SaleCartColumnKey =
   | "image"
   | "code"
+  | "barcode"
   | "name"
   | "quantity"
+  | "package"
   | "salePrice"
   | "discount"
   | "specialPrice"
   | "total";
 
-export const saleCartTableKey = "sale.cart";
+export const saleCartTableKey = "sale.cart.v2";
 export const saleCartImageColumnWidth = 58;
 export const saleCartColumnDefinitions = [
   { key: "image", defaultWidth: saleCartImageColumnWidth },
-  { key: "code", defaultWidth: 112 },
-  { key: "name", defaultWidth: 260 },
-  { key: "quantity", defaultWidth: 86 },
-  { key: "salePrice", defaultWidth: 112 },
-  { key: "discount", defaultWidth: 116 },
-  { key: "specialPrice", defaultWidth: 154 },
-  { key: "total", defaultWidth: 116 },
+  { key: "code", defaultWidth: 104, minWidth: 56 },
+  { key: "barcode", defaultWidth: 132, minWidth: 72 },
+  { key: "name", defaultWidth: 240, minWidth: 96 },
+  { key: "quantity", defaultWidth: 72, minWidth: 40 },
+  { key: "package", defaultWidth: 74, minWidth: 44 },
+  { key: "salePrice", defaultWidth: 96, minWidth: 52 },
+  { key: "discount", defaultWidth: 82, minWidth: 40 },
+  { key: "specialPrice", defaultWidth: 120, minWidth: 64 },
+  { key: "total", defaultWidth: 100, minWidth: 52 },
 ] as const satisfies readonly TableColumnDefinition<SaleCartColumnKey>[];
 
 export function visibleSaleCartColumns(
@@ -378,53 +390,70 @@ export function addSaleLine(
   product: SaleProduct,
   openUnitPrice?: number,
   quantity = 1,
+  cartLineId: string = createSaleCartLineId(),
 ) {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
-  const existing = lines.find((line) => line.product.id === product.id);
+  // An explicitly entered price defines a new economic line. Never merge it
+  // with an earlier occurrence of the same catalog product.
+  const existing = openUnitPrice == null
+    ? lines.find((line) => line.product.id === product.id && line.openUnitPrice == null)
+    : undefined;
   if (!existing) {
     return [...lines, {
+      cartLineId,
       product,
       quantity,
       discountPercent: 0,
       ...(openUnitPrice != null ? { openUnitPrice } : {}),
     }];
   }
-  return lines.map((line) => line.product.id === product.id
+  return lines.map((line) => saleCartLineIdentity(line) === saleCartLineIdentity(existing)
     ? { ...line, quantity: Math.min(9999, line.quantity + quantity) }
     : line);
 }
 
-export function updateSaleLineQuantity(lines: SaleLine[], productId: string, quantity: number) {
+export function createSaleCartLineId(): string {
+  return globalThis.crypto?.randomUUID?.()
+    ?? `sale-line-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function saleCartLineIdentity(line: SaleLine) {
+  // Product id keeps compatibility with old in-memory/test lines. Production
+  // additions and recovered sales always receive cartLineId.
+  return line.cartLineId ?? line.product.id;
+}
+
+export function updateSaleLineQuantity(lines: SaleLine[], lineId: string, quantity: number) {
   if (!Number.isInteger(quantity) || quantity === 0 || quantity < -1 || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
-  return lines.map((line) => line.product.id === productId ? { ...line, quantity } : line);
+  return lines.map((line) => saleCartLineIdentity(line) === lineId ? { ...line, quantity } : line);
 }
 
-export function updateSaleLineDiscount(lines: SaleLine[], productId: string, discountPercent: number) {
+export function updateSaleLineDiscount(lines: SaleLine[], lineId: string, discountPercent: number) {
   const hasMoreThanTwoDecimals = Math.abs(discountPercent * 100 - Math.round(discountPercent * 100)) > 1e-9;
   if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100 || hasMoreThanTwoDecimals) {
     throw new Error("invalid_discount");
   }
-  const line = lines.find((candidate) => candidate.product.id === productId);
+  const line = lines.find((candidate) => saleCartLineIdentity(candidate) === lineId);
   if (discountPercent > 0 && line && saleProductBlocksManualDiscount(line.product)) {
     throw new Error("discount_blocked");
   }
-  return lines.map((line) => line.product.id === productId ? { ...line, discountPercent } : line);
+  return lines.map((line) => saleCartLineIdentity(line) === lineId ? { ...line, discountPercent } : line);
 }
 
-export function removeSaleLine(lines: SaleLine[], productId: string) {
-  return lines.filter((line) => line.product.id !== productId);
+export function removeSaleLine(lines: SaleLine[], lineId: string) {
+  return lines.filter((line) => saleCartLineIdentity(line) !== lineId);
 }
 
-export function selectedProductAfterRemoval(lines: SaleLine[], productId: string) {
-  const removedIndex = lines.findIndex((line) => line.product.id === productId);
-  const remaining = removeSaleLine(lines, productId);
+export function selectedProductAfterRemoval(lines: SaleLine[], lineId: string) {
+  const removedIndex = lines.findIndex((line) => saleCartLineIdentity(line) === lineId);
+  const remaining = removeSaleLine(lines, lineId);
   if (remaining.length === 0) return null;
   const nextIndex = Math.min(Math.max(removedIndex, 0), remaining.length - 1);
-  return remaining[nextIndex].product.id;
+  return saleCartLineIdentity(remaining[nextIndex]);
 }
 
 export function saleLineSelectionAfterArrow(
@@ -433,13 +462,15 @@ export function saleLineSelectionAfterArrow(
   key: "ArrowUp" | "ArrowDown",
 ) {
   if (lines.length === 0) return null;
-  const selectedIndex = lines.findIndex((line) => line.product.id === selectedId);
+  const selectedIndex = lines.findIndex((line) => saleCartLineIdentity(line) === selectedId);
   if (selectedIndex < 0) {
-    return key === "ArrowDown" ? lines[0].product.id : lines[lines.length - 1].product.id;
+    return key === "ArrowDown"
+      ? saleCartLineIdentity(lines[0])
+      : saleCartLineIdentity(lines[lines.length - 1]);
   }
   const offset = key === "ArrowDown" ? 1 : -1;
   const nextIndex = Math.min(Math.max(selectedIndex + offset, 0), lines.length - 1);
-  return lines[nextIndex].product.id;
+  return saleCartLineIdentity(lines[nextIndex]);
 }
 
 export function saleSearchSelectionAfterArrow(
@@ -469,10 +500,10 @@ export function saleLineSubtotal(line: SaleLine, activeMember = false) {
 
 export function updateSaleLineSerialNumbers(
   lines: SaleLine[],
-  productId: string,
+  lineId: string,
   serialNumbers: string[],
 ) {
-  return lines.map((line) => line.product.id === productId
+  return lines.map((line) => saleCartLineIdentity(line) === lineId
     ? { ...line, serialNumbers: [...serialNumbers] }
     : line);
 }
@@ -601,7 +632,7 @@ export function cashPaymentSuccessTransition(result: CashPaymentResult) {
     cashDialogOpen: false,
     cashResult: result,
     lines: [] as SaleLine[],
-    selectedProductId: null,
+    selectedLineId: null,
     selectedCustomer: null,
     query: ""
   };
@@ -938,7 +969,7 @@ export function SaleScreen({
   const [editingProduct, setEditingProduct] = useState<ProductCreateEditProduct | null>(null);
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "discountAuthorization" | "customer" | "remove" | null>(null);
   const [quantityInput, setQuantityInput] = useState("1");
   const [discountInput, setDiscountInput] = useState("0");
@@ -1049,7 +1080,7 @@ export function SaleScreen({
     [allowInactiveProductSales, products]
   );
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
-  const selectedLine = lines.find((line) => line.product.id === selectedProductId);
+  const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   const activeMember = selectedCustomer?.activeMember === true;
   const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
@@ -1106,7 +1137,12 @@ export function SaleScreen({
       ?? product.code
       ?? product.barcode
       ?? t("sale.main.missingCode");
+    const barcode = product.barcode?.trim() ?? "";
     const quantity = finiteAmount(authoritativeLine?.quantity ?? localLine.quantity);
+    const packageQuantity = finiteAmount(product.packageQuantity, Number.NaN);
+    const packageText = Number.isFinite(packageQuantity) && packageQuantity > 0
+      ? packageQuantity.toLocaleString(locale, { maximumFractionDigits: 3 })
+      : "";
     const appliedUnitPrice = finiteAmount(
       authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(localLine, activeMember),
     );
@@ -1137,7 +1173,8 @@ export function SaleScreen({
       ? finiteAmount(authoritativeLine.finalSubtotal)
       : saleLineSubtotal(localLine, activeMember);
     const selectionLabel = `${name} ${quantity} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
-    const selected = selectedProductId === product.id;
+    const cartLineId = saleCartLineIdentity(localLine);
+    const selected = selectedLineId === cartLineId;
 
     function renderCell(column: SaleCartColumnKey) {
       if (column === "image") {
@@ -1153,6 +1190,13 @@ export function SaleScreen({
       if (column === "code") {
         return <td className="sale-cart-code" data-column-key={column} key={column}>{code}</td>;
       }
+      if (column === "barcode") {
+        return (
+          <td className="sale-cart-barcode" data-column-key={column} key={column}>
+            {barcode}
+          </td>
+        );
+      }
       if (column === "name") {
         return (
           <td className="sale-cart-name" data-column-key={column} key={column}>
@@ -1163,7 +1207,7 @@ export function SaleScreen({
               aria-pressed={selected}
               onClick={(event) => {
                 event.stopPropagation();
-                setSelectedProductId(product.id);
+                setSelectedLineId(cartLineId);
               }}
             >
               <strong className="product-name-text">{name}</strong>
@@ -1176,6 +1220,13 @@ export function SaleScreen({
       }
       if (column === "quantity") {
         return <td className="sale-cart-number sale-cart-quantity" data-column-key={column} key={column}>{quantity}</td>;
+      }
+      if (column === "package") {
+        return (
+          <td className="sale-cart-number sale-cart-package" data-column-key={column} key={column}>
+            {packageText}
+          </td>
+        );
       }
       if (column === "salePrice") {
         return (
@@ -1217,8 +1268,8 @@ export function SaleScreen({
     return (
       <tr
         className={`sale-cart-row${selected ? " selected" : ""}`}
-        key={product.id}
-        onClick={() => setSelectedProductId(product.id)}
+        key={cartLineId}
+        onClick={() => setSelectedLineId(cartLineId)}
       >
         {visibleCartColumns.map((column) => renderCell(column.key))}
       </tr>
@@ -1348,11 +1399,15 @@ export function SaleScreen({
 
   function addProduct(product: SaleProduct, openUnitPrice?: number, quantity = 1) {
     deletionControl.reset("PRODUCT_ADDED");
+    const existingLine = openUnitPrice == null
+      ? lines.find((line) => line.product.id === product.id && line.openUnitPrice == null)
+      : undefined;
+    const cartLineId = existingLine ? saleCartLineIdentity(existingLine) : createSaleCartLineId();
     setLines((current) => applyMemberDiscounts(
-      addSaleLine(current, product, openUnitPrice, quantity),
+      addSaleLine(current, product, openUnitPrice, quantity, cartLineId),
       selectedCustomer,
     ));
-    setSelectedProductId(product.id);
+    setSelectedLineId(cartLineId);
     setQuery("");
     setShortcutStatus("");
     searchInputRef.current?.focus();
@@ -1369,8 +1424,7 @@ export function SaleScreen({
       setShortcutStatus("La cantidad resultante del paquete no es válida");
       return;
     }
-    const existingLine = lines.find((line) => line.product.id === product.id);
-    if (saleProductRequiresOpenPrice(product) && !existingLine) {
+    if (saleProductRequiresOpenPrice(product)) {
       setPendingOpenPriceQuantity(quantity);
       setPendingOpenPriceProduct(product);
       return;
@@ -1445,9 +1499,9 @@ export function SaleScreen({
   }
 
   function saveQuantity() {
-    if (!selectedProductId) return;
+    if (!selectedLineId) return;
     try {
-      const nextLines = updateSaleLineQuantity(lines, selectedProductId, Number(quantityInput));
+      const nextLines = updateSaleLineQuantity(lines, selectedLineId, Number(quantityInput));
       setLines(nextLines);
       setActionDialog(null);
     } catch {
@@ -1456,10 +1510,10 @@ export function SaleScreen({
   }
 
   function saveDiscount() {
-    if (!selectedProductId) return;
+    if (!selectedLineId) return;
     try {
       const discount = Number(discountInput);
-      updateSaleLineDiscount(lines, selectedProductId, discount);
+      updateSaleLineDiscount(lines, selectedLineId, discount);
       if (discount > userDiscountLimit) {
         setDiscountAuthorizationPercent(discount);
         setManagerName("");
@@ -1468,7 +1522,7 @@ export function SaleScreen({
         setActionDialog("discountAuthorization");
         return;
       }
-      setLines((current) => updateSaleLineDiscount(current, selectedProductId, discount));
+      setLines((current) => updateSaleLineDiscount(current, selectedLineId, discount));
       setDiscountAuthorizationToken("");
       setActionDialog(null);
     } catch (error) {
@@ -1479,7 +1533,7 @@ export function SaleScreen({
   }
 
   async function authorizeDiscount() {
-    if (!selectedProductId || managerAuthorizationBusy) return;
+    if (!selectedLineId || managerAuthorizationBusy) return;
     setManagerAuthorizationBusy(true);
     setActionError("");
     try {
@@ -1492,7 +1546,7 @@ export function SaleScreen({
         }
       });
       setDiscountAuthorizationToken(authorization.token);
-      setLines((current) => updateSaleLineDiscount(current, selectedProductId, discountAuthorizationPercent));
+      setLines((current) => updateSaleLineDiscount(current, selectedLineId, discountAuthorizationPercent));
       setManagerPassword("");
       setActionDialog(null);
     } catch (error) {
@@ -1540,15 +1594,15 @@ export function SaleScreen({
   }
 
   function confirmRemoveLine() {
-    if (!selectedProductId || !selectedLine) return;
+    if (!selectedLineId || !selectedLine) return;
     const removedLine = selectedLine;
     const fullTicketClear = lines.length === 1;
     const saleOperationId = deletionControl.currentSaleOperationId();
     const deletionOperationId = deletionControl.newDeletionOperationId();
     setLines((current) => {
-      const nextSelectedProductId = selectedProductAfterRemoval(current, selectedProductId);
-      const remaining = removeSaleLine(current, selectedProductId);
-      setSelectedProductId(nextSelectedProductId);
+      const nextSelectedLineId = selectedProductAfterRemoval(current, selectedLineId);
+      const remaining = removeSaleLine(current, selectedLineId);
+      setSelectedLineId(nextSelectedLineId);
       return remaining;
     });
     setActionDialog(null);
@@ -1649,7 +1703,7 @@ export function SaleScreen({
       clearQuickEntry();
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, quantity));
+    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), quantity));
     clearQuickEntry(quantity === -1
       ? "Devolución manual -1 aplicada; se registrará como alerta de control"
       : "");
@@ -1667,7 +1721,7 @@ export function SaleScreen({
       setShortcutStatus("La cantidad no puede superar 9999");
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, result));
+    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), result));
     clearQuickEntry();
   }
 
@@ -1688,7 +1742,7 @@ export function SaleScreen({
       clearQuickEntry();
       return;
     }
-    setLines((current) => updateSaleLineQuantity(current, selectedLine.product.id, result));
+    setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), result));
     clearQuickEntry();
   }
 
@@ -1729,7 +1783,7 @@ export function SaleScreen({
       setActionDialog("discountAuthorization");
       return;
     }
-    setLines((current) => updateSaleLineDiscount(current, selectedLine.product.id, discount));
+    setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
     setDiscountAuthorizationToken("");
   }
 
@@ -1746,7 +1800,7 @@ export function SaleScreen({
     }
     try {
       setLines((current) => current.reduce(
-        (updated, line) => updateSaleLineDiscount(updated, line.product.id, discount),
+        (updated, line) => updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
         current,
       ));
       setDiscountAuthorizationToken("");
@@ -1777,7 +1831,7 @@ export function SaleScreen({
       setActionDialog("discountAuthorization");
       return;
     }
-    setLines((current) => updateSaleLineDiscount(current, selectedLine.product.id, discount));
+    setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
     setDiscountAuthorizationToken("");
   }
 
@@ -1798,7 +1852,7 @@ export function SaleScreen({
 
   function clearCurrentSale() {
     setLines([]);
-    setSelectedProductId(null);
+    setSelectedLineId(null);
     setSelectedCustomer(null);
     setQuery("");
     setDiscountAuthorizationToken("");
@@ -1905,6 +1959,7 @@ export function SaleScreen({
       const product = products.find((candidate) => candidate.id === line.productoId);
       if (!product) return [];
       return [{
+        cartLineId: createSaleCartLineId(),
         product,
         quantity: Number(line.cantidad),
         discountPercent: Number(line.descuento),
@@ -1915,7 +1970,7 @@ export function SaleScreen({
       } satisfies SaleLine];
     });
     setLines(recoveredLines);
-    setSelectedProductId(recoveredLines[0]?.product.id ?? null);
+    setSelectedLineId(recoveredLines[0] ? saleCartLineIdentity(recoveredLines[0]) : null);
     setDiscountAuthorizationToken("");
     setCheckoutDiscountCents(0);
     setNextScanQuantity(1);
@@ -2021,7 +2076,7 @@ export function SaleScreen({
       const transition = cashPaymentSuccessTransition(confirmedResult);
       setCashDialogOpen(transition.cashDialogOpen);
       setLines(transition.lines);
-      setSelectedProductId(transition.selectedProductId);
+      setSelectedLineId(transition.selectedLineId);
       setSelectedCustomer(transition.selectedCustomer);
       setCashResult(transition.cashResult);
       setQuery(transition.query);
@@ -2032,7 +2087,7 @@ export function SaleScreen({
       startAutomaticTicketPrint(result.printTicket);
       } catch (error) {
       const transition = cashPaymentErrorTransition(
-        { cashDialogOpen, lines, selectedProductId, selectedCustomer, query },
+        { cashDialogOpen, lines, selectedLineId, selectedCustomer, query },
         error instanceof Error ? error.message : "No se pudo registrar el cobro"
       );
       setCashError(transition.cashError);
@@ -2069,7 +2124,7 @@ export function SaleScreen({
         const outcome = resolveCardPaymentOutcome(response, quotedCents);
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
-          setCardDialogOpen(false); setLines([]); setSelectedProductId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+          setCardDialogOpen(false); setLines([]); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
           setNextScanQuantity(1);
           setNextScanMode("UNIT");
           deletionControl.reset("SALE_FINALIZED");
@@ -2113,6 +2168,21 @@ export function SaleScreen({
         setCardMessage(error instanceof Error ? error.message : "No se pudo consultar la operacion");
       })
       .finally(() => setCardSubmitting(false));
+  }
+
+  const cashSessionCloseDisabled = !cashSessionReady
+    || lines.length > 0
+    || paymentLocked
+    || !paymentHydrated;
+
+  function openCashSessionClose() {
+    if (cashSessionCloseDisabled) {
+      setShortcutStatus(lines.length > 0
+        ? "El carrito debe estar vacío para cerrar la caja"
+        : "Finaliza el cobro activo antes de cerrar la caja");
+      return;
+    }
+    setCashSessionCloseOpen(true);
   }
 
   saleShortcutHandlerRef.current = (event: KeyboardEvent) => {
@@ -2179,7 +2249,7 @@ export function SaleScreen({
 
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (paymentLocked || lines.length === 0) return;
-        setSelectedProductId(saleLineSelectionAfterArrow(lines, selectedProductId, event.key));
+        setSelectedLineId(saleLineSelectionAfterArrow(lines, selectedLineId, event.key));
         event.preventDefault();
         return;
       }
@@ -2207,6 +2277,9 @@ export function SaleScreen({
           break;
         case "F7":
           startProductEditing();
+          break;
+        case "F8":
+          openCashSessionClose();
           break;
         case "F10":
           if (!paymentHydrated || paymentLocked) return;
@@ -2269,6 +2342,196 @@ export function SaleScreen({
     return () => window.removeEventListener("keydown", handleSaleShortcut);
   }, []);
 
+  const cartColumnVisible = (columnKey: SaleCartColumnKey) => (
+    cartTableLayout.layout.find((column) => column.key === columnKey)?.visible !== false
+  );
+  const saleCommandMenus: readonly SaleCommandMenu[] = [
+    {
+      id: "system",
+      label: t("sale.menu.system"),
+      entries: [
+        {
+          type: "action", id: "calculator", label: commandLabels.calculator, shortcut: "F2",
+          onSelect: () => setCalculatorOpen(true),
+        },
+        { type: "separator", id: "system-separator-1" },
+        {
+          type: "action", id: "cash-drawer", label: commandLabels.cashDrawer, shortcut: "F3",
+          disabled: cashDrawerBusy,
+          disabledReason: t("sale.cashDrawer.error"),
+          onSelect: startCashDrawerOpening,
+        },
+        {
+          type: "action", id: "logout", label: commandLabels.logout, shortcut: "F4",
+          onSelect: () => void handleSaleLogout(),
+        },
+        { type: "separator", id: "system-separator-2" },
+        {
+          type: "action", id: "close-cash", label: cashSessionCopy.close, shortcut: "F8",
+          disabled: cashSessionCloseDisabled,
+          disabledReason: lines.length > 0
+            ? "El carrito debe estar vacío para cerrar la caja"
+            : "Finaliza el cobro activo antes de cerrar la caja",
+          onSelect: openCashSessionClose,
+        },
+      ],
+    },
+    {
+      id: "invoice-ticket",
+      label: t("sale.menu.invoiceTicket"),
+      entries: [
+        ...(onOpenSalesDocumentWindow ? [{
+          type: "action" as const,
+          id: "sales-document",
+          label: commandLabels.document,
+          shortcut: "Ctrl+F",
+          disabled: paymentLocked,
+          onSelect: () => onOpenSalesDocumentWindow(),
+        }] : []),
+        {
+          type: "action", id: "convert-ticket", label: commandLabels.convertInvoice, shortcut: "F12",
+          disabled: !paymentHydrated || paymentLocked,
+          onSelect: () => setTicketManagementOpen(true),
+        },
+        { type: "separator", id: "invoice-ticket-separator" },
+        {
+          type: "action", id: "ticket-return", label: commandLabels.ticketReturn, shortcut: "F10",
+          disabled: !paymentHydrated || paymentLocked,
+          onSelect: () => setTicketReturnOpen(true),
+        },
+        {
+          type: "action", id: "cancel-last-ticket", label: commandLabels.cancelTicket, shortcut: "F11",
+          disabled: !paymentHydrated || paymentLocked,
+          onSelect: () => setTicketManagementOpen(true),
+        },
+        {
+          type: "action", id: "cancel-ticket", label: commandLabels.cancelOtherTicket, shortcut: "Ctrl+F11",
+          disabled: !paymentHydrated || paymentLocked,
+          onSelect: () => setTicketManagementOpen(true),
+        },
+      ],
+    },
+    {
+      id: "document",
+      label: t("sale.menu.document"),
+      entries: [
+        {
+          type: "action", id: "checkout", label: commandLabels.checkout, shortcut: commandLabels.pageDownKey,
+          disabled: paymentActionsDisabled || paymentLocked,
+          onSelect: () => paymentCheckoutRef.current?.openCheckout("CASH"),
+        },
+        {
+          type: "action", id: "customer", label: commandLabels.customer, shortcut: "Fin",
+          disabled: paymentLocked,
+          onSelect: () => openCustomerDialog(),
+        },
+        { type: "separator", id: "document-separator-1" },
+        {
+          type: "action", id: "park-sale", label: commandLabels.parkSale, shortcut: "Ctrl+G",
+          disabled: paymentLocked,
+          onSelect: () => setParkedSalesOpen(true),
+        },
+        { type: "separator", id: "document-separator-2" },
+        {
+          type: "action", id: "sale-discount", label: commandLabels.saleDiscount, shortcut: "Ctrl+/",
+          disabled: lines.length === 0 || paymentLocked || !canApplyManualDiscount,
+          disabledReason: !canApplyManualDiscount ? "No tienes el permiso APLICAR_DESCUENTO" : undefined,
+          onSelect: applyQuickGlobalDiscount,
+        },
+      ],
+    },
+    {
+      id: "product",
+      label: t("sale.menu.product"),
+      entries: [
+        {
+          type: "action", id: "price-lookup", label: commandLabels.priceLookup, shortcut: "F1",
+          onSelect: () => setConsultationMode("PRICE"),
+        },
+        {
+          type: "action", id: "stock", label: commandLabels.selectedStock, shortcut: "F5",
+          disabled: !selectedLine || paymentLocked,
+          onSelect: () => setConsultationMode("STOCK"),
+        },
+        {
+          type: "action", id: "sales-history", label: commandLabels.productSales, shortcut: "F6",
+          disabled: paymentLocked,
+          onSelect: openProductSalesHistory,
+        },
+        {
+          type: "action", id: "edit-product", label: commandLabels.editProduct, shortcut: "F7",
+          disabled: !selectedLine || paymentLocked || productEditBusy,
+          onSelect: startProductEditing,
+        },
+        { type: "separator", id: "product-separator-1" },
+        {
+          type: "action", id: "quantity", label: commandLabels.setQuantity, shortcut: "Pausa",
+          disabled: !selectedLine || paymentLocked,
+          onSelect: openQuantityDialog,
+        },
+        {
+          type: "action", id: "add-quantity", label: commandLabels.addQuantity, shortcut: "Ctrl++",
+          disabled: !selectedLine || paymentLocked,
+          onSelect: addToSelectedQuantity,
+        },
+        {
+          type: "action", id: "subtract-quantity", label: commandLabels.subtractQuantity, shortcut: "Ctrl+-",
+          disabled: !selectedLine || paymentLocked,
+          onSelect: subtractFromSelectedQuantity,
+        },
+        {
+          type: "action", id: "next-units", label: commandLabels.nextUnits, shortcut: "+",
+          disabled: paymentLocked,
+          onSelect: () => prepareNextProductQuantity(false),
+        },
+        {
+          type: "action", id: "next-package", label: commandLabels.nextPackage, shortcut: "*",
+          disabled: paymentLocked,
+          onSelect: () => prepareNextProductQuantity(true),
+        },
+        { type: "separator", id: "product-separator-2" },
+        {
+          type: "action", id: "desired-price", label: commandLabels.desiredPrice, shortcut: "RePág",
+          disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
+            || saleProductBlocksManualDiscount(selectedLine.product),
+          onSelect: applyDesiredLinePrice,
+        },
+        {
+          type: "action", id: "serial-number", label: commandLabels.serialNumber, shortcut: "Ctrl+N",
+          disabled: !selectedLine || paymentLocked,
+          onSelect: () => setSerialNumberOpen(true),
+        },
+        {
+          type: "action", id: "line-discount", label: commandLabels.lineDiscount, shortcut: "/",
+          disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
+            || saleProductBlocksManualDiscount(selectedLine.product),
+          onSelect: applyQuickLineDiscount,
+        },
+      ],
+    },
+    {
+      id: "visualization",
+      label: t("sale.menu.visualization"),
+      entries: [
+        {
+          type: "toggle", id: "show-image", label: t("sale.menu.showImage"),
+          checked: cartColumnVisible("image"),
+          onToggle: () => cartTableLayout.toggleColumnVisibility("image"),
+        },
+        {
+          type: "toggle", id: "show-barcode", label: t("sale.menu.showBarcode"),
+          checked: cartColumnVisible("barcode"),
+          onToggle: () => cartTableLayout.toggleColumnVisibility("barcode"),
+        },
+        {
+          type: "toggle", id: "show-package", label: t("sale.menu.showPackage"),
+          checked: cartColumnVisible("package"),
+          onToggle: () => cartTableLayout.toggleColumnVisibility("package"),
+        },
+      ],
+    },
+  ];
+
   return (
     <main className={`sale-screen work-screen ${interfaceMode === "TOUCH" ? "touch-mode" : "keyboard-mode"}`}>
       <div aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined} style={{ display: "contents" }}><SessionTopControls
@@ -2288,24 +2551,15 @@ export function SaleScreen({
         onBrowserClose={onLogout}
       /></div>
       <section className="work-shell" aria-label={t("sale.main.screen")} aria-hidden={pendingRecoveryBlocked || !cashSessionReady || undefined}>
-        <header className="work-topbar">
+        <header className="work-topbar sale-command-topbar">
           <button type="button" className="report-brand-back" onClick={onBack}>
             {t(app === "venta" ? "venta.title" : "gestion.title")}
           </button>
-          <h1 className="report-title">{t("sale.main.screen")}</h1>
-          <button
-            type="button"
-            className="sale-cash-session-action"
-            disabled={!cashSessionReady || lines.length > 0 || paymentLocked || !paymentHydrated}
-            title={lines.length > 0
-              ? "El carrito debe estar vacío para cerrar la caja"
-              : paymentLocked || !paymentHydrated
-                ? "Finaliza el cobro activo antes de cerrar la caja"
-                : undefined}
-            onClick={() => setCashSessionCloseOpen(true)}
-          >
-            {cashSessionCopy.close}
-          </button>
+          <h1 className="sale-command-screen-title">{t("sale.main.screen")}</h1>
+          <SaleCommandMenuBar
+            ariaLabel={t("sale.menu.aria")}
+            menus={saleCommandMenus}
+          />
           {app === "venta" && hasPermission(session, "VENTA") && (
             <VerifactuPosIndicator
               token={session.accessToken ?? ""}
@@ -2347,8 +2601,8 @@ export function SaleScreen({
               </thead>
               <tbody>
                 {authoritativeLineBreakdown
-                  ? authoritativeLineBreakdown.map((line) => {
-                      const localLine = lines.find((candidate) => candidate.product.id === line.productId);
+                  ? authoritativeLineBreakdown.map((line, index) => {
+                      const localLine = lines[index];
                       return localLine ? renderCartRow(localLine, line) : null;
                     })
                   : lines.map((line) => renderCartRow(line))}
@@ -2479,7 +2733,7 @@ export function SaleScreen({
                 deletionControl.reset("SALE_FINALIZED");
                 setVerifactuRefreshSignal((current) => current + 1);
                 setLines([]);
-                setSelectedProductId(null);
+                setSelectedLineId(null);
                 setSelectedCustomer(null);
                 setQuery("");
                 setNextScanQuantity(1);
@@ -2501,13 +2755,6 @@ export function SaleScreen({
             </aside>
           )}
         </section>
-
-        {interfaceMode === "KEYBOARD" && (
-          <KeyboardSaleCommandBar
-            labels={commandLabels}
-            documentAvailable={Boolean(onOpenSalesDocumentWindow)}
-          />
-        )}
 
         <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
       </section>
@@ -2603,7 +2850,7 @@ export function SaleScreen({
           searchInputRef.current?.focus();
         }}
         onSuccess={(_result, retry) => {
-          setPendingDraft(null); setLines([]); setSelectedProductId(null);
+          setPendingDraft(null); setLines([]); setSelectedLineId(null);
           setPendingPrintRetry(() => retry ?? null);
           setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT"); searchInputRef.current?.focus();
           setVerifactuRefreshSignal((current) => current + 1);
@@ -2872,7 +3119,7 @@ export function SaleScreen({
           onConfirm={(serialNumbers) => {
             setLines((current) => updateSaleLineSerialNumbers(
               current,
-              selectedLine.product.id,
+              saleCartLineIdentity(selectedLine),
               serialNumbers,
             ));
             setSerialNumberOpen(false);

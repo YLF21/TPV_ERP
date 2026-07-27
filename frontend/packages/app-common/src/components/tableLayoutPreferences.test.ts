@@ -86,6 +86,22 @@ describe("table layout preferences", () => {
     expect(resizeTableColumn(sanitized, "code", 900).find((column) => column.key === "code")?.width).toBe(800);
   });
 
+  it("supports a smaller minimum for explicitly compact columns", () => {
+    const compactDefinitions = [
+      { key: "quantity", defaultWidth: 64, minWidth: 40 },
+      { key: "name", defaultWidth: 240 }
+    ] as const;
+    const layout = sanitizeSavedTableLayout([
+      { key: "quantity", width: 12 },
+      { key: "name", width: 12 }
+    ], compactDefinitions);
+
+    expect(layout.find((column) => column.key === "quantity")?.width).toBe(40);
+    expect(layout.find((column) => column.key === "name")?.width).toBe(56);
+    expect(resizeTableColumn(layout, "quantity", 8, 40)
+      .find((column) => column.key === "quantity")?.width).toBe(40);
+  });
+
   it("reorders, moves and hides columns without allowing an empty visible layout", () => {
     const defaults = createDefaultTableLayout(definitions);
     const reordered = reorderTableColumns(defaults, "code", "total");
