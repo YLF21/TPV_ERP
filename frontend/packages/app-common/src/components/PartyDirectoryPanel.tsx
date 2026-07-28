@@ -463,6 +463,18 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
           }))}
         />
       </label>
+      {(query || statusFilter !== "all") && (
+        <button
+          type="button"
+          className="party-directory-clear-filters"
+          onClick={() => {
+            setQuery("");
+            setStatusFilter("all");
+          }}
+        >
+          {t("party.filter.clear")}
+        </button>
+      )}
       <span className="party-directory-result-count">
         {t("party.results").replace("{count}", String(rows.length))}
       </span>

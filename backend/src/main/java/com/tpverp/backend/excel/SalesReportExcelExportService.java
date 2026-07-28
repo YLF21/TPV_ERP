@@ -43,7 +43,7 @@ public class SalesReportExcelExportService {
             "date", "time", "ticket", "invoice", "invoiced", "deliveryNote", "documentType", "terminal", "user",
             "productCount", "customer", "customerName", "supplier", "supplierName", "comment",
             "warehouse", "input", "output", "total", "pending", "payment", "status", "reason",
-            "origin", "dueDate", "tickets");
+            "origin", "dueDate", "tickets", "base", "tax", "discount");
     private static final Set<String> REPORT_KEYS = Set.of(
             "salesReport.dailySales", "salesReport.tickets", "salesReport.deliveryNotes",
             "salesReport.invoices", "salesReport.warehouseOutputs", "salesReport.inputDeliveryNotes",
@@ -131,6 +131,9 @@ public class SalesReportExcelExportService {
                     value.terminalOrigenNombre(), value.ocurridoEn());
             row.put("ticket", text(value.numTicket(), value.numero()));
             row.put("payment", payments(value.payments()));
+            row.put("base", value.base());
+            row.put("tax", value.impuesto());
+            row.put("discount", BigDecimal.ZERO);
             row.put("total", value.total());
             return row;
         }).toList();
@@ -148,6 +151,9 @@ public class SalesReportExcelExportService {
             row.put("status", value.estado().name());
             row.put("comment", value.numeroExterno());
             row.put("pending", value.pendiente());
+            row.put("base", value.base());
+            row.put("tax", value.impuesto());
+            row.put("discount", value.descuentoGlobal());
             row.put("dueDate", displayDate(value.fechaVencimiento()));
             row.put("productCount", value.lineas());
             row.put("warehouse", text(value.almacenNombre(), id(value.almacenId())));
@@ -287,7 +293,8 @@ public class SalesReportExcelExportService {
                     var cell = excelRow.createCell(column);
                     if (value instanceof Number number) {
                         cell.setCellValue(number.doubleValue());
-                        if (Set.of("total", "pending").contains(request.columns().get(column).key())) {
+                        if (Set.of("total", "pending", "base", "tax", "discount")
+                                .contains(request.columns().get(column).key())) {
                             cell.setCellStyle(currencyStyle);
                         }
                     } else {
@@ -304,15 +311,17 @@ public class SalesReportExcelExportService {
             workbook.write(output);
             return output.toByteArray();
         } catch (Exception exception) {
-            throw new IllegalStateException("No se pudo generar el informe Excel", exception);
+            throw new IllegalStateException("message.sales_report.excel_generation_failed", exception);
         }
     }
 
     private void validateRequest(SalesReportExportRequest request) {
-        if (!REPORT_KEYS.contains(request.reportKey())) throw new IllegalArgumentException("Informe no soportado");
+        if (!REPORT_KEYS.contains(request.reportKey())) {
+            throw new IllegalArgumentException("message.sales_report.unsupported");
+        }
         if (request.columns() == null || request.columns().isEmpty()
                 || request.columns().stream().anyMatch(column -> !ALLOWED_COLUMNS.contains(column.key()))) {
-            throw new IllegalArgumentException("Columnas de informe no validas");
+            throw new IllegalArgumentException("message.sales_report.invalid_columns");
         }
     }
 

@@ -33,6 +33,75 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 class SalesReportExcelExportServiceTest {
 
     @Test
+    void exportsEverySupportedReportWithItsCompleteColumnConfiguration() throws Exception {
+        var documents = mock(DocumentService.class);
+        var reports = mock(DocumentReportService.class);
+        var inputs = mock(WarehouseInputService.class);
+        var outputs = mock(WarehouseOutputService.class);
+        var warehouses = mock(WarehouseRepository.class);
+        when(documents.listTickets()).thenReturn(List.of());
+        when(reports.allInvoices(true, false)).thenReturn(List.of());
+        when(reports.allInvoices(false, true)).thenReturn(List.of());
+        when(reports.allDeliveryNotes(true, false)).thenReturn(List.of());
+        when(reports.allDeliveryNotes(false, true)).thenReturn(List.of());
+        when(inputs.list()).thenReturn(List.of());
+        when(outputs.list()).thenReturn(List.of());
+        when(warehouses.findAll()).thenReturn(List.of());
+        var service = new SalesReportExcelExportService(
+                documents,
+                reports,
+                inputs,
+                outputs,
+                warehouses,
+                mock(CurrentOrganization.class),
+                mock(DocumentAttributionResolver.class),
+                mock(AuditService.class));
+        var authentication = new UsernamePasswordAuthenticationToken(
+                "admin", "token", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        var columnsByReport = Map.ofEntries(
+                Map.entry("salesReport.dailySales",
+                        List.of("date", "user", "terminal", "tickets", "invoice", "comment", "total")),
+                Map.entry("salesReport.tickets",
+                        List.of("date", "time", "ticket", "invoiced", "terminal", "user", "productCount",
+                                "customer", "customerName", "payment", "comment", "total")),
+                Map.entry("salesReport.deliveryNotes",
+                        List.of("date", "time", "deliveryNote", "terminal", "user", "customer",
+                                "customerName", "comment", "status", "total")),
+                Map.entry("salesReport.invoices",
+                        List.of("date", "time", "invoice", "documentType", "terminal", "user", "customer",
+                                "customerName", "payment", "status", "pending", "comment", "total")),
+                Map.entry("salesReport.warehouseOutputs",
+                        List.of("date", "time", "output", "terminal", "user", "warehouse", "productCount",
+                                "comment", "reason", "total")),
+                Map.entry("salesReport.inputDeliveryNotes",
+                        List.of("date", "time", "deliveryNote", "terminal", "user", "supplier",
+                                "supplierName", "warehouse", "productCount", "pending", "comment", "total")),
+                Map.entry("salesReport.inputInvoices",
+                        List.of("date", "time", "invoice", "terminal", "user", "supplier", "supplierName",
+                                "warehouse", "pending", "dueDate", "comment", "status", "total")),
+                Map.entry("salesReport.inputWarehouse",
+                        List.of("date", "time", "input", "terminal", "user", "warehouse", "productCount",
+                                "comment", "origin", "total")));
+
+        for (var entry : columnsByReport.entrySet()) {
+            var columns = entry.getValue().stream()
+                    .map(key -> new SalesReportExportRequest.Column(key, key))
+                    .toList();
+            var request = new SalesReportExportRequest(
+                    entry.getKey(),
+                    new SalesReportExportRequest.Filters("", "", "", "", "", "", "", "", ""),
+                    "",
+                    columns);
+
+            byte[] result = service.export(request, authentication);
+
+            try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
+                assertThat(workbook.getSheetAt(0).getRow(0).getLastCellNum()).isEqualTo((short) columns.size());
+            }
+        }
+    }
+
+    @Test
     void exportsInvoiceReportWithDocumentTypeAndMoneyColumns() throws Exception {
         var reports = mock(DocumentReportService.class);
         var invoice = mock(DocumentReportView.class);
