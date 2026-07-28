@@ -43,6 +43,7 @@
   .report-screen .report-data-toolbar,
   .report-screen .report-action-menu,
   .report-screen .print-menu,
+  .report-screen .report-feedback,
   .report-screen .report-options .active-filter-summary button,
   .report-screen .report-load-more,
   .report-screen .visualization-overlay,
@@ -123,6 +124,16 @@
     color: #082b59 !important;
   }
 
+  .report-print-meta {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 2mm 6mm !important;
+    margin-top: 2.5mm !important;
+    color: #5b6f87 !important;
+    font-size: 7.5pt !important;
+    font-weight: 600 !important;
+  }
+
   .report-table {
     width: 100% !important;
     min-width: 0 !important;
@@ -179,6 +190,7 @@
   .report-table tbody tr:hover td,
   .report-table tbody tr:focus-visible td {
     color: #14233b !important;
+    font-weight: 750 !important;
     outline: 0 !important;
     box-shadow: none !important;
   }

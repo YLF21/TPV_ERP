@@ -33,6 +33,7 @@ export type UseTableLayoutPreferenceOptions<Key extends string = string> = {
 export type UseTableLayoutPreferenceResult<Key extends string = string> = {
   layout: TableLayout<Key>;
   ready: boolean;
+  replaceLayout: (layout: TableLayout<Key>) => void;
   reorderColumns: (draggedKey: Key, targetKey: Key) => void;
   moveColumn: (columnKey: Key, direction: TableColumnMoveDirection) => void;
   resizeColumn: (columnKey: Key, width: number) => void;
@@ -217,11 +218,16 @@ export function useTableLayoutPreference<Key extends string = string>({
     updateLayout((layout) => toggleTableColumnVisibility(layout, columnKey));
   }, [updateLayout]);
 
+  const replaceLayout = useCallback((layout: TableLayout<Key>) => {
+    updateLayout(() => sanitizeSavedTableLayout(layout, definitionsRef.current));
+  }, [updateLayout]);
+
   return {
     layout: state.identity === identity
       ? state.layout
       : readStoredTableLayout(app, username, tableKey, definitions, storage),
     ready: ready && state.identity === identity,
+    replaceLayout,
     reorderColumns,
     moveColumn,
     resizeColumn,

@@ -13357,6 +13357,204 @@ textarea:focus,
   color: var(--tpv-v3-text) !important;
 }
 
+/* Report productivity controls */
+.report-quick-filters {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.report-data-toolbar .report-quick-filters button {
+  min-width: auto;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 16px;
+  background: #f2f6fa;
+}
+
+.report-data-toolbar .report-quick-filters button.active {
+  border-color: #2876b9;
+  background: #dceeff;
+  color: #0a4d85;
+}
+
+.report-saved-views {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dbe4ed;
+  background: #f7fafc;
+}
+
+.report-saved-views label {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+  color: #52677a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.report-saved-views select,
+.report-saved-views input,
+.report-saved-views button {
+  min-height: 32px;
+  border: 1px solid #b9c9d8;
+  border-radius: 4px;
+  background: #fff;
+  padding: 0 10px;
+}
+
+.report-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+
+.report-metric-grid article {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid #d5e0ea;
+  border-left: 3px solid #2f7dbd;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.report-metric-grid article span {
+  color: #64788b;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.report-metric-grid article strong {
+  color: #0b2e52;
+  font-size: 16px;
+}
+
+.warehouse-reconciliation {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(5, minmax(120px, 1fr));
+  gap: 1px;
+  margin: 8px 12px 0;
+  border: 1px solid #cbd9e6;
+  background: #cbd9e6;
+}
+
+.warehouse-reconciliation header,
+.warehouse-reconciliation > div {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  background: #f5f9fc;
+}
+
+.warehouse-reconciliation span { color: #60758a; font-size: 10px; }
+.warehouse-reconciliation strong { color: #0b2e52; }
+
+.report-sort-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.report-sort-button i {
+  color: #9fb8d1;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.report-document-preview footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.report-feedback progress {
+  width: 120px;
+  height: 8px;
+  accent-color: #2f7dbd;
+}
+
+@media (max-width: 1100px) {
+  .report-quick-filters { order: 5; width: 100%; }
+  .report-saved-views { flex-wrap: wrap; }
+  .warehouse-reconciliation { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+}
+
+@media print {
+  .report-quick-filters,
+  .report-saved-views,
+  .report-metric-grid,
+  .warehouse-reconciliation {
+    display: none !important;
+  }
+}
+
+.report-print-meta {
+  display: none;
+}
+
+.report-feedback {
+  position: fixed;
+  z-index: 120;
+  top: 48px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid #9fb6cd;
+  border-left: 4px solid #285f94;
+  background: #f4f8fc;
+  color: #17324f;
+  box-shadow: 0 10px 28px rgba(20, 43, 70, .2);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.report-feedback.success {
+  border-color: #91c2a3;
+  border-left-color: #23864b;
+  background: #eef9f2;
+  color: #165b35;
+}
+
+.report-feedback.error {
+  border-color: #e1a2a2;
+  border-left-color: #b42318;
+  background: #fff3f2;
+  color: #8f1d14;
+}
+
+.report-feedback button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .report-screen .report-data,
 .report-screen .daily-summary-data {
   min-height: 0 !important;
@@ -15959,7 +16157,7 @@ textarea:focus,
 }
 /* Shared customer, member and supplier directory */
 .party-directory-heading { flex: 0 0 auto; }
-.party-directory-toolbar { display: grid; grid-template-columns: minmax(280px, 420px) 220px minmax(90px, 1fr); align-items: end; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; background: #f8fafc; }
+.party-directory-toolbar { display: grid; grid-template-columns: minmax(280px, 420px) 220px auto minmax(90px, 1fr); align-items: end; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; background: #f8fafc; }
 .party-directory-toolbar > input { width: 100%; height: 36px; padding: 0 11px; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; box-sizing: border-box; }
 .party-directory-toolbar > input:focus-visible { border-color: #244e86; box-shadow: 0 0 0 3px rgba(36, 78, 134, .14); outline: none; }
 .party-directory-status-filter { display: grid; min-width: 0; gap: 4px; }
@@ -15967,9 +16165,12 @@ textarea:focus,
 .party-directory-status-filter .erp-select { width: 100%; min-width: 0; }
 .party-directory-status-filter .erp-select__trigger { border-radius: 4px; }
 .party-directory-status-filter .erp-select__arrow { border-radius: 0 4px 4px 0; }
-.party-directory-result-count { align-self: center; justify-self: end; margin: 14px 0 0; color: #475569; font-size: 12px; white-space: nowrap; }
+.party-directory-clear-filters { height: 36px; padding: 0 14px; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; color: #244e86; font-weight: 800; cursor: pointer; }
+.party-directory-clear-filters:hover, .party-directory-clear-filters:focus-visible { border-color: #244e86; background: #eaf2fb; outline: none; }
+.party-directory-result-count { grid-column: -2 / -1; align-self: center; justify-self: end; margin: 14px 0 0; color: #475569; font-size: 12px; white-space: nowrap; }
 @media (max-width: 760px) {
   .party-directory-toolbar { grid-template-columns: minmax(0, 1fr) 190px; }
+  .party-directory-clear-filters { justify-self: start; }
   .party-directory-result-count { grid-column: 1 / -1; justify-self: start; margin: 0; }
 }
 .party-directory-table { min-height: 0; overflow: auto; background: #fff; }

@@ -23,6 +23,7 @@ class SalesReportExcelExportControllerContractTest {
 
     @Autowired private MockMvc mvc;
     @MockitoBean private SalesReportExcelExportService service;
+    @MockitoBean private SalesReportPdfExportService pdfService;
 
     @Test
     void salesManagementCanExportAFilteredWorkbook() throws Exception {
@@ -46,6 +47,19 @@ class SalesReportExcelExportControllerContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void salesManagementCanExportPdf() throws Exception {
+        when(pdfService.export(any(), any())).thenReturn("%PDF".getBytes());
+
+        mvc.perform(post("/api/v1/sales-reports/export-pdf")
+                        .with(user("manager").authorities(() -> "GESTION_VENTAS"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF));
     }
 
     private String requestBody() {
