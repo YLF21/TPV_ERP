@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.text.Normalizer;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -15,6 +16,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
@@ -41,12 +44,16 @@ public class SalesReportPdfExportService {
              var document = new PDDocument();
              var output = new ByteArrayOutputStream()) {
             var sheet = workbook.getSheetAt(0);
-            var formatter = new DataFormatter(Locale.forLanguageTag("es-ES"));
+            var locale = Locale.forLanguageTag("es-ES");
+            var formatter = new DataFormatter(locale);
+            var currencyFormatter = NumberFormat.getNumberInstance(locale);
+            currencyFormatter.setMinimumFractionDigits(2);
+            currencyFormatter.setMaximumFractionDigits(2);
             var rows = new ArrayList<List<String>>();
             sheet.forEach(row -> {
                 var values = new ArrayList<String>();
                 for (int column = 0; column < request.columns().size(); column++) {
-                    values.add(formatter.formatCellValue(row.getCell(column)));
+                    values.add(formatCell(row.getCell(column), formatter, currencyFormatter));
                 }
                 rows.add(values);
             });
@@ -57,6 +64,17 @@ public class SalesReportPdfExportService {
             LOG.error("Could not generate sales report PDF for {}", request.reportKey(), exception);
             throw new IllegalStateException("No se pudo generar el PDF del informe", exception);
         }
+    }
+
+    private String formatCell(Cell cell, DataFormatter formatter, NumberFormat currencyFormatter) {
+        if (cell == null) return "";
+        String dataFormat = cell.getCellStyle().getDataFormatString();
+        if (cell.getCellType() == CellType.NUMERIC
+                && dataFormat != null
+                && dataFormat.contains("\u20ac")) {
+            return currencyFormatter.format(cell.getNumericCellValue()) + " \u20ac";
+        }
+        return formatter.formatCellValue(cell);
     }
 
     private void render(PDDocument document, String reportKey, List<List<String>> rows) throws IOException {
@@ -155,6 +173,7 @@ public class SalesReportPdfExportService {
     private void drawEuro(PDPageContentStream content, float x, float y, float size) throws IOException {
         float width = size * .55f;
         float height = size * .75f;
+        content.setStrokingColor(20 / 255f, 43 / 255f, 66 / 255f);
         content.setLineWidth(Math.max(.45f, size / 12));
         content.moveTo(x + width, y + height);
         content.curveTo(x, y + height, x, y - height * .15f, x + width, y);
