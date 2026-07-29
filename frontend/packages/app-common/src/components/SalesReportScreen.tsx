@@ -1663,14 +1663,6 @@ export function SalesReportScreen({
   const filteredRows = sortReportRows(matchingRows, activeSort, locale);
   const filteredTotals = buildFilteredTotals(sample, filteredRows);
   const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredRows, filteredTotals);
-  const reportMetrics = {
-    base: filteredRows.reduce((sum, row) => sum + parseAmount(row.base ?? ""), 0),
-    tax: filteredRows.reduce((sum, row) => sum + parseAmount(row.tax ?? ""), 0),
-    discount: filteredRows.reduce((sum, row) => sum + parseAmount(row.discount ?? ""), 0),
-    pending: filteredRows.reduce((sum, row) => sum + parseAmount(row.pending ?? ""), 0),
-    units: filteredRows.reduce((sum, row) => sum + parseAmount(row.productCount ?? ""), 0),
-    total: filteredRows.reduce((sum, row) => sum + parseAmount(row.total ?? ""), 0)
-  };
   const warehouseReconciliation = (() => {
     const inputs = (reports["salesReport.inputWarehouse"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
     const outputs = (reports["salesReport.warehouseOutputs"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
@@ -2698,10 +2690,6 @@ export function SalesReportScreen({
             </div>
           )}
         </div>
-        <button type="button" onClick={openFilters}>
-          <img alt="" className="report-action-icon" src={filterIcon} />
-          {t("salesReport.filter")}
-        </button>
         <div className="report-quick-filters" aria-label={t("salesReport.quickFilters")}>
           <button type="button" onClick={() => applyQuickFilter("today")}>{t("salesReport.quick.today")}</button>
           <button type="button" onClick={() => applyQuickFilter("week")}>{t("salesReport.quick.week")}</button>
@@ -2716,6 +2704,10 @@ export function SalesReportScreen({
             </button>
           )}
         </div>
+        <button type="button" onClick={openFilters}>
+          <img alt="" className="report-action-icon" src={filterIcon} />
+          {t("salesReport.filter")}
+        </button>
         {!isDailySalesReport && (
           <button type="button" aria-expanded={viewsOpen} onClick={() => setViewsOpen((open) => !open)}>
             {t("salesReport.views")}
@@ -2983,39 +2975,21 @@ export function SalesReportScreen({
                   <button type="button" disabled={!savedViewName.trim()} onClick={saveCurrentView}>{t("salesReport.views.save")}</button>
                 </section>
               )}
-              <section className="report-metric-grid" aria-label={t("salesReport.summary")}>
-                <article>
-                  <span>{t(reportAttributeLabelKey(selectedReport, "total"))}</span>
-                  <strong>{formatEuroAmount(reportMetrics.total, locale)}</strong>
-                </article>
-                {sample.availableAttributes.includes("base") && (
-                  <>
-                    <article><span>{t("salesReport.column.base")}</span><strong>{formatEuroAmount(reportMetrics.base, locale)}</strong></article>
-                    <article><span>{t("salesReport.column.tax")}</span><strong>{formatEuroAmount(reportMetrics.tax, locale)}</strong></article>
-                    <article><span>{t("salesReport.column.discount")}</span><strong>{formatEuroAmount(reportMetrics.discount, locale)}</strong></article>
-                  </>
+              <div className="report-table-region">
+                {isWarehouseDocumentReport(selectedReport) && (
+                  <section className="warehouse-reconciliation" aria-label={t("salesReport.reconciliation")}>
+                    <header>
+                      <strong>{t("salesReport.reconciliation")}</strong>
+                      <span>{filters.warehouse || t("salesReport.filter.all")}</span>
+                    </header>
+                    <div><span>{t("salesReport.reconciliation.inputs")}</span><strong>{formatQuantity(warehouseReconciliation.inputUnits)}</strong></div>
+                    <div><span>{t("salesReport.reconciliation.outputs")}</span><strong>{formatQuantity(warehouseReconciliation.outputUnits)}</strong></div>
+                    <div><span>{t("salesReport.reconciliation.balance")}</span><strong>{formatQuantity(warehouseReconciliation.unitBalance)}</strong></div>
+                    <div><span>{t("salesReport.column.purchaseTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.purchaseValue, locale)}</strong></div>
+                    <div><span>{t("salesReport.column.saleTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.saleValue, locale)}</strong></div>
+                  </section>
                 )}
-                {sample.availableAttributes.includes("pending") && (
-                  <article><span>{t("salesReport.column.pending")}</span><strong>{formatEuroAmount(reportMetrics.pending, locale)}</strong></article>
-                )}
-                {sample.availableAttributes.includes("productCount") && (
-                  <article><span>{t("salesReport.column.productCount")}</span><strong>{formatQuantity(reportMetrics.units)}</strong></article>
-                )}
-              </section>
-              {isWarehouseDocumentReport(selectedReport) && (
-                <section className="warehouse-reconciliation" aria-label={t("salesReport.reconciliation")}>
-                  <header>
-                    <strong>{t("salesReport.reconciliation")}</strong>
-                    <span>{filters.warehouse || t("salesReport.filter.all")}</span>
-                  </header>
-                  <div><span>{t("salesReport.reconciliation.inputs")}</span><strong>{formatQuantity(warehouseReconciliation.inputUnits)}</strong></div>
-                  <div><span>{t("salesReport.reconciliation.outputs")}</span><strong>{formatQuantity(warehouseReconciliation.outputUnits)}</strong></div>
-                  <div><span>{t("salesReport.reconciliation.balance")}</span><strong>{formatQuantity(warehouseReconciliation.unitBalance)}</strong></div>
-                  <div><span>{t("salesReport.column.purchaseTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.purchaseValue, locale)}</strong></div>
-                  <div><span>{t("salesReport.column.saleTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.saleValue, locale)}</strong></div>
-                </section>
-              )}
-              <div className="report-table-scroll">
+                <div className="report-table-scroll">
                 {reportLoading && (
                   <p className="report-load-state" aria-live="polite">
                     {t("salesReport.loading")}
@@ -3120,7 +3094,8 @@ export function SalesReportScreen({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
               <div className="report-total-row">
                 <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>

@@ -683,6 +683,12 @@ describe("SalesReportScreen", () => {
   });
 
   it("does not select the first report row until the user interacts with it", async () => {
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/warehouses") {
         return Promise.resolve([{ id: "warehouse-1", name: "GENERAL" }]);
@@ -692,7 +698,7 @@ describe("SalesReportScreen", () => {
           items: [{
             id: "input-1",
             number: "ENT-NO-SELECT",
-            date: "2026-07-28",
+            date: today,
             warehouseId: "warehouse-1",
             origin: "PRUEBA",
             lines: [{ quantity: 1, purchaseUnitPrice: 4.2, purchaseTotal: 4.2 }]

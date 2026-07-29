@@ -5,7 +5,7 @@ import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
-import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
+import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
@@ -97,7 +97,9 @@ export function HardwareSettingsScreen({
   const routeTableWidth = visibleRouteColumns.reduce((sum, column) => sum + column.width, 0)
     + Math.max(0, visibleRouteColumns.length - 1) * 10;
   const routeGridStyle = {
-    gridTemplateColumns: tableLayoutGridTemplate(visibleRouteColumns),
+    gridTemplateColumns: visibleRouteColumns
+      .map((column) => `minmax(${column.width}px, ${column.width}fr)`)
+      .join(" "),
     minWidth: routeTableWidth
   };
   const [config, setConfig] = useState<HardwareConfig>(defaultHardwareConfig);
@@ -388,6 +390,79 @@ export function HardwareSettingsScreen({
     updateConfig({ cashDrawerOpeningPaymentMethods: Array.from(current) as CashDrawerPaymentMethod[] });
   }
 
+  const summaryItems: Array<{ label: string; value: string }> = (() => {
+    if (selectedSection === "printer") {
+      return [
+        {
+          label: t("hardware.printerMode"),
+          value: config.ticketPrinterDriver === "WINDOWS_DRIVER" ? t("hardware.mode.windows") : t("hardware.mode.escpos")
+        },
+        {
+          label: t("hardware.windowsPrinter"),
+          value: config.ticketPrinterName || t("hardware.selectPrinter")
+        }
+      ];
+    }
+    if (selectedSection === "cashDrawer") {
+      const connectionLabel = {
+        NONE: t("hardware.drawer.none"),
+        PRINTER: t("hardware.drawer.printer"),
+        SERIAL: "COM",
+        NETWORK: "LAN"
+      }[config.cashDrawerConnection];
+      return [
+        { label: t("hardware.connectionType"), value: connectionLabel },
+        { label: t("hardware.drawerProfile"), value: "ESC/POS standard" }
+      ];
+    }
+    if (selectedSection === "scanner") {
+      return [
+        { label: t("hardware.scannerMode"), value: t("hardware.mode.keyboard") },
+        { label: t("hardware.lastScan"), value: lastScan || "-" }
+      ];
+    }
+    if (selectedSection === "escpos") {
+      const connectionLabel = {
+        WINDOWS_PRINTER: "USB / Windows RAW",
+        SERIAL: "COM",
+        NETWORK: "LAN"
+      }[config.ticketPrinterConnection];
+      const endpoint = config.ticketPrinterConnection === "NETWORK"
+        ? `${config.escposHost || "-"}:${config.escposPort}`
+        : config.escposDevicePath || config.ticketPrinterName || "-";
+      return [
+        { label: t("hardware.connectionType"), value: connectionLabel },
+        { label: t("hardware.devicePath"), value: endpoint }
+      ];
+    }
+    if (selectedSection === "a4") {
+      return [
+        { label: t("hardware.a4PrinterName"), value: config.a4PrinterName || t("hardware.selectPrinter") },
+        { label: t("hardware.summary.configuredRoutes"), value: String(config.documentPrintRoutes.length) }
+      ];
+    }
+    if (selectedSection === "customerDisplay") {
+      const display = customerDisplays.find((candidate) => candidate.id === config.customerDisplayScreenId);
+      return [
+        {
+          label: t("hardware.customerDisplayEnabled"),
+          value: t(config.customerDisplayEnabled ? "hardware.summary.enabled" : "hardware.summary.disabled")
+        },
+        {
+          label: t("hardware.customerDisplayScreen"),
+          value: display?.label || t("hardware.customerDisplayAutoScreen")
+        }
+      ];
+    }
+    return [
+      {
+        label: t("hardware.summary.checkedItems"),
+        value: `${Object.keys(diagnostics).length}/${diagnosticItems.length}`
+      },
+      { label: t("hardware.summary.lastResult"), value: status }
+    ];
+  })();
+
   return (
     <main className="hardware-screen">
       <SessionTopControls
@@ -434,10 +509,17 @@ export function HardwareSettingsScreen({
 
         <section className="hardware-workspace">
           <header className="hardware-workspace-heading">
-            <h2>{selectedSectionLabel}</h2>
-            <span>{status}</span>
+            <div>
+              <h2>{selectedSectionLabel}</h2>
+              <span>{status}</span>
+            </div>
+            <button type="button" className="hardware-save-button" onClick={saveConfig}>
+              {t("hardware.save")}
+            </button>
           </header>
 
+          <div className={`hardware-config-layout hardware-config-layout-${selectedSection}`}>
+            <div className="hardware-config-main">
           {selectedSection === "printer" && (
             <div className="hardware-section">
               <h2>{t("hardware.printer")}</h2>
@@ -468,10 +550,6 @@ export function HardwareSettingsScreen({
               ] satisfies readonly ErpSelectOption[]}
             />
           </label>
-          <div className="hardware-actions">
-            <button type="button" onClick={refreshPrinters}>{t("hardware.detectPrinters")}</button>
-            <button type="button" onClick={printTestTicket}>{t("hardware.printTest")}</button>
-          </div>
             </div>
           )}
 
@@ -558,9 +636,6 @@ export function HardwareSettingsScreen({
               ] satisfies readonly ErpSelectOption[]}
             />
           </label>
-          <div className="hardware-actions">
-            <button type="button" onClick={openCashDrawer}>{t("hardware.openDrawer")}</button>
-          </div>
             </div>
           )}
 
@@ -670,9 +745,6 @@ export function HardwareSettingsScreen({
                 ] satisfies readonly ErpSelectOption[]}
               />
             </label>
-            <div className="hardware-actions">
-              <button type="button" onClick={printA4TestDocument}>{t("hardware.printA4Test")}</button>
-            </div>
           </div>
           <div className="hardware-route-table">
             <div className="hardware-route-header" style={routeGridStyle}>
@@ -682,6 +754,7 @@ export function HardwareSettingsScreen({
                 return (
                   <TableLayoutHeaderCell
                     as="span"
+                    className={`hardware-route-heading hardware-route-heading-${column.key}`}
                     column={column}
                     key={column.key}
                     resizeLabel={`${t("stock.columns.resize")} ${label}`}
@@ -696,7 +769,11 @@ export function HardwareSettingsScreen({
             </div>
             {config.documentPrintRoutes.map((route) => (
               <div className="hardware-route-row" key={route.documentType} style={routeGridStyle}>
-                {visibleRouteColumns.map((column) => renderDocumentRouteCell(route, column.key))}
+                {visibleRouteColumns.map((column) => (
+                  <div className={`hardware-route-cell hardware-route-cell-${column.key}`} key={column.key}>
+                    {renderDocumentRouteCell(route, column.key)}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -745,14 +822,6 @@ export function HardwareSettingsScreen({
               />
             </label>
           </div>
-          <div className="hardware-actions hardware-actions-wrap">
-            <button type="button" onClick={refreshCustomerDisplays}>{t("hardware.detectScreens")}</button>
-            <button type="button" onClick={openCustomerDisplay}>{t("hardware.openCustomerDisplay")}</button>
-            <button type="button" onClick={closeCustomerDisplay}>{t("hardware.closeCustomerDisplay")}</button>
-            <button type="button" onClick={sendIdleDisplay}>{t("hardware.sendIdleDisplay")}</button>
-            <button type="button" onClick={sendSaleDisplay}>{t("hardware.sendSaleDisplay")}</button>
-            <button type="button" onClick={sendPaymentDisplay}>{t("hardware.sendPaymentDisplay")}</button>
-          </div>
             </div>
           )}
 
@@ -760,7 +829,6 @@ export function HardwareSettingsScreen({
             <div className="hardware-section hardware-section-wide hardware-diagnostics">
               <div className="hardware-section-title-row">
                 <h2>{t("hardware.diagnostics.title")}</h2>
-                <button type="button" onClick={runAllDiagnostics}>{t("hardware.diagnostics.runAll")}</button>
               </div>
           <div className="hardware-diagnostics-grid">
             {diagnosticItems.map((item) => {
@@ -781,14 +849,54 @@ export function HardwareSettingsScreen({
           </div>
             </div>
           )}
+            </div>
+
+            <aside className="hardware-summary" aria-label={t("hardware.summary.title")}>
+              <h3>{t("hardware.summary.title")}</h3>
+              <div className="hardware-summary-state">
+                <span>{t("hardware.summary.localHardware")}</span>
+                <strong>{status}</strong>
+              </div>
+              <div className="hardware-summary-list">
+                {summaryItems.map((item) => (
+                  <div className="hardware-summary-item" key={item.label}>
+                    <span>{item.label}</span>
+                    <strong title={item.value}>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="hardware-summary-actions">
+                {selectedSection === "printer" && (
+                  <>
+                    <button type="button" onClick={refreshPrinters}>{t("hardware.detectPrinters")}</button>
+                    <button type="button" onClick={printTestTicket}>{t("hardware.printTest")}</button>
+                  </>
+                )}
+                {selectedSection === "cashDrawer" && (
+                  <button type="button" onClick={openCashDrawer}>{t("hardware.openDrawer")}</button>
+                )}
+                {selectedSection === "a4" && (
+                  <button type="button" onClick={printA4TestDocument}>{t("hardware.printA4Test")}</button>
+                )}
+                {selectedSection === "customerDisplay" && (
+                  <>
+                    <button type="button" onClick={refreshCustomerDisplays}>{t("hardware.detectScreens")}</button>
+                    <button type="button" onClick={openCustomerDisplay}>{t("hardware.openCustomerDisplay")}</button>
+                    <button type="button" onClick={closeCustomerDisplay}>{t("hardware.closeCustomerDisplay")}</button>
+                    <button type="button" onClick={sendIdleDisplay}>{t("hardware.sendIdleDisplay")}</button>
+                    <button type="button" onClick={sendSaleDisplay}>{t("hardware.sendSaleDisplay")}</button>
+                    <button type="button" onClick={sendPaymentDisplay}>{t("hardware.sendPaymentDisplay")}</button>
+                  </>
+                )}
+                {selectedSection === "diagnostics" && (
+                  <button type="button" onClick={runAllDiagnostics}>{t("hardware.diagnostics.runAll")}</button>
+                )}
+              </div>
+            </aside>
+          </div>
         </section>
       </section>
 
-      <footer className="hardware-footer">
-        <button type="button" onClick={onBack}>{t("common.back")}</button>
-        <div className="hardware-status">{status}</div>
-        <button type="button" onClick={saveConfig}>{t("hardware.save")}</button>
-      </footer>
       <ScreenContextFooter locale={locale} terminalContext={terminalContext} />
     </main>
   );
