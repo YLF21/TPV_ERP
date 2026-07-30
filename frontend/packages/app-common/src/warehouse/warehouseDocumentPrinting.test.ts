@@ -81,6 +81,7 @@ describe("warehouse document printing", () => {
     expect(html).toContain("window.print()");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("Tienda &amp; Demo");
+    expect(html).toContain("2,00 €");
     expect(html).not.toContain("<script>alert(1)</script>");
   });
 

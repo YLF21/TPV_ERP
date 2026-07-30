@@ -52,6 +52,7 @@ type SalesReportScreenProps = {
   embedded?: boolean;
   initialReport?: string;
   request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
+  loadVisualizationPreferences?: typeof loadReportVisualizationPreferences;
 };
 
 type SalesReportRequest = NonNullable<SalesReportScreenProps["request"]>;
@@ -1567,7 +1568,8 @@ export function SalesReportScreen({
   onLocaleChange,
   embedded = false,
   initialReport: requestedInitialReport,
-  request = apiRequest
+  request = apiRequest,
+  loadVisualizationPreferences = loadReportVisualizationPreferences
 }: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const reportOutputPreferences = readSalesReportOutputPreferences(app, session.username, terminalContext);
@@ -1733,7 +1735,7 @@ export function SalesReportScreen({
 
   useEffect(() => {
     let cancelled = false;
-    void loadReportVisualizationPreferences(app, session.accessToken)
+    void loadVisualizationPreferences(app, session.accessToken)
       .then((preferences) => {
         if (cancelled || preferences.length === 0) {
           return;
@@ -1746,7 +1748,7 @@ export function SalesReportScreen({
     return () => {
       cancelled = true;
     };
-  }, [app, session.accessToken]);
+  }, [app, loadVisualizationPreferences, session.accessToken]);
   const userOptions = filterOptionsFromRows(sample.rows, "user", t);
   const paymentOptions = filterOptionsFromRows(sample.rows, "payment", t);
   const terminalOptions = filterOptionsFromRows(sample.rows, "terminal", t);
@@ -1938,6 +1940,7 @@ export function SalesReportScreen({
   async function exportExcelReport() {
     if (!session.accessToken || reportExportBusy) return;
     setPrintMenuOpen(false);
+    setReportNotice(null);
     setReportExportBusy(true);
     setReportExportProgress(10);
     setReportNotice({ kind: "info", message: t("salesReport.exportingExcel") });
@@ -2019,15 +2022,26 @@ export function SalesReportScreen({
   }
 
   async function printCurrentReport() {
+    setReportNotice(null);
     if (!window.tpvDesktop?.reports) {
       flushSync(() => setPrintMenuOpen(false));
       window.print();
       return;
     }
     setPrintMenuOpen(false);
-    const result = await window.tpvDesktop.reports.print();
-    if (!result.ok) {
-      setReportNotice({ kind: "error", message: `${t("salesReport.printFailed")}: ${result.message}` });
+    try {
+      const result = await window.tpvDesktop.reports.print();
+      if (!result.ok) {
+        setReportNotice({
+          kind: "error",
+          message: `${t("salesReport.printFailed")}: ${result.message}`
+        });
+      }
+    } catch (error) {
+      setReportNotice({
+        kind: "error",
+        message: `${t("salesReport.printFailed")}: ${error instanceof Error ? error.message : ""}`
+      });
     }
   }
 

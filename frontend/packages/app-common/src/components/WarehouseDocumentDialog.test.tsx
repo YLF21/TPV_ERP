@@ -93,8 +93,8 @@ describe("WarehouseDocumentDialog", () => {
 
     expect(html).toContain("Salida almacén");
     expect(html).toContain("Archivo");
-    expect(html).toContain("Guardar F9");
-    expect(html).toContain("Salir Esc");
+    expect(html).toContain("Guardar (F9)");
+    expect(html).toContain("Salir (Esc)");
     expect(html).toContain("Cliente/destino");
     expect(html).toContain("Descuento total del documento %");
     expect(html).toContain("Importe total");
@@ -124,6 +124,27 @@ describe("WarehouseDocumentDialog", () => {
     expect(html).toContain("Entrada almacén");
     expect(html).toContain("Proveedor/origen");
     expect(html).not.toContain("Cliente</span>");
+  });
+
+  it("closes the document editor when Escape is pressed outside its controls", () => {
+    const onClose = vi.fn();
+    render(
+      <WarehouseDocumentDialog
+        mode="input"
+        open
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        token="token"
+        onClose={onClose}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("translates the warehouse document to English while retaining Spanish number formatting", () => {
@@ -164,9 +185,42 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    expect(html).toContain("Guardar F9");
+    expect(html).toContain("Guardar (F9)");
     expect(html).toContain("Confirmar");
     expect(html).toContain('disabled=""');
+  });
+
+  it("disables confirmation after the warehouse document has been confirmed", async () => {
+    const { getByRole } = render(
+      <WarehouseDocumentDialog
+        mode="input"
+        open
+        products={products}
+        warehouses={warehouses}
+        customers={customers}
+        suppliers={suppliers}
+        token="token"
+        canConfirm
+        document={{
+          ...existingDocument,
+          id: "input-1",
+          number: "ENT-2026-000001",
+          status: "CONFIRMADA"
+        }}
+        onClose={vi.fn()}
+        onConfirmed={vi.fn()}
+      />
+    );
+
+    const confirmButton = await waitFor(() => {
+      const button = getByRole("button", { name: "Confirmar" }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      return button;
+    });
+    fireEvent.click(confirmButton);
+    fireEvent.keyDown(getByRole("dialog"), { key: "F10" });
+
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 
   it("blocks confirmation with no valid lines", () => {
@@ -222,6 +276,35 @@ describe("WarehouseDocumentDialog", () => {
       concept: "Compra",
       lines: [{ productId: "product-1", quantity: 3 }]
     });
+  });
+
+  it("sends imported formulas as private document metadata", () => {
+    expect(buildWarehouseDocumentCommand("input", {
+      warehouseId: "warehouse-1",
+      partnerId: "supplier-1",
+      partnerText: "Proveedor SL",
+      date: "2026-07-08",
+      concept: "Compra",
+      lines: [{
+        rowNumber: 1,
+        productId: "product-1",
+        productLabel: "Producto",
+        importedProduct: "A001",
+        quantity: 3,
+        discountPercent: "0",
+        valid: true,
+        errorKey: ""
+      }],
+      excelImport: {
+        fileName: "productos.xlsx",
+        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }]
+      }
+    })).toEqual(expect.objectContaining({
+      excelImport: {
+        fileName: "productos.xlsx",
+        formulas: [{ cell: "I2", formula: "E2*2.5", calculatedValue: "10.25" }]
+      }
+    }));
   });
 
   it("creates a valid manual line from the product master", () => {
@@ -594,7 +677,7 @@ describe("WarehouseDocumentDialog", () => {
       />
     );
 
-    fireEvent.click(await waitFor(() => getByRole("button", { name: "Save F9" })));
+    fireEvent.click(await waitFor(() => getByRole("button", { name: "Save (F9)" })));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledOnce());
     fireEvent.click(getByRole("button", { name: "Print" }));
 

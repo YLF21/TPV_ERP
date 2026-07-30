@@ -426,6 +426,11 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     List<CommercialDocument> findPurchaseDeliveryNotesForBulkEdit(UUID storeId);
 
     @EntityGraph(attributePaths = {"lineas"})
+    List<CommercialDocument> findByTiendaIdAndTipoOrderByFechaDescNumeroDesc(
+            UUID storeId,
+            CommercialDocumentType type);
+
+    @EntityGraph(attributePaths = {"lineas"})
     @Query("""
             select document
             from CommercialDocument document

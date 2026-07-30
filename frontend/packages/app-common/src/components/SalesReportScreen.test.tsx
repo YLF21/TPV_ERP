@@ -46,6 +46,8 @@ const terminalContext: TerminalContext = {
   terminalCode: "01"
 };
 
+const noSavedVisualizationPreferences = vi.fn().mockResolvedValue([]);
+
 function createTableLayoutController(
   initialLayout: TableLayout<string>
 ): UseTableLayoutPreferenceResult<string> {
@@ -544,6 +546,7 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
         onBack={vi.fn()}
         onLogout={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -579,7 +582,7 @@ describe("SalesReportScreen", () => {
       }
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
     expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
@@ -623,6 +626,7 @@ describe("SalesReportScreen", () => {
         session={{ username: "warehouse", displayName: "ALMACÉN", permissions: ["GESTION_ALMACEN"], accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.warehouseOutputs"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}

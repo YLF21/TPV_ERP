@@ -2,9 +2,8 @@ package com.tpverp.saas.admin;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -13,24 +12,56 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
 
     private final SaasAdminUserRepository users;
     private final AdminPasswordHasher passwords;
+    private final LoginAttemptLimiter attempts;
+    private final SaasSessionTokenStore sessions;
+    private final boolean legacyBasicAuthEnabled;
 
-    public AdminAuthInterceptor(SaasAdminUserRepository users, AdminPasswordHasher passwords) {
+    public AdminAuthInterceptor(
+            SaasAdminUserRepository users,
+            AdminPasswordHasher passwords,
+            LoginAttemptLimiter attempts,
+            SaasSessionTokenStore sessions,
+            @Value("${tpv.saas.legacy-basic-auth-enabled:false}") boolean legacyBasicAuthEnabled) {
         this.users = users;
         this.passwords = passwords;
+        this.attempts = attempts;
+        this.sessions = sessions;
+        this.legacyBasicAuthEnabled = legacyBasicAuthEnabled;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        Credentials credentials = credentials(request.getHeader("Authorization"));
-        if (credentials == null) {
+        String authorization = request.getHeader("Authorization");
+        String sessionUsername = sessions.username(
+                SaasAuthenticationController.bearer(authorization), "admin").orElse(null);
+        BasicCredentials credentials = legacyBasicAuthEnabled ? BasicCredentials.parse(authorization) : null;
+        String username = sessionUsername != null ? sessionUsername : credentials == null ? null : credentials.username();
+        String password = credentials == null ? null : credentials.password();
+        if (username == null) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin requeridas");
             return false;
         }
+        if (sessionUsername == null && attempts.blocked("admin", username, request.getRemoteAddr())) {
+            response.setHeader("Retry-After", Long.toString(LoginAttemptLimiter.BLOCK_DURATION.toSeconds()));
+            response.sendError(429, "Demasiados intentos de autenticacion");
+            return false;
+        }
 
-        var user = users.findByUsernameIgnoreCase(credentials.username()).orElse(null);
-        if (user == null || !user.isActive() || !user.getPasswordHash().equals(passwords.hash(credentials.password()))) {
+        var user = users.findByUsernameIgnoreCase(username).orElse(null);
+        if (user == null || !user.isActive()
+                || (sessionUsername == null && !passwords.matches(password, user.getPasswordHash()))) {
+            if (sessionUsername == null) {
+                attempts.failure("admin", username, request.getRemoteAddr());
+            }
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Credenciales admin invalidas");
             return false;
+        }
+        if (sessionUsername == null) {
+            attempts.success("admin", username, request.getRemoteAddr());
+        }
+        if (sessionUsername == null && passwords.needsUpgrade(user.getPasswordHash())) {
+            user.changePasswordHash(passwords.hash(password));
+            users.save(user);
         }
 
         Set<String> permissions = users.permissionCodes(user.getUsername());
@@ -99,23 +130,4 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
         return AdminPermission.VIEW_ADMIN_DATA;
     }
 
-    private Credentials credentials(String header) {
-        if (header == null || !header.startsWith("Basic ")) {
-            return null;
-        }
-        String value;
-        try {
-            value = new String(Base64.getDecoder().decode(header.substring(6)), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException exception) {
-            return null;
-        }
-        int separator = value.indexOf(':');
-        if (separator < 1) {
-            return null;
-        }
-        return new Credentials(value.substring(0, separator), value.substring(separator + 1));
-    }
-
-    private record Credentials(String username, String password) {
-    }
 }

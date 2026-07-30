@@ -12,3 +12,9 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+tpv:
+  saas:
+    legacy-basic-auth-enabled: true
+    secrets:
+      encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+

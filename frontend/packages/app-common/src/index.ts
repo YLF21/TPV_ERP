@@ -17,7 +17,6 @@ export { SaleScreen } from "./components/SaleScreen";
 export { CustomerPendingSaleDialog } from "./components/CustomerPendingSaleDialog";
 export { SettingsScreen } from "./components/SettingsScreen";
 export { SessionHomeScreen } from "./components/SessionHomeScreen";
-export { StockScreen } from "./components/StockScreen";
 export { visibleStockViewsForSession, userCanManageWarehouses } from "./components/stockAccess";
 export type { StockViewKey } from "./components/stockAccess";
 export { visibleWarehouseSectionsForSession, warehouseSections } from "./components/warehouseAccess";

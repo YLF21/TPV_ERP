@@ -103,13 +103,20 @@ class WarehouseInputServiceTest {
                 new WarehouseInputCommand(
                         warehouse.getId(), LocalDate.of(2026, 7, 8), supplier.getId(),
                         "Proveedor SL", "Compra inicial",
-                        List.of(new WarehouseInputLineCommand(product.getId(), 4))),
+                        List.of(new WarehouseInputLineCommand(product.getId(), 4)),
+                        new WarehouseExcelImportMetadata(
+                                "productos.xlsx",
+                                List.of(new WarehouseExcelImportMetadata.Formula(
+                                        "I2", "E2*2.5", "10.25")))),
                 authentication());
 
         assertThat(input.getStatus()).isEqualTo(WarehouseInputStatus.BORRADOR);
         assertThat(input.getSupplierId()).isEqualTo(supplier.getId());
         assertThat(input.getLines()).singleElement()
                 .extracting(WarehouseInputLine::getQuantity).isEqualTo(4);
+        assertThat(input.getExcelImport().formulas()).singleElement()
+                .extracting(WarehouseExcelImportMetadata.Formula::formula)
+                .isEqualTo("E2*2.5");
     }
 
     @Test

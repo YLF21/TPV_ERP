@@ -13,5 +13,16 @@ public record WarehouseInputCommand(
         UUID supplierId,
         String origin,
         String concept,
-        @NotEmpty List<@Valid WarehouseInputLineCommand> lines) {
+        @NotEmpty List<@Valid WarehouseInputLineCommand> lines,
+        @Valid WarehouseExcelImportMetadata excelImport) {
+
+    public WarehouseInputCommand(
+            UUID warehouseId,
+            LocalDate date,
+            UUID supplierId,
+            String origin,
+            String concept,
+            List<WarehouseInputLineCommand> lines) {
+        this(warehouseId, date, supplierId, origin, concept, lines, null);
+    }
 }

@@ -12,6 +12,7 @@ import type {
   CreateCompanyRequest,
   CustomerHealth,
   Credentials,
+  LoginCredentials,
   DashboardData,
   ErpCustomer,
   ErpProduct,
@@ -786,7 +787,7 @@ const DEMO_COMPANY_ID = "00000000-0000-4000-8000-000000000001";
 const DEMO_STORE_ID = "00000000-0000-4000-8000-000000000002";
 
 export default function App() {
-  const [credentials, setCredentials] = useState<Credentials | null>(() => readCredentials());
+  const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [language, setLanguageState] = useState<Language>(() => readLanguage());
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [data, setData] = useState<DashboardData | null>(null);
@@ -846,7 +847,6 @@ export default function App() {
           setNotice({ type: "error", text: errorMessage(tenantError) });
         }
         setCredentials(null);
-        sessionStorage.removeItem("tpv-saas-credentials");
       } else {
         setNotice({ type: "error", text: errorMessage(error) });
       }
@@ -855,13 +855,26 @@ export default function App() {
     }
   }
 
-  function login(nextCredentials: Credentials) {
-    sessionStorage.setItem("tpv-saas-credentials", JSON.stringify(nextCredentials));
-    setCredentials(nextCredentials);
+  async function login(nextCredentials: LoginCredentials) {
+    setLoading(true);
+    setNotice(null);
+    try {
+      const authenticated = await api.login(nextCredentials);
+      setCredentials({
+        username: authenticated.username,
+        accessToken: authenticated.accessToken
+      });
+    } catch (error) {
+      setNotice({ type: "error", text: errorMessage(error) });
+    } finally {
+      setLoading(false);
+    }
   }
 
   function logout() {
-    sessionStorage.removeItem("tpv-saas-credentials");
+    if (credentials) {
+      void api.logout(credentials).catch(() => undefined);
+    }
     setCredentials(null);
     setData(null);
     setTenantData(null);
@@ -873,7 +886,7 @@ export default function App() {
   if (!credentials) {
     return (
       <I18nContext.Provider value={i18n}>
-        <LoginScreen onLogin={login} />
+        <LoginScreen onLogin={login} loading={loading} notice={notice} />
       </I18nContext.Provider>
     );
   }
@@ -1017,14 +1030,22 @@ export default function App() {
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: (credentials: Credentials) => void }) {
+function LoginScreen({
+  onLogin,
+  loading,
+  notice
+}: {
+  onLogin: (credentials: LoginCredentials) => Promise<void>;
+  loading: boolean;
+  notice: Notice;
+}) {
   const { t } = useI18n();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    onLogin({ username: username.trim(), password });
+    void onLogin({ username: username.trim(), password });
   }
 
   return (
@@ -1048,6 +1069,7 @@ function LoginScreen({ onLogin }: { onLogin: (credentials: Credentials) => void 
       </header>
 
       <section className="login-panel" aria-label={t("adminAccess")}>
+        {notice && <div className={`notice ${notice.type}`}>{notice.text}</div>}
         <form className="stack-form" onSubmit={submit}>
           <label>
             {t("username")}
@@ -1070,7 +1092,7 @@ function LoginScreen({ onLogin }: { onLogin: (credentials: Credentials) => void 
               required
             />
           </label>
-          <button className="primary-button" type="submit">
+          <button className="primary-button" type="submit" disabled={loading}>
             {t("enter")}
           </button>
         </form>
@@ -4412,16 +4434,6 @@ function LanguageSelector({ variant = "sidebar" }: { variant?: "sidebar" | "floa
       )}
     </div>
   );
-}
-
-function readCredentials() {
-  const raw = sessionStorage.getItem("tpv-saas-credentials");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Credentials;
-  } catch {
-    return null;
-  }
 }
 
 function readLanguage(): Language {

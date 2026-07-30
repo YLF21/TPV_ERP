@@ -19,13 +19,18 @@ Por defecto escucha en `http://localhost:8090`.
 - `TPV_SAAS_DB_USERNAME`: usuario PostgreSQL.
 - `TPV_SAAS_DB_PASSWORD`: password PostgreSQL.
 - `TPV_SAAS_ADMIN_DEFAULT_ALLOWED`: permite arrancar con perfil `prod` usando `admin/admin` si vale `true`.
+- `TPV_SAAS_SECRET_ENCRYPTION_KEY`: clave AES-256 en Base64 (exactamente 32 bytes) para cifrar credenciales de integraciones.
+- `TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED`: compatibilidad temporal con HTTP Basic; por defecto `false`.
 - `TPV_SAAS_CORS_ALLOWED_ORIGINS`: origenes web permitidos, separados por coma. Vacio no abre CORS.
 - `TPV_SAAS_FORWARD_HEADERS_STRATEGY`: estrategia de cabeceras proxy. Por defecto `framework`.
+
 El usuario inicial de administracion es `admin` con password `admin`.
 En produccion debe cambiarse esa password tras el primer arranque. Si sigue activa con perfil `prod`, el servidor no arranca salvo override temporal con `TPV_SAAS_ADMIN_DEFAULT_ALLOWED=true`.
 
 ## Endpoints base
 
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/admin/companies`
 - `PUT /api/v1/admin/companies/{companyId}`
 - `POST /api/v1/admin/licenses/{reference}/renew`
@@ -41,7 +46,10 @@ En produccion debe cambiarse esa password tras el primer arranque. Si sigue acti
 - `POST /api/v1/license/validate`
 - `POST /api/v1/sync/events`
 
-Los endpoints `/api/v1/admin/**` usan HTTP Basic Auth.
+El login intercambia usuario y password por un token Bearer opaco de ocho horas.
+Los endpoints protegidos aceptan ese token y comprueban en cada peticion que el
+usuario siga activo. HTTP Basic solo debe habilitarse durante una migracion
+controlada.
 
 ## Tests PostgreSQL reales
 
@@ -68,6 +76,8 @@ $env:SPRING_PROFILES_ACTIVE="prod"
 $env:TPV_SAAS_DB_URL="jdbc:postgresql://host:5432/tpv_erp_saas"
 $env:TPV_SAAS_DB_USERNAME="tpv_erp_saas"
 $env:TPV_SAAS_DB_PASSWORD="<password-fuerte>"
+$env:TPV_SAAS_SECRET_ENCRYPTION_KEY="<32-bytes-en-base64>"
+$env:TPV_SAAS_LEGACY_BASIC_AUTH_ENABLED="false"
 $env:TPV_SAAS_CORS_ALLOWED_ORIGINS="https://panel.tudominio.com"
 $env:TPV_SAAS_ADMIN_DEFAULT_ALLOWED="false"
 ```

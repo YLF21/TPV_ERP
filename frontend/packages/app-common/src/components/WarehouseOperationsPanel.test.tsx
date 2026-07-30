@@ -209,11 +209,12 @@ describe("WarehouseOperationsPanel", () => {
     );
 
     expect(html).toContain("Entrada almacen");
-    expect(html).toContain("Numero");
+    expect(html).toContain("Número");
     expect(html).toContain("Fecha");
     expect(html).toContain("Proveedor");
     expect(html).toContain("Almacen");
-    expect(html).toContain("Lineas");
+    expect(html).toContain("Líneas");
+    expect(html).toContain("Buscar por número, contraparte o almacén");
     expect(html).toContain("Total unidades");
     expect(html).toContain("Cargando...");
     expect(html).not.toContain("Imprimir");
@@ -255,7 +256,7 @@ describe("WarehouseOperationsPanel", () => {
       .map((cell) => cell.textContent?.trim());
 
     expect(headerKeys().slice(0, 2)).toEqual(["status", "number"]);
-    expect(rowValues().slice(0, 2)).toEqual(["BORRADOR", "Sin numero"]);
+    expect(rowValues().slice(0, 2)).toEqual(["BORRADOR", "Sin número"]);
     expect(Array.from(container.querySelectorAll("colgroup col")).map((col) => (col as HTMLElement).style.width).slice(0, 2))
       .toEqual(["150px", "170px"]);
     expect(Array.from(container.querySelectorAll<HTMLElement>("thead [data-column-key]")).every((header) => header.draggable))

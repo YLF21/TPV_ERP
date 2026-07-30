@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { GoodsCheckPanel } from "./GoodsCheckPanel";
+import { PurchaseDocumentsPanel } from "./PurchaseDocumentsPanel";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
 import { WarehouseOperationsPanel } from "./WarehouseOperationsPanel";
@@ -98,14 +99,22 @@ export function WarehouseScreen({
 
   const titleKey = section === "input"
     ? "stock.nav.inputWarehouse"
-    : section === "output"
-      ? "stock.nav.outputWarehouse"
-      : "warehouseScreen.goodsCheck";
+    : section === "purchaseDeliveryNotes"
+      ? "warehouseScreen.purchaseDeliveryNotes"
+      : section === "purchaseInvoices"
+        ? "warehouseScreen.purchaseInvoices"
+        : section === "output"
+          ? "stock.nav.outputWarehouse"
+          : "warehouseScreen.goodsCheck";
   const subtitleKey = section === "input"
     ? "warehouseOperations.inputSubtitle"
-    : section === "output"
-      ? "warehouseOperations.outputSubtitle"
-      : "warehouseScreen.goodsCheckSubtitle";
+    : section === "purchaseDeliveryNotes"
+      ? "warehouseScreen.purchaseDeliveryNotesSubtitle"
+      : section === "purchaseInvoices"
+        ? "warehouseScreen.purchaseInvoicesSubtitle"
+        : section === "output"
+          ? "warehouseOperations.outputSubtitle"
+          : "warehouseScreen.goodsCheckSubtitle";
 
   return (
     <main className={embedded
@@ -140,6 +149,20 @@ export function WarehouseScreen({
           <button type="button" className={section === "input" ? "selected" : ""} onClick={() => setSection("input")}>
             {t("stock.nav.inputWarehouse")}
           </button>
+          <button
+            type="button"
+            className={section === "purchaseDeliveryNotes" ? "selected" : ""}
+            onClick={() => setSection("purchaseDeliveryNotes")}
+          >
+            {t("warehouseScreen.purchaseDeliveryNotes")}
+          </button>
+          <button
+            type="button"
+            className={section === "purchaseInvoices" ? "selected" : ""}
+            onClick={() => setSection("purchaseInvoices")}
+          >
+            {t("warehouseScreen.purchaseInvoices")}
+          </button>
           <button type="button" className={section === "output" ? "selected" : ""} onClick={() => setSection("output")}>
             {t("stock.nav.outputWarehouse")}
           </button>
@@ -160,6 +183,13 @@ export function WarehouseScreen({
             <div className="stock-empty-state">{t("warehouseScreen.noAccess")}</div>
           ) : section === "goodsCheck" ? (
             <GoodsCheckPanel locale={locale} token={session.accessToken} t={t} />
+          ) : section === "purchaseDeliveryNotes" || section === "purchaseInvoices" ? (
+            <PurchaseDocumentsPanel
+              mode={section === "purchaseInvoices" ? "invoice" : "deliveryNote"}
+              token={session.accessToken}
+              locale={locale}
+              t={t}
+            />
           ) : (
             <WarehouseOperationsPanel
               mode={section}

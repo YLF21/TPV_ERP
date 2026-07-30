@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   GoodsCheckPanel,
+  filterGoodsCheckDocuments,
   goodsCheckClosePath,
   goodsCheckDocumentIsAvailable,
   goodsCheckDocumentPath,
@@ -32,7 +33,39 @@ describe("GoodsCheckPanel", () => {
     expect(html).toContain("goods-check-documents-header");
     expect(html).toContain("goods-check-search");
     expect(html).toContain("goods-check-documents-summary");
+    expect(html).toContain("goods-check-document-count");
+    expect(html).toContain("goodsCheck.availableDocuments");
+    expect(html).toContain("goodsCheck.documents");
+    expect(html).toContain("goods-check-type-filter");
+    expect(html).toContain("goodsCheck.filter.deliveryNotes");
+    expect(html).toContain("goodsCheck.filter.invoices");
     expect(html).not.toContain("sr-only");
+  });
+
+  it("filters purchase documents independently by delivery note and invoice", () => {
+    const documents = [{
+      id: "delivery-1",
+      tipo: "ALBARAN_COMPRA" as const,
+      estado: "CONFIRMADO",
+      numero: "AC-1",
+      fecha: "2026-07-30",
+      proveedorNombre: "Proveedor Norte"
+    }, {
+      id: "invoice-1",
+      tipo: "FACTURA_COMPRA" as const,
+      estado: "CONFIRMADO",
+      numero: "FC-1",
+      fecha: "2026-07-30",
+      proveedorNombre: "Proveedor Sur"
+    }];
+
+    expect(filterGoodsCheckDocuments(documents, "", "all")).toHaveLength(2);
+    expect(filterGoodsCheckDocuments(documents, "", "deliveryNotes").map((item) => item.id))
+      .toEqual(["delivery-1"]);
+    expect(filterGoodsCheckDocuments(documents, "", "invoices").map((item) => item.id))
+      .toEqual(["invoice-1"]);
+    expect(filterGoodsCheckDocuments(documents, "sur", "all").map((item) => item.id))
+      .toEqual(["invoice-1"]);
   });
 
   it("only accepts confirmed numbered purchase invoices and delivery notes", () => {
