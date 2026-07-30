@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "codex/**"]
+    branches: ["main"]
   pull_request:
 
 permissions:
@@ -47,7 +47,7 @@ jobs:
           TPV_TEST_DB_URL: jdbc:postgresql://localhost:5432/tpv_erp_test
           TPV_TEST_DB_USERNAME: tpv_erp_test
           TPV_TEST_DB_PASSWORD: admin
-        run: ./mvnw --batch-mode --no-transfer-progress verify
+        run: mvn --batch-mode --no-transfer-progress verify
 
   javascript:
     runs-on: ubuntu-latest

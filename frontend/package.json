@@ -13,7 +13,7 @@
     "app:venta": "node scripts/start-electron-app.mjs venta",
     "app:gestion": "node scripts/start-electron-app.mjs gestion",
     "build": "npm run build --workspaces --if-present",
-    "test": "vitest run --exclude e2e/**",
+    "test": "vitest run --exclude \"e2e/**\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium"
