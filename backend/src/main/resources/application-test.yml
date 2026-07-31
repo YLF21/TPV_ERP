@@ -16,5 +16,7 @@ springdoc:
     enabled: false
 
 tpv:
+  installation:
+    portable-secret-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
   backup:
     default-directory: target/test-backups

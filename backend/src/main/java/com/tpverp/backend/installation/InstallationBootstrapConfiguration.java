@@ -7,9 +7,12 @@ import com.tpverp.backend.security.domain.RoleRepository;
 import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.application.AuthenticationService;
+import com.tpverp.backend.shared.crypto.AesGcmSecretProtector;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
+import com.tpverp.backend.shared.crypto.SecretProtector;
 import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
 import com.tpverp.backend.terminal.TerminalRepository;
+import com.sun.jna.Platform;
 import java.nio.file.Path;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,8 +39,21 @@ class InstallationBootstrapConfiguration {
 
 	@Bean
 	InstallationIdentityStore installationIdentityStore(
-			@Value("${tpv.installation.key-directory}") Path keyDirectory) {
-		return new InstallationIdentityStore(keyDirectory, new WindowsDpapiSecretProtector());
+			@Value("${tpv.installation.key-directory}") Path keyDirectory,
+			@Value("${tpv.installation.portable-secret-key:}") String portableSecretKey) {
+		return new InstallationIdentityStore(
+				keyDirectory, installationSecretProtector(portableSecretKey));
+	}
+
+	private SecretProtector installationSecretProtector(String portableSecretKey) {
+		if (portableSecretKey != null && !portableSecretKey.isBlank()) {
+			return AesGcmSecretProtector.fromBase64(portableSecretKey.trim());
+		}
+		if (!Platform.isWindows()) {
+			throw new IllegalStateException(
+					"TPV_INSTALLATION_PORTABLE_SECRET_KEY es obligatorio fuera de Windows");
+		}
+		return new WindowsDpapiSecretProtector();
 	}
 
 	@Bean
