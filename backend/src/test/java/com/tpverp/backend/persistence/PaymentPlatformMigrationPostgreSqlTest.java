@@ -40,6 +40,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .createSchemas(true)
+                    .target("61")
                     .load()
                     .migrate();
 

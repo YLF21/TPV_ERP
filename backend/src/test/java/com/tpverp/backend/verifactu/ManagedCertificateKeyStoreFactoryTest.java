@@ -48,7 +48,7 @@ class ManagedCertificateKeyStoreFactoryTest {
     private ImportedCertificateMaterial material() throws Exception {
         var path = directory.resolve("test.p12");
         var process = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "keytool.exe").toString(),
+                KeytoolTestSupport.executable(),
                 "-genkeypair", "-alias", "test", "-storetype", "PKCS12",
                 "-keystore", path.toString(), "-storepass", "secreto", "-keypass", "secreto",
                 "-keyalg", "RSA", "-dname", "CN=Company,SERIALNUMBER=IDCES-B12345674",
