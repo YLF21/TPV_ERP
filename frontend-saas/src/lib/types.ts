@@ -5,6 +5,11 @@ export type SyncOperation = "CREAR" | "ACTUALIZAR" | "BORRAR" | "ANULAR" | "CONF
 
 export type Credentials = {
   username: string;
+  accessToken: string;
+};
+
+export type LoginCredentials = {
+  username: string;
   password: string;
 };
 

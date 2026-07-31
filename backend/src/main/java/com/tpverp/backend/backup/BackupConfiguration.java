@@ -8,7 +8,7 @@ import com.tpverp.backend.backup.application.PostgreSqlBackupCommands;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
-import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
+import com.tpverp.backend.shared.crypto.SecretProtectorFactory;
 import java.nio.file.Path;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,8 +24,11 @@ class BackupConfiguration {
 
     @Bean
     BackupKeyStore backupKeyStore(
-            @Value("${tpv.installation.key-directory}") Path keyDirectory) {
-        return new BackupKeyStore(keyDirectory, new WindowsDpapiSecretProtector());
+            @Value("${tpv.installation.key-directory}") Path keyDirectory,
+            @Value("${tpv.installation.portable-secret-key:}") String portableSecretKey) {
+        return new BackupKeyStore(
+                keyDirectory,
+                SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey));
     }
 
     @Bean

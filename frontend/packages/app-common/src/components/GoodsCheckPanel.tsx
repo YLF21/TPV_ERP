@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
 
-type PurchaseDocument = {
+export type PurchaseDocument = {
   id: string;
   tipo: "ALBARAN_COMPRA" | "FACTURA_COMPRA" | "RECTIFICATIVA_COMPRA";
   estado: string;
@@ -13,6 +13,8 @@ type PurchaseDocument = {
   almacenNombre?: string | null;
   lineas?: number;
 };
+
+export type GoodsCheckDocumentTypeFilter = "all" | "deliveryNotes" | "invoices";
 
 type GoodsCheckItem = {
   productId: string;
@@ -66,6 +68,26 @@ export function goodsCheckDocumentIsAvailable(document: PurchaseDocument) {
     && ["ALBARAN_COMPRA", "FACTURA_COMPRA"].includes(document.tipo);
 }
 
+export function filterGoodsCheckDocuments(
+  documents: PurchaseDocument[],
+  search: string,
+  typeFilter: GoodsCheckDocumentTypeFilter
+) {
+  const query = search.trim().toLocaleLowerCase();
+  return documents.filter((document) => {
+    if (typeFilter === "deliveryNotes" && document.tipo !== "ALBARAN_COMPRA") return false;
+    if (typeFilter === "invoices" && document.tipo !== "FACTURA_COMPRA") return false;
+    if (!query) return true;
+    return [
+      document.numero,
+      document.numeroExterno,
+      document.proveedorNombre,
+      document.almacenNombre,
+      document.fecha
+    ].some((value) => String(value ?? "").toLocaleLowerCase().includes(query));
+  });
+}
+
 async function loadDocumentPages(path: string, token: string) {
   const values: PurchaseDocument[] = [];
   const cursors = new Set<string>();
@@ -97,6 +119,7 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
   const [documents, setDocuments] = useState<PurchaseDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState("");
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<GoodsCheckDocumentTypeFilter>("all");
   const [check, setCheck] = useState<GoodsCheckView | null>(null);
   const [code, setCode] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -108,18 +131,21 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { maximumFractionDigits: 3 }
   ), [locale]);
-  const selectedDocument = documents.find((document) => document.id === selectedDocumentId) ?? null;
-  const visibleDocuments = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!query) return documents;
-    return documents.filter((document) => [
-      document.numero,
-      document.numeroExterno,
-      document.proveedorNombre,
-      document.almacenNombre,
-      document.fecha
-    ].some((value) => String(value ?? "").toLocaleLowerCase().includes(query)));
-  }, [documents, search]);
+  const visibleDocuments = useMemo(
+    () => filterGoodsCheckDocuments(documents, search, typeFilter),
+    [documents, search, typeFilter]
+  );
+  const selectedDocument = visibleDocuments.find(
+    (document) => document.id === selectedDocumentId
+  ) ?? null;
+
+  useEffect(() => {
+    setSelectedDocumentId((current) => (
+      visibleDocuments.some((document) => document.id === current)
+        ? current
+        : visibleDocuments[0]?.id ?? ""
+    ));
+  }, [visibleDocuments]);
 
   useEffect(() => {
     let cancelled = false;
@@ -229,9 +255,36 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
               {busy ? t("common.loading") : t("goodsCheck.import")}
             </button>
           </div>
-          <div className="stock-history-context goods-check-documents-summary">
-            <strong>{t("goodsCheck.purchaseDocuments")}</strong>
-            <span>{visibleDocuments.length}</span>
+          <div
+            className="goods-check-type-filter"
+            role="group"
+            aria-label={t("goodsCheck.filter.type")}
+          >
+            {([
+              ["all", "goodsCheck.filter.all"],
+              ["deliveryNotes", "goodsCheck.filter.deliveryNotes"],
+              ["invoices", "goodsCheck.filter.invoices"]
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={typeFilter === value ? "selected" : ""}
+                aria-pressed={typeFilter === value}
+                onClick={() => setTypeFilter(value)}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+          <div className="goods-check-documents-summary">
+            <div>
+              <strong>{t("goodsCheck.availableDocuments")}</strong>
+              <small>{t("goodsCheck.purchaseDocuments")}</small>
+            </div>
+            <span className="goods-check-document-count">
+              <strong>{visibleDocuments.length}</strong>
+              <small>{t("goodsCheck.documents")}</small>
+            </span>
           </div>
         </header>
         <div className="stock-history-table-scroll goods-check-document-list">
@@ -287,8 +340,16 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
 
       <div className="goods-check-workspace">
         <div className="stock-history-context goods-check-active-heading">
-          <strong>{check ? `${t("goodsCheck.active")}: ${selectedDocument?.numero ?? ""}` : t("goodsCheck.noActive")}</strong>
-          {check && <span className={`goods-check-status status-${check.status.toLocaleLowerCase()}`}>{t(`goodsCheck.status.${check.status}`)}</span>}
+          <div>
+            <small>{check ? t("goodsCheck.active") : t("goodsCheck.noActive")}</small>
+            {check && <strong>{selectedDocument?.numero ?? ""}</strong>}
+          </div>
+          {check && (
+            <div className={`goods-check-status status-${check.status.toLocaleLowerCase()}`}>
+              <small>{t("salesReport.filter.status")}</small>
+              <strong>{t(`goodsCheck.status.${check.status}`)}</strong>
+            </div>
+          )}
         </div>
         {check ? (
           <>
@@ -297,11 +358,13 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
                 <span>{t("goodsCheck.productCode")}</span>
                 <input ref={codeRef} value={code} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setCode(event.target.value)} />
               </label>
-              <label>
-                <span>{t("goodsCheck.quantity")}</span>
-                <input inputMode="decimal" value={quantity} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setQuantity(event.target.value)} />
-              </label>
-              <button type="submit" disabled={!code.trim() || check.status !== "ABIERTA" || busy}>{t("goodsCheck.register")}</button>
+              <div className="goods-check-register-control">
+                <label>
+                  <span>{t("goodsCheck.quantityToRegister")}</span>
+                  <input inputMode="decimal" value={quantity} disabled={check.status !== "ABIERTA" || busy} onChange={(event) => setQuantity(event.target.value)} />
+                </label>
+                <button type="submit" disabled={!code.trim() || check.status !== "ABIERTA" || busy}>{t("goodsCheck.register")}</button>
+              </div>
               <button type="button" className="secondary" disabled={check.status !== "ABIERTA" || busy} onClick={() => void closeCheck()}>{t("goodsCheck.close")}</button>
             </form>
             <div className="stock-history-table-scroll goods-check-lines">

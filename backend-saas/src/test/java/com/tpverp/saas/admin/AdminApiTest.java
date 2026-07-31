@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -33,8 +34,20 @@ import org.springframework.test.web.servlet.MockMvc;
 @ActiveProfiles("test")
 class AdminApiTest {
 
+    private static final String LEGACY_ADMIN_HASH =
+            "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
+    @Autowired SaasAdminUserRepository adminUsers;
+
+    @BeforeEach
+    void restoreViewerFixture() {
+        adminUsers.findByUsernameIgnoreCase("viewer").ifPresent(user -> {
+            user.changePasswordHash(LEGACY_ADMIN_HASH);
+            adminUsers.save(user);
+        });
+    }
 
     @Test
     void creaEmpresaLicenciaYCodigoDeEnlace() throws Exception {
@@ -157,7 +170,7 @@ class AdminApiTest {
         mvc.perform(put("/api/v1/admin/users/{username}/password", "viewer")
                         .header("Authorization", basic("admin", "admin"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("admin"))))
+                        .content(mapper.writeValueAsString(new ChangeAdminPasswordRequest("admin-restored"))))
                 .andExpect(status().isOk());
     }
 

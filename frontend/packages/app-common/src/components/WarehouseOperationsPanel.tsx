@@ -774,9 +774,9 @@ export default WarehouseOperationsPanel;
 
 function warehouseOperationsLabels(t: (key: string) => string, mode: WarehouseDocumentMode) {
   return {
-    title: warehouseOperationsText(t, mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse", mode === "input" ? "Entrada almacen" : "Salida almacen"),
+    title: warehouseOperationsText(t, mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse", mode === "input" ? "Entrada almacén" : "Salida almacén"),
     search: warehouseOperationsText(t, "salesReport.search", "Buscar"),
-    searchPlaceholder: warehouseOperationsText(t, "warehouseOperations.searchPlaceholder", "Buscar por numero, contraparte o almacen"),
+    searchPlaceholder: warehouseOperationsText(t, "warehouseOperations.searchPlaceholder", "Buscar por número, contraparte o almacén"),
     status: warehouseOperationsText(t, "salesReport.filter.status", "Estado"),
     all: warehouseOperationsText(t, "salesReport.filter.all", "Todos"),
     create: warehouseOperationsText(t, "warehouseDocument.create", "Crear documento"),
@@ -784,26 +784,26 @@ function warehouseOperationsLabels(t: (key: string) => string, mode: WarehouseDo
     view: warehouseOperationsText(t, "warehouseDocument.view", "Consultar documento"),
     delete: warehouseOperationsText(t, "common.delete", "Eliminar"),
     deleting: warehouseOperationsText(t, "warehouseOperations.deleting", "Eliminando..."),
-    number: warehouseOperationsText(t, "warehouseOperations.column.number", "Numero"),
+    number: warehouseOperationsText(t, "warehouseOperations.column.number", "Número"),
     date: warehouseOperationsText(t, "salesReport.column.date", "Fecha"),
     counterparty: warehouseOperationsText(
       t,
       mode === "input" ? "warehouseDocument.supplier" : "warehouseDocument.customer",
       mode === "input" ? "Proveedor" : "Cliente"
     ),
-    warehouse: warehouseOperationsText(t, "stock.column.warehouse", "Almacen"),
-    lines: warehouseOperationsText(t, "warehouseOperations.column.lines", "Lineas"),
+    warehouse: warehouseOperationsText(t, "stock.column.warehouse", "Almacén"),
+    lines: warehouseOperationsText(t, "warehouseOperations.column.lines", "Líneas"),
     totalUnits: warehouseOperationsText(t, "warehouseOperations.column.totalUnits", "Total unidades"),
     resultCount: warehouseOperationsText(t, "warehouseOperations.resultCount", "{count} documentos"),
     loading: warehouseOperationsText(t, "common.loading", "Cargando..."),
-    empty: warehouseOperationsText(t, "warehouseOperations.empty", "Sin documentos para la busqueda y estado seleccionados"),
-    loadError: warehouseOperationsText(t, "warehouseOperations.loadError", "No se pudieron cargar los documentos de almacen"),
+    empty: warehouseOperationsText(t, "warehouseOperations.empty", "Sin documentos para la búsqueda y estado seleccionados"),
+    loadError: warehouseOperationsText(t, "warehouseOperations.loadError", "No se pudieron cargar los documentos de almacén"),
     deleteError: warehouseOperationsText(t, "warehouseOperations.deleteError", "No se pudo eliminar el borrador"),
     deleted: warehouseOperationsText(t, "warehouseOperations.deleted", "Borrador eliminado"),
     deleteConfirm: warehouseOperationsText(t, "warehouseOperations.deleteConfirm", "Eliminar el borrador {document}?"),
-    noAccess: warehouseOperationsText(t, "warehouseOperations.noAccess", "Sin acceso a los documentos de almacen"),
+    noAccess: warehouseOperationsText(t, "warehouseOperations.noAccess", "Sin acceso a los documentos de almacén"),
     noEditPermission: warehouseOperationsText(t, "warehouseOperations.noEditPermission", "No tiene permiso para editar este borrador"),
-    unnumbered: warehouseOperationsText(t, "warehouseOperations.unnumbered", "Sin numero")
+    unnumbered: warehouseOperationsText(t, "warehouseOperations.unnumbered", "Sin número")
   };
 }
 

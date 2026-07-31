@@ -153,6 +153,7 @@ export function App() {
   const [compatibilityGate, setCompatibilityGate] = useState<CompatibilityGate>({ status: "ready" });
   const [saleInterfaceMode, setSaleInterfaceMode] =
     useState<SaleInterfaceMode>(defaultSaleInterfaceMode);
+  const [appNotice, setAppNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -308,32 +309,55 @@ export function App() {
 
   if (screen === "sale") {
     return (
-      <SaleScreen
-        app="venta"
-        locale={locale}
-        session={session}
-        terminalContext={terminalContext}
-        interfaceMode={saleInterfaceMode}
-        onBack={() => setScreen("home")}
-        onLogout={handleLogout}
-        onLocaleChange={handleLocaleChange}
-        onOpenCustomerReceivables={(customerId?: string) => {
-          setReceivablesCustomerId(customerId);
-          setReceivablesReturnScreen("sale");
-          setScreen("customerReceivables");
-        }}
-        onOpenSalesDocumentWindow={window.tpvDesktop?.salesDocuments
-          ? () => {
-              void window.tpvDesktop?.salesDocuments?.open({
-                locale,
-                session,
-                terminalContext,
-              }).then((result) => {
-                if (!result.ok) window.alert(result.message);
-              });
-            }
-          : undefined}
-      />
+      <>
+        <SaleScreen
+          app="venta"
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          interfaceMode={saleInterfaceMode}
+          onBack={() => setScreen("home")}
+          onLogout={handleLogout}
+          onLocaleChange={handleLocaleChange}
+          onOpenCustomerReceivables={(customerId?: string) => {
+            setReceivablesCustomerId(customerId);
+            setReceivablesReturnScreen("sale");
+            setScreen("customerReceivables");
+          }}
+          onOpenSalesDocumentWindow={window.tpvDesktop?.salesDocuments
+            ? () => {
+                setAppNotice(null);
+                void window.tpvDesktop?.salesDocuments?.open({
+                  locale,
+                  session,
+                  terminalContext,
+                }).then((result) => {
+                  if (!result.ok) {
+                    setAppNotice(locale === "en"
+                      ? "The sales document window could not be opened."
+                      : locale === "zh"
+                        ? "无法打开销售单据窗口。"
+                        : "No se pudo abrir la ventana de venta documental.");
+                  }
+                }).catch(() => {
+                  setAppNotice(locale === "en"
+                    ? "The sales document window could not be opened."
+                    : locale === "zh"
+                      ? "无法打开销售单据窗口。"
+                      : "No se pudo abrir la ventana de venta documental.");
+                });
+              }
+            : undefined}
+        />
+        {appNotice && (
+          <aside className="app-notice-toast" role="alert" aria-live="assertive">
+            <span>{appNotice}</span>
+            <button type="button" onClick={() => setAppNotice(null)}>
+              {locale === "en" ? "Close" : locale === "zh" ? "关闭" : "Cerrar"}
+            </button>
+          </aside>
+        )}
+      </>
     );
   }
 

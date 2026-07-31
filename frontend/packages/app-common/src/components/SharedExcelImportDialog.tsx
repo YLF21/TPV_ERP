@@ -8,6 +8,7 @@ import {
   excelColumnIndexToLetter,
   excelColumnLetterToIndex,
   excelImportAccept,
+  findExcelColumn,
   readExcelSheet,
   type ExcelCell,
   type ExcelColumnMapping,
@@ -15,6 +16,12 @@ import {
   type ExcelImportProductIdentity,
   type ExcelSheet
 } from "./excelImport";
+import {
+  extractExcelFormulaMetadata,
+  isExcelFormulaCell,
+  recalculateExcelFormulas,
+  type ExcelFormulaMetadata
+} from "./excelFormula";
 
 type ProductMappingKey = keyof ExcelColumnMapping;
 
@@ -23,6 +30,11 @@ export type SharedExcelImportUpdateField = ProductMappingKey;
 export type SharedExcelImportAcceptedRow = ExcelImportClassifiedRow & {
   quantity: number;
   updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>>;
+};
+
+export type SharedExcelImportMetadata = {
+  fileName?: string;
+  formulas: ExcelFormulaMetadata[];
 };
 
 type SharedExcelImportPanel = "mapping" | "summary" | "missing" | "priceChanged" | "accepted" | "errors";
@@ -37,7 +49,7 @@ type SharedExcelImportDialogProps = {
   title?: string;
   requireQuantity?: boolean;
   onClose: () => void;
-  onImportAccepted: (rows: SharedExcelImportAcceptedRow[]) => void;
+  onImportAccepted: (rows: SharedExcelImportAcceptedRow[], metadata: SharedExcelImportMetadata) => void;
   currentPurchasePrice?: (product: ExcelImportProductIdentity) => string | number | null | undefined;
   onAddMissingAuto?: (rows: ExcelImportClassifiedRow[]) => Promise<ExcelImportProductIdentity[] | void> | ExcelImportProductIdentity[] | void;
   onAddMissingManual?: (rows: ExcelImportClassifiedRow[]) => void;
@@ -83,21 +95,21 @@ const productMappingFields: MappingField[] = [
 ];
 
 const sharedExcelFieldOrder: MappingField[] = [
-  field("code", "Código", "Code", "编码", ["codigo", "code"]),
-  field("barcode", "Código de barras", "Barcode", "条码", ["codigo de barras", "codigo barras", "barcode", "ean"]),
-  field("name", "Nombre", "Name", "名称", ["nombre", "producto", "product", "name"], "name"),
-  field("description", "Descripción", "Description", "描述", ["descripcion", "description"], "description"),
+  field("code", "Código", "Code", "编码", ["codigo", "codigo producto", "codigo articulo", "code", "sku", "referencia", "ref"]),
+  field("barcode", "Código de barras", "Barcode", "条码", ["codigo de barras", "codigo barras", "barcode", "ean", "ean13", "gtin"]),
+  field("name", "Nombre", "Name", "名称", ["nombre", "nombre producto", "producto", "product", "name", "denominacion"], "name"),
+  field("description", "Descripción", "Description", "描述", ["descripcion", "descripcion larga", "description", "detalle"], "description"),
   field("quantity", "Cantidad", "Quantity", "数量", ["cantidad", "quantity", "unidades", "uds"]),
-  field("purchaseDiscountPercent", "Descuento de compra", "Purchase discount", "采购折扣", ["descuento compra", "purchase discount", "purchase discount percent"], "purchaseDiscountPercent"),
+  field("purchaseDiscountPercent", "Descuento de compra", "Purchase discount", "采购折扣", ["descuento", "descuento compra", "descuento de compra", "descuento lineal", "dto", "dto compra", "purchase discount", "purchase discount percent"], "purchaseDiscountPercent"),
   field("productType", "Tipo de producto", "Product type", "商品类型", ["tipo producto", "tipo", "product type", "producttype"], "productType"),
   field("familyId", "Familia", "Family", "类别", ["familia", "family", "family id", "familyid"], "familyId"),
   field("subfamilyId", "Subfamilia", "Subfamily", "子类别", ["subfamilia", "subfamily", "subfamily id", "subfamilyid"], "subfamilyId"),
-  field("purchasePrice", "Precio de compra", "Purchase price", "采购价", ["precio compra", "compra", "purchase price", "cost"], "purchasePrice"),
-  field("salePrice", "Precio de venta", "Sale price", "售价", ["precio venta", "venta", "sale price", "price"], "salePrice"),
-  field("memberPrice", "Precio de socio", "Member price", "会员价", ["precio socio", "member price", "memberprice"], "memberPrice"),
-  field("wholesalePrice", "Precio mayorista", "Wholesale price", "批发价", ["precio mayor", "wholesale price", "wholesaleprice"], "wholesalePrice"),
-  field("offerPrice", "Precio de oferta", "Offer price", "促销价", ["precio oferta", "offer price", "offerprice"], "offerPrice"),
-  field("offerDiscountPercent", "Descuento de oferta %", "Offer discount %", "促销折扣%", ["descuento oferta", "descuento oferta %", "offer discount", "offer discount percent"], "offerDiscountPercent"),
+  field("purchasePrice", "Precio de compra", "Purchase price", "采购价", ["precio", "precio compra", "precio de compra", "precio coste", "precio de coste", "compra", "coste", "purchase price", "cost"], "purchasePrice"),
+  field("salePrice", "Precio de venta", "Sale price", "售价", ["precio venta", "precio de venta", "venta", "sale price", "price"], "salePrice"),
+  field("memberPrice", "Precio de socio", "Member price", "会员价", ["precio socio", "precio de socio", "member price", "memberprice"], "memberPrice"),
+  field("wholesalePrice", "Precio mayorista", "Wholesale price", "批发价", ["precio mayor", "precio mayorista", "precio de mayorista", "wholesale price", "wholesaleprice"], "wholesalePrice"),
+  field("offerPrice", "Precio de oferta", "Offer price", "促销价", ["precio oferta", "precio de oferta", "offer price", "offerprice"], "offerPrice"),
+  field("offerDiscountPercent", "Descuento de oferta %", "Offer discount %", "促销折扣%", ["descuento oferta", "descuento de oferta", "descuento oferta %", "descuento de oferta %", "offer discount", "offer discount percent"], "offerDiscountPercent"),
   field("offerActive", "Oferta activa", "Offer active", "促销启用", ["oferta activa", "offer active", "offeractive"], "offerActive"),
   field("offerFrom", "Oferta desde", "Offer from", "促销开始", ["oferta desde", "offer from", "offerfrom"], "offerFrom"),
   field("offerUntil", "Oferta hasta", "Offer until", "促销结束", ["oferta hasta", "offer until", "offeruntil"], "offerUntil"),
@@ -115,6 +127,16 @@ type SharedExcelImportStoredSettings = {
   quantityColumn: string;
   startRow: number;
   updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>>;
+  options: SharedExcelImportOptions;
+};
+
+type SharedExcelImportOptions = {
+  autoAddMissing: boolean;
+  generateSummaryDocument: boolean;
+  showOnlyImported: boolean;
+  skipZeroPriceUpdate: boolean;
+  updateSupplier: boolean;
+  priceSource: SharedExcelImportPriceSource;
 };
 
 type DragScrollState = {
@@ -127,6 +149,10 @@ type DragScrollState = {
 };
 
 const excelImportStoragePrefix = "tpv.sharedExcelImport.v1";
+
+export function sharedExcelImportKeyAction(key: string) {
+  return key === "Escape" ? "close" : null;
+}
 
 export function SharedExcelImportDialog({
   open,
@@ -149,47 +175,48 @@ export function SharedExcelImportDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragScrollRef = useRef<DragScrollState | null>(null);
   const storedSettings = loadStoredExcelImportSettings(terminalContext);
+  const hasInitialSheet = Boolean(providedSheet?.length);
   const [localFile, setLocalFile] = useState<File | null>(null);
-  const [sheet, setSheet] = useState<ExcelSheet>(providedSheet ?? []);
-  const [mapping, setMapping] = useState<ExcelColumnMapping>(storedSettings.mapping);
-  const [quantityColumn, setQuantityColumn] = useState(storedSettings.quantityColumn);
-  const [startRow, setStartRow] = useState(storedSettings.startRow);
-  const [updateFields, setUpdateFields] = useState<Partial<Record<SharedExcelImportUpdateField, boolean>>>(storedSettings.updateFields);
+  const [sheet, setSheet] = useState<ExcelSheet>(() => normalizeExcelDecimalCells(providedSheet ?? []));
+  const [mapping, setMapping] = useState<ExcelColumnMapping>(hasInitialSheet ? storedSettings.mapping : {});
+  const [quantityColumn, setQuantityColumn] = useState(hasInitialSheet ? storedSettings.quantityColumn : "");
+  const [startRow, setStartRow] = useState(hasInitialSheet ? storedSettings.startRow : 2);
+  const [updateFields, setUpdateFields] = useState<Partial<Record<SharedExcelImportUpdateField, boolean>>>(
+    hasInitialSheet ? storedSettings.updateFields : {}
+  );
   const [status, setStatus] = useState("");
   const [activePanel, setActivePanel] = useState<SharedExcelImportPanel>(initialPanel);
   const [refreshToken, setRefreshToken] = useState(0);
   const [createdProducts, setCreatedProducts] = useState<ExcelImportProductIdentity[]>([]);
-  const [autoAddMissing, setAutoAddMissing] = useState(true);
-  const [generateSummaryDocument, setGenerateSummaryDocument] = useState(false);
-  const [showOnlyImported, setShowOnlyImported] = useState(false);
-  const [skipZeroPriceUpdate, setSkipZeroPriceUpdate] = useState(true);
-  const [updateSupplier, setUpdateSupplier] = useState(false);
-  const [priceSource, setPriceSource] = useState<SharedExcelImportPriceSource>("purchasePrice");
+  const [autoAddMissing, setAutoAddMissing] = useState(storedSettings.options.autoAddMissing);
+  const [generateSummaryDocument, setGenerateSummaryDocument] = useState(storedSettings.options.generateSummaryDocument);
+  const [showOnlyImported, setShowOnlyImported] = useState(storedSettings.options.showOnlyImported);
+  const [skipZeroPriceUpdate, setSkipZeroPriceUpdate] = useState(storedSettings.options.skipZeroPriceUpdate);
+  const [updateSupplier, setUpdateSupplier] = useState(storedSettings.options.updateSupplier);
+  const [priceSource, setPriceSource] = useState<SharedExcelImportPriceSource>(storedSettings.options.priceSource);
+  const [editingSheet, setEditingSheet] = useState(false);
   const selectedFile = localFile ?? file ?? null;
 
   useEffect(() => {
     if (!open) {
       setSheet([]);
       const nextStoredSettings = loadStoredExcelImportSettings(terminalContext);
-      setMapping(nextStoredSettings.mapping);
-      setQuantityColumn(nextStoredSettings.quantityColumn);
-      setStartRow(nextStoredSettings.startRow);
-      setUpdateFields(nextStoredSettings.updateFields);
+      setMapping({});
+      setQuantityColumn("");
+      setStartRow(2);
+      setUpdateFields({});
       setStatus("");
       setCreatedProducts([]);
       setActivePanel(initialPanel);
       setLocalFile(null);
-      setAutoAddMissing(true);
-      setGenerateSummaryDocument(false);
-      setShowOnlyImported(false);
-      setSkipZeroPriceUpdate(true);
-      setUpdateSupplier(false);
-      setPriceSource("purchasePrice");
+      applyStoredOptions(nextStoredSettings.options);
+      setEditingSheet(false);
       setAppliedRows(null);
       return;
     }
     if (providedSheet) {
-      setSheet(providedSheet);
+      setSheet(normalizeExcelDecimalCells(providedSheet));
+      setEditingSheet(false);
       return;
     }
     if (!selectedFile) {
@@ -200,7 +227,9 @@ export function SharedExcelImportDialog({
     void readExcelSheet(selectedFile)
       .then((nextSheet) => {
         if (!cancelled) {
-          setSheet(nextSheet);
+          const normalizedSheet = normalizeExcelDecimalCells(nextSheet);
+          setSheet(normalizedSheet);
+          setEditingSheet(false);
           setAppliedRows(null);
           setStatus("");
         }
@@ -220,17 +249,43 @@ export function SharedExcelImportDialog({
       return;
     }
     const nextStoredSettings = loadStoredExcelImportSettings(terminalContext);
-    setMapping(nextStoredSettings.mapping);
-    setQuantityColumn(nextStoredSettings.quantityColumn);
-    setStartRow(nextStoredSettings.startRow);
-    setUpdateFields(nextStoredSettings.updateFields);
+    applyStoredOptions(nextStoredSettings.options);
   }, [open, terminalContext]);
+
+  useEffect(() => {
+    if (!open || sheet.length === 0) {
+      return;
+    }
+    const nextStoredSettings = loadStoredExcelImportSettings(terminalContext);
+    const detected = detectExcelHeaderMapping(sheet);
+    setMapping({ ...nextStoredSettings.mapping, ...detected.mapping });
+    setQuantityColumn(detected.quantityColumn || nextStoredSettings.quantityColumn);
+    setStartRow(nextStoredSettings.startRow);
+    setUpdateFields({ ...nextStoredSettings.updateFields, ...detected.updateFields });
+    setAppliedRows(null);
+  }, [open, sheet, terminalContext]);
 
   useEffect(() => {
     if (open) {
       setActivePanel(initialPanel);
     }
   }, [file, initialPanel, open, providedSheet]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (sharedExcelImportKeyAction(event.key) !== "close") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape, true);
+    return () => window.removeEventListener("keydown", closeOnEscape, true);
+  }, [onClose, open]);
 
   const importProducts = useMemo(() => [...products, ...createdProducts], [createdProducts, products]);
   const previewRows = useMemo(() => classifyExcelProductRows(
@@ -264,23 +319,89 @@ export function SharedExcelImportDialog({
     }));
   }
 
+  function currentImportMetadata(): SharedExcelImportMetadata {
+    return {
+      fileName: selectedFile?.name,
+      formulas: extractExcelFormulaMetadata(sheet)
+    };
+  }
+
+  function currentStoredSettings(): SharedExcelImportStoredSettings {
+    return {
+      mapping,
+      quantityColumn,
+      startRow,
+      updateFields,
+      options: {
+        autoAddMissing,
+        generateSummaryDocument,
+        showOnlyImported,
+        skipZeroPriceUpdate,
+        updateSupplier,
+        priceSource
+      }
+    };
+  }
+
+  function applyStoredOptions(options: SharedExcelImportOptions) {
+    setAutoAddMissing(options.autoAddMissing);
+    setGenerateSummaryDocument(options.generateSummaryDocument);
+    setShowOnlyImported(options.showOnlyImported);
+    setSkipZeroPriceUpdate(options.skipZeroPriceUpdate);
+    setUpdateSupplier(options.updateSupplier);
+    setPriceSource(options.priceSource);
+  }
+
   function importAccepted() {
-    saveStoredExcelImportSettings(terminalContext, { mapping, quantityColumn, startRow, updateFields });
-    onImportAccepted(acceptedRowsWithQuantity([...acceptedRows, ...priceChangedRows]));
+    saveStoredExcelImportSettings(terminalContext, currentStoredSettings());
+    onImportAccepted(
+      acceptedRowsWithQuantity([...acceptedRows, ...priceChangedRows]),
+      currentImportMetadata()
+    );
     onClose();
   }
 
   function clearMapping() {
+    const defaults = defaultExcelImportOptions();
     setMapping({});
     setQuantityColumn("");
     setStartRow(2);
     setUpdateFields({});
+    applyStoredOptions(defaults);
+    clearStoredExcelImportSettings(terminalContext);
     setAppliedRows(null);
     setStatus(t("sharedExcel.status.cleared"));
   }
 
+  function clearFile() {
+    setSheet([]);
+    setLocalFile(null);
+    setMapping({});
+    setQuantityColumn("");
+    setStartRow(2);
+    setUpdateFields({});
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    setAppliedRows(null);
+    setActivePanel("mapping");
+    setEditingSheet(false);
+    setStatus(t("sharedExcel.status.fileCleared"));
+  }
+
+  function toggleSheetEditing() {
+    if (editingSheet) {
+      setSheet((current) => normalizeExcelDecimalCells(current));
+      setEditingSheet(false);
+      setStatus(t("sharedExcel.status.editsSaved"));
+      return;
+    }
+    setEditingSheet(true);
+    setStatus("");
+  }
+
   async function applyMapping() {
-    saveStoredExcelImportSettings(terminalContext, { mapping, quantityColumn, startRow, updateFields });
+    saveStoredExcelImportSettings(terminalContext, currentStoredSettings());
     let nextRows = previewRows;
     if (previewMissingRows.length > 0) {
       if (autoAddMissing && onAddMissingAuto) {
@@ -312,16 +433,6 @@ export function SharedExcelImportDialog({
       changed: nextPriceChangedRows.length,
       errors: nextErrorRows.length
     }));
-  }
-
-  function openExcelFile(fileToOpen: File | null) {
-    if (!fileToOpen) {
-      fileInputRef.current?.click();
-      return;
-    }
-    const url = URL.createObjectURL(fileToOpen);
-    window.open(url, "_blank", "noopener,noreferrer");
-    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
   function startDragScroll(event: PointerEvent<HTMLDivElement>) {
@@ -382,6 +493,7 @@ export function SharedExcelImportDialog({
             className="shared-excel-file-input"
             onChange={(event) => {
               setLocalFile(event.currentTarget.files?.[0] ?? null);
+              setEditingSheet(false);
               setAppliedRows(null);
               setActivePanel("mapping");
             }}
@@ -392,12 +504,19 @@ export function SharedExcelImportDialog({
           </div>
           <div className="shared-excel-toolbar-actions">
             <button type="button" onClick={() => fileInputRef.current?.click()}>{t("sharedExcel.open")}</button>
-            <button type="button" onClick={() => openExcelFile(selectedFile)}>{t("sharedExcel.openEdit")}</button>
+            <button
+              type="button"
+              disabled={sheet.length === 0}
+              aria-pressed={editingSheet}
+              onClick={toggleSheetEditing}
+            >
+              {t(editingSheet ? "sharedExcel.finishEdit" : "sharedExcel.openEdit")}
+            </button>
             <button type="button" onClick={() => {
               setRefreshToken((value) => value + 1);
               setStatus(t("sharedExcel.status.refreshed"));
             }}>{t("sharedExcel.refresh")}</button>
-            <button type="button" onClick={clearMapping}>{t("common.clear")}</button>
+            <button type="button" onClick={clearFile}>{t("sharedExcel.clearFile")}</button>
             <button type="button" onClick={onClose}>{t("sharedExcel.back")}</button>
           </div>
         </header>
@@ -412,7 +531,7 @@ export function SharedExcelImportDialog({
             </div>
           ) : (
             <div
-              className="shared-excel-preview"
+              className={`shared-excel-preview${editingSheet ? " shared-excel-preview--editing" : ""}`}
               onPointerCancel={endDragScroll}
               onPointerDown={startDragScroll}
               onPointerMove={moveDragScroll}
@@ -426,11 +545,40 @@ export function SharedExcelImportDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {sheet.slice(0, 12).map((row, rowIndex) => (
+                  {sheet.map((row, rowIndex) => (
                     <tr key={rowIndex}>
                       <th>{rowIndex + 1}</th>
                       {Array.from({ length: sheet[0]?.length ?? row.length }).map((_, cellIndex) => (
-                        <td key={cellIndex}>{excelCellText(row[cellIndex])}</td>
+                        <td key={cellIndex}>
+                          {editingSheet ? (
+                            <input
+                              className="shared-excel-cell-input"
+                              aria-label={`${excelColumnIndexToLetter(cellIndex)}${rowIndex + 1}`}
+                              size={Math.min(50, Math.max(8, excelCellText(row[cellIndex]).length))}
+                              value={excelCellText(row[cellIndex])}
+                              onChange={(event) => {
+                                setSheet((current) => updateExcelSheetCell(
+                                  current,
+                                  rowIndex,
+                                  cellIndex,
+                                  event.target.value
+                                ));
+                                setAppliedRows(null);
+                              }}
+                              onBlur={(event) => {
+                                const normalized = normalizeExcelDecimalValue(event.currentTarget.value);
+                                if (normalized !== event.currentTarget.value) {
+                                  setSheet((current) => updateExcelSheetCell(
+                                    current,
+                                    rowIndex,
+                                    cellIndex,
+                                    normalized
+                                  ));
+                                }
+                              }}
+                            />
+                          ) : excelCellText(row[cellIndex])}
+                        </td>
                       ))}
                     </tr>
                   ))}
@@ -499,7 +647,7 @@ export function SharedExcelImportDialog({
                 ))}
               </div>
               <div className="shared-excel-config-actions">
-                <button type="button" onClick={clearMapping}>{t("common.clear")}</button>
+                <button type="button" onClick={clearMapping}>{t("sharedExcel.clearConfiguration")}</button>
                 <button type="button" onClick={() => void applyMapping()}>{t("common.apply")}</button>
               </div>
             </div>
@@ -532,7 +680,10 @@ export function SharedExcelImportDialog({
               {activePanel === "priceChanged" && renderResultTable({
                 title: t("sharedExcel.result.purchaseChanged"),
                 rows: priceChangedRows,
-                actions: <button type="button" onClick={() => onImportAccepted(acceptedRowsWithQuantity(priceChangedRows))}>{t("sharedExcel.update")}</button>,
+                actions: <button type="button" onClick={() => onImportAccepted(
+                  acceptedRowsWithQuantity(priceChangedRows),
+                  currentImportMetadata()
+                )}>{t("sharedExcel.update")}</button>,
                 currentPurchasePrice,
                 showPurchasePriceDiff: true,
                 t
@@ -589,6 +740,86 @@ function fieldLabel(field: MappingField, locale: LocaleCode) {
   return field.translatedLabels?.[locale] ?? field.label;
 }
 
+export function detectExcelHeaderMapping(sheet: ExcelSheet): {
+  mapping: ExcelColumnMapping;
+  quantityColumn: string;
+  updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>>;
+} {
+  const headers = (sheet[0] ?? []).map(excelCellText);
+  const mapping: ExcelColumnMapping = {};
+  const updateFields: Partial<Record<SharedExcelImportUpdateField, boolean>> = {};
+  let quantityColumn = "";
+
+  sharedExcelFieldOrder.forEach((mappingField) => {
+    const columnIndex = findExcelColumn(headers, mappingField.aliases);
+    if (columnIndex < 0) {
+      return;
+    }
+    const column = excelColumnIndexToLetter(columnIndex);
+    if (mappingField.key === "quantity") {
+      quantityColumn = column;
+    } else {
+      mapping[mappingField.key] = column;
+    }
+    if (mappingField.updateKey) {
+      updateFields[mappingField.updateKey] = true;
+    }
+  });
+
+  return { mapping, quantityColumn, updateFields };
+}
+
+export function updateExcelSheetCell(
+  sheet: ExcelSheet,
+  rowIndex: number,
+  columnIndex: number,
+  value: ExcelCell
+): ExcelSheet {
+  const currentCell = sheet[rowIndex]?.[columnIndex];
+  const nextValue = typeof value === "string" && value.trim().startsWith("=")
+    ? {
+        kind: "formula" as const,
+        formula: value.trim().slice(1),
+        value: isExcelFormulaCell(currentCell) ? currentCell.value : excelCellText(currentCell)
+      }
+    : value;
+  const updatedSheet = sheet.map((row, currentRowIndex) => currentRowIndex === rowIndex
+    ? Array.from(
+        { length: Math.max(row.length, columnIndex + 1) },
+        (_, currentColumnIndex) => currentColumnIndex === columnIndex ? nextValue : row[currentColumnIndex] ?? ""
+      )
+    : row
+  );
+  return normalizeExcelDecimalCells(recalculateExcelFormulas(updatedSheet));
+}
+
+export function normalizeExcelDecimalValue(value: ExcelCell): ExcelCell {
+  if (isExcelFormulaCell(value)) {
+    return {
+      ...value,
+      value: normalizeExcelDecimalValue(value.value)
+    };
+  }
+  if (typeof value !== "number" && typeof value !== "string") {
+    return value;
+  }
+  const text = String(value).trim();
+  if (!/^-?\d+[.,]\d{3,}$/.test(text)) {
+    return value;
+  }
+  const decimalSeparator = text.includes(",") ? "," : ".";
+  const numericValue = Number(text.replace(",", "."));
+  if (!Number.isFinite(numericValue)) {
+    return value;
+  }
+  const rounded = (Math.round((numericValue + Number.EPSILON) * 100) / 100).toFixed(2);
+  return decimalSeparator === "," ? rounded.replace(".", ",") : rounded;
+}
+
+export function normalizeExcelDecimalCells(sheet: ExcelSheet): ExcelSheet {
+  return sheet.map((row) => row.map(normalizeExcelDecimalValue));
+}
+
 function summaryItems(t: (key: string) => string) {
   return Array.from({ length: 9 }, (_, index) => t(`sharedExcel.summary.${index + 1}`));
 }
@@ -624,7 +855,19 @@ function defaultStoredExcelImportSettings(): SharedExcelImportStoredSettings {
     mapping: {},
     quantityColumn: "",
     startRow: 2,
-    updateFields: {}
+    updateFields: {},
+    options: defaultExcelImportOptions()
+  };
+}
+
+function defaultExcelImportOptions(): SharedExcelImportOptions {
+  return {
+    autoAddMissing: true,
+    generateSummaryDocument: false,
+    showOnlyImported: false,
+    skipZeroPriceUpdate: true,
+    updateSupplier: false,
+    priceSource: "purchasePrice"
   };
 }
 
@@ -640,11 +883,22 @@ function loadStoredExcelImportSettings(terminalContext?: Pick<TerminalContext, "
       return defaultStoredExcelImportSettings();
     }
     const parsed = JSON.parse(raw) as Partial<SharedExcelImportStoredSettings>;
+    const defaultOptions = defaultExcelImportOptions();
+    const parsedOptions: Partial<SharedExcelImportOptions> =
+      parsed.options && typeof parsed.options === "object" ? parsed.options : {};
     return {
       mapping: parsed.mapping && typeof parsed.mapping === "object" ? parsed.mapping : {},
       quantityColumn: typeof parsed.quantityColumn === "string" ? parsed.quantityColumn : "",
       startRow: typeof parsed.startRow === "number" && Number.isFinite(parsed.startRow) ? Math.max(2, parsed.startRow) : 2,
-      updateFields: parsed.updateFields && typeof parsed.updateFields === "object" ? parsed.updateFields : {}
+      updateFields: parsed.updateFields && typeof parsed.updateFields === "object" ? parsed.updateFields : {},
+      options: {
+        autoAddMissing: booleanSetting(parsedOptions.autoAddMissing, defaultOptions.autoAddMissing),
+        generateSummaryDocument: booleanSetting(parsedOptions.generateSummaryDocument, defaultOptions.generateSummaryDocument),
+        showOnlyImported: booleanSetting(parsedOptions.showOnlyImported, defaultOptions.showOnlyImported),
+        skipZeroPriceUpdate: booleanSetting(parsedOptions.skipZeroPriceUpdate, defaultOptions.skipZeroPriceUpdate),
+        updateSupplier: booleanSetting(parsedOptions.updateSupplier, defaultOptions.updateSupplier),
+        priceSource: isExcelImportPriceSource(parsedOptions.priceSource) ? parsedOptions.priceSource : defaultOptions.priceSource
+      }
     };
   } catch {
     return defaultStoredExcelImportSettings();
@@ -660,6 +914,26 @@ function saveStoredExcelImportSettings(
   } catch {
     // Local storage is only used to remember the terminal template.
   }
+}
+
+function clearStoredExcelImportSettings(terminalContext?: Pick<TerminalContext, "terminalCode" | "terminalId">) {
+  try {
+    globalThis.localStorage.removeItem(excelImportStorageKey(terminalContext));
+  } catch {
+    // Local storage may be unavailable outside the browser.
+  }
+}
+
+function booleanSetting(value: unknown, fallback: boolean) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function isExcelImportPriceSource(value: unknown): value is SharedExcelImportPriceSource {
+  return value === "purchasePrice"
+    || value === "salePrice"
+    || value === "memberPrice"
+    || value === "wholesalePrice"
+    || value === "offerPrice";
 }
 
 function renderPanelTab(

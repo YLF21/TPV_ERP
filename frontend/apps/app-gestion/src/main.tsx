@@ -232,6 +232,10 @@ function GestionScreen({
       key: `stock.warehouse.${warehouseSection}`,
       label: t(warehouseSection === "input"
         ? "stock.nav.inputWarehouse"
+        : warehouseSection === "purchaseDeliveryNotes"
+          ? "warehouseScreen.purchaseDeliveryNotes"
+          : warehouseSection === "purchaseInvoices"
+            ? "warehouseScreen.purchaseInvoices"
         : warehouseSection === "output"
           ? "stock.nav.outputWarehouse"
           : "warehouseScreen.goodsCheck"),

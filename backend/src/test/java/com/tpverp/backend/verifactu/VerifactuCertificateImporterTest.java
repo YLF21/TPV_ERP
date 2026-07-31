@@ -23,7 +23,8 @@ class VerifactuCertificateImporterTest {
     void createPkcs12() throws Exception {
         var path = directory.resolve("test.p12");
         var process = new ProcessBuilder(
-                keytool(), "-genkeypair", "-alias", "test", "-storetype", "PKCS12",
+                KeytoolTestSupport.executable(),
+                "-genkeypair", "-alias", "test", "-storetype", "PKCS12",
                 "-keystore", path.toString(), "-storepass", "secreto", "-keypass", "secreto",
                 "-keyalg", "RSA", "-dname", "CN=Company,SERIALNUMBER=IDCES-B12345674",
                 "-validity", "365", "-noprompt")
@@ -99,9 +100,5 @@ class VerifactuCertificateImporterTest {
         return new VerifactuCertificateImporter(
                 new VerifactuPkcs12KeyStoreLoader(), new CertificateTaxIdExtractor(),
                 new VerifactuCertificateValidator(Clock.systemUTC()));
-    }
-
-    private static String keytool() {
-        return Path.of(System.getProperty("java.home"), "bin", "keytool.exe").toString();
     }
 }

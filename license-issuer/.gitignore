@@ -3,3 +3,5 @@ target/
 *.p12
 *.pfx
 *.license.json
+keys/*.json
+keys/*.pem

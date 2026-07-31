@@ -3,7 +3,11 @@ import { ApiError, apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
 import { ErpSelect } from "./ErpSelect";
-import { SharedExcelImportDialog, type SharedExcelImportAcceptedRow } from "./SharedExcelImportDialog";
+import {
+  SharedExcelImportDialog,
+  type SharedExcelImportAcceptedRow,
+  type SharedExcelImportMetadata
+} from "./SharedExcelImportDialog";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -99,6 +103,7 @@ export type WarehouseDocumentDraft = {
   date: string;
   concept: string;
   lines: WarehouseDocumentLineDraft[];
+  excelImport?: SharedExcelImportMetadata | null;
 };
 
 const warehouseDocumentColumns = [
@@ -155,7 +160,8 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
       supplierId: draft.partnerId || undefined,
       origin: draft.partnerText,
       concept: draft.concept,
-      lines
+      lines,
+      ...(draft.excelImport ? { excelImport: draft.excelImport } : {})
     };
   }
   return {
@@ -163,7 +169,8 @@ export function buildWarehouseDocumentCommand(mode: WarehouseDocumentMode, draft
     date: draft.date,
     destination: draft.partnerText,
     concept: draft.concept,
-    lines
+    lines,
+    ...(draft.excelImport ? { excelImport: draft.excelImport } : {})
   };
 }
 
@@ -257,6 +264,7 @@ export function WarehouseDocumentDialog({
   const [printing, setPrinting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
   const [excelCreatedProducts, setExcelCreatedProducts] = useState<WarehouseImportProduct[]>([]);
+  const [excelImportMetadata, setExcelImportMetadata] = useState<SharedExcelImportMetadata | null>(null);
   const [manualMissingRows, setManualMissingRows] = useState<ExcelImportClassifiedRow[]>([]);
   const [manualMissingIndex, setManualMissingIndex] = useState(0);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
@@ -323,6 +331,7 @@ export function WarehouseDocumentDialog({
     setPrinting(false);
     setExcelImportOpen(false);
     setExcelCreatedProducts([]);
+    setExcelImportMetadata(null);
     setManualMissingRows([]);
     setManualMissingIndex(0);
     setFileMenuOpen(false);
@@ -334,6 +343,24 @@ export function WarehouseDocumentDialog({
     setPriceMenuOpen(false);
   });
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      if (excelImportOpen || manualMissingRows.length > 0) {
+        return;
+      }
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [excelImportOpen, manualMissingRows.length, onClose, open]);
+
   if (!open) {
     return null;
   }
@@ -341,10 +368,10 @@ export function WarehouseDocumentDialog({
   const title = titleOverride ?? t(mode === "input" ? "stock.nav.inputWarehouse" : "stock.nav.outputWarehouse");
   const partnerLabel = t(mode === "input" ? "warehouseDocument.supplier" : "warehouseDocument.customer");
   const partnerOptions = mode === "input" ? suppliers : customers;
-  const draft = { warehouseId, partnerId, partnerText, date, concept, lines };
-  const canSaveDraft = canConfirmWarehouseDocument(draft) && !submitting && Boolean(token);
-  const canSubmitConfirmation = canConfirm && canSaveDraft;
+  const draft = { warehouseId, partnerId, partnerText, date, concept, lines, excelImport: excelImportMetadata };
   const readOnly = documentStatus !== "BORRADOR";
+  const canSaveDraft = canConfirmWarehouseDocument(draft) && !submitting && Boolean(token) && !readOnly;
+  const canSubmitConfirmation = canConfirm && canSaveDraft;
   const isEditing = Boolean(documentId);
   const importProducts = [...products, ...excelCreatedProducts];
   const manualProduct = importProducts.find((product) => product.id === manualProductId);
@@ -358,11 +385,12 @@ export function WarehouseDocumentDialog({
   }, 0);
   const documentTotal = documentTotalAfterDiscount(documentSubtotal, documentDiscountPercent);
 
-  function importAcceptedExcelRows(rows: SharedExcelImportAcceptedRow[]) {
+  function importAcceptedExcelRows(rows: SharedExcelImportAcceptedRow[], metadata: SharedExcelImportMetadata) {
     const nextLines = rows.map((row, index) => (
       createManualWarehouseDocumentLine(row.product?.id ?? "", row.quantity, importProducts, index + 1)
     ));
     setLines(nextLines);
+              setExcelImportMetadata(metadata);
     setStatus(t("warehouseDocument.imported"));
     setExcelImportOpen(false);
   }
@@ -924,7 +952,7 @@ export function WarehouseDocumentDialog({
   }
 
   async function confirmDocument() {
-    if (!canConfirm || submitting || readOnly) {
+    if (!canSubmitConfirmation) {
       return;
     }
     setSubmitting(true);
@@ -968,10 +996,13 @@ export function WarehouseDocumentDialog({
         if (event.key === "Escape") {
           event.preventDefault();
           onClose();
+        } else if (event.key === "F9" && canSaveDraft) {
+          event.preventDefault();
+          void saveDraft();
         } else if (event.ctrlKey && event.key.toLocaleLowerCase() === "s") {
           event.preventDefault();
           void saveDraft();
-        } else if (event.key === "F10" && canConfirm) {
+        } else if (event.key === "F10" && canSubmitConfirmation) {
           event.preventDefault();
           void confirmDocument();
         } else {

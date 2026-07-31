@@ -40,7 +40,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(historyKey);
+      const stored = window.sessionStorage.getItem(historyKey);
       setUserHistory(stored ? JSON.parse(stored) : []);
     } catch {
       setUserHistory([]);
@@ -62,6 +62,9 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (backendOnline !== true) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -98,7 +101,14 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
     }
     const next = [value, ...userHistory.filter((user) => user !== value)].slice(0, 8);
     setUserHistory(next);
-    window.localStorage.setItem(historyKey, JSON.stringify(next));
+    window.sessionStorage.setItem(historyKey, JSON.stringify(next));
+  }
+
+  async function retryBackendConnection() {
+    setBackendOnline(null);
+    setError(null);
+    const online = await checkBackendConnection();
+    setBackendOnline(online);
   }
 
   function closeApplication() {
@@ -168,6 +178,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
           <span>{t("login.user")}</span>
           <input
             autoFocus
+            autoComplete="username"
             list={`${app}-login-history`}
             value={username}
             disabled={loading}
@@ -184,6 +195,7 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
           <span>{t("login.password")}</span>
           <input
             ref={passwordInputRef}
+            autoComplete="current-password"
             value={password}
             disabled={loading}
             onChange={(event) => setPassword(event.target.value)}
@@ -192,8 +204,15 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
           />
         </label>
         {error && <strong className="login-error">{error}</strong>}
-        <button type="submit" disabled={loading}>{loading ? t("login.loading") : t("login.submit")}</button>
+        <button
+          type="submit"
+          aria-describedby="login-server-status"
+          disabled={loading || backendOnline !== true}
+        >
+          {loading ? t("login.loading") : t("login.submit")}
+        </button>
         <span
+          id="login-server-status"
           className={`login-server-status ${
             backendOnline === false ? "offline" : backendOnline === null ? "checking" : "online"
           }`}
@@ -205,6 +224,15 @@ export function LoginScreen({ app, locale, terminalContext, onLocaleChange, onLo
               ? t("login.backendOnline")
               : t("login.backendOffline")}
         </span>
+        {backendOnline === false && (
+          <button
+            type="button"
+            className="login-retry-button"
+            onClick={() => void retryBackendConnection()}
+          >
+            {t("login.backendRetry")}
+          </button>
+        )}
       </form>
       {shutdownOpen && (
         <div className="shutdown-overlay" role="dialog" aria-modal="true" aria-labelledby="shutdown-title">

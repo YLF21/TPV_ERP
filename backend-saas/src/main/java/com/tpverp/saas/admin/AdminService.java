@@ -48,6 +48,7 @@ public class AdminService {
     private final SaasAdminUserRepository adminUsers;
     private final SaasTenantUserRepository tenantUsers;
     private final AdminPasswordHasher passwordHasher;
+    private final IntegrationSecretCipher integrationSecrets;
     private final AdminAuditService audit;
     private final JdbcTemplate jdbc;
     private final Clock clock;
@@ -62,6 +63,7 @@ public class AdminService {
             SaasAdminUserRepository adminUsers,
             SaasTenantUserRepository tenantUsers,
             AdminPasswordHasher passwordHasher,
+            IntegrationSecretCipher integrationSecrets,
             AdminAuditService audit,
             JdbcTemplate jdbc,
             Clock clock) {
@@ -73,6 +75,7 @@ public class AdminService {
         this.adminUsers = adminUsers;
         this.tenantUsers = tenantUsers;
         this.passwordHasher = passwordHasher;
+        this.integrationSecrets = integrationSecrets;
         this.audit = audit;
         this.jdbc = jdbc;
         this.clock = clock;
@@ -875,8 +878,9 @@ public class AdminService {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 insert into saas_integration_endpoint(
-                    id, company_id, name, integration_type, status, target_url, api_key, last_sync_at, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, null, ?)
+                    id, company_id, name, integration_type, status, target_url,
+                    api_key, api_key_encrypted, last_sync_at, created_at)
+                values (?, ?, ?, ?, ?, ?, null, ?, null, ?)
                 """,
                 id,
                 request.companyId(),
@@ -884,7 +888,7 @@ public class AdminService {
                 defaultText(request.integrationType(), "WEBHOOK"),
                 defaultText(request.status(), "ACTIVA"),
                 blankToNull(request.targetUrl()),
-                blankToNull(request.apiKey()),
+                integrationSecrets.encrypt(request.apiKey()),
                 clock.instant());
         audit.log("CREATE_INTEGRATION", "INTEGRATION", id.toString());
         return integration(id);
@@ -1311,13 +1315,13 @@ public class AdminService {
     private static String integrationSql(String where) {
         return """
                 select e.id, e.company_id, c.name as company_name, e.name, e.integration_type, e.status,
-                       e.target_url, e.api_key, e.last_sync_at, e.created_at
+                       e.target_url, e.api_key, e.api_key_encrypted, e.last_sync_at, e.created_at
                 from saas_integration_endpoint e
                 left join saas_company c on c.id = e.company_id
                 """ + where + " order by e.created_at desc";
     }
 
-    private static IntegrationEndpointResponse integration(ResultSet rs) throws SQLException {
+    private IntegrationEndpointResponse integration(ResultSet rs) throws SQLException {
         return new IntegrationEndpointResponse(
                 rs.getObject("id", UUID.class),
                 rs.getObject("company_id", UUID.class),
@@ -1326,7 +1330,7 @@ public class AdminService {
                 rs.getString("integration_type"),
                 rs.getString("status"),
                 rs.getString("target_url"),
-                previewSecret(rs.getString("api_key")),
+                previewSecret(integrationSecret(rs)),
                 rs.getTimestamp("last_sync_at") == null ? null : rs.getTimestamp("last_sync_at").toInstant(),
                 rs.getTimestamp("created_at").toInstant());
     }
@@ -1424,6 +1428,14 @@ public class AdminService {
             return "******";
         }
         return trimmed.substring(0, 3) + "..." + trimmed.substring(trimmed.length() - 3);
+    }
+
+    private String integrationSecret(ResultSet rs) throws SQLException {
+        String encrypted = rs.getString("api_key_encrypted");
+        if (encrypted != null && !encrypted.isBlank()) {
+            return integrationSecrets.decrypt(encrypted);
+        }
+        return rs.getString("api_key");
     }
 
     private List<CustomerHealthResponse> fallbackCustomerHealth(Instant now) {

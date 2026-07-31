@@ -8,6 +8,7 @@ const backendUrl = process.env.E2E_BACKEND_URL ?? "http://127.0.0.1:18080";
 const ventaUrl = process.env.E2E_VENTA_URL ?? "http://127.0.0.1:4173";
 const gestionUrl = process.env.E2E_GESTION_URL ?? "http://127.0.0.1:4174";
 const reuseExternalServers = process.env.E2E_REUSE_EXTERNAL_SERVERS === "true";
+const backendMavenCommand = process.env.E2E_MAVEN_COMMAND ?? ".\\mvnw.cmd";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -30,7 +31,7 @@ export default defineConfig({
   },
   webServer: reuseExternalServers ? undefined : [
     {
-      command: ".\\mvnw.cmd -q spring-boot:run",
+      command: `${backendMavenCommand} -q spring-boot:run`,
       cwd: path.join(repositoryRoot, "backend"),
       env: {
         ...process.env,

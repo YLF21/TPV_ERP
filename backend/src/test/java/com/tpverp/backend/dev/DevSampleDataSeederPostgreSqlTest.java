@@ -43,7 +43,7 @@ class DevSampleDataSeederPostgreSqlTest {
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> databaseUrl()
                 + (databaseUrl().contains("?") ? "&" : "?")
-                + "currentSchema=" + SCHEMA);
+                + "currentSchema=" + SCHEMA + ",public");
         registry.add("spring.datasource.username", () -> environment("TPV_TEST_DB_USERNAME", "tpv_erp_test"));
         registry.add("spring.datasource.password", () -> environment("TPV_TEST_DB_PASSWORD", "admin"));
         registry.add("spring.flyway.schemas", () -> SCHEMA);
