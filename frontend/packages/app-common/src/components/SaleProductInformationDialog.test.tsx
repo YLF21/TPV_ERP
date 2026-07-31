@@ -170,7 +170,9 @@ describe("SaleProductInformationDialog", () => {
 
     expect(await screen.findByText("Precio compra neto")).toBeVisible();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/management/product-1"))).toBe(true);
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/product-1/suppliers"))).toBe(true);
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/products/product-1/suppliers"))).toBe(true);
+    });
   });
 
   it("shows the add action without a shortcut label in touch mode", () => {
