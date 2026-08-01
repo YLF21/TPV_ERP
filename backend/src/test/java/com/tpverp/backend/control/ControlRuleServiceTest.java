@@ -69,7 +69,14 @@ class ControlRuleServiceTest {
                 });
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.MANUAL_PRICE_CHANGED)
                 .singleElement().extracting(ControlRuleService.RuleCatalogView::supported)
-                .isEqualTo(false);
+                .isEqualTo(true);
+        assertThat(catalog).filteredOn(
+                item -> item.type() == ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT)
+                .singleElement().satisfies(item -> {
+                    assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.PERCENTAGE);
+                    assertThat(item.defaultConfiguration()).containsEntry("thresholdPercent", 10);
+                    assertThat(item.supported()).isTrue();
+                });
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.MANUAL_NEGATIVE_QUANTITY)
                 .singleElement().satisfies(item -> {
                     assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
@@ -88,7 +95,7 @@ class ControlRuleServiceTest {
     }
 
     @Test
-    void rejectsDuplicateAndUnsupportedRuleBeforePersisting() {
+    void rejectsDuplicateRuleBeforePersisting() {
         when(rules.existsByStoreIdAndType(store.getId(), ControlAlertType.TICKET_CANCELLED))
                 .thenReturn(true);
 
@@ -97,12 +104,6 @@ class ControlRuleServiceTest {
                         ControlAlertType.TICKET_CANCELLED, true, Map.of()), authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ya tiene configurada");
-        assertThatThrownBy(() -> service.create(
-                new ControlRuleService.CreateRuleRequest(
-                        ControlAlertType.MANUAL_PRICE_CHANGED, false, Map.of()), authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("no esta disponible");
-
         verify(rules, never()).saveAndFlush(org.mockito.ArgumentMatchers.any());
     }
 

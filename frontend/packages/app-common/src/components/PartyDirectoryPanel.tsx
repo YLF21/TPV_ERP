@@ -12,6 +12,13 @@ import { useTableLayoutPreference } from "./useTableLayoutPreference";
 export type PartyDirectoryKind = "customers" | "members" | "suppliers";
 export type PartyStatusFilter = "all" | "active" | "inactive";
 export type PartyDirectoryColumnKey = "code" | "name" | "document" | "phone" | "email" | "location" | "balance" | "status";
+export type PartyDirectorySort = { column: PartyDirectoryColumnKey; direction: "asc" | "desc" };
+
+type PartyDirectoryPreferences = {
+  query: string;
+  statusFilter: PartyStatusFilter;
+  sort: PartyDirectorySort;
+};
 
 export type PartyDirectoryPanelProps = {
   app?: AppKind;
@@ -199,6 +206,52 @@ export function filterPartyDirectoryEntries(
   });
 }
 
+export function partyDirectoryPreferenceStorageKey(app: AppKind, username: string, kind: PartyDirectoryKind) {
+  return `tpv.party.directory.${app}.${username}.${kind}`;
+}
+
+function readPartyDirectoryPreferences(app: AppKind, username: string, kind: PartyDirectoryKind): PartyDirectoryPreferences {
+  const fallback: PartyDirectoryPreferences = { query: "", statusFilter: "all", sort: { column: "name", direction: "asc" } };
+  if (typeof localStorage === "undefined") return fallback;
+  try {
+    const saved = JSON.parse(localStorage.getItem(partyDirectoryPreferenceStorageKey(app, username, kind)) ?? "null") as Partial<PartyDirectoryPreferences> | null;
+    const validColumns = new Set(partyDirectoryColumnDefinitions(kind).map((column) => column.key));
+    return {
+      query: typeof saved?.query === "string" ? saved.query : "",
+      statusFilter: saved?.statusFilter === "active" || saved?.statusFilter === "inactive" ? saved.statusFilter : "all",
+      sort: saved?.sort && validColumns.has(saved.sort.column as PartyDirectoryColumnKey)
+        ? { column: saved.sort.column as PartyDirectoryColumnKey, direction: saved.sort.direction === "desc" ? "desc" : "asc" }
+        : fallback.sort
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function partyDirectorySortValue(entry: PartyDirectoryEntry, kind: PartyDirectoryKind, column: PartyDirectoryColumnKey): string | number {
+  const customer = entry as CustomerView;
+  const supplier = entry as SupplierView;
+  const member = entry as MemberDirectoryView;
+  if (column === "code") return kind === "suppliers" ? supplier.supplierId : kind === "members" ? member.numMember || member.memberId : customer.clientId;
+  if (column === "name") return kind === "suppliers" ? supplier.legalName : kind === "members" ? member.fiscalName : customer.fiscalName;
+  if (column === "document") return entry.documentNumber;
+  if (column === "phone") return entry.phone ?? "";
+  if (column === "email") return entry.email ?? "";
+  if (column === "balance") return Number(member.balance || 0);
+  if (column === "location") return `${customer.address?.city ?? supplier.address?.city ?? ""} ${customer.address?.province ?? supplier.address?.province ?? ""}`;
+  return entry.active ? 1 : 0;
+}
+
+export function sortPartyDirectoryEntries(entries: PartyDirectoryEntry[], kind: PartyDirectoryKind, sort: PartyDirectorySort, locale: LocaleCode) {
+  const multiplier = sort.direction === "asc" ? 1 : -1;
+  return [...entries].sort((left, right) => {
+    const leftValue = partyDirectorySortValue(left, kind, sort.column);
+    const rightValue = partyDirectorySortValue(right, kind, sort.column);
+    if (typeof leftValue === "number" && typeof rightValue === "number") return (leftValue - rightValue) * multiplier;
+    return String(leftValue).localeCompare(String(rightValue), locale, { numeric: true, sensitivity: "base" }) * multiplier;
+  });
+}
+
 export function availableMemberCustomers(customers: CustomerView[], query: string, locale: LocaleCode): CustomerView[] {
   const normalized = normalizedText(query.trim(), locale);
   return customers.filter((customer) => customer.active && !customer.isMember)
@@ -212,19 +265,24 @@ export function memberActivationPath(customerId: string, action: "activate" | "d
 
 export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOpenCustomerReceivables }: PartyDirectoryPanelProps) {
   const t = createTranslator(locale);
+  const initialPreferences = readPartyDirectoryPreferences(app, session.username, kind);
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [members, setMembers] = useState<MemberDirectoryView[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierView[]>([]);
   const [channels, setChannels] = useState<CommercialChannel[]>([]);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PartyStatusFilter>("all");
+  const [query, setQuery] = useState(initialPreferences.query);
+  const [statusFilter, setStatusFilter] = useState<PartyStatusFilter>(initialPreferences.statusFilter);
+  const [sort, setSort] = useState<PartyDirectorySort>(initialPreferences.sort);
   const [memberCandidateQuery, setMemberCandidateQuery] = useState("");
   const [memberCandidateId, setMemberCandidateId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [status, setStatus] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<PartyForm>(emptyPartyForm);
+  const [initialForm, setInitialForm] = useState<PartyForm>(emptyPartyForm);
+  const [formErrors, setFormErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const endpoint = kind === "suppliers" ? "/suppliers" : kind === "members" ? "/members" : "/customers";
@@ -300,8 +358,8 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     </span>;
   }
 
-  async function load() {
-    setLoading(true); setStatus("");
+  async function load(clearStatus = true) {
+    setLoading(true); setLoadError(false); if (clearStatus) setStatus("");
     try {
       if (isSupplier) setSuppliers(await apiRequest<SupplierView[]>(endpoint, { token: session.accessToken }));
       else if (isMember) {
@@ -319,33 +377,52 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
         ]);
         setCustomers(customerRows); setChannels(channelRows.filter((channel) => channel.active));
       }
-    } catch (error) { setStatus(error instanceof Error ? error.message : t("party.loadError")); }
+    } catch (error) { setLoadError(true); setStatus(error instanceof Error ? error.message : t("party.loadError")); }
     finally { setLoading(false); }
   }
 
   useEffect(() => { void load(); }, [kind, session.accessToken]);
 
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(
+        partyDirectoryPreferenceStorageKey(app, session.username, kind),
+        JSON.stringify({ query, statusFilter, sort })
+      );
+    } catch {
+      // The directory remains usable when browser storage is unavailable.
+    }
+  }, [app, kind, query, session.username, sort, statusFilter]);
+
   const rows = useMemo(
-    () => filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale),
-    [customers, members, suppliers, query, statusFilter, kind, locale]
+    () => sortPartyDirectoryEntries(filterPartyDirectoryEntries(entries, kind, query, statusFilter, locale), kind, sort, locale),
+    [customers, members, suppliers, query, statusFilter, kind, locale, sort]
   );
   const memberCandidates = useMemo(
     () => availableMemberCustomers(customers, memberCandidateQuery, locale),
     [customers, memberCandidateQuery, locale]
   );
 
-  function update<K extends keyof PartyForm>(field: K, value: PartyForm[K]) { setForm((current) => ({ ...current, [field]: value })); }
+  function update<K extends keyof PartyForm>(field: K, value: PartyForm[K]) {
+    setForm((current) => ({ ...current, [field]: value }));
+    setFormErrors((current) => current.filter((candidate) => candidate !== field));
+  }
   function openNew() {
-    setSelectedId(null); setForm(emptyPartyForm); setStatus("");
+    setSelectedId(null); setForm(emptyPartyForm); setInitialForm(emptyPartyForm); setFormErrors([]); setStatus("");
     setMemberCandidateQuery(""); setMemberCandidateId(null); setDialogOpen(true);
   }
   function openEntry(entry: PartyDirectoryEntry) {
     setSelectedId(entry.id);
-    if (!isMember) setForm(partyFormFromView(entry as CustomerView | SupplierView, isSupplier));
+    if (!isMember) {
+      const nextForm = partyFormFromView(entry as CustomerView | SupplierView, isSupplier);
+      setForm(nextForm); setInitialForm(nextForm); setFormErrors([]);
+    }
     setStatus(""); setDialogOpen(true);
   }
   function closeDialog() {
     if (!saving) {
+      if (!isMember && JSON.stringify(form) !== JSON.stringify(initialForm) && !window.confirm(t("party.confirm.discard"))) return;
       setDialogOpen(false); setSelectedId(null); setMemberCandidateId(null); setMemberCandidateQuery("");
     }
   }
@@ -353,14 +430,15 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (isMember) return;
-    if (validatePartyForm(form, isSupplier).length) { setStatus(t("party.form.invalid")); return; }
+    const nextErrors = validatePartyForm(form, isSupplier);
+    if (nextErrors.length) { setFormErrors(nextErrors); setStatus(t("party.form.invalid")); return; }
     setSaving(true); setStatus("");
     try {
       await apiRequest(selectedId ? `${endpoint}/${selectedId}` : endpoint, {
         method: selectedId ? "PUT" : "POST", token: session.accessToken,
         body: buildPartyRequest(form, isSupplier, !isSupplier && Boolean((selected as CustomerView | null)?.isMember))
       });
-      setDialogOpen(false); await load();
+      setDialogOpen(false); await load(false); setStatus(t("party.saveSuccess"));
     } catch (error) { setStatus(error instanceof Error ? error.message : t("party.saveError")); }
     finally { setSaving(false); }
   }
@@ -379,7 +457,7 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
         ? memberActivationPath((selected as MemberDirectoryView).customerId, action)
         : `${endpoint}/${selected.id}/${action}`;
       await apiRequest(path, { method: isMember ? "POST" : "PATCH", token: session.accessToken });
-      setDialogOpen(false); await load();
+      setDialogOpen(false); await load(false); setStatus(t("party.saveSuccess"));
     } catch (error) { setStatus(error instanceof Error ? error.message : t("party.saveError")); }
     finally { setSaving(false); }
   }
@@ -391,9 +469,13 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
       await apiRequest(memberActivationPath(memberCandidate.id), {
         method: "POST", token: session.accessToken
       });
-      setDialogOpen(false); setMemberCandidateId(null); await load();
+      setDialogOpen(false); setMemberCandidateId(null); await load(false); setStatus(t("party.saveSuccess"));
     } catch (error) { setStatus(error instanceof Error ? error.message : t("party.saveError")); }
     finally { setSaving(false); }
+  }
+
+  function fieldError(field: keyof PartyForm) {
+    return formErrors.includes(field) ? <small className="party-field-error" role="alert">{t("party.field.invalid")}</small> : null;
   }
 
   const selectedMember = isMember ? selected as MemberDirectoryView | null : null;
@@ -478,6 +560,10 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
       <span className="party-directory-result-count">
         {t("party.results").replace("{count}", String(rows.length))}
       </span>
+      {(query || statusFilter !== "all") && <div className="party-directory-active-filters" aria-label={t("party.filter.active")}>
+        {query && <button type="button" onClick={() => setQuery("")}>{t("party.searchLabel")}: {query}<span aria-hidden="true"> ×</span></button>}
+        {statusFilter !== "all" && <button type="button" onClick={() => setStatusFilter("all")}>{t("party.column.status")}: {t(`party.filter.status.${statusFilter}`)}<span aria-hidden="true"> ×</span></button>}
+      </div>}
     </div>
     <div className="party-directory-table" role="table" aria-label={title}>
       <div className="party-directory-row header" role="row" style={gridStyle}>
@@ -491,31 +577,44 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
             onMove={tableLayout.moveColumn}
             onResize={tableLayout.resizeColumn}
           >
-            {columnLabel(column.key)}
+            <button
+              type="button"
+              className="party-directory-sort-button"
+              aria-label={`${t("party.sortBy")} ${columnLabel(column.key)}`}
+              aria-pressed={sort.column === column.key}
+              onClick={() => setSort((current) => ({
+                column: column.key,
+                direction: current.column === column.key && current.direction === "asc" ? "desc" : "asc"
+              }))}
+            >
+              <span>{columnLabel(column.key)}</span>
+              <span aria-hidden="true">{sort.column === column.key ? sort.direction === "asc" ? "▲" : "▼" : "↕"}</span>
+            </button>
           </TableLayoutHeaderCell>
         ))}
       </div>
       {loading && <div className="stock-empty-state">{t("common.loading")}</div>}
-      {!loading && rows.map((entry) => {
+      {!loading && loadError && <div className="party-directory-state error" role="alert"><span>{status || t("party.loadError")}</span><button type="button" onClick={() => void load()}>{t("party.retry")}</button></div>}
+      {!loading && !loadError && rows.map((entry) => {
         return <button type="button" className="party-directory-row party-directory-selectable-row" role="row" style={gridStyle} key={entry.id} onClick={() => openEntry(entry)}>
           {visibleColumns.map((column) => renderCell(column.key, entry))}
         </button>;
       })}
-      {!loading && rows.length === 0 && <div className="stock-empty-state">{t("party.empty")}</div>}
+      {!loading && !loadError && rows.length === 0 && <div className="party-directory-state"><span>{t("party.empty")}</span>{canWrite && <button type="button" onClick={openNew}>{t(`party.${kind}.new`)}</button>}</div>}
     </div>
-    {status && !dialogOpen && <p className="product-create-status" role="status">{status}</p>}
+    {status && !dialogOpen && !loadError && <p className="product-create-status party-directory-toast" role="status">{status}</p>}
 
     {dialogOpen && <div className="filter-overlay" role="dialog" aria-modal="true" aria-labelledby="party-form-title">
       <section className="filter-dialog product-create-dialog party-create-dialog">
         <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={closeDialog}>{t("common.close")}</button></header>
         {isMember ? memberDialogContent : <form className="product-create-form party-create-form" onSubmit={submit}>
           <fieldset disabled={!canWrite || saving}>
-            <div className="product-create-row product-create-row-two"><label><span>{t(isSupplier ? "party.field.legalName" : "party.field.fiscalName")}</span><input required autoFocus value={form.name} onChange={(e) => update("name", e.target.value)} /></label>{isSupplier ? <label><span>{t("party.field.tradeName")}</span><input value={form.tradeName} onChange={(e) => update("tradeName", e.target.value)} /></label> : <label><span>{t("party.field.discount")}</span><input type="number" min="0" max="100" step="0.01" value={form.discount} onChange={(e) => update("discount", e.target.value)} /></label>}</div>
-            <div className="product-create-row product-create-row-two"><label><span>{t("party.field.documentType")}</span><ErpSelect value={form.documentType} onChange={(value) => update("documentType", value)} options={["NIF", "CIF", "NIE", "PASAPORTE", "OTRO"].map((value) => ({ value, label: value }))} /></label><label><span>{t("party.field.documentNumber")}</span><input required value={form.documentNumber} onChange={(e) => update("documentNumber", e.target.value)} /></label></div>
+            <div className="product-create-row product-create-row-two"><label className={formErrors.includes("name") ? "party-field-invalid" : ""}><span>{t(isSupplier ? "party.field.legalName" : "party.field.fiscalName")}</span><input required autoFocus aria-invalid={formErrors.includes("name")} value={form.name} onChange={(e) => update("name", e.target.value)} />{fieldError("name")}</label>{isSupplier ? <label><span>{t("party.field.tradeName")}</span><input value={form.tradeName} onChange={(e) => update("tradeName", e.target.value)} /></label> : <label className={formErrors.includes("discount") ? "party-field-invalid" : ""}><span>{t("party.field.discount")}</span><input type="number" min="0" max="100" step="0.01" aria-invalid={formErrors.includes("discount")} value={form.discount} onChange={(e) => update("discount", e.target.value)} />{fieldError("discount")}</label>}</div>
+            <div className="product-create-row product-create-row-two"><label><span>{t("party.field.documentType")}</span><ErpSelect value={form.documentType} onChange={(value) => update("documentType", value)} options={["NIF", "CIF", "NIE", "PASAPORTE", "OTRO"].map((value) => ({ value, label: value }))} /></label><label className={formErrors.includes("documentNumber") ? "party-field-invalid" : ""}><span>{t("party.field.documentNumber")}</span><input required aria-invalid={formErrors.includes("documentNumber")} value={form.documentNumber} onChange={(e) => update("documentNumber", e.target.value)} />{fieldError("documentNumber")}</label></div>
             <div className="product-create-row product-create-row-two"><label><span>{t("party.field.phone")}</span><input value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label><label><span>{t("party.field.email")}</span><input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></label></div>
             <label><span>{t("party.field.address")}</span><input value={form.address} onChange={(e) => update("address", e.target.value)} /></label>
             <div className="product-create-row product-create-row-three"><label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(e) => update("postalCode", e.target.value)} /></label><label><span>{t("party.field.city")}</span><input value={form.city} onChange={(e) => update("city", e.target.value)} /></label><label><span>{t("party.field.province")}</span><input value={form.province} onChange={(e) => update("province", e.target.value)} /></label></div>
-            <div className="product-create-row product-create-row-two"><label><span>{t("party.field.country")}</span><input required maxLength={2} value={form.country} onChange={(e) => update("country", e.target.value.toUpperCase())} /></label><label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(e) => update("notes", e.target.value)} /></label></div>
+            <div className="product-create-row product-create-row-two"><label className={formErrors.includes("country") ? "party-field-invalid" : ""}><span>{t("party.field.country")}</span><input required maxLength={2} aria-invalid={formErrors.includes("country")} value={form.country} onChange={(e) => update("country", e.target.value.toUpperCase())} />{fieldError("country")}</label><label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(e) => update("notes", e.target.value)} /></label></div>
             {!isSupplier && <><div className="product-create-row product-create-row-two"><label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(e) => update("birthday", e.target.value)} /></label><label><span>{t("party.field.gender")}</span><ErpSelect value={form.gender} onChange={(value) => update("gender", value)} options={["", "MASCULINO", "FEMENINO", "OTRO"].map((value) => ({ value, label: value ? t(`party.gender.${value.toLowerCase()}`) : t("party.gender.unspecified") }))} /></label></div><section className="party-credit-settings" aria-label={t("party.credit.title")}><h3>{t("party.credit.title")}</h3><label className="party-commercial-consent"><input type="checkbox" checked={form.creditEnabled} onChange={(e) => update("creditEnabled", e.target.checked)} /><span>{t("party.field.creditEnabled")}</span></label><div className="product-create-row product-create-row-two"><label><span>{t("party.field.creditLimit")}</span><input type="number" min="0" step="0.01" placeholder={t("party.credit.unlimited")} value={form.creditLimit} onChange={(e) => update("creditLimit", e.target.value)} /></label><label><span>{t("party.field.paymentTermDays")}</span><input required type="number" min="0" max="3650" step="1" value={form.paymentTermDays} onChange={(e) => update("paymentTermDays", e.target.value)} /></label></div><div className="party-credit-checkboxes"><label><input type="checkbox" checked={form.creditBlocked} onChange={(e) => update("creditBlocked", e.target.checked)} /><span>{t("party.field.creditBlocked")}</span></label><label><input type="checkbox" checked={form.blockOnOverdue} onChange={(e) => update("blockOnOverdue", e.target.checked)} /><span>{t("party.field.blockOnOverdue")}</span></label></div></section><label className="party-commercial-consent"><input type="checkbox" checked={form.commercialConsent} onChange={(e) => update("commercialConsent", e.target.checked)} /><span>{t("party.field.commercialConsent")}</span></label>{form.commercialConsent && <label><span>{t("party.field.preferredCommercialChannel")}</span><ErpSelect value={form.preferredCommercialChannelId} onChange={(value) => update("preferredCommercialChannelId", value)} options={[{ value: "", label: t("party.channel.select") }, ...channels.map((channel) => ({ value: channel.id, label: channel.name }))]} /></label>}</>}
           </fieldset>
           {status && <p className="product-create-status" role="status">{status}</p>}

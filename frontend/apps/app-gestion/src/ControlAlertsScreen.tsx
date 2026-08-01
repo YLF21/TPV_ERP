@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import {
   TableLayoutHeaderCell,
   tableLayoutGridTemplate,
@@ -8,9 +8,12 @@ import {
   type UserSession
 } from "@tpverp/app-common";
 import {
+  controlAlertPriorities,
   controlAlertStatuses,
   loadControlAlert,
+  loadControlAlertAssignees,
   loadControlAlertGroups,
+  loadControlAlertsAnalytics,
   loadControlAlerts,
   loadControlRuleCatalog,
   loadControlRules,
@@ -18,9 +21,13 @@ import {
   saveControlRule,
   setControlRuleActive,
   transitionControlAlert,
+  updateControlAlertWork,
   type ControlAlert,
+  type ControlAlertAssignee,
   type ControlAlertFilters,
+  type ControlAlertPriority,
   type ControlAlertStatus,
+  type ControlAlertsAnalytics,
   type ControlAlertTransition,
   type ControlAlertType,
   type ControlRule,
@@ -80,20 +87,46 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   const [rules, setRules] = useState<ControlRule[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [groupsError, setGroupsError] = useState(false);
+  const [analytics, setAnalytics] = useState<ControlAlertsAnalytics | null>(null);
+  const [analyticsLimited, setAnalyticsLimited] = useState(false);
+  const [refreshSeconds, setRefreshSeconds] = useState(30);
+  const [overdueHours, setOverdueHours] = useState(24);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [newAlertNotice, setNewAlertNotice] = useState(0);
+  const previousNewCount = useRef<number | null>(null);
+  const refreshInFlight = useRef(false);
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
   const [editorType, setEditorType] = useState<ControlAlertType | null | undefined>(undefined);
   const canManageRules = canManageControlRules(session);
 
   async function refreshGroups() {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     const instants = dateRangeToInstants(range);
     setGroupsLoading(true);
     setGroupsError(false);
     try {
-      setGroups(await loadControlAlertGroups(instants.from, instants.to, token));
+      const nextGroups = await loadControlAlertGroups(instants.from, instants.to, token);
+      setGroups(nextGroups);
+      const nextNewCount = nextGroups.reduce((sum, group) => sum + group.newCount, 0);
+      if (previousNewCount.current !== null && nextNewCount > previousNewCount.current) {
+        setNewAlertNotice(nextNewCount - previousNewCount.current);
+      }
+      previousNewCount.current = nextNewCount;
+      try {
+        setAnalytics(await loadControlAlertsAnalytics(instants.from, instants.to, overdueHours, token));
+        setAnalyticsLimited(false);
+      } catch {
+        setAnalytics(analyticsFromGroups(nextGroups));
+        setAnalyticsLimited(true);
+      }
+      setLastUpdatedAt(new Date());
     } catch {
       setGroups([]);
+      setAnalytics(null);
       setGroupsError(true);
     } finally {
+      refreshInFlight.current = false;
       setGroupsLoading(false);
     }
   }
@@ -114,9 +147,17 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   }
 
   useEffect(() => {
+    previousNewCount.current = null;
     void refreshGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, token]);
+  }, [range, token, overdueHours]);
+
+  useEffect(() => {
+    if (refreshSeconds <= 0) return;
+    const timer = window.setInterval(() => void refreshGroups(), refreshSeconds * 1_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, token, overdueHours, refreshSeconds]);
 
   useEffect(() => {
     void refreshRules();
@@ -127,6 +168,8 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   const activeTile = activeRuleId
     ? tiles.find((tile) => tile.ruleId === activeRuleId || tile.group?.ruleId === activeRuleId) ?? null
     : null;
+  const headerNewCount = analytics?.byStatus.find((item) => item.key === "NEW")?.count ?? 0;
+  const headerPendingCount = headerNewCount + (analytics?.byStatus.find((item) => item.key === "REVIEWED")?.count ?? 0);
 
   function applyRange(event?: FormEvent) {
     event?.preventDefault();
@@ -163,15 +206,50 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
             <span className="gestion-eyebrow">{t("gestion.controlAlerts.eyebrow")}</span>
             <h2>{activeTile ? ruleDisplayName(activeTile.type, activeTile.name, t) : t("gestion.controlAlerts.title")}</h2>
           </div>
-          <div className="gestion-dashboard-actions">
-            {activeTile && <button type="button" onClick={() => setActiveRuleId(null)}>{t("gestion.controlAlerts.backToRules")}</button>}
-            {!activeTile && <button type="button" onClick={() => void refreshGroups()}>{t("gestion.controlAlerts.refresh")}</button>}
-            {!activeTile && canManageRules && (
-              <button type="button" className="primary" onClick={() => setEditorType(null)}>
-                {t("gestion.controlRules.add")}
-              </button>
-            )}
-          </div>
+          {!activeTile ? (
+            <div className="gestion-dashboard-actions gestion-control-commandbar">
+              <section className="gestion-control-command-group" aria-labelledby="control-alerts-command-label">
+                <span id="control-alerts-command-label" className="gestion-control-command-label">{t("gestion.controlAlerts.alertsGroup")}</span>
+                <div className="gestion-control-header-counts" role="status" aria-label={t("gestion.controlAlerts.pendingIndicator")}>
+                  <span><strong>{headerNewCount}</strong> {t("gestion.controlAlerts.newCount")}</span>
+                  <span><strong>{headerPendingCount}</strong> {t("gestion.controlAlerts.pendingCount")}</span>
+                </div>
+              </section>
+              <section className="gestion-control-command-group" aria-labelledby="control-refresh-command-label">
+                <span id="control-refresh-command-label" className="gestion-control-command-label" aria-live="polite">
+                  {groupsLoading
+                    ? t("gestion.controlAlerts.refreshing")
+                    : lastUpdatedAt
+                      ? t("gestion.controlAlerts.lastUpdated").replace("{time}", lastUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
+                      : t("gestion.controlAlerts.updateGroup")}
+                </span>
+                <div className="gestion-control-refresh-controls">
+                  <select aria-label={t("gestion.controlAlerts.autoRefresh")} value={refreshSeconds} onChange={(event) => setRefreshSeconds(Number(event.target.value))}>
+                    <option value={0}>{t("gestion.controlAlerts.autoRefreshOff")}</option>
+                    <option value={15}>15 s</option>
+                    <option value={30}>30 s</option>
+                    <option value={60}>60 s</option>
+                  </select>
+                  <button type="button" disabled={groupsLoading} onClick={() => void refreshGroups()}>
+                    {groupsLoading ? t("gestion.controlAlerts.refreshing") : t("gestion.controlAlerts.refresh")}
+                  </button>
+                </div>
+              </section>
+              {canManageRules && (
+                <button type="button" className="primary gestion-control-add-rule" onClick={() => setEditorType(null)}>
+                  {t("gestion.controlRules.add")}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="gestion-dashboard-actions">
+              <div className="gestion-control-header-counts" role="status" aria-label={t("gestion.controlAlerts.pendingIndicator")}>
+                <span><strong>{headerNewCount}</strong> {t("gestion.controlAlerts.newCount")}</span>
+                <span><strong>{headerPendingCount}</strong> {t("gestion.controlAlerts.pendingCount")}</span>
+              </div>
+              <button type="button" onClick={() => setActiveRuleId(null)}>{t("gestion.controlAlerts.backToRules")}</button>
+            </div>
+          )}
         </header>
 
         <DateRangeToolbar
@@ -183,19 +261,33 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
           onPreset={usePreset}
         />
 
+        {newAlertNotice > 0 && (
+          <div className="gestion-control-notice" role="status" aria-live="polite">
+            <span>{t("gestion.controlAlerts.newNotice").replace("{count}", String(newAlertNotice))}</span>
+            <button type="button" onClick={() => setNewAlertNotice(0)} aria-label={t("gestion.controlAlerts.dismissNotice")}>×</button>
+          </div>
+        )}
+
         {activeTile ? (
-          <AlertsByRuleView session={session} t={t} tile={activeTile} range={range} />
+          <AlertsByRuleView session={session} t={t} tile={activeTile} range={range} refreshSeconds={refreshSeconds} />
         ) : (
-          <RuleOverview
-            tiles={tiles}
-            loading={groupsLoading}
-            error={groupsError}
-            canManage={canManageRules}
-            t={t}
-            onOpen={openRule}
-            onEdit={(tile) => setEditorType(tile.type)}
-            onToggle={(tile) => void toggleRule(tile)}
-          />
+          <div className="gestion-control-overview-stage">
+            <AnalyticsPanel
+              analytics={analytics} limited={analyticsLimited} loading={groupsLoading} overdueHours={overdueHours}
+              t={t} onOverdueHoursChange={setOverdueHours}
+            />
+            <RuleOverview
+              tiles={tiles}
+              loading={groupsLoading}
+              error={groupsError}
+              canManage={canManageRules}
+              t={t}
+              onOpen={openRule}
+              onEdit={(tile) => setEditorType(tile.type)}
+              onToggle={(tile) => void toggleRule(tile)}
+              onRetry={() => void refreshGroups()}
+            />
+          </div>
         )}
       </section>
 
@@ -215,6 +307,60 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
       )}
     </>
   );
+}
+
+function analyticsFromGroups(groups: ControlRuleAlertGroup[]): ControlAlertsAnalytics {
+  const count = (key: ControlAlertStatus) => groups.reduce((sum, group) => sum + ({
+    NEW: group.newCount, REVIEWED: group.reviewedCount, CLOSED: group.closedCount, DISMISSED: group.dismissedCount
+  })[key], 0);
+  return {
+    total: groups.reduce((sum, group) => sum + group.total, 0),
+    overdueCount: 0,
+    byStatus: controlAlertStatuses.map((key) => ({ key, count: count(key) })),
+    byType: groups.map((group) => ({ key: group.type, label: group.ruleName, count: group.total })),
+    byUser: [],
+    byTerminal: []
+  };
+}
+
+function AnalyticsPanel({ analytics, limited, loading, overdueHours, t, onOverdueHoursChange }: {
+  analytics: ControlAlertsAnalytics | null;
+  limited: boolean;
+  loading: boolean;
+  overdueHours: number;
+  t: Translator;
+  onOverdueHoursChange: (hours: number) => void;
+}) {
+  const statusCount = (key: ControlAlertStatus) => analytics?.byStatus.find((item) => item.key === key)?.count ?? 0;
+  const pending = statusCount("NEW") + statusCount("REVIEWED");
+  const sections = [
+    { key: "type", items: analytics?.byType ?? [], label: (key: string, label?: string | null) => label || t(`gestion.controlAlerts.type.${key}`) },
+    { key: "user", items: analytics?.byUser ?? [], label: (key: string, label?: string | null) => label || key },
+    { key: "terminal", items: analytics?.byTerminal ?? [], label: (key: string, label?: string | null) => label || key }
+  ];
+  return (
+    <section className="gestion-control-analytics" aria-labelledby="control-analytics-title" aria-busy={loading}>
+      <header>
+        <div><span className="gestion-eyebrow">{t("gestion.controlAlerts.analyticsEyebrow")}</span><h3 id="control-analytics-title">{t("gestion.controlAlerts.analyticsTitle")}</h3></div>
+        <label><span>{t("gestion.controlAlerts.overdueAfter")}</span><select value={overdueHours} onChange={(event) => onOverdueHoursChange(Number(event.target.value))}><option value={4}>4 h</option><option value={8}>8 h</option><option value={24}>24 h</option><option value={48}>48 h</option></select></label>
+      </header>
+      {limited && <p className="gestion-control-analytics-limited" role="status">{t("gestion.controlAlerts.analyticsLimited")}</p>}
+      <div className="gestion-control-kpis">
+        <div><strong>{analytics?.total ?? 0}</strong><span>{t("gestion.controlAlerts.total")}</span></div>
+        <div className="new"><strong>{statusCount("NEW")}</strong><span>{t("gestion.controlAlerts.newCount")}</span></div>
+        <div><strong>{pending}</strong><span>{t("gestion.controlAlerts.pendingCount")}</span></div>
+        <div className="overdue"><strong>{analytics?.overdueCount ?? 0}</strong><span>{t("gestion.controlAlerts.overdueCount")}</span></div>
+      </div>
+      <div className="gestion-control-breakdowns">
+        <MetricList title={t("gestion.controlAlerts.byStatus")} items={analytics?.byStatus ?? []} label={(key) => t(`gestion.controlAlerts.status.${key}`)} empty={t("gestion.controlAlerts.analyticsEmpty")} />
+        {sections.map((section) => <MetricList key={section.key} title={t(`gestion.controlAlerts.by${section.key[0].toUpperCase()}${section.key.slice(1)}`)} items={section.items} label={section.label} empty={limited ? t("gestion.controlAlerts.analyticsUnavailable") : t("gestion.controlAlerts.analyticsEmpty")} />)}
+      </div>
+    </section>
+  );
+}
+
+function MetricList({ title, items, label, empty }: { title: string; items: Array<{ key: string; label?: string | null; count: number }>; label: (key: string, label?: string | null) => string; empty: string }) {
+  return <section className="gestion-control-metric-list"><h4>{title}</h4>{items.length === 0 ? <p>{empty}</p> : <ul>{items.slice(0, 8).map((item) => <li key={item.key}><span>{label(item.key, item.label)}</span><strong>{item.count}</strong></li>)}</ul>}</section>;
 }
 
 function DateRangeToolbar({
@@ -256,7 +402,7 @@ function DateRangeToolbar({
   );
 }
 
-function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onToggle }: {
+function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onToggle, onRetry }: {
   tiles: RuleTile[];
   loading: boolean;
   error: boolean;
@@ -265,9 +411,17 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
   onOpen: (tile: RuleTile) => void;
   onEdit: (tile: RuleTile) => void;
   onToggle: (tile: RuleTile) => void;
+  onRetry: () => void;
 }) {
   if (loading) return <div className="gestion-control-overview-state">{t("common.loading")}</div>;
-  if (error) return <div className="gestion-control-overview-state error">{t("gestion.controlAlerts.loadError")}</div>;
+  if (error) return (
+    <div className="gestion-control-overview-state error" role="alert">
+      <div>
+        <span>{t("gestion.controlAlerts.loadError")}</span>
+        <button type="button" onClick={onRetry}>{t("gestion.controlAlerts.retry")}</button>
+      </div>
+    </div>
+  );
   if (tiles.length === 0) return <div className="gestion-control-overview-state">{t("gestion.controlRules.empty")}</div>;
 
   return (
@@ -340,7 +494,7 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
   );
 }
 
-function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t: Translator; tile: RuleTile; range: DateRange }) {
+function AlertsByRuleView({ session, t, tile, range, refreshSeconds }: { session: UserSession; t: Translator; tile: RuleTile; range: DateRange; refreshSeconds: number }) {
   const token = session.accessToken;
   const instants = useMemo(() => dateRangeToInstants(range), [range]);
   const [filters, setFilters] = useState<ControlAlertFilters>({
@@ -357,6 +511,8 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
   const [loadError, setLoadError] = useState(false);
   const [detailError, setDetailError] = useState(false);
   const [pendingAction, setPendingAction] = useState<ControlAlertTransition | "">("");
+  const [workSaving, setWorkSaving] = useState(false);
+  const [assignees, setAssignees] = useState<ControlAlertAssignee[]>([]);
   const [transitionComment, setTransitionComment] = useState("");
   const [document, setDocument] = useState<RelatedDocument | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
@@ -367,6 +523,14 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const tableStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) } as CSSProperties;
   const canManageAlerts = canManageControlAlerts(session);
+
+  useEffect(() => {
+    let active = true;
+    void loadControlAlertAssignees(token)
+      .then((items) => { if (active) setAssignees(items); })
+      .catch(() => { if (active) setAssignees([]); });
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     const ruleId = tile.ruleId ?? tile.group?.ruleId;
@@ -402,6 +566,13 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
   }, [filters, token]);
 
   useEffect(() => {
+    if (refreshSeconds <= 0) return;
+    const timer = window.setInterval(() => void refresh(), refreshSeconds * 1_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, token, refreshSeconds]);
+
+  useEffect(() => {
     if (!selectedId) {
       setSelected(null);
       return;
@@ -434,6 +605,26 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
       setDetailError(true);
     } finally {
       setPendingAction("");
+    }
+  }
+
+  async function saveWork(work: { priority: ControlAlertPriority; assigneeId: string; dueAt: string; comment: string }) {
+    if (!selected || !canManageAlerts) return;
+    setWorkSaving(true);
+    setDetailError(false);
+    try {
+      const updated = await updateControlAlertWork(selected, {
+        priority: work.priority,
+        assigneeId: work.assigneeId || null,
+        dueAt: work.dueAt ? new Date(work.dueAt).toISOString() : null,
+        comment: work.comment
+      }, token);
+      setSelected(updated);
+      setRows((current) => current.map((row) => row.id === updated.id ? updated : row));
+    } catch {
+      setDetailError(true);
+    } finally {
+      setWorkSaving(false);
     }
   }
 
@@ -472,6 +663,24 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
             <option value="">{t("gestion.controlAlerts.all")}</option>
             {controlAlertStatuses.map((status) => <option key={status} value={status}>{t(`gestion.controlAlerts.status.${status}`)}</option>)}
           </select>
+        </label>
+        <label>
+          <span>{t("gestion.controlAlerts.filterPriority")}</span>
+          <select value={filters.priority ?? ""} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value as "" | ControlAlertPriority, page: 0 }))}>
+            <option value="">{t("gestion.controlAlerts.all")}</option>
+            {controlAlertPriorities.map((priority) => <option key={priority} value={priority}>{t(`gestion.controlAlerts.priority.${priority}`)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>{t("gestion.controlAlerts.filterAssignee")}</span>
+          <select value={filters.assigneeId ?? ""} onChange={(event) => setFilters((current) => ({ ...current, assigneeId: event.target.value, page: 0 }))}>
+            <option value="">{t("gestion.controlAlerts.all")}</option>
+            {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name} ({assignee.userName})</option>)}
+          </select>
+        </label>
+        <label className="gestion-alert-overdue-filter">
+          <input type="checkbox" checked={filters.overdue ?? false} onChange={(event) => setFilters((current) => ({ ...current, overdue: event.target.checked, page: 0 }))} />
+          <span>{t("gestion.controlAlerts.filterOverdue")}</span>
         </label>
         <button type="submit" className="primary">{t("gestion.controlAlerts.apply")}</button>
       </form>
@@ -516,7 +725,9 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
         <AlertDetailPanel
           session={session} t={t} selected={selected} loading={detailLoading} error={detailError}
           pendingAction={pendingAction} comment={transitionComment} documentLoading={documentLoading} documentError={documentError}
+          assignees={assignees} workSaving={workSaving}
           onCommentChange={setTransitionComment} onTransition={(action) => void runTransition(action)} onOpenDocument={() => void openDocument()}
+          onSaveWork={(work) => void saveWork(work)}
         />
       </div>
       {document && <RelatedDocumentDialog document={document} t={t} onClose={() => setDocument(null)} />}
@@ -524,7 +735,7 @@ function AlertsByRuleView({ session, t, tile, range }: { session: UserSession; t
   );
 }
 
-function AlertDetailPanel({ session, t, selected, loading, error, pendingAction, comment, documentLoading, documentError, onCommentChange, onTransition, onOpenDocument }: {
+function AlertDetailPanel({ session, t, selected, loading, error, pendingAction, comment, documentLoading, documentError, assignees, workSaving, onCommentChange, onTransition, onOpenDocument, onSaveWork }: {
   session: UserSession;
   t: Translator;
   selected: ControlAlert | null;
@@ -534,11 +745,32 @@ function AlertDetailPanel({ session, t, selected, loading, error, pendingAction,
   comment: string;
   documentLoading: boolean;
   documentError: boolean;
+  assignees: ControlAlertAssignee[];
+  workSaving: boolean;
   onCommentChange: (value: string) => void;
   onTransition: (action: ControlAlertTransition) => void;
   onOpenDocument: () => void;
+  onSaveWork: (work: { priority: ControlAlertPriority; assigneeId: string; dueAt: string; comment: string }) => void;
 }) {
   const canManage = canManageControlAlerts(session);
+  const [workPriority, setWorkPriority] = useState<ControlAlertPriority>("MEDIUM");
+  const [workAssigneeId, setWorkAssigneeId] = useState("");
+  const [workDueAt, setWorkDueAt] = useState("");
+  const [workComment, setWorkComment] = useState("");
+
+  useEffect(() => {
+    setWorkPriority(selected?.priority ?? "MEDIUM");
+    setWorkAssigneeId(selected?.assigneeId ?? "");
+    setWorkDueAt(toLocalDateTimeInput(selected?.dueAt));
+    setWorkComment("");
+  }, [selected?.assigneeId, selected?.dueAt, selected?.id, selected?.priority]);
+
+  const assigneeName = (id?: string | null) => assignees.find((item) => item.id === id)?.name ?? id ?? t("gestion.controlAlerts.unassigned");
+  const workChanged = Boolean(selected) && (
+    workPriority !== selected?.priority
+    || workAssigneeId !== (selected?.assigneeId ?? "")
+    || workDueAt !== toLocalDateTimeInput(selected?.dueAt)
+  );
   return (
     <aside className="gestion-alert-detail" aria-label={t("gestion.controlAlerts.detail")}>
       {loading && <div className="gestion-alert-detail-state">{t("common.loading")}</div>}
@@ -556,12 +788,35 @@ function AlertDetailPanel({ session, t, selected, loading, error, pendingAction,
             <div><dt>{t("gestion.controlAlerts.column.terminal")}</dt><dd>{alertDataText(selected, "terminalCode") || selected.terminalId || "—"}</dd></div>
             <div><dt>{t("gestion.controlAlerts.column.document")}</dt><dd>{selected.documentNumber || selected.documentId || "—"}</dd></div>
             <div className="wide"><dt>{t("gestion.controlAlerts.summary")}</dt><dd>{alertSummary(selected, t)}</dd></div>
+            <div><dt>{t("gestion.controlAlerts.priorityLabel")}</dt><dd><span className={`gestion-alert-priority ${selected.priority.toLowerCase()}`}>{t(`gestion.controlAlerts.priority.${selected.priority}`)}</span></dd></div>
+            <div><dt>{t("gestion.controlAlerts.assigneeLabel")}</dt><dd>{assigneeName(selected.assigneeId)}</dd></div>
+            <div><dt>{t("gestion.controlAlerts.dueLabel")}</dt><dd>{selected.dueAt ? formatDateTime(selected.dueAt) : t("gestion.controlAlerts.noDueDate")}</dd></div>
           </dl>
+          {canManage && selected.status !== "CLOSED" && selected.status !== "DISMISSED" && (
+            <section className="gestion-alert-work-editor">
+              <h4>{t("gestion.controlAlerts.workTitle")}</h4>
+              <div>
+                <label><span>{t("gestion.controlAlerts.priorityLabel")}</span><select value={workPriority} onChange={(event) => setWorkPriority(event.target.value as ControlAlertPriority)}>{controlAlertPriorities.map((priority) => <option key={priority} value={priority}>{t(`gestion.controlAlerts.priority.${priority}`)}</option>)}</select></label>
+                <label><span>{t("gestion.controlAlerts.assigneeLabel")}</span><select value={workAssigneeId} onChange={(event) => setWorkAssigneeId(event.target.value)}><option value="">{t("gestion.controlAlerts.unassigned")}</option>{assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name} ({assignee.userName})</option>)}</select></label>
+                <label><span>{t("gestion.controlAlerts.dueLabel")}</span><input type="datetime-local" value={workDueAt} onChange={(event) => setWorkDueAt(event.target.value)} /></label>
+              </div>
+              <label><span>{t("gestion.controlAlerts.workComment")}</span><textarea value={workComment} maxLength={500} onChange={(event) => setWorkComment(event.target.value)} /></label>
+              <button type="button" className="primary" disabled={workSaving || !workChanged} onClick={() => onSaveWork({ priority: workPriority, assigneeId: workAssigneeId, dueAt: workDueAt, comment: workComment })}>{workSaving ? t("common.loading") : t("gestion.controlAlerts.saveWork")}</button>
+            </section>
+          )}
           {selected.history && selected.history.length > 0 && (
             <section className="gestion-alert-history">
               <h4>{t("gestion.controlAlerts.history")}</h4>
               <ol>{selected.history.map((entry, index) => (
                 <li key={`${entry.changedAt}:${index}`}><span>{formatDateTime(entry.changedAt)}</span><strong>{t(`gestion.controlAlerts.status.${entry.newStatus}`)}</strong><small>{entry.changedBy || "—"}</small>{entry.comment && <p>{entry.comment}</p>}</li>
+              ))}</ol>
+            </section>
+          )}
+          {selected.workHistory && selected.workHistory.length > 0 && (
+            <section className="gestion-alert-history gestion-alert-work-history">
+              <h4>{t("gestion.controlAlerts.workHistory")}</h4>
+              <ol>{selected.workHistory.map((entry, index) => (
+                <li key={`${entry.changedAt}:${index}`}><span>{formatDateTime(entry.changedAt)}</span><strong>{t(`gestion.controlAlerts.priority.${entry.newPriority}`)}</strong><small>{assigneeName(entry.newAssigneeId)}</small>{entry.comment && <p>{entry.comment}</p>}</li>
               ))}</ol>
             </section>
           )}
@@ -628,20 +883,28 @@ function RuleConfigurationDialog({ token, t, initialType, catalog, rules, onClos
 
   return (
     <div className="gestion-modal-backdrop" role="presentation">
-      <section className="gestion-rules-dialog compact" role="dialog" aria-modal="true" aria-labelledby="control-rules-title">
+      <section className={`gestion-rules-dialog compact ${!item && absent.length === 0 ? "empty" : ""}`} role="dialog" aria-modal="true" aria-labelledby="control-rules-title">
         <header><h2 id="control-rules-title">{existing ? t("gestion.controlRules.edit") : t("gestion.controlRules.add")}</h2><button type="button" aria-label={t("common.close")} onClick={onClose}>×</button></header>
         {!item ? (
           <div className="gestion-rule-catalog-picker">
-            <p>{t("gestion.controlRules.addDescription")}</p>
-            <div>
-              {absent.map((entry) => (
-                <button type="button" key={entry.type} disabled={!entry.supported} onClick={() => choose(entry)}>
-                  <strong>{ruleDisplayName(entry.type, entry.name, t)}</strong>
-                  <span>{entry.supported ? ruleParameterText(entry.parameterKind, entry.defaultConfiguration, t) || t("gestion.controlRules.noParameter") : t("gestion.controlRules.unavailable")}</span>
-                </button>
-              ))}
-            </div>
-            {absent.length === 0 && <p>{t("gestion.controlRules.allConfigured")}</p>}
+            {absent.length === 0 ? (
+              <div className="gestion-rule-catalog-empty">
+                <p>{t("gestion.controlRules.allConfigured")}</p>
+                <button type="button" onClick={onClose}>{t("common.close")}</button>
+              </div>
+            ) : (
+              <>
+                <p>{t("gestion.controlRules.addDescription")}</p>
+                <div>
+                  {absent.map((entry) => (
+                    <button type="button" key={entry.type} disabled={!entry.supported} onClick={() => choose(entry)}>
+                      <strong>{ruleDisplayName(entry.type, entry.name, t)}</strong>
+                      <span>{entry.supported ? ruleParameterText(entry.parameterKind, entry.defaultConfiguration, t) || t("gestion.controlRules.noParameter") : t("gestion.controlRules.unavailable")}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <form className="gestion-rule-form" onSubmit={submit}>
@@ -771,6 +1034,14 @@ function formatRangeLabel(range: DateRange) {
 function formatDateTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("es-ES", { dateStyle: "short", timeStyle: "medium" }).format(date);
+}
+
+function toLocalDateTimeInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function alertDataText(alert: ControlAlert, key: string): string {

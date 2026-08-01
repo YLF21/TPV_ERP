@@ -25,6 +25,10 @@ public class ControlAlert {
     private ControlEvent event;
     @Enumerated(EnumType.STRING) @Column(name = "estado", nullable = false, length = 16)
     private ControlAlertStatus status;
+    @Enumerated(EnumType.STRING) @Column(name = "prioridad", nullable = false, length = 16)
+    private ControlAlertPriority priority;
+    @Column(name = "asignada_a") private UUID assigneeId;
+    @Column(name = "vence_en") private Instant dueAt;
     @Column(name = "creada_en", nullable = false) private Instant createdAt;
     @Column(name = "actualizada_en", nullable = false) private Instant updatedAt;
     @Version private long version;
@@ -37,6 +41,7 @@ public class ControlAlert {
         this.event = Objects.requireNonNull(event, "event");
         this.storeId = event.getStoreId();
         this.status = ControlAlertStatus.NEW;
+        this.priority = ControlAlertPriority.MEDIUM;
         this.createdAt = event.getOccurredAt();
         this.updatedAt = event.getOccurredAt();
     }
@@ -58,11 +63,41 @@ public class ControlAlert {
         return previous;
     }
 
+    public WorkSnapshot updateWork(
+            ControlAlertPriority nextPriority,
+            UUID nextAssigneeId,
+            Instant nextDueAt,
+            Instant now) {
+        if (status.isTerminal()) {
+            throw new IllegalStateException("Una alerta cerrada o descartada no puede reasignarse");
+        }
+        var previous = new WorkSnapshot(priority, assigneeId, dueAt);
+        if (priority == nextPriority
+                && Objects.equals(assigneeId, nextAssigneeId)
+                && Objects.equals(dueAt, nextDueAt)) {
+            throw new IllegalStateException("La asignacion de la alerta no contiene cambios");
+        }
+        priority = Objects.requireNonNull(nextPriority, "priority");
+        assigneeId = nextAssigneeId;
+        dueAt = nextDueAt;
+        updatedAt = Objects.requireNonNull(now, "now");
+        return previous;
+    }
+
     public UUID getId() { return id; }
     public UUID getStoreId() { return storeId; }
     public ControlEvent getEvent() { return event; }
     public ControlAlertStatus getStatus() { return status; }
+    public ControlAlertPriority getPriority() { return priority; }
+    public UUID getAssigneeId() { return assigneeId; }
+    public Instant getDueAt() { return dueAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
+
+    public record WorkSnapshot(
+            ControlAlertPriority priority,
+            UUID assigneeId,
+            Instant dueAt) {
+    }
 }

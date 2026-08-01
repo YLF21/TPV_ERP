@@ -10,9 +10,9 @@ public enum ControlAlertType {
             Map.of(ControlRuleConfiguration.MINIMUM_COUNT, 3), true),
     MANUAL_PRICE_CHANGE_OVER_PERCENT(
             "Cambio manual de precio superior al porcentaje", ControlRuleParameterKind.PERCENTAGE,
-            Map.of(ControlRuleConfiguration.THRESHOLD_PERCENT, 10), false),
+            Map.of(ControlRuleConfiguration.THRESHOLD_PERCENT, 10), true),
     MANUAL_PRICE_CHANGED(
-            "Cambio manual de precio", ControlRuleParameterKind.NONE, Map.of(), false),
+            "Cambio manual de precio", ControlRuleParameterKind.NONE, Map.of(), true),
     MANUAL_DISCOUNT_OVER_PERCENT(
             "Descuento manual superior al porcentaje", ControlRuleParameterKind.PERCENTAGE,
             Map.of(ControlRuleConfiguration.THRESHOLD_PERCENT, 10), true),

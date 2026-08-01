@@ -20,7 +20,18 @@ const sharedManagementComponents = [
   "WarehouseDocumentDialog.tsx",
   "WarehouseScreen.tsx"
 ];
-const technicalVisibleLiterals = new Set(["v", "x"]);
+const technicalVisibleLiterals = new Set([
+  "v",
+  "x",
+  "15 s",
+  "30 s",
+  "60 s",
+  "4 h",
+  "8 h",
+  "24 h",
+  "48 h",
+  "Ctrl K"
+]);
 
 function auditedFiles() {
   const gestionFiles = readdirSync(gestionSourceDirectory)
