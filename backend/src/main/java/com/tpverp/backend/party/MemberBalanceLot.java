@@ -67,6 +67,29 @@ public class MemberBalanceLot {
     }
     // Decrements an immutable earned lot while keeping the original amount for traceability.
 
+    public void restore(BigDecimal amount) {
+        var value = PartyValues.money(amount);
+        if (value.signum() <= 0
+                || amountRemaining.add(value).compareTo(amountOriginal) > 0) {
+            throw new IllegalArgumentException(
+                    "message.member.balance_lot_restore_exceeds_original");
+        }
+        amountRemaining = amountRemaining.add(value);
+        if (expiredAt != null && amountRemaining.signum() > 0) {
+            expiredAt = null;
+        }
+    }
+
+    public void cancelUnspentAccrual(BigDecimal amount) {
+        var value = PartyValues.money(amount);
+        if (amountRemaining.compareTo(value) != 0
+                || amountOriginal.compareTo(value) != 0) {
+            throw new IllegalStateException(
+                    "el saldo generado por el ticket ya fue utilizado");
+        }
+        amountRemaining = BigDecimal.ZERO.setScale(2);
+    }
+
     public BigDecimal expire(Instant now) {
         if (expiredAt != null || amountRemaining.signum() <= 0) {
             return BigDecimal.ZERO.setScale(2);
@@ -84,6 +107,14 @@ public class MemberBalanceLot {
 
     public BigDecimal getAmountRemaining() {
         return amountRemaining;
+    }
+
+    public BigDecimal getAmountOriginal() {
+        return amountOriginal;
+    }
+
+    public MemberMovement getSourceMovement() {
+        return sourceMovement;
     }
 
     public Instant getCreatedAt() {

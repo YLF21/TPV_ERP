@@ -8,5 +8,7 @@ public interface MemberMovementRepository extends JpaRepository<MemberMovement, 
 
     List<MemberMovement> findByMemberIdOrderByCreatedAtDesc(UUID memberId);
 
+    List<MemberMovement> findByDocumentIdOrderByCreatedAtAsc(UUID documentId);
+
     boolean existsBySourceEventId(UUID sourceEventId);
 }

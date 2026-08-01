@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { renderA4DocumentHtml } = require("./a4-renderer.cjs");
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
+const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
+const { renderTableReportHtml } = require("./table-report-renderer.cjs");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 const {
   executeEscposTicketPrint,
@@ -15,6 +17,7 @@ const {
 
 const appName = process.env.TPV_DESKTOP_APP_NAME || "TPV ERP";
 const appUrl = process.env.TPV_DESKTOP_APP_URL;
+const mainWindowMode = process.env.TPV_DESKTOP_WINDOW_MODE === "MAXIMIZED" ? "MAXIMIZED" : "FULLSCREEN";
 const defaultHardwareConfig = {
   scannerMode: "KEYBOARD",
   scannerSubmitKey: "ENTER",
@@ -80,13 +83,34 @@ const defaultHardwareConfig = {
       printAutomatically: false,
       showPrintDialog: true
     }
-  ]
+  ],
+  defaultProductLabelProfileId: "ticket-58x40",
+  productLabelProfiles: [{
+    id: "ticket-58x40",
+    name: "Ticket 58 x 40 mm",
+    destination: "TICKET_PRINTER",
+    printerName: "",
+    widthMm: 58,
+    heightMm: 40,
+    orientation: "PORTRAIT",
+    marginTopMm: 5,
+    marginRightMm: 5,
+    marginBottomMm: 5,
+    marginLeftMm: 5,
+    horizontalGapMm: 2,
+    verticalGapMm: 2,
+    copies: 1,
+    showStoreName: true
+  }]
 };
 
 let mainWindow;
 let customerDisplayWindow;
 let salesDocumentWindow;
 const salesDocumentBootstraps = new Map();
+let salesUtilityWindow;
+let salesUtilityResult;
+const salesUtilityBootstraps = new Map();
 
 if (!appUrl) {
   throw new Error("TPV_DESKTOP_APP_URL is required");
@@ -95,9 +119,13 @@ if (!appUrl) {
 function createWindow() {
   Menu.setApplicationMenu(null);
 
+  const opensMaximized = mainWindowMode === "MAXIMIZED";
+
   mainWindow = new BrowserWindow({
     title: appName,
-    fullscreen: true,
+    fullscreen: !opensMaximized,
+    frame: true,
+    show: !opensMaximized,
     autoHideMenuBar: true,
     backgroundColor: "#263033",
     webPreferences: {
@@ -107,6 +135,14 @@ function createWindow() {
       sandbox: true
     }
   });
+
+  if (opensMaximized) {
+    mainWindow.once("ready-to-show", () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.maximize();
+      mainWindow.show();
+    });
+  }
 
   mainWindow.loadURL(appUrl);
 }
@@ -284,7 +320,117 @@ function normalizeHardwareConfig(config) {
       ...(defaultRoute.documentType === "TICKET" ? { printAutomatically: true } : {})
     };
   });
+  const configuredLabelProfiles = Array.isArray(config?.productLabelProfiles)
+    ? config.productLabelProfiles.filter((profile) => profile && typeof profile.id === "string")
+    : [];
+  nextConfig.productLabelProfiles = configuredLabelProfiles.length > 0
+    ? configuredLabelProfiles.map((profile) => ({
+        ...profile,
+        ...normalizedProfile(profile),
+        id: String(profile.id),
+        name: String(profile.name || profile.id)
+      }))
+    : defaultHardwareConfig.productLabelProfiles;
+  if (!nextConfig.productLabelProfiles.some((profile) => profile.id === nextConfig.defaultProductLabelProfileId)) {
+    nextConfig.defaultProductLabelProfileId = nextConfig.productLabelProfiles[0].id;
+  }
   return nextConfig;
+}
+
+async function exportTableReportPdf(report, defaultFileName) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultFileName || "informe.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderTableReportHtml(report))}`
+    );
+    const contents = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      pageSize: "A4",
+      margins: { top: 0, right: 0, bottom: 0, left: 0 }
+    });
+    fs.writeFileSync(result.filePath, contents);
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "No se pudo generar el PDF del informe"
+    );
+  } finally {
+    printWindow.destroy();
+  }
+}
+
+function createSalesUtilityWindow(bootstrap) {
+  if (salesUtilityWindow && !salesUtilityWindow.isDestroyed()) {
+    if (salesUtilityWindow.isMinimized()) salesUtilityWindow.restore();
+    salesUtilityWindow.focus();
+    return Promise.resolve(structuredError(
+      "SALES_UTILITY_ALREADY_OPEN",
+      "Ya existe una herramienta de venta abierta"
+    ));
+  }
+  if (!mainWindow || mainWindow.isDestroyed()
+      || !["INTERNAL_EAN", "PRODUCT_LABEL"].includes(bootstrap?.kind)
+      || !bootstrap?.session?.accessToken
+      || !bootstrap?.terminalContext?.terminalCode) {
+    return Promise.resolve(structuredError(
+      "SALES_UTILITY_BOOTSTRAP_INVALID",
+      "No se puede abrir la herramienta sin una sesion y terminal validos"
+    ));
+  }
+  const isLabel = bootstrap.kind === "PRODUCT_LABEL";
+  salesUtilityResult = { ok: true, canceled: true };
+  salesUtilityWindow = new BrowserWindow({
+    title: `${appName} - ${isLabel ? "Imprimir etiqueta" : "Generador EAN"}`,
+    width: isLabel ? 1280 : 1040,
+    height: isLabel ? 880 : 780,
+    minWidth: isLabel ? 1080 : 860,
+    minHeight: isLabel ? 720 : 640,
+    show: false,
+    parent: mainWindow,
+    modal: true,
+    autoHideMenuBar: true,
+    backgroundColor: "#e8edf3",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  const contentsId = salesUtilityWindow.webContents.id;
+  salesUtilityBootstraps.set(contentsId, structuredClone(bootstrap));
+  const target = new URL(appUrl);
+  target.searchParams.set("window", "sales-utility");
+  salesUtilityWindow.loadURL(target.toString());
+  salesUtilityWindow.once("ready-to-show", () => salesUtilityWindow?.show());
+  return new Promise((resolve) => {
+    salesUtilityWindow.on("closed", () => {
+      salesUtilityBootstraps.delete(contentsId);
+      const result = salesUtilityResult ?? { ok: true, canceled: true };
+      salesUtilityResult = undefined;
+      salesUtilityWindow = undefined;
+      resolve(result);
+    });
+  });
 }
 
 function readHardwareConfig() {
@@ -645,6 +791,86 @@ async function printTicket(ticket, config) {
   }
 }
 
+async function exportTicketPdf(ticket, defaultFileName) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultFileName || "ticket.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderTicketHtml(ticket))}`
+    );
+    const contents = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      pageSize: "A4"
+    });
+    fs.writeFileSync(result.filePath, contents);
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "No se pudo generar el PDF del ticket"
+    );
+  } finally {
+    printWindow.destroy();
+  }
+}
+
+async function exportA4DocumentPdf(document, defaultFileName) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultFileName || "documento.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderA4DocumentHtml(document))}`
+    );
+    const contents = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      pageSize: "A4"
+    });
+    fs.writeFileSync(result.filePath, contents);
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "No se pudo generar el PDF del documento"
+    );
+  } finally {
+    printWindow.destroy();
+  }
+}
+
 async function printA4Document(document, config) {
   const nextConfig = normalizeHardwareConfig({ ...readHardwareConfig(), ...config });
   const route = (nextConfig.documentPrintRoutes || []).find((item) => item.documentType === document.documentType);
@@ -692,6 +918,95 @@ async function printA4Document(document, config) {
   }
 }
 
+function productLabelPrinterName(profile, config) {
+  if (profile.printerName) return profile.printerName;
+  if (profile.destination === "TICKET_PRINTER") return config.ticketPrinterName;
+  if (profile.destination === "A4") return config.a4PrinterName;
+  return "";
+}
+
+async function printProductLabel(request, config) {
+  const nextConfig = normalizeHardwareConfig({ ...readHardwareConfig(), ...config });
+  const profile = normalizedProfile(request?.profile);
+  const printerName = productLabelPrinterName(profile, nextConfig);
+  if (!printerName) {
+    return structuredError("PRINTER_NOT_CONFIGURED", "Impresora de etiquetas no configurada");
+  }
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderProductLabelHtml({ ...request, profile }))}`
+    );
+    await new Promise((resolve, reject) => {
+      const options = {
+        silent: true,
+        printBackground: true,
+        deviceName: printerName,
+        landscape: profile.orientation === "LANDSCAPE",
+        margins: { marginType: "none" },
+        pageSize: profile.destination === "A4"
+          ? "A4"
+          : { width: Math.round(profile.widthMm * 1000), height: Math.round(profile.heightMm * 1000) }
+      };
+      printWindow.webContents.print(options, (success, failureReason) => {
+        if (success) resolve();
+        else reject(new Error(failureReason || "PRINT_FAILED"));
+      });
+    });
+    return { ok: true };
+  } catch (error) {
+    return structuredError(
+      "PRINT_FAILED",
+      error instanceof Error ? error.message : "No se pudo imprimir la etiqueta"
+    );
+  } finally {
+    printWindow.destroy();
+  }
+}
+
+async function exportProductLabelPdf(request, defaultFileName) {
+  if (!mainWindow) {
+    return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultFileName || "etiqueta-producto.pdf",
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true };
+  }
+  const profile = normalizedProfile(request?.profile);
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  try {
+    await printWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderProductLabelHtml({ ...request, profile }))}`
+    );
+    const contents = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: profile.orientation === "LANDSCAPE",
+      pageSize: profile.destination === "A4"
+        ? "A4"
+        : { width: Math.round(profile.widthMm * 1000), height: Math.round(profile.heightMm * 1000) },
+      margins: { top: 0, right: 0, bottom: 0, left: 0 }
+    });
+    fs.writeFileSync(result.filePath, contents);
+    return { ok: true, canceled: false, filePath: result.filePath };
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "No se pudo generar el PDF de etiquetas"
+    );
+  } finally {
+    printWindow.destroy();
+  }
+}
+
 ipcMain.handle("tpv:close-application", () => {
   app.quit();
 });
@@ -700,6 +1015,8 @@ ipcMain.handle("tpv:terminal-identity:load", () => readTerminalIdentity());
 ipcMain.handle("tpv:terminal-identity:save", (_event, identity) => writeTerminalIdentity(identity));
 ipcMain.handle("tpv:reports:save-file", (_event, request) => saveBinaryFile(request));
 ipcMain.handle("tpv:reports:export-pdf", (_event, defaultFileName) => exportCurrentPagePdf(defaultFileName));
+ipcMain.handle("tpv:reports:export-table-pdf", (_event, report, defaultFileName) =>
+  exportTableReportPdf(report, defaultFileName));
 ipcMain.handle("tpv:reports:print", () => printCurrentPage());
 
 ipcMain.handle("tpv:hardware:list-printers", async () => {
@@ -735,8 +1052,15 @@ ipcMain.handle("tpv:hardware:save-config", (_event, config) => {
 });
 
 ipcMain.handle("tpv:hardware:print-ticket", (_event, ticket, config) => printTicket(ticket, config));
+ipcMain.handle("tpv:hardware:export-ticket-pdf", (_event, ticket, defaultFileName) =>
+  exportTicketPdf(ticket, defaultFileName));
+ipcMain.handle("tpv:hardware:export-a4-document-pdf", (_event, document, defaultFileName) =>
+  exportA4DocumentPdf(document, defaultFileName));
 
 ipcMain.handle("tpv:hardware:print-a4-document", (_event, document, config) => printA4Document(document, config));
+ipcMain.handle("tpv:hardware:print-product-label", (_event, request, config) => printProductLabel(request, config));
+ipcMain.handle("tpv:hardware:export-product-label-pdf", (_event, request, defaultFileName) =>
+  exportProductLabelPdf(request, defaultFileName));
 
 ipcMain.handle("tpv:hardware:open-cash-drawer", async (_event, config) => {
   try {
@@ -788,6 +1112,42 @@ ipcMain.handle("tpv:sales-documents:consume-bootstrap", (event) => {
 ipcMain.handle("tpv:sales-documents:close", () => {
   if (salesDocumentWindow && !salesDocumentWindow.isDestroyed()) {
     salesDocumentWindow.close();
+  }
+  return { ok: true };
+});
+
+ipcMain.handle("tpv:sales-utility:open", (_event, bootstrap) =>
+  createSalesUtilityWindow(bootstrap));
+
+ipcMain.handle("tpv:sales-utility:consume-bootstrap", (event) => {
+  const bootstrap = salesUtilityBootstraps.get(event.sender.id) ?? null;
+  salesUtilityBootstraps.delete(event.sender.id);
+  return bootstrap;
+});
+
+ipcMain.handle("tpv:sales-utility:complete", (event, result) => {
+  if (!salesUtilityWindow || salesUtilityWindow.isDestroyed()
+      || event.sender.id !== salesUtilityWindow.webContents.id) {
+    return structuredError(
+      "SALES_UTILITY_WINDOW_INVALID",
+      "La ventana de la herramienta ya no esta disponible"
+    );
+  }
+  salesUtilityResult = {
+    ok: true,
+    canceled: false,
+    catalogChanged: result?.catalogChanged === true,
+    printed: result?.printed === true,
+    pdf: result?.pdf === true
+  };
+  salesUtilityWindow.close();
+  return { ok: true };
+});
+
+ipcMain.handle("tpv:sales-utility:close", (event) => {
+  if (salesUtilityWindow && !salesUtilityWindow.isDestroyed()
+      && event.sender.id === salesUtilityWindow.webContents.id) {
+    salesUtilityWindow.close();
   }
   return { ok: true };
 });

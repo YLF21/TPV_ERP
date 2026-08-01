@@ -14,6 +14,8 @@ import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.Terminal;
 import com.tpverp.backend.terminal.TerminalRepository;
@@ -32,7 +34,7 @@ class CashDrawerServiceTest {
 
     private TerminalRepository terminals;
     private CurrentOrganization organization;
-    private OperationalPermissionAuthorizationService authorizations;
+    private SaleOperationSecurityService operationSecurity;
     private ControlAlertDetectionService controlAlerts;
     private AuditService audit;
     private CashDrawerService service;
@@ -46,13 +48,13 @@ class CashDrawerServiceTest {
     void setUp() {
         terminals = mock(TerminalRepository.class);
         organization = mock(CurrentOrganization.class);
-        authorizations = mock(OperationalPermissionAuthorizationService.class);
+        operationSecurity = mock(SaleOperationSecurityService.class);
         controlAlerts = mock(ControlAlertDetectionService.class);
         audit = mock(AuditService.class);
         service = new CashDrawerService(
                 terminals,
                 organization,
-                authorizations,
+                operationSecurity,
                 controlAlerts,
                 audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -74,8 +76,8 @@ class CashDrawerServiceTest {
         when(organization.currentUser(authentication)).thenReturn(operator);
         when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId()))
                 .thenReturn(Optional.of(terminal));
-        when(authorizations.authorize(
-                eq("ABRIR_CAJON"), any(), any(), eq(authentication)))
+        when(operationSecurity.authorize(
+                eq(SaleOperationCode.OPEN_CASH_DRAWER), any(), any(), eq(authentication)))
                 .thenReturn(new OperationalPermissionAuthorizationService.Authorization(
                         operator, authorizer, true));
     }
@@ -93,6 +95,11 @@ class CashDrawerServiceTest {
         var authorizerId = authorizer.getId();
         verify(audit).record(eq("CASH_DRAWER_OPEN_AUTHORIZED"), eq(AuditResult.EXITO), any());
         verify(audit).record(eq("CASH_DRAWER_OPENED"), eq(AuditResult.EXITO), any());
+        verify(operationSecurity).authorize(
+                SaleOperationCode.OPEN_CASH_DRAWER,
+                "encargado",
+                "1234",
+                authentication);
         verify(controlAlerts).detectCashDrawerOpened(
                 eq(authorization.operationId()),
                 eq(terminalId),

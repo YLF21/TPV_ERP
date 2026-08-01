@@ -1,5 +1,6 @@
 package com.tpverp.backend.document;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -34,7 +35,14 @@ public class DiscountAuthorizationController {
 
     public record AuthorizationRequest(
             @NotBlank String managerName,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
             @NotBlank String password,
             @NotNull @DecimalMin("0.01") @DecimalMax("100.00") BigDecimal requestedPercent) {
+
+        @Override
+        public String toString() {
+            return "AuthorizationRequest[managerName=" + managerName
+                    + ", password=<redacted>, requestedPercent=" + requestedPercent + "]";
+        }
     }
 }

@@ -26,6 +26,8 @@ public enum ControlAlertType {
             "Devolucion manual sin ticket", ControlRuleParameterKind.NONE, Map.of(), true),
     CASH_DRAWER_OPENED(
             "Apertura manual del cajon", ControlRuleParameterKind.NONE, Map.of(), true),
+    CASH_SESSION_DISCREPANCY(
+            "Descuadre de caja", ControlRuleParameterKind.NONE, Map.of(), true),
     PRODUCT_CATALOG_MODIFIED(
             "Modificacion de producto desde venta", ControlRuleParameterKind.NONE, Map.of(), true);
 

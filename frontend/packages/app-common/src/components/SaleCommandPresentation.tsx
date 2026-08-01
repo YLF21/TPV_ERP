@@ -2,7 +2,10 @@ type SaleCommandLabels = {
   shortcuts: string;
   priceLookup: string;
   calculator: string;
+  eanGenerator: string;
+  printProductLabel: string;
   cashDrawer: string;
+  cashWithdrawal: string;
   logout: string;
   selectedStock: string;
   productSales: string;
@@ -95,6 +98,8 @@ type TouchSaleActionPanelProps = {
   paymentLocked: boolean;
   searchDisabled: boolean;
   quantityDisabled: boolean;
+  temporaryNameDisabled?: boolean;
+  temporaryPriceDisabled?: boolean;
   editProductDisabled: boolean;
   serialNumberDisabled: boolean;
   ticketReturnDisabled: boolean;
@@ -104,17 +109,24 @@ type TouchSaleActionPanelProps = {
   receivablesAvailable: boolean;
   receivablesCustomer?: string;
   onSearch: () => void;
+  onEanGenerator: () => void;
+  onPrintProductLabel: () => void;
   onCashDrawer: () => void;
+  onCashWithdrawal: () => void;
   onEditProduct: () => void;
   onSerialNumber: () => void;
   onTicketReturn: () => void;
   onDocument: () => void;
   onQuantity: () => void;
+  onTemporaryName?: () => void;
+  onTemporaryPrice?: () => void;
   onDiscount: () => void;
   onCustomer: () => void;
   onRemoveLine: () => void;
   onParkedSales: () => void;
-  onManageTickets: () => void;
+  onCancelLastTicket: () => void;
+  onCancelTicket: () => void;
+  onConvertTicket: () => void;
   onReceivables: () => void;
 };
 
@@ -123,6 +135,8 @@ export function TouchSaleActionPanel({
   paymentLocked,
   searchDisabled,
   quantityDisabled,
+  temporaryNameDisabled = quantityDisabled,
+  temporaryPriceDisabled = quantityDisabled,
   editProductDisabled,
   serialNumberDisabled,
   ticketReturnDisabled,
@@ -132,17 +146,24 @@ export function TouchSaleActionPanel({
   receivablesAvailable,
   receivablesCustomer,
   onSearch,
+  onEanGenerator,
+  onPrintProductLabel,
   onCashDrawer,
+  onCashWithdrawal,
   onEditProduct,
   onSerialNumber,
   onTicketReturn,
   onDocument,
   onQuantity,
+  onTemporaryName,
+  onTemporaryPrice,
   onDiscount,
   onCustomer,
   onRemoveLine,
   onParkedSales,
-  onManageTickets,
+  onCancelLastTicket,
+  onCancelTicket,
+  onConvertTicket,
   onReceivables
 }: TouchSaleActionPanelProps) {
   return (
@@ -150,7 +171,10 @@ export function TouchSaleActionPanel({
       <h2>{labels.operations}</h2>
       <div className="touch-sale-action-grid">
         <button type="button" disabled={searchDisabled} onClick={onSearch}>{labels.search}</button>
+        <button type="button" disabled={paymentLocked} onClick={onEanGenerator}>{labels.eanGenerator}</button>
+        <button type="button" disabled={paymentLocked} onClick={onPrintProductLabel}>{labels.printProductLabel}</button>
         <button type="button" onClick={onCashDrawer}>{labels.cashDrawer}</button>
+        <button type="button" disabled={paymentLocked} onClick={onCashWithdrawal}>{labels.cashWithdrawal}</button>
         <button type="button" disabled={editProductDisabled} onClick={onEditProduct}>{labels.editProduct}</button>
         <button type="button" disabled={serialNumberDisabled} onClick={onSerialNumber}>{labels.serialNumber}</button>
         <button type="button" disabled={ticketReturnDisabled} onClick={onTicketReturn}>{labels.ticketReturn}</button>
@@ -158,6 +182,16 @@ export function TouchSaleActionPanel({
           <button type="button" disabled={paymentLocked} onClick={onDocument}>{labels.document}</button>
         )}
         <button type="button" disabled={quantityDisabled} onClick={onQuantity}>{labels.quantity}</button>
+        {onTemporaryName && (
+          <button type="button" disabled={temporaryNameDisabled} onClick={onTemporaryName}>
+            {labels.temporaryName}
+          </button>
+        )}
+        {onTemporaryPrice && (
+          <button type="button" disabled={temporaryPriceDisabled} onClick={onTemporaryPrice}>
+            {labels.temporaryPrice}
+          </button>
+        )}
         <button
           type="button"
           disabled={discountDisabled}
@@ -172,9 +206,14 @@ export function TouchSaleActionPanel({
           <span>{labels.parkedSales}</span>
           <small>{labels.parkedSalesHint}</small>
         </button>
-        <button type="button" disabled={paymentLocked} onClick={onManageTickets}>
-          <span>{labels.manageTickets}</span>
-          <small>{labels.manageTicketsHint}</small>
+        <button type="button" disabled={paymentLocked} onClick={onCancelLastTicket}>
+          {labels.cancelTicket}
+        </button>
+        <button type="button" disabled={paymentLocked} onClick={onCancelTicket}>
+          {labels.cancelOtherTicket}
+        </button>
+        <button type="button" disabled={paymentLocked} onClick={onConvertTicket}>
+          {labels.convertInvoice}
         </button>
         {receivablesAvailable && (
           <button

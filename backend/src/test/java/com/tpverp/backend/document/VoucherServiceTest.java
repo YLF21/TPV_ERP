@@ -36,6 +36,8 @@ class VoucherServiceTest {
     private VoucherRepository vouchers;
     @Mock
     private CurrentOrganization organization;
+    @Mock
+    private VoucherEventRepository voucherEvents;
 
     private VoucherService service;
     private Store store;
@@ -54,7 +56,8 @@ class VoucherServiceTest {
         var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
         lenient().when(organization.currentStore()).thenReturn(store);
         service = new VoucherService(
-                vouchers, organization, Clock.fixed(NOW, ZoneOffset.UTC));
+                vouchers, voucherEvents, organization,
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

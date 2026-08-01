@@ -5,8 +5,11 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,12 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class VoucherService {
 
     private final VoucherRepository vouchers;
+    private final VoucherEventRepository events;
     private final CurrentOrganization organization;
     private final Clock clock;
 
     public VoucherService(
-            VoucherRepository vouchers, CurrentOrganization organization, Clock clock) {
+            VoucherRepository vouchers,
+            VoucherEventRepository events,
+            CurrentOrganization organization,
+            Clock clock) {
         this.vouchers = vouchers;
+        this.events = events;
         this.organization = organization;
         this.clock = clock;
     }
@@ -121,6 +129,95 @@ public class VoucherService {
     }
     // Detecta tickets que han usado o generado vales para evitar anulaciones incoherentes.
 
+    @Transactional(readOnly = true)
+    public VoucherCancellationPlan cancellationPlan(CommercialDocument ticket) {
+        requireCurrentStore(ticket);
+        if (ticket.getNumero() == null || ticket.getNumero().isBlank()) {
+            throw new IllegalArgumentException("el ticket necesita numero para compensar vales");
+        }
+        var consumedCodes = ticket.getPagos().stream()
+                .map(DocumentPayment::getVoucherCode)
+                .filter(code -> code != null && !code.isBlank())
+                .distinct()
+                .toList();
+        var generated = vouchers.findAllByOriginTicket(
+                ticket.getTiendaId(), ticket.getNumero());
+        requireGeneratedVouchersUnused(ticket, generated);
+        return new VoucherCancellationPlan(
+                !consumedCodes.isEmpty() || !generated.isEmpty(),
+                consumedCodes,
+                generated.stream().map(Voucher::code).toList());
+    }
+
+    @Transactional
+    public VoucherCancellationResult compensateCancellation(
+            CommercialDocument ticket,
+            UUID authorizerUserId) {
+        requireCurrentStore(ticket);
+        var plan = cancellationPlan(ticket);
+        var restored = new ArrayList<Voucher>();
+        var now = Instant.now(clock);
+        for (var code : plan.consumedVoucherCodes()) {
+            var voucher = vouchers.findLockedByTiendaIdAndCode(ticket.getTiendaId(), code)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "el vale consumido por el ticket no existe: " + code));
+            if (voucher.status() == VoucherStatus.INVALIDATED) {
+                throw new IllegalStateException("el vale consumido esta invalidado: " + code);
+            }
+            if (!events.existsByVoucher_IdAndDocumentIdAndType(
+                    voucher.id(), ticket.getId(), VoucherEventType.RESTORED)) {
+                voucher.restoreAfterTicketCancellation();
+                vouchers.save(voucher);
+                events.save(new VoucherEvent(
+                        voucher, ticket, VoucherEventType.RESTORED,
+                        voucher.balance(), authorizerUserId, now,
+                        Map.of("codigo", voucher.code())));
+            }
+            restored.add(voucher);
+        }
+
+        var invalidated = new ArrayList<Voucher>();
+        var generated = vouchers.findAllLockedByOriginTicket(
+                ticket.getTiendaId(), ticket.getNumero());
+        requireGeneratedVouchersUnused(ticket, generated);
+        for (var voucher : generated) {
+            if (voucher.status() == VoucherStatus.INVALIDATED) {
+                invalidated.add(voucher);
+                continue;
+            }
+            if (!events.existsByVoucher_IdAndDocumentIdAndType(
+                    voucher.id(), ticket.getId(), VoucherEventType.INVALIDATED)) {
+                var priorBalance = voucher.balance();
+                voucher.invalidateAfterTicketCancellation();
+                vouchers.save(voucher);
+                var detail = new LinkedHashMap<String, Object>();
+                detail.put("codigo", voucher.code());
+                detail.put("saldoAnterior", priorBalance.toPlainString());
+                events.save(new VoucherEvent(
+                        voucher, ticket, VoucherEventType.INVALIDATED,
+                        priorBalance, authorizerUserId, now, detail));
+            }
+            invalidated.add(voucher);
+        }
+        return new VoucherCancellationResult(
+                List.copyOf(restored), List.copyOf(invalidated));
+    }
+
+    private static void requireGeneratedVouchersUnused(
+            CommercialDocument ticket,
+            List<Voucher> generated) {
+        var used = generated.stream()
+                .filter(voucher -> voucher.status() == VoucherStatus.CONSUMED)
+                .map(Voucher::code)
+                .toList();
+        if (!used.isEmpty()) {
+            throw new IllegalStateException(
+                    "no se puede anular el ticket porque un vale generado fue utilizado: "
+                            + String.join(", ", used)
+                            + ". Anule primero el ticket dependiente");
+        }
+    }
+
     private Voucher findActive(String code) {
         return vouchers.findLockedByTiendaIdAndCode(organization.currentStore().getId(), code)
                 .filter(voucher -> voucher.status() == VoucherStatus.ACTIVE)
@@ -188,5 +285,16 @@ public class VoucherService {
                 .replace("-", "")
                 .substring(0, 12)
                 .toUpperCase(java.util.Locale.ROOT);
+    }
+
+    public record VoucherCancellationPlan(
+            boolean voucherImpact,
+            List<String> consumedVoucherCodes,
+            List<String> generatedVoucherCodes) {
+    }
+
+    public record VoucherCancellationResult(
+            List<Voucher> restored,
+            List<Voucher> invalidated) {
     }
 }

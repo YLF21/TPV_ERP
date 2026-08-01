@@ -22,7 +22,7 @@ class SalesInvoiceRectificationAuthorizationWebMvcTest {
 
     @Autowired private MockMvc mvc;
     @MockitoBean private SalesInvoiceRectificationService rectifications;
-    @MockitoBean private DocumentService documents;
+    @MockitoBean private SalesInvoiceRectificationConfirmationService confirmations;
     @MockitoBean private DocumentViewAssembler views;
     @MockitoBean private DocumentFiscalQrService fiscalQr;
 

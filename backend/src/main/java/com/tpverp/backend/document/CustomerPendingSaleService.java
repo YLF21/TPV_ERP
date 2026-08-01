@@ -5,14 +5,18 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRepository;
-import com.tpverp.backend.security.application.CorePermissionBootstrap;
-import com.tpverp.backend.security.application.PermissionChecks;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
+import com.tpverp.backend.terminal.CardTerminalConfiguration;
 import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperation;
 import com.tpverp.backend.terminal.PaymentTerminalOperationService;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
+import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import com.tpverp.backend.terminal.PaymentTerminalResult;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -20,7 +24,9 @@ import java.time.Instant;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -43,6 +49,9 @@ public class CustomerPendingSaleService {
     private final CustomerRepository customers;
     private final AuditService audit;
     private final DocumentViewAssembler views;
+    private final SaleOperationSecurityService saleOperationSecurity;
+    private final SaleDocumentMutationAuthorizationService documentMutationAuthorization;
+    private final PaymentMethodRepository paymentMethods;
     private final Clock clock;
 
     public CustomerPendingSaleService(
@@ -56,6 +65,9 @@ public class CustomerPendingSaleService {
             CustomerRepository customers,
             AuditService audit,
             DocumentViewAssembler views,
+            SaleOperationSecurityService saleOperationSecurity,
+            SaleDocumentMutationAuthorizationService documentMutationAuthorization,
+            PaymentMethodRepository paymentMethods,
             Clock clock) {
         this.documents = documents;
         this.checkouts = checkouts;
@@ -67,6 +79,9 @@ public class CustomerPendingSaleService {
         this.customers = customers;
         this.audit = audit;
         this.views = views;
+        this.saleOperationSecurity = saleOperationSecurity;
+        this.documentMutationAuthorization = documentMutationAuthorization;
+        this.paymentMethods = paymentMethods;
         this.clock = clock;
     }
 
@@ -75,7 +90,7 @@ public class CustomerPendingSaleService {
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication) {
         var total = authoritativeQuote(request, authentication).getTotal();
-        return new Quote(total, assessCredit(request, total, authentication, false));
+        return new Quote(total, assessCredit(request, total, false));
     }
 
     public PaymentTerminalResult chargeCard(
@@ -87,18 +102,38 @@ public class CustomerPendingSaleService {
         var terminalId = currentTerminal.terminalId(authentication);
         var total = authoritativeQuote(sale, authentication).getTotal();
         requireQuotedTotal(sale, total);
-        var credit = assessCredit(sale, total, authentication, false);
-        requireCreditAllowed(credit);
+        authorizeDocumentMutations(
+                sale, authentication, "CUSTOMER_PENDING_CARD_CHARGE");
         var cardPayment = requireIntegratedCardPayment(sale);
+        requireCardPaymentMethod(cardPayment, "integrated_card_payment_method_required");
+        var credit = assessCredit(sale, total, false);
+        requireCreditAllowed(credit);
+        var creditAuthorization = authorizePendingCredit(
+                credit,
+                overrideReason(sale.creditOverride()),
+                sale.authorizerUsername(),
+                sale.authorizerPassword(),
+                overrideAuthorizerUsername(sale.creditOverride()),
+                overrideAuthorizerPassword(sale.creditOverride()),
+                authentication);
         if (Money.euros(cardPayment.amount()).compareTo(amount) != 0) {
             throw new IllegalArgumentException("card_charge_amount_mismatch");
         }
         var hash = CustomerPendingSaleRequestHasher.hash(sale, total);
         var configuration = configurations.required(terminalId);
-        if (!organization.currentStore().getId().equals(configuration.storeId())) {
-            throw new IllegalStateException("payment_operation_scope_mismatch");
+        requireIntegratedCardConfiguration(
+                configuration, terminalId, organization.currentStore().getId());
+        var result = terminalOperations.charge(
+                sale.checkoutId(), hash, amount, configuration);
+        if (creditAuthorization.pendingReceivable() != null) {
+            recordPendingCardAuthorization(
+                    sale.checkoutId(),
+                    sale.customerId(),
+                    credit,
+                    overrideReason(sale.creditOverride()),
+                    creditAuthorization);
         }
-        return terminalOperations.charge(sale.checkoutId(), hash, amount, configuration);
+        return result;
     }
 
     @Transactional
@@ -138,13 +173,25 @@ public class CustomerPendingSaleService {
 
         var total = authoritativeQuote(request, authentication).getTotal();
         requireQuotedTotal(request, total);
+        authorizeDocumentMutations(
+                request, authentication, "CUSTOMER_PENDING_DOCUMENT");
         if (completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY
                 && declaredPayments(request).compareTo(total) != 0) {
             throw new IllegalArgumentException("sales_document_checkout_payment_total_mismatch");
         }
         var credit = completionMode == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
                 ? null
-                : assessCredit(request, total, authentication, true);
+                : assessCredit(request, total, true);
+        var creditAuthorization = credit == null
+                ? null
+                : authorizePendingCredit(
+                        credit,
+                        overrideReason(request.creditOverride()),
+                        request.authorizerUsername(),
+                        request.authorizerPassword(),
+                        overrideAuthorizerUsername(request.creditOverride()),
+                        overrideAuthorizerPassword(request.creditOverride()),
+                        authentication);
         var hash = CustomerPendingSaleRequestHasher.hash(request, total);
 
         if (existing.isEmpty()) {
@@ -177,13 +224,18 @@ public class CustomerPendingSaleService {
             }
             PaymentTerminalOperation cardOperation = null;
             if (declaredCard.isPresent()) {
+                requireCardPaymentMethod(
+                        declaredCard.orElseThrow(),
+                        "integrated_card_payment_method_required");
                 requireExactCardAssociation(request, declaredCard.orElseThrow());
                 cardOperation = terminalOperations.requireFinalizableApprovedCharge(
                         request.checkoutId());
                 var configuration = configurations.required(terminalId);
+                requireIntegratedCardConfiguration(configuration, terminalId, storeId);
                 requireCardIdentity(cardOperation, configuration, hash,
                         declaredCard.orElseThrow().amount(), terminalId, storeId);
             }
+            authorizeStandardPayments(request, authentication);
             var commands = paymentCommands(request, cardOperation, terminalId);
             var document = completionMode
                     == CustomerPendingSaleController.SalesDocumentCompletionMode.DRAFT
@@ -202,8 +254,22 @@ public class CustomerPendingSaleService {
             }
             checkout.complete(document.getId(), Instant.now(clock));
             checkouts.save(checkout);
+            if (creditAuthorization != null
+                    && creditAuthorization.pendingReceivable() != null) {
+                recordPendingReceivableAuthorization(
+                        request.checkoutId(),
+                        document,
+                        request.customerId(),
+                        credit,
+                        creditAuthorization.pendingReceivable());
+            }
             if (credit != null && credit.overrideUsed()) {
-                recordCreditOverride(request, document, credit);
+                recordCreditOverride(
+                        request.creditOverride().reason(),
+                        document,
+                        request.customerId(),
+                        credit,
+                        creditAuthorization.creditOverride());
             }
             return document;
         } catch (RuntimeException failure) {
@@ -262,71 +328,135 @@ public class CustomerPendingSaleService {
     private CreditAssessment assessCredit(
             CustomerPendingSaleController.CreateRequest request,
             BigDecimal total,
-            Authentication authentication,
             boolean lockAndEnforce) {
-        Objects.requireNonNull(request.date(), "date");
-        Objects.requireNonNull(request.dueDate(), "dueDate");
-        if (request.dueDate().isBefore(request.date())) {
+        var newDebt = money(total.subtract(declaredPayments(request)));
+        return assessCredit(
+                request.customerId(),
+                request.date(),
+                request.dueDate(),
+                newDebt,
+                overrideReason(request.creditOverride()),
+                lockAndEnforce);
+    }
+
+    private void authorizeDocumentMutations(
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication,
+            String sourceType) {
+        documentMutationAuthorization.authorize(
+                request.toCommand(),
+                request.operationAuthorizations(),
+                authentication,
+                sourceType,
+                request.checkoutId());
+    }
+
+    private CreditAssessment assessCredit(
+            UUID customerId,
+            LocalDate date,
+            LocalDate dueDate,
+            BigDecimal newDebt,
+            String creditOverrideReason,
+            boolean lockAndEnforce) {
+        Objects.requireNonNull(date, "date");
+        Objects.requireNonNull(dueDate, "dueDate");
+        if (dueDate.isBefore(date)) {
             throw new IllegalArgumentException("message.document.pending_sale_due_date_before_issue_date");
         }
         var companyId = organization.currentCompany().getId();
         Customer customer = (lockAndEnforce
-                ? customers.findLockedByIdAndCompanyId(request.customerId(), companyId)
-                : customers.findByIdAndCompanyId(request.customerId(), companyId))
+                ? customers.findLockedByIdAndCompanyId(customerId, companyId)
+                : customers.findByIdAndCompanyId(customerId, companyId))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "message.document.active_customer_not_found"));
-        var latestDueDate = request.date().plusDays(customer.getPaymentTermDays());
-        if (request.dueDate().isAfter(latestDueDate)) {
+        return assessLockedCustomer(
+                customer,
+                date,
+                dueDate,
+                newDebt,
+                creditOverrideReason,
+                lockAndEnforce);
+    }
+
+    @Transactional
+    PendingCreditAuthorization authorizePendingTicket(
+            UUID customerId,
+            LocalDate date,
+            BigDecimal newDebt,
+            String creditOverrideReason,
+            String authorizerUsername,
+            String authorizerPassword,
+            String creditOverrideAuthorizerUsername,
+            String creditOverrideAuthorizerPassword,
+            Authentication authentication) {
+        Objects.requireNonNull(date, "date");
+        var companyId = organization.currentCompany().getId();
+        var customer = customers.findLockedByIdAndCompanyId(customerId, companyId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.document.active_customer_not_found"));
+        var dueDate = date.plusDays(customer.getPaymentTermDays());
+        var credit = assessLockedCustomer(
+                customer,
+                date,
+                dueDate,
+                newDebt,
+                creditOverrideReason,
+                true);
+        var authorization = authorizePendingCredit(
+                credit,
+                creditOverrideReason,
+                authorizerUsername,
+                authorizerPassword,
+                creditOverrideAuthorizerUsername,
+                creditOverrideAuthorizerPassword,
+                authentication);
+        return new PendingCreditAuthorization(
+                credit,
+                authorization.pendingReceivable(),
+                authorization.creditOverride());
+    }
+
+    private CreditAssessment assessLockedCustomer(
+            Customer customer,
+            LocalDate date,
+            LocalDate dueDate,
+            BigDecimal newDebt,
+            String creditOverrideReason,
+            boolean lockAndEnforce) {
+        Objects.requireNonNull(customer, "customer");
+        Objects.requireNonNull(date, "date");
+        Objects.requireNonNull(dueDate, "dueDate");
+        if (dueDate.isBefore(date)) {
+            throw new IllegalArgumentException("message.document.pending_sale_due_date_before_issue_date");
+        }
+        var latestDueDate = date.plusDays(customer.getPaymentTermDays());
+        if (dueDate.isAfter(latestDueDate)) {
             throw new IllegalArgumentException("message.document.pending_sale_due_date_exceeds_customer_terms");
         }
-
         var outstanding = money(customers.outstandingDebt(customer.getId()));
-        var overdue = money(customers.overdueDebt(customer.getId(), request.date()));
-        var newDebt = money(total.subtract(declaredPayments(request)));
-        if (newDebt.signum() < 0) {
-            newDebt = Money.euros(BigDecimal.ZERO);
+        var overdue = money(customers.overdueDebt(customer.getId(), date));
+        var normalizedNewDebt = money(newDebt);
+        if (normalizedNewDebt.signum() < 0) {
+            normalizedNewDebt = Money.euros(BigDecimal.ZERO);
         }
-        var creditRequired = newDebt.signum() > 0;
-        var proposed = money(outstanding.add(newDebt));
+        var creditRequired = normalizedNewDebt.signum() > 0;
+        var proposed = money(outstanding.add(normalizedNewDebt));
         var limit = customer.getCreditLimit();
         var available = limit == null ? null : money(limit.subtract(outstanding));
         var availableAfter = limit == null ? null : money(limit.subtract(proposed));
-
         var manualBlocked = creditRequired && customer.isCreditBlocked();
         var overdueBlocked = creditRequired
                 && customer.isBlockOnOverdue() && overdue.signum() > 0;
         var limitExceeded = creditRequired
                 && limit != null && proposed.compareTo(limit) > 0;
         var overrideUsed = false;
-        if (limitExceeded && request.creditOverride() != null) {
-            var reason = request.creditOverride().reason();
-            if (reason == null || reason.isBlank()) {
+        if (limitExceeded && creditOverrideReason != null) {
+            if (creditOverrideReason.isBlank()) {
                 throw new IllegalArgumentException("message.document.credit_override_reason_required");
-            }
-            if (!PermissionChecks.hasRole(authentication, "ADMIN")
-                    && !PermissionChecks.hasAuthority(
-                    authentication, CorePermissionBootstrap.CUSTOMER_CREDIT_OVERRIDE)) {
-                throw new org.springframework.security.access.AccessDeniedException(
-                        "message.document.customer_credit_override_permission_required");
             }
             overrideUsed = true;
         }
-        if (limitExceeded && lockAndEnforce && !overrideUsed) {
-            throw new IllegalStateException("message.document.customer_credit_limit_exceeded");
-        }
-        if (lockAndEnforce) {
-            requireCreditAllowed(new CreditAssessment(
-                    customer.isCreditEnabled(), creditRequired, manualBlocked || overdueBlocked,
-                    customer.isBlockOnOverdue(), creditBlockReason(
-                    customer.isCreditEnabled(), creditRequired,
-                    manualBlocked, overdueBlocked, limitExceeded),
-                    manualBlocked, overdueBlocked, limitExceeded,
-                    limit, outstanding, overdue, available, customer.getPaymentTermDays(),
-                    proposed, availableAfter, limitExceeded && !overrideUsed, overrideUsed,
-                    latestDueDate));
-        }
-
-        return new CreditAssessment(
+        var credit = new CreditAssessment(
                 customer.isCreditEnabled(), creditRequired, manualBlocked || overdueBlocked,
                 customer.isBlockOnOverdue(), creditBlockReason(
                 customer.isCreditEnabled(), creditRequired,
@@ -335,6 +465,50 @@ public class CustomerPendingSaleService {
                 limit, outstanding, overdue, available, customer.getPaymentTermDays(),
                 proposed, availableAfter, limitExceeded && !overrideUsed, overrideUsed,
                 latestDueDate);
+        if (lockAndEnforce) {
+            requireCreditAllowed(credit);
+        }
+        return credit;
+    }
+
+    private PendingCreditAuthorization authorizePendingCredit(
+            CreditAssessment credit,
+            String creditOverrideReason,
+            String authorizerUsername,
+            String authorizerPassword,
+            String creditOverrideAuthorizerUsername,
+            String creditOverrideAuthorizerPassword,
+            Authentication authentication) {
+        if (!credit.creditRequired()) {
+            return new PendingCreditAuthorization(credit, null, null);
+        }
+        var pendingAuthorization = saleOperationSecurity.authorize(
+                SaleOperationCode.CREATE_PENDING_RECEIVABLE,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
+        Authorization overrideAuthorization = null;
+        if (credit.overrideUsed()) {
+            if (creditOverrideReason == null || creditOverrideReason.isBlank()) {
+                throw new IllegalArgumentException(
+                        "message.document.credit_override_reason_required");
+            }
+            overrideAuthorization = saleOperationSecurity.authorize(
+                    SaleOperationCode.CREDIT_OVERRIDE,
+                    dedicatedOverrideCredentials(
+                            creditOverrideAuthorizerUsername,
+                            creditOverrideAuthorizerPassword)
+                            ? creditOverrideAuthorizerUsername
+                            : authorizerUsername,
+                    dedicatedOverrideCredentials(
+                            creditOverrideAuthorizerUsername,
+                            creditOverrideAuthorizerPassword)
+                            ? creditOverrideAuthorizerPassword
+                            : authorizerPassword,
+                    authentication);
+        }
+        return new PendingCreditAuthorization(
+                credit, pendingAuthorization, overrideAuthorization);
     }
 
     private static String creditBlockReason(
@@ -359,7 +533,7 @@ public class CustomerPendingSaleService {
             throw new IllegalStateException("message.document.customer_credit_blocked_by_overdue_debt");
         }
         if (credit.requiresOverride()) {
-            throw new IllegalStateException("message.document.customer_credit_limit_exceeded");
+            throw new CustomerCreditLimitExceededException();
         }
     }
 
@@ -377,17 +551,125 @@ public class CustomerPendingSaleService {
     }
 
     private void recordCreditOverride(
-            CustomerPendingSaleController.CreateRequest request,
+            String reason,
             CommercialDocument document,
-            CreditAssessment credit) {
+            UUID customerId,
+            CreditAssessment credit,
+            Authorization authorization) {
         var details = new LinkedHashMap<String, Object>();
         details.put("documentId", document.getId());
-        details.put("customerId", request.customerId());
-        details.put("reason", request.creditOverride().reason().trim());
+        details.put("customerId", customerId);
+        details.put("reason", reason.trim());
         details.put("outstandingDebt", credit.outstandingDebt());
         details.put("proposedOutstanding", credit.proposedOutstanding());
         details.put("creditLimit", credit.limit());
+        addAuthorizationDetails(details, authorization);
         audit.record("CUSTOMER_CREDIT_LIMIT_OVERRIDDEN", AuditResult.EXITO, details);
+    }
+
+    void recordPendingTicketAuthorization(
+            UUID checkoutId,
+            CommercialDocument document,
+            UUID customerId,
+            String creditOverrideReason,
+            PendingCreditAuthorization authorization) {
+        recordPendingReceivableAuthorization(
+                checkoutId,
+                document,
+                customerId,
+                authorization.credit(),
+                authorization.pendingReceivable());
+        if (authorization.credit().overrideUsed()) {
+            recordCreditOverride(
+                    creditOverrideReason,
+                    document,
+                    customerId,
+                    authorization.credit(),
+                    authorization.creditOverride());
+        }
+    }
+
+    private void recordPendingReceivableAuthorization(
+            UUID checkoutId,
+            CommercialDocument document,
+            UUID customerId,
+            CreditAssessment credit,
+            Authorization authorization) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("checkoutId", checkoutId.toString());
+        details.put("documentId", document.getId().toString());
+        details.put("customerId", customerId.toString());
+        details.put("newDebt", money(
+                credit.proposedOutstanding().subtract(credit.outstandingDebt())));
+        addAuthorizationDetails(details, authorization);
+        audit.record("CUSTOMER_PENDING_RECEIVABLE_AUTHORIZED", AuditResult.EXITO, details);
+    }
+
+    private void recordPendingCardAuthorization(
+            UUID checkoutId,
+            UUID customerId,
+            CreditAssessment credit,
+            String creditOverrideReason,
+            PendingCreditAuthorization authorization) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("checkoutId", checkoutId.toString());
+        details.put("customerId", customerId.toString());
+        details.put("newDebt", money(
+                credit.proposedOutstanding().subtract(credit.outstandingDebt())));
+        details.put("creditOverride", authorization.creditOverride() != null);
+        if (authorization.creditOverride() != null) {
+            details.put("creditOverrideReason", creditOverrideReason.trim());
+        }
+        addAuthorizationDetails(details, authorization.pendingReceivable());
+        if (authorization.creditOverride() != null) {
+            details.put(
+                    "creditOverrideAuthorizerUserId",
+                    authorization.creditOverride().authorizer().getId().toString());
+            details.put(
+                    "creditOverrideAuthorizerUsername",
+                    authorization.creditOverride().authorizer().getUserName());
+            details.put(
+                    "creditOverrideDelegated",
+                    authorization.creditOverride().delegated());
+        }
+        audit.record(
+                "CUSTOMER_PENDING_RECEIVABLE_CARD_AUTHORIZED",
+                AuditResult.EXITO,
+                details);
+    }
+
+    private static void addAuthorizationDetails(
+            LinkedHashMap<String, Object> details,
+            Authorization authorization) {
+        if (authorization == null) {
+            return;
+        }
+        details.put("operatorUserId", authorization.operator().getId().toString());
+        details.put("operatorUsername", authorization.operator().getUserName());
+        details.put("authorizerUserId", authorization.authorizer().getId().toString());
+        details.put("authorizerUsername", authorization.authorizer().getUserName());
+        details.put("delegated", authorization.delegated());
+    }
+
+    private static String overrideReason(
+            CustomerPendingSaleController.CreditOverride override) {
+        return override == null ? null : override.reason();
+    }
+
+    private static String overrideAuthorizerUsername(
+            CustomerPendingSaleController.CreditOverride override) {
+        return override == null ? null : override.authorizerUsername();
+    }
+
+    private static String overrideAuthorizerPassword(
+            CustomerPendingSaleController.CreditOverride override) {
+        return override == null ? null : override.authorizerPassword();
+    }
+
+    private static boolean dedicatedOverrideCredentials(
+            String username,
+            String password) {
+        return username != null || password != null;
     }
 
     private static void requireQuotedTotal(
@@ -434,13 +716,28 @@ public class CustomerPendingSaleService {
         return List.copyOf(request.payments() == null ? List.of() : request.payments());
     }
 
-    private static List<PaymentCommand> paymentCommands(
+    private List<PaymentCommand> paymentCommands(
             CustomerPendingSaleController.CreateRequest request,
             PaymentTerminalOperation operation,
             UUID terminalId) {
         return payments(request).stream().map(payment -> {
             var integrated = payment.kind()
                     == CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD;
+            var method = requireActivePaymentMethod(payment);
+            var cardMethod = isCardMethod(method);
+            if (integrated && !cardMethod) {
+                throw new IllegalArgumentException(
+                        "integrated_card_payment_method_required");
+            }
+            if (payment.kind() == CustomerPendingSaleController.PaymentKind.MANUAL_CARD
+                    && !cardMethod) {
+                throw new IllegalArgumentException(
+                        "manual_card_payment_method_required");
+            }
+            var manualCard = payment.kind()
+                    == CustomerPendingSaleController.PaymentKind.MANUAL_CARD
+                    || (payment.kind() == CustomerPendingSaleController.PaymentKind.STANDARD
+                    && cardMethod);
             if (integrated && operation == null) {
                 throw new IllegalStateException("payment_operation_not_finalizable");
             }
@@ -448,13 +745,110 @@ public class CustomerPendingSaleService {
                     payment.methodId(), payment.amount(), payment.principal(), payment.delivered(),
                     payment.change(), payment.voucherCode(),
                     integrated ? operation.getExternalReference() : payment.reference(),
-                    integrated ? PaymentCardMode.INTEGRATED : null,
+                    integrated ? PaymentCardMode.INTEGRATED
+                            : manualCard ? PaymentCardMode.MANUAL : null,
                     integrated ? operation.getProvider() : null,
                     integrated ? PaymentTerminalOperationStatus.APPROVED : null,
                     integrated ? operation.getAuthorizationCode() : null,
                     integrated ? terminalId : null,
                     payment.requestId());
         }).toList();
+    }
+
+    private void authorizeStandardPayments(
+            CustomerPendingSaleController.CreateRequest request,
+            Authentication authentication) {
+        var operations = EnumSet.noneOf(SaleOperationCode.class);
+        for (var payment : payments(request)) {
+            if (payment.kind()
+                    == CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD) {
+                continue;
+            }
+            var method = requireActivePaymentMethod(payment);
+            if (payment.kind() == CustomerPendingSaleController.PaymentKind.MANUAL_CARD
+                    && !isCardMethod(method)) {
+                throw new IllegalArgumentException(
+                        "manual_card_payment_method_required");
+            }
+            if (isCardMethod(method)) {
+                operations.add(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT);
+            } else if ("TRANSFERENCIA".equals(method.getNombre())) {
+                operations.add(SaleOperationCode.CONFIRM_TRANSFER_PAYMENT);
+            }
+        }
+        var credentials = request.operationAuthorizations() == null
+                ? Map.<SaleOperationCode, OperationAuthorizationRequest>of()
+                : request.operationAuthorizations();
+        for (var code : operations) {
+            var requested = credentials.getOrDefault(
+                    code, OperationAuthorizationRequest.empty());
+            var authorization = saleOperationSecurity.authorize(
+                    code,
+                    requested.authorizerUsername(),
+                    requested.authorizerPassword(),
+                    authentication);
+            auditStandardPaymentAuthorization(
+                    request.checkoutId(), code, authorization);
+        }
+    }
+
+    private PaymentMethod requireCardPaymentMethod(
+            CustomerPendingSaleController.PaymentItem payment,
+            String errorCode) {
+        var method = requireActivePaymentMethod(payment);
+        if (!isCardMethod(method)) {
+            throw new IllegalArgumentException(errorCode);
+        }
+        return method;
+    }
+
+    private PaymentMethod requireActivePaymentMethod(
+            CustomerPendingSaleController.PaymentItem payment) {
+        return paymentMethods.findByIdAndEmpresaId(
+                        payment.methodId(), organization.currentCompany().getId())
+                .filter(PaymentMethod::isActivo)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message.payment_method.active_not_found"));
+    }
+
+    private static boolean isCardMethod(PaymentMethod method) {
+        return "TARJETA".equals(method.getNombre());
+    }
+
+    private static void requireIntegratedCardConfiguration(
+            CardTerminalConfiguration configuration,
+            UUID terminalId,
+            UUID storeId) {
+        if (!configuration.enabled()
+                || configuration.mode() != PaymentCardMode.INTEGRATED
+                || configuration.provider() == null
+                || configuration.provider() == PaymentTerminalProvider.NONE) {
+            throw new IllegalStateException(
+                    "payment_terminal_configuration_not_integrated");
+        }
+        if (!terminalId.equals(configuration.terminalId())
+                || !storeId.equals(configuration.storeId())) {
+            throw new IllegalStateException("payment_operation_scope_mismatch");
+        }
+    }
+
+    private void auditStandardPaymentAuthorization(
+            UUID checkoutId,
+            SaleOperationCode code,
+            Authorization authorization) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("operationCode", code.name());
+        details.put("sourceType", "CUSTOMER_PENDING_SALE");
+        details.put("sourceId", checkoutId.toString());
+        details.put("operatorId", authorization.operator().getId().toString());
+        details.put("operatorUsername", authorization.operator().getUserName());
+        details.put("authorizerId", authorization.authorizer().getId().toString());
+        details.put("authorizerUsername", authorization.authorizer().getUserName());
+        details.put("delegated", authorization.delegated());
+        audit.record(
+                PosCashService.SALE_OPERATION_AUTHORIZED,
+                AuditResult.EXITO,
+                Map.copyOf(details));
     }
 
     private static void requireCardIdentity(
@@ -486,6 +880,12 @@ public class CustomerPendingSaleService {
     }
 
     public record Quote(BigDecimal total, CreditAssessment credit) {}
+
+    record PendingCreditAuthorization(
+            CreditAssessment credit,
+            Authorization pendingReceivable,
+            Authorization creditOverride) {
+    }
 
     public record CreditAssessment(
             boolean enabled,

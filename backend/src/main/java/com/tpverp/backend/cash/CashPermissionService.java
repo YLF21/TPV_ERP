@@ -55,6 +55,18 @@ public class CashPermissionService {
         }
     }
 
+    // Mantiene el acceso base al modulo de caja. La autorización sensible de
+    // cada movimiento se resuelve mediante la política configurable de Ventas.
+    public void requireCashMovementAccess(Authentication authentication) {
+        if (!isAdmin(authentication)
+                && !hasAuthority(authentication, CorePermissionBootstrap.VENTA)
+                && !hasAuthority(authentication, CorePermissionBootstrap.CASH_OPERATE)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_VENTAS)
+                && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)) {
+            throw new AccessDeniedException("Se requiere permiso de ventas, caja o gestion");
+        }
+    }
+
     public void requireReportPermission(Authentication authentication) {
         if (!isAdmin(authentication)
                 && !hasAuthority(authentication, CorePermissionBootstrap.GESTION_CUENTAS)
@@ -95,6 +107,47 @@ public class CashPermissionService {
             throw new IllegalArgumentException("El autorizador debe ser ADMIN o contable");
         }
         return user;
+    }
+
+    /**
+     * Verifica la contraseña del operador cuando este ya puede gestionar
+     * ventas/cuentas; en caso contrario exige las credenciales de otro usuario
+     * activo de la misma tienda con uno de esos permisos.
+     */
+    @Transactional(readOnly = true)
+    public UserAccount requireWithdrawalAuthorizer(
+            Authentication authentication,
+            String username,
+            String password) {
+        if (password == null || password.isBlank()) {
+            throw new IllegalArgumentException("La contraseña de autorización es obligatoria");
+        }
+        var currentUser = organization.currentUser(authentication);
+        if (canAuthorizeWithdrawal(currentUser)) {
+            if (!passwordEncoder.matches(password, currentUser.getPasswordHash())) {
+                throw new IllegalArgumentException("Contraseña no válida");
+            }
+            return currentUser;
+        }
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("El usuario autorizador es obligatorio");
+        }
+        var store = organization.currentStore();
+        var normalizedName = username.trim().toUpperCase(Locale.ROOT);
+        var authorizer = users.findByTiendaIdAndNombre(store.getId(), normalizedName)
+                .filter(UserAccount::isActivo)
+                .orElseThrow(() -> new IllegalArgumentException("Autorizador no válido"));
+        if (!passwordEncoder.matches(password, authorizer.getPasswordHash())
+                || !canAuthorizeWithdrawal(authorizer)) {
+            throw new IllegalArgumentException("Autorizador no válido");
+        }
+        return authorizer;
+    }
+
+    private boolean canAuthorizeWithdrawal(UserAccount user) {
+        return isAdmin(user)
+                || roleHasPermission(user, CorePermissionBootstrap.GESTION_VENTAS)
+                || roleHasPermission(user, CorePermissionBootstrap.GESTION_CUENTAS);
     }
 
     private boolean isAdmin(Authentication authentication) {

@@ -11,7 +11,19 @@ public record TicketPrintView(
         Instant issuedAt,
         List<Line> lines,
         List<Payment> payments,
-        BigDecimal total) {
+        BigDecimal total,
+        BigDecimal baseTotal,
+        BigDecimal taxTotal) {
+
+    public TicketPrintView(
+            UUID documentId,
+            String documentNumber,
+            Instant issuedAt,
+            List<Line> lines,
+            List<Payment> payments,
+            BigDecimal total) {
+        this(documentId, documentNumber, issuedAt, lines, payments, total, null, null);
+    }
 
     public static TicketPrintView from(CommercialDocument document) {
         return from(document, List.of());
@@ -43,7 +55,9 @@ public record TicketPrintView(
                                             case VOUCHER -> "VALE";
                                         }, payout.getAmount().negate()))
                                 .toList(),
-                document.getTotal());
+                document.getTotal(),
+                document.getBaseTotal(),
+                document.getImpuestoTotal());
     }
 
     public record Line(

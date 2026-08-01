@@ -1,6 +1,7 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -46,6 +47,29 @@ class CommercialDocumentTest {
         document.confirm("FC-1", USER_ID, NOW, false);
 
         assertThat(document.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+    }
+
+    @Test
+    void internalCommentIsNormalizedAndCannotChangeAfterConfirmation() {
+        var document = saleInvoice(new BigDecimal("100.00"));
+
+        document.setInternalComment("  Entregar por la tarde  ");
+
+        assertThat(document.getComentarioInterno()).isEqualTo("Entregar por la tarde");
+
+        document.confirm("FV-1", USER_ID, NOW, false);
+        assertThatThrownBy(() -> document.setInternalComment("Otro comentario"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("borrador");
+    }
+
+    @Test
+    void internalCommentCannotExceedItsPersistentLimit() {
+        var document = saleInvoice(new BigDecimal("100.00"));
+
+        assertThatThrownBy(() -> document.setInternalComment("x".repeat(501)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("500");
     }
 
     private static CommercialDocument saleInvoice(BigDecimal total) {

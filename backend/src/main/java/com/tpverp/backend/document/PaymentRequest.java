@@ -1,15 +1,33 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalProvider;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-public record PaymentRequest(@NotEmpty List<Item> pagos) {
+public record PaymentRequest(
+        @NotEmpty List<Item> pagos,
+        @Size(max = 32)
+        @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
+                operationAuthorizations) {
+
+    public PaymentRequest {
+        operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
+                operationAuthorizations);
+    }
+
+    public PaymentRequest(List<Item> pagos) {
+        this(pagos, Map.of());
+    }
 
     // Maps every payment while preserving order and principal flag.
     public List<PaymentCommand> toCommands() {

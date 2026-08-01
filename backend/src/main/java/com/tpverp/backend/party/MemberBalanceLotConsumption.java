@@ -39,4 +39,12 @@ public class MemberBalanceLotConsumption {
         this.lot = lot;
         this.amount = PartyValues.money(amount);
     }
+
+    public MemberBalanceLot getLot() {
+        return lot;
+    }
+
+    public BigDecimal getAmount() {
+        return amount;
+    }
 }

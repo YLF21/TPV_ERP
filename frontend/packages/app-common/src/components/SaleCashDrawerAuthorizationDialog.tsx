@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  saleOperationAuthorizationComplete,
+  type SaleOperationAuthorization,
+} from "../sale/operationSecurity";
+import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
 
 type Props = {
   open: boolean;
   busy: boolean;
   error: string;
   t: (key: string) => string;
+  locale?: LocaleCode;
+  authorization?: SaleOperationAuthorization;
   translationPrefix?: "sale.cashDrawer" | "sale.productEdit";
   onCancel: () => void;
   onAuthorize: (username: string, password: string) => void;
@@ -16,6 +24,12 @@ export function SaleCashDrawerAuthorizationDialog({
   busy,
   error,
   t,
+  locale = "es",
+  authorization = {
+    mode: "DELEGATED",
+    requireUsername: true,
+    requirePassword: true,
+  },
   translationPrefix = "sale.cashDrawer",
   onCancel,
   onAuthorize,
@@ -49,44 +63,44 @@ export function SaleCashDrawerAuthorizationDialog({
         <header>
           <div>
             <h2>{message("authorizationTitle")}</h2>
-            <p>{message("authorizationHint")}</p>
           </div>
           <button type="button" aria-label={t("common.close")} disabled={busy} onClick={onCancel}>×</button>
         </header>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (!busy && username.trim() && password) {
+            if (!busy && saleOperationAuthorizationComplete(
+              authorization,
+              username,
+              password,
+            )) {
               const submittedPassword = password;
               setPassword("");
               onAuthorize(username.trim(), submittedPassword);
             }
           }}
         >
-          <label>
-            <span>{message("authorizerUsername")}</span>
-            <input
-              autoFocus
-              autoComplete="username"
-              value={username}
-              disabled={busy}
-              onChange={(event) => setUsername(event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>{message("authorizerPassword")}</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              disabled={busy}
-              onChange={(event) => setPassword(event.currentTarget.value)}
-            />
-          </label>
+          <SaleOperationAuthorizationFields
+            locale={locale}
+            authorization={authorization}
+            username={username}
+            password={password}
+            disabled={busy}
+            autoFocus
+            onUsernameChange={setUsername}
+            onPasswordChange={setPassword}
+          />
           {error && <p className="sale-dialog-error" role="alert">{error}</p>}
           <div className="sale-action-buttons">
             <button type="button" disabled={busy} onClick={onCancel}>{t("common.cancel")}</button>
-            <button type="submit" disabled={busy || !username.trim() || !password}>
+            <button
+              type="submit"
+              disabled={busy || !saleOperationAuthorizationComplete(
+                authorization,
+                username,
+                password,
+              )}
+            >
               {busy ? message("opening") : message("authorize")}
             </button>
           </div>

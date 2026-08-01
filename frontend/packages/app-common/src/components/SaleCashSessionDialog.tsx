@@ -2,21 +2,47 @@ import { useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
 import type { LocaleCode } from "../types";
 import {
+  saleOperationAuthorizationComplete,
+  saleOperationCredentials,
+  type SaleOperationAuthorization,
+} from "../sale/operationSecurity";
+import {
   closeCashSession,
+  createCashCloseWithdrawalIdempotencyKey,
   openCashSession,
+  recoverCashCloseOperation,
   type CashSessionView,
 } from "../sale/cashSessions";
+import type { CashCloseRecoveryFlow } from "../sale/cashCloseRecovery";
+import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
 
 type Props = {
   locale: LocaleCode;
   mode: "OPEN" | "CLOSE";
   terminalId: string;
   token: string;
+  authorization?: SaleOperationAuthorization;
+  closeFlow?: CashCloseUiFlow;
+  onCloseFlowChange?: (flow: CashCloseUiFlow) => void;
   onExitSales?: () => void;
   onOpened?: (session: CashSessionView) => void;
   onClosed?: (session: CashSessionView) => void;
   onCancel?: () => void;
 };
+
+export type CashCloseUiPhase = CashCloseRecoveryFlow["phase"];
+export type CashCloseUiFlow = CashCloseRecoveryFlow;
+
+export function createCashCloseUiFlow(): CashCloseUiFlow {
+  return {
+    closeOperationId: createCashCloseWithdrawalIdempotencyKey(),
+    reconciliationAttemptId: createCashCloseWithdrawalIdempotencyKey(),
+    phase: "READY",
+    retainedFund: "0",
+    finalWithdrawal: "0",
+    comment: "",
+  };
+}
 
 const copy = {
   es: {
@@ -32,9 +58,15 @@ const copy = {
     comment: "Comentario de la retirada",
     closeAction: "Cerrar caja",
     closing: "Comprobando arqueo…",
+    retryAction: "Reintentar cierre",
     cancel: "Cancelar",
     invalidAmount: "Los importes deben ser números iguales o superiores a cero.",
+    authorizationRequired: "Completa la autorización necesaria para cerrar la caja.",
     mismatch: "El arqueo presenta un descuadre. Revisa el efectivo y realiza el segundo intento.",
+    attempted:
+      "El cierre ya se ha iniciado. Debes reintentar o completarlo; no se puede cancelar ni modificar la retirada final.",
+    reconciliationRequired:
+      "La retirada final ya se ha procesado. Revisa solo el fondo que queda en caja y completa el segundo intento.",
     error: "No se pudo completar la operación de caja.",
   },
   en: {
@@ -50,9 +82,15 @@ const copy = {
     comment: "Withdrawal comment",
     closeAction: "Close register",
     closing: "Checking cash count…",
+    retryAction: "Retry close",
     cancel: "Cancel",
     invalidAmount: "Amounts must be numbers greater than or equal to zero.",
+    authorizationRequired: "Complete the authorization required to close the register.",
     mismatch: "The cash count does not match. Check the cash and submit the second attempt.",
+    attempted:
+      "The close has already started. You must retry or complete it; it cannot be cancelled and the final withdrawal cannot be changed.",
+    reconciliationRequired:
+      "The final withdrawal has already been processed. Review only the cash retained and complete the second attempt.",
     error: "The cash operation could not be completed.",
   },
   zh: {
@@ -68,9 +106,13 @@ const copy = {
     comment: "取款备注",
     closeAction: "关闭收银会话",
     closing: "正在核对盘点…",
+    retryAction: "重试关闭",
     cancel: "取消",
     invalidAmount: "金额必须是大于或等于零的数字。",
+    authorizationRequired: "请完成关闭钱箱所需的授权。",
     mismatch: "盘点存在差额。请检查现金并进行第二次盘点。",
+    attempted: "关闭流程已开始。必须重试或完成，不能取消或修改最终取款。",
+    reconciliationRequired: "最终取款已处理。请仅检查保留现金并完成第二次盘点。",
     error: "无法完成收银操作。",
   },
 } as const;
@@ -97,17 +139,78 @@ export function SaleCashSessionDialog({
   mode,
   terminalId,
   token,
+  authorization = {
+    mode: "DIRECT",
+    requireUsername: false,
+    requirePassword: false,
+  },
+  closeFlow,
+  onCloseFlowChange,
   onExitSales,
   onOpened,
   onClosed,
   onCancel,
 }: Props) {
   const t = copy[locale];
-  const [retainedFund, setRetainedFund] = useState("0");
-  const [finalWithdrawal, setFinalWithdrawal] = useState("0");
-  const [comment, setComment] = useState("");
+  const [initialCloseFlow] = useState(() => closeFlow ?? createCashCloseUiFlow());
+  const [retainedFund, setRetainedFund] = useState(initialCloseFlow.retainedFund);
+  const [finalWithdrawal, setFinalWithdrawal] = useState(initialCloseFlow.finalWithdrawal);
+  const [comment, setComment] = useState(initialCloseFlow.comment);
+  const [reconciliationAttemptId, setReconciliationAttemptId] =
+    useState(initialCloseFlow.reconciliationAttemptId);
+  const [authorizerUsername, setAuthorizerUsername] = useState("");
+  const [authorizerPassword, setAuthorizerPassword] = useState("");
+  const [closePhase, setClosePhase] = useState<CashCloseUiPhase>(initialCloseFlow.phase);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const closeAttemptLocked = mode === "CLOSE" && closePhase !== "READY";
+
+  function updateCloseFlow(
+    phase: CashCloseUiPhase,
+    nextReconciliationAttemptId: string = reconciliationAttemptId,
+  ) {
+    setClosePhase(phase);
+    onCloseFlowChange?.({
+      closeOperationId: initialCloseFlow.closeOperationId,
+      reconciliationAttemptId: nextReconciliationAttemptId,
+      phase,
+      retainedFund,
+      finalWithdrawal,
+      comment,
+    });
+  }
+
+  async function recoverRejectedClose(failure: unknown): Promise<boolean> {
+    if (!(failure instanceof ApiError)) return false;
+    try {
+      const recovery = await recoverCashCloseOperation(
+        terminalId,
+        initialCloseFlow.closeOperationId,
+        token,
+      );
+      if ((recovery.status === "CERRADA" || recovery.result?.status === "CERRADA")
+        && recovery.result) {
+        onClosed?.(recovery.result);
+        return true;
+      }
+      if (recovery.status === "REQUIERE_ARQUEO") {
+        const nextAttemptId = recovery.latestReconciliationAttemptId === reconciliationAttemptId
+          ? createCashCloseWithdrawalIdempotencyKey()
+          : reconciliationAttemptId;
+        setReconciliationAttemptId(nextAttemptId);
+        updateCloseFlow("RECONCILIATION_REQUIRED", nextAttemptId);
+        setError(t.mismatch);
+        return true;
+      }
+    } catch (recoveryFailure) {
+      if (recoveryFailure instanceof ApiError
+        && recoveryFailure.status === 404
+        && recoveryFailure.problem?.code === "NOT_FOUND") {
+        updateCloseFlow("READY");
+      }
+    }
+    return false;
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -125,19 +228,41 @@ export function SaleCashSessionDialog({
         setError(t.invalidAmount);
         return;
       }
+      if (!saleOperationAuthorizationComplete(
+        authorization,
+        authorizerUsername,
+        authorizerPassword,
+      )) {
+        setError(t.authorizationRequired);
+        return;
+      }
+      updateCloseFlow("ATTEMPTED");
       const session = await closeCashSession(
         terminalId,
         retained,
         withdrawal,
         comment,
         token,
+        undefined,
+        saleOperationCredentials(
+          authorization,
+          authorizerUsername,
+          authorizerPassword,
+        ),
+        initialCloseFlow.closeOperationId,
+        reconciliationAttemptId,
       );
       if (session.status === "ABIERTA") {
+        const nextAttemptId = createCashCloseWithdrawalIdempotencyKey();
+        setReconciliationAttemptId(nextAttemptId);
+        updateCloseFlow("RECONCILIATION_REQUIRED", nextAttemptId);
         setError(t.mismatch);
         return;
       }
       onClosed?.(session);
     } catch (failure) {
+      setAuthorizerPassword("");
+      if (await recoverRejectedClose(failure)) return;
       setError(operationError(failure, t.error));
     } finally {
       setBusy(false);
@@ -151,6 +276,12 @@ export function SaleCashSessionDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-cash-session-title"
+        onKeyDown={(event) => {
+          if (mode !== "CLOSE" || event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (!closeAttemptLocked && !busy) onCancel?.();
+        }}
       >
         <header>
           <h2 id="sale-cash-session-title">{mode === "OPEN" ? t.openTitle : t.closeTitle}</h2>
@@ -166,6 +297,7 @@ export function SaleCashSessionDialog({
                   inputMode="decimal"
                   value={retainedFund}
                   onChange={(event) => setRetainedFund(event.currentTarget.value)}
+                  disabled={busy || closePhase === "ATTEMPTED"}
                   autoFocus
                 />
               </label>
@@ -176,13 +308,34 @@ export function SaleCashSessionDialog({
                   inputMode="decimal"
                   value={finalWithdrawal}
                   onChange={(event) => setFinalWithdrawal(event.currentTarget.value)}
+                  disabled={busy || closeAttemptLocked}
                 />
               </label>
               <label className="sale-cash-session-comment">
                 <span>{t.comment}</span>
-                <input value={comment} onChange={(event) => setComment(event.currentTarget.value)} />
+                <input
+                  value={comment}
+                  onChange={(event) => setComment(event.currentTarget.value)}
+                  disabled={busy || closeAttemptLocked}
+                />
               </label>
+              <SaleOperationAuthorizationFields
+                locale={locale}
+                authorization={authorization}
+                username={authorizerUsername}
+                password={authorizerPassword}
+                disabled={busy}
+                onUsernameChange={setAuthorizerUsername}
+                onPasswordChange={setAuthorizerPassword}
+              />
             </div>
+          )}
+          {closeAttemptLocked && (
+            <p className="sale-cash-session-progress" role="status">
+              {closePhase === "RECONCILIATION_REQUIRED"
+                ? t.reconciliationRequired
+                : t.attempted}
+            </p>
           )}
           {error && <p className="sale-cash-session-error" role="alert">{error}</p>}
           <footer>
@@ -191,14 +344,21 @@ export function SaleCashSessionDialog({
                 {t.exit}
               </button>
             ) : (
-              <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || closeAttemptLocked}
+                onClick={onCancel}
+              >
                 {t.cancel}
               </button>
             )}
             <button type="submit" disabled={busy}>
               {busy
                 ? mode === "OPEN" ? t.opening : t.closing
-                : mode === "OPEN" ? t.openAction : t.closeAction}
+                : mode === "OPEN"
+                  ? t.openAction
+                  : closeAttemptLocked ? t.retryAction : t.closeAction}
             </button>
           </footer>
         </form>

@@ -1,7 +1,6 @@
 package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.verify;
@@ -26,17 +25,19 @@ class InvoiceControllerTest {
     private DocumentFiscalQrService fiscalQr;
     @Mock
     private DocumentViewAssembler views;
+    @Mock
+    private GenericSalesApiService genericSales;
 
     @Test
     void payPassesRealAuthenticationToDocumentService() {
-        var controller = new InvoiceController(service, fiscalQr, views);
+        var controller = new InvoiceController(service, genericSales, fiscalQr, views);
         var invoiceId = UUID.randomUUID();
         var methodId = UUID.randomUUID();
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "token");
         var paid = document();
-        var expectedPayments = List.of(new PaymentCommand(
-                methodId, new BigDecimal("10.00"), true, null, null, null, "AUTH-123"));
-        when(service.payInvoice(eq(invoiceId), eq(expectedPayments), same(authentication)))
+        var request = new PaymentRequest(List.of(new PaymentRequest.Item(
+                methodId, new BigDecimal("10.00"), true, null, null, null, "AUTH-123")));
+        when(genericSales.payInvoice(eq(invoiceId), same(request), same(authentication)))
                 .thenReturn(paid);
         when(fiscalQr.qrUrl(paid.getId())).thenReturn("qr-url");
         when(views.documentView(paid, "qr-url"))
@@ -44,14 +45,10 @@ class InvoiceControllerTest {
 
         var view = controller.pay(
                 invoiceId,
-                new PaymentRequest(List.of(new PaymentRequest.Item(
-                        methodId, new BigDecimal("10.00"), true, null, null, null, "AUTH-123"))),
+                request,
                 authentication);
 
-        verify(service).payInvoice(
-                eq(invoiceId),
-                argThat(expectedPayments::equals),
-                same(authentication));
+        verify(genericSales).payInvoice(invoiceId, request, authentication);
         assertThat(view.id()).isEqualTo(paid.getId());
         assertThat(view.qrUrl()).isEqualTo("qr-url");
     }

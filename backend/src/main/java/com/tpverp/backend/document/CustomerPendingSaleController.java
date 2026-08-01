@@ -1,13 +1,18 @@
 package com.tpverp.backend.document;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tpverp.backend.terminal.PaymentTerminalResult;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -20,8 +25,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/pos/customer-pending-sales")
 public class CustomerPendingSaleController {
 
-    private static final String CREATE_PERMISSION =
-            "hasRole('ADMIN') or hasAuthority('CUSTOMER_RECEIVABLES_CREATE')";
+    private static final String ACCESS =
+            "hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS',"
+                    + "'INVOICES_WRITE','DELIVERY_NOTES_WRITE')";
 
     private final CustomerPendingSaleService service;
     private final CustomerReceivablePrintService printing;
@@ -33,26 +39,29 @@ public class CustomerPendingSaleController {
     }
 
     @PostMapping("/quote")
-    @PreAuthorize(CREATE_PERMISSION)
+    @PreAuthorize(ACCESS)
     public CustomerPendingSaleService.Quote quote(
             @Valid @RequestBody CreateRequest request, Authentication authentication) {
         requireLegacyPendingSale(request);
+        requireDocumentAccess(request, authentication);
         return service.quote(request, authentication);
     }
 
     @PostMapping("/card-charges")
-    @PreAuthorize(CREATE_PERMISSION)
+    @PreAuthorize(ACCESS)
     public PaymentTerminalResult chargeCard(
             @Valid @RequestBody CardChargeRequest request, Authentication authentication) {
         requireLegacyPendingSale(request.sale());
+        requireDocumentAccess(request.sale(), authentication);
         return service.chargeCard(request, authentication);
     }
 
     @PostMapping("")
-    @PreAuthorize(CREATE_PERMISSION)
+    @PreAuthorize(ACCESS)
     public CreateResponse create(
             @Valid @RequestBody CreateRequest request, Authentication authentication) {
         requireLegacyPendingSale(request);
+        requireDocumentAccess(request, authentication);
         var receivable = service.create(request, authentication);
         return new CreateResponse(receivable, printing.document(receivable.documentId()));
     }
@@ -62,6 +71,12 @@ public class CustomerPendingSaleController {
             throw new IllegalArgumentException(
                     "sales_document_checkout_endpoint_required");
         }
+    }
+
+    private static void requireDocumentAccess(
+            CreateRequest request,
+            Authentication authentication) {
+        SalesDocumentCheckoutController.requireDocumentAccess(request, authentication);
     }
 
     public record CreateResponse(CustomerReceivableView receivable,
@@ -79,7 +94,90 @@ public class CustomerPendingSaleController {
             List<@Valid PaymentItem> payments,
             @NotNull @DecimalMin("0.00") BigDecimal quotedTotal,
             @Valid CreditOverride creditOverride,
-            SalesDocumentCompletionMode completionMode) {
+            SalesDocumentCompletionMode completionMode,
+            @Size(max = 500) String internalComment,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword,
+            @Size(max = 32)
+            @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
+                    operationAuthorizations) {
+
+        public CreateRequest {
+            operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
+                    operationAuthorizations);
+        }
+
+        @Override
+        public String toString() {
+            return "CreateRequest[checkoutId=" + checkoutId
+                    + ", warehouseId=" + warehouseId
+                    + ", type=" + type
+                    + ", customerId=" + customerId
+                    + ", completionMode=" + completionMode
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode,
+                String internalComment,
+                String authorizerUsername,
+                String authorizerPassword) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    completionMode, internalComment, authorizerUsername,
+                    authorizerPassword, Map.of());
+        }
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode,
+                String internalComment) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    completionMode, internalComment, null, null, Map.of());
+        }
+
+        public CreateRequest(
+                UUID checkoutId,
+                UUID warehouseId,
+                CommercialDocumentType type,
+                LocalDate date,
+                UUID customerId,
+                LocalDate dueDate,
+                BigDecimal globalDiscount,
+                List<DocumentRequest.LineRequest> lines,
+                List<PaymentItem> payments,
+                BigDecimal quotedTotal,
+                CreditOverride creditOverride,
+                SalesDocumentCompletionMode completionMode) {
+            this(checkoutId, warehouseId, type, date, customerId, dueDate,
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    completionMode, null, null, null, Map.of());
+        }
+
         public CreateRequest(
                 UUID checkoutId,
                 UUID warehouseId,
@@ -93,7 +191,8 @@ public class CustomerPendingSaleController {
                 BigDecimal quotedTotal,
                 CreditOverride creditOverride) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
-                    globalDiscount, lines, payments, quotedTotal, creditOverride, null);
+                    globalDiscount, lines, payments, quotedTotal, creditOverride,
+                    null, null, null, null, Map.of());
         }
 
         public CreateRequest(
@@ -108,20 +207,36 @@ public class CustomerPendingSaleController {
                 List<PaymentItem> payments,
                 BigDecimal quotedTotal) {
             this(checkoutId, warehouseId, type, date, customerId, dueDate,
-                    globalDiscount, lines, payments, quotedTotal, null, null);
+                    globalDiscount, lines, payments, quotedTotal, null,
+                    null, null, null, null, Map.of());
         }
 
         DocumentCommand toCommand() {
             return new DocumentCommand(
                     warehouseId, type, date, customerId, null, null,
                     globalDiscount, true,
-                    lines.stream().map(DocumentRequest.LineRequest::toCommand).toList());
+                    lines.stream().map(DocumentRequest.LineRequest::toCommand).toList(),
+                    internalComment);
         }
     }
 
     public record CreditOverride(
             @jakarta.validation.constraints.NotBlank
-            @jakarta.validation.constraints.Size(max = 500) String reason) {}
+            @jakarta.validation.constraints.Size(max = 500) String reason,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword) {
+        public CreditOverride(String reason) {
+            this(reason, null, null);
+        }
+
+        @Override
+        public String toString() {
+            return "CreditOverride[reason=" + reason
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
+    }
 
     public record PaymentItem(
             @NotNull PaymentKind kind,
@@ -150,6 +265,7 @@ public class CustomerPendingSaleController {
 
     public enum PaymentKind {
         STANDARD,
+        MANUAL_CARD,
         INTEGRATED_CARD
     }
 

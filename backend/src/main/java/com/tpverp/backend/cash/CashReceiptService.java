@@ -61,6 +61,11 @@ public class CashReceiptService {
         var userName = users.findByIdAndTiendaId(movement.getUserId(), store.getId())
                 .map(user -> user.getNombre())
                 .orElse(movement.getUserId().toString());
+        var authorizerName = movement.getAuthorizerUserId() == null
+                ? null
+                : users.findByIdAndTiendaId(movement.getAuthorizerUserId(), store.getId())
+                        .map(user -> user.getNombre())
+                        .orElse(movement.getAuthorizerUserId().toString());
         return new CashReceiptView(
                 movement.getId(),
                 session == null ? null : session.getId(),
@@ -74,7 +79,9 @@ public class CashReceiptService {
                 null,
                 null,
                 EMPTY_SIGNATURE_LABEL,
-                EMPTY_SIGNATURE_LABEL);
+                EMPTY_SIGNATURE_LABEL,
+                authorizerName,
+                movement.getComment());
     }
 
     // Returns printable close data while filtering theoretical amounts by permission.
@@ -110,7 +117,9 @@ public class CashReceiptService {
                 includeExpectedTotals ? session.getDiscrepancy() : null,
                 includeExpectedTotals ? session.getExpectedCash() : null,
                 EMPTY_SIGNATURE_LABEL,
-                EMPTY_SIGNATURE_LABEL);
+                EMPTY_SIGNATURE_LABEL,
+                null,
+                null);
     }
 
     private List<CashDenominationCommand> denominations(CashMovement movement) {

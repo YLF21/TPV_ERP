@@ -107,6 +107,22 @@ public class Voucher {
     }
     // Cierra el vale original cuando el sobrante se reemite con un codigo nuevo.
 
+    public void restoreAfterTicketCancellation() {
+        if (status == VoucherStatus.INVALIDATED) {
+            throw new IllegalStateException("un vale invalidado no puede restaurarse");
+        }
+        balance = initialAmount;
+        status = VoucherStatus.ACTIVE;
+    }
+
+    public void invalidateAfterTicketCancellation() {
+        if (status == VoucherStatus.CONSUMED) {
+            throw new IllegalStateException("un vale consumido no puede invalidarse");
+        }
+        balance = Money.euros(BigDecimal.ZERO);
+        status = VoucherStatus.INVALIDATED;
+    }
+
     private static BigDecimal positive(BigDecimal value) {
         var amount = Money.euros(value);
         if (amount.signum() <= 0) {

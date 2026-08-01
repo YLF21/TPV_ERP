@@ -36,7 +36,8 @@ public record DocumentReportView(
         String terminalOrigenNombre,
         Instant ocurridoEn,
         int lineas,
-        List<DocumentView.PaymentView> payments) {
+        List<DocumentView.PaymentView> payments,
+        String comentarioInterno) {
 
     static DocumentReportView from(
             CommercialDocument document,
@@ -79,7 +80,8 @@ public record DocumentReportView(
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
                         .map(DocumentView.PaymentView::from)
-                        .toList());
+                        .toList(),
+                document.getComentarioInterno());
     }
 
     record PartySummary(String code, String name) {

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 class DocumentControllerContractTest {
@@ -42,15 +43,47 @@ class DocumentControllerContractTest {
     }
 
     @Test
-    void exposesExactTicketReturnPreviewWithRefundPermission() throws NoSuchMethodException {
-        var method = TicketController.class.getDeclaredMethod(
+    void exposesTicketReturnPreviewWithoutDirectDatafonoPermission() throws NoSuchMethodException {
+        var preview = TicketController.class.getDeclaredMethod(
                 "returnPreview", String.class);
+        var confirmation = TicketController.class.getDeclaredMethod(
+                "createReturn",
+                UUID.class,
+                TicketController.ReturnRequest.class,
+                org.springframework.security.core.Authentication.class);
 
-        assertThat(method.getAnnotation(GetMapping.class).value())
+        assertThat(preview.getAnnotation(GetMapping.class).value())
                 .containsExactly("/return-preview");
-        assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("PAYMENT_TERMINAL_REFUND");
-        assertThat(method.getParameters()[0].getAnnotation(RequestParam.class)).isNotNull();
+        assertThat(preview.getAnnotation(PreAuthorize.class).value())
+                .contains("VENTA")
+                .doesNotContain("PAYMENT_TERMINAL_REFUND");
+        assertThat(confirmation.getAnnotation(PreAuthorize.class).value())
+                .contains("VENTA")
+                .doesNotContain("PAYMENT_TERMINAL_REFUND");
+        assertThat(preview.getParameters()[0].getAnnotation(RequestParam.class))
+                .isNotNull();
+        assertThat(Arrays.stream(TicketController.class.getDeclaredConstructors())
+                .flatMap(constructor -> Arrays.stream(constructor.getParameterTypes()))
+                .noneMatch(type -> type.getSimpleName().equals(
+                        "PaymentTerminalReauthenticationService")))
+                .isTrue();
+    }
+
+    @Test
+    void parkedSaleDeletionUsesConfirmedPostAndHasNoDeleteBypass()
+            throws NoSuchMethodException {
+        var method = ParkedSaleController.class.getDeclaredMethod(
+                "delete",
+                UUID.class,
+                ParkedSaleController.DeleteRequest.class,
+                org.springframework.security.core.Authentication.class);
+
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/{id}/deletions");
+        assertThat(Arrays.stream(ParkedSaleController.class.getDeclaredMethods())
+                .noneMatch(candidate -> candidate.isAnnotationPresent(
+                        org.springframework.web.bind.annotation.DeleteMapping.class)))
+                .isTrue();
     }
 
     @Test
@@ -86,13 +119,33 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void genericSaleControllersUseFailClosedServiceBoundary() throws NoSuchMethodException {
+        assertThat(Arrays.stream(TicketController.class.getDeclaredConstructors())
+                .flatMap(constructor -> Arrays.stream(constructor.getParameterTypes())))
+                .contains(GenericSalesApiService.class)
+                .doesNotContain(PosCashService.class);
+
+        var invoiceConfirm = InvoiceController.class.getDeclaredMethod(
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class);
+        var deliveryConfirm = DeliveryNoteController.class.getDeclaredMethod(
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class);
+        assertThat(invoiceConfirm.getParameters()[1].getAnnotation(RequestBody.class).required())
+                .isFalse();
+        assertThat(deliveryConfirm.getParameters()[1].getAnnotation(RequestBody.class).required())
+                .isFalse();
+    }
+
+    @Test
     void salesManagementCoversGranularSalesDocumentActions() throws NoSuchMethodException {
         assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod(
                 "list", org.springframework.security.core.Authentication.class));
         assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod(
                 "create", DocumentRequest.class, org.springframework.security.core.Authentication.class));
         assertSalesManagement(DeliveryNoteController.class.getDeclaredMethod(
-                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class));
         assertSalesManagement(TicketController.class.getDeclaredMethod("list"));
         assertSalesManagement(TicketController.class.getDeclaredMethod(
                 "create", TicketController.CreateTicketRequest.class,
@@ -105,7 +158,8 @@ class DocumentControllerContractTest {
         assertSalesManagement(InvoiceController.class.getDeclaredMethod(
                 "create", DocumentRequest.class, org.springframework.security.core.Authentication.class));
         assertSalesManagement(InvoiceController.class.getDeclaredMethod(
-                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class));
         assertSalesManagement(InvoiceController.class.getDeclaredMethod(
                 "pay", UUID.class, PaymentRequest.class,
                 org.springframework.security.core.Authentication.class));
@@ -132,7 +186,8 @@ class DocumentControllerContractTest {
         assertThat(confirmedDeliveryNote.getAnnotation(PostMapping.class).value())
                 .containsExactly("/confirmed");
         assertPurchaseWrite(DeliveryNoteController.class.getDeclaredMethod(
-                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class));
         assertPurchaseRead(InvoiceController.class.getDeclaredMethod(
                 "list", org.springframework.security.core.Authentication.class));
         assertPurchaseWrite(InvoiceController.class.getDeclaredMethod(
@@ -143,7 +198,8 @@ class DocumentControllerContractTest {
         assertThat(confirmedInvoice.getAnnotation(PostMapping.class).value())
                 .containsExactly("/confirmed");
         assertPurchaseWrite(InvoiceController.class.getDeclaredMethod(
-                "confirm", UUID.class, org.springframework.security.core.Authentication.class));
+                "confirm", UUID.class, SaleOperationAuthorizationsRequest.class,
+                org.springframework.security.core.Authentication.class));
         assertPurchaseRead(DocumentReportController.class.getDeclaredMethod(
                 "invoices", Integer.class, String.class,
                 org.springframework.security.core.Authentication.class));

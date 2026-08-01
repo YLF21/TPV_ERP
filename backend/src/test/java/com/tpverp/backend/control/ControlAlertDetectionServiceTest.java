@@ -57,7 +57,7 @@ class ControlAlertDetectionServiceTest {
         store = new Store(new Company("B00000000", "Company", address),
                 "Store", address, "hash", "Atlantic/Canary", "EUR", "es-ES");
         user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
-        when(organization.currentUser(any())).thenReturn(user);
+        lenient().when(organization.currentUser(any())).thenReturn(user);
         lenient().when(rules.findAllByStoreIdAndTypeAndActiveTrue(
                 org.mockito.ArgumentMatchers.any(UUID.class),
                 org.mockito.ArgumentMatchers.any(ControlAlertType.class))).thenReturn(List.of());
@@ -196,6 +196,89 @@ class ControlAlertDetectionServiceTest {
         assertThat(event.getValue().getData())
                 .containsEntry("authorizerName", "ENCARGADO")
                 .containsEntry("delegated", true);
+    }
+
+    @Test
+    void recordsCashDiscrepancyOncePerSessionAndIncludesOperationalContext() {
+        var rule = new ControlRule(
+                store.getId(), ControlAlertType.CASH_SESSION_DISCREPANCY,
+                true, Map.of(), user.getId(), NOW);
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.CASH_SESSION_DISCREPANCY))
+                .thenReturn(List.of(rule));
+        var cashSessionId = UUID.randomUUID();
+        var terminalId = UUID.randomUUID();
+        var authorizerId = UUID.randomUUID();
+        when(events.existsByRuleIdAndSourceTypeAndSourceId(
+                rule.getId(), "CASH_SESSION_DISCREPANCY", cashSessionId))
+                .thenReturn(false, true);
+
+        service.detectCashSessionDiscrepancy(
+                cashSessionId,
+                store.getId(),
+                terminalId,
+                new BigDecimal("100.00"),
+                new BigDecimal("94.00"),
+                new BigDecimal("-6.00"),
+                new BigDecimal("1.00"),
+                1,
+                false,
+                authorizerId,
+                "ENCARGADO",
+                true,
+                authentication());
+        service.detectCashSessionDiscrepancy(
+                cashSessionId,
+                store.getId(),
+                terminalId,
+                new BigDecimal("100.00"),
+                new BigDecimal("94.00"),
+                new BigDecimal("-6.00"),
+                new BigDecimal("1.00"),
+                2,
+                true,
+                authorizerId,
+                "ENCARGADO",
+                true,
+                authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType())
+                .isEqualTo(ControlAlertType.CASH_SESSION_DISCREPANCY);
+        assertThat(event.getValue().getSourceId()).isEqualTo(cashSessionId);
+        assertThat(event.getValue().getTerminalId()).isEqualTo(terminalId);
+        assertThat(event.getValue().getData())
+                .containsEntry("cashSessionId", cashSessionId.toString())
+                .containsEntry("expectedCash", new BigDecimal("100.00"))
+                .containsEntry("declaredFund", new BigDecimal("94.00"))
+                .containsEntry("discrepancy", new BigDecimal("-6.00"))
+                .containsEntry("tolerance", new BigDecimal("1.00"))
+                .containsEntry("reconciliationAttempt", 1)
+                .containsEntry("operatorId", user.getId().toString())
+                .containsEntry("authorizerId", authorizerId.toString())
+                .containsEntry("delegated", true);
+        verify(history).save(any(ControlAlertHistory.class));
+    }
+
+    @Test
+    void ignoresCashDiscrepancyInsideConfiguredTolerance() {
+        service.detectCashSessionDiscrepancy(
+                UUID.randomUUID(),
+                store.getId(),
+                UUID.randomUUID(),
+                new BigDecimal("100.00"),
+                new BigDecimal("99.00"),
+                new BigDecimal("-1.00"),
+                new BigDecimal("1.00"),
+                1,
+                true,
+                user.getId(),
+                user.getUserName(),
+                false,
+                authentication());
+
+        verify(events, never()).save(any());
     }
 
     @Test

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { tableLayoutStorageKey, writeStoredTableLayout } from "./tableLayoutPreferences";
 import {
   defaultStockSalesHistoryRange,
+  effectiveStockSalesHistoryTotals,
   filterStockSalesHistoryRows,
   stockSalesDocumentLabel,
   stockSalesHistoryPath,
@@ -47,6 +48,8 @@ describe("StockSalesHistoryPanel", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    Reflect.deleteProperty(window, "tpvDesktop");
+    vi.unstubAllGlobals();
   });
 
   it("builds the real product history endpoint with a report date range", () => {
@@ -84,6 +87,34 @@ describe("StockSalesHistoryPanel", () => {
     expect(html).toContain("Documento");
     expect(html).toContain("Precio unitario");
     expect(html).toContain("Almacén");
+  });
+
+  it("uses the authenticated access token supplied by APP VENTA", async () => {
+    apiRequestMock.mockResolvedValue([]);
+    render(
+      <StockSalesHistoryPanel
+        productId="product-1"
+        productName="Cafe molido"
+        locale="es"
+        accessToken="sale-access-token"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(
+      expect.stringContaining("/stock/products/product-1/sales-history"),
+      { token: "sale-access-token" },
+    ));
+  });
+
+  it("calculates effective totals excluding cancelled documents and retaining negative returns", () => {
+    const totals = effectiveStockSalesHistoryTotals([
+      row,
+      { ...row, documentId: "cancelled", status: "ANULADO", quantity: 9, lineTotal: 90 },
+      { ...row, documentId: "return", quantity: -1, lineTotal: -4.5 },
+    ]);
+    expect(totals.quantity).toBe(1);
+    expect(totals.amount).toBeCloseTo(3.6);
   });
 
   it("keeps product sales history headers, colgroup and body in the persisted interactive order", async () => {
@@ -155,5 +186,103 @@ describe("StockSalesHistoryPanel", () => {
     ) ?? "[]") as Array<{ key: string; width: number }>;
     expect(stored.map((column) => column.key).slice(0, 2)).toEqual(["warehouse", "user"]);
     expect(stored.find((column) => column.key === "user")?.width).toBe(158);
+  });
+
+  it("shows effective totals below the table", async () => {
+    apiRequestMock.mockResolvedValueOnce([
+      row,
+      { ...row, documentId: "cancelled", status: "ANULADO", quantity: 10, lineTotal: 100 },
+      { ...row, documentId: "return", quantity: -1, lineTotal: -4.5 },
+    ]);
+
+    const { container } = render(
+      <StockSalesHistoryPanel
+        productId="product-1"
+        productName="Cafe molido"
+        locale="es"
+        token="token"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(3));
+    expect(container.querySelector(".stock-history-totals")?.textContent)
+      .toContain("Cantidad total vendida1,00");
+    expect(container.querySelector(".stock-history-totals")?.textContent)
+      .toContain("Importe total3,60 €");
+  });
+
+  it("exports the applied view as a real backend workbook", async () => {
+    apiRequestMock.mockResolvedValueOnce([row]);
+    const saveFile = vi.fn().mockResolvedValue({ ok: true, canceled: false });
+    window.tpvDesktop = { closeApplication: vi.fn(), reports: {
+      saveFile,
+      exportPdf: vi.fn(),
+      exportTablePdf: vi.fn(),
+      print: vi.fn(),
+    } };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <StockSalesHistoryPanel
+        productId="product-1"
+        productCode="CAFE-1"
+        productName="Cafe molido"
+        locale="es"
+        token="token"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect((screen.getByRole("button", { name: "Exportar" }) as HTMLButtonElement).disabled)
+      .toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a Excel" }));
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalled());
+    const [, request] = fetchMock.mock.calls[0];
+    const payload = JSON.parse(String(request.body));
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/stock/products/product-1/sales-history/export");
+    expect(payload.status).toBeNull();
+    expect(payload.columns).toHaveLength(11);
+    expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
+      defaultFileName: "historial-ventas-cafe-1.xlsx",
+    }));
+  });
+
+  it("exports PDF with the product image and no image-free alternative", async () => {
+    apiRequestMock.mockResolvedValueOnce([row]);
+    const exportTablePdf = vi.fn().mockResolvedValue({ ok: true, canceled: false });
+    window.tpvDesktop = { closeApplication: vi.fn(), reports: {
+      saveFile: vi.fn(),
+      exportPdf: vi.fn(),
+      exportTablePdf,
+      print: vi.fn(),
+    } };
+
+    render(
+      <StockSalesHistoryPanel
+        productId="product-1"
+        productCode="CAFE-1"
+        productName="Cafe molido"
+        productImageSource="data:image/png;base64,AAAA"
+        locale="es"
+        token="token"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect((screen.getByRole("button", { name: "Exportar" }) as HTMLButtonElement).disabled)
+      .toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Exportar" }));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.queryByRole("menuitem", { name: /sin imagen/i })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Exportar a PDF" }));
+    await waitFor(() => expect(exportTablePdf).toHaveBeenCalledTimes(1));
+    expect(exportTablePdf.mock.calls[0][0].imageDataUrl).toBe("data:image/png;base64,AAAA");
   });
 });

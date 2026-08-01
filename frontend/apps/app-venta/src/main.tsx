@@ -15,6 +15,13 @@ import { useSaleUserLocalePreference } from "./saleUserLocale";
 import { evaluateCompatibility, InvalidCompatibilityContractError, loadBackendCompatibility } from "../../../packages/app-common/src/api/compatibility";
 import { apiRequest, ApiConnectionError, ApiError } from "../../../packages/app-common/src/api/client";
 import { loadTerminalIdentity } from "../../../packages/app-common/src/terminalIdentity";
+import type { SaleOperationAuthorization } from "../../../packages/app-common/src/sale/operationSecurity";
+import {
+  createProductFromInternalEan,
+  uploadInternalEanProductImage,
+  type InternalEanProduct,
+  type InternalEanReservation,
+} from "../../../packages/app-common/src/sale/internalEan";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
 
@@ -87,6 +94,15 @@ const CustomerReceivablesScreen = lazy(() =>
 const SaleScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SaleScreen").then(({ SaleScreen }) => ({ default: SaleScreen }))
 );
+const SaleInternalEanDialog = lazy(() =>
+  import("../../../packages/app-common/src/components/SaleInternalEanDialog").then(({ SaleInternalEanDialog }) => ({ default: SaleInternalEanDialog }))
+);
+const SaleProductLabelDialog = lazy(() =>
+  import("../../../packages/app-common/src/components/SaleProductLabelDialog").then(({ SaleProductLabelDialog }) => ({ default: SaleProductLabelDialog }))
+);
+const ProductCreateDialog = lazy(() =>
+  import("../../../packages/app-common/src/components/ProductCreateDialog").then(({ ProductCreateDialog }) => ({ default: ProductCreateDialog }))
+);
 const SalesDocumentScreen = lazy(() =>
   import("../../../packages/app-common/src/components/SalesDocumentScreen").then(({ SalesDocumentScreen }) => ({
     default: SalesDocumentScreen
@@ -141,6 +157,132 @@ function SalesDocumentWindowApp() {
     );
   }
   return <SalesDocumentScreen {...bootstrap} />;
+}
+
+type SalesUtilityBootstrap = {
+  kind: "INTERNAL_EAN" | "PRODUCT_LABEL";
+  locale: LocaleCode;
+  session: UserSession;
+  terminalContext: TerminalContext;
+  initialProductId?: string;
+  authorization?: SaleOperationAuthorization;
+};
+
+type SalesUtilityProduct = InternalEanProduct & {
+  salePrice?: number | string | null;
+};
+
+let salesUtilityBootstrapPromise: Promise<SalesUtilityBootstrap | null> | null = null;
+
+function SalesUtilityWindowApp() {
+  const [bootstrap, setBootstrap] = useState<SalesUtilityBootstrap | null | undefined>();
+  const [products, setProducts] = useState<SalesUtilityProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [productReservation, setProductReservation] = useState<InternalEanReservation | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    salesUtilityBootstrapPromise ??=
+      window.tpvDesktop?.salesUtilities?.consumeBootstrap()
+      ?? Promise.resolve(null);
+    void salesUtilityBootstrapPromise
+      .then((value) => {
+        if (!active) return;
+        setBootstrap(value);
+        if (!value) {
+          setLoading(false);
+          return;
+        }
+        return apiRequest<SalesUtilityProduct[]>("/products/sale", {
+          token: value.session.accessToken,
+        }).then((catalog) => {
+          if (active) setProducts(catalog);
+        }).catch((failure) => {
+          if (active) setError(failure instanceof Error ? failure.message : "No se pudo cargar el catálogo");
+        }).finally(() => {
+          if (active) setLoading(false);
+        });
+      });
+    return () => { active = false; };
+  }, []);
+
+  function finish(result?: { catalogChanged?: boolean; printed?: boolean; pdf?: boolean }) {
+    const action = window.tpvDesktop?.salesUtilities?.complete(result);
+    if (action) void action.catch(() => window.close());
+    else window.close();
+  }
+
+  function close() {
+    const action = window.tpvDesktop?.salesUtilities?.close();
+    if (action) void action.catch(() => window.close());
+    else window.close();
+  }
+
+  if (loading || bootstrap === undefined) return <AppLoadingFallback />;
+  if (!bootstrap || error) {
+    return <main className="settings-screen"><section className="settings-card" role="alert">
+      <h1>No se pudo abrir la herramienta de venta</h1>
+      <p>{error || "La sesión de la ventana no está disponible."}</p>
+      <button type="button" onClick={close}>Cerrar</button>
+    </section></main>;
+  }
+
+  if (bootstrap.kind === "PRODUCT_LABEL") {
+    return <SaleProductLabelDialog
+      open
+      locale={bootstrap.locale}
+      storeName={bootstrap.terminalContext.storeName}
+      products={products}
+      initialProductId={bootstrap.initialProductId}
+      onClose={close}
+      onPrinted={(pdf) => finish({ printed: true, pdf })}
+    />;
+  }
+
+  if (!bootstrap.authorization) {
+    return <main className="settings-screen"><section className="settings-card" role="alert">
+      <h1>No se pudo abrir el generador EAN</h1>
+      <p>No se recibió una política de autorización válida.</p>
+      <button type="button" onClick={close}>Cerrar</button>
+    </section></main>;
+  }
+
+  if (productReservation) {
+    return <ProductCreateDialog
+      open
+      locale={bootstrap.locale}
+      token={bootstrap.session.accessToken}
+      initialForm={{ barcode: productReservation.code }}
+      createProduct={(body, token) => createProductFromInternalEan(
+        productReservation.reservationId,
+        body,
+        token,
+      )}
+      uploadImage={async (productId, file, token) => {
+        await uploadInternalEanProductImage(
+          productReservation.reservationId,
+          productId,
+          file,
+          token,
+        );
+      }}
+      onClose={close}
+      onCreated={() => finish({ catalogChanged: true })}
+    />;
+  }
+
+  return <SaleInternalEanDialog
+    open
+    locale={bootstrap.locale}
+    token={bootstrap.session.accessToken}
+    products={products}
+    initialProductId={bootstrap.initialProductId}
+    authorization={bootstrap.authorization}
+    onClose={close}
+    onAssigned={() => finish({ catalogChanged: true })}
+    onCreateProduct={setProductReservation}
+  />;
 }
 
 export function App() {
@@ -418,6 +560,8 @@ export function App() {
 
 const isSalesDocumentWindow =
   new URLSearchParams(window.location.search).get("window") === "sales-document";
+const isSalesUtilityWindow =
+  new URLSearchParams(window.location.search).get("window") === "sales-utility";
 
 const rootElement = document.getElementById("root")!;
 const rootStore = globalThis as typeof globalThis & {
@@ -429,7 +573,11 @@ appRoot.render(
   <StrictMode>
     <LazyModuleErrorBoundary>
       <Suspense fallback={<AppLoadingFallback />}>
-        {isSalesDocumentWindow ? <SalesDocumentWindowApp /> : <App />}
+        {isSalesDocumentWindow
+          ? <SalesDocumentWindowApp />
+          : isSalesUtilityWindow
+            ? <SalesUtilityWindowApp />
+            : <App />}
       </Suspense>
     </LazyModuleErrorBoundary>
   </StrictMode>

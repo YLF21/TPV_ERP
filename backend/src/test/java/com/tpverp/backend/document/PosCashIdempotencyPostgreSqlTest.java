@@ -90,6 +90,12 @@ class PosCashIdempotencyPostgreSqlTest {
     @MockitoBean private PaymentMethodRepository paymentMethods;
     @MockitoBean private CurrentOrganization organization;
     @MockitoBean private CurrentTerminal currentTerminal;
+    @MockitoBean private DiscountAuthorizationService discountAuthorizations;
+    @MockitoBean private com.tpverp.backend.promotion.AuthoritativePromotionPricing
+            promotionPricing;
+    @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
+            operationSecurity;
+    @MockitoBean private com.tpverp.backend.audit.AuditService audit;
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

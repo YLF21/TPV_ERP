@@ -85,9 +85,6 @@ describe("TicketReturnDialog", () => {
     expect(await screen.findByText("S/N: SN-002")).toBeInTheDocument();
     expect(screen.queryByText("S/N: SN-001")).toBeNull();
     fireEvent.click(screen.getByLabelText("S/N: SN-002"));
-    fireEvent.change(screen.getByLabelText("Contraseña del usuario actual"), {
-      target: { value: "1234" },
-    });
     await waitFor(() => expect(screen.getByRole("button", { name: "Confirmar devolución" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Confirmar devolución" }));
 

@@ -74,6 +74,25 @@ class PromotionCatalogGatewayTest {
     }
 
     @Test
+    void authorizedTemporaryNameSurvivesTheCatalogSnapshot() {
+        var productId = UUID.randomUUID();
+        when(product.getId()).thenReturn(productId);
+        when(product.getCode()).thenReturn("CAT-1");
+        when(product.isTaxesIncluded()).thenReturn(true);
+        when(tax.getPercentage()).thenReturn(new BigDecimal("21.00"));
+        var snapshot = new PromotionCatalogGateway.ProductSnapshot(product, tax);
+
+        var line = snapshot.authoritativeSnapshot(new DocumentLineCommand(
+                productId, BigDecimal.ONE, "CAT-1", "Nombre temporal", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"), null, null, null, null, List.of(),
+                true, false));
+
+        assertThat(line.nombre()).isEqualTo("Nombre temporal");
+        assertThat(line.temporaryNameOverride()).isTrue();
+    }
+
+    @Test
     void rejectsTargetFromAnotherStore() {
         var storeId = UUID.randomUUID();
         var familyId = UUID.randomUUID();

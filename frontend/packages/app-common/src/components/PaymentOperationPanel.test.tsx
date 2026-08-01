@@ -33,6 +33,25 @@ describe("PaymentOperationPanel", () => {
     expect(html).not.toContain(">Reembolsar<");
   });
 
+  it("keeps delegated operations visible when the configured policy can authorize them", () => {
+    const html = renderToStaticMarkup(<PaymentOperationPanel
+      t={createTranslator("es")}
+      operation={{ id: "op", status: "APPROVED", amount: "10.00", provider: "PAYTEF" }}
+      events={[]}
+      capabilities={["VOID", "REFUND"]}
+      permissions={[]}
+      voidAvailable
+      refundAvailable
+      onQuery={vi.fn()}
+      onVoid={vi.fn()}
+      onRefund={vi.fn()}
+      onPrintReceipt={vi.fn()}
+    />);
+
+    expect(html).toContain("Anular");
+    expect(html).toContain("Reembolsar");
+  });
+
   it("sanitizes receipt control characters before HardwareBridge printing", () => {
     expect(sanitizeReceiptText("OK\u0000\u001b[31m\nTOTAL 12.00")).toBe("OK[31m\nTOTAL 12.00");
   });

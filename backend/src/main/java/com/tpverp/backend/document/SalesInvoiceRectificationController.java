@@ -17,17 +17,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class SalesInvoiceRectificationController {
 
     private final SalesInvoiceRectificationService rectifications;
-    private final DocumentService documents;
+    private final SalesInvoiceRectificationConfirmationService confirmations;
     private final DocumentViewAssembler views;
     private final DocumentFiscalQrService fiscalQr;
 
     public SalesInvoiceRectificationController(
             SalesInvoiceRectificationService rectifications,
-            DocumentService documents,
+            SalesInvoiceRectificationConfirmationService confirmations,
             DocumentViewAssembler views,
             DocumentFiscalQrService fiscalQr) {
         this.rectifications = rectifications;
-        this.documents = documents;
+        this.confirmations = confirmations;
         this.views = views;
         this.fiscalQr = fiscalQr;
     }
@@ -76,8 +76,7 @@ public class SalesInvoiceRectificationController {
     public SalesInvoiceRectificationView confirm(
             @PathVariable UUID id,
             Authentication authentication) {
-        documents.confirm(id, authentication);
-        return view(rectifications.details(id));
+        return view(confirmations.confirm(id, authentication));
     }
 
     private SalesInvoiceRectificationView view(

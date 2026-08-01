@@ -9,9 +9,18 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
 
 class SalePaymentSessionServiceTest {
  private static CashPaymentRecorder cashPayments(){return mock(CashPaymentRecorder.class);}
+ private static SecurityFixture security(UserAccount operator,Authentication auth){
+  when(operator.getUserName()).thenReturn("CAJERO");var operationSecurity=mock(SaleOperationSecurityService.class);var audit=mock(AuditService.class);when(operationSecurity.authorize(any(SaleOperationCode.class),nullable(String.class),nullable(String.class),eq(auth))).thenReturn(new Authorization(operator,operator,false));return new SecurityFixture(operationSecurity,audit);
+ }
+ private record SecurityFixture(SaleOperationSecurityService operationSecurity,AuditService audit){}
 
  @Test void discardsSimulationOnlyFromPersistedTestConfiguration(){
   var f=discardFixture();var config=new CardTerminalConfiguration(f.terminalId,f.storeId,PaymentCardMode.INTEGRATED,PaymentTerminalProvider.PAYTEF,true,true,"sim","ref",1,"hash",Map.of());when(f.configs.required(f.terminalId)).thenReturn(config);
@@ -61,29 +70,44 @@ class SalePaymentSessionServiceTest {
 
  @Test void compensationAcknowledgementUsesDurableOperationTruthAfterTimeout(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
-  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"incierto");session.cancel();when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var durable=mock(PaymentTerminalOperation.class);when(ops.find(operationId)).thenReturn(Optional.of(durable));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
+   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"incierto");session.cancel();when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var durable=mock(PaymentTerminalOperation.class);when(ops.find(operationId)).thenReturn(Optional.of(durable));var security=security(user,auth);var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments(),security.operationSecurity(),security.audit());
   when(durable.getStatus()).thenReturn(PaymentTerminalOperationStatus.APPROVED);when(ops.recover(eq(operationId),any(UUID.class))).thenReturn(durable);
   service.query(sessionId,operationId,auth);
   assertThat(allocation.getStatus()).isEqualTo(PaymentTerminalOperationStatus.TIMEOUT);
-  assertThatThrownBy(()->service.acknowledgeCompensation(sessionId,"revisado",auth)).hasMessage("integrated_compensation_unresolved");
+   assertThatThrownBy(()->service.acknowledgeCompensation(sessionId,"revisado",null,null,auth)).hasMessage("integrated_compensation_unresolved");
   assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COMPENSATION_REQUIRED);
   when(durable.getStatus()).thenReturn(PaymentTerminalOperationStatus.CANCELLED);
-  service.acknowledgeCompensation(sessionId,"anulado en terminal",auth);
-  assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+   service.acknowledgeCompensation(sessionId,"anulado en terminal",null,"1234",auth);
+   assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
+   verify(security.operationSecurity()).authorize(SaleOperationCode.PAYMENT_COMPENSATION_ACK,null,"1234",auth);verify(security.audit()).record(eq("PAYMENT_COMPENSATION_ACKNOWLEDGED"),any(),argThat(details->!details.containsKey("authorizerPassword")));
  }
 
  @Test void refundedDurableOperationAlsoAllowsCompensationAcknowledgement(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
-  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",BigDecimal.TEN);var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"incierto");session.cancel();when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var durable=mock(PaymentTerminalOperation.class);when(durable.getStatus()).thenReturn(PaymentTerminalOperationStatus.REFUNDED);when(ops.find(operationId)).thenReturn(Optional.of(durable));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
-  service.acknowledgeCompensation(sessionId,"reembolsado",auth);
+   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var operationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",BigDecimal.TEN);var allocation=session.addAllocation(operationId,"card",SalePaymentAllocationKind.INTEGRATED_CARD,BigDecimal.TEN,"PAYTEF","INTEGRATED");allocation.result(PaymentTerminalOperationStatus.TIMEOUT,operationId,null,null,"incierto");session.cancel();when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var durable=mock(PaymentTerminalOperation.class);when(durable.getStatus()).thenReturn(PaymentTerminalOperationStatus.REFUNDED);when(ops.find(operationId)).thenReturn(Optional.of(durable));var security=security(user,auth);var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments(),security.operationSecurity(),security.audit());
+   service.acknowledgeCompensation(sessionId,"reembolsado",null,"1234",auth);
   assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.CANCELLED);
  }
 
  @Test void manualReplayMustMatchReference(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
-  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
-  service.add(sessionId,UUID.randomUUID(),"manual",SalePaymentAllocationKind.MANUAL_CARD,new BigDecimal("10.00"),null,"REF-1",auth);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var security=security(user,auth);var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments(),security.operationSecurity(),security.audit());
+  service.add(sessionId,UUID.randomUUID(),"manual",SalePaymentAllocationKind.MANUAL_CARD,new BigDecimal("10.00"),null,null,"REF-1",null,null,null,new OperationAuthorizationRequest("ENCARGADO","secret"),auth);
   assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"manual",SalePaymentAllocationKind.MANUAL_CARD,new BigDecimal("10.00"),null,"REF-2",auth)).hasMessage("allocation_idempotency_conflict");
+  verify(security.operationSecurity(),times(1)).authorize(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT,"ENCARGADO","secret",auth);
+  verify(security.audit(),times(1)).record(eq("SALE_STANDARD_PAYMENT_AUTHORIZED"),any(),argThat(details->details.get("operationCode").equals("CONFIRM_MANUAL_CARD_PAYMENT")&&!details.containsKey("authorizerPassword")));
+ }
+
+ @Test void transferIsAuthorizedAtTheLockedMutationBoundaryAndIdempotentReplayDoesNotReauthorize(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));var security=security(user,auth);var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments(),security.operationSecurity(),security.audit());
+
+  service.add(sessionId,allocationId,"transfer",SalePaymentAllocationKind.TRANSFER,new BigDecimal("10.00"),null,null,"TR-1",null,null,null,new OperationAuthorizationRequest("ENCARGADO","secret"),auth);
+  service.add(sessionId,allocationId,"transfer",SalePaymentAllocationKind.TRANSFER,new BigDecimal("10.00"),null,null,"TR-1",null,null,null,null,auth);
+
+  verify(security.operationSecurity(),times(1)).authorize(SaleOperationCode.CONFIRM_TRANSFER_PAYMENT,"ENCARGADO","secret",auth);
+  verify(security.audit(),times(1)).record(eq("SALE_STANDARD_PAYMENT_AUTHORIZED"),any(),argThat(details->details.get("operationCode").equals("CONFIRM_TRANSFER_PAYMENT")&&!details.containsKey("authorizerPassword")));
+  assertThat(session.getAllocations()).hasSize(1);
  }
 
  @Test void integratedAllocationRejectsDisabledWrongModeNoneProviderAndStoreRule(){
@@ -105,7 +129,7 @@ class SalePaymentSessionServiceTest {
   var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
   service.add(sessionId,allocationId,"stable",SalePaymentAllocationKind.INTEGRATED_CARD,new BigDecimal("10.00"),"PAYTEF",null,auth);
   service.add(sessionId,UUID.randomUUID(),"stable",SalePaymentAllocationKind.INTEGRATED_CARD,new BigDecimal("10.00"),"PAYTEF",null,auth);
-  verify(ops,times(1)).charge(eq(allocationId),anyString(),eq(new BigDecimal("10.00")),eq(config));assertThat(session.getAllocations()).singleElement().satisfies(a->assertThat(a.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED));session.cancel();var unresolved=mock(PaymentTerminalOperation.class);when(unresolved.getStatus()).thenReturn(PaymentTerminalOperationStatus.APPROVED);when(ops.find(allocationId)).thenReturn(Optional.of(unresolved));assertThatThrownBy(()->service.acknowledgeCompensation(sessionId,"resuelto",auth)).hasMessage("integrated_compensation_unresolved");
+   verify(ops,times(1)).charge(eq(allocationId),anyString(),eq(new BigDecimal("10.00")),eq(config));assertThat(session.getAllocations()).singleElement().satisfies(a->assertThat(a.getStatus()).isEqualTo(PaymentTerminalOperationStatus.APPROVED));session.cancel();var unresolved=mock(PaymentTerminalOperation.class);when(unresolved.getStatus()).thenReturn(PaymentTerminalOperationStatus.APPROVED);when(ops.find(allocationId)).thenReturn(Optional.of(unresolved));assertThatThrownBy(()->service.acknowledgeCompensation(sessionId,"resuelto",null,null,auth)).hasMessage("integrated_compensation_unresolved");
   var other=mock(UserAccount.class);when(other.getId()).thenReturn(UUID.randomUUID());when(auth.getPrincipal()).thenReturn(other);assertThatThrownBy(()->service.get(sessionId,auth)).isInstanceOf(NoSuchElementException.class);
  }
  @Test void failureAfterPendingCommitKeepsStableAllocationAndRetryDoesNotCreateAnother(){
@@ -120,6 +144,23 @@ class SalePaymentSessionServiceTest {
   var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
   assertThatThrownBy(()->service.finalizeSession(sessionId,auth)).hasMessage("payment_operation_not_finalizable");
   verify(docs,never()).createApprovedCardTicketFromSnapshot(any(),any(),eq(auth));
+ }
+
+ @Test void pendingFinalizationAuthorizesLockedCreditAtTheMutationBoundaryAndReplaysWithoutReauthentication(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var pendingSales=mock(CustomerPendingSaleService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var customerId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("10.00"));session.addAllocation(UUID.randomUUID(),"pending",SalePaymentAllocationKind.PENDING,new BigDecimal("10.00"),null,"PENDING").approve(null,null,null);when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(invocation->invocation.getArgument(0));
+  var snapshot=new ApprovedCardTicketSnapshot(storeId,UUID.randomUUID(),java.time.LocalDate.of(2026,7,30),customerId,UUID.randomUUID(),BigDecimal.ZERO,BigDecimal.TEN,BigDecimal.ZERO,BigDecimal.TEN,List.of());when(snapshots.deserialize("{}")).thenReturn(snapshot);
+  var credit=mock(CustomerPendingSaleService.CreditAssessment.class);var operatorAuthorization=new Authorization(user,user,false);var decision=new CustomerPendingSaleService.PendingCreditAuthorization(credit,operatorAuthorization,operatorAuthorization);when(pendingSales.authorizePendingTicket(eq(customerId),eq(snapshot.date()),eq(new BigDecimal("10.00")),eq("excepcion"),eq("ENCARGADO"),eq("secret"),isNull(),isNull(),eq(auth))).thenReturn(decision);
+  var ticket=mock(CommercialDocument.class);var ticketId=UUID.randomUUID();when(ticket.getId()).thenReturn(ticketId);when(ticket.getNumero()).thenReturn("T-1");when(ticket.getEstado()).thenReturn(DocumentStatus.CONFIRMADO);when(ticket.getConfirmadoEn()).thenReturn(java.time.Instant.parse("2026-07-30T10:00:00Z"));when(ticket.getLineas()).thenReturn(List.of());when(ticket.getPagos()).thenReturn(List.of());when(ticket.getTotal()).thenReturn(BigDecimal.TEN);when(ticket.getBaseTotal()).thenReturn(BigDecimal.TEN);when(ticket.getImpuestoTotal()).thenReturn(BigDecimal.ZERO);when(docs.createPendingTicketFromSnapshot(eq(snapshot),eq(List.of()),eq(auth))).thenReturn(ticket);when(docs.loadForPrint(ticketId)).thenReturn(ticket);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());service.setCustomerPendingSaleService(pendingSales);
+
+  service.finalizeSession(sessionId," excepcion "," ENCARGADO ","secret",auth);
+  service.finalizeSession(sessionId,null,null,null,auth);
+
+  verify(pendingSales,times(1)).authorizePendingTicket(customerId,snapshot.date(),new BigDecimal("10.00"),"excepcion","ENCARGADO","secret",null,null,auth);
+  verify(pendingSales,times(1)).recordPendingTicketAuthorization(sessionId,ticket,customerId,"excepcion",decision);
+  verify(docs,times(1)).createPendingTicketFromSnapshot(snapshot,List.of(),auth);
  }
 
  @Test void voucherAllocationChecksBalanceAndCannotReuseTheSameCodeInOneSession(){

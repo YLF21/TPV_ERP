@@ -95,6 +95,26 @@ public class CashSession {
             BigDecimal declaredFund,
             BigDecimal expectedCash,
             BigDecimal tolerance) {
+        return registerAttempt(
+                userId,
+                at,
+                declaredFund,
+                expectedCash,
+                tolerance,
+                null,
+                null,
+                null);
+    }
+
+    public CashReconciliationAttempt registerAttempt(
+            UUID userId,
+            Instant at,
+            BigDecimal declaredFund,
+            BigDecimal expectedCash,
+            BigDecimal tolerance,
+            CashCloseOperation closeOperation,
+            UUID idempotencyKey,
+            String requestHash) {
         requireOpen();
         if (attempts.size() >= 2) {
             throw new IllegalStateException("solo se permiten dos intentos de arqueo");
@@ -107,7 +127,17 @@ public class CashSession {
         var closesSession = attemptNumber == 2
                 || diff.abs().compareTo(normalizedTolerance) <= 0;
         var attempt = new CashReconciliationAttempt(
-                this, attemptNumber, userId, at, declared, expected, diff, closesSession);
+                this,
+                attemptNumber,
+                userId,
+                at,
+                declared,
+                expected,
+                diff,
+                closesSession,
+                closeOperation,
+                idempotencyKey,
+                requestHash);
         attempts.add(attempt);
         if (closesSession) {
             close(userId, at, expected, declared, diff);

@@ -1,11 +1,15 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record DocumentRequest(
@@ -17,14 +21,71 @@ public record DocumentRequest(
         String numeroExterno,
         @NotNull BigDecimal descuentoGlobal,
         boolean directo,
-        @NotEmpty List<@Valid LineRequest> lineas) {
+        @NotEmpty List<@Valid LineRequest> lineas,
+        @Size(max = 500) String comentarioInterno,
+        @Size(max = 32)
+        @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
+                operationAuthorizations,
+        @Size(max = 500) String creditOverrideReason) {
+
+    public DocumentRequest {
+        operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
+                operationAuthorizations);
+    }
+
+    public DocumentRequest(
+            UUID almacenId,
+            CommercialDocumentType tipo,
+            LocalDate fecha,
+            UUID clienteId,
+            UUID proveedorId,
+            String numeroExterno,
+            BigDecimal descuentoGlobal,
+            boolean directo,
+            List<LineRequest> lineas) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno,
+                descuentoGlobal, directo, lineas, null, Map.of(), null);
+    }
+
+    public DocumentRequest(
+            UUID almacenId,
+            CommercialDocumentType tipo,
+            LocalDate fecha,
+            UUID clienteId,
+            UUID proveedorId,
+            String numeroExterno,
+            BigDecimal descuentoGlobal,
+            boolean directo,
+            List<LineRequest> lineas,
+            String comentarioInterno) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno,
+                descuentoGlobal, directo, lineas, comentarioInterno, Map.of(), null);
+    }
+
+    public DocumentRequest(
+            UUID almacenId,
+            CommercialDocumentType tipo,
+            LocalDate fecha,
+            UUID clienteId,
+            UUID proveedorId,
+            String numeroExterno,
+            BigDecimal descuentoGlobal,
+            boolean directo,
+            List<LineRequest> lineas,
+            String comentarioInterno,
+            Map<SaleOperationCode, OperationAuthorizationRequest> operationAuthorizations) {
+        this(almacenId, tipo, fecha, clienteId, proveedorId, numeroExterno,
+                descuentoGlobal, directo, lineas, comentarioInterno,
+                operationAuthorizations, null);
+    }
 
     // Maps the HTTP shape to the stable application command.
     public DocumentCommand toCommand() {
         return new DocumentCommand(
                 almacenId, tipo, fecha, clienteId, proveedorId,
                 numeroExterno, descuentoGlobal, directo,
-                lineas.stream().map(LineRequest::toCommand).toList());
+                lineas.stream().map(LineRequest::toCommand).toList(),
+                comentarioInterno);
     }
 
     public record LineRequest(
@@ -42,7 +103,31 @@ public record DocumentRequest(
             UUID promotionId,
             UUID promotionVersionId,
             UUID promotionalCouponId,
-            List<String> serialNumbers) {
+            List<String> serialNumbers,
+            boolean temporaryNameOverride,
+            boolean temporaryPriceOverride) {
+
+        public LineRequest(
+                UUID productoId,
+                BigDecimal cantidad,
+                String codigo,
+                String nombre,
+                String tarifa,
+                BigDecimal precioUnitario,
+                BigDecimal descuento,
+                boolean impuestosIncluidos,
+                String regimenImpuesto,
+                BigDecimal porcentajeImpuesto,
+                DocumentLineType lineType,
+                UUID promotionId,
+                UUID promotionVersionId,
+                UUID promotionalCouponId,
+                List<String> serialNumbers) {
+            this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                    impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                    promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                    false, false);
+        }
 
         public LineRequest(
                 UUID productoId,
@@ -61,7 +146,8 @@ public record DocumentRequest(
                 UUID promotionalCouponId) {
             this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
                     impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                    promotionId, promotionVersionId, promotionalCouponId, List.of());
+                    promotionId, promotionVersionId, promotionalCouponId, List.of(),
+                    false, false);
         }
 
         DocumentLineCommand toCommand() {
@@ -70,7 +156,7 @@ public record DocumentRequest(
                     productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
                     descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
                     resolvedType, promotionId, promotionVersionId, promotionalCouponId,
-                    serialNumbers);
+                    serialNumbers, temporaryNameOverride, temporaryPriceOverride);
             command.requireClientProductLine();
             return command;
         }

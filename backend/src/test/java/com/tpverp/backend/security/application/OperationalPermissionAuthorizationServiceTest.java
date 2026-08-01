@@ -123,4 +123,51 @@ class OperationalPermissionAuthorizationServiceTest {
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining(CorePermissionBootstrap.ABRIR_CAJON);
     }
+
+    @Test
+    void sensitiveAuthorizationReauthenticatesCurrentPrivilegedUser() {
+        var operator = mock(UserAccount.class);
+        when(operator.getPasswordHash()).thenReturn("encoded");
+        when(organization.currentUser(org.mockito.ArgumentMatchers.any())).thenReturn(operator);
+        when(passwordEncoder.matches("1234", "encoded")).thenReturn(true);
+        var authentication = new UsernamePasswordAuthenticationToken(
+                operator,
+                "token",
+                List.of(new SimpleGrantedAuthority(
+                        CorePermissionBootstrap.GESTION_VENTAS)));
+
+        var result = service.authorizeWithPassword(
+                Set.of(
+                        CorePermissionBootstrap.GESTION_VENTAS,
+                        CorePermissionBootstrap.GESTION_CUENTAS),
+                null,
+                "1234",
+                authentication);
+
+        assertThat(result.authorizer()).isSameAs(operator);
+        assertThat(result.delegated()).isFalse();
+    }
+
+    @Test
+    void sensitiveAuthorizationRejectsWrongCurrentUserPassword() {
+        var operator = mock(UserAccount.class);
+        when(operator.getPasswordHash()).thenReturn("encoded");
+        when(organization.currentUser(org.mockito.ArgumentMatchers.any())).thenReturn(operator);
+        when(passwordEncoder.matches("bad", "encoded")).thenReturn(false);
+        var authentication = new UsernamePasswordAuthenticationToken(
+                operator,
+                "token",
+                List.of(new SimpleGrantedAuthority(
+                        CorePermissionBootstrap.GESTION_CUENTAS)));
+
+        assertThatThrownBy(() -> service.authorizeWithPassword(
+                Set.of(
+                        CorePermissionBootstrap.GESTION_VENTAS,
+                        CorePermissionBootstrap.GESTION_CUENTAS),
+                null,
+                "bad",
+                authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Contraseña incorrecta");
+    }
 }

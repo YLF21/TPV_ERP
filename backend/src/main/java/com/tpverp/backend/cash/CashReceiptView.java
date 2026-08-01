@@ -18,5 +18,7 @@ public record CashReceiptView(
         BigDecimal discrepancy,
         BigDecimal expectedCash,
         String giverSignatureLabel,
-        String receiverSignatureLabel) {
+        String receiverSignatureLabel,
+        String authorizerName,
+        String comment) {
 }

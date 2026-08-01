@@ -31,6 +31,9 @@ public class ParkedSale {
     private UUID clienteId;
     @Column
     private String comentario;
+    @Column(name = "metodo_impresion", nullable = false, length = 24)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    private SalePrintMode printMode = SalePrintMode.DEFAULT;
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal total;
     @JdbcTypeCode(SqlTypes.JSON)
@@ -42,12 +45,18 @@ public class ParkedSale {
 
     public ParkedSale(UUID tiendaId, UUID userId, Instant createdAt,
             DocumentCommand command, String comment) {
+        this(tiendaId, userId, createdAt, command, comment, SalePrintMode.DEFAULT);
+    }
+
+    public ParkedSale(UUID tiendaId, UUID userId, Instant createdAt,
+            DocumentCommand command, String comment, SalePrintMode printMode) {
         id = UUID.randomUUID();
         this.tiendaId = Objects.requireNonNull(tiendaId, "tiendaId");
         creadoPor = Objects.requireNonNull(userId, "userId");
         creadoEn = Objects.requireNonNull(createdAt, "createdAt");
         clienteId = command.clienteId();
         comentario = clean(comment);
+        this.printMode = printMode == null ? SalePrintMode.DEFAULT : printMode;
         total = total(command, userId, tiendaId);
         documento = snapshot(command);
     }
@@ -80,6 +89,10 @@ public class ParkedSale {
         return comentario;
     }
 
+    public SalePrintMode getPrintMode() {
+        return printMode;
+    }
+
     public BigDecimal getTotal() {
         return total;
     }
@@ -102,7 +115,8 @@ public class ParkedSale {
                 null,
                 decimal(snapshot.get("descuentoGlobal")),
                 false,
-                lines(snapshot));
+                lines(snapshot),
+                clean((String) snapshot.get("comentarioInterno")));
     }
     // Reconstruye el ticket borrador que se entrega al terminal al abrir la venta.
 
@@ -136,7 +150,9 @@ public class ParkedSale {
                 uuid(value.get("promocionId")),
                 uuid(value.get("promocionVersionId")),
                 uuid(value.get("cuponPromocionalId")),
-                stringList(value.get("numerosSerie")));
+                stringList(value.get("numerosSerie")),
+                booleanFlag(value, "temporaryNameOverride"),
+                booleanFlag(value, "temporaryPriceOverride"));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -146,6 +162,7 @@ public class ParkedSale {
         value.put("fecha", command.fecha().toString());
         value.put("clienteId", string(command.clienteId()));
         value.put("descuentoGlobal", command.descuentoGlobal().toPlainString());
+        value.put("comentarioInterno", clean(command.comentarioInterno()));
         value.put("lineas", command.lineas().stream().map(ParkedSale::snapshot).toList());
         return value;
     }
@@ -170,7 +187,16 @@ public class ParkedSale {
         value.put("porcentajeImpuesto", line.porcentajeImpuesto().toPlainString());
         value.put("numerosSerie", line.serialNumbers() == null
                 ? List.of() : List.copyOf(line.serialNumbers()));
+        value.put("temporaryNameOverride", line.temporaryNameOverride());
+        value.put("temporaryPriceOverride", line.temporaryPriceOverride());
         return value;
+    }
+
+    private static boolean booleanFlag(Map<?, ?> value, String key) {
+        var stored = value.get(key);
+        if (stored == null) return false;
+        if (stored instanceof Boolean flag) return flag;
+        throw new IllegalStateException("parked_sale_snapshot_invalid_" + key);
     }
 
     private static List<String> stringList(Object value) {

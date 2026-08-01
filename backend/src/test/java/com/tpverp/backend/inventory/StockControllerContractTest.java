@@ -77,7 +77,12 @@ class StockControllerContractTest {
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/products/{productId}/sales-history");
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("STOCK_READ", "GESTION_PRODUCTO", "hasRole('ADMIN')");
+                .contains(
+                        "STOCK_READ",
+                        "GESTION_PRODUCTO",
+                        "GESTION_VENTAS",
+                        "VENTA",
+                        "hasRole('ADMIN')");
         assertThat(Arrays.stream(method.getParameters())
                 .filter(parameter -> parameter.isAnnotationPresent(PathVariable.class)))
                 .hasSize(1);

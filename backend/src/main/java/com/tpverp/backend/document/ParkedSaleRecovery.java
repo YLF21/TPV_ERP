@@ -40,6 +40,9 @@ public class ParkedSaleRecovery {
     private Map<String, Object> document;
     @Column(name = "comentario", length = 500)
     private String comment;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "metodo_impresion", nullable = false, length = 24)
+    private SalePrintMode printMode = SalePrintMode.DEFAULT;
     @Column(name = "creado_en", nullable = false)
     private Instant createdAt;
     @Column(name = "confirmado_en")
@@ -59,11 +62,12 @@ public class ParkedSaleRecovery {
         this.status = Status.CLAIMED;
         this.document = new LinkedHashMap<>(sale.documentSnapshot());
         this.comment = sale.getComment();
+        this.printMode = sale.getPrintMode();
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
     }
 
     public ParkedSaleOpened opened() {
-        return new ParkedSaleOpened(ParkedSale.documentCommand(document), comment);
+        return new ParkedSaleOpened(ParkedSale.documentCommand(document), comment, printMode);
     }
 
     public void acknowledge(Instant now) {
@@ -80,6 +84,7 @@ public class ParkedSaleRecovery {
     public UUID getParkedSaleId() { return parkedSaleId; }
     public UUID getStoreId() { return storeId; }
     public UUID getCompanyId() { return companyId; }
+    public UUID getUserId() { return userId; }
     public Status getStatus() { return status; }
     public Instant getAcknowledgedAt() { return acknowledgedAt; }
 }

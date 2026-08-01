@@ -54,7 +54,7 @@ class ControlRuleServiceTest {
 
         var catalog = service.catalog();
 
-        assertThat(catalog).hasSize(11);
+        assertThat(catalog).hasSize(12);
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.TICKET_CANCELLED)
                 .singleElement().satisfies(item -> {
                     assertThat(item.name()).isEqualTo(ControlAlertType.TICKET_CANCELLED.systemName());
@@ -81,6 +81,11 @@ class ControlRuleServiceTest {
                     assertThat(item.supported()).isTrue();
                 });
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.PRODUCT_CATALOG_MODIFIED)
+                .singleElement().satisfies(item -> {
+                    assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
+                    assertThat(item.supported()).isTrue();
+                });
+        assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.CASH_SESSION_DISCREPANCY)
                 .singleElement().satisfies(item -> {
                     assertThat(item.parameterKind()).isEqualTo(ControlRuleParameterKind.NONE);
                     assertThat(item.supported()).isTrue();

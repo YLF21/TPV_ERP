@@ -1,9 +1,13 @@
 package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.licensing.application.LicenseValidationException;
+import com.tpverp.backend.document.CustomerCreditLimitExceededException;
+import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedException;
+import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledException;
 import com.tpverp.backend.terminal.PaymentTerminalApiException;
 import com.tpverp.backend.inventory.WarehouseConfirmationException;
 import com.tpverp.backend.verifactu.VerifactuCertificateApiException;
@@ -65,6 +69,35 @@ public class ApiExceptionHandler {
         return systemProblem(HttpStatus.UNAUTHORIZED, SystemErrorCode.AUTHENTICATION_FAILED, request);
     }
 
+    @ExceptionHandler(SaleOperationAuthorizationDeniedException.class)
+    ProblemDetail saleOperationAuthorizationDenied(
+            SaleOperationAuthorizationDeniedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        return problem(
+                HttpStatus.FORBIDDEN,
+                SaleOperationAuthorizationDeniedException.CODE,
+                saleAuthorizationDeniedDetail(language),
+                language,
+                request);
+    }
+
+    @ExceptionHandler(SaleOperationAuthorizationThrottledException.class)
+    ProblemDetail saleOperationAuthorizationThrottled(
+            SaleOperationAuthorizationThrottledException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var problem = problem(
+                HttpStatus.TOO_MANY_REQUESTS,
+                SaleOperationAuthorizationThrottledException.CODE,
+                saleAuthorizationThrottledDetail(language),
+                language,
+                request);
+        problem.setProperty("blockedUntil", exception.blockedUntil().toString());
+        problem.setProperty("retryAfterSeconds", exception.retryAfterSeconds());
+        return problem;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ProblemDetail validationFailed(
             MethodArgumentNotValidException exception,
@@ -117,6 +150,44 @@ public class ApiExceptionHandler {
                 HttpStatus.CONFLICT,
                 SystemErrorCode.STATE_CONFLICT.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+    }
+
+    @ExceptionHandler(CustomerCreditLimitExceededException.class)
+    ProblemDetail customerCreditLimitExceeded(
+            CustomerCreditLimitExceededException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        return problem(
+                HttpStatus.CONFLICT,
+                CustomerCreditLimitExceededException.CODE,
+                localizedExceptionDetail(exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
+                language,
+                request);
+    }
+
+    @ExceptionHandler(GenericSaleConfirmationBlockedException.class)
+    ProblemDetail genericSaleConfirmationBlocked(
+            GenericSaleConfirmationBlockedException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = exception.reason()
+                == GenericSaleConfirmationBlockedException.Reason.MISMATCH
+                ? switch (language) {
+                    case EN -> "The sales draft changed after it was authorized. Recreate it before confirming.";
+                    case ZH -> "销售草稿在授权后已更改。请重新创建后再确认。";
+                    default -> "El borrador de venta cambió después de autorizarse. Vuelva a crearlo antes de confirmarlo.";
+                }
+                : switch (language) {
+                    case EN -> "The sales draft has no persisted authorization manifest. Recreate it before confirming.";
+                    case ZH -> "销售草稿没有持久化的授权清单。请重新创建后再确认。";
+                    default -> "El borrador de venta no tiene un manifiesto de autorización persistido. Vuelva a crearlo antes de confirmarlo.";
+                };
+        return problem(
+                HttpStatus.CONFLICT,
+                exception.code(),
+                detail,
                 language,
                 request);
     }
@@ -242,5 +313,23 @@ public class ApiExceptionHandler {
             return SupportedLanguage.ES;
         }
         return SupportedLanguage.fromHeader(request.getHeader(HttpHeaders.ACCEPT_LANGUAGE));
+    }
+
+    private static String saleAuthorizationDeniedDetail(
+            SupportedLanguage language) {
+        return switch (language) {
+            case EN -> "Operational authorization was denied";
+            case ZH -> "操作授权已被拒绝";
+            default -> "La autorización operativa ha sido rechazada";
+        };
+    }
+
+    private static String saleAuthorizationThrottledDetail(
+            SupportedLanguage language) {
+        return switch (language) {
+            case EN -> "Too many authorization attempts. Try again later";
+            case ZH -> "授权尝试次数过多，请稍后重试";
+            default -> "Demasiados intentos de autorización. Inténtalo de nuevo más tarde";
+        };
     }
 }

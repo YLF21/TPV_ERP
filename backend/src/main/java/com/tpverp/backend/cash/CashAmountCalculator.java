@@ -34,12 +34,15 @@ public class CashAmountCalculator {
     // Calculates the next opening fund from the last closed session and pending movements.
     @Transactional(readOnly = true)
     public BigDecimal nextOpeningFund(UUID terminalId) {
-        var retainedFund = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
-                        terminalId, CashSessionStatus.CERRADA)
+        var lastClosedSession = sessions.findFirstByTerminalIdAndStatusOrderByClosedAtDesc(
+                terminalId, CashSessionStatus.CERRADA);
+        var retainedFund = lastClosedSession
                 .map(CashSession::getRetainedFund)
                 .orElse(Money.euros("0"));
+        var lastClosedAt = lastClosedSession.map(CashSession::getClosedAt).orElse(null);
         var betweenSessions = movements.findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(terminalId)
                 .stream()
+                .filter(movement -> lastClosedAt == null || !movement.getCreatedAt().isBefore(lastClosedAt))
                 .map(movement -> switch (movement.getType()) {
                     case ENTRADA_ENTRE_SESIONES -> movement.getAmount();
                     case RETIRADA_ENTRE_SESIONES -> movement.getAmount().negate();

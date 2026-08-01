@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.Company;
@@ -14,10 +16,15 @@ import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.CustomerRepository;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.terminal.CardTerminalConfiguration;
 import com.tpverp.backend.terminal.CardTerminalConfigurationReader;
 import com.tpverp.backend.terminal.CurrentTerminal;
+import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperation;
 import com.tpverp.backend.terminal.PaymentTerminalOperationService;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
@@ -54,6 +61,9 @@ class CustomerPendingSaleServiceTest {
     @Mock CustomerRepository customers;
     @Mock AuditService audit;
     @Mock DocumentViewAssembler views;
+    @Mock SaleOperationSecurityService saleOperationSecurity;
+    @Mock SaleDocumentMutationAuthorizationService documentMutationAuthorization;
+    @Mock PaymentMethodRepository paymentMethods;
     @Mock Authentication authentication;
     @Mock Store store;
     @Mock Company company;
@@ -64,13 +74,16 @@ class CustomerPendingSaleServiceTest {
     private UUID terminalId;
     private UUID storeId;
     private UUID userId;
+    private UUID companyId;
+    private UUID cardMethodId;
 
     @BeforeEach
     void setUp() {
         terminalId = UUID.randomUUID();
         storeId = UUID.randomUUID();
         userId = UUID.randomUUID();
-        var companyId = UUID.randomUUID();
+        companyId = UUID.randomUUID();
+        cardMethodId = UUID.randomUUID();
         org.mockito.Mockito.lenient().when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         org.mockito.Mockito.lenient().when(organization.currentStore()).thenReturn(store);
         org.mockito.Mockito.lenient().when(store.getId()).thenReturn(storeId);
@@ -78,6 +91,7 @@ class CustomerPendingSaleServiceTest {
         org.mockito.Mockito.lenient().when(company.getId()).thenReturn(companyId);
         org.mockito.Mockito.lenient().when(organization.currentUser(authentication)).thenReturn(user);
         org.mockito.Mockito.lenient().when(user.getId()).thenReturn(userId);
+        org.mockito.Mockito.lenient().when(user.getUserName()).thenReturn("OPERATOR");
         org.mockito.Mockito.lenient().when(customers.findByIdAndCompanyId(any(), eq(companyId)))
                 .thenReturn(Optional.of(customer));
         org.mockito.Mockito.lenient().when(customers.findLockedByIdAndCompanyId(any(), eq(companyId)))
@@ -86,9 +100,24 @@ class CustomerPendingSaleServiceTest {
         org.mockito.Mockito.lenient().when(customer.getPaymentTermDays()).thenReturn(30);
         org.mockito.Mockito.lenient().when(customers.outstandingDebt(any())).thenReturn(BigDecimal.ZERO);
         org.mockito.Mockito.lenient().when(customers.overdueDebt(any(), any())).thenReturn(BigDecimal.ZERO);
+        org.mockito.Mockito.lenient().when(saleOperationSecurity.authorize(
+                        any(SaleOperationCode.class),
+                        org.mockito.ArgumentMatchers.nullable(String.class),
+                        org.mockito.ArgumentMatchers.nullable(String.class),
+                        eq(authentication)))
+                .thenReturn(new Authorization(user, user, false));
+        org.mockito.Mockito.lenient().when(paymentMethods.findByIdAndEmpresaId(
+                        any(), eq(companyId)))
+                .thenAnswer(invocation -> Optional.of(new PaymentMethod(
+                        companyId,
+                        cardMethodId.equals(invocation.getArgument(0))
+                                ? "TARJETA"
+                                : "EFECTIVO",
+                        true)));
         service = new CustomerPendingSaleService(
                 documents, checkouts, reservations, terminalOperations, configurations,
                 currentTerminal, organization, customers, audit, views,
+                saleOperationSecurity, documentMutationAuthorization, paymentMethods,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -170,7 +199,7 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
-    void quoteRequiresSupervisorPermissionAndReasonForLimitOverride() {
+    void quoteReportsLimitOverrideWithoutAuthenticatingBeforeMutation() {
         var base = request(List.of(), new BigDecimal("100.00"));
         var overridden = new CustomerPendingSaleController.CreateRequest(
                 base.checkoutId(), base.warehouseId(), base.type(), base.date(), base.customerId(),
@@ -179,14 +208,9 @@ class CustomerPendingSaleServiceTest {
         stubQuote(overridden, new BigDecimal("100.00"));
         when(customer.getCreditLimit()).thenReturn(new BigDecimal("50.00"));
 
-        assertThatThrownBy(() -> service.quote(overridden, authentication))
-                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class)
-                .hasMessage("message.document.customer_credit_override_permission_required");
-
-        when(authentication.getAuthorities()).thenAnswer(invocation -> List.of(
-                new org.springframework.security.core.authority.SimpleGrantedAuthority(
-                        "CUSTOMER_CREDIT_OVERRIDE")));
         assertThat(service.quote(overridden, authentication).credit().overrideUsed()).isTrue();
+        verify(saleOperationSecurity, never()).authorize(
+                any(SaleOperationCode.class), any(), any(), any());
     }
 
     @Test
@@ -217,6 +241,88 @@ class CustomerPendingSaleServiceTest {
     }
 
     @Test
+    void saleMutationAuthorizationFailureStopsCardBeforeExternalEffect() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        doThrow(new org.springframework.security.access.AccessDeniedException("forbidden"))
+                .when(documentMutationAuthorization)
+                .authorize(any(), any(), eq(authentication),
+                        eq("CUSTOMER_PENDING_CARD_CHARGE"), eq(request.checkoutId()));
+
+        assertThatThrownBy(() -> service.chargeCard(
+                new CustomerPendingSaleController.CardChargeRequest(
+                        request, new BigDecimal("30.00")), authentication))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        verifyNoInteractions(terminalOperations);
+    }
+
+    @Test
+    void integratedCardRejectsANonCardMethodBeforeExternalEffect() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        var transferMethod = new PaymentMethod(companyId, "TRANSFERENCIA", true);
+        var payment = request.payments().getFirst();
+        var invalid = new CustomerPendingSaleController.CreateRequest(
+                request.checkoutId(), request.warehouseId(), request.type(), request.date(),
+                request.customerId(), request.dueDate(), request.globalDiscount(), request.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        payment.kind(), transferMethod.getId(), payment.amount(),
+                        payment.principal(), payment.delivered(), payment.change(),
+                        payment.voucherCode(), payment.reference(), payment.requestId(),
+                        payment.paymentTerminalOperationId())),
+                request.quotedTotal());
+        stubQuote(invalid, new BigDecimal("100.00"));
+        when(paymentMethods.findByIdAndEmpresaId(
+                transferMethod.getId(), companyId)).thenReturn(Optional.of(transferMethod));
+
+        assertThatThrownBy(() -> service.chargeCard(
+                new CustomerPendingSaleController.CardChargeRequest(
+                        invalid, new BigDecimal("30.00")), authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("integrated_card_payment_method_required");
+
+        verifyNoInteractions(terminalOperations);
+        verify(configurations, never()).required(any());
+    }
+
+    @Test
+    void integratedCardRejectsManualTerminalConfigurationBeforeExternalEffect() {
+        var request = request(List.of(payment(new BigDecimal("30.00"))),
+                new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        var configuration = configuration();
+        when(configuration.mode()).thenReturn(PaymentCardMode.MANUAL);
+        when(configurations.required(terminalId)).thenReturn(configuration);
+
+        assertThatThrownBy(() -> service.chargeCard(
+                new CustomerPendingSaleController.CardChargeRequest(
+                        request, new BigDecimal("30.00")), authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("payment_terminal_configuration_not_integrated");
+
+        verify(terminalOperations, never()).charge(any(), any(), any(), any());
+    }
+
+    @Test
+    void saleMutationAuthorizationFailureStopsDocumentBeforeReservationAndMutation() {
+        var request = request(List.of(), new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        doThrow(new org.springframework.security.access.AccessDeniedException("forbidden"))
+                .when(documentMutationAuthorization)
+                .authorize(any(), any(), eq(authentication),
+                        eq("CUSTOMER_PENDING_DOCUMENT"), eq(request.checkoutId()));
+
+        assertThatThrownBy(() -> service.createDocument(request, authentication))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        verify(reservations, never()).insert(any());
+        verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(documents, never()).createPendingSaleDraft(any(), any(), any());
+    }
+
+    @Test
     void uncertainCardOperationNeverCreatesDocument() {
         var request = request(List.of(payment(new BigDecimal("30.00"))),
                 new BigDecimal("100.00"));
@@ -235,6 +341,16 @@ class CustomerPendingSaleServiceTest {
 
         assertThat(result.status()).isEqualTo(PaymentTerminalOperationStatus.TIMEOUT);
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREATE_PENDING_RECEIVABLE),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                eq(authentication));
+        verify(audit).record(
+                eq("CUSTOMER_PENDING_RECEIVABLE_CARD_AUTHORIZED"),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        !details.toString().contains("authorizerPassword")));
     }
 
     @Test
@@ -273,6 +389,161 @@ class CustomerPendingSaleServiceTest {
                                 && commands.getFirst().requestId().equals(request.checkoutId())
                                 && commands.getFirst().importe().compareTo(new BigDecimal("30.00")) == 0),
                 eq(authentication));
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREATE_PENDING_RECEIVABLE),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                eq(authentication));
+        verify(saleOperationSecurity, never()).authorize(
+                eq(SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT),
+                any(), any(), eq(authentication));
+    }
+
+    @Test
+    void transferPaymentUsesItsIndependentAuthorizationAtTheDocumentMutationBoundary() {
+        var base = request(
+                List.of(standardPayment(new BigDecimal("100.00"))),
+                new BigDecimal("100.00"));
+        var transferMethod = new PaymentMethod(
+                company.getId(), "TRANSFERENCIA", true);
+        var payment = base.payments().getFirst();
+        var request = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        payment.kind(), transferMethod.getId(), payment.amount(),
+                        payment.principal(), payment.delivered(), payment.change(),
+                        payment.voucherCode(), payment.reference(), payment.requestId(),
+                        payment.paymentTerminalOperationId())),
+                base.quotedTotal(), null,
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY,
+                null, null, null,
+                java.util.Map.of(
+                        SaleOperationCode.CONFIRM_TRANSFER_PAYMENT,
+                        new OperationAuthorizationRequest("ENCARGADO", "secret")));
+        var saved = document(new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(paymentMethods.findByIdAndEmpresaId(
+                transferMethod.getId(), company.getId()))
+                .thenReturn(Optional.of(transferMethod));
+        when(reservations.find(terminalId, request.checkoutId()))
+                .thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.createPendingSale(
+                any(), eq(request.dueDate()), any(), eq(authentication)))
+                .thenReturn(saved);
+
+        assertThat(service.createDocument(request, authentication)).isSameAs(saved);
+
+        verify(saleOperationSecurity).authorize(
+                SaleOperationCode.CONFIRM_TRANSFER_PAYMENT,
+                "ENCARGADO", "secret", authentication);
+        verify(audit).record(
+                eq(PosCashService.SALE_OPERATION_AUTHORIZED),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        "CONFIRM_TRANSFER_PAYMENT".equals(details.get("operationCode"))
+                                && !details.toString().contains("secret")));
+    }
+
+    @Test
+    void manualCardKeepsItsKindAuthorizationAndPaymentModeAtTheDocumentMutationBoundary() {
+        var base = request(
+                List.of(standardPayment(new BigDecimal("100.00"))),
+                new BigDecimal("100.00"));
+        var cardMethod = new PaymentMethod(company.getId(), "TARJETA", true);
+        var payment = base.payments().getFirst();
+        var request = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                List.of(new CustomerPendingSaleController.PaymentItem(
+                        CustomerPendingSaleController.PaymentKind.MANUAL_CARD,
+                        cardMethod.getId(), payment.amount(),
+                        payment.principal(), payment.delivered(), payment.change(),
+                        payment.voucherCode(), "CARD-REF-1", payment.requestId(), null)),
+                base.quotedTotal(), null,
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_AND_PAY,
+                null, null, null,
+                java.util.Map.of(
+                        SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT,
+                        new OperationAuthorizationRequest("ENCARGADO", "secret")));
+        var saved = document(new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(paymentMethods.findByIdAndEmpresaId(
+                cardMethod.getId(), company.getId()))
+                .thenReturn(Optional.of(cardMethod));
+        when(reservations.find(terminalId, request.checkoutId()))
+                .thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.createPendingSale(
+                any(), eq(request.dueDate()), any(), eq(authentication)))
+                .thenReturn(saved);
+
+        assertThat(service.createDocument(request, authentication)).isSameAs(saved);
+
+        verify(saleOperationSecurity).authorize(
+                SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT,
+                "ENCARGADO", "secret", authentication);
+        verify(audit).record(
+                eq(PosCashService.SALE_OPERATION_AUTHORIZED),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        "CONFIRM_MANUAL_CARD_PAYMENT".equals(
+                                 details.get("operationCode"))
+                                 && !details.toString().contains("secret")));
+        verify(documents).createPendingSale(
+                any(), eq(request.dueDate()),
+                org.mockito.ArgumentMatchers.argThat(commands ->
+                        commands.size() == 1
+                                && commands.getFirst().cardMode() == PaymentCardMode.MANUAL),
+                eq(authentication));
+    }
+
+    @Test
+    void limitOverrideAndPendingDebtUseTheirIndependentConfiguredPolicies() {
+        var base = withCompletionMode(
+                request(List.of(), new BigDecimal("100.00")),
+                CustomerPendingSaleController.SalesDocumentCompletionMode.CONFIRM_PENDING);
+        var request = new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(), base.lines(),
+                base.payments(), base.quotedTotal(),
+                new CustomerPendingSaleController.CreditOverride(
+                        "Excepcion aprobada", "CREDIT_MANAGER", "creditSecret"),
+                base.completionMode(), base.internalComment(), "ENCARGADO", "secret");
+        var saved = document(new BigDecimal("100.00"));
+        stubQuote(request, new BigDecimal("100.00"));
+        when(customer.getCreditLimit()).thenReturn(new BigDecimal("50.00"));
+        when(reservations.find(terminalId, request.checkoutId())).thenReturn(Optional.empty());
+        when(reservations.insert(any())).thenAnswer(call -> call.getArgument(0));
+        when(checkouts.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(documents.createPendingSale(
+                any(), eq(request.dueDate()), any(), eq(authentication))).thenReturn(saved);
+
+        assertThat(service.createDocument(request, authentication)).isSameAs(saved);
+
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREATE_PENDING_RECEIVABLE),
+                eq("ENCARGADO"), eq("secret"), eq(authentication));
+        verify(saleOperationSecurity).authorize(
+                eq(SaleOperationCode.CREDIT_OVERRIDE),
+                eq("CREDIT_MANAGER"), eq("creditSecret"), eq(authentication));
+        verify(audit).record(
+                eq("CUSTOMER_PENDING_RECEIVABLE_AUTHORIZED"),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        !details.containsKey("authorizerPassword")
+                                && userId.toString().equals(details.get("operatorUserId"))
+                                && userId.toString().equals(details.get("authorizerUserId"))));
+        verify(audit).record(
+                eq("CUSTOMER_CREDIT_LIMIT_OVERRIDDEN"),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                org.mockito.ArgumentMatchers.argThat(details ->
+                        "Excepcion aprobada".equals(details.get("reason"))
+                                && !details.toString().contains("secret")
+                                && !details.toString().contains("creditSecret")));
     }
 
     @Test
@@ -296,6 +567,8 @@ class CustomerPendingSaleServiceTest {
                 any(), eq(request.dueDate()), eq(authentication));
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
         verify(customers, never()).findLockedByIdAndCompanyId(any(), any());
+        verify(saleOperationSecurity, never()).authorize(
+                any(SaleOperationCode.class), any(), any(), any());
     }
 
     @Test
@@ -311,6 +584,8 @@ class CustomerPendingSaleServiceTest {
 
         verify(documents, never()).quotePendingSale(any(), any(), any());
         verify(documents, never()).createPendingSale(any(), any(), any(), any());
+        verify(saleOperationSecurity, never()).authorize(
+                any(SaleOperationCode.class), any(), any(), any());
     }
 
     @Test
@@ -376,6 +651,8 @@ class CustomerPendingSaleServiceTest {
         when(terminalOperations.find(request.checkoutId())).thenReturn(Optional.of(operation));
         when(terminalOperations.requireFinalizableApprovedCharge(request.checkoutId()))
                 .thenReturn(operation);
+        var current = configuration();
+        when(configurations.required(terminalId)).thenReturn(current);
 
         assertThatThrownBy(() -> service.create(request, authentication))
                 .isInstanceOf(IllegalStateException.class)
@@ -488,6 +765,25 @@ class CustomerPendingSaleServiceTest {
         assertThat(CustomerPendingSaleRequestHasher.hash(draft, draft.quotedTotal()))
                 .isNotEqualTo(CustomerPendingSaleRequestHasher.hash(
                         pending, pending.quotedTotal()));
+    }
+
+    @Test
+    void canonicalHashIgnoresEphemeralPaymentAuthorizations() {
+        var base = request(List.of(standardPayment(BigDecimal.TEN)),
+                new BigDecimal("100.00"));
+        var first = withOperationAuthorization(
+                base,
+                SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT,
+                new OperationAuthorizationRequest("ENCARGADO-1", "secret-1"));
+        var second = withOperationAuthorization(
+                base,
+                SaleOperationCode.CONFIRM_MANUAL_CARD_PAYMENT,
+                new OperationAuthorizationRequest("ENCARGADO-2", "secret-2"));
+
+        assertThat(CustomerPendingSaleRequestHasher.hash(first, first.quotedTotal()))
+                .isEqualTo(CustomerPendingSaleRequestHasher.hash(
+                        second, second.quotedTotal()));
+        assertThat(first.toString()).doesNotContain("secret-1");
     }
 
     @Test
@@ -621,7 +917,13 @@ class CustomerPendingSaleServiceTest {
 
     private CardTerminalConfiguration configuration() {
         var configuration = org.mockito.Mockito.mock(CardTerminalConfiguration.class);
+        org.mockito.Mockito.lenient().when(configuration.terminalId()).thenReturn(terminalId);
         org.mockito.Mockito.lenient().when(configuration.storeId()).thenReturn(storeId);
+        org.mockito.Mockito.lenient().when(configuration.enabled()).thenReturn(true);
+        org.mockito.Mockito.lenient().when(configuration.mode()).thenReturn(
+                PaymentCardMode.INTEGRATED);
+        org.mockito.Mockito.lenient().when(configuration.provider()).thenReturn(
+                PaymentTerminalProvider.REDSYS_TPV_PC);
         return configuration;
     }
 
@@ -651,13 +953,26 @@ class CustomerPendingSaleServiceTest {
     private CustomerPendingSaleController.PaymentItem payment(BigDecimal amount) {
         return new CustomerPendingSaleController.PaymentItem(
                 CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
-                UUID.randomUUID(), amount, true, null, null, null, null, null, null);
+                cardMethodId, amount, true, null, null, null, null, null, null);
     }
 
     private CustomerPendingSaleController.PaymentItem standardPayment(BigDecimal amount) {
         return new CustomerPendingSaleController.PaymentItem(
                 CustomerPendingSaleController.PaymentKind.STANDARD,
                 UUID.randomUUID(), amount, true, null, null, null, null, UUID.randomUUID(), null);
+    }
+
+    private CustomerPendingSaleController.CreateRequest withOperationAuthorization(
+            CustomerPendingSaleController.CreateRequest base,
+            SaleOperationCode code,
+            OperationAuthorizationRequest authorization) {
+        return new CustomerPendingSaleController.CreateRequest(
+                base.checkoutId(), base.warehouseId(), base.type(), base.date(),
+                base.customerId(), base.dueDate(), base.globalDiscount(),
+                base.lines(), base.payments(), base.quotedTotal(),
+                base.creditOverride(), base.completionMode(), base.internalComment(),
+                base.authorizerUsername(), base.authorizerPassword(),
+                java.util.Map.of(code, authorization));
     }
 
     private CustomerPendingSaleController.CreateRequest withIntegratedPayment(
@@ -670,7 +985,7 @@ class CustomerPendingSaleServiceTest {
                 base.dueDate(), base.globalDiscount(), base.lines(),
                 List.of(new CustomerPendingSaleController.PaymentItem(
                         CustomerPendingSaleController.PaymentKind.INTEGRATED_CARD,
-                        UUID.randomUUID(), amount, true, null, null, null, null,
+                        cardMethodId, amount, true, null, null, null, null,
                 requestId, operationId)), base.quotedTotal());
     }
 

@@ -1,5 +1,10 @@
 package com.tpverp.backend.terminal;
 
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -7,7 +12,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,6 +33,8 @@ public class PaymentTerminalOperationsService {
     private final PaymentTerminalReceiptRepository receipts;
     private final PaymentTerminalReconciliationService reconciliations;
     private final com.tpverp.backend.document.DocumentService documents;
+    private final SaleOperationSecurityService operationSecurity;
+    private final AuditService audit;
 
     public PaymentTerminalOperationsService(PaymentTerminalOperationRepository operations,
             PaymentTerminalAdjustmentService adjustments, PaymentTerminalOperationService recovery,
@@ -33,11 +42,15 @@ public class PaymentTerminalOperationsService {
             com.tpverp.backend.organization.CurrentOrganization organization,
             PaymentTerminalReceiptRepository receipts,
             PaymentTerminalReconciliationService reconciliations,
-            com.tpverp.backend.document.DocumentService documents) {
+            com.tpverp.backend.document.DocumentService documents,
+            SaleOperationSecurityService operationSecurity,
+            AuditService audit) {
         this.operations=operations; this.adjustments=adjustments; this.recovery=recovery;
         this.configurations=configurations; this.gateways=List.copyOf(gateways); this.clock=clock; this.organization=organization;
         this.receipts=receipts;this.reconciliations=reconciliations;
         this.documents=documents;
+        this.operationSecurity=operationSecurity;
+        this.audit=audit;
     }
 
     @Transactional(readOnly=true)
@@ -59,27 +72,47 @@ public class PaymentTerminalOperationsService {
         return operation;
     }
 
-    public PaymentTerminalOperation voidAuthorization(UUID originalId, UUID operationId, String idempotencyKey) {
+    public PaymentTerminalOperation voidAuthorization(
+            UUID originalId,
+            UUID operationId,
+            String idempotencyKey,
+            String authorizerUsername,
+            String authorizerPassword,
+            Authentication authentication) {
         var original=get(originalId); var configuration=configuration(original);
         requireCapability(configuration,PaymentTerminalCapability.VOID);
+        var key=requiredKey(idempotencyKey);
+        var authorization=operationSecurity.authorize(
+                SaleOperationCode.PAYMENT_TERMINAL_VOID,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
+        auditAuthorization(
+                "PAYMENT_TERMINAL_VOID_AUTHORIZED",
+                SaleOperationCode.PAYMENT_TERMINAL_VOID,
+                originalId,
+                operationId,
+                authorization);
         var hash=hash("VOID|"+originalId);
         var adjustment=adjustments.reserveVoid(operationId,originalId,configuration.terminalId(),configuration.storeId(),
-                configuration.provider(),requiredKey(idempotencyKey),hash,configuration.configurationHash(),configuration.configurationVersion(),clock.instant());
+                configuration.provider(),key,hash,configuration.configurationHash(),configuration.configurationVersion(),clock.instant());
         if(adjustment.getStatus()!=PaymentTerminalOperationStatus.PENDING) return adjustment;
         adjustments.markSent(operationId,clock.instant());
         PaymentTerminalResult result;
-        try { result=gateway(configuration).voidAuthorization(new PaymentTerminalVoidCommand(operationId,originalId,reference(original)),context(configuration,idempotencyKey)); }
+        try { result=gateway(configuration).voidAuthorization(new PaymentTerminalVoidCommand(operationId,originalId,reference(original)),context(configuration,key)); }
         catch(RuntimeException ex){ result=new PaymentTerminalResult(PaymentTerminalOperationStatus.TIMEOUT,"PAYMENT_TRANSPORT_TIMEOUT",null,null,"Resultado incierto; consulte el estado"); }
         return adjustments.complete(operationId,result,clock.instant());
     }
 
-    public PaymentTerminalOperation refund(UUID originalId, UUID operationId, String idempotencyKey, BigDecimal amount,
+    public PaymentTerminalOperation refund(
+            UUID originalId,
+            UUID operationId,
+            String idempotencyKey,
+            BigDecimal amount,
+            List<PaymentTerminalRefundLineSelection> lines,
+            String authorizerUsername,
+            String authorizerPassword,
             Authentication authentication) {
-        return refund(originalId, operationId, idempotencyKey, amount, List.of(), authentication);
-    }
-
-    public PaymentTerminalOperation refund(UUID originalId, UUID operationId, String idempotencyKey, BigDecimal amount,
-            List<PaymentTerminalRefundLineSelection> lines, Authentication authentication) {
         var original=get(originalId); var configuration=configuration(original);
         requireCapability(configuration,PaymentTerminalCapability.REFUND);
         if(original.getDocumentId()==null) throw problem(HttpStatus.CONFLICT,"PAYMENT_REFUND_DOCUMENT_PENDING","El cobro aun no tiene documento fiscal");
@@ -87,6 +120,17 @@ public class PaymentTerminalOperationsService {
         var key=requiredKey(idempotencyKey);
         if(operations.findByTerminalIdAndIdempotencyKey(configuration.terminalId(),key).isEmpty())
             documents.validateApprovedCardRefund(original.getDocumentId(),amount,lines);
+        var authorization=operationSecurity.authorize(
+                SaleOperationCode.PAYMENT_TERMINAL_REFUND,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
+        auditAuthorization(
+                "PAYMENT_TERMINAL_REFUND_AUTHORIZED",
+                SaleOperationCode.PAYMENT_TERMINAL_REFUND,
+                originalId,
+                operationId,
+                authorization);
         var completed=performRefund(original,configuration,operationId,key,amount,canonical,false);
         if(completed.getStatus()==PaymentTerminalOperationStatus.APPROVED && completed.getDocumentId()==null){
             var refreshed=get(originalId);
@@ -162,6 +206,24 @@ public class PaymentTerminalOperationsService {
 
     public PaymentTerminalReconciliationBatch reconciliation(UUID id){var store=organization.currentStore();
         return reconciliations.required(id,store.getId(),store.getEmpresa().getId());}
+
+    private void auditAuthorization(
+            String event,
+            SaleOperationCode operationCode,
+            UUID originalOperationId,
+            UUID adjustmentOperationId,
+            Authorization authorization) {
+        var details=new LinkedHashMap<String,Object>();
+        details.put("operationCode",operationCode.name());
+        details.put("originalOperationId",originalOperationId.toString());
+        details.put("adjustmentOperationId",adjustmentOperationId.toString());
+        details.put("operatorId",authorization.operator().getId().toString());
+        details.put("operatorUsername",authorization.operator().getUserName());
+        details.put("authorizerId",authorization.authorizer().getId().toString());
+        details.put("authorizerUsername",authorization.authorizer().getUserName());
+        details.put("delegated",authorization.delegated());
+        audit.record(event,AuditResult.EXITO,Map.copyOf(details));
+    }
 
     private CardTerminalConfiguration configuration(PaymentTerminalOperation op){ var c=configurations.required(op.getTerminalId());
         if(!op.matchesConfigurationIdentity(c))

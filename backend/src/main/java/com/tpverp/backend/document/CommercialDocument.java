@@ -63,6 +63,8 @@ public class CommercialDocument {
     private UUID proveedorId;
     @Column(name = "numero_externo", length = 128)
     private String numeroExterno;
+    @Column(name = "comentario_interno", length = 500)
+    private String comentarioInterno;
     @Column(name = "num_ticket", length = 32)
     private String numTicket;
     @Column(name = "motivo_anulacion")
@@ -255,6 +257,21 @@ public class CommercialDocument {
 
     public String getNumeroExterno() {
         return numeroExterno;
+    }
+
+    public String getComentarioInterno() {
+        return comentarioInterno;
+    }
+
+    public void setInternalComment(String comment) {
+        if (estado != DocumentStatus.BORRADOR) {
+            throw new IllegalStateException("solo se puede comentar un documento borrador");
+        }
+        var normalized = comment == null || comment.isBlank() ? null : comment.trim();
+        if (normalized != null && normalized.length() > 500) {
+            throw new IllegalArgumentException("el comentario interno no puede superar 500 caracteres");
+        }
+        comentarioInterno = normalized;
     }
 
     public LocalDate getFechaVencimiento() {

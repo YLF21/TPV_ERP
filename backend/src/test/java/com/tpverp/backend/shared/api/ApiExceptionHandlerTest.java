@@ -1,5 +1,7 @@
 package com.tpverp.backend.shared.api;
 
+import com.tpverp.backend.document.CustomerCreditLimitExceededException;
+import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.tpverp.backend.organization.Company;
@@ -8,12 +10,15 @@ import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationAuthorizationDeniedException;
+import com.tpverp.backend.security.sales.SaleOperationAuthorizationThrottledException;
 import com.tpverp.backend.shared.i18n.LocalizedMessages;
 import com.tpverp.backend.shared.i18n.SupportedLanguage;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -74,6 +79,19 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
+    void localizesCashWithdrawalExceedingAvailableCash() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");
+
+        var problem = handler.invalidArgument(
+                new IllegalArgumentException("message.cash.withdrawal_exceeds_available_cash"),
+                request);
+
+        assertEquals(400, problem.getStatus());
+        assertEquals("La retirada supera el efectivo disponible en caja", problem.getDetail());
+    }
+
+    @Test
     void translatesLegacyBusinessMessagesWhenKnown() {
         var request = new MockHttpServletRequest();
         request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
@@ -83,6 +101,21 @@ class ApiExceptionHandlerTest {
 
         assertEquals("en", problem.getProperties().get("locale"));
         assertEquals("A product with history cannot be deleted", problem.getDetail());
+    }
+
+    @Test
+    void translatesExplicitInternalEanConfigurationError() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.stateConflict(
+                new IllegalStateException("internal_ean_configuration_required"), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals("STATE_CONFLICT", problem.getProperties().get("code"));
+        assertEquals(
+                "Configura primero el código interno de empresa en APP GESTIÓN.",
+                problem.getDetail());
     }
 
     @Test
@@ -114,6 +147,92 @@ class ApiExceptionHandlerTest {
         assertEquals(
                 "Debe existir exactamente una tienda antes de configurar el terminal servidor",
                 problem.getDetail());
+    }
+
+    @Test
+    void reportsCustomerCreditLimitWithStableMachineReadableCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.customerCreditLimitExceeded(
+                new CustomerCreditLimitExceededException(), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                CustomerCreditLimitExceededException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals("The operation exceeds the customer credit limit", problem.getDetail());
+    }
+
+    @Test
+    void reportsBlockedGenericSaleConfirmationWithStableMachineReadableCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.genericSaleConfirmationBlocked(
+                new GenericSaleConfirmationBlockedException(), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                GenericSaleConfirmationBlockedException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals(
+                "The sales draft has no persisted authorization manifest. Recreate it before confirming.",
+                problem.getDetail());
+    }
+
+    @Test
+    void reportsChangedAuthorizationManifestWithDifferentStableCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.genericSaleConfirmationBlocked(
+                GenericSaleConfirmationBlockedException.mismatch(), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                GenericSaleConfirmationBlockedException.MISMATCH_CODE,
+                problem.getProperties().get("code"));
+        assertEquals(
+                "The sales draft changed after it was authorized. Recreate it before confirming.",
+                problem.getDetail());
+    }
+
+    @Test
+    void reportsDeniedOperationalAuthorizationWithoutLeakingCredentialDetails() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9");
+
+        var problem = handler.saleOperationAuthorizationDenied(
+                new SaleOperationAuthorizationDeniedException(
+                        new IllegalArgumentException("internal credential detail")),
+                request);
+
+        assertEquals(403, problem.getStatus());
+        assertEquals(
+                SaleOperationAuthorizationDeniedException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals("Operational authorization was denied", problem.getDetail());
+        assertEquals(false, problem.getDetail().contains("credential"));
+    }
+
+    @Test
+    void reportsOperationalAuthorizationCooldownWithStableRetryMetadata() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+        var blockedUntil = Instant.parse("2026-07-31T10:00:05Z");
+
+        var problem = handler.saleOperationAuthorizationThrottled(
+                new SaleOperationAuthorizationThrottledException(
+                        blockedUntil, 5),
+                request);
+
+        assertEquals(429, problem.getStatus());
+        assertEquals(
+                SaleOperationAuthorizationThrottledException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals(5L, problem.getProperties().get("retryAfterSeconds"));
+        assertEquals(blockedUntil.toString(), problem.getProperties().get("blockedUntil"));
     }
 
     @Test

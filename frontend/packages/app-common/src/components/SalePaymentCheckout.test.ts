@@ -12,11 +12,13 @@ import {
  compensationGuidanceKey,
  compensationNoteIsEphemeral,
  entryCleanupRegistrySizeForTest,
+ isCreditLimitExceededError,
  isMissingCashSessionError,
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
  paymentSessionLocksSale,
  prepareAutomaticExit,
+ allocationRecoveryInput,
  stableAllocationAttempt,
  shouldOfferTestCashSession,
  shouldFinalizeAfterAllocation,
@@ -53,6 +55,11 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(isMissingCashSessionError("No hay una sesion de caja abierta")).toBe(true);
   expect(isMissingCashSessionError("No hay una sesión de caja abierta")).toBe(true);
   expect(isMissingCashSessionError("La terminal no existe")).toBe(false);
+ });
+ it("recognizes only a credit-limit conflict as overridable",()=>{
+  expect(isCreditLimitExceededError(new ApiError("localized",409,{code:"CUSTOMER_CREDIT_LIMIT_EXCEEDED"}))).toBe(true);
+  expect(isCreditLimitExceededError(new ApiError("La operaci\u00f3n supera el l\u00edmite de cr\u00e9dito del cliente",409,{code:"STATE_CONFLICT"}))).toBe(false);
+  expect(isCreditLimitExceededError(new ApiError("localized",400,{code:"CUSTOMER_CREDIT_LIMIT_EXCEEDED"}))).toBe(false);
  });
  it("offers test cash only for an enabled covered checkout with a terminal", () => {
   expect(shouldOfferTestCashSession(true, "COVERED", true, "terminal-1")).toBe(true);
@@ -114,6 +121,84 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
    {kind:"CASH",totalCents:1210,receivedCents:1210},
   ));
   expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/finalize"))).toHaveLength(1);
+ });
+ it("authorizes pending credit and a later credit-limit override with separate ephemeral credentials",async()=>{
+  const collecting={id:"session-pending-auth",total:"12.10",status:"COLLECTING",allocations:[]};
+  const covered={
+   ...collecting,
+   status:"COVERED",
+   allocations:[{
+    id:"pending-auth",
+    idempotencyKey:"pending-auth",
+    kind:"PENDING",
+    amount:"12.10",
+    status:"APPROVED",
+   }],
+  };
+  let finalizeAttempts=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/session-pending-auth/allocations")return covered;
+   if(path==="/pos/payment-sessions/session-pending-auth/finalize"){
+    finalizeAttempts+=1;
+    if(finalizeAttempts===1)throw new ApiError(
+     "La operaci\u00f3n supera el l\u00edmite de cr\u00e9dito del cliente",
+     409,
+     {code:"CUSTOMER_CREDIT_LIMIT_EXCEEDED"},
+    );
+    expect(options?.body).toEqual({
+     authorizerUsername:"pending-manager",
+     authorizerPassword:"pending-password-2",
+     creditOverride:{
+      reason:"Excepci\u00f3n autorizada",
+      authorizerUsername:"credit-manager",
+      authorizerPassword:"credit-password",
+     },
+    });
+    return {...covered,status:"FINALIZED",ticketNumber:"T-PENDING",printTicket:printTicket("T-PENDING")};
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,
+   locale:"es",
+   totalCents:1210,
+   sale:{customerId:"customer-1",lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],
+   terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,
+   customerSelected:true,
+   createPendingAuthorization:{mode:"DELEGATED",requireUsername:true,requirePassword:true},
+   creditOverrideAuthorization:{mode:"DELEGATED",requireUsername:true,requirePassword:true},
+   onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("PENDING"));
+  const amount=await screen.findByRole("textbox",{name:/IMPORTE/});
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  let authorizationDialog=await screen.findByRole("dialog",{name:/autorizaci.*pendiente/i});
+  fireEvent.change(within(authorizationDialog).getByRole("textbox",{name:/usuario autorizador/i}),{target:{value:"pending-manager"}});
+  fireEvent.change(within(authorizationDialog).getByLabelText(/contrase.*autorizador/i),{target:{value:"pending-password-1"}});
+  fireEvent.click(within(authorizationDialog).getByRole("button",{name:/confirmar/i}));
+
+  authorizationDialog=await screen.findByRole("dialog",{name:/supera las reglas de cr.*dito/i});
+  const usernames=within(authorizationDialog).getAllByRole("textbox",{name:/usuario autorizador/i});
+  const passwords=within(authorizationDialog).getAllByLabelText(/contrase.*autorizador/i);
+  fireEvent.change(usernames[0],{target:{value:"pending-manager"}});
+  fireEvent.change(passwords[0],{target:{value:"pending-password-2"}});
+  fireEvent.change(within(authorizationDialog).getByRole("textbox",{name:/motivo de la autorizaci.*n/i}),{target:{value:"Excepci\u00f3n autorizada"}});
+  fireEvent.change(usernames[1],{target:{value:"credit-manager"}});
+  fireEvent.change(passwords[1],{target:{value:"credit-password"}});
+  fireEvent.click(within(authorizationDialog).getByRole("button",{name:/confirmar/i}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(finalizeAttempts).toBe(2);
  });
  it("keeps a partial Enter checkout open and returns focus to the remaining amount", async () => {
   const collecting={id:"session-unified-partial",total:"12.10",status:"COLLECTING",allocations:[]};
@@ -681,7 +766,76 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(reference).toHaveFocus();
   fireEvent.keyDown(dialog,{key:"Escape"});
   expect(screen.queryByRole("dialog",{name:"Cobro con tarjeta manual"})).not.toBeInTheDocument();
-  expect(card).toHaveFocus();
+ expect(card).toHaveFocus();
+ });
+ it("keeps delegated manual-card credentials out of the durable allocation attempt",async()=>{
+  const session={id:"session-manual-card-auth",total:"12.10",status:"COLLECTING",allocations:[]};
+  let allocationBody:Record<string,unknown>|undefined;
+  let persistedAttemptAtRequest:string|null=null;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:Record<string,unknown>})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return session;
+   if(path==="/pos/payment-sessions/session-manual-card-auth/allocations"){
+    allocationBody=options?.body;
+    persistedAttemptAtRequest=localStorage.getItem("tpverp.payment-session.01.allocation-attempt");
+    return {...session,allocations:[{
+     id:String(options?.body?.allocationId),
+     idempotencyKey:String(options?.body?.allocationId),
+     kind:"MANUAL_CARD",
+     amount:"12.10",
+     status:"APPROVED",
+    }]};
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+  render(createElement(SalePaymentCheckout,{
+   locale:"es",
+   totalCents:1210,
+   sale:{customerId:null,lines:[]},
+   permissions:[],
+   terminal:{storeName:"Tienda",terminalCode:"01"},
+   manualCardPaymentAuthorization:{
+    mode:"DELEGATED",
+    requireUsername:true,
+    requirePassword:true,
+   },
+   onFinalized:vi.fn(),
+  }));
+
+  const card=await screen.findByRole("button",{name:/Tarjeta/});
+  await waitFor(()=>expect(card).toBeEnabled());
+  fireEvent.click(card);
+  const referenceDialog=screen.getByRole("dialog",{name:"Cobro con tarjeta manual"});
+  fireEvent.change(within(referenceDialog).getByRole("textbox"),{target:{value:"DOC-1"}});
+  fireEvent.click(within(referenceDialog).getByRole("button",{name:"Confirmar"}));
+
+  const authorizationDialog=screen.getByRole("dialog",{name:"Autorización de la venta"});
+  const manualCardAuthorization=within(authorizationDialog).getByRole(
+   "group",
+   {name:"Autorizar pago con tarjeta manual"},
+  );
+  fireEvent.change(within(manualCardAuthorization).getByLabelText("Usuario autorizador"),{target:{value:"ENCARGADO"}});
+  fireEvent.change(within(manualCardAuthorization).getByLabelText("Contraseña del autorizador"),{target:{value:"secret-123"}});
+  fireEvent.click(within(authorizationDialog).getByRole("button",{name:"Confirmar y continuar"}));
+
+  await waitFor(()=>expect(allocationBody).toBeDefined());
+  expect(allocationBody).toMatchObject({
+   kind:"MANUAL_CARD",
+   reference:"DOC-1",
+   operationAuthorization:{
+    authorizerUsername:"ENCARGADO",
+    authorizerPassword:"secret-123",
+   },
+  });
+  expect(persistedAttemptAtRequest).toContain("MANUAL_CARD");
+  expect(persistedAttemptAtRequest).not.toContain("ENCARGADO");
+  expect(persistedAttemptAtRequest).not.toContain("secret-123");
+  expect(allocationRecoveryInput({
+   kind:"MANUAL_CARD",
+   amountCents:1210,
+   reference:"DOC-1",
+  })).toEqual({kind:"MANUAL_CARD",amountCents:1210,provider:undefined});
  });
  it("offers only query, manage, and cancel for an uncertain full-ticket recovery",async()=>{
   const uncertain={id:"session-uncertain-recovery",total:"12.10",status:"COLLECTING",allocations:[{id:"allocation-timeout",idempotencyKey:"allocation-timeout",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"operation-timeout",status:"TIMEOUT"}]};
@@ -1031,9 +1185,10 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  });
 
  it("clears card recovery state after compensation acknowledgement so a later card checkout can start",async()=>{
-  const first={id:"session-ack-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
-  const second={id:"session-ack-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
-  let creations=0;
+ const first={id:"session-ack-card-1",total:"12.10",status:"COLLECTING",allocations:[]};
+ const second={id:"session-ack-card-2",total:"12.10",status:"COLLECTING",allocations:[]};
+ let creations=0;
+  let acknowledgementBody:unknown;
   apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
    if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:true},providerDescriptors:[],configuration:{provider:"GLOBAL_PAYMENTS",enabled:true}};
    if(path==="/pos/payment-sessions/active")return null;
@@ -1042,11 +1197,22 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
     const id=(options?.body as {allocationId:string}).allocationId;
     return {...first,status:"COMPENSATION_REQUIRED",allocations:[{id,idempotencyKey:id,status:"TIMEOUT",kind:"INTEGRATED_CARD",amount:"12.10",provider:"GLOBAL_PAYMENTS",operationId:"op-ack"}]};
    }
-   if(path==="/pos/payment-sessions/session-ack-card-1/compensation-ack")return {...first,status:"CANCELLED"};
+   if(path==="/pos/payment-sessions/session-ack-card-1/compensation-ack"){
+    acknowledgementBody=options?.body;
+    return {...first,status:"CANCELLED"};
+   }
    if(path==="/pos/payment-sessions/session-ack-card-2/allocations")return second;
    throw new Error(`unexpected request ${path}`);
   });
-  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1210,sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01"},onFinalized:vi.fn()}));
+  render(createElement(SalePaymentCheckout,{
+   locale:"es",
+   totalCents:1210,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],
+   terminal:{storeName:"Tienda",terminalCode:"01"},
+   paymentCompensationAuthorization:{mode:"DELEGATED",requireUsername:true,requirePassword:true},
+   onFinalized:vi.fn(),
+  }));
   const card=await screen.findByRole("button",{name:/Tarjeta/});
   await waitFor(()=>expect(card).toBeEnabled());
   fireEvent.click(card);
@@ -1054,9 +1220,17 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).not.toBeNull();
   fireEvent.click(screen.getByRole("button",{name:"Registrar resolución administrativa"}));
   const dialog=screen.getByRole("dialog",{name:"Resolución administrativa"});
-  fireEvent.change(within(dialog).getByRole("textbox"),{target:{value:" Resuelta "}});
+  const textboxes=within(dialog).getAllByRole("textbox");
+  fireEvent.change(textboxes[0],{target:{value:" Resuelta "}});
+  fireEvent.change(textboxes[1],{target:{value:"supervisor"}});
+  fireEvent.change(within(dialog).getByLabelText(/Contrase/i),{target:{value:"secreto"}});
   fireEvent.click(within(dialog).getByRole("button",{name:"Confirmar"}));
   await waitFor(()=>expect(screen.getByRole("button",{name:/Tarjeta/})).toBeEnabled());
+  expect(acknowledgementBody).toEqual({
+   note:"Resuelta",
+   authorizerUsername:"supervisor",
+   authorizerPassword:"secreto",
+  });
   expect(localStorage.getItem("tpverp.payment-session.01.allocation-attempt")).toBeNull();
   fireEvent.click(screen.getByRole("button",{name:/Tarjeta/}));
   await waitFor(()=>expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions/session-ack-card-2/allocations")).toHaveLength(1));

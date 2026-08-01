@@ -44,7 +44,8 @@ public class PosCardService {
         var existing=coordinator.existing(request.checkoutId(),terminalId,requestHash);
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
 
-        var command=sales.authoritativeCommand(request.sale(),authentication);
+        var prepared=sales.prepareSale(request.sale(),authentication);
+        var command=prepared.command();
         var hasDiscount=request.sale().checkoutDiscountAmount()!=null
                 && Money.euros(request.sale().checkoutDiscountAmount()).signum()>0;
         var quotedTicket=hasDiscount
@@ -53,7 +54,6 @@ public class PosCardService {
                 :request.sale().promotionalCouponCode()==null||request.sale().promotionalCouponCode().isBlank()
                         ?documents.quoteTicket(command,authentication)
                         :documents.quoteTicket(command,request.sale().promotionalCouponCode(),authentication);
-        sales.authorizeCheckoutDiscount(request.sale(),quotedTicket.getTotal(),authentication);
         BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         var configuration=configurations.required(terminalId);
@@ -69,6 +69,8 @@ public class PosCardService {
         var store=organization.currentStore();var company=organization.currentCompany();
         if(!configuration.storeId().equals(store.getId()))throw new IllegalStateException("La configuracion pertenece a otra tienda");
         var identity=new PosCardCheckoutCoordinator.RecoveryIdentity(user.getId(),store.getId(),company.getId(),user.getUserName());
+        sales.authorizeSensitiveOperations(
+                prepared,request.sale(),total,authentication,"POS_CARD",request.checkoutId());
         var reservation=coordinator.reserve(request.checkoutId(),terminalId,requestHash,snapshot,total,owner,identity);
         var checkout=reservation.checkout();
         if(!reservation.acquired())return replay(checkout,owner,authentication,terminalId);
@@ -113,16 +115,20 @@ public class PosCardService {
     }
     private static String hash(PosCashController.SaleRequest sale,BigDecimal total){
         var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
+        var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();
         var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
         var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
-        var c=new StringBuilder(hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|');
+        var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
+        var c=new StringBuilder(hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|');
+        if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
         c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
         c.append(Money.euros(total));
         sale.lines().forEach(l->{c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString())
                 .append(':').append(l.discount().stripTrailingZeros().toPlainString())
                 .append(hasOpenPrice?":"+openPrice(l.openUnitPrice()):"");
-            if(hasSerialNumbers)c.append(':').append(PosCashService.canonicalSerialNumbers(l.serialNumbers()));});
+            if(hasSerialNumbers)c.append(':').append(PosCashService.canonicalSerialNumbers(l.serialNumbers()));
+            if(hasTemporaryNames)c.append(':').append(PosCashService.canonicalText(l.temporaryName()));});
         try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.toString().getBytes(StandardCharsets.UTF_8)));}
         catch(NoSuchAlgorithmException e){throw new IllegalStateException(e);}
     }

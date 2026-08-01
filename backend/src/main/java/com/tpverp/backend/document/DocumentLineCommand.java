@@ -19,7 +19,31 @@ public record DocumentLineCommand(
         UUID promotionId,
         UUID promotionVersionId,
         UUID promotionalCouponId,
-        List<String> serialNumbers) {
+        List<String> serialNumbers,
+        boolean temporaryNameOverride,
+        boolean temporaryPriceOverride) {
+
+    public DocumentLineCommand(
+            UUID productoId,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId,
+            List<String> serialNumbers) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                false, false);
+    }
 
     public DocumentLineCommand(
             UUID productoId,
@@ -38,7 +62,8 @@ public record DocumentLineCommand(
             UUID promotionalCouponId) {
         this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                promotionId, promotionVersionId, promotionalCouponId, List.of());
+                promotionId, promotionVersionId, promotionalCouponId, List.of(),
+                false, false);
     }
 
     public DocumentLineCommand(
@@ -76,14 +101,16 @@ public record DocumentLineCommand(
         return new DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, price, descuento,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                promotionId, promotionVersionId, promotionalCouponId, serialNumbers);
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
         return new DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, precioUnitario, discount,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
-                promotionId, promotionVersionId, promotionalCouponId, serialNumbers);
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride);
     }
 
     public void requireClientProductLine() {
@@ -107,7 +134,7 @@ public record DocumentLineCommand(
                 line.getDescuento(), line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                 line.getLineType(), line.getPromotionId(), line.getPromotionVersionId(),
-                line.getPromotionalCouponId(), line.getSerialNumbers());
+                line.getPromotionalCouponId(), line.getSerialNumbers(), false, false);
     }
 
     // Converts validated input into a line with a fiscal snapshot.

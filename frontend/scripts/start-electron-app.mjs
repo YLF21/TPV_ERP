@@ -8,12 +8,14 @@ const configs = {
   venta: {
     name: "APP VENTA",
     workspace: "@tpverp/app-venta",
-    port: 5173
+    port: 5173,
+    windowMode: "FULLSCREEN"
   },
   gestion: {
     name: "APP GESTION",
     workspace: "@tpverp/app-gestion",
-    port: 5174
+    port: 5174,
+    windowMode: "MAXIMIZED"
   }
 };
 
@@ -22,6 +24,14 @@ export function resolveViteStartup(isAlreadyRunning) {
     shouldStartVite: !isAlreadyRunning,
     ownsViteProcess: !isAlreadyRunning
   };
+}
+
+export function resolveDesktopWindowMode(appKey) {
+  const config = configs[appKey];
+  if (!config) {
+    throw new Error(`Aplicación de escritorio desconocida: ${appKey}`);
+  }
+  return config.windowMode;
 }
 
 if (isCliEntrypoint()) {
@@ -55,7 +65,8 @@ async function main() {
     env: {
       ...process.env,
       TPV_DESKTOP_APP_NAME: config.name,
-      TPV_DESKTOP_APP_URL: url
+      TPV_DESKTOP_APP_URL: url,
+      TPV_DESKTOP_WINDOW_MODE: config.windowMode
     }
   });
 

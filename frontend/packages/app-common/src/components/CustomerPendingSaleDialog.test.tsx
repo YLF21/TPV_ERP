@@ -13,6 +13,7 @@ import {
   pendingCreateBody,
   pendingHasCardEffect,
   pendingSummary,
+  resolvePendingCardPaymentMode,
   type PendingSaleDraft,
 } from "../sale/customerReceivables";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
@@ -67,18 +68,580 @@ describe("customer receivable checkout helpers", () => {
   });
 
   it("serializes only real approved payments and never invents PENDIENTE", () => {
-    const body = pendingCreateBody(draft, [
+    const body = pendingCreateBody({ ...draft, printMode: "PDF" }, [
       { id: "cash", kind: "CASH", methodId: "m-cash", amountCents: 400, deliveredCents: 500, changeCents: 100, status: "APPROVED" },
       { id: "timeout", kind: "INTEGRATED_CARD", methodId: "m-card", amountCents: 600, operationId: "op-1", status: "TIMEOUT" },
     ], 1000);
     expect(body.payments).toEqual([expect.objectContaining({ methodId: "m-cash", amount: "4.00", delivered: "5.00", change: "1.00" })]);
-    expect(body.lines).toEqual([expect.objectContaining({ productoId: "product-1", cantidad: 1, precioUnitario: "10.00", impuestosIncluidos: true })]);
+    expect(body.lines).toEqual([expect.objectContaining({
+      productoId: "product-1",
+      cantidad: 1,
+      precioUnitario: "10.00",
+      impuestosIncluidos: true,
+      temporaryNameOverride: false,
+      temporaryPriceOverride: false,
+    })]);
     expect(body.lines[0]).not.toHaveProperty("productId");
+    expect(body).not.toHaveProperty("printMode");
     expect(JSON.stringify(body)).not.toContain("PENDIENTE");
+  });
+
+  it("prefers a usable integrated terminal and falls back to manual card", () => {
+    expect(resolvePendingCardPaymentMode({
+      rules: { cardManualEnabled: true, integratedCardEnabled: true },
+      configuration: { provider: "PAYTEF", enabled: true },
+    })).toBe("INTEGRATED");
+    expect(resolvePendingCardPaymentMode({
+      rules: { cardManualEnabled: true, integratedCardEnabled: true },
+      configuration: { provider: "NONE", enabled: true },
+    })).toBe("MANUAL");
+    expect(resolvePendingCardPaymentMode({
+      rules: { cardManualEnabled: false, integratedCardEnabled: true },
+      configuration: { provider: "PAYTEF", enabled: false },
+    })).toBeNull();
+  });
+
+  it("keeps all operation credentials separate from the recoverable draft", () => {
+    const authorizedDraft = {
+      ...draft,
+      creditOverride: { reason: "Excepci\u00f3n auditada" },
+    };
+    const body = pendingCreateBody(authorizedDraft, [], 1000, {
+      createPending: {
+        authorizerUsername: "responsable-cobros",
+        authorizerPassword: "pending-secret",
+      },
+      creditOverride: {
+        authorizerUsername: "responsable-credito",
+        authorizerPassword: "override-secret",
+      },
+      manualCardPayment: {
+        authorizerUsername: "responsable-tarjeta",
+        authorizerPassword: "card-secret",
+      },
+      transferPayment: {
+        authorizerUsername: "responsable-pagos",
+        authorizerPassword: "transfer-secret",
+      },
+      saleMutations: {
+        TEMPORARY_PRICE_CHANGE: {
+          authorizerUsername: "responsable-precios",
+          authorizerPassword: "price-secret",
+        },
+      },
+    });
+
+    expect(body).toMatchObject({
+      authorizerUsername: "responsable-cobros",
+      authorizerPassword: "pending-secret",
+      creditOverride: {
+        reason: "Excepci\u00f3n auditada",
+        authorizerUsername: "responsable-credito",
+        authorizerPassword: "override-secret",
+      },
+      operationAuthorizations: {
+        CONFIRM_MANUAL_CARD_PAYMENT: {
+          authorizerUsername: "responsable-tarjeta",
+          authorizerPassword: "card-secret",
+        },
+        CONFIRM_TRANSFER_PAYMENT: {
+          authorizerUsername: "responsable-pagos",
+          authorizerPassword: "transfer-secret",
+        },
+        TEMPORARY_PRICE_CHANGE: {
+          authorizerUsername: "responsable-precios",
+          authorizerPassword: "price-secret",
+        },
+      },
+    });
+    expect(authorizedDraft).toEqual({
+      ...draft,
+      creditOverride: { reason: "Excepci\u00f3n auditada" },
+    });
+    expect(JSON.stringify(authorizedDraft)).not.toContain("transfer-secret");
+    expect(JSON.stringify(authorizedDraft)).not.toContain("card-secret");
   });
 });
 
 describe("CustomerPendingSaleDialog", () => {
+  it("allows delegated confirmation and sends the authorizer only in the create request", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        receivable: { documentId: "delegated-pending" },
+        printDocument: {},
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{}}
+      request={request}
+      createPendingAuthorization={{
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      }}
+      creditOverrideAuthorization={null}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    const confirm = await screen.findByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: /usuario autorizador/i }), {
+      target: { value: "supervisor" },
+    });
+    fireEvent.change(screen.getByLabelText(/contrase.*autorizador/i), {
+      target: { value: "secret" },
+    });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[0][1].body).not.toHaveProperty("authorizerPassword");
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      authorizerUsername: "supervisor",
+      authorizerPassword: "secret",
+    });
+  });
+
+  it("authorizes a transfer separately and never persists its credentials in recovery", async () => {
+    const persist = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        receivable: { documentId: "delegated-transfer" },
+        printDocument: {},
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{ transfer: "transfer-method" }}
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }}
+      request={request}
+      createPendingAuthorization={null}
+      creditOverrideAuthorization={null}
+      transferPaymentAuthorization={{
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      }}
+      onPersistRecovery={persist}
+      onClearRecovery={vi.fn()}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    const amount = await screen.findByLabelText(/importe inicial/i);
+    fireEvent.change(amount, { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /transferencia/i }));
+    const transfer = screen.getByRole("group", { name: /transferencia/i });
+    fireEvent.change(within(transfer).getByLabelText(/importe/i), {
+      target: { value: "10" },
+    });
+    fireEvent.change(within(transfer).getByLabelText(/referencia/i), {
+      target: { value: "TR-SECURE" },
+    });
+    fireEvent.click(within(transfer).getByRole("button", { name: /guardar/i }));
+
+    const confirm = screen.getByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeDisabled();
+    const username = screen.getByRole("textbox", { name: /usuario autorizador/i });
+    const password = screen.getByLabelText(/contrase.*autorizador/i);
+    fireEvent.change(username, { target: { value: "supervisor-pagos" } });
+    fireEvent.change(password, { target: { value: "transfer-secret" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      operationAuthorizations: {
+        CONFIRM_TRANSFER_PAYMENT: {
+          authorizerUsername: "supervisor-pagos",
+          authorizerPassword: "transfer-secret",
+        },
+      },
+    });
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("supervisor-pagos");
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("transfer-secret");
+    await waitFor(() => {
+      expect(username).toHaveValue("");
+      expect(password).toHaveValue("");
+    });
+  });
+
+  it("keeps manual-card payment distinct and sends only ephemeral authorization on create", async () => {
+    const persist = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({
+        receivable: { documentId: "delegated-manual-card" },
+        printDocument: {},
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{
+        card: "card-method",
+        cardRequiresReference: true,
+      }}
+      cardPaymentMode="MANUAL"
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }}
+      request={request}
+      createPendingAuthorization={null}
+      creditOverrideAuthorization={null}
+      manualCardPaymentAuthorization={{
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      }}
+      transferPaymentAuthorization={null}
+      onPersistRecovery={persist}
+      onClearRecovery={vi.fn()}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    const amount = await screen.findByLabelText(/importe inicial/i);
+    fireEvent.change(amount, { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+    const manualCard = screen.getByRole("dialog", { name: /cobro con tarjeta manual/i });
+    fireEvent.change(within(manualCard).getByRole("textbox", { name: /referencia obligatoria/i }), {
+      target: { value: "CARD-REF-1" },
+    });
+    fireEvent.click(within(manualCard).getByRole("button", { name: /^confirmar$/i }));
+
+    const confirm = screen.getByRole("button", { name: /confirmar venta pendiente/i });
+    expect(confirm).toBeDisabled();
+    const username = screen.getByRole("textbox", { name: /usuario autorizador/i });
+    const password = screen.getByLabelText(/contrase.*autorizador/i);
+    fireEvent.change(username, { target: { value: "supervisor-tarjeta" } });
+    fireEvent.change(password, { target: { value: "card-secret" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls.map(([path]) => path)).not.toContain(
+      "/pos/customer-pending-sales/card-charges",
+    );
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      payments: [{
+        kind: "MANUAL_CARD",
+        methodId: "card-method",
+        reference: "CARD-REF-1",
+      }],
+      operationAuthorizations: {
+        CONFIRM_MANUAL_CARD_PAYMENT: {
+          authorizerUsername: "supervisor-tarjeta",
+          authorizerPassword: "card-secret",
+        },
+      },
+    });
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("supervisor-tarjeta");
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("card-secret");
+    await waitFor(() => {
+      expect(username).toHaveValue("");
+      expect(password).toHaveValue("");
+    });
+  });
+
+  it("clears ephemeral manual-card authorization when checkout is cancelled", async () => {
+    const onCancel = vi.fn();
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{ card: "card-method" }}
+      cardPaymentMode="MANUAL"
+      request={request}
+      createPendingAuthorization={null}
+      creditOverrideAuthorization={null}
+      manualCardPaymentAuthorization={{
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      }}
+      transferPaymentAuthorization={null}
+      onCancel={onCancel}
+      onSuccess={vi.fn()}
+    />);
+
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), {
+      target: { value: "10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+
+    const username = screen.getByRole("textbox", { name: /usuario autorizador/i });
+    const password = screen.getByLabelText(/contrase.*autorizador/i);
+    fireEvent.change(username, { target: { value: "supervisor-tarjeta" } });
+    fireEvent.change(password, { target: { value: "card-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: /^cancelar$/i }));
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(username).toHaveValue("");
+    expect(password).toHaveValue("");
+  });
+
+  it("keeps integrated card independent from manual-card authorization policy", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockResolvedValueOnce({ status: "APPROVED" });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{ card: "card-method" }}
+      cardPaymentMode="INTEGRATED"
+      request={request}
+      manualCardPaymentAuthorization={null}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), {
+      target: { value: "10" },
+    });
+    const card = screen.getByRole("button", { name: /tarjeta/i });
+    expect(card).toBeEnabled();
+    fireEvent.click(card);
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][0]).toBe(
+      "/pos/customer-pending-sales/card-charges",
+    );
+    expect(request.mock.calls[1][1].body.sale).not.toHaveProperty(
+      "operationAuthorizations",
+    );
+  });
+
+  it("authorizes sale mutations immediately before an integrated card effect", async () => {
+    const persist = vi.fn();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockImplementationOnce(async () => {
+        expect(screen.queryByRole("dialog", { name: /autorizaci.*venta/i }))
+          .not.toBeInTheDocument();
+        return { status: "APPROVED" };
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{
+        ...draft,
+        lines: [{
+          ...draft.lines[0],
+          price: "8.00",
+          temporaryPriceOverride: true,
+        }],
+      }}
+      paymentMethods={{ card: "card-method" }}
+      cardPaymentMode="INTEGRATED"
+      terminalContext={{ storeName: "Tienda", terminalCode: "T-1" }}
+      request={request}
+      saleMutationAuthorizations={[{
+        code: "TEMPORARY_PRICE_CHANGE",
+        label: "Cambio temporal de precio",
+        authorization: {
+          mode: "DELEGATED",
+          requireUsername: true,
+          requirePassword: true,
+        },
+      }]}
+      onPersistRecovery={persist}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    fireEvent.change(await screen.findByLabelText(/importe inicial/i), {
+      target: { value: "10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /tarjeta/i }));
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const authorization = screen.getByRole("dialog", {
+      name: /autorizaci.*venta/i,
+    });
+    fireEvent.change(within(authorization).getByRole("textbox", {
+      name: /usuario autorizador/i,
+    }), { target: { value: "supervisor-precios" } });
+    fireEvent.change(within(authorization).getByLabelText(/contrase.*autorizador/i), {
+      target: { value: "price-secret" },
+    });
+    fireEvent.click(within(authorization).getByRole("button", {
+      name: /confirmar y continuar/i,
+    }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][0]).toBe(
+      "/pos/customer-pending-sales/card-charges",
+    );
+    expect(request.mock.calls[1][1].body.sale).toMatchObject({
+      operationAuthorizations: {
+        TEMPORARY_PRICE_CHANGE: {
+          authorizerUsername: "supervisor-precios",
+          authorizerPassword: "price-secret",
+        },
+      },
+      lines: [{
+        temporaryPriceOverride: true,
+      }],
+    });
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("supervisor-precios");
+    expect(JSON.stringify(persist.mock.calls)).not.toContain("price-secret");
+  });
+
+  it("authorizes sale mutations again immediately before document creation", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ total: "10.00" })
+      .mockImplementationOnce(async () => {
+        expect(screen.queryByRole("dialog", { name: /autorizaci.*venta/i }))
+          .not.toBeInTheDocument();
+        return {
+          receivable: { documentId: "temporary-name-sale" },
+          printDocument: {},
+        };
+      });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={{
+        ...draft,
+        lines: [{
+          ...draft.lines[0],
+          name: "Nombre temporal",
+          temporaryNameOverride: true,
+        }],
+      }}
+      paymentMethods={{}}
+      request={request}
+      saleMutationAuthorizations={[{
+        code: "TEMPORARY_NAME",
+        label: "Nombre temporal",
+        authorization: {
+          mode: "CURRENT_PASSWORD",
+          requireUsername: false,
+          requirePassword: true,
+        },
+      }]}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    const confirm = await screen.findByRole("button", {
+      name: /confirmar venta pendiente/i,
+    });
+    fireEvent.click(confirm);
+    const authorization = screen.getByRole("dialog", {
+      name: /autorizaci.*venta/i,
+    });
+    fireEvent.change(within(authorization).getByLabelText(/contrase/i), {
+      target: { value: "operator-secret" },
+    });
+    fireEvent.click(within(authorization).getByRole("button", {
+      name: /confirmar y continuar/i,
+    }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(request.mock.calls[1][1].body).toMatchObject({
+      operationAuthorizations: {
+        TEMPORARY_NAME: {
+          authorizerPassword: "operator-secret",
+        },
+      },
+      lines: [{
+        temporaryNameOverride: true,
+      }],
+    });
+  });
+
+  it("fails closed for a recovered manual card when its policy is unavailable", () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2,
+      phase: "READY_TO_CREATE",
+      terminalCode: "T-1",
+      customer: { id: draft.customerId, name: "Cliente" },
+      draft,
+      quoteCents: 1_000,
+      quoteReady: true,
+      payments: [{
+        id: "manual-card-1",
+        kind: "MANUAL_CARD",
+        methodId: "card-method",
+        amountCents: 1_000,
+        reference: "CARD-REF-1",
+        mode: "MANUAL",
+        status: "APPROVED",
+      }],
+      savedAt: "2026-07-31T00:00:00.000Z",
+    };
+
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      recovery={recovery}
+      paymentMethods={{ card: "card-method" }}
+      cardPaymentMode="MANUAL"
+      manualCardPaymentAuthorization={null}
+      request={vi.fn()}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    expect(screen.getAllByRole("alert").some((alert) =>
+      /seguridad.*tarjetas manuales/i.test(alert.textContent ?? ""))).toBe(true);
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+  });
+
+  it("fails closed when a transfer exists but its security policy is unavailable", () => {
+    const recovery: PendingSaleRecoveryEnvelope = {
+      version: 2,
+      phase: "READY_TO_CREATE",
+      terminalCode: "T-1",
+      customer: { id: draft.customerId, name: "Cliente" },
+      draft,
+      quoteCents: 1_000,
+      quoteReady: true,
+      payments: [{
+        id: "transfer-1",
+        kind: "TRANSFER",
+        methodId: "transfer-method",
+        amountCents: 1_000,
+        reference: "TR-1",
+        status: "APPROVED",
+      }],
+      savedAt: "2026-07-31T00:00:00.000Z",
+    };
+
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      recovery={recovery}
+      paymentMethods={{ transfer: "transfer-method" }}
+      transferPaymentAuthorization={null}
+      request={vi.fn()}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/seguridad.*transferencias/i);
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+  });
+
+  it("fails closed when the pending-sale security policy is unavailable", async () => {
+    const request = vi.fn().mockResolvedValueOnce({ total: "10.00" });
+    render(<CustomerPendingSaleDialog
+      customerName="Cliente"
+      draft={draft}
+      paymentMethods={{}}
+      request={request}
+      createPendingAuthorization={null}
+      creditOverrideAuthorization={null}
+      onCancel={vi.fn()}
+      onSuccess={vi.fn()}
+    />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/configuraci.*seguridad/i);
+    expect(screen.getByRole("button", { name: /confirmar venta pendiente/i })).toBeDisabled();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the document checkout endpoint without payment controls for pending confirmation", async () => {
     const documentDraft: PendingSaleDraft = {
       ...draft,
@@ -112,7 +675,9 @@ describe("CustomerPendingSaleDialog", () => {
     expect(await screen.findByRole("heading", { name: "Confirmar documento pendiente" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /añadir efectivo/i })).not.toBeInTheDocument();
     expect(screen.getByRole("combobox")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar pendiente" }));
+    const confirm = screen.getByRole("button", { name: "Confirmar pendiente" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
       "/pos/sales-document-checkouts",

@@ -29,7 +29,8 @@ public record DocumentView(
         UUID terminalOrigenId,
         String terminalOrigenNombre,
         Instant ocurridoEn,
-        List<PaymentView> payments) {
+        List<PaymentView> payments,
+        String comentarioInterno) {
 
     public static DocumentView from(CommercialDocument document) {
         return from(document, null, null,
@@ -71,7 +72,8 @@ public record DocumentView(
                 document.getPagos().stream()
                         .sorted(Comparator.comparingInt(DocumentPayment::getPosicion))
                         .map(PaymentView::from)
-                        .toList());
+                        .toList(),
+                document.getComentarioInterno());
     }
 
     public record PaymentView(

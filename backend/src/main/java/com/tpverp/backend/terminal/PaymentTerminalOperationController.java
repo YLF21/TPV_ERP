@@ -1,9 +1,11 @@
 package com.tpverp.backend.terminal;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -25,11 +27,8 @@ import static com.tpverp.backend.security.application.CorePermissionBootstrap.PA
 @RequestMapping("/api/v1/payment-terminal")
 public class PaymentTerminalOperationController {
     private final PaymentTerminalOperationsService service;
-    private final PaymentTerminalReauthenticationService reauthentication;
-    public PaymentTerminalOperationController(PaymentTerminalOperationsService service,
-            PaymentTerminalReauthenticationService reauthentication){
+    public PaymentTerminalOperationController(PaymentTerminalOperationsService service){
         this.service=service;
-        this.reauthentication=reauthentication;
     }
 
     @GetMapping("/operations/{id}")
@@ -49,23 +48,28 @@ public class PaymentTerminalOperationController {
     public OperationView query(@PathVariable UUID id){ return OperationView.from(service.query(id)); }
 
     @PostMapping("/operations/{id}/void")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_VOID + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_CREATE','"
+            + PAYMENT_TERMINAL_VOID + "')")
     public OperationView voidAuthorization(@PathVariable UUID id,@Valid @RequestBody AdjustmentRequest request,
             Authentication authentication){
-        reauthentication.require(authentication, request.password());
-        return OperationView.from(service.voidAuthorization(id,request.operationId(),request.idempotencyKey())); }
+        return OperationView.from(service.voidAuthorization(
+                id, request.operationId(), request.idempotencyKey(),
+                request.authorizerUsername(), request.effectivePassword(), authentication)); }
 
     @PostMapping("/operations/{id}/refund")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_CREATE','"
+            + PAYMENT_TERMINAL_REFUND + "')")
     public OperationView refund(@PathVariable UUID id,@Valid @RequestBody RefundRequest request,Authentication authentication){
-        reauthentication.require(authentication, request.password());
         var lines=request.lines()==null?List.<PaymentTerminalRefundLineSelection>of():request.lines().stream()
                 .map(line->new PaymentTerminalRefundLineSelection(
                         line.lineId(), line.quantity(), line.serialNumbers())).toList();
-        return OperationView.from(service.refund(id,request.operationId(),request.idempotencyKey(),request.amount(),lines,authentication)); }
+        return OperationView.from(service.refund(
+                id, request.operationId(), request.idempotencyKey(), request.amount(), lines,
+                request.authorizerUsername(), request.effectivePassword(), authentication)); }
 
     @GetMapping("/operations/{id}/refund-lines")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','GESTION_VENTAS','TICKETS_CREATE','"
+            + PAYMENT_TERMINAL_REFUND + "')")
     public List<com.tpverp.backend.document.DocumentService.CardRefundLineOption> refundLines(@PathVariable UUID id){
         return service.refundLineOptions(id); }
 
@@ -86,10 +90,65 @@ public class PaymentTerminalOperationController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PAYMENT_TERMINAL_RECONCILE','CONFIGURACION_TERMINAL')")
     public ReconciliationView reconciliation(@PathVariable UUID id){return ReconciliationView.from(service.reconciliation(id));}
 
-    public record AdjustmentRequest(@NotNull UUID operationId,@NotBlank String idempotencyKey,String password) {}
+    public record AdjustmentRequest(
+            @NotNull UUID operationId,
+            @NotBlank String idempotencyKey,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String password,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword) {
+        public AdjustmentRequest(UUID operationId, String idempotencyKey, String password) {
+            this(operationId, idempotencyKey, password, null, null);
+        }
+
+        String effectivePassword() {
+            return authorizerPassword == null || authorizerPassword.isBlank()
+                    ? password
+                    : authorizerPassword;
+        }
+
+        @Override
+        public String toString() {
+            return "AdjustmentRequest[operationId=" + operationId
+                    + ", idempotencyKey=" + idempotencyKey
+                    + ", password=<redacted>"
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
+    }
     public record RefundRequest(@NotNull UUID operationId,@NotBlank String idempotencyKey,
-            String password,@NotNull @DecimalMin(value="0.01") BigDecimal amount,
-            @Valid List<RefundLineRequest> lines) {}
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String password,@NotNull @DecimalMin(value="0.01") BigDecimal amount,
+            @Valid List<RefundLineRequest> lines,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword) {
+        public RefundRequest(
+                UUID operationId,
+                String idempotencyKey,
+                String password,
+                BigDecimal amount,
+                List<RefundLineRequest> lines) {
+            this(operationId, idempotencyKey, password, amount, lines, null, null);
+        }
+
+        String effectivePassword() {
+            return authorizerPassword == null || authorizerPassword.isBlank()
+                    ? password
+                    : authorizerPassword;
+        }
+
+        @Override
+        public String toString() {
+            return "RefundRequest[operationId=" + operationId
+                    + ", idempotencyKey=" + idempotencyKey
+                    + ", password=<redacted>"
+                    + ", amount=" + amount
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
+    }
     public record RefundLineRequest(
             @NotNull UUID lineId,
             @NotNull @DecimalMin(value="0.001") BigDecimal quantity,

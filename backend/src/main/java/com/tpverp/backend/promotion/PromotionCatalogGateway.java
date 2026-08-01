@@ -153,7 +153,9 @@ public class PromotionCatalogGateway {
                     product.getId(),
                     pricedLine.cantidad(),
                     authoritativeCode(product),
-                    product.getName(),
+                    pricedLine.temporaryNameOverride()
+                            ? pricedLine.nombre()
+                            : product.getName(),
                     pricedLine.tarifa(),
                     pricedLine.precioUnitario(),
                     pricedLine.descuento(),
@@ -164,7 +166,9 @@ public class PromotionCatalogGateway {
                     null,
                     null,
                     null,
-                    pricedLine.serialNumbers());
+                    pricedLine.serialNumbers(),
+                    pricedLine.temporaryNameOverride(),
+                    pricedLine.temporaryPriceOverride());
         }
 
         public void validateTaxSnapshot(

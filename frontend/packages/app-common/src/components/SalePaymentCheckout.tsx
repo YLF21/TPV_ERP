@@ -18,12 +18,26 @@ import {
  loadPaymentMethods,
  resolveCheckoutPaymentMethodConfiguration,
 } from "../sale/paymentMethods";
+import {
+ saleOperationAuthorizationComplete,
+ saleOperationCredentials,
+ type SaleOperationAuthorization,
+ type SaleOperationCredentials,
+} from "../sale/operationSecurity";
+import {
+ saleMutationCredentialsRequired,
+ saleWithOperationAuthorizations,
+ type SaleMutationAuthorizationRequirement,
+ type SaleMutationOperationAuthorizations,
+} from "../sale/saleMutationAuthorizations";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import type { LocaleCode, Permission, TerminalContext } from "../types";
+import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
+import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDialog";
 
 type Sale = {
   customerId: string | null;
-  lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice?: number }>;
+  lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice?: number; temporaryName?: string }>;
   promotionalCouponCode?: string;
   checkoutDiscountAmount?: number;
 };
@@ -31,9 +45,45 @@ export type ServerSession = { id: string; total: number | string; status: string
 export type PaymentFinalizationSummary =
  | { kind: "CASH"; totalCents: number; receivedCents: number }
  | { kind: "CARD" | "VOUCHER" | "MIXED"; totalCents: number; receivedCents?: never };
-type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; customerSelected?: boolean; testCashEnabled?: boolean; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
-type AuthorizationAction = { kind: "VOID" | "REFUND"; amount: string; options: PaymentRefundLineOption[]; lines: PaymentRefundLineSelection[] };
+type Props = { locale: LocaleCode; totalCents: number; sale: Sale; token?: string; permissions: Permission[]; terminal: TerminalContext; disabled?: boolean; showIndividualActions?: boolean; unifiedCheckout?: boolean; interfaceMode?: "KEYBOARD"|"TOUCH"; checkoutDiscountCents?: number; customerSelected?: boolean; testCashEnabled?: boolean; saleMutationAuthorizations?: readonly SaleMutationAuthorizationRequirement[] | null; manualCardPaymentAuthorization?: SaleOperationAuthorization | null; transferPaymentAuthorization?: SaleOperationAuthorization | null; paymentTerminalVoidAuthorization?: SaleOperationAuthorization | null; paymentTerminalRefundAuthorization?: SaleOperationAuthorization | null; paymentCompensationAuthorization?: SaleOperationAuthorization | null; createPendingAuthorization?: SaleOperationAuthorization | null; creditOverrideAuthorization?: SaleOperationAuthorization | null; onCash?: () => void; onPending?: () => void; onDiscount?: (amountCents:number)=>void; onHydrationChange?: (hydrated:boolean)=>void; onLockedChange?: (locked:boolean,reservedTotalCents?:number)=>void; onFinalized: (printTicket: ConfirmedTicketPrintSnapshot,summary:PaymentFinalizationSummary) => void };
+type AuthorizationAction = { kind: "VOID" | "REFUND"; authorization: SaleOperationAuthorization; amount: string; options: PaymentRefundLineOption[]; lines: PaymentRefundLineSelection[] };
+type PaymentAllocationInput = {kind:string;amountCents:number;provider?:string;voucherCode?:string;reference?:string;deliveredCents?:number;changeCents?:number;comment?:string};
+type AllocationAuthorizationAction = {
+ input:PaymentAllocationInput;
+ requirements:readonly SaleMutationAuthorizationRequirement[];
+ paymentOperationCode?:string;
+ finalizeWhenCovered:boolean;
+ cashAttempt?:CashAttemptMetadata;
+};
 type CashAttemptMetadata = { sessionId?: string; receivedCents: number };
+type PendingFinalizeAuthorization = {
+ sessionId:string;
+ cashAttempt?:CashAttemptMetadata;
+ creditOverrideRequired:boolean;
+};
+type PendingFinalizeCredentials = {
+ authorizerUsername?:string;
+ authorizerPassword?:string;
+ creditOverride?:{
+  reason:string;
+  authorizerUsername?:string;
+  authorizerPassword?:string;
+ };
+};
+const manualPaymentAuthorizationCopy = {
+ es: {
+  card: "Autorizar pago con tarjeta manual",
+  transfer: "Autorizar pago por transferencia",
+ },
+ en: {
+  card: "Authorize manual card payment",
+  transfer: "Authorize transfer payment",
+ },
+ zh: {
+  card: "授权手动刷卡付款",
+  transfer: "授权转账付款",
+ },
+} as const;
 class InvalidPaymentFinalizationSummaryError extends Error {}
 
 const uuid=()=>globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`;
@@ -107,18 +157,50 @@ export function paymentFinalizationSummary(session:ServerSession,cashAttempt?:Ca
  return {kind:"CASH",totalCents,receivedCents};
 }
 export function stableAllocationAttempt<T>(stored:{sessionId:string;allocationId:string;input:T}|null,sessionId:string,input:T,generate:()=>string){return stored?.sessionId===sessionId&&JSON.stringify(stored.input)===JSON.stringify(input)?stored:{sessionId,allocationId:generate(),input};}
+export function allocationRecoveryInput(input:PaymentAllocationInput){
+ return {kind:input.kind,amountCents:input.amountCents,provider:input.provider};
+}
 export function allocationFailureIsSafePreEffect(error:ApiError){return [400,401,403,404,409,422].includes(error.status);}
 export function isMissingCashSessionError(message:string){const normalized=message.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es");return normalized.includes("sesi")&&normalized.includes("de caja abierta");}
+export function isCreditLimitExceededError(error:unknown){
+ if(!(error instanceof ApiError)||error.status!==409)return false;
+ return error.problem?.code==="CUSTOMER_CREDIT_LIMIT_EXCEEDED";
+}
 export function shouldOfferTestCashSession(enabled:boolean,status:string|undefined,missing:boolean,terminalId?:string){return enabled&&status==="COVERED"&&missing&&Boolean(terminalId);}
 export async function authorizationPasswordIsEphemeral<T>(password:string,clear:(value:string)=>void,operation:(password:string)=>Promise<T>){clear("");try{return await operation(password);}finally{clear("");}}
 export async function compensationNoteIsEphemeral<T>(note:string,clear:(value:string)=>void,operation:(note:string)=>Promise<T>){const normalized=note.trim();clear("");try{return await operation(normalized);}finally{clear("");}}
 
-export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,customerSelected=false,testCashEnabled=false,onCash,onPending,onDiscount,onHydrationChange,onLockedChange,onFinalized},ref){
+export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(function SalePaymentCheckout({locale,totalCents,sale,token,permissions,terminal,disabled,showIndividualActions=true,unifiedCheckout=false,interfaceMode="KEYBOARD",checkoutDiscountCents=0,customerSelected=false,testCashEnabled=false,saleMutationAuthorizations=[],manualCardPaymentAuthorization,transferPaymentAuthorization,paymentTerminalVoidAuthorization,paymentTerminalRefundAuthorization,paymentCompensationAuthorization,createPendingAuthorization,creditOverrideAuthorization,onCash,onPending,onDiscount,onHydrationChange,onLockedChange,onFinalized},ref){
  const t=createTranslator(locale);
- const pendingEnabled=permissions.includes("ADMIN")||permissions.includes("CUSTOMER_RECEIVABLES_CREATE");
+ const legacyPasswordAuthorization:SaleOperationAuthorization={mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true};
+ const legacyDirectAuthorization:SaleOperationAuthorization={mode:"DIRECT",requireUsername:false,requirePassword:false};
+ const effectiveManualCardPaymentAuthorization=manualCardPaymentAuthorization===undefined
+  ? legacyDirectAuthorization
+  : manualCardPaymentAuthorization;
+ const effectiveTransferPaymentAuthorization=transferPaymentAuthorization===undefined
+  ? legacyDirectAuthorization
+  : transferPaymentAuthorization;
+ const effectiveVoidAuthorization=paymentTerminalVoidAuthorization===undefined
+  ? (permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_VOID")?legacyPasswordAuthorization:null)
+  : paymentTerminalVoidAuthorization;
+ const effectiveRefundAuthorization=paymentTerminalRefundAuthorization===undefined
+  ? (permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_REFUND")?legacyPasswordAuthorization:null)
+  : paymentTerminalRefundAuthorization;
+ const effectiveCompensationAuthorization=paymentCompensationAuthorization===undefined
+  ? (permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_REFUND")?legacyDirectAuthorization:null)
+  : paymentCompensationAuthorization;
+ const effectiveCreatePendingAuthorization=createPendingAuthorization===undefined
+  ? (permissions.includes("ADMIN")||permissions.includes("CUSTOMER_RECEIVABLES_CREATE")?legacyDirectAuthorization:null)
+  : createPendingAuthorization;
+ const effectiveCreditOverrideAuthorization=creditOverrideAuthorization===undefined
+  ? (permissions.includes("ADMIN")||permissions.includes("CUSTOMER_CREDIT_OVERRIDE")?legacyDirectAuthorization:null)
+  : creditOverrideAuthorization;
+ const pendingEnabled=Boolean(effectiveCreatePendingAuthorization);
  const [server,setServer]=useState<ServerSession|null>(null);const [providers,setProviders]=useState<string[]>([]);const [capabilities,setCapabilities]=useState<string[]>([]);const [manual,setManual]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [operation,setOperation]=useState<PaymentOperationView|null>(null);const [events,setEvents]=useState<PaymentOperationEvent[]>([]);
- const [authorization,setAuthorization]=useState<AuthorizationAction|null>(null);const [authorizationPassword,setAuthorizationPassword]=useState("");
- const [compensationDialog,setCompensationDialog]=useState(false);const [compensationNote,setCompensationNote]=useState("");
+ const [authorization,setAuthorization]=useState<AuthorizationAction|null>(null);const [authorizationUsername,setAuthorizationUsername]=useState("");const [authorizationPassword,setAuthorizationPassword]=useState("");
+ const [compensationDialog,setCompensationDialog]=useState(false);const [compensationNote,setCompensationNote]=useState("");const [compensationUsername,setCompensationUsername]=useState("");const [compensationPassword,setCompensationPassword]=useState("");
+ const [pendingFinalizeAuthorization,setPendingFinalizeAuthorization]=useState<PendingFinalizeAuthorization|null>(null);const [pendingUsername,setPendingUsername]=useState("");const [pendingPassword,setPendingPassword]=useState("");const [creditOverrideReason,setCreditOverrideReason]=useState("");const [creditOverrideUsername,setCreditOverrideUsername]=useState("");const [creditOverridePassword,setCreditOverridePassword]=useState("");
+ const [allocationAuthorizationAction,setAllocationAuthorizationAction]=useState<AllocationAuthorizationAction|null>(null);
  const [cashOpen,setCashOpen]=useState(false);const cashGuardRef=useRef(false);const cashAttemptRef=useRef<CashAttemptMetadata|null>(null);
  const [manualCardOpen,setManualCardOpen]=useState(false);const cardGuardRef=useRef(false);
  const [checkoutOpen,setCheckoutOpen]=useState(false);const [initialMethod,setInitialMethod]=useState<CheckoutMethod>("CASH");
@@ -142,16 +224,159 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  useEffect(()=>onLockedChange?.(paymentSessionLocksSale(server?.status),server?Math.round(Number(server.total)*100):undefined),[server,onLockedChange]);
  useEffect(()=>{if(unifiedCheckout&&server&&server.status!=="FINALIZED"&&server.status!=="CANCELLED")setCheckoutOpen(true);},[server?.id,server?.status,unifiedCheckout]);
  function clearRecoveryStorage(expectedSessionId?:string){const storedSessionId=globalThis.sessionStorage?.getItem(storageKey);const ownsStoredSession=!expectedSessionId||storedSessionId===expectedSessionId;if(ownsStoredSession)globalThis.sessionStorage?.removeItem(storageKey);const storedAttempt=globalThis.localStorage?.getItem(attemptKey);let attemptSessionId:string|undefined;try{attemptSessionId=storedAttempt?(JSON.parse(storedAttempt) as {sessionId?:string}).sessionId:undefined;}catch{/* Legacy malformed attempts belong to the matching stored session only. */}if(!expectedSessionId||attemptSessionId===expectedSessionId||(ownsStoredSession&&!attemptSessionId))globalThis.localStorage?.removeItem(attemptKey);}
- function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setAuthorization(null);setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
- async function ensure(){if(server)return server;const id=uuid();const created=await apiRequest<ServerSession>("/pos/payment-sessions",{token,body:{sessionId:id,sale}});globalThis.sessionStorage?.setItem(storageKey,created.id);setServer(created);return created;}
- async function finish(next:ServerSession,cashAttempt?:CashAttemptMetadata){if(next.status!=="COVERED")return;const summary=paymentFinalizationSummary(next,cashAttempt);const done=await apiRequest<ServerSession>(`/pos/payment-sessions/${next.id}/finalize`,{token,method:"POST"});if(!done.ticketNumber||!done.printTicket)throw new InvalidPaymentFinalizationSummaryError("finalized_payment_has_no_print_snapshot");setServer(null);globalThis.sessionStorage?.removeItem(storageKey);globalThis.localStorage?.removeItem(attemptKey);setCashOpen(false);setCheckoutOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setTestCashRequired(false);setTestCashStatus("");setError("");if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;onFinalized(done.printTicket,summary);}
+ function clearRecoveredSession(expectedSessionId?:string){clearRecoveryStorage(expectedSessionId);if(expectedSessionId)simulatorDiscardAttemptedRef.current.delete(expectedSessionId);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;exitFeedbackRef.current=null;setCashOpen(false);setManualCardOpen(false);setVoucherOpen(false);setVoucherCode("");setVoucherAmount("");setCompensationDialog(false);setCompensationNote("");setCompensationUsername("");setCompensationPassword("");setPendingFinalizeAuthorization(null);setPendingUsername("");setPendingPassword("");setCreditOverrideReason("");setCreditOverrideUsername("");setCreditOverridePassword("");setAllocationAuthorizationAction(null);setAuthorization(null);setAuthorizationUsername("");setAuthorizationPassword("");setOperation(null);setEvents([]);setSafeRetry(false);setTestCashRequired(false);setTestCashStatus("");setError("");setServer(null);}
+ async function ensure(operationAuthorizations:SaleMutationOperationAuthorizations={}){if(server)return server;const id=uuid();const created=await apiRequest<ServerSession>("/pos/payment-sessions",{token,body:{sessionId:id,sale:saleWithOperationAuthorizations(sale,operationAuthorizations)}});globalThis.sessionStorage?.setItem(storageKey,created.id);setServer(created);return created;}
+ async function finish(
+  next:ServerSession,
+  cashAttempt?:CashAttemptMetadata,
+  pendingCredentials?:PendingFinalizeCredentials,
+ ){
+  if(next.status!=="COVERED")return;
+  const hasPending=next.allocations.some(
+   allocation=>allocation.kind==="PENDING"&&allocation.status==="APPROVED",
+  );
+  if(hasPending&&!effectiveCreatePendingAuthorization){
+   setError(t("pendingSale.authorization.configurationUnavailable"));
+   return;
+  }
+  if(hasPending&&!pendingCredentials&&effectiveCreatePendingAuthorization?.mode!=="DIRECT"){
+   setServer(next);
+   setPendingUsername("");
+   setPendingPassword("");
+   setCreditOverrideReason("");
+   setCreditOverrideUsername("");
+   setCreditOverridePassword("");
+   setPendingFinalizeAuthorization({
+    sessionId:next.id,
+    cashAttempt,
+    creditOverrideRequired:false,
+   });
+   return;
+  }
+  const summary=paymentFinalizationSummary(next,cashAttempt);
+  const body=hasPending
+   ? pendingCredentials??saleOperationCredentials(
+      effectiveCreatePendingAuthorization!,
+      "",
+      "",
+     )
+   : undefined;
+  let done:ServerSession;
+  try{
+   done=await apiRequest<ServerSession>(
+    `/pos/payment-sessions/${next.id}/finalize`,
+    {token,method:"POST",...(body?{body}:{})},
+   );
+  }catch(failure){
+   if(hasPending&&isCreditLimitExceededError(failure)&&effectiveCreditOverrideAuthorization){
+    setServer(next);
+    setPendingUsername("");
+    setPendingPassword("");
+    setCreditOverrideReason("");
+    setCreditOverrideUsername("");
+    setCreditOverridePassword("");
+    setPendingFinalizeAuthorization({
+     sessionId:next.id,
+     cashAttempt,
+     creditOverrideRequired:true,
+    });
+    setError("");
+    return;
+   }
+   throw failure;
+  }
+  if(!done.ticketNumber||!done.printTicket)throw new InvalidPaymentFinalizationSummaryError("finalized_payment_has_no_print_snapshot");
+  setPendingFinalizeAuthorization(null);
+  setPendingUsername("");
+  setPendingPassword("");
+  setCreditOverrideReason("");
+  setCreditOverrideUsername("");
+  setCreditOverridePassword("");
+  setServer(null);
+  globalThis.sessionStorage?.removeItem(storageKey);
+  globalThis.localStorage?.removeItem(attemptKey);
+  setCashOpen(false);
+  setCheckoutOpen(false);
+  setManualCardOpen(false);
+  setVoucherOpen(false);
+  setVoucherCode("");
+  setVoucherAmount("");
+  setTestCashRequired(false);
+  setTestCashStatus("");
+  setError("");
+  if(cashAttemptRef.current?.sessionId===done.id)cashAttemptRef.current=null;
+  cashGuardRef.current=false;
+  cardGuardRef.current=false;
+  onFinalized(done.printTicket,summary);
+ }
  function markTestCashRequirement(failure:unknown){const required=testCashEnabled&&failure instanceof ApiError&&isMissingCashSessionError(failure.message);setTestCashRequired(required);setTestCashStatus("");}
  async function openTestCashSession(){if(!testCashEnabled||!terminal.terminalId||busy)return;setBusy(true);setTestCashStatus("");try{await apiRequest("/cash/sessions/open",{token,body:{terminalId:terminal.terminalId}});setError("");setTestCashRequired(false);setTestCashStatus(t("payment.testCash.opened"));}catch(failure){setError(failure instanceof ApiError?failure.message:t("payment.testCash.error"));}finally{setBusy(false);}}
  async function retryFinish(){if(!server||server.status!=="COVERED")return;setBusy(true);setError("");const cashAttempt=cashAttemptRef.current?.sessionId===server.id?cashAttemptRef.current:undefined;try{await finish(server,cashAttempt);}catch(e){markTestCashRequirement(e);setError(e instanceof ApiError?e.message:t("payment.split.error.finalize"));}finally{setBusy(false);}}
+ async function submitPendingFinalizeAuthorization(){
+  const context=pendingFinalizeAuthorization;
+  const pendingSession=server;
+  if(!context||!pendingSession||pendingSession.id!==context.sessionId
+   ||!effectiveCreatePendingAuthorization
+   ||!saleOperationAuthorizationComplete(
+    effectiveCreatePendingAuthorization,
+    pendingUsername,
+    pendingPassword,
+   )
+   ||(context.creditOverrideRequired&&(
+    !effectiveCreditOverrideAuthorization
+    ||!creditOverrideReason.trim()
+    ||!saleOperationAuthorizationComplete(
+     effectiveCreditOverrideAuthorization,
+     creditOverrideUsername,
+     creditOverridePassword,
+    )
+   )))return;
+  const credentials:PendingFinalizeCredentials={
+   ...saleOperationCredentials(
+    effectiveCreatePendingAuthorization,
+    pendingUsername,
+    pendingPassword,
+   ),
+   ...(context.creditOverrideRequired&&effectiveCreditOverrideAuthorization
+    ? {
+       creditOverride:{
+        reason:creditOverrideReason.trim(),
+        ...saleOperationCredentials(
+         effectiveCreditOverrideAuthorization,
+         creditOverrideUsername,
+         creditOverridePassword,
+        ),
+       },
+      }
+    : {}),
+  };
+  setPendingFinalizeAuthorization(null);
+  setPendingUsername("");
+  setPendingPassword("");
+  setCreditOverrideReason("");
+  setCreditOverrideUsername("");
+  setCreditOverridePassword("");
+  setBusy(true);
+  setError("");
+  try{
+   await finish(pendingSession,context.cashAttempt,credentials);
+  }catch(failure){
+   setPendingFinalizeAuthorization(context);
+   setError(failure instanceof ApiError?failure.message:t("payment.split.error.finalize"));
+  }finally{
+   setPendingUsername("");
+   setPendingPassword("");
+   setCreditOverrideUsername("");
+   setCreditOverridePassword("");
+   setBusy(false);
+  }
+ }
  async function add(
-  input:{kind:string;amountCents:number;provider?:string;voucherCode?:string;reference?:string;deliveredCents?:number;changeCents?:number;comment?:string},
+  input:PaymentAllocationInput,
   cashAttempt?:CashAttemptMetadata,
   finalizeWhenCovered=false,
+  operationAuthorization?:SaleOperationCredentials,
+  saleOperationAuthorizations:SaleMutationOperationAuthorizations={},
  ){
   setBusy(true);
   setError("");
@@ -159,12 +384,12 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
   let s:ServerSession|undefined;
   let allocationAccepted=false;
   try{
-   s=await ensure();
+    s=await ensure(saleOperationAuthorizations);
    if(cashAttempt){
     cashAttempt.sessionId=s.id;
     cashAttemptRef.current=cashAttempt;
    }
-   const recoveryInput={kind:input.kind,amountCents:input.amountCents,provider:input.provider};
+   const recoveryInput=allocationRecoveryInput(input);
    const stored=globalThis.localStorage?.getItem(attemptKey);
    const parsed=stored?JSON.parse(stored) as {sessionId:string;allocationId:string;input:typeof recoveryInput}:null;
    const attempt=stableAllocationAttempt(parsed,s.id,recoveryInput,uuid);
@@ -183,6 +408,9 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
      delivered:input.deliveredCents==null?undefined:(input.deliveredCents/100).toFixed(2),
      change:input.changeCents==null?undefined:(input.changeCents/100).toFixed(2),
      comment:input.comment,
+     ...((input.kind==="MANUAL_CARD"||input.kind==="TRANSFER")
+      ? {operationAuthorization:operationAuthorization??{}}
+      : {}),
     },
    });
    allocationAccepted=true;
@@ -237,11 +465,100 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
    setBusy(false);
   }
  }
- function confirmCash(receivedCents:number){if(cashGuardRef.current)return;cashGuardRef.current=true;const cashAttempt={receivedCents};cashAttemptRef.current=cashAttempt;void add({kind:"CASH",amountCents:totalCents},cashAttempt);}
- function startCard(){if(cardGuardRef.current)return;if(providers[0]){cardGuardRef.current=true;void add({kind:"INTEGRATED_CARD",amountCents:totalCents,provider:providers[0]});}else if(manual){setManualCardOpen(true);}}
- function confirmManualCard(reference:string){if(cardGuardRef.current)return;cardGuardRef.current=true;setManualCardOpen(false);void add({kind:"MANUAL_CARD",amountCents:totalCents,reference});}
+ function paymentAuthorizationFor(kind:string){
+  if(kind==="MANUAL_CARD")return effectiveManualCardPaymentAuthorization;
+  if(kind==="TRANSFER")return effectiveTransferPaymentAuthorization;
+  return undefined;
+ }
+ function paymentOperationCodeFor(kind:string){
+  if(kind==="MANUAL_CARD")return "CONFIRM_MANUAL_CARD_PAYMENT";
+  if(kind==="TRANSFER")return "CONFIRM_TRANSFER_PAYMENT";
+  return undefined;
+ }
+ function requestAllocation(
+  input:PaymentAllocationInput,
+  finalizeWhenCovered=false,
+  cashAttempt?:CashAttemptMetadata,
+ ){
+  const authorization=paymentAuthorizationFor(input.kind);
+  if(authorization===null){
+    if(input.kind==="MANUAL_CARD")cardGuardRef.current=false;
+    setError(t("sale.operationSecurity.unavailable"));
+    return;
+  }
+  if(!server&&saleMutationAuthorizations===null){
+   if(input.kind==="MANUAL_CARD"||input.kind==="INTEGRATED_CARD")cardGuardRef.current=false;
+   if(input.kind==="CASH")cashGuardRef.current=false;
+   setError(t("sale.operationSecurity.unavailable"));
+   return;
+  }
+  const paymentOperationCode=paymentOperationCodeFor(input.kind);
+  const requirements=[
+   ...(!server&&saleMutationAuthorizations
+    ? saleMutationCredentialsRequired(saleMutationAuthorizations)
+    : []),
+   ...(authorization&&authorization.mode!=="DIRECT"&&paymentOperationCode
+    ? [{
+       code:paymentOperationCode,
+       label:input.kind==="MANUAL_CARD"
+        ? manualPaymentAuthorizationCopy[locale].card
+        : manualPaymentAuthorizationCopy[locale].transfer,
+       authorization,
+      }]
+    : []),
+  ];
+  if(requirements.length===0){
+   void add(
+    input,
+    cashAttempt,
+    finalizeWhenCovered,
+    authorization?{}:undefined,
+   );
+   return;
+  }
+  setAllocationAuthorizationAction({
+    input,
+    requirements,
+    paymentOperationCode,
+    finalizeWhenCovered,
+    cashAttempt,
+   });
+ }
+ function submitAllocationAuthorization(
+  authorizations:SaleMutationOperationAuthorizations,
+ ){
+  const action=allocationAuthorizationAction;
+  if(!action)return;
+  setAllocationAuthorizationAction(null);
+  const saleAuthorizations={...authorizations};
+  const paymentAuthorization=action.paymentOperationCode
+   ? saleAuthorizations[action.paymentOperationCode]
+   : undefined;
+  if(action.paymentOperationCode)delete saleAuthorizations[action.paymentOperationCode];
+  void add(
+   action.input,
+   action.cashAttempt,
+   action.finalizeWhenCovered,
+   paymentAuthorization,
+   saleAuthorizations,
+  );
+ }
+ function cancelAllocationAuthorization(){
+  if(allocationAuthorizationAction?.input.kind==="MANUAL_CARD"
+   ||allocationAuthorizationAction?.input.kind==="INTEGRATED_CARD"){
+    cardGuardRef.current=false;
+   }
+  if(allocationAuthorizationAction?.input.kind==="CASH"){
+   cashGuardRef.current=false;
+   cashAttemptRef.current=null;
+  }
+  setAllocationAuthorizationAction(null);
+ }
+ function confirmCash(receivedCents:number){if(cashGuardRef.current)return;cashGuardRef.current=true;const cashAttempt={receivedCents};cashAttemptRef.current=cashAttempt;requestAllocation({kind:"CASH",amountCents:totalCents},false,cashAttempt);}
+ function startCard(){if(cardGuardRef.current)return;if(providers[0]){cardGuardRef.current=true;requestAllocation({kind:"INTEGRATED_CARD",amountCents:totalCents,provider:providers[0]});}else if(manual){setManualCardOpen(true);}}
+ function confirmManualCard(reference:string){if(cardGuardRef.current)return;cardGuardRef.current=true;setManualCardOpen(false);requestAllocation({kind:"MANUAL_CARD",amountCents:totalCents,reference});}
  function openVoucher(){if(!paymentMethods.voucherActive||vouchers.length===0)return;const first=vouchers[0];setVoucherCode(first.code);setVoucherAmount((Math.min(totalCents,Math.round(Number(first.balance)*100))/100).toFixed(2));setVoucherOpen(true);}
- function confirmVoucher(){const voucher=vouchers.find(value=>value.code===voucherCode);const amountCents=Math.round(Number(voucherAmount.replace(",","."))*100);if(!voucher||amountCents<=0||amountCents>totalCents||amountCents>Math.round(Number(voucher.balance)*100))return;setVoucherOpen(false);void add({kind:"VOUCHER",amountCents,voucherCode});}
+ function confirmVoucher(){const voucher=vouchers.find(value=>value.code===voucherCode);const amountCents=Math.round(Number(voucherAmount.replace(",","."))*100);if(!voucher||amountCents<=0||amountCents>totalCents||amountCents>Math.round(Number(voucher.balance)*100))return;setVoucherOpen(false);requestAllocation({kind:"VOUCHER",amountCents,voucherCode});}
  async function query(allocationId:string){if(!server)return;setBusy(true);setError("");const queried=server.allocations.find(a=>a.id===allocationId||a.operationId===allocationId);const cashAttempt=queried?.kind==="CASH"&&cashAttemptRef.current?.sessionId===server.id?cashAttemptRef.current:undefined;try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/allocations/${allocationId}/query`,{token,method:"POST"});setServer(next);const resolved=next.allocations.find(a=>a.id===allocationId||a.operationId===allocationId);const safeTerminal=resolved?.status==="DECLINED"||resolved?.status==="ERROR";if(safeTerminal){globalThis.localStorage?.removeItem(attemptKey);if(resolved.kind==="CASH"){cashAttemptRef.current=null;cashGuardRef.current=false;setCashOpen(false);}else{cardGuardRef.current=false;setManualCardOpen(false);}}else if(next.status!=="COVERED"&&!(resolved?.status==="PENDING"||resolved?.status==="TIMEOUT"))globalThis.localStorage?.removeItem(attemptKey);await finish(next,cashAttempt);}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.query"));}finally{setBusy(false);}}
  async function cancel():Promise<CancellationResult>{
   if(!server)return "NOT_CANCELLED";
@@ -283,10 +600,10 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  async function clearCheckout(closeAfter:boolean){if(!server){if(closeAfter)setCheckoutOpen(false);return;}const result=await cancel();if(result==="CANCELLED"){setServer(null);cashAttemptRef.current=null;cashGuardRef.current=false;cardGuardRef.current=false;if(closeAfter)setCheckoutOpen(false);}}
  useImperativeHandle(ref,()=>({prepareLogout:()=>prepareExit("payment.pending.logoutError"),prepareApplicationClose:()=>prepareExit("payment.pending.shutdownBlocked"),triggerCash,triggerCard,triggerPending,openCheckout}));
  useEffect(()=>{if(!hydrationComplete||!server||entryHydratedSessionIdRef.current!==server.id||paymentLogoutDisposition(server,true)==="READY")return;let current=true;const sessionId=server.id;simulatorDiscardAttemptedRef.current.add(sessionId);setBusy(true);const cleanup=sharedEntryCleanup(sessionId,()=>apiRequest<ServerSession>(`/pos/payment-sessions/${sessionId}/simulator-discard`,{token,body:{reason:"sale_entry_cleanup"}}));const completion=cleanup.then(({next})=>next?.status==="CANCELLED");cleanupFlightRef.current={sessionId,promise:completion};void cleanup.then(({next,error})=>{if(!current||entryHydratedSessionIdRef.current!==sessionId)return;if(next){setServer(next);if(next.status==="CANCELLED")clearRecoveredSession(sessionId);else setError(t(exitFeedbackRef.current??"payment.pending.simulatorCleanupError"));}else if(error){simulatorDiscardAttemptedRef.current.delete(sessionId);setError(t(exitFeedbackRef.current??"payment.pending.simulatorCleanupError"));}}).finally(()=>{if(cleanupFlightRef.current?.promise===completion)cleanupFlightRef.current=null;if(current&&entryHydratedSessionIdRef.current===sessionId)setBusy(false);});return()=>{current=false;};},[hydrationComplete,server?.id,token]);
- async function acknowledge(){if(!server||!compensationNote.trim())return;setCompensationDialog(false);setBusy(true);await compensationNoteIsEphemeral(compensationNote,setCompensationNote,async note=>{try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/compensation-ack`,{token,body:{note}});setServer(next);if(next.status==="CANCELLED")clearRecoveredSession();}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.acknowledge"));}finally{setBusy(false);}});}
+ async function acknowledge(){if(!server||!effectiveCompensationAuthorization||!compensationNote.trim()||!saleOperationAuthorizationComplete(effectiveCompensationAuthorization,compensationUsername,compensationPassword))return;const credentials=saleOperationCredentials(effectiveCompensationAuthorization,compensationUsername,compensationPassword);setCompensationDialog(false);setCompensationUsername("");setCompensationPassword("");setBusy(true);await compensationNoteIsEphemeral(compensationNote,setCompensationNote,async note=>{try{const next=await apiRequest<ServerSession>(`/pos/payment-sessions/${server.id}/compensation-ack`,{token,body:{note,...credentials}});setServer(next);if(next.status==="CANCELLED")clearRecoveredSession();}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.acknowledge"));}finally{setCompensationUsername("");setCompensationPassword("");setBusy(false);}});}
  async function manage(id:string){setBusy(true);try{const [op,history]=await Promise.all([apiRequest<PaymentOperationView>(`/payment-terminal/operations/${id}`,{token}),loadPaymentOperationHistory(id,token)]);setOperation(op);setEvents(history);}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.loadOperation"));}finally{setBusy(false);}}
- async function openRefundAuthorization(){if(!operation||busy)return;setBusy(true);setError("");try{const options=await loadPaymentRefundLines(operation.id,token);setAuthorizationPassword("");setAuthorization({kind:"REFUND",amount:"",options,lines:[]});}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.refund"));}finally{setBusy(false);}}
- async function authorize(){if(!authorization||!operation||!authorizationPassword)return;const action=authorization;setAuthorization(null);await authorizationPasswordIsEphemeral(authorizationPassword,setAuthorizationPassword,async password=>{try{const next=action.kind==="VOID"?await voidPaymentOperation(operation.id,token,password,uuid()):await refundPaymentOperation(operation.id,token,action.amount,password,uuid(),action.lines);setOperation(next);}catch(e){setError(e instanceof ApiError?e.message:t(action.kind==="VOID"?"payment.split.error.void":"payment.split.error.refund"));}});}
+ async function openRefundAuthorization(){if(!operation||busy||!effectiveRefundAuthorization)return;setBusy(true);setError("");try{const options=await loadPaymentRefundLines(operation.id,token);setAuthorizationUsername("");setAuthorizationPassword("");setAuthorization({kind:"REFUND",authorization:effectiveRefundAuthorization,amount:"",options,lines:[]});}catch(e){setError(e instanceof ApiError?e.message:t("payment.split.error.refund"));}finally{setBusy(false);}}
+ async function authorize(){if(!authorization||!operation||!saleOperationAuthorizationComplete(authorization.authorization,authorizationUsername,authorizationPassword))return;const action=authorization;const username=authorizationUsername;setAuthorization(null);setAuthorizationUsername("");await authorizationPasswordIsEphemeral(authorizationPassword,setAuthorizationPassword,async password=>{const credentials=saleOperationCredentials(action.authorization,username,password);try{const next=action.kind==="VOID"?await voidPaymentOperation(operation.id,token,credentials,uuid()):await refundPaymentOperation(operation.id,token,action.amount,credentials,uuid(),action.lines);setOperation(next);}catch(e){setError(e instanceof ApiError?e.message:t(action.kind==="VOID"?"payment.split.error.void":"payment.split.error.refund"));}finally{setAuthorizationUsername("");}});}
  function calculatedRefundAmount(options:PaymentRefundLineOption[],lines:PaymentRefundLineSelection[]){const amount=lines.reduce((sum,line)=>{const option=options.find(value=>value.lineId===line.lineId);const available=Number(option?.refundableQuantity??0);const quantity=Number(line.quantity.replace(",","."));return sum+(option&&available>0&&Number.isFinite(quantity)?Number(option.refundableTotal)*quantity/available:0);},0);return amount>0?amount.toFixed(2):"";}
  function toggleRefundLine(option:PaymentRefundLineOption,checked:boolean){if(!authorization||authorization.kind!=="REFUND")return;const lines=checked?[...authorization.lines,{lineId:option.lineId,quantity:String(option.refundableQuantity),serialNumbers:option.refundableSerialNumbers??[]}]:authorization.lines.filter(line=>line.lineId!==option.lineId);setAuthorization({...authorization,lines,amount:calculatedRefundAmount(authorization.options,lines)});}
  function updateRefundLine(lineId:string,quantity:string){if(!authorization||authorization.kind!=="REFUND")return;const lines=authorization.lines.map(line=>line.lineId===lineId?{...line,quantity}:line);setAuthorization({...authorization,lines,amount:calculatedRefundAmount(authorization.options,lines)});}
@@ -294,12 +611,263 @@ export const SalePaymentCheckout=forwardRef<SalePaymentCheckoutHandle,Props>(fun
  const testCashOffered=shouldOfferTestCashSession(testCashEnabled,server?.status,testCashRequired,terminal.terminalId);
  const cashDialog=cashOpen?<CashPaymentDialog totalCents={totalCents} submitting={busy} error={error} initialMode="touch" onCancel={cancelCashDialog} onConfirm={server?.status==="COVERED"?()=>void retryFinish():confirmCash} testCashAction={testCashOffered?{label:busy?t("payment.testCash.opening"):t("payment.testCash.open"),onOpen:()=>void openTestCashSession()}:undefined} testCashStatus={testCashStatus?t("payment.testCash.openedDialog"):""}/>:null;
  const manualCardDialog=manualCardOpen?<div className="sale-action-overlay manual-card-payment-overlay"><div className="manual-card-payment-dialog"><ManualCardReferenceDialog busy={busy} onCancel={()=>setManualCardOpen(false)} onConfirm={confirmManualCard}/></div></div>:null;
+ const manualPaymentAuthorizationDialog=<SaleMutationAuthorizationDialog
+  open={Boolean(allocationAuthorizationAction)}
+  locale={locale}
+  requirements={allocationAuthorizationAction?.requirements??[]}
+  busy={busy}
+  error={error}
+  onCancel={cancelAllocationAuthorization}
+  onConfirm={submitAllocationAuthorization}
+ />;
  const selectedVoucher=vouchers.find(value=>value.code===voucherCode);const voucherAmountCents=Math.round(Number(voucherAmount.replace(",","."))*100);const voucherDialog=voucherOpen?<div className="sale-action-overlay"><section className="sale-action-dialog voucher-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="voucher-payment-title"><header><h2 id="voucher-payment-title">{t("payment.voucher.title")}</h2><button type="button" aria-label={t("common.close")} onClick={()=>setVoucherOpen(false)}>×</button></header><label><span>{t("payment.voucher.code")}</span><select autoFocus value={voucherCode} onChange={event=>{const code=event.currentTarget.value;const voucher=vouchers.find(value=>value.code===code);setVoucherCode(code);if(voucher)setVoucherAmount((Math.min(totalCents,Math.round(Number(voucher.balance)*100))/100).toFixed(2));}}>{vouchers.map(voucher=><option key={voucher.code} value={voucher.code}>{voucher.code} · {Number(voucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</option>)}</select></label><label><span>{t("payment.voucher.amount")}</span><input inputMode="decimal" value={voucherAmount} onChange={event=>setVoucherAmount(event.currentTarget.value)}/></label>{selectedVoucher&&<p>{t("payment.voucher.balance")}: {Number(selectedVoucher.balance).toLocaleString(locale,{minimumFractionDigits:2,maximumFractionDigits:2})} €</p>}<div className="sale-action-buttons"><button type="button" onClick={()=>setVoucherOpen(false)}>{t("common.cancel")}</button><button type="button" className="primary" disabled={voucherAmountCents<=0||voucherAmountCents>totalCents||voucherAmountCents>Math.round(Number(selectedVoucher?.balance??0)*100)} onClick={confirmVoucher}>{t("payment.voucher.apply")}</button></div></section></div>:null;
+ const pendingFinalizeReady=Boolean(
+  pendingFinalizeAuthorization
+  &&effectiveCreatePendingAuthorization
+  &&saleOperationAuthorizationComplete(
+   effectiveCreatePendingAuthorization,
+   pendingUsername,
+   pendingPassword,
+  )
+  &&(!pendingFinalizeAuthorization.creditOverrideRequired||(
+   effectiveCreditOverrideAuthorization
+   &&creditOverrideReason.trim()
+   &&saleOperationAuthorizationComplete(
+    effectiveCreditOverrideAuthorization,
+    creditOverrideUsername,
+    creditOverridePassword,
+   )
+  )),
+ );
+ const pendingFinalizeDialog=pendingFinalizeAuthorization&&effectiveCreatePendingAuthorization?<div className="sale-action-overlay pending-sale-overlay" role="presentation">
+  <section className="sale-action-dialog pending-sale-authorization-dialog" role="dialog" aria-modal="true" aria-labelledby="pending-finalize-authorization-title">
+   <header>
+    <h2 id="pending-finalize-authorization-title">{pendingFinalizeAuthorization.creditOverrideRequired?t("pendingSale.credit.overrideRequired"):t("pendingSale.authorization.pendingTitle")}</h2>
+   </header>
+   {effectiveCreatePendingAuthorization.mode!=="DIRECT"&&<>
+    <h3>{t("pendingSale.authorization.pendingTitle")}</h3>
+    <SaleOperationAuthorizationFields
+     locale={locale}
+     authorization={effectiveCreatePendingAuthorization}
+     username={pendingUsername}
+     password={pendingPassword}
+     disabled={busy}
+     autoFocus
+     onUsernameChange={setPendingUsername}
+     onPasswordChange={setPendingPassword}
+    />
+   </>}
+   {pendingFinalizeAuthorization.creditOverrideRequired&&effectiveCreditOverrideAuthorization&&<>
+    <label>
+     <span>{t("pendingSale.credit.overrideReason")}</span>
+     <textarea
+      autoFocus={effectiveCreatePendingAuthorization.mode==="DIRECT"}
+      maxLength={500}
+      value={creditOverrideReason}
+      disabled={busy}
+      onChange={event=>setCreditOverrideReason(event.currentTarget.value)}
+     />
+    </label>
+    <SaleOperationAuthorizationFields
+     locale={locale}
+     authorization={effectiveCreditOverrideAuthorization}
+     username={creditOverrideUsername}
+     password={creditOverridePassword}
+     disabled={busy}
+     onUsernameChange={setCreditOverrideUsername}
+     onPasswordChange={setCreditOverridePassword}
+    />
+   </>}
+   {error&&<p className="sale-action-error" role="alert">{error}</p>}
+   <div className="sale-action-buttons">
+    <button type="button" disabled={busy} onClick={()=>{
+     setPendingFinalizeAuthorization(null);
+     setPendingUsername("");
+     setPendingPassword("");
+     setCreditOverrideReason("");
+     setCreditOverrideUsername("");
+     setCreditOverridePassword("");
+     setError("");
+    }}>{t("common.cancel")}</button>
+    <button type="button" className="primary" disabled={busy||!pendingFinalizeReady} onClick={()=>void submitPendingFinalizeAuthorization()}>{t("common.confirm")}</button>
+   </div>
+  </section>
+ </div>:null;
  const presentation=checkoutPresentation(server?.status,server?.allocations.map(allocation=>allocation.status),safeRetry);
  const activePresentation=!unifiedCheckout&&testCashEnabled&&cashOpen&&presentation==="FINALIZE_RETRY"?"INDIVIDUAL_ACTIONS":presentation;
- if(checkoutOpen){const panelSession:PaymentSession=server?map(server):{id:"new",totalCents,status:"COLLECTING",allocations:[]};const checkoutAllowsAdd=!disabled&&(presentation==="INDIVIDUAL_ACTIONS"||presentation==="SPLIT");return <PaymentAllocationPanel locale={locale} session={panelSession} providers={providers} manualCardEnabled={manual} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive} voucherEnabled={paymentMethods.voucherActive} transferEnabled={paymentMethods.transferActive} manualCardRequiresReference={paymentMethods.cardRequiresReference} transferRequiresReference={paymentMethods.transferRequiresReference} vouchers={vouchers} interfaceMode={interfaceMode} initialMethod={initialMethod} customerSelected={customerSelected} pendingEnabled={pendingEnabled} checkoutDiscountCents={checkoutDiscountCents} busy={busy} error={error} allowAdd={checkoutAllowsAdd} onAdd={(input,options)=>void add(input,undefined,options?.finalizeWhenCovered)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} onClear={()=>void clearCheckout(false)} onClose={()=>void clearCheckout(true)} onAccept={()=>void retryFinish()} onDiscount={onDiscount}/>;}
- if(activePresentation==="INDIVIDUAL_ACTIONS"&&!checkoutOpen)return <>{showIndividualActions&&<IndividualPaymentActions locale={locale} disabled={!!disabled||totalCents<=0} busy={busy} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive&&(manual||providers.length>0)} pendingEnabled={pendingEnabled} voucherEnabled={paymentMethods.voucherActive&&vouchers.length>0} onCash={unifiedCheckout?()=>openCheckout("CASH"):triggerCash} onCard={unifiedCheckout?()=>openCheckout("CARD"):triggerCard} onPending={unifiedCheckout?()=>openCheckout("PENDING"):triggerPending} onVoucher={unifiedCheckout?()=>openCheckout("VOUCHER"):openVoucher}/>} {cashDialog}{manualCardDialog}{voucherDialog}{error&&!cashOpen&&<p role="alert">{error}</p>}</>;
- if(presentation==="FINALIZE_RETRY")return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server!)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)}/><button type="button" disabled={!canManuallyFinalizePayment(server!.status,busy)} onClick={()=>void retryFinish()}>{t("payment.split.finalize")}</button><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{error&&<p role="alert">{error}</p>}{testCashStatus&&<p className="test-cash-session-status" role="status">{testCashStatus}</p>}{shouldOfferTestCashSession(testCashEnabled,server!.status,testCashRequired,terminal.terminalId)&&<button className="test-cash-session-button" type="button" disabled={busy} onClick={()=>void openTestCashSession()}>{busy?t("payment.testCash.opening"):t("payment.testCash.open")}</button>}</div>{cashDialog}</>;
+ if(checkoutOpen){const panelSession:PaymentSession=server?map(server):{id:"new",totalCents,status:"COLLECTING",allocations:[]};const checkoutAllowsAdd=!disabled&&(presentation==="INDIVIDUAL_ACTIONS"||presentation==="SPLIT");return <><PaymentAllocationPanel locale={locale} session={panelSession} providers={providers} manualCardEnabled={manual} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive} voucherEnabled={paymentMethods.voucherActive} transferEnabled={paymentMethods.transferActive} manualCardRequiresReference={paymentMethods.cardRequiresReference} transferRequiresReference={paymentMethods.transferRequiresReference} vouchers={vouchers} interfaceMode={interfaceMode} initialMethod={initialMethod} customerSelected={customerSelected} pendingEnabled={pendingEnabled} checkoutDiscountCents={checkoutDiscountCents} busy={busy} error={error} allowAdd={checkoutAllowsAdd} onAdd={(input,options)=>requestAllocation(input,options?.finalizeWhenCovered)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} onClear={()=>void clearCheckout(false)} onClose={()=>void clearCheckout(true)} onAccept={()=>void retryFinish()} onDiscount={onDiscount}/>{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}</>;}
+ if(activePresentation==="INDIVIDUAL_ACTIONS"&&!checkoutOpen)return <>{showIndividualActions&&<IndividualPaymentActions locale={locale} disabled={!!disabled||totalCents<=0} busy={busy} cashEnabled={paymentMethods.cashActive} cardEnabled={paymentMethods.cardActive&&(manual||providers.length>0)} pendingEnabled={pendingEnabled} voucherEnabled={paymentMethods.voucherActive&&vouchers.length>0} onCash={unifiedCheckout?()=>openCheckout("CASH"):triggerCash} onCard={unifiedCheckout?()=>openCheckout("CARD"):triggerCard} onPending={unifiedCheckout?()=>openCheckout("PENDING"):triggerPending} onVoucher={unifiedCheckout?()=>openCheckout("VOUCHER"):openVoucher}/>} {cashDialog}{manualCardDialog}{voucherDialog}{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}{error&&!cashOpen&&<p role="alert">{error}</p>}</>;
+ if(presentation==="FINALIZE_RETRY")return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server!)} providers={providers} manualCardEnabled={manual} onAdd={input=>requestAllocation(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)}/><button type="button" disabled={!canManuallyFinalizePayment(server!.status,busy)} onClick={()=>void retryFinish()}>{t("payment.split.finalize")}</button><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{error&&<p role="alert">{error}</p>}{testCashStatus&&<p className="test-cash-session-status" role="status">{testCashStatus}</p>}{shouldOfferTestCashSession(testCashEnabled,server!.status,testCashRequired,terminal.terminalId)&&<button className="test-cash-session-button" type="button" disabled={busy} onClick={()=>void openTestCashSession()}>{busy?t("payment.testCash.opening"):t("payment.testCash.open")}</button>}</div>{cashDialog}{pendingFinalizeDialog}{manualPaymentAuthorizationDialog}</>;
  if(!server)return null;
- return <><div aria-busy={busy}><LegacyPaymentAllocationPanel locale={locale} session={map(server)} providers={providers} manualCardEnabled={manual} onAdd={input=>void add(input)} onQuery={id=>void query(id)} onManage={id=>void manage(id)} allowAdd={presentation!=="RECOVERY"}/><button type="button" disabled={busy} onClick={()=>void cancel()}>{t("payment.split.cancelSession")}</button>{server.status==="COMPENSATION_REQUIRED"&&<div role="alert"><p>{t("payment.split.compensationGuidance")}</p>{(permissions.includes("ADMIN")||permissions.includes("PAYMENT_TERMINAL_REFUND"))&&<button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(true);}}>{t("payment.split.acknowledge")}</button>}</div>}{compensationDialog&&<div role="dialog" aria-modal="true" aria-label={t("payment.split.compensationDialogTitle")}><h3>{t("payment.split.compensationDialogTitle")}</h3><label>{t("payment.split.compensationNote")}<textarea value={compensationNote} onChange={e=>setCompensationNote(e.currentTarget.value)} autoComplete="off"/></label><button type="button" disabled={!compensationNote.trim()} onClick={()=>void acknowledge()}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setCompensationNote("");setCompensationDialog(false);}}>{t("payment.split.cancel")}</button></div>}{operation&&<PaymentOperationPanel t={t} operation={operation} events={events} capabilities={capabilities} permissions={permissions} onQuery={()=>void queryPaymentOperation(operation.id,token).then(setOperation).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.operationQuery")))} onVoid={()=>{setAuthorizationPassword("");setAuthorization({kind:"VOID",amount:"",options:[],lines:[]});}} onRefund={()=>void openRefundAuthorization()} onPrintReceipt={()=>void printPaymentReceipt(operation.id,token,terminal,getHardwareBridge()).catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.print")))}/>} {authorization&&<div role="dialog" aria-modal="true" aria-label={t(`payment.split.authorizationTitle.${authorization.kind}`)}><h3>{t(`payment.split.authorizationTitle.${authorization.kind}`)}</h3>{authorization.kind==="REFUND"&&<><label>{t("payment.split.refundAmount")}<input inputMode="decimal" value={authorization.amount} onChange={e=>setAuthorization({...authorization,amount:e.currentTarget.value})}/></label><fieldset><legend>{t("payment.split.refundLines")}</legend>{authorization.options.map(option=>{const selected=authorization.lines.find(line=>line.lineId===option.lineId);const serials=option.refundableSerialNumbers??[];return <div key={option.lineId}><label><input type="checkbox" checked={!!selected} onChange={e=>toggleRefundLine(option,e.currentTarget.checked)}/>{option.code} · {option.name} ({t("payment.split.refundable")}: {String(option.refundableQuantity)})</label>{serials.map(serial=><small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}{selected&&serials.length===0&&<input aria-label={`${option.name} ${t("payment.split.refundQuantity")}`} inputMode="decimal" value={selected.quantity} onChange={e=>updateRefundLine(option.lineId,e.currentTarget.value)}/>}</div>;})}</fieldset></>}<label>{t("payment.split.authorizationPassword")}<input type="password" autoComplete="current-password" value={authorizationPassword} onChange={e=>setAuthorizationPassword(e.currentTarget.value)} /></label><button type="button" onClick={()=>void authorize()} disabled={!authorizationPassword||(authorization.kind==="REFUND"&&(!authorization.amount||authorization.lines.some(line=>!line.quantity)))}>{t("payment.split.confirm")}</button><button type="button" onClick={()=>{setAuthorizationPassword("");setAuthorization(null);}}>{t("payment.split.cancel")}</button></div>}{error&&<p role="alert">{error}</p>}</div>{cashDialog}</>;
+ return <>
+  <div aria-busy={busy}>
+   <LegacyPaymentAllocationPanel
+    locale={locale}
+    session={map(server)}
+    providers={providers}
+    manualCardEnabled={manual}
+    onAdd={input=>requestAllocation(input)}
+    onQuery={id=>void query(id)}
+    onManage={id=>void manage(id)}
+    allowAdd={presentation!=="RECOVERY"}
+   />
+   <button type="button" disabled={busy} onClick={()=>void cancel()}>
+    {t("payment.split.cancelSession")}
+   </button>
+   {server.status==="COMPENSATION_REQUIRED"&&<div role="alert">
+    <p>{t("payment.split.compensationGuidance")}</p>
+    {effectiveCompensationAuthorization&&<button
+     type="button"
+     onClick={()=>{
+      setCompensationNote("");
+      setCompensationUsername("");
+      setCompensationPassword("");
+      setCompensationDialog(true);
+     }}
+    >
+     {t("payment.split.acknowledge")}
+    </button>}
+   </div>}
+   {compensationDialog&&effectiveCompensationAuthorization&&<div
+    role="dialog"
+    aria-modal="true"
+    aria-label={t("payment.split.compensationDialogTitle")}
+   >
+    <h3>{t("payment.split.compensationDialogTitle")}</h3>
+    <label>
+     {t("payment.split.compensationNote")}
+     <textarea
+      value={compensationNote}
+      onChange={e=>setCompensationNote(e.currentTarget.value)}
+      autoComplete="off"
+     />
+    </label>
+    <SaleOperationAuthorizationFields
+     locale={locale}
+     authorization={effectiveCompensationAuthorization}
+     username={compensationUsername}
+     password={compensationPassword}
+     disabled={busy}
+     onUsernameChange={setCompensationUsername}
+     onPasswordChange={setCompensationPassword}
+    />
+    <button
+     type="button"
+     disabled={!compensationNote.trim()||!saleOperationAuthorizationComplete(effectiveCompensationAuthorization,compensationUsername,compensationPassword)}
+     onClick={()=>void acknowledge()}
+    >
+     {t("payment.split.confirm")}
+    </button>
+    <button
+     type="button"
+     onClick={()=>{
+      setCompensationNote("");
+      setCompensationUsername("");
+      setCompensationPassword("");
+      setCompensationDialog(false);
+     }}
+    >
+     {t("payment.split.cancel")}
+    </button>
+   </div>}
+   {manualPaymentAuthorizationDialog}
+   {operation&&<PaymentOperationPanel
+    t={t}
+    operation={operation}
+    events={events}
+    capabilities={capabilities}
+    permissions={permissions}
+    voidAvailable={effectiveVoidAuthorization!==null}
+    refundAvailable={effectiveRefundAuthorization!==null}
+    onQuery={()=>void queryPaymentOperation(operation.id,token)
+     .then(setOperation)
+     .catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.operationQuery")))}
+    onVoid={effectiveVoidAuthorization?()=>{
+     setAuthorizationUsername("");
+     setAuthorizationPassword("");
+     setAuthorization({
+      kind:"VOID",
+      authorization:effectiveVoidAuthorization,
+      amount:"",
+      options:[],
+      lines:[],
+     });
+    }:undefined}
+    onRefund={effectiveRefundAuthorization?()=>void openRefundAuthorization():undefined}
+    onPrintReceipt={()=>void printPaymentReceipt(operation.id,token,terminal,getHardwareBridge())
+     .catch(e=>setError(e instanceof ApiError?e.message:t("payment.split.error.print")))}
+   />}
+   {authorization&&<div
+    role="dialog"
+    aria-modal="true"
+    aria-label={t(`payment.split.authorizationTitle.${authorization.kind}`)}
+   >
+    <h3>{t(`payment.split.authorizationTitle.${authorization.kind}`)}</h3>
+    {authorization.kind==="REFUND"&&<>
+     <label>
+      {t("payment.split.refundAmount")}
+      <input
+       inputMode="decimal"
+       value={authorization.amount}
+       onChange={e=>setAuthorization({...authorization,amount:e.currentTarget.value})}
+      />
+     </label>
+     <fieldset>
+      <legend>{t("payment.split.refundLines")}</legend>
+      {authorization.options.map(option=>{
+       const selected=authorization.lines.find(line=>line.lineId===option.lineId);
+       const serials=option.refundableSerialNumbers??[];
+       return <div key={option.lineId}>
+        <label>
+         <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={e=>toggleRefundLine(option,e.currentTarget.checked)}
+         />
+         {option.code} · {option.name} ({t("payment.split.refundable")}: {String(option.refundableQuantity)})
+        </label>
+        {serials.map(serial=><small className="sale-line-serial" key={serial}>S/N: {serial}</small>)}
+        {selected&&serials.length===0&&<input
+         aria-label={`${option.name} ${t("payment.split.refundQuantity")}`}
+         inputMode="decimal"
+         value={selected.quantity}
+         onChange={e=>updateRefundLine(option.lineId,e.currentTarget.value)}
+        />}
+       </div>;
+      })}
+     </fieldset>
+    </>}
+    <SaleOperationAuthorizationFields
+     locale={locale}
+     authorization={authorization.authorization}
+     username={authorizationUsername}
+     password={authorizationPassword}
+     disabled={busy}
+     autoFocus
+     onUsernameChange={setAuthorizationUsername}
+     onPasswordChange={setAuthorizationPassword}
+    />
+    <button
+     type="button"
+     onClick={()=>void authorize()}
+     disabled={!saleOperationAuthorizationComplete(authorization.authorization,authorizationUsername,authorizationPassword)||(authorization.kind==="REFUND"&&(!authorization.amount||authorization.lines.some(line=>!line.quantity)))}
+    >
+     {t("payment.split.confirm")}
+    </button>
+    <button
+     type="button"
+     onClick={()=>{
+      setAuthorizationUsername("");
+      setAuthorizationPassword("");
+      setAuthorization(null);
+     }}
+    >
+     {t("payment.split.cancel")}
+    </button>
+   </div>}
+   {error&&<p role="alert">{error}</p>}
+  </div>
+  {cashDialog}
+  {pendingFinalizeDialog}
+ </>;
 });

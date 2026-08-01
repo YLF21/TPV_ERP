@@ -180,6 +180,133 @@ public class MemberLoyaltyService {
     }
     // Consumes member balance against FIFO earned lots after checking the SaaS snapshot is recent.
 
+    @Transactional(readOnly = true)
+    public void validateTicketCancellation(CommercialDocument document) {
+        var all = movements.findByDocumentIdOrderByCreatedAtAsc(document.getId());
+        var originals = all.stream()
+                .filter(movement -> movement.getType() == MemberMovementType.ACUMULACION_PUNTOS
+                        || movement.getType() == MemberMovementType.ACUMULACION_SALDO
+                        || movement.getType() == MemberMovementType.USO_SALDO)
+                .toList();
+        if (originals.isEmpty()) {
+            return;
+        }
+        var member = originals.getFirst().getMember();
+        var restoredUsage = originals.stream()
+                .filter(movement -> movement.getType() == MemberMovementType.USO_SALDO)
+                .map(MemberMovement::getBalanceAmount)
+                .map(BigDecimal::abs)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var cancelledAccrual = originals.stream()
+                .filter(movement -> movement.getType() == MemberMovementType.ACUMULACION_SALDO)
+                .map(MemberMovement::getBalanceAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var cancelledPoints = originals.stream()
+                .filter(movement -> movement.getType() == MemberMovementType.ACUMULACION_PUNTOS)
+                .mapToLong(MemberMovement::getPointsAmount)
+                .sum();
+        if (member.getMemberBalance().add(restoredUsage).compareTo(cancelledAccrual) < 0) {
+            throw new IllegalStateException(
+                    "el saldo generado por el ticket ya fue utilizado");
+        }
+        if (member.getMemberPoints() < cancelledPoints) {
+            throw new IllegalStateException(
+                    "los puntos generados por el ticket ya fueron utilizados");
+        }
+        for (var movement : originals) {
+            if (movement.getType() == MemberMovementType.ACUMULACION_SALDO) {
+                var sourceLots = lots.findBySourceMovement_Id(movement.getId());
+                if (sourceLots.size() != 1
+                        || sourceLots.getFirst().getAmountOriginal()
+                                .compareTo(movement.getBalanceAmount()) != 0
+                        || sourceLots.getFirst().getAmountRemaining()
+                                .compareTo(movement.getBalanceAmount()) != 0) {
+                    throw new IllegalStateException(
+                            "el saldo generado por el ticket ya fue utilizado");
+                }
+            } else if (movement.getType() == MemberMovementType.USO_SALDO) {
+                var consumed = lotConsumptions.findByMovement_Id(movement.getId()).stream()
+                        .map(MemberBalanceLotConsumption::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                if (consumed.compareTo(movement.getBalanceAmount().abs()) != 0) {
+                    throw new IllegalStateException(
+                            "no se puede reconstruir el saldo de miembro consumido");
+                }
+            }
+        }
+    }
+
+    @Transactional
+    public void compensateTicketCancellation(CommercialDocument document) {
+        validateTicketCancellation(document);
+        var all = movements.findByDocumentIdOrderByCreatedAtAsc(document.getId());
+        var originals = all.stream()
+                .filter(movement -> movement.getType() == MemberMovementType.ACUMULACION_PUNTOS
+                        || movement.getType() == MemberMovementType.ACUMULACION_SALDO
+                        || movement.getType() == MemberMovementType.USO_SALDO)
+                .toList();
+        if (originals.isEmpty()) {
+            return;
+        }
+        var member = originals.getFirst().getMember();
+        var reason = "anulacion del ticket " + document.getNumero();
+
+        if (all.stream().noneMatch(movement ->
+                movement.getType() == MemberMovementType.ANULACION_USO_SALDO)) {
+            var restored = BigDecimal.ZERO;
+            for (var movement : originals) {
+                if (movement.getType() != MemberMovementType.USO_SALDO) {
+                    continue;
+                }
+                for (var consumption : lotConsumptions.findByMovement_Id(movement.getId())) {
+                    consumption.getLot().restore(consumption.getAmount());
+                    restored = restored.add(consumption.getAmount());
+                }
+            }
+            if (restored.signum() > 0) {
+                member.applyBalance(restored);
+                movement(member, document.getId(),
+                        MemberMovementType.ANULACION_USO_SALDO,
+                        restored, 0, null, null, reason);
+            }
+        }
+
+        if (all.stream().noneMatch(movement ->
+                movement.getType() == MemberMovementType.ANULACION_ACUMULACION_SALDO)) {
+            var cancelled = BigDecimal.ZERO;
+            for (var movement : originals) {
+                if (movement.getType() != MemberMovementType.ACUMULACION_SALDO) {
+                    continue;
+                }
+                var lot = lots.findBySourceMovement_Id(movement.getId()).getFirst();
+                lot.cancelUnspentAccrual(movement.getBalanceAmount());
+                cancelled = cancelled.add(movement.getBalanceAmount());
+            }
+            if (cancelled.signum() > 0) {
+                member.applyBalance(cancelled.negate());
+                movement(member, document.getId(),
+                        MemberMovementType.ANULACION_ACUMULACION_SALDO,
+                        cancelled.negate(), 0, null, null, reason);
+            }
+        }
+
+        if (all.stream().noneMatch(movement ->
+                movement.getType() == MemberMovementType.ANULACION_ACUMULACION_PUNTOS)) {
+            var cancelled = originals.stream()
+                    .filter(movement ->
+                            movement.getType() == MemberMovementType.ACUMULACION_PUNTOS)
+                    .mapToLong(MemberMovement::getPointsAmount)
+                    .sum();
+            if (cancelled > 0) {
+                member.applyPoints(-cancelled);
+                autoCategory(member);
+                movement(member, document.getId(),
+                        MemberMovementType.ANULACION_ACUMULACION_PUNTOS,
+                        BigDecimal.ZERO, -cancelled, null, null, reason);
+            }
+        }
+    }
+
     @Transactional
     public MemberView applyOfficialState(OfficialMemberStateCommand command) {
         if (movements.existsBySourceEventId(command.sourceEventId())) {

@@ -249,6 +249,7 @@ type DocumentView = {
   estado?: string;
   numero?: string;
   numeroExterno?: string | null;
+  comentarioInterno?: string | null;
   fecha?: string;
   fechaVencimiento?: string | null;
   pendiente?: number | string;
@@ -1112,7 +1113,7 @@ export function buildDocumentReports(
     customer: "",
     customerName: "",
     payment: paymentText(document),
-    comment: "",
+    comment: document.comentarioInterno || "",
     total: formatAmount(Number(document.total ?? 0))
   }));
   const invoiceRows = invoices.filter(isSalesDocument).map((document) => ({
@@ -1130,7 +1131,7 @@ export function buildDocumentReports(
     payment: paymentText(document),
     status: documentStatus(document),
     pending: formatAmount(pendingAmount(document)),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({
@@ -1145,7 +1146,7 @@ export function buildDocumentReports(
     warehouse: document.almacenNombre || document.almacenId || "",
     pending: formatAmount(pendingAmount(document)),
     dueDate: formatBackendDate(document.fechaVencimiento ?? ""),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
     total: formatAmount(Number(document.total ?? 0))
   }));
@@ -1158,7 +1159,7 @@ export function buildDocumentReports(
     user: documentUser(document, user),
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
     total: formatAmount(Number(document.total ?? 0))
   }));
@@ -1174,7 +1175,7 @@ export function buildDocumentReports(
     warehouse: document.almacenNombre || document.almacenId || "",
     productCount: formatWholeNumber(Number(document.lineas ?? 0)),
     pending: formatAmount(pendingAmount(document)),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     total: formatAmount(Number(document.total ?? 0))
   }));
   const warehouseOutputRows = warehouseOutputs.map((output) => ({

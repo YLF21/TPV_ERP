@@ -74,6 +74,8 @@ class PaymentTerminalOperationsReconciliationTest {
         }
         PaymentTerminalOperationsService service(){return new PaymentTerminalOperationsService(operations,mock(PaymentTerminalAdjustmentService.class),
                 mock(PaymentTerminalOperationService.class),configurations,List.of(gateway),clock,organization,mock(PaymentTerminalReceiptRepository.class),
-                coordinator,mock(DocumentService.class));}
+                coordinator,mock(DocumentService.class),
+                mock(com.tpverp.backend.security.sales.SaleOperationSecurityService.class),
+                mock(com.tpverp.backend.audit.AuditService.class));}
     }
 }

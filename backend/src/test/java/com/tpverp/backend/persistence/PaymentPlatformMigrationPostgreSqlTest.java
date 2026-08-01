@@ -16,7 +16,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
     }
 
     @Test
-    void upgradesAProductionCompatibleV45SchemaToV61() throws Exception {
+    void upgradesAProductionCompatibleV45SchemaToV63() throws Exception {
         migrateAndVerify("45");
     }
 
@@ -40,6 +40,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .createSchemas(true)
+                    .target("63")
                     .load()
                     .migrate();
 
@@ -50,7 +51,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
                         where success order by installed_rank desc limit 1
                         """.formatted(schema))) {
                     assertThat(history.next()).isTrue();
-                    assertThat(history.getString(1)).isEqualTo("61");
+                    assertThat(history.getString(1)).isEqualTo("63");
                 }
                 try (var tables = statement.executeQuery("""
                             select table_name

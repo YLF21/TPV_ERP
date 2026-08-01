@@ -2,7 +2,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { addLocalDays, pendingCreateBody, type PendingSaleDraft } from "../sale/customerReceivables";
+import {
+  addLocalDays,
+  pendingCreateBody,
+  resolvePendingCardPaymentMode,
+  type PendingCardPaymentMode,
+  type PendingSaleDraft,
+  type PendingTerminalPaymentConfiguration,
+} from "../sale/customerReceivables";
+import {
+  findSaleOperationAuthorization,
+  loadSalesOperationSecurity,
+  type SalesOperationSecurityConfiguration,
+} from "../sale/operationSecurity";
+import {
+  detectSaleMutationOperations,
+  saleMutationAuthorizationRequirements,
+} from "../sale/saleMutationAuthorizations";
 import type { PendingSaleRecoveryEnvelope } from "../sale/pendingSaleRecovery";
 import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
@@ -89,6 +105,10 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
   const [quoteError, setQuoteError] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
+  const [operationSecurity, setOperationSecurity] =
+    useState<SalesOperationSecurityConfiguration | null>(null);
+  const [cardPaymentMode, setCardPaymentMode] =
+    useState<PendingCardPaymentMode | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const customerDialogRef = useRef<HTMLElement>(null);
   const issueDate = localDate();
@@ -105,6 +125,44 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       ? "INVOICES_WRITE" : "DELIVERY_NOTES_WRITE");
   const ready = canWrite && Boolean(customer && warehouseId && lines.length > 0)
     && !quoteLoading && !quoteError && quotedTotal != null;
+  const createPendingAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CREATE_PENDING_RECEIVABLE",
+    session.permissions,
+  );
+  const creditOverrideAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CREDIT_OVERRIDE",
+    session.permissions,
+  );
+  const transferPaymentAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONFIRM_TRANSFER_PAYMENT",
+    session.permissions,
+  );
+  const manualCardPaymentAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONFIRM_MANUAL_CARD_PAYMENT",
+    session.permissions,
+  );
+  const saleMutationAuthorizations = saleMutationAuthorizationRequirements(
+    operationSecurity,
+    detectSaleMutationOperations(lines.map((line) => ({
+      quantity: line.quantity,
+      discountPercent: line.discountPercent,
+      catalogName: line.product.name,
+      temporaryName: line.temporaryName,
+      catalogUnitPrice: line.product.salePrice,
+      openUnitPrice: line.openUnitPrice,
+    }))).map((operation) => ({
+      ...operation,
+      label: t(`gestion.salesOperationSecurity.operation.${operation.code}`),
+    })),
+    session.permissions,
+    session.permissions.includes("ADMIN")
+      ? 100
+      : Number(session.maxDiscountPercent ?? 0),
+  );
 
   const customerResults = useMemo(() => {
     const normalized = customerQuery.trim().toLocaleLowerCase();
@@ -178,6 +236,31 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       })),
     };
   }
+
+  useEffect(() => {
+    let active = true;
+    void loadSalesOperationSecurity(session.accessToken)
+      .then((configuration) => {
+        if (active) setOperationSecurity(configuration);
+      })
+      .catch(() => {
+        if (active) setOperationSecurity(null);
+      });
+    return () => { active = false; };
+  }, [session.accessToken]);
+
+  useEffect(() => {
+    let active = true;
+    void apiRequest<PendingTerminalPaymentConfiguration>(
+      "/terminal-configuration/payment",
+      { token: session.accessToken },
+    ).then((configuration) => {
+      if (active) setCardPaymentMode(resolvePendingCardPaymentMode(configuration));
+    }).catch(() => {
+      if (active) setCardPaymentMode(null);
+    });
+    return () => { active = false; };
+  }, [session.accessToken]);
 
   useEffect(() => {
     let active = true;
@@ -528,6 +611,12 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
           recovery={recovery ?? undefined}
           token={session.accessToken}
           permissions={session.permissions}
+          createPendingAuthorization={createPendingAuthorization}
+          creditOverrideAuthorization={creditOverrideAuthorization}
+          manualCardPaymentAuthorization={manualCardPaymentAuthorization}
+          transferPaymentAuthorization={transferPaymentAuthorization}
+          cardPaymentMode={cardPaymentMode}
+          saleMutationAuthorizations={saleMutationAuthorizations}
           terminalContext={terminalContext}
           endpointBase="/pos/sales-document-checkouts"
           allowPayments={effectiveMode === "CONFIRM_AND_PAY"}

@@ -22,8 +22,10 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,8 @@ class CashControllerContractTest {
     private static final UUID SESSION_ID = UUID.randomUUID();
     private static final UUID MOVEMENT_ID = UUID.randomUUID();
     private static final UUID STORE_ID = UUID.randomUUID();
+    private static final UUID CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY = UUID.randomUUID();
+    private static final UUID CLOSE_ATTEMPT_IDEMPOTENCY_KEY = UUID.randomUUID();
 
     @Autowired
     private MockMvc mvc;
@@ -60,6 +64,12 @@ class CashControllerContractTest {
 
     @MockitoBean
     private CashReportService reports;
+
+    @MockitoBean
+    private CashClosureService closures;
+
+    @MockitoBean
+    private CashCurrentBalanceService currentBalances;
 
     @Test
     void exposesCashEndpointsWithCashPermissions() throws Exception {
@@ -75,9 +85,9 @@ class CashControllerContractTest {
         assertEndpoint("close", PostMapping.class, new String[] {"/sessions/close"},
                 "VENTA", "CASH_OPERATE");
         assertEndpoint("entry", PostMapping.class, new String[] {"/movements/entry"},
-                "VENTA", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE", "GESTION_VENTAS", "GESTION_CUENTAS");
         assertEndpoint("withdrawal", PostMapping.class, new String[] {"/movements/withdrawal"},
-                "VENTA", "CASH_OPERATE");
+                "VENTA", "CASH_OPERATE", "GESTION_VENTAS", "GESTION_CUENTAS");
         assertEndpoint("betweenSessions", PostMapping.class, new String[] {"/movements/between-sessions"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
         assertEndpoint("withdrawalReceipt", GetMapping.class, new String[] {"/receipts/withdrawals/{movementId}"},
@@ -85,6 +95,12 @@ class CashControllerContractTest {
         assertEndpoint("sessionReceipt", GetMapping.class, new String[] {"/receipts/sessions/{sessionId}"},
                 "VENTA", "CASH_OPERATE", "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("report", GetMapping.class, new String[] {"/reports"},
+                "GESTION_CUENTAS", "CASH_READ");
+        assertEndpoint("closures", GetMapping.class, new String[] {"/closures"},
+                "GESTION_CUENTAS", "CASH_READ");
+        assertEndpoint("closureFilterOptions", GetMapping.class, new String[] {"/closures/filter-options"},
+                "GESTION_CUENTAS", "CASH_READ");
+        assertEndpoint("currentBalances", GetMapping.class, new String[] {"/current-balances"},
                 "GESTION_CUENTAS", "CASH_READ");
         assertEndpoint("config", GetMapping.class, new String[] {"/config"},
                 "GESTION_CUENTAS", "CASH_CONFIGURE");
@@ -132,6 +148,71 @@ class CashControllerContractTest {
         mvc.perform(get("/api/v1/cash/reports")
                         .param("from", "2026-06-25T00:00:00Z")
                         .param("to", "2026-06-26T00:00:00Z")
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cashReaderCanLoadClosureHistoryAndFilters() throws Exception {
+        var closure = new CashClosureView(
+                SESSION_ID, TERMINAL_ID, "TPV 1", UUID.randomUUID(), "CAJERO", "cajero",
+                Instant.parse("2026-07-31T17:30:00Z"), new BigDecimal("125.00"),
+                new BigDecimal("25.00"), new BigDecimal("-2.00"), false);
+        when(closures.list(any(), any(), any(), any(), eq(true), eq(50), any(), any()))
+                .thenReturn(new com.tpverp.backend.shared.api.PagedResult<>(List.of(closure), null, false));
+        when(closures.filterOptions(any())).thenReturn(new CashClosureFilterOptionsView(
+                LocalDate.parse("2026-07-31"), "Atlantic/Canary",
+                List.of(new CashClosureFilterOptionView(TERMINAL_ID, "TPV 1", "")),
+                List.of(new CashClosureFilterOptionView(closure.closingUserId(), "CAJERO", "cajero"))));
+
+        mvc.perform(get("/api/v1/cash/closures")
+                        .param("from", "2026-07-01")
+                        .param("to", "2026-07-31")
+                        .param("onlyDiscrepancies", "true")
+                        .with(user("cash-reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].terminalName").value("TPV 1"))
+                .andExpect(jsonPath("$.items[0].closingUserName").value("CAJERO"))
+                .andExpect(jsonPath("$.items[0].retainedFund").value(25.00))
+                .andExpect(jsonPath("$.items[0].discrepancy").value(-2.00));
+
+        mvc.perform(get("/api/v1/cash/closures/filter-options")
+                        .with(user("cash-reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessDate").value("2026-07-31"))
+                .andExpect(jsonPath("$.terminals[0].name").value("TPV 1"));
+    }
+
+    @Test
+    void sellerCannotReadClosureHistory() throws Exception {
+        mvc.perform(get("/api/v1/cash/closures")
+                        .with(user("seller").authorities(() -> VENTA)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cashReaderCanReadCurrentTerminalBalances() throws Exception {
+        when(currentBalances.current(any())).thenReturn(new CashCurrentBalancesView(
+                Instant.parse("2026-08-01T10:15:00Z"),
+                "Atlantic/Canary",
+                List.of(new CashCurrentBalanceView(
+                        TERMINAL_ID, "TPV 1", CashCurrentBalanceStatus.ABIERTA,
+                        UUID.randomUUID(), "CAJERO", "cajero",
+                        Instant.parse("2026-08-01T08:00:00Z"),
+                        new BigDecimal("135.00"), Instant.parse("2026-08-01T10:14:30Z")))));
+
+        mvc.perform(get("/api/v1/cash/current-balances")
+                        .with(user("cash-reader").authorities(() -> CASH_READ)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.terminals[0].terminalName").value("TPV 1"))
+                .andExpect(jsonPath("$.terminals[0].status").value("ABIERTA"))
+                .andExpect(jsonPath("$.timezone").value("Atlantic/Canary"))
+                .andExpect(jsonPath("$.terminals[0].expectedCash").value(135.00));
+    }
+
+    @Test
+    void sellerCannotReadCurrentTerminalBalances() throws Exception {
+        mvc.perform(get("/api/v1/cash/current-balances")
                         .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isForbidden());
     }
@@ -190,7 +271,7 @@ class CashControllerContractTest {
         when(receipts.withdrawalReceipt(any(), any())).thenReturn(new CashReceiptView(
                 MOVEMENT_ID, SESSION_ID, TERMINAL_ID, "TPV 1",
                 Instant.parse("2026-06-25T09:30:00Z"), "SELLER",
-                new BigDecimal("20.00"), List.of(), null, null, null, "", ""));
+                new BigDecimal("20.00"), List.of(), null, null, null, "", "", "MANAGER", "Banco"));
 
         mvc.perform(get("/api/v1/cash/receipts/withdrawals/{movementId}", MOVEMENT_ID)
                         .with(user("seller").authorities(() -> CASH_READ)))
@@ -198,6 +279,73 @@ class CashControllerContractTest {
                 .andExpect(jsonPath("$.movementId").value(MOVEMENT_ID.toString()));
 
         verify(receipts).withdrawalReceipt(eq(MOVEMENT_ID), any(Authentication.class));
+    }
+
+    @Test
+    void withdrawalBindsAuthorizationCredentialsAndReason() throws Exception {
+        when(sessions.withdrawal(any(), any(), any())).thenReturn(new CashMovementView(
+                MOVEMENT_ID,
+                TERMINAL_ID,
+                SESSION_ID,
+                CashMovementType.RETIRADA,
+                new BigDecimal("20.00"),
+                Instant.parse("2026-06-25T09:30:00Z"),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "Ingreso en banco"));
+
+        mvc.perform(post("/api/v1/cash/movements/withdrawal")
+                        .with(user("accounting").authorities(() -> GESTION_CUENTAS))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "terminalId": "%s",
+                                  "amount": 20.00,
+                                  "comment": "Ingreso en banco",
+                                  "denominations": [],
+                                  "withdrawal": true,
+                                  "authorizerPassword": "secret"
+                                }
+                                """.formatted(TERMINAL_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("RETIRADA"))
+                .andExpect(jsonPath("$.comment").value("Ingreso en banco"));
+
+        var request = org.mockito.ArgumentCaptor.forClass(CashWithdrawalRequest.class);
+        verify(sessions).withdrawal(eq(TERMINAL_ID), request.capture(), any());
+        assertThat(request.getValue().comment()).isEqualTo("Ingreso en banco");
+        assertThat(request.getValue().authorizerUsername()).isNull();
+        assertThat(request.getValue().authorizerPassword()).isEqualTo("secret");
+    }
+
+    @Test
+    void withdrawalAllowsOmittedCredentialsForPoliciesWithoutPassword() throws Exception {
+        when(sessions.withdrawal(any(), any(), any())).thenReturn(new CashMovementView(
+                MOVEMENT_ID,
+                TERMINAL_ID,
+                SESSION_ID,
+                CashMovementType.RETIRADA,
+                new BigDecimal("20.00"),
+                Instant.parse("2026-06-25T09:30:00Z"),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "Gasto de caja"));
+
+        mvc.perform(post("/api/v1/cash/movements/withdrawal")
+                        .with(user("seller").authorities(() -> VENTA))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "terminalId": "%s",
+                                  "amount": 20.00,
+                                  "comment": "Gasto de caja",
+                                  "denominations": [],
+                                  "withdrawal": true
+                                }
+                                """.formatted(TERMINAL_ID)))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -217,12 +365,94 @@ class CashControllerContractTest {
                                   "retainedFund": 40.00,
                                   "retainedFundDenominations": [],
                                   "finalWithdrawalAmount": 0,
+                                  "finalWithdrawalDenominations": [],
+                                  "closeOperationId": "%s",
+                                  "reconciliationAttemptId": "%s",
+                                  "authorizerUsername": "manager",
+                                  "authorizerPassword": "secret"
+                                }
+                                """.formatted(
+                                        TERMINAL_ID,
+                                        CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY,
+                                        CLOSE_ATTEMPT_IDEMPOTENCY_KEY)))
+                .andExpect(status().isOk());
+
+        var request = org.mockito.ArgumentCaptor.forClass(CashCloseRequest.class);
+        verify(sessions).close(eq(TERMINAL_ID), request.capture(), any());
+        assertThat(request.getValue().authorizerUsername()).isEqualTo("manager");
+        assertThat(request.getValue().authorizerPassword()).isEqualTo("secret");
+        assertThat(request.getValue().closeOperationId())
+                .isEqualTo(CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY);
+        assertThat(request.getValue().reconciliationAttemptId())
+                .isEqualTo(CLOSE_ATTEMPT_IDEMPOTENCY_KEY);
+    }
+
+    @Test
+    void closeRejectsRequestsWithoutFinalWithdrawalIdempotencyKey() throws Exception {
+        mvc.perform(post("/api/v1/cash/sessions/close")
+                        .with(user("seller").authorities(() -> CASH_OPERATE))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "terminalId": "%s",
+                                  "retainedFund": 40.00,
+                                  "retainedFundDenominations": [],
+                                  "finalWithdrawalAmount": 10.00,
                                   "finalWithdrawalDenominations": []
                                 }
                                 """.formatted(TERMINAL_ID)))
-                .andExpect(status().isOk());
+                .andExpect(status().isBadRequest());
+    }
 
-        verify(sessions).close(any(), any(CashCloseRequest.class), any());
+    @Test
+    void recoversADurableCloseOperationScopedToTheTerminal() throws Exception {
+        when(sessions.closeOperation(eq(TERMINAL_ID), eq(CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY), any()))
+                .thenReturn(new CashCloseOperationView(
+                        CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY,
+                        SESSION_ID,
+                        TERMINAL_ID,
+                        CashCloseOperationStatus.CERRADA,
+                        new BigDecimal("10.00"),
+                        "Cierre",
+                        CLOSE_ATTEMPT_IDEMPOTENCY_KEY,
+                        new CashSessionView(
+                                SESSION_ID,
+                                TERMINAL_ID,
+                                CashSessionStatus.CERRADA,
+                                Instant.parse("2026-06-25T09:00:00Z"),
+                                new BigDecimal("40.00"),
+                                null,
+                                null,
+                                new BigDecimal("40.00"),
+                                BigDecimal.ZERO,
+                                Instant.parse("2026-06-25T18:00:00Z"),
+                                1,
+                                true)));
+
+        mvc.perform(get("/api/v1/cash/sessions/close-operations/{operationId}",
+                        CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY)
+                        .param("terminalId", TERMINAL_ID.toString())
+                        .with(user("seller").authorities(() -> CASH_OPERATE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operationId")
+                        .value(CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY.toString()))
+                .andExpect(jsonPath("$.latestReconciliationAttemptId")
+                        .value(CLOSE_ATTEMPT_IDEMPOTENCY_KEY.toString()))
+                .andExpect(jsonPath("$.result.status").value("CERRADA"));
+    }
+
+    @Test
+    void reportsAnUnknownCloseOperationWithAStableNotFoundContract() throws Exception {
+        when(sessions.closeOperation(eq(TERMINAL_ID), eq(CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY), any()))
+                .thenThrow(new NoSuchElementException("Operacion de cierre no encontrada"));
+
+        mvc.perform(get("/api/v1/cash/sessions/close-operations/{operationId}",
+                        CLOSE_WITHDRAWAL_IDEMPOTENCY_KEY)
+                        .param("terminalId", TERMINAL_ID.toString())
+                        .with(user("seller").authorities(() -> CASH_OPERATE)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test

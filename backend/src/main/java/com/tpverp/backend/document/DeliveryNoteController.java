@@ -22,10 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeliveryNoteController {
 
     private final DocumentService service;
+    private final GenericSalesApiService genericSales;
     private final DocumentViewAssembler views;
 
-    public DeliveryNoteController(DocumentService service, DocumentViewAssembler views) {
+    public DeliveryNoteController(
+            DocumentService service,
+            GenericSalesApiService genericSales,
+            DocumentViewAssembler views) {
         this.service = service;
+        this.genericSales = genericSales;
         this.views = views;
     }
 
@@ -44,8 +49,8 @@ public class DeliveryNoteController {
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return views.documentView(service.createDeliveryNote(
-                request.toCommand(), authentication));
+        return views.documentView(genericSales.createDeliveryNote(
+                request, authentication));
     }
 
     @PostMapping("/confirmed")
@@ -53,16 +58,18 @@ public class DeliveryNoteController {
     public DocumentView createAndConfirm(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return DocumentView.from(service.createAndConfirmDeliveryNote(
-                request.toCommand(), authentication));
+        return DocumentView.from(genericSales.createAndConfirmDeliveryNote(
+                request, authentication));
     }
 
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','DELIVERY_NOTES_CONFIRM','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView confirm(
             @PathVariable UUID id,
+            @Valid @RequestBody(required = false)
+                    SaleOperationAuthorizationsRequest authorizations,
             Authentication authentication) {
-        return views.documentView(service.confirm(id, authentication));
+        return views.documentView(genericSales.confirm(id, authorizations, authentication));
     }
 
     @PostMapping("/{id}/pay")
@@ -71,7 +78,7 @@ public class DeliveryNoteController {
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,
             Authentication authentication) {
-        return views.documentView(service.payDeliveryNote(id, request.toCommands(), authentication));
+        return views.documentView(genericSales.payDeliveryNote(id, request, authentication));
     }
 
     @PutMapping("/{id}/admin")

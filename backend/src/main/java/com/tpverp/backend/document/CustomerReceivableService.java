@@ -44,6 +44,7 @@ public class CustomerReceivableService {
     private final CustomerReceivablePaymentReservationCoordinator paymentReservations;
     private final CustomerReceivablePaymentReservationRepository paymentReservationRepository;
     private final CustomerReceivableTransactionRunner transactions;
+    private final SaleDocumentMutationAuthorizationService mutationAuthorizations;
     private final Clock clock;
 
     public CustomerReceivableService(
@@ -58,6 +59,7 @@ public class CustomerReceivableService {
             CustomerReceivablePaymentReservationCoordinator paymentReservations,
             CustomerReceivablePaymentReservationRepository paymentReservationRepository,
             CustomerReceivableTransactionRunner transactions,
+            SaleDocumentMutationAuthorizationService mutationAuthorizations,
             Clock clock) {
         this.documents = documents;
         this.payments = payments;
@@ -70,6 +72,7 @@ public class CustomerReceivableService {
         this.paymentReservations = paymentReservations;
         this.paymentReservationRepository = paymentReservationRepository;
         this.transactions = transactions;
+        this.mutationAuthorizations = mutationAuthorizations;
         this.clock = clock;
     }
 
@@ -206,6 +209,14 @@ public class CustomerReceivableService {
             return transactions.run(() -> finalizeReservedPayment(
                     documentId, storeId, terminalId, item, paymentId, authentication, null));
         }
+        mutationAuthorizations.authorizePayments(
+                request,
+                request.operationAuthorizations(),
+                SaleDocumentMutationAuthorizationService.IntegratedPaymentPolicy
+                        .REQUIRE_PERSISTED_OPERATION,
+                authentication,
+                "CUSTOMER_RECEIVABLE_PAYMENT",
+                documentId);
         var kind = item.paymentTerminalOperationId() == null
                 ? CustomerReceivablePaymentReservation.Kind.STANDARD
                 : CustomerReceivablePaymentReservation.Kind.INTEGRATED_CARD;

@@ -1,5 +1,6 @@
 package com.tpverp.backend.cash;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,7 +40,7 @@ class CashDrawerControllerContractTest {
                         operationId, "ENCARGADO", true, Instant.parse("2026-07-24T12:02:00Z")));
 
         mvc.perform(post("/api/v1/pos/cash-drawer/open-authorizations")
-                        .with(user("seller"))
+                        .with(user("seller").authorities(() -> VENTA))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -66,7 +67,7 @@ class CashDrawerControllerContractTest {
                 any())).thenReturn(new CashDrawerService.CompletionView(operationId, false));
 
         mvc.perform(post("/api/v1/pos/cash-drawer/open-authorizations/{operationId}/result", operationId)
-                        .with(user("seller"))
+                        .with(user("seller").authorities(() -> VENTA))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -85,6 +86,20 @@ class CashDrawerControllerContractTest {
                 org.mockito.ArgumentMatchers.eq("CASH_DRAWER_UNAVAILABLE"),
                 org.mockito.ArgumentMatchers.eq("Cajon no configurado"),
                 any());
+    }
+
+    @Test
+    void authenticatedUserWithoutSalesOrCashModuleCannotOpenDrawer() throws Exception {
+        mvc.perform(post("/api/v1/pos/cash-drawer/open-authorizations")
+                        .with(user("viewer"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "terminalId": "%s"
+                                }
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
     }
 
     @EnableMethodSecurity

@@ -46,7 +46,45 @@ describe("APP GESTION module access", () => {
   });
 
   it("allows ADMIN into every module", () => {
-    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(9);
+    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(11);
+  });
+
+  it("opens cash closures only to accounting or cash readers through APP GESTION", () => {
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "GESTION_CUENTAS"]),
+      "gestion.cashClosures"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "CASH_READ"]),
+      "gestion.cashClosures"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "GESTION_VENTAS"]),
+      "gestion.cashClosures"
+    )).toBe(false);
+    expect(canOpenGestionModule(
+      session(["CASH_READ"]),
+      "gestion.cashClosures"
+    )).toBe(false);
+  });
+
+  it("opens current cash balances only to accounting or cash readers through APP GESTION", () => {
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "GESTION_CUENTAS"]),
+      "gestion.cashCurrentBalances"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "CASH_READ"]),
+      "gestion.cashCurrentBalances"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "GESTION_VENTAS"]),
+      "gestion.cashCurrentBalances"
+    )).toBe(false);
+    expect(canOpenGestionModule(
+      session(["CASH_READ"]),
+      "gestion.cashCurrentBalances"
+    )).toBe(false);
   });
 
   it("opens VeriFactu only with APP GESTION access and fiscal read permission", () => {

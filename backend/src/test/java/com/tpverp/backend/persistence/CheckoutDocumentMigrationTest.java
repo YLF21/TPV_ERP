@@ -65,6 +65,16 @@ class CheckoutDocumentMigrationTest {
     }
 
     @Test
+    void cashSessionDiscrepancyControlTypeIsAcceptedByTheDatabaseConstraints() throws Exception {
+        var sql = migration("db/migration/V115__alerta_descuadre_caja.sql");
+
+        assertThat(sql).contains(
+                "'cash_session_discrepancy'",
+                "control_regla_tipo_ck",
+                "control_regla_configuracion_tipo_ck");
+    }
+
+    @Test
     void documentLineSerialNumbersAreOrderedUniqueAndSearchable() throws Exception {
         var sql = migration("db/migration/V103__numeros_serie_lineas_documento.sql");
 
