@@ -39,7 +39,9 @@ class PaymentTerminalOperationsReceiptTest {
         var service=new PaymentTerminalOperationsService(operations,mock(PaymentTerminalAdjustmentService.class),
                 mock(PaymentTerminalOperationService.class),configurations,List.of(gateway),Clock.fixed(now,ZoneOffset.UTC),organization,
                 receipts,mock(PaymentTerminalReconciliationService.class),
-                mock(com.tpverp.backend.document.DocumentService.class));
+                mock(com.tpverp.backend.document.DocumentService.class),
+                mock(com.tpverp.backend.security.sales.SaleOperationSecurityService.class),
+                mock(com.tpverp.backend.audit.AuditService.class));
 
         var response=service.receipt(operationId);
 

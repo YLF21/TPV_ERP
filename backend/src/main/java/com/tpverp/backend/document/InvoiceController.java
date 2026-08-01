@@ -19,14 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvoiceController {
 
     private final DocumentService service;
+    private final GenericSalesApiService genericSales;
     private final DocumentFiscalQrService fiscalQr;
     private final DocumentViewAssembler views;
 
     public InvoiceController(
             DocumentService service,
+            GenericSalesApiService genericSales,
             DocumentFiscalQrService fiscalQr,
             DocumentViewAssembler views) {
         this.service = service;
+        this.genericSales = genericSales;
         this.fiscalQr = fiscalQr;
         this.views = views;
     }
@@ -46,7 +49,7 @@ public class InvoiceController {
     public DocumentView create(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return view(service.createInvoice(request.toCommand(), authentication));
+        return view(genericSales.createInvoice(request, authentication));
     }
 
     @PostMapping("/confirmed")
@@ -54,15 +57,17 @@ public class InvoiceController {
     public DocumentView createAndConfirm(
             @Valid @RequestBody DocumentRequest request,
             Authentication authentication) {
-        return view(service.createAndConfirmInvoice(request.toCommand(), authentication));
+        return view(genericSales.createAndConfirmInvoice(request, authentication));
     }
 
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_CONFIRM','VENTA','GESTION_PRODUCTO','GESTION_ALMACEN')")
     public DocumentView confirm(
             @PathVariable UUID id,
+            @Valid @RequestBody(required = false)
+                    SaleOperationAuthorizationsRequest authorizations,
             Authentication authentication) {
-        return view(service.confirm(id, authentication));
+        return view(genericSales.confirm(id, authorizations, authentication));
     }
 
     @PostMapping("/{id}/pay")
@@ -71,7 +76,7 @@ public class InvoiceController {
             @PathVariable UUID id,
             @Valid @RequestBody PaymentRequest request,
             Authentication authentication) {
-        return view(service.payInvoice(id, request.toCommands(), authentication));
+        return view(genericSales.payInvoice(id, request, authentication));
     }
 
     @PostMapping("/{id}/relations")

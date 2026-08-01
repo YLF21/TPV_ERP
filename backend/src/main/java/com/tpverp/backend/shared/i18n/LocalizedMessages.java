@@ -37,12 +37,26 @@ public class LocalizedMessages {
         if (detail.startsWith("message.")) {
             return Optional.of(message(detail, language));
         }
-        return exactLegacy(detail, language)
+        return explicitBusinessKey(detail, language)
+                .or(() -> exactLegacy(detail, language))
                 .or(() -> requiredLegacy(detail, language))
                 .or(() -> negativeLegacy(detail, language))
                 .or(() -> notFoundLegacy(detail, language));
     }
     // Translates legacy messages while they are gradually moved to explicit codes.
+
+    private Optional<String> explicitBusinessKey(
+            String detail,
+            SupportedLanguage language) {
+        if (!detail.matches("[a-z][a-z0-9_.-]*")) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(message(detail, language));
+        } catch (NoSuchMessageException exception) {
+            return Optional.empty();
+        }
+    }
 
     private Optional<String> exactLegacy(String detail, SupportedLanguage language) {
         try {

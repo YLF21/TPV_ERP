@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
+import { createCashCloseWithdrawalIdempotencyKey } from "../sale/cashSessions";
 import type { LocaleCode } from "../types";
 
 type RequestFunction = typeof apiRequest;
@@ -190,6 +191,11 @@ export function CashOperationsCard({
   const [comment, setComment] = useState("");
   const [managerUsername, setManagerUsername] = useState("");
   const [managerPassword, setManagerPassword] = useState("");
+  const [closeFlow, setCloseFlow] = useState(() => ({
+    sessionId: null as string | null,
+    operationId: createCashCloseWithdrawalIdempotencyKey(),
+    attemptId: createCashCloseWithdrawalIdempotencyKey(),
+  }));
 
   const money = useMemo(
     () =>
@@ -241,6 +247,16 @@ export function CashOperationsCard({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (session?.id && closeFlow.sessionId !== session.id) {
+      setCloseFlow({
+        sessionId: session.id,
+        operationId: createCashCloseWithdrawalIdempotencyKey(),
+        attemptId: createCashCloseWithdrawalIdempotencyKey(),
+      });
+    }
+  }, [closeFlow.sessionId, session?.id]);
+
   const execute = async (
     path: string,
     body: Record<string, unknown>,
@@ -251,13 +267,14 @@ export function CashOperationsCard({
     setError(null);
     setNotice(null);
     try {
-      await request(path, { token, method: "POST", body });
+      const result = await request<{ status?: string }>(path, { token, method: "POST", body });
       setNotice(successMessage);
       setComment("");
       setEntryAmount("");
       setWithdrawalAmount("");
       setManagerPassword("");
       await load();
+      return result;
     } catch (operationError) {
       setError(getErrorMessage(operationError, t.error));
     } finally {
@@ -426,6 +443,8 @@ export function CashOperationsCard({
                       comment: comment.trim(),
                       denominations: [],
                       withdrawal: true,
+                      authorizerUsername: managerUsername.trim(),
+                      authorizerPassword: managerPassword,
                     });
                   }
                 }}
@@ -469,9 +488,18 @@ export function CashOperationsCard({
                         finalWithdrawalAmount: withdrawal,
                         finalWithdrawalComment: comment.trim(),
                         finalWithdrawalDenominations: [],
+                        closeOperationId: closeFlow.operationId,
+                        reconciliationAttemptId: closeFlow.attemptId,
                       },
                       t.sessionClosed,
-                    );
+                    ).then((result) => {
+                      if (result?.status === "ABIERTA") {
+                        setCloseFlow((current) => ({
+                          ...current,
+                          attemptId: createCashCloseWithdrawalIdempotencyKey(),
+                        }));
+                      }
+                    });
                   }
                 }}
               >

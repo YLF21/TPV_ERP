@@ -259,6 +259,25 @@ public class CatalogService {
     }
 
     @Transactional
+    public Product createProductWithPrimaryBarcode(
+            ProductRequest request,
+            String barcode) {
+        return createProduct(request.withPrimaryBarcode(barcode));
+    }
+
+    @Transactional
+    public Product assignSecondaryBarcode(UUID productId, String barcode) {
+        Product product = product(productId);
+        var normalized = barcode == null ? "" : barcode.trim();
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("internal_ean_code_required");
+        }
+        validateIdentifiers(product.getStoreId(), productId, normalized);
+        product.replaceIdentifier(IdentifierType.CODIGO_BARRAS_2, normalized);
+        return productRepository.saveAndFlush(product);
+    }
+
+    @Transactional
     public Product updateProduct(UUID productId, ProductRequest request) {
         Product product = product(productId);
         validateProductRequest(productId, product.getStoreId(), request);
@@ -668,6 +687,17 @@ public class CatalogService {
         public ProductRequest {
             priceUseMode = priceUseMode == null ? priceUseModeFromDiscountType(discountType) : priceUseMode;
             discountType = discountTypeFromPriceUseMode(priceUseMode, discountType);
+        }
+
+        public ProductRequest withPrimaryBarcode(String forcedBarcode) {
+            return new ProductRequest(
+                    familyId, subfamilyId, taxId, productType, discountType,
+                    priceUseMode, name, description, comments, purchasePrice,
+                    taxesIncluded, code, forcedBarcode, barcode2, salePrice,
+                    memberPrice, wholesalePrice, offerPrice,
+                    offerDiscountPercent, purchaseDiscountPercent, offerActive,
+                    offerFrom, offerUntil, stockMin, stockMax, packageQuantity,
+                    active);
         }
 
         public ProductRequest(

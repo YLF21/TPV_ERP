@@ -98,6 +98,14 @@ public class MemberMovement {
         return id;
     }
 
+    public Member getMember() {
+        return member;
+    }
+
+    public UUID getDocumentId() {
+        return documentId;
+    }
+
     public MemberMovementType getType() {
         return type;
     }

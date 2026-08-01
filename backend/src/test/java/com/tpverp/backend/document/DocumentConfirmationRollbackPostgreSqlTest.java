@@ -39,6 +39,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -87,6 +88,11 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @MockitoBean private AuthoritativePromotionPricing authoritativePromotionPricing;
     @MockitoBean private PromotionCatalogGateway promotionCatalogGateway;
     @MockitoBean private PromotionalCouponService promotionalCouponService;
+    @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
+    @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
+    @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
+            saleOperationSecurity;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -120,7 +126,11 @@ class DocumentConfirmationRollbackPostgreSqlTest {
         assertThatThrownBy(() -> transactions.executeWithoutResult(ignored ->
                 service.confirm(
                         ids.documentId(),
-                        new UsernamePasswordAuthenticationToken("ADMIN", "n/a"))))
+                        UsernamePasswordAuthenticationToken.authenticated(
+                                "ADMIN",
+                                "n/a",
+                                java.util.List.of(new SimpleGrantedAuthority(
+                                        "ROLE_ADMIN"))))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fallo posterior al UPSERT");
 

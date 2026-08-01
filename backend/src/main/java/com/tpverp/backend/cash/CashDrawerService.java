@@ -1,12 +1,11 @@
 package com.tpverp.backend.cash;
 
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.ABRIR_CAJON;
-
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.time.Clock;
 import java.time.Duration;
@@ -26,7 +25,7 @@ public class CashDrawerService {
 
     private final TerminalRepository terminals;
     private final CurrentOrganization organization;
-    private final OperationalPermissionAuthorizationService authorizations;
+    private final SaleOperationSecurityService operationSecurity;
     private final ControlAlertDetectionService controlAlerts;
     private final AuditService audit;
     private final Clock clock;
@@ -35,13 +34,13 @@ public class CashDrawerService {
     public CashDrawerService(
             TerminalRepository terminals,
             CurrentOrganization organization,
-            OperationalPermissionAuthorizationService authorizations,
+            SaleOperationSecurityService operationSecurity,
             ControlAlertDetectionService controlAlerts,
             AuditService audit,
             Clock clock) {
         this.terminals = terminals;
         this.organization = organization;
-        this.authorizations = authorizations;
+        this.operationSecurity = operationSecurity;
         this.controlAlerts = controlAlerts;
         this.audit = audit;
         this.clock = clock;
@@ -57,8 +56,11 @@ public class CashDrawerService {
         var terminal = terminals.findByIdAndTiendaId(terminalId, store.getId())
                 .filter(value -> value.isActiva() && value.isAprobada())
                 .orElseThrow(() -> new IllegalArgumentException("Terminal no activa o no aprobada"));
-        var authorization = authorizations.authorize(
-                ABRIR_CAJON, authorizerUsername, authorizerPassword, authentication);
+        var authorization = operationSecurity.authorize(
+                SaleOperationCode.OPEN_CASH_DRAWER,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
         var operationId = UUID.randomUUID();
         var now = Instant.now(clock);
         var expiresAt = now.plus(AUTHORIZATION_VALIDITY);

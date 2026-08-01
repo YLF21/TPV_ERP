@@ -103,7 +103,7 @@ public class StockController {
     }
 
     @GetMapping("/products/{productId}/sales-history")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public List<StockSalesHistoryRow> salesHistory(
             @PathVariable UUID productId,
             @RequestParam(required = false) LocalDate from,

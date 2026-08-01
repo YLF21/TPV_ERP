@@ -10,6 +10,8 @@ public interface MemberBalanceLotRepository extends JpaRepository<MemberBalanceL
 
     List<MemberBalanceLot> findByMemberIdAndAmountRemainingGreaterThan(UUID memberId, BigDecimal amount);
 
+    List<MemberBalanceLot> findBySourceMovement_Id(UUID movementId);
+
     List<MemberBalanceLot> findByExpiresAtBeforeAndExpiredAtIsNullAndAmountRemainingGreaterThan(
             Instant now, BigDecimal amount);
 }

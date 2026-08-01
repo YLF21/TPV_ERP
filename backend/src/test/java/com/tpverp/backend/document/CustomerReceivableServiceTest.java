@@ -52,6 +52,8 @@ class CustomerReceivableServiceTest {
             mock(CustomerReceivablePaymentReservationRepository.class);
     private final CustomerReceivableTransactionRunner transactions =
             mock(CustomerReceivableTransactionRunner.class);
+    private final SaleDocumentMutationAuthorizationService mutationAuthorizations =
+            mock(SaleDocumentMutationAuthorizationService.class);
     private final Authentication authentication = mock(Authentication.class);
     private final UserAccount user = mock(UserAccount.class);
     private final Store store = store();
@@ -92,7 +94,7 @@ class CustomerReceivableServiceTest {
         service = new CustomerReceivableService(
                 documents, payments, documentService, terminalOperations, configurations,
                 currentTerminal, organization, views, paymentReservations,
-                paymentReservationRepository, transactions,
+                paymentReservationRepository, transactions, mutationAuthorizations,
                 Clock.fixed(Instant.parse("2026-07-16T10:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -231,6 +233,14 @@ class CustomerReceivableServiceTest {
         assertThat(first.pendingTotal()).isEqualByComparingTo("80.00");
         assertThat(replay).isEqualTo(first);
         assertThat(document.getPagos()).hasSize(1);
+        verify(mutationAuthorizations).authorizePayments(
+                request,
+                request.operationAuthorizations(),
+                SaleDocumentMutationAuthorizationService.IntegratedPaymentPolicy
+                        .REQUIRE_PERSISTED_OPERATION,
+                authentication,
+                "CUSTOMER_RECEIVABLE_PAYMENT",
+                document.getId());
     }
 
     @Test

@@ -16,7 +16,11 @@ final class CustomerPendingSaleRequestHasher {
             BigDecimal authoritativeTotal) {
         var hasSerialNumbers = request.lines() != null && request.lines().stream()
                 .anyMatch(line -> line.serialNumbers() != null && !line.serialNumbers().isEmpty());
-        var canonical = new Canonical().add(hasSerialNumbers
+        var hasInternalComment = request.internalComment() != null
+                && !request.internalComment().isBlank();
+        var canonical = new Canonical().add(hasInternalComment
+                        ? "v5-internal-comment"
+                        : hasSerialNumbers
                         ? request.completionMode() == null ? "v4-serials" : "v4-sales-document-serials"
                         : request.completionMode() == null ? "v2" : "v3-sales-document")
                 .add(request.checkoutId()).add(request.type()).add(request.customerId())
@@ -25,6 +29,9 @@ final class CustomerPendingSaleRequestHasher {
                 .add(Money.euros(authoritativeTotal).toPlainString());
         if (request.completionMode() != null) {
             canonical.add(request.completionMode());
+        }
+        if (hasInternalComment) {
+            canonical.add(text(request.internalComment()));
         }
         var lines = request.lines() == null ? java.util.List.<DocumentRequest.LineRequest>of()
                 : request.lines();

@@ -66,6 +66,11 @@ import type { PaymentFinalizationSummary, SalePaymentCheckoutHandle } from "./Sa
 import { defaultHardwareConfig } from "../hardware/hardware";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { pendingSaleRecoveryKey, savePendingSaleRecovery } from "../sale/pendingSaleRecovery";
+import { ApiError } from "../api/client";
+import {
+  cashCloseRecoveryKey,
+  saveCashCloseRecovery,
+} from "../sale/cashCloseRecovery";
 
 type CheckoutMockProps = {
   testCashEnabled?: boolean;
@@ -73,6 +78,7 @@ type CheckoutMockProps = {
   showIndividualActions?: boolean;
   sale?: {
     customerId: string | null;
+    internalComment?: string;
     lines: Array<{
       productId: string;
       quantity: number;
@@ -84,10 +90,31 @@ type CheckoutMockProps = {
   onPending?: () => void;
   onHydrationChange?: (hydrated: boolean) => void;
   onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
+  saleMutationAuthorizations?: Array<{
+    code: string;
+    label: string;
+    authorization: {
+      mode: "DIRECT" | "CURRENT_PASSWORD" | "DELEGATED";
+      requireUsername: boolean;
+      requirePassword: boolean;
+    };
+  }> | null;
   onFinalized: (printTicket: ConfirmedTicketPrintSnapshot, summary: PaymentFinalizationSummary) => void;
 };
 
-const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, triggerPending, checkoutHandle, checkoutProps, verifactuIndicatorProps, prepareCashSessionForSales } = vi.hoisted(() => ({
+const {
+  prepareApplicationClose,
+  prepareLogout,
+  triggerCash,
+  triggerCard,
+  triggerPending,
+  checkoutHandle,
+  checkoutProps,
+  verifactuIndicatorProps,
+  prepareCashSessionForSales,
+  recoverCashCloseOperation,
+  loadSalesOperationSecurity,
+} = vi.hoisted(() => ({
   prepareApplicationClose: vi.fn(),
   prepareLogout: vi.fn(),
   triggerCash: vi.fn(),
@@ -101,11 +128,18 @@ const { prepareApplicationClose, prepareLogout, triggerCash, triggerCard, trigge
     current: null as { refreshSignal?: unknown } | null,
   },
   prepareCashSessionForSales: vi.fn(),
+  recoverCashCloseOperation: vi.fn(),
+  loadSalesOperationSecurity: vi.fn(),
 }));
 
 vi.mock("../sale/cashSessions", async (importOriginal) => {
   const original = await importOriginal<typeof import("../sale/cashSessions")>();
-  return { ...original, prepareCashSessionForSales };
+  return { ...original, prepareCashSessionForSales, recoverCashCloseOperation };
+});
+
+vi.mock("../sale/operationSecurity", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../sale/operationSecurity")>();
+  return { ...original, loadSalesOperationSecurity };
 });
 
 vi.mock("./SalePaymentCheckout", async () => {
@@ -169,6 +203,224 @@ beforeEach(() => {
       openingFund: 0,
       closedByAttempt: false,
     },
+    requireWithdrawalBreakdown: false,
+    withdrawalDenominations: [100, 50, 20, 10, 5, 2, 1],
+  });
+  recoverCashCloseOperation.mockReset();
+  loadSalesOperationSecurity.mockReset().mockResolvedValue({
+    storeId: "store-1",
+    version: 1,
+    operations: [
+      {
+        code: "OPEN_CASH_DRAWER",
+        category: "CASH",
+        shortcuts: ["F3"],
+        permissions: ["ABRIR_CAJON"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "EDIT_CATALOG_PRODUCT",
+        category: "PRODUCT",
+        shortcuts: ["F7"],
+        permissions: ["GESTION_PRODUCTO"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "CLOSE_CASH_SESSION",
+        category: "CASH",
+        shortcuts: ["F8"],
+        permissions: ["GESTION_VENTAS", "GESTION_CUENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: true,
+        requirePermission: false,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "CASH_MOVEMENT",
+        category: "CASH",
+        shortcuts: ["F9"],
+        permissions: ["GESTION_VENTAS", "GESTION_CUENTAS"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "RETURN_TICKET",
+        category: "TICKET",
+        shortcuts: ["F10"],
+        permissions: ["GESTION_VENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: false,
+        requirePermission: false,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "CANCEL_TICKET",
+        category: "TICKET",
+        shortcuts: ["F11", "Ctrl+F11"],
+        permissions: ["GESTION_VENTAS", "GESTION_CUENTAS"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "CONVERT_TICKET_TO_INVOICE",
+        category: "TICKET",
+        shortcuts: ["F12"],
+        permissions: ["GESTION_VENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: false,
+        requirePermission: false,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "DELETE_PARKED_SALE",
+        category: "TICKET",
+        shortcuts: [],
+        permissions: ["GESTION_VENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: false,
+        requirePermission: false,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "MANUAL_RETURN_WITHOUT_TICKET",
+        category: "TICKET",
+        shortcuts: ["-1", "Pausa"],
+        permissions: ["GESTION_VENTAS"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "TEMPORARY_NAME",
+        category: "PRODUCT",
+        shortcuts: ["Inicio"],
+        permissions: ["GESTION_VENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: false,
+        requirePermission: false,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "TEMPORARY_PRICE_CHANGE",
+        category: "PRODUCT",
+        shortcuts: ["Ctrl+RePag"],
+        permissions: ["CAMBIAR_PRECIO", "GESTION_VENTAS"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "OPEN_PRICE_PRODUCT",
+        category: "PRODUCT",
+        shortcuts: [],
+        permissions: ["CAMBIAR_PRECIO", "GESTION_VENTAS"],
+        defaultRequirePermission: false,
+        defaultRequirePassword: false,
+        requirePermission: false,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "APPLY_SALE_DISCOUNT",
+        category: "DISCOUNT",
+        shortcuts: ["/", "RePag"],
+        permissions: ["APLICAR_DESCUENTO"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "APPLY_CHECKOUT_DISCOUNT",
+        category: "DISCOUNT",
+        shortcuts: ["Ctrl+/"],
+        permissions: ["APLICAR_DESCUENTO"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "CREATE_PENDING_RECEIVABLE",
+        category: "CREDIT",
+        shortcuts: ["F8"],
+        permissions: ["CUSTOMER_RECEIVABLES_CREATE"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "CREDIT_OVERRIDE",
+        category: "CREDIT",
+        shortcuts: [],
+        permissions: ["CUSTOMER_CREDIT_OVERRIDE"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: false,
+        requirePermission: true,
+        requirePassword: false,
+        customized: false,
+      },
+      {
+        code: "PAYMENT_TERMINAL_VOID",
+        category: "PAYMENT_TERMINAL",
+        shortcuts: [],
+        permissions: ["PAYMENT_TERMINAL_VOID"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "PAYMENT_TERMINAL_REFUND",
+        category: "PAYMENT_TERMINAL",
+        shortcuts: [],
+        permissions: ["PAYMENT_TERMINAL_REFUND"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+      {
+        code: "PAYMENT_COMPENSATION_ACK",
+        category: "PAYMENT_TERMINAL",
+        shortcuts: [],
+        permissions: ["PAYMENT_TERMINAL_REFUND"],
+        defaultRequirePermission: true,
+        defaultRequirePassword: true,
+        requirePermission: true,
+        requirePassword: true,
+        customized: false,
+      },
+    ],
   });
 });
 
@@ -817,6 +1069,12 @@ describe("SaleScreen", () => {
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
 
+    fireEvent.keyDown(search, { key: "F6" });
+    const emptyHistory = screen.getByRole("dialog", { name: "Historial de ventas" });
+    expect(within(emptyHistory).getByText("Busca un producto para consultar sus ventas")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
+    fireEvent.click(within(emptyHistory).getAllByRole("button", { name: "Cerrar" })[0]);
+
     fireEvent.keyDown(search, { key: "F1" });
     expect(screen.getByRole("dialog", { name: "Consulta de precio" })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "Cerrar" })[0]);
@@ -832,7 +1090,8 @@ describe("SaleScreen", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Cerrar" })[0]);
 
     fireEvent.keyDown(search, { key: "F6" });
-    expect(screen.getByRole("dialog", { name: /Ventas de Cafe molido/ })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Historial de ventas" })).toBeInTheDocument();
+    expect(screen.queryByText("No hay una sesión válida para consultar el historial")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -982,7 +1241,7 @@ describe("SaleScreen", () => {
     ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", title: "Autorización de descuento", explanation: "El descuento del 10,00% supera tu límite del 5,00%.", managerUser: "Usuario responsable", managerPassword: "Contraseña del responsable", cancel: "Cancelar", authorize: "Autorizar" }],
     ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", title: "Discount authorization", explanation: "The 10.00% discount exceeds your 5.00% limit.", managerUser: "Manager username", managerPassword: "Manager password", cancel: "Cancel", authorize: "Authorize" }],
     ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", title: "\u6298\u6263\u6388\u6743", explanation: "10.00% \u7684\u6298\u6263\u8d85\u8fc7\u4e86\u60a8\u7684 5.00% \u9650\u5236\u3002", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", cancel: "\u53d6\u6d88", authorize: "\u6388\u6743" }],
-  ] as const)("localizes discount authorization in %s", async (locale, expected) => {
+  ] as const)("routes localized discount authorization to checkout in %s", async (locale, expected) => {
     const t = createTranslator(locale);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
       status: 200,
@@ -1000,28 +1259,124 @@ describe("SaleScreen", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: expected.save }));
 
-    const dialog = screen.getByRole("dialog", { name: expected.title });
-    expect(within(dialog).getByText(expected.explanation)).toBeInTheDocument();
-    expect(within(dialog).getByRole("textbox", { name: expected.managerUser })).toBeInTheDocument();
-    expect(within(dialog).getByLabelText(expected.managerPassword)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: expected.cancel })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: expected.authorize })).toBeInTheDocument();
+    await waitFor(() => expect(
+      checkoutProps.current?.saleMutationAuthorizations,
+    ).toEqual([{
+      code: "APPLY_SALE_DISCOUNT",
+      label: t("gestion.salesOperationSecurity.operation.APPLY_SALE_DISCOUNT"),
+      authorization: {
+        mode: "DELEGATED",
+        requireUsername: true,
+        requirePassword: true,
+      },
+    }]));
+    expect(screen.queryByRole("dialog", { name: expected.title }))
+      .not.toBeInTheDocument();
+  });
+
+  it("recovers a completed durable cash close after reload without opening another session", async () => {
+    saveCashCloseRecovery(localStorage, terminalContext.terminalCode, {
+      closeOperationId: "11111111-1111-4111-8111-111111111111",
+      reconciliationAttemptId: "22222222-2222-4222-8222-222222222222",
+      phase: "ATTEMPTED",
+      retainedFund: "40",
+      finalWithdrawal: "10",
+      comment: "Cierre",
+    });
+    recoverCashCloseOperation.mockResolvedValueOnce({
+      operationId: "11111111-1111-4111-8111-111111111111",
+      sessionId: "cash-session-1",
+      terminalId: "terminal-1",
+      status: "CERRADA",
+      finalWithdrawalAmount: 10,
+      finalWithdrawalComment: "Cierre",
+      latestReconciliationAttemptId: "22222222-2222-4222-8222-222222222222",
+      result: {
+        id: "cash-session-1",
+        terminalId: "terminal-1",
+        status: "CERRADA",
+        openedAt: "2026-07-25T08:00:00Z",
+        openingFund: 0,
+        retainedFund: 40,
+        closedAt: "2026-07-25T18:00:00Z",
+        reconciliationAttempt: 1,
+        closedByAttempt: true,
+      },
+    });
+    const onBack = vi.fn();
+
+    render(
+      <SaleScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={onBack}
+        onLocaleChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
+    expect(recoverCashCloseOperation).toHaveBeenCalledWith(
+      "terminal-1",
+      "11111111-1111-4111-8111-111111111111",
+      session.accessToken,
+    );
+    expect(prepareCashSessionForSales).not.toHaveBeenCalled();
+    expect(localStorage.getItem(cashCloseRecoveryKey(terminalContext.terminalCode)))
+      .toBeNull();
+  });
+
+  it("resumes an interrupted close when the durable operation was never created", async () => {
+    saveCashCloseRecovery(localStorage, terminalContext.terminalCode, {
+      closeOperationId: "11111111-1111-4111-8111-111111111111",
+      reconciliationAttemptId: "22222222-2222-4222-8222-222222222222",
+      phase: "ATTEMPTED",
+      retainedFund: "10",
+      finalWithdrawal: "100",
+      comment: "",
+    });
+    recoverCashCloseOperation.mockRejectedValueOnce(new ApiError(
+      "Recurso no encontrado",
+      404,
+      { code: "NOT_FOUND" },
+    ));
+
+    renderSaleScreen();
+
+    expect(await screen.findByRole("dialog", { name: "Arqueo y cierre de caja" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Caja no disponible" }))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar caja" }))
+      .toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancelar" }))
+      .toBeEnabled();
+    expect(screen.getByLabelText("Fondo que queda en caja"))
+      .toBeEnabled();
+    expect(screen.getByLabelText("Retirada final"))
+      .toBeEnabled();
+    expect(prepareCashSessionForSales).toHaveBeenCalledWith(
+      terminalContext.terminalId,
+      session.accessToken,
+    );
   });
 
   it.each([
     ["es", { productSearch: "Buscar producto", discountInput: "Nuevo descuento", save: "Guardar", managerUser: "Usuario responsable", managerPassword: "Contraseña del responsable", authorize: "Autorizar", error: "No se pudo autorizar el descuento" }],
     ["en", { productSearch: "Search product", discountInput: "New discount", save: "Save", managerUser: "Manager username", managerPassword: "Manager password", authorize: "Authorize", error: "The discount could not be authorized" }],
     ["zh", { productSearch: "\u641c\u7d22\u5546\u54c1", discountInput: "\u65b0\u6298\u6263", save: "\u4fdd\u5b58", managerUser: "\u8d1f\u8d23\u4eba\u7528\u6237\u540d", managerPassword: "\u8d1f\u8d23\u4eba\u5bc6\u7801", authorize: "\u6388\u6743", error: "\u65e0\u6cd5\u6388\u6743\u6298\u6263" }],
-  ] as const)("localizes the discount authorization fallback in %s", async (locale, expected) => {
+  ] as const)("does not call the retired discount-token endpoint in %s", async (locale, expected) => {
     const t = createTranslator(locale);
-    vi.stubGlobal("fetch", vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/pos/discount-authorizations")) return Promise.resolve(new Response("", { status: 500 }));
       return Promise.resolve(new Response(JSON.stringify([products[0]]), {
         status: 200,
         headers: { "Content-Type": "application/json" }
       }));
-    }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
     renderSaleScreen(vi.fn(), locale, {
       session: { ...session, permissions: ["APLICAR_DESCUENTO"], maxDiscountPercent: 5 },
       interfaceMode: "TOUCH",
@@ -1033,11 +1388,15 @@ describe("SaleScreen", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: expected.discountInput }), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: expected.save }));
 
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByRole("textbox", { name: expected.managerUser }), { target: { value: "manager" } });
-    fireEvent.change(within(dialog).getByLabelText(expected.managerPassword), { target: { value: "1234" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: expected.authorize }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(expected.error);
+    await waitFor(() => expect(
+      checkoutProps.current?.saleMutationAuthorizations?.[0],
+    ).toMatchObject({
+      code: "APPLY_SALE_DISCOUNT",
+      authorization: { mode: "DELEGATED" },
+    }));
+    expect(fetchMock.mock.calls.some(([url]) =>
+      new URL(String(url), "http://localhost").pathname
+        .endsWith("/pos/discount-authorizations"))).toBe(false);
   });
 
   it.each([
@@ -1099,6 +1458,43 @@ describe("SaleScreen", () => {
     expect(await screen.findByText("Cajón abierto. La operación ha quedado registrada.")).toBeInTheDocument();
   });
 
+  it("opens the configured cash withdrawal flow with F9", async () => {
+    prepareCashSessionForSales.mockResolvedValueOnce({
+      cashSessionRequired: false,
+      open: true,
+      session: {
+        id: "cash-session-1",
+        terminalId: "terminal-1",
+        status: "ABIERTA",
+        openedAt: "2026-07-25T08:00:00Z",
+        openingFund: 0,
+        closedByAttempt: false,
+      },
+      requireWithdrawalBreakdown: true,
+      withdrawalDenominations: [20, 10, 1],
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response("[]", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.keyDown(search, { key: "F9" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Movimiento de efectivo" });
+    expect(within(dialog).getByText("Desglose de efectivo")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Tu contraseña")).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Usuario autorizador")).not.toBeInTheDocument();
+  });
+
   it("requests delegated credentials for F3 when the operator lacks the permission", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
@@ -1144,7 +1540,7 @@ describe("SaleScreen", () => {
     fireEvent.change(within(dialog).getByLabelText("Usuario autorizador"), {
       target: { value: "encargado" }
     });
-    fireEvent.change(within(dialog).getByLabelText("Contraseña"), {
+    fireEvent.change(within(dialog).getByLabelText("Contraseña del autorizador"), {
       target: { value: "1234" }
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Autorizar y abrir" }));
@@ -1560,6 +1956,117 @@ describe("SaleScreen", () => {
     expect(onOpenCustomerReceivables).not.toHaveBeenCalled();
   });
 
+  it("keeps the approved clear scopes and per-sale comment, discounts and print method", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/sale-line-deletions")) {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+
+    fireEvent.keyDown(window, { key: "o", ctrlKey: true });
+    const commentDialog = await screen.findByRole("dialog", {
+      name: "Comentario interno de la venta",
+    });
+    fireEvent.change(within(commentDialog).getByRole("textbox", { name: "Comentario" }), {
+      target: { value: "Entregar en almacén interior" },
+    });
+    fireEvent.click(within(commentDialog).getByRole("button", { name: "Guardar" }));
+    expect(checkoutProps.current?.sale?.internalComment).toBe(
+      "Entregar en almacén interior",
+    );
+
+    fireEvent.change(search, { target: { value: "20" } });
+    fireEvent.keyDown(search, { key: "/" });
+    expect(checkoutProps.current?.sale?.lines[0].discount).toBe(20);
+    fireEvent.keyDown(window, { key: "D", ctrlKey: true, shiftKey: true });
+    expect(checkoutProps.current?.sale?.lines[0].discount).toBe(0);
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    const printDialog = await screen.findByRole("dialog", {
+      name: "Método de impresión para esta venta",
+    });
+    fireEvent.click(within(printDialog).getByRole("radio", { name: "Guardar como PDF" }));
+    fireEvent.click(within(printDialog).getByRole("button", { name: "Guardar" }));
+
+    fireEvent.keyDown(window, { key: "A", ctrlKey: true, shiftKey: true });
+    const clearLines = await screen.findByRole("dialog", {
+      name: "Eliminar todos los artículos",
+    });
+    fireEvent.click(within(clearLines).getByRole("button", { name: "Eliminar artículos" }));
+    expect(checkoutProps.current?.sale?.lines).toHaveLength(0);
+    expect(checkoutProps.current?.sale?.internalComment).toBe(
+      "Entregar en almacén interior",
+    );
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    expect(await screen.findByRole("radio", { name: "Guardar como PDF" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    fireEvent.keyDown(window, { key: "F4", ctrlKey: true });
+    const clearSale = await screen.findByRole("dialog", {
+      name: "Eliminar venta actual",
+    });
+    fireEvent.click(within(clearSale).getByRole("button", { name: "Eliminar venta" }));
+    expect(checkoutProps.current?.sale?.internalComment).toBeUndefined();
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    expect(await screen.findByRole("radio", { name: "Configuración predeterminada" }))
+      .toBeChecked();
+  });
+
+  it("selects the highlighted customer with Insert", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response("[]", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/customers/sale-options")) {
+        return new Response(JSON.stringify(customers.slice(0, 2)), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.keyDown(window, { key: "End" });
+    const dialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    await waitFor(() => expect(
+      within(dialog).getByRole("button", { name: /Cliente Pruebas/ }),
+    ).toHaveAttribute("aria-current", "true"));
+    fireEvent.keyDown(dialog, { key: "ArrowDown" });
+    fireEvent.keyDown(dialog, { key: "Insert" });
+
+    expect(checkoutProps.current?.sale?.customerId).toBe(customers[1].id);
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" }))
+      .not.toBeInTheDocument();
+  });
+
   it("loads the sale catalog from the fiscal sale endpoint", async () => {
     const apiPaths: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -1748,7 +2255,11 @@ describe("SaleScreen", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderSaleScreen();
-    fireEvent.click(await screen.findByRole("button", { name: /confirmar venta pendiente/i }));
+    const confirmPendingSale = await screen.findByRole("button", {
+      name: /confirmar venta pendiente/i,
+    });
+    await waitFor(() => expect(confirmPendingSale).toBeEnabled());
+    fireEvent.click(confirmPendingSale);
     expect(await screen.findByRole("alert")).toHaveTextContent("response lost");
     expect(localStorage.getItem(pendingSaleRecoveryKey(terminalContext.terminalCode))).not.toBeNull();
     const durableDialog = screen.getByRole("dialog", { name: /venta pendiente/i });
@@ -2177,7 +2688,9 @@ describe("SaleScreen", () => {
     expect(html).toContain("Buscar");
     expect(html).toContain("Factura / albarán");
     expect(html).toContain("Ventas aparcadas");
-    expect(html).toContain("Gestionar tickets");
+    expect(html).toContain("Anular último ticket");
+    expect(html).toContain("Anular ticket por código");
+    expect(html).toContain("Convertir ticket a factura");
     expect(html).toContain("Efectivo");
     expect(checkoutProps.current?.showIndividualActions).toBe(true);
   });
@@ -2205,9 +2718,9 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Gestionar tickets", "Buscar y realizar acciones"]],
-    ["en", ["Management", "Parked sales", "Save or recover", "Manage tickets", "Search and perform actions"]],
-    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "\u7968\u636e\u7ba1\u7406", "\u641c\u7d22\u5e76\u6267\u884c\u64cd\u4f5c"]],
+    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", "Anular ticket por código", "Convertir ticket a factura"]],
+    ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", "Cancel ticket by code", "Convert ticket to invoice"]],
+    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", "按编号取消小票", "小票转发票"]],
   ] as const)("localizes sale management actions in %s", (locale, labels) => {
     const html = renderToStaticMarkup(
       <SaleScreen
@@ -2871,7 +3384,30 @@ describe("SaleScreen", () => {
 
     expect(pending.customerId).toBe("member-customer");
     expect(pending.lines[0].discount).toBe("3.00");
+    expect(pending.lines[0].temporaryPriceOverride).toBe(false);
     expect(pending.lines[0]).not.toHaveProperty("memberDiscountPercent");
+  });
+
+  it("serializes explicit temporary name and price intent separately from automatic pricing", () => {
+    const catalogLine = addSaleLine([], products[0])[0];
+    const pending = pendingSaleDraftForCustomer(
+      [{
+        ...catalogLine,
+        temporaryName: "Nombre solo para esta venta",
+        openUnitPrice: 7.5,
+      }],
+      customers[0],
+      "warehouse-1",
+      new Date(2026, 6, 16),
+      "checkout-overrides",
+    );
+
+    expect(pending.lines[0]).toMatchObject({
+      name: "Nombre solo para esta venta",
+      price: "7.50",
+      temporaryNameOverride: true,
+      temporaryPriceOverride: true,
+    });
   });
 
   it("uses the selected customer's configured payment term", () => {

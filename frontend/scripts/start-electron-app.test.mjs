@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveViteStartup } from "./start-electron-app.mjs";
+import { resolveDesktopWindowMode, resolveViteStartup } from "./start-electron-app.mjs";
 
 describe("resolveViteStartup", () => {
   it("reuses an existing Vite server for Electron", () => {
@@ -14,5 +14,15 @@ describe("resolveViteStartup", () => {
       shouldStartVite: true,
       ownsViteProcess: true
     });
+  });
+});
+
+describe("resolveDesktopWindowMode", () => {
+  it("opens APP GESTION as a bordered maximized window", () => {
+    expect(resolveDesktopWindowMode("gestion")).toBe("MAXIMIZED");
+  });
+
+  it("keeps APP VENTA in fullscreen mode", () => {
+    expect(resolveDesktopWindowMode("venta")).toBe("FULLSCREEN");
   });
 });

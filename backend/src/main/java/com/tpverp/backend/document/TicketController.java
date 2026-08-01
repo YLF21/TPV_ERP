@@ -1,11 +1,18 @@
 package com.tpverp.backend.document;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -17,9 +24,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import com.tpverp.backend.terminal.PaymentTerminalReauthenticationService;
-import com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection;
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.PAYMENT_TERMINAL_REFUND;
 
 @RestController
 @RequestMapping("/api/v1/tickets")
@@ -29,19 +33,22 @@ public class TicketController {
     private final DocumentFiscalQrService fiscalQr;
     private final DocumentViewAssembler views;
     private final TicketReturnService returns;
-    private final PaymentTerminalReauthenticationService reauthentication;
+    private final TicketCancellationService cancellations;
+    private final GenericSalesApiService genericSales;
 
     public TicketController(
             DocumentService service,
             DocumentFiscalQrService fiscalQr,
             DocumentViewAssembler views,
             TicketReturnService returns,
-            PaymentTerminalReauthenticationService reauthentication) {
+            TicketCancellationService cancellations,
+            GenericSalesApiService genericSales) {
         this.service = service;
         this.fiscalQr = fiscalQr;
         this.views = views;
         this.returns = returns;
-        this.reauthentication = reauthentication;
+        this.cancellations = cancellations;
+        this.genericSales = genericSales;
     }
 
     @GetMapping
@@ -56,10 +63,7 @@ public class TicketController {
     public DocumentView create(
             @Valid @RequestBody CreateTicketRequest request,
             Authentication authentication) {
-        return view(service.createTicket(
-                request.document().toCommand(),
-                request.paymentCommands(),
-                authentication));
+        return view(genericSales.createTicket(request, authentication));
     }
 
     @GetMapping("/{id}/print")
@@ -69,24 +73,23 @@ public class TicketController {
     }
 
     @GetMapping("/{id}/return-options")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public List<DocumentService.CardRefundLineOption> returnOptions(@PathVariable UUID id) {
         return returns.options(id);
     }
 
     @GetMapping("/return-preview")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public ReturnPreviewView returnPreview(@RequestParam String ticketNumber) {
         return ReturnPreviewView.from(returns.preview(ticketNumber));
     }
 
     @PostMapping("/{id}/returns")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('" + PAYMENT_TERMINAL_REFUND + "')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CREATE','VENTA')")
     public ReturnView createReturn(
             @PathVariable UUID id,
             @Valid @RequestBody ReturnRequest request,
             Authentication authentication) {
-        reauthentication.require(authentication, request.password());
         var cards = new java.util.ArrayList<TicketReturnService.CardPayout>();
         if (request.cards() != null) {
             for (var card : request.cards()) {
@@ -109,18 +112,56 @@ public class TicketController {
                 request.voucherAmount(),
                 cards,
                 lines,
+                request.authorizerUsername(),
+                request.authorizerPassword(),
                 authentication);
         return ReturnView.from(result);
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CANCEL')")
-    public DocumentView cancel(
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','GESTION_CUENTAS','TICKETS_CANCEL','VENTA')")
+    public CancellationView cancel(
             @PathVariable UUID id,
             @Valid @RequestBody CancelRequest request,
             Authentication authentication) {
-        return view(service.cancelTicket(
-                id, authentication, request.reason()));
+        var result = cancellations.cancel(
+                new TicketCancellationService.CancellationCommand(
+                        request.requestId(),
+                        id,
+                        request.reason(),
+                        request.authorizerUsername(),
+                        request.authorizerPassword(),
+                        request.manualCompensations()),
+                authentication);
+        return CancellationView.from(result, this::view);
+    }
+
+    @GetMapping("/cancellation-preview/last")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','GESTION_CUENTAS','TICKETS_CANCEL','VENTA')")
+    public CancellationPreviewView lastCancellationPreview(
+            Authentication authentication) {
+        return CancellationPreviewView.from(
+                cancellations.latestPreview(authentication), this::view);
+    }
+
+    @GetMapping("/cancellation-preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','GESTION_CUENTAS','TICKETS_CANCEL','VENTA')")
+    public CancellationPreviewView cancellationPreview(
+            @RequestParam String number) {
+        return CancellationPreviewView.from(
+                cancellations.previewByNumber(number), this::view);
+    }
+
+    @GetMapping("/last-current-terminal")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    public DocumentView lastCurrentTerminal(Authentication authentication) {
+        return view(cancellations.latestConvertibleTicket(authentication));
+    }
+
+    @GetMapping("/by-number")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    public DocumentView byNumber(@RequestParam String number) {
+        return view(cancellations.ticketByNumber(number));
     }
 
     @PostMapping("/{id}/invoice")
@@ -130,7 +171,11 @@ public class TicketController {
             @Valid @RequestBody ConvertToInvoiceRequest request,
             Authentication authentication) {
         return view(service.convertTicketToInvoice(
-                id, request.customerId(), authentication));
+                id,
+                request.customerId(),
+                request.authorizerUsername(),
+                request.authorizerPassword(),
+                authentication));
     }
 
     @PutMapping("/{id}/admin")
@@ -151,26 +196,76 @@ public class TicketController {
 
     public record CreateTicketRequest(
             @NotNull @Valid DocumentRequest document,
-            @Valid PaymentRequest payments) {
+            @Valid PaymentRequest payments,
+            @Size(max = 32)
+            @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
+                    operationAuthorizations) {
+
+        public CreateTicketRequest {
+            operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
+                    operationAuthorizations);
+        }
+
+        public CreateTicketRequest(
+                DocumentRequest document,
+                PaymentRequest payments) {
+            this(document, payments, Map.of());
+        }
 
         List<PaymentCommand> paymentCommands() {
             return payments == null ? List.of() : payments.toCommands();
         }
     }
 
-    public record CancelRequest(@NotBlank String reason) {
+    public record CancelRequest(
+            @NotNull UUID requestId,
+            @NotBlank @Size(max = 500) String reason,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword,
+            Map<String, String> manualCompensations) {
+
+        @Override
+        public String toString() {
+            return "CancelRequest[requestId=" + requestId
+                    + ", reason=" + reason
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
     }
 
-    public record ConvertToInvoiceRequest(@NotNull UUID customerId) {
+    public record ConvertToInvoiceRequest(
+            @NotNull UUID customerId,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @Size(max = 128) String authorizerPassword) {
+
+        @Override
+        public String toString() {
+            return "ConvertToInvoiceRequest[customerId=" + customerId
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
     }
 
     public record ReturnRequest(
             @NotNull UUID requestId,
-            String password,
+            @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+            @JsonAlias("password") @Size(max = 128) String authorizerPassword,
             @NotNull @DecimalMin("0.00") BigDecimal cashAmount,
             @DecimalMin("0.00") BigDecimal voucherAmount,
             @Valid List<CardReturnRequest> cards,
             @Valid List<ReturnLineRequest> lines) {
+
+        @Override
+        public String toString() {
+            return "ReturnRequest[requestId=" + requestId
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>"
+                    + ", cashAmount=" + cashAmount
+                    + ", voucherAmount=" + voucherAmount + "]";
+        }
     }
 
     public record CardReturnRequest(
@@ -239,6 +334,48 @@ public class TicketController {
                     result.payouts().stream().map(ReturnPayoutView::from).toList(),
                     result.voucher().map(Voucher::code).orElse(null),
                     TicketPrintView.from(result.document(), result.payouts()));
+        }
+    }
+
+    public record CancellationPreviewView(
+            DocumentView ticket,
+            List<DocumentService.ManualCancellationReference> manualReferences,
+            List<DocumentService.IntegratedCardCancellation> integratedCardPayments,
+            BigDecimal cashAmount,
+            boolean openCashDrawer,
+            List<String> consumedVoucherCodes,
+            List<String> generatedVoucherCodes) {
+
+        static CancellationPreviewView from(
+                DocumentService.TicketCancellationValidation validation,
+                java.util.function.Function<CommercialDocument, DocumentView> view) {
+            return new CancellationPreviewView(
+                    view.apply(validation.ticket()),
+                    validation.manualReferences(),
+                    validation.integratedCardPayments(),
+                    validation.cashAmount(),
+                    validation.openCashDrawer(),
+                    validation.vouchers().consumedVoucherCodes(),
+                    validation.vouchers().generatedVoucherCodes());
+        }
+    }
+
+    public record CancellationView(
+            DocumentView ticket,
+            List<TicketCancellationService.RestoredVoucher> restoredVouchers,
+            List<String> invalidatedVoucherCodes,
+            boolean openCashDrawer,
+            List<TicketCancellationService.CardAdjustment> cardAdjustments) {
+
+        static CancellationView from(
+                TicketCancellationService.CancellationResult result,
+                java.util.function.Function<CommercialDocument, DocumentView> view) {
+            return new CancellationView(
+                    view.apply(result.ticket()),
+                    result.restoredVouchers(),
+                    result.invalidatedVoucherCodes(),
+                    result.openCashDrawer(),
+                    result.cardAdjustments());
         }
     }
 }

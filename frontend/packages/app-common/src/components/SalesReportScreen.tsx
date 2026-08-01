@@ -272,6 +272,7 @@ type DocumentView = {
   estado?: string;
   numero?: string;
   numeroExterno?: string | null;
+  comentarioInterno?: string | null;
   fecha?: string;
   fechaVencimiento?: string | null;
   base?: number | string;
@@ -1218,7 +1219,7 @@ export function buildDocumentReports(
     customer: "",
     customerName: "",
     payment: paymentText(document),
-    comment: "",
+    comment: document.comentarioInterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
@@ -1239,7 +1240,7 @@ export function buildDocumentReports(
     payment: paymentText(document),
     status: documentStatus(document),
     pending: formatAmount(pendingAmount(document)),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
@@ -1257,7 +1258,7 @@ export function buildDocumentReports(
     warehouse: document.almacenNombre || document.almacenId || "",
     pending: formatAmount(pendingAmount(document)),
     dueDate: formatBackendDate(document.fechaVencimiento ?? ""),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
@@ -1273,7 +1274,7 @@ export function buildDocumentReports(
     user: documentUser(document, user),
     customer: document.clienteCodigo || document.clienteId || "",
     customerName: document.clienteNombre || "",
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
@@ -1292,7 +1293,7 @@ export function buildDocumentReports(
     warehouse: document.almacenNombre || document.almacenId || "",
     productCount: formatWholeNumber(Number(document.lineas ?? 0)),
     pending: formatAmount(pendingAmount(document)),
-    comment: document.numeroExterno || "",
+    comment: document.comentarioInterno || document.numeroExterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
     discount: formatAmount(Number(document.descuentoGlobal ?? 0)),

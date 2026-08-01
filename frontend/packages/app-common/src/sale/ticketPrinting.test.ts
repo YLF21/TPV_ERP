@@ -4,6 +4,7 @@ import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext } from "../types";
 import {
   printCustomerReceivablePaymentReceipt,
+  outputConfirmedTicket,
   printPendingCommercialDocument,
   printConfirmedTicketAutomatically,
   retryConfirmedTicketPrint
@@ -19,7 +20,9 @@ const snapshot: ConfirmedTicketPrintSnapshot = {
   issuedAt: "2026-07-15T10:15:30Z",
   lines: [{ name: "Cafe", quantity: "2", price: "3.5", total: "7" }],
   payments: [{ method: "EFECTIVO", amount: "7" }],
-  total: "7"
+  total: "7",
+  baseTotal: "5.79",
+  taxTotal: "1.21",
 };
 
 const terminal: TerminalContext = {
@@ -54,7 +57,9 @@ describe("confirmed ticket printing", () => {
       issuedAt: "2026-07-15T10:15:30Z",
       lines: [{ name: "Cafe", quantity: 2, price: 3.5, total: 7 }],
       payments: [{ method: "EFECTIVO", amount: 7 }],
-      total: 7
+      total: 7,
+      subtotal: 5.79,
+      tax: 1.21,
     }, expect.objectContaining({ documentPrintRoutes: expect.any(Array) }));
   });
 
@@ -106,6 +111,71 @@ describe("confirmed ticket printing", () => {
     expect(printTicket).toHaveBeenCalledOnce();
   });
 
+  it("keeps the fiscal ticket but skips physical output when this sale selects no print", async () => {
+    const hardware = {
+      getHardwareConfig: vi.fn(),
+      printTicket: vi.fn(),
+      printA4Document: vi.fn(),
+      exportTicketPdf: vi.fn(),
+    } as unknown as HardwareBridge;
+
+    await expect(outputConfirmedTicket(snapshot, terminal, "NONE", "es", hardware))
+      .resolves.toEqual({ status: "SKIPPED" });
+    expect(hardware.getHardwareConfig).not.toHaveBeenCalled();
+    expect(hardware.printTicket).not.toHaveBeenCalled();
+  });
+
+  it("exports the authoritative ticket snapshot as a PDF", async () => {
+    const exportTicketPdf = vi.fn().mockResolvedValue({
+      ok: true,
+      canceled: false,
+      filePath: "T-1.pdf",
+    });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      exportTicketPdf,
+    } as unknown as HardwareBridge;
+
+    await expect(outputConfirmedTicket(snapshot, terminal, "PDF", "es", hardware))
+      .resolves.toEqual({ status: "PRINTED" });
+    expect(exportTicketPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ documentNumber: "T-1", total: 7 }),
+      "T-1.pdf",
+    );
+  });
+
+  it("routes a ticket to the configured A4 printer for this sale only", async () => {
+    const printA4Document = vi.fn().mockResolvedValue({ ok: true });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue({
+        ...defaultHardwareConfig,
+        a4PrinterName: "A4 CAJA",
+      }),
+      printA4Document,
+    } as unknown as HardwareBridge;
+
+    await expect(outputConfirmedTicket(snapshot, terminal, "A4_PRINTER", "es", hardware))
+      .resolves.toEqual({ status: "PRINTED" });
+    expect(printA4Document).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentType: "REPORT",
+        title: "Ticket T-1",
+        subtotal: 5.79,
+        tax: 1.21,
+        total: 7,
+      }),
+      expect.objectContaining({
+        documentPrintRoutes: expect.arrayContaining([
+          expect.objectContaining({
+            documentType: "REPORT",
+            printerTarget: "A4_PRINTER",
+            printerName: "A4 CAJA",
+          }),
+        ]),
+      }),
+    );
+  });
+
   it("prints a pending commercial sale as its authoritative A4 document", async () => {
     const printA4Document = vi.fn().mockResolvedValue({ ok: true });
     const hardware = {
@@ -136,6 +206,56 @@ describe("confirmed ticket printing", () => {
       customer: expect.objectContaining({ name: "Cliente Fiscal SL", taxId: "B87654321" }),
       labels: expect.objectContaining({ description: "Descripción", quantity: "Cantidad", tax: "Impuesto" })
     }), expect.anything());
+  });
+
+  it("exports a pending commercial document as PDF when selected for this sale", async () => {
+    const exportA4DocumentPdf = vi.fn().mockResolvedValue({
+      ok: true,
+      canceled: false,
+      filePath: "FV-1.pdf",
+    });
+    const hardware = {
+      getHardwareConfig: vi.fn().mockResolvedValue(defaultHardwareConfig),
+      exportA4DocumentPdf,
+    } as unknown as HardwareBridge;
+
+    await expect(printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-1",
+      issuedAt: "2026-07-16T10:00:00Z",
+      lines: snapshot.lines,
+      total: "7.00",
+    }, terminal, hardware, "es", "PDF")).resolves.toEqual({ status: "PRINTED" });
+
+    expect(exportA4DocumentPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentType: "INVOICE",
+        title: "Factura FV-1",
+        total: 7,
+      }),
+      "FV-1.pdf",
+    );
+  });
+
+  it("keeps a pending document but skips output when no print is selected", async () => {
+    const hardware = {
+      getHardwareConfig: vi.fn(),
+      printTicket: vi.fn(),
+      printA4Document: vi.fn(),
+      exportA4DocumentPdf: vi.fn(),
+    } as unknown as HardwareBridge;
+
+    await expect(printPendingCommercialDocument({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "ALBARAN_VENTA",
+      documentNumber: "AV-1",
+      lines: snapshot.lines,
+      total: "7.00",
+    }, terminal, hardware, "es", "NONE")).resolves.toEqual({ status: "SKIPPED" });
+
+    expect(hardware.getHardwareConfig).not.toHaveBeenCalled();
+    expect(hardware.printA4Document).not.toHaveBeenCalled();
   });
 
   it.each([

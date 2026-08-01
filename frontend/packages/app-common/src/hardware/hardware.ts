@@ -12,6 +12,25 @@ export type PrintableDocumentType = "TICKET" | "INVOICE" | "DELIVERY_NOTE" | "RE
 export type PrinterTarget = "TICKET_PRINTER" | "A4_PRINTER";
 export type PaperSize = "TICKET_80" | "A4";
 export type PrintOrientation = "PORTRAIT" | "LANDSCAPE";
+export type ProductLabelDestination = "LABEL_PRINTER" | "TICKET_PRINTER" | "A4";
+
+export type ProductLabelProfile = {
+  id: string;
+  name: string;
+  destination: ProductLabelDestination;
+  printerName: string;
+  widthMm: number;
+  heightMm: number;
+  orientation: PrintOrientation;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  horizontalGapMm: number;
+  verticalGapMm: number;
+  copies: number;
+  showStoreName: boolean;
+};
 
 export type DocumentPrintRoute = {
   documentType: PrintableDocumentType;
@@ -49,6 +68,8 @@ export type HardwareConfig = {
   customerDisplayScreenId: string;
   a4PrinterName: string;
   documentPrintRoutes: DocumentPrintRoute[];
+  defaultProductLabelProfileId: string;
+  productLabelProfiles: ProductLabelProfile[];
 };
 
 export type HardwarePrinter = {
@@ -70,6 +91,11 @@ export type HardwareErrorCode =
 export type HardwareResult<T = void> =
   | ({ ok: true } & T)
   | { ok: false; code: HardwareErrorCode; message: string };
+
+export type ExportedFileResult = {
+  canceled?: boolean;
+  filePath?: string;
+};
 
 export type TicketLinePrint = {
   name: string;
@@ -126,6 +152,19 @@ export type A4DocumentPrintRequest = {
   };
 };
 
+export type ProductLabelPrintRequest = {
+  storeName: string;
+  product: {
+    name: string;
+    code: string;
+    barcode: string;
+    price: number;
+  };
+  profile: ProductLabelProfile;
+  copies: number;
+  startPosition?: number;
+};
+
 export type ScannerTestResult = {
   code: string;
   readAt: string;
@@ -150,7 +189,20 @@ export type HardwareBridge = {
   getHardwareConfig: () => Promise<HardwareConfig>;
   saveHardwareConfig: (config: HardwareConfig) => Promise<HardwareResult>;
   printTicket: (request: TicketPrintRequest, config?: HardwareConfig) => Promise<HardwareResult>;
+  exportTicketPdf: (
+    request: TicketPrintRequest,
+    defaultFileName: string,
+  ) => Promise<HardwareResult<ExportedFileResult>>;
+  exportA4DocumentPdf: (
+    request: A4DocumentPrintRequest,
+    defaultFileName: string,
+  ) => Promise<HardwareResult<ExportedFileResult>>;
   printA4Document: (request: A4DocumentPrintRequest, config?: HardwareConfig) => Promise<HardwareResult>;
+  printProductLabel: (request: ProductLabelPrintRequest, config?: HardwareConfig) => Promise<HardwareResult>;
+  exportProductLabelPdf: (
+    request: ProductLabelPrintRequest,
+    defaultFileName: string,
+  ) => Promise<HardwareResult<ExportedFileResult>>;
   openCashDrawer: (config?: HardwareConfig) => Promise<HardwareResult>;
   testScannerInput: (code: string) => Promise<HardwareResult<ScannerTestResult>>;
   openCustomerDisplay: (config: HardwareConfig, state: CustomerDisplayState) => Promise<HardwareResult>;
@@ -223,8 +275,57 @@ export const defaultHardwareConfig: HardwareConfig = {
       printAutomatically: false,
       showPrintDialog: true
     }
-  ]
+  ],
+  defaultProductLabelProfileId: "ticket-58x40",
+  productLabelProfiles: [{
+    id: "ticket-58x40",
+    name: "Ticket 58 x 40 mm",
+    destination: "TICKET_PRINTER",
+    printerName: "",
+    widthMm: 58,
+    heightMm: 40,
+    orientation: "PORTRAIT",
+    marginTopMm: 5,
+    marginRightMm: 5,
+    marginBottomMm: 5,
+    marginLeftMm: 5,
+    horizontalGapMm: 2,
+    verticalGapMm: 2,
+    copies: 1,
+    showStoreName: true,
+  }]
 };
+
+export function normalizeHardwareConfigForUi(
+  config?: Partial<HardwareConfig> | null,
+): HardwareConfig {
+  const configuredProfiles = Array.isArray(config?.productLabelProfiles)
+    ? config.productLabelProfiles.filter((profile): profile is ProductLabelProfile =>
+        Boolean(profile && typeof profile.id === "string" && profile.id.trim()))
+    : [];
+  const productLabelProfiles = (configuredProfiles.length > 0
+    ? configuredProfiles
+    : defaultHardwareConfig.productLabelProfiles
+  ).map((profile) => ({
+    ...defaultHardwareConfig.productLabelProfiles[0],
+    ...profile,
+    id: String(profile.id),
+    name: String(profile.name || profile.id),
+  }));
+  const requestedDefault = String(config?.defaultProductLabelProfileId ?? "");
+  const defaultProductLabelProfileId = productLabelProfiles.some(
+    (profile) => profile.id === requestedDefault,
+  )
+    ? requestedDefault
+    : productLabelProfiles[0].id;
+
+  return {
+    ...defaultHardwareConfig,
+    ...config,
+    defaultProductLabelProfileId,
+    productLabelProfiles,
+  };
+}
 
 export function createHardwareUnavailableResult<T = void>(message = "Hardware local no disponible"): HardwareResult<T> {
   return { ok: false, code: "HARDWARE_UNAVAILABLE", message };
@@ -294,7 +395,11 @@ const browserFallbackBridge: HardwareBridge = {
   getHardwareConfig: async () => defaultHardwareConfig,
   saveHardwareConfig: async () => createHardwareUnavailableResult(),
   printTicket: async () => createHardwareUnavailableResult(),
+  exportTicketPdf: async () => createHardwareUnavailableResult(),
+  exportA4DocumentPdf: async () => createHardwareUnavailableResult(),
   printA4Document: async () => createHardwareUnavailableResult(),
+  printProductLabel: async () => createHardwareUnavailableResult(),
+  exportProductLabelPdf: async () => createHardwareUnavailableResult(),
   openCashDrawer: async () => createHardwareUnavailableResult(),
   testScannerInput: async (code) => ({
     ok: true,

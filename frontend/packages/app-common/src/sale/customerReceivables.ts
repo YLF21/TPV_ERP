@@ -1,3 +1,6 @@
+import type { SalePrintMode } from "./ticketPrinting";
+import type { SaleOperationCredentials } from "./operationSecurity";
+
 export type PendingDocumentType = "ALBARAN_VENTA" | "FACTURA_VENTA";
 export type PendingPaymentStatus = "APPROVED" | "PENDING" | "SENT" | "TIMEOUT" | "DECLINED" | "ERROR" | "CANCELLED";
 
@@ -13,6 +16,8 @@ export type PendingSaleLine = {
   taxRegime: string;
   taxPercentage: string;
   serialNumbers?: string[];
+  temporaryNameOverride?: boolean;
+  temporaryPriceOverride?: boolean;
 };
 
 export type PendingSaleDraft = {
@@ -26,11 +31,13 @@ export type PendingSaleDraft = {
   lines: PendingSaleLine[];
   creditOverride?: { reason: string };
   completionMode?: "DRAFT" | "CONFIRM_PENDING" | "CONFIRM_AND_PAY";
+  internalComment?: string;
+  printMode?: SalePrintMode;
 };
 
 export type PendingPaymentAllocation = {
   id: string;
-  kind: "CASH" | "TRANSFER" | "INTEGRATED_CARD";
+  kind: "CASH" | "TRANSFER" | "MANUAL_CARD" | "INTEGRATED_CARD";
   methodId: string;
   amountCents: number;
   status: PendingPaymentStatus;
@@ -38,8 +45,42 @@ export type PendingPaymentAllocation = {
   changeCents?: number;
   reference?: string;
   operationId?: string;
-  mode?: "INTEGRATED";
+  mode?: "MANUAL" | "INTEGRATED";
 };
+
+export type PendingSaleOperationCredentials = {
+  createPending?: SaleOperationCredentials;
+  creditOverride?: SaleOperationCredentials;
+  manualCardPayment?: SaleOperationCredentials;
+  transferPayment?: SaleOperationCredentials;
+  saleMutations?: Record<string, SaleOperationCredentials>;
+};
+
+export type PendingCardPaymentMode = "MANUAL" | "INTEGRATED";
+
+export type PendingTerminalPaymentConfiguration = {
+  rules?: {
+    cardManualEnabled?: boolean;
+    integratedCardEnabled?: boolean;
+  };
+  configuration?: {
+    provider?: string | null;
+    enabled?: boolean;
+  };
+};
+
+export function resolvePendingCardPaymentMode(
+  configuration: PendingTerminalPaymentConfiguration | null | undefined,
+): PendingCardPaymentMode | null {
+  const provider = configuration?.configuration?.provider?.trim().toUpperCase();
+  if (configuration?.rules?.integratedCardEnabled === true
+    && configuration.configuration?.enabled === true
+    && provider
+    && provider !== "NONE") {
+    return "INTEGRATED";
+  }
+  return configuration?.rules?.cardManualEnabled === true ? "MANUAL" : null;
+}
 
 export function pendingSummary(totalCents: number, payments: PendingPaymentAllocation[]) {
   const paidCents = payments
@@ -73,10 +114,37 @@ export function centsAsMoney(cents: number) {
   return (cents / 100).toFixed(2);
 }
 
-export function pendingCreateBody(draft: PendingSaleDraft, payments: PendingPaymentAllocation[], quotedTotalCents: number) {
+export function pendingCreateBody(
+  draft: PendingSaleDraft,
+  payments: PendingPaymentAllocation[],
+  quotedTotalCents: number,
+  credentials: PendingSaleOperationCredentials = {},
+) {
   const approved = payments.filter((payment) => payment.status === "APPROVED");
+  const { printMode: _printMode, ...documentDraft } = draft;
+  const operationAuthorizations = {
+    ...(credentials.saleMutations ?? {}),
+    ...(credentials.manualCardPayment
+      ? { CONFIRM_MANUAL_CARD_PAYMENT: credentials.manualCardPayment }
+      : {}),
+    ...(credentials.transferPayment
+      ? { CONFIRM_TRANSFER_PAYMENT: credentials.transferPayment }
+      : {}),
+  };
   return {
-    ...draft,
+    ...documentDraft,
+    ...(draft.creditOverride
+      ? {
+          creditOverride: {
+            ...draft.creditOverride,
+            ...credentials.creditOverride,
+          },
+        }
+      : {}),
+    ...credentials.createPending,
+    ...(Object.keys(operationAuthorizations).length > 0
+      ? { operationAuthorizations }
+      : {}),
     lines: draft.lines.map((line) => ({
       productoId: line.productId,
       cantidad: line.quantity,
@@ -93,9 +161,15 @@ export function pendingCreateBody(draft: PendingSaleDraft, payments: PendingPaym
       promotionVersionId: null,
       promotionalCouponId: null,
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
+      temporaryNameOverride: line.temporaryNameOverride === true,
+      temporaryPriceOverride: line.temporaryPriceOverride === true,
     })),
     payments: approved.map((payment, index) => ({
-      kind: payment.kind === "INTEGRATED_CARD" ? "INTEGRATED_CARD" : "STANDARD",
+      kind: payment.kind === "INTEGRATED_CARD"
+        ? "INTEGRATED_CARD"
+        : payment.kind === "MANUAL_CARD"
+          ? "MANUAL_CARD"
+          : "STANDARD",
       methodId: payment.methodId,
       amount: centsAsMoney(payment.amountCents),
       principal: index === 0,

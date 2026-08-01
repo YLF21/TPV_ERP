@@ -3,19 +3,27 @@ package com.tpverp.backend.cash;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
 import com.tpverp.backend.security.domain.Permission;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
 import com.tpverp.backend.security.domain.UserAccountRepository;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -30,7 +38,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -45,7 +55,7 @@ class CashSessionServiceTest {
     void prepareForSalesBlocksWhenManualCashSessionIsRequired() {
         var fixture = serviceFixture();
         var config = new CashStoreConfig(fixture.store.getId());
-        config.update(BigDecimal.ZERO, false, false, false, true);
+        config.update(BigDecimal.ZERO, false, true, false, true);
         when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
 
         var readiness = fixture.service.prepareForSales(
@@ -55,6 +65,9 @@ class CashSessionServiceTest {
         assertThat(readiness.cashSessionRequired()).isTrue();
         assertThat(readiness.open()).isFalse();
         assertThat(readiness.session()).isNull();
+        assertThat(readiness.requireWithdrawalBreakdown()).isTrue();
+        assertThat(readiness.withdrawalDenominations())
+                .containsExactlyElementsOf(CashDenomination.valuesInEuroOrder());
         verify(fixture.sessions, never()).save(any(CashSession.class));
     }
 
@@ -421,56 +434,191 @@ class CashSessionServiceTest {
     @Test
     void sessionWithdrawalCannotExceedExpectedCash() {
         var fixture = serviceFixture();
+        fixture.user.getRol().conceder(new Permission(
+                CorePermissionBootstrap.GESTION_CUENTAS, "accounting", "ACCOUNTING"));
         var session = CashSession.open(
                 fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
                 .thenReturn(Optional.of(session));
         when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+        when(fixture.passwordEncoder.matches("secret", fixture.user.getPasswordHash())).thenReturn(true);
 
         assertThatThrownBy(() -> fixture.service.withdrawal(
                 fixture.terminal.getId(),
-                new CashWithdrawalRequest(new BigDecimal("40.01"), "retirada", List.of()),
-                salesAuthentication(fixture.user)))
+                new CashWithdrawalRequest(
+                        new BigDecimal("40.01"), "retirada", List.of(), false, null, "secret"),
+                salesAndAccountingAuthentication(fixture.user)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("efectivo disponible");
+                .hasMessageContaining("message.cash.withdrawal_exceeds_available_cash");
     }
 
     @Test
     void normalWithdrawalIgnoresBetweenSessionDirectionFlagAndStillWithdraws() {
         var fixture = serviceFixture();
+        fixture.user.getRol().conceder(new Permission(
+                CorePermissionBootstrap.GESTION_CUENTAS, "accounting", "ACCOUNTING"));
         var session = CashSession.open(
                 fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
                 .thenReturn(Optional.of(session));
         when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+        when(fixture.passwordEncoder.matches("secret", fixture.user.getPasswordHash())).thenReturn(true);
 
         var movement = fixture.service.withdrawal(
                 fixture.terminal.getId(),
-                new CashWithdrawalRequest(new BigDecimal("10.00"), "retirada", List.of(), true),
-                salesAuthentication(fixture.user));
+                new CashWithdrawalRequest(
+                        new BigDecimal("10.00"), "retirada", List.of(), true, null, "secret"),
+                salesAndAccountingAuthentication(fixture.user));
 
         assertThat(movement.type()).isEqualTo(CashMovementType.RETIRADA);
         assertThat(movement.amount()).isEqualByComparingTo("10.00");
+        assertThat(movement.userId()).isEqualTo(fixture.user.getId());
+        assertThat(movement.authorizerUserId()).isEqualTo(fixture.user.getId());
     }
 
     @Test
-    void entryDuringSessionRequiresAdminOrAccountingAuthorizer() {
+    void withdrawalRejectsDenominationsOutsideTheConfiguredEuroSet() {
         var fixture = serviceFixture();
-        var sellerAuthorizer = user(fixture.store, "SELLER", new Role(fixture.store, "SELLER"));
+        fixture.user.getRol().conceder(new Permission(
+                CorePermissionBootstrap.GESTION_CUENTAS, "accounting", "ACCOUNTING"));
+        var config = new CashStoreConfig(fixture.store.getId());
+        config.update(BigDecimal.ZERO, false, true, false, true);
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("40.00"));
+        when(fixture.configs.findById(fixture.store.getId())).thenReturn(Optional.of(config));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(
+                        new BigDecimal("3.00"),
+                        "Gasto de caja",
+                        List.of(new CashDenominationCommand(new BigDecimal("3.00"), 1)),
+                        true,
+                        null,
+                        "secret"),
+                salesAndAccountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("denominacion");
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+    }
+
+    @Test
+    void sellerWithdrawalStoresDelegatedSalesManagerAuthorization() {
+        var fixture = serviceFixture();
+        var managerRole = new Role(fixture.store, "SALES_MANAGER");
+        managerRole.conceder(new Permission(
+                CorePermissionBootstrap.GESTION_VENTAS, "sales management", "DOCUMENTS"));
+        var manager = user(fixture.store, "MANAGER", managerRole);
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+        var authentication = salesAuthentication(fixture.user);
+        when(fixture.operationSecurity.authorize(
+                SaleOperationCode.CASH_MOVEMENT,
+                "manager",
+                "manager-secret",
+                authentication))
+                .thenReturn(new Authorization(fixture.user, manager, true));
+
+        fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(
+                        new BigDecimal("10.00"),
+                        "Ingreso en banco",
+                        List.of(),
+                        true,
+                        "manager",
+                        "manager-secret"),
+                authentication);
+
+        var movement = ArgumentCaptor.forClass(CashMovement.class);
+        verify(fixture.movements).save(movement.capture());
+        assertThat(movement.getValue().getUserId()).isEqualTo(fixture.user.getId());
+        assertThat(movement.getValue().getAuthorizerUserId()).isEqualTo(manager.getId());
+        assertThat(movement.getValue().getComment()).isEqualTo("Ingreso en banco");
+        verify(fixture.operationSecurity).authorize(
+                SaleOperationCode.CASH_MOVEMENT,
+                "manager",
+                "manager-secret",
+                authentication);
+    }
+
+    @Test
+    void privilegedWithdrawalRejectsWrongCurrentPasswordWithoutDelegating() {
+        var fixture = serviceFixture();
+        fixture.user.getRol().conceder(new Permission(
+                CorePermissionBootstrap.GESTION_CUENTAS, "accounting", "ACCOUNTING"));
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("40.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        var authentication = salesAndAccountingAuthentication(fixture.user);
+        when(fixture.operationSecurity.authorize(
+                SaleOperationCode.CASH_MOVEMENT,
+                null,
+                "wrong",
+                authentication))
+                .thenThrow(new IllegalArgumentException("Contrasena incorrecta"));
+
+        assertThatThrownBy(() -> fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(
+                        new BigDecimal("10.00"), "Gasto de caja", List.of(), true, null, "wrong"),
+                authentication))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Contrasena");
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+    }
+
+    @Test
+    void withdrawalRequiresAnAuditableReason() {
+        var fixture = serviceFixture();
+
+        assertThatThrownBy(() -> fixture.service.withdrawal(
+                fixture.terminal.getId(),
+                new CashWithdrawalRequest(
+                        new BigDecimal("10.00"), " ", List.of(), true, null, "secret"),
+                salesAndAccountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("motivo");
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+    }
+
+    @Test
+    void entryDuringSessionStoresTheAuthorizerResolvedByPolicy() {
+        var fixture = serviceFixture();
+        var manager = user(fixture.store, "MANAGER", new Role(fixture.store, "MANAGER"));
         var session = CashSession.open(
                 fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("40.00"));
         when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
                 .thenReturn(Optional.of(session));
-        when(fixture.users.findByTiendaIdAndNombre(fixture.store.getId(), "SELLER"))
-                .thenReturn(Optional.of(sellerAuthorizer));
-        when(fixture.passwordEncoder.matches("secret", sellerAuthorizer.getPasswordHash())).thenReturn(true);
+        var authentication = salesAuthentication(fixture.user);
+        when(fixture.operationSecurity.authorize(
+                SaleOperationCode.CASH_MOVEMENT,
+                "MANAGER",
+                "secret",
+                authentication))
+                .thenReturn(new Authorization(fixture.user, manager, true));
 
-        assertThatThrownBy(() -> fixture.service.entry(
+        var movement = fixture.service.entry(
                 fixture.terminal.getId(),
-                new CashEntryRequest(new BigDecimal("10.00"), "entrada manual", "SELLER", "secret", List.of()),
-                salesAuthentication(fixture.user)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("autorizador");
+                new CashEntryRequest(new BigDecimal("10.00"), "entrada manual", "MANAGER", "secret", List.of()),
+                authentication);
+
+        assertThat(movement.userId()).isEqualTo(fixture.user.getId());
+        assertThat(movement.authorizerUserId()).isEqualTo(manager.getId());
+        verify(fixture.operationSecurity).authorize(
+                SaleOperationCode.CASH_MOVEMENT,
+                "MANAGER",
+                "secret",
+                authentication);
     }
 
     @Test
@@ -673,6 +821,337 @@ class CashSessionServiceTest {
     }
 
     @Test
+    void finalWithdrawalCannotExceedAvailableCash() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("22.28"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("10.00"), List.of(), new BigDecimal("100.00"), null, List.of()),
+                salesAndAccountingAuthentication(fixture.user)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.cash.withdrawal_exceeds_available_cash");
+        verify(fixture.movements, never()).save(any(CashMovement.class));
+        verify(fixture.closeOperations, never()).saveAndFlush(any(CashCloseOperation.class));
+    }
+
+    @Test
+    void finalWithdrawalIsRecordedOnceAcrossBothReconciliationAttempts() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        var idempotencyKey = UUID.randomUUID();
+        var storedMovement = new AtomicReference<CashMovement>();
+        var storedOperation = new AtomicReference<CashCloseOperation>();
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId()))
+                .thenAnswer(ignored -> storedMovement.get() == null
+                        ? List.of()
+                        : List.of(storedMovement.get()));
+        when(fixture.movements.save(any(CashMovement.class))).thenAnswer(invocation -> {
+            var movement = invocation.getArgument(0, CashMovement.class);
+            storedMovement.set(movement);
+            return movement;
+        });
+        when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(fixture.closeOperations.findById(idempotencyKey))
+                .thenAnswer(ignored -> Optional.ofNullable(storedOperation.get()));
+        when(fixture.closeOperations.saveAndFlush(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> {
+                    var operation = invocation.getArgument(0, CashCloseOperation.class);
+                    storedOperation.set(operation);
+                    return operation;
+                });
+
+        var first = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("70.00"),
+                        List.of(),
+                        new BigDecimal("20.00"),
+                        "retirada cierre",
+                        List.of(),
+                        idempotencyKey,
+                        null,
+                        null),
+                salesAuthentication(fixture.user));
+        var second = fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("80.00"),
+                        List.of(),
+                        new BigDecimal("20.00"),
+                        "retirada cierre",
+                        List.of(),
+                        idempotencyKey,
+                        null,
+                        null),
+                salesAuthentication(fixture.user));
+
+        assertThat(first.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(second.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(second.reconciliationAttempt()).isEqualTo(2);
+        assertThat(session.getExpectedCash()).isEqualByComparingTo("80.00");
+        verify(fixture.movements, times(1)).save(any(CashMovement.class));
+        verify(fixture.closeOperations, times(1))
+                .saveAndFlush(any(CashCloseOperation.class));
+        verify(fixture.closeOperations, times(2))
+                .lock("cash-close-terminal:" + fixture.terminal.getId());
+    }
+
+    @Test
+    void reusedFinalWithdrawalKeyRejectsAnIncompatiblePayload() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        var idempotencyKey = UUID.randomUUID();
+        var storedMovement = new AtomicReference<CashMovement>();
+        var storedOperation = new AtomicReference<CashCloseOperation>();
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId()))
+                .thenAnswer(ignored -> storedMovement.get() == null
+                        ? List.of()
+                        : List.of(storedMovement.get()));
+        when(fixture.movements.save(any(CashMovement.class))).thenAnswer(invocation -> {
+            var movement = invocation.getArgument(0, CashMovement.class);
+            storedMovement.set(movement);
+            return movement;
+        });
+        when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(fixture.closeOperations.findById(idempotencyKey))
+                .thenAnswer(ignored -> Optional.ofNullable(storedOperation.get()));
+        when(fixture.closeOperations.saveAndFlush(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> {
+                    var operation = invocation.getArgument(0, CashCloseOperation.class);
+                    storedOperation.set(operation);
+                    return operation;
+                });
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("70.00"),
+                        List.of(),
+                        new BigDecimal("20.00"),
+                        "retirada cierre",
+                        List.of(),
+                        idempotencyKey,
+                        null,
+                        null),
+                salesAuthentication(fixture.user));
+
+        assertThatThrownBy(() -> fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("80.00"),
+                        List.of(),
+                        new BigDecimal("10.00"),
+                        "retirada cierre",
+                        List.of(),
+                        idempotencyKey,
+                        null,
+                        null),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("retirada final original");
+        assertThat(session.getAttempts()).hasSize(1);
+        verify(fixture.movements, times(1)).save(any(CashMovement.class));
+    }
+
+    @Test
+    void replaysEachDurableReconciliationAttemptWithoutConsumingAnotherAttempt() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        var operationId = UUID.randomUUID();
+        var firstAttemptId = UUID.randomUUID();
+        var secondAttemptId = UUID.randomUUID();
+        var storedOperation = new AtomicReference<CashCloseOperation>();
+        var storedMovement = new AtomicReference<CashMovement>();
+        when(fixture.sessions.findByTerminalIdAndStatus(
+                fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId()))
+                .thenAnswer(ignored -> storedMovement.get() == null
+                        ? List.of()
+                        : List.of(storedMovement.get()));
+        when(fixture.movements.save(any(CashMovement.class))).thenAnswer(invocation -> {
+            var movement = invocation.getArgument(0, CashMovement.class);
+            storedMovement.set(movement);
+            return movement;
+        });
+        when(fixture.closeOperations.findById(operationId))
+                .thenAnswer(ignored -> Optional.ofNullable(storedOperation.get()));
+        when(fixture.closeOperations.saveAndFlush(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> {
+                    var operation = invocation.getArgument(0, CashCloseOperation.class);
+                    storedOperation.set(operation);
+                    return operation;
+                });
+        when(fixture.reconciliationAttempts
+                .findByCloseOperationIdAndIdempotencyKey(eq(operationId), any()))
+                .thenAnswer(invocation -> session.getAttempts().stream()
+                        .filter(attempt -> invocation.getArgument(1).equals(attempt.getIdempotencyKey()))
+                        .findFirst());
+        when(fixture.reconciliationAttempts
+                .findFirstByCloseOperationIdOrderByAttemptNumberDesc(operationId))
+                .thenAnswer(ignored -> session.getAttempts().stream()
+                        .max(java.util.Comparator.comparingInt(
+                                CashReconciliationAttempt::getAttemptNumber)));
+
+        var firstRequest = new CashCloseRequest(
+                new BigDecimal("70.00"), List.of(), new BigDecimal("20.00"),
+                "retirada cierre", List.of(), operationId, firstAttemptId, null, null);
+        var first = fixture.service.close(
+                fixture.terminal.getId(), firstRequest, salesAuthentication(fixture.user));
+        var firstReplay = fixture.service.close(
+                fixture.terminal.getId(), firstRequest, salesAuthentication(fixture.user));
+        var secondRequest = new CashCloseRequest(
+                new BigDecimal("80.00"), List.of(), new BigDecimal("20.00"),
+                "retirada cierre", List.of(), operationId, secondAttemptId, null, null);
+        var second = fixture.service.close(
+                fixture.terminal.getId(), secondRequest, salesAuthentication(fixture.user));
+        var secondReplay = fixture.service.close(
+                fixture.terminal.getId(), secondRequest, salesAuthentication(fixture.user));
+        var recovered = fixture.service.closeOperation(
+                fixture.terminal.getId(), operationId, salesAuthentication(fixture.user));
+
+        assertThat(first.status()).isEqualTo(CashSessionStatus.ABIERTA);
+        assertThat(firstReplay).isEqualTo(first);
+        assertThat(second.status()).isEqualTo(CashSessionStatus.CERRADA);
+        assertThat(secondReplay).isEqualTo(second);
+        assertThat(session.getAttempts()).hasSize(2);
+        assertThat(recovered.status()).isEqualTo(CashCloseOperationStatus.CERRADA);
+        assertThat(recovered.latestReconciliationAttemptId()).isEqualTo(secondAttemptId);
+        assertThat(recovered.result()).isEqualTo(second);
+        verify(fixture.movements, times(1)).save(any(CashMovement.class));
+        verify(fixture.audit, times(2)).record(
+                eq("CASH_SESSION_CLOSE_ATTEMPT"), eq(AuditResult.EXITO), any());
+    }
+
+    @Test
+    void rejectsReusingAnAttemptIdWithDifferentDeclaredCash() {
+        var fixture = serviceFixture();
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        var operationId = UUID.randomUUID();
+        var attemptId = UUID.randomUUID();
+        var storedOperation = new AtomicReference<CashCloseOperation>();
+        when(fixture.sessions.findByTerminalIdAndStatus(
+                fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.sessions.findById(session.getId())).thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+        when(fixture.closeOperations.findById(operationId))
+                .thenAnswer(ignored -> Optional.ofNullable(storedOperation.get()));
+        when(fixture.closeOperations.saveAndFlush(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> {
+                    var operation = invocation.getArgument(0, CashCloseOperation.class);
+                    storedOperation.set(operation);
+                    return operation;
+                });
+        when(fixture.reconciliationAttempts
+                .findByCloseOperationIdAndIdempotencyKey(operationId, attemptId))
+                .thenAnswer(ignored -> session.getAttempts().stream().findFirst());
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("70.00"), List.of(), BigDecimal.ZERO, null,
+                        List.of(), operationId, attemptId, null, null),
+                salesAuthentication(fixture.user));
+
+        assertThatThrownBy(() -> fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("75.00"), List.of(), BigDecimal.ZERO, null,
+                        List.of(), operationId, attemptId, null, null),
+                salesAuthentication(fixture.user)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("arqueo pertenece a otra solicitud");
+        assertThat(session.getAttempts()).hasSize(1);
+    }
+
+    @Test
+    void closeUsesConfiguredPolicyAndAuditsOperatorAndAuthorizer() {
+        var fixture = serviceFixture();
+        var manager = user(fixture.store, "MANAGER", new Role(fixture.store, "MANAGER"));
+        var authentication = salesAuthentication(fixture.user);
+        var session = CashSession.open(
+                fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW,
+                new BigDecimal("100.00"));
+        when(fixture.sessions.findByTerminalIdAndStatus(fixture.terminal.getId(), CashSessionStatus.ABIERTA))
+                .thenReturn(Optional.of(session));
+        when(fixture.movements.findAllBySesionCajaId(session.getId())).thenReturn(List.of());
+        when(fixture.operationSecurity.authorize(
+                SaleOperationCode.CLOSE_CASH_SESSION,
+                "manager",
+                "secret",
+                authentication))
+                .thenReturn(new Authorization(fixture.user, manager, true));
+
+        fixture.service.close(
+                fixture.terminal.getId(),
+                new CashCloseRequest(
+                        new BigDecimal("80.00"),
+                        List.of(),
+                        new BigDecimal("20.00"),
+                        "retirada cierre",
+                        List.of(new CashDenominationCommand(new BigDecimal("20.00"), 1)),
+                        "manager",
+                        "secret"),
+                authentication);
+
+        var movement = ArgumentCaptor.forClass(CashMovement.class);
+        verify(fixture.movements).save(movement.capture());
+        assertThat(movement.getValue().getUserId()).isEqualTo(fixture.user.getId());
+        assertThat(movement.getValue().getAuthorizerUserId()).isEqualTo(manager.getId());
+        verify(fixture.operationSecurity).authorize(
+                SaleOperationCode.CLOSE_CASH_SESSION,
+                "manager",
+                "secret",
+                authentication);
+        @SuppressWarnings("rawtypes")
+        var details = ArgumentCaptor.forClass(Map.class);
+        verify(fixture.audit).record(
+                eq("CASH_SESSION_CLOSE_ATTEMPT"),
+                eq(AuditResult.EXITO),
+                details.capture());
+        assertThat(details.getValue())
+                .containsEntry("operatorId", fixture.user.getId().toString())
+                .containsEntry("authorizerId", manager.getId().toString())
+                .containsEntry("delegated", true)
+                .containsEntry("closed", true);
+        verify(fixture.controlAlerts).detectCashSessionDiscrepancy(
+                eq(session.getId()),
+                eq(fixture.store.getId()),
+                eq(fixture.terminal.getId()),
+                eq(new BigDecimal("80.00")),
+                eq(new BigDecimal("80.00")),
+                eq(new BigDecimal("0.00")),
+                eq(new BigDecimal("0.00")),
+                eq(1),
+                eq(true),
+                eq(manager.getId()),
+                eq(manager.getUserName()),
+                eq(true),
+                eq(authentication));
+    }
+
+    @Test
     void closeRequiresBreakdownWhenConfigured() {
         var fixture = serviceFixture();
         var config = new CashStoreConfig(fixture.store.getId());
@@ -729,12 +1208,17 @@ class CashSessionServiceTest {
         var terminal = new Terminal(store, "TPV 1", TerminalType.TERMINAL_VENTA, "hash");
         var sessions = mock(CashSessionRepository.class);
         var movements = mock(CashMovementRepository.class);
+        var closeOperations = mock(CashCloseOperationRepository.class);
+        var reconciliationAttempts = mock(CashReconciliationAttemptRepository.class);
         var configs = mock(CashStoreConfigRepository.class);
         var terminals = mock(TerminalRepository.class);
         var organization = mock(CurrentOrganization.class);
         var users = mock(UserAccountRepository.class);
         var passwordEncoder = mock(PasswordEncoder.class);
+        var operationSecurity = mock(SaleOperationSecurityService.class);
         var syncOutbox = mock(SyncOutboxService.class);
+        var audit = mock(AuditService.class);
+        var controlAlerts = mock(ControlAlertDetectionService.class);
         when(terminals.findByIdAndTiendaId(terminal.getId(), store.getId())).thenReturn(Optional.of(terminal));
         when(terminals.findForCashSessionPreparation(terminal.getId(), store.getId()))
                 .thenReturn(Optional.of(terminal));
@@ -743,14 +1227,22 @@ class CashSessionServiceTest {
         when(configs.findById(store.getId())).thenReturn(Optional.of(new CashStoreConfig(store.getId())));
         when(sessions.save(any(CashSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(movements.save(any(CashMovement.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(closeOperations.saveAndFlush(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(closeOperations.save(any(CashCloseOperation.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(operationSecurity.authorize(any(SaleOperationCode.class), any(), any(), any()))
+                .thenReturn(new Authorization(user, user, false));
         var permissions = new CashPermissionService(users, passwordEncoder, organization);
         var calculator = new CashAmountCalculator(sessions, movements);
         var service = new CashSessionService(
-                sessions, movements, configs, terminals, organization, permissions, calculator,
-                syncOutbox, Clock.fixed(now, ZoneOffset.UTC));
+                sessions, movements, closeOperations, reconciliationAttempts,
+                configs, terminals, organization, permissions, operationSecurity,
+                calculator, syncOutbox, audit, controlAlerts, Clock.fixed(now, ZoneOffset.UTC));
         return new ServiceFixture(
-                service, sessions, movements, configs, terminals, organization, users, passwordEncoder,
-                syncOutbox, store, user, terminal);
+                service, sessions, movements, closeOperations, reconciliationAttempts,
+                configs, terminals, organization, users, passwordEncoder,
+                operationSecurity, syncOutbox, audit, controlAlerts, store, user, terminal);
     }
 
     private static CashSession closedSession(UUID storeId, UUID terminalId, UUID userId, String retainedFund) {
@@ -802,12 +1294,17 @@ class CashSessionServiceTest {
             CashSessionService service,
             CashSessionRepository sessions,
             CashMovementRepository movements,
+             CashCloseOperationRepository closeOperations,
+             CashReconciliationAttemptRepository reconciliationAttempts,
             CashStoreConfigRepository configs,
             TerminalRepository terminals,
             CurrentOrganization organization,
             UserAccountRepository users,
             PasswordEncoder passwordEncoder,
+            SaleOperationSecurityService operationSecurity,
             SyncOutboxService syncOutbox,
+            AuditService audit,
+            ControlAlertDetectionService controlAlerts,
             Store store,
             UserAccount user,
             Terminal terminal) {

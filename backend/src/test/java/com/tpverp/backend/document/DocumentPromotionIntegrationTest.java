@@ -41,6 +41,7 @@ import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOutboxService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.StorePaymentConfigurationRepository;
@@ -126,6 +127,10 @@ class DocumentPromotionIntegrationTest {
     private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @Mock
     private DocumentOperationalEventRecorder operationalEvents;
+    @Mock
+    private TicketCancellationOperationRepository ticketCancellations;
+    @Mock
+    private SaleOperationSecurityService saleOperationSecurity;
 
     private DocumentService service;
     private Store store;
@@ -198,6 +203,8 @@ class DocumentPromotionIntegrationTest {
                 stockSettings,
                 controlAlerts,
                 operationalEvents,
+                ticketCancellations,
+                saleOperationSecurity,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

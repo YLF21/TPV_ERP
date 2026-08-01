@@ -81,7 +81,7 @@ public class SalesDocumentCheckoutController {
         }
     }
 
-    private static void requireDocumentAccess(
+    static void requireDocumentAccess(
             CustomerPendingSaleController.CreateRequest request,
             Authentication authentication) {
         var specificPermission = request.type() == CommercialDocumentType.FACTURA_VENTA

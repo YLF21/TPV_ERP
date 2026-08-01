@@ -44,6 +44,16 @@ public class CashReconciliationAttempt {
     @Column(name = "cerro_sesion", nullable = false)
     private boolean closedSession;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "operacion_cierre_id")
+    private CashCloseOperation closeOperation;
+
+    @Column(name = "clave_idempotencia")
+    private UUID idempotencyKey;
+
+    @Column(name = "huella_solicitud", length = 64)
+    private String requestHash;
+
     protected CashReconciliationAttempt() {
     }
 
@@ -56,6 +66,32 @@ public class CashReconciliationAttempt {
             BigDecimal expectedCash,
             BigDecimal discrepancy,
             boolean closedSession) {
+        this(
+                session,
+                attemptNumber,
+                userId,
+                createdAt,
+                declaredFund,
+                expectedCash,
+                discrepancy,
+                closedSession,
+                null,
+                null,
+                null);
+    }
+
+    CashReconciliationAttempt(
+            CashSession session,
+            int attemptNumber,
+            UUID userId,
+            Instant createdAt,
+            BigDecimal declaredFund,
+            BigDecimal expectedCash,
+            BigDecimal discrepancy,
+            boolean closedSession,
+            CashCloseOperation closeOperation,
+            UUID idempotencyKey,
+            String requestHash) {
         this.id = UUID.randomUUID();
         this.session = Objects.requireNonNull(session, "session");
         this.attemptNumber = attemptNumber;
@@ -65,6 +101,13 @@ public class CashReconciliationAttempt {
         this.expectedCash = Objects.requireNonNull(expectedCash, "expectedCash");
         this.discrepancy = Objects.requireNonNull(discrepancy, "discrepancy");
         this.closedSession = closedSession;
+        this.closeOperation = closeOperation;
+        this.idempotencyKey = idempotencyKey;
+        this.requestHash = requestHash == null ? null : validHash(requestHash);
+        if ((closeOperation == null) != (idempotencyKey == null)
+                || (closeOperation == null) != (requestHash == null)) {
+            throw new IllegalArgumentException("La identidad durable del arqueo debe estar completa");
+        }
     }
 
     public int getAttemptNumber() {
@@ -83,7 +126,28 @@ public class CashReconciliationAttempt {
         return discrepancy;
     }
 
+    public BigDecimal getExpectedCash() {
+        return expectedCash;
+    }
+
+    public UUID getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public boolean matches(CashCloseOperation operation, String expectedRequestHash) {
+        return closeOperation != null
+                && closeOperation.getId().equals(operation.getId())
+                && requestHash.equals(expectedRequestHash);
+    }
+
     public boolean closedSession() {
         return closedSession;
+    }
+
+    private static String validHash(String value) {
+        if (!value.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("requestHash debe ser SHA-256 hexadecimal");
+        }
+        return value;
     }
 }

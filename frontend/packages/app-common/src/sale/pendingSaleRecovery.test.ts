@@ -101,6 +101,32 @@ describe("pending sale recovery envelope", () => {
     expect(loadPendingSaleRecovery(storage, "T-01")).toEqual({ status: "valid", envelope: ready });
   });
 
+  it("recovers manual-card business data without any authorization credentials", () => {
+    const storage = new MemoryStorage();
+    const ready: PendingSaleRecoveryEnvelope = {
+      ...envelope(),
+      phase: "READY_TO_CREATE",
+      payments: [{
+        id: "manual-card-1",
+        kind: "MANUAL_CARD",
+        methodId: "card-method",
+        amountCents: 3_000,
+        reference: "CARD-REF-1",
+        mode: "MANUAL",
+        status: "APPROVED",
+      }],
+    };
+
+    savePendingSaleRecovery(storage, ready);
+    const raw = storage.getItem(pendingSaleRecoveryKey("T-01")) ?? "";
+    expect(loadPendingSaleRecovery(storage, "T-01")).toEqual({
+      status: "valid",
+      envelope: ready,
+    });
+    expect(raw).not.toContain("authorizerUsername");
+    expect(raw).not.toContain("authorizerPassword");
+  });
+
   it("requires automatic recovery only for submitted creates or integrated cards", () => {
     const localDraft = { ...envelope(), phase: "READY_TO_CREATE" as const, payments: [] };
     expect(pendingSaleRecoveryRequiresAttention(localDraft)).toBe(false);
@@ -114,6 +140,8 @@ describe("pending sale recovery envelope", () => {
     ["invalid calendar date", (value: any) => { value.draft.dueDate = "2026-02-31"; }],
     ["blank credit override", (value: any) => { value.draft.creditOverride = { reason: "  " }; }],
     ["oversized credit override", (value: any) => { value.draft.creditOverride = { reason: "x".repeat(501) }; }],
+    ["invalid print mode", (value: any) => { value.draft.printMode = "REMOTE_PRINTER"; }],
+    ["oversized internal comment", (value: any) => { value.draft.internalComment = "x".repeat(501); }],
     ["invalid quantity", (value: any) => { value.draft.lines[0].quantity = null; }],
     ["non finite price", (value: any) => { value.draft.lines[0].price = "NaN"; }],
     ["invalid discount", (value: any) => { value.draft.lines[0].discount = "101"; }],
@@ -132,6 +160,7 @@ describe("pending sale recovery envelope", () => {
     ["cash arithmetic", (value: any) => { value.phase = "READY_TO_CREATE"; value.payments = [{ id: "cash-1", kind: "CASH", methodId: "cash", amountCents: 3000, deliveredCents: 5000, changeCents: 1000, status: "APPROVED" }]; }],
     ["cash missing received", (value: any) => { value.phase = "READY_TO_CREATE"; value.payments = [{ id: "cash-1", kind: "CASH", methodId: "cash", amountCents: 3000, changeCents: 0, status: "APPROVED" }]; }],
     ["blank transfer reference", (value: any) => { value.phase = "READY_TO_CREATE"; value.payments = [{ id: "transfer-1", kind: "TRANSFER", methodId: "transfer", amountCents: 3000, reference: "  ", status: "APPROVED" }]; }],
+    ["manual card without mode", (value: any) => { value.phase = "READY_TO_CREATE"; value.payments = [{ id: "manual-1", kind: "MANUAL_CARD", methodId: "card", amountCents: 3000, status: "APPROVED" }]; }],
     ["card identity", (value: any) => { value.payments[0].operationId = "other"; }],
     ["uncertain card ready to create", (value: any) => { value.phase = "READY_TO_CREATE"; }],
   ])("blocks parseable corruption: %s", (_name, mutate) => {

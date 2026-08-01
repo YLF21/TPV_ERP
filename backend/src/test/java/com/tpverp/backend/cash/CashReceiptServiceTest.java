@@ -37,7 +37,8 @@ class CashReceiptServiceTest {
                 fixture.store.getId(), fixture.terminal.getId(), fixture.user.getId(), NOW, new BigDecimal("100.00"));
         var movement = CashMovement.sessionMovement(
                 fixture.store.getId(), fixture.terminal.getId(), session, CashMovementType.RETIRADA_CIERRE,
-                new BigDecimal("20.00"), NOW.plusSeconds(60), fixture.user.getId(), null, "retirada cierre",
+                new BigDecimal("20.00"), NOW.plusSeconds(60), fixture.user.getId(),
+                fixture.user.getId(), "retirada cierre",
                 null, null);
         movement.addDenomination(new BigDecimal("20.00"), 1);
         when(fixture.movements.findById(movement.getId())).thenReturn(Optional.of(movement));
@@ -52,6 +53,8 @@ class CashReceiptServiceTest {
         assertThat(receipt.userName()).isEqualTo("SELLER");
         assertThat(receipt.terminalName()).isEqualTo("TPV 1");
         assertThat(receipt.sessionId()).isEqualTo(session.getId());
+        assertThat(receipt.authorizerName()).isEqualTo("SELLER");
+        assertThat(receipt.comment()).isEqualTo("retirada cierre");
         assertThat(receipt.giverSignatureLabel()).isEmpty();
         assertThat(receipt.receiverSignatureLabel()).isEmpty();
     }

@@ -1,12 +1,16 @@
 package com.tpverp.backend.document;
 
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
+import com.tpverp.backend.security.sales.SaleOperationCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -42,16 +46,26 @@ public class PosCashController {
             @NotEmpty List<@Valid LineRequest> lines,
             String discountAuthorizationToken,
             String promotionalCouponCode,
-            @DecimalMin("0.00") BigDecimal checkoutDiscountAmount) {
+            @DecimalMin("0.00") BigDecimal checkoutDiscountAmount,
+            @Size(max = 500) String internalComment,
+            @Size(max = 32)
+            @Valid Map<@NotNull SaleOperationCode, @NotNull @Valid OperationAuthorizationRequest>
+                    operationAuthorizations) {
+
+        public SaleRequest {
+            operationAuthorizations = OperationAuthorizationRequest.immutableCopy(
+                    operationAuthorizations);
+        }
+
         public SaleRequest(UUID customerId, List<LineRequest> lines) {
-            this(customerId, lines, null, null, null);
+            this(customerId, lines, null, null, null, null, Map.of());
         }
 
         public SaleRequest(
                 UUID customerId,
                 List<LineRequest> lines,
                 String discountAuthorizationToken) {
-            this(customerId, lines, discountAuthorizationToken, null, null);
+            this(customerId, lines, discountAuthorizationToken, null, null, null, Map.of());
         }
 
         public SaleRequest(
@@ -59,7 +73,34 @@ public class PosCashController {
                 List<LineRequest> lines,
                 String discountAuthorizationToken,
                 String promotionalCouponCode) {
-            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode, null);
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
+                    null, null, Map.of());
+        }
+
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken,
+                String promotionalCouponCode,
+                BigDecimal checkoutDiscountAmount) {
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
+                    checkoutDiscountAmount, null, Map.of());
+        }
+
+        public SaleRequest(
+                UUID customerId,
+                List<LineRequest> lines,
+                String discountAuthorizationToken,
+                String promotionalCouponCode,
+                BigDecimal checkoutDiscountAmount,
+                String internalComment) {
+            this(customerId, lines, discountAuthorizationToken, promotionalCouponCode,
+                    checkoutDiscountAmount, internalComment, Map.of());
+        }
+
+        public OperationAuthorizationRequest authorizationFor(SaleOperationCode code) {
+            return operationAuthorizations.getOrDefault(
+                    code, OperationAuthorizationRequest.empty());
         }
     }
 
@@ -68,20 +109,30 @@ public class PosCashController {
             @NotNull BigDecimal quantity,
             @NotNull @DecimalMin("0.00") BigDecimal discount,
             BigDecimal openUnitPrice,
-            List<String> serialNumbers) {
+            List<String> serialNumbers,
+            @Size(max = 255) String temporaryName) {
         public LineRequest(
                 UUID productId,
                 BigDecimal quantity,
                 BigDecimal discount,
                 BigDecimal openUnitPrice) {
-            this(productId, quantity, discount, openUnitPrice, List.of());
+            this(productId, quantity, discount, openUnitPrice, List.of(), null);
+        }
+
+        public LineRequest(
+                UUID productId,
+                BigDecimal quantity,
+                BigDecimal discount,
+                BigDecimal openUnitPrice,
+                List<String> serialNumbers) {
+            this(productId, quantity, discount, openUnitPrice, serialNumbers, null);
         }
 
         public LineRequest(
                 UUID productId,
                 BigDecimal quantity,
                 BigDecimal discount) {
-            this(productId, quantity, discount, null, List.of());
+            this(productId, quantity, discount, null, List.of(), null);
         }
 
         @AssertTrue(message = "La cantidad debe ser positiva o exactamente -1")

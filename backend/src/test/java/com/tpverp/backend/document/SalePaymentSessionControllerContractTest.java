@@ -15,6 +15,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 import jakarta.validation.Validation;
+import com.tpverp.backend.security.sales.OperationAuthorizationRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.http.MediaType;
@@ -35,7 +36,9 @@ class SalePaymentSessionControllerContractTest {
   assertThat(controller.get(id,auth).printTicket()).isNull();
  }
  @Test void exposesValidatedSimulatorDiscardContract() throws Exception {var method=SalePaymentSessionController.class.getDeclaredMethod("discardSimulation",UUID.class,SalePaymentSessionController.SimulatorDiscard.class,Authentication.class);assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly("/{id}/simulator-discard");var validator=Validation.buildDefaultValidatorFactory().getValidator();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("application_shutdown"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("sale_entry_cleanup"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("payment_method_change"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard(""))).isNotEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("logout"))).isNotEmpty();}
- @Test void exposesReloadAllocationQueryFinalizeAndCancelBehindSalePermission() throws Exception {assertThat(SalePaymentSessionController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1/pos/payment-sessions");assertThat(SalePaymentSessionController.class.getAnnotation(PreAuthorize.class).value()).contains("TICKETS_CREATE");assertThat(SalePaymentSessionController.class.getDeclaredMethod("get",UUID.class,Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/{id}");assertThat(SalePaymentSessionController.class.getDeclaredMethod("add",UUID.class,SalePaymentSessionController.Allocation.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations");assertThat(SalePaymentSessionController.class.getDeclaredMethod("query",UUID.class,UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations/{allocationId}/query");assertThat(SalePaymentSessionController.class.getDeclaredMethod("finalizeSession",UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/finalize");}
+ @Test void exposesReloadAllocationQueryFinalizeAndCancelBehindSalePermission() throws Exception {assertThat(SalePaymentSessionController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1/pos/payment-sessions");assertThat(SalePaymentSessionController.class.getAnnotation(PreAuthorize.class).value()).contains("TICKETS_CREATE");assertThat(SalePaymentSessionController.class.getDeclaredMethod("get",UUID.class,Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/{id}");assertThat(SalePaymentSessionController.class.getDeclaredMethod("add",UUID.class,SalePaymentSessionController.Allocation.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations");assertThat(SalePaymentSessionController.class.getDeclaredMethod("query",UUID.class,UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations/{allocationId}/query");assertThat(SalePaymentSessionController.class.getDeclaredMethod("finalizeSession",UUID.class,SalePaymentSessionController.FinalizeRequest.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/finalize");}
+ @Test void compensationAcknowledgementCarriesOptionalAuthorizationCredentials() throws Exception {var request=new SalePaymentSessionController.CompensationAck("resuelto","ENCARGADO","1234");assertThat(request.authorizerUsername()).isEqualTo("ENCARGADO");assertThat(request.authorizerPassword()).isEqualTo("1234");var method=SalePaymentSessionController.class.getDeclaredMethod("acknowledge",UUID.class,SalePaymentSessionController.CompensationAck.class,Authentication.class);assertThat(method.getAnnotation(PreAuthorize.class).value()).contains("VENTA","PAYMENT_TERMINAL_REFUND");}
+ @Test void pendingFinalizeCarriesIndependentOptionalAuthorizationCredentials(){var request=new SalePaymentSessionController.FinalizeRequest(new SalePaymentSessionController.CreditOverride("limite autorizado","CREDIT_MANAGER","credit-secret"),"ENCARGADO","pending-secret");assertThat(request.creditOverride().reason()).isEqualTo("limite autorizado");assertThat(request.authorizerUsername()).isEqualTo("ENCARGADO");assertThat(request.authorizerPassword()).isEqualTo("pending-secret");assertThat(request.creditOverride().authorizerUsername()).isEqualTo("CREDIT_MANAGER");assertThat(request.creditOverride().authorizerPassword()).isEqualTo("credit-secret");}
  @Test void mutationsUseAPessimisticSessionLock() throws Exception {var lock=SalePaymentSessionRepository.class.getDeclaredMethod("findLocked",UUID.class).getAnnotation(org.springframework.data.jpa.repository.Lock.class);assertThat(lock.value()).isEqualTo(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);}
  @Test void activeRecoveryIsServerScopedByStoreTerminalAndUser() throws Exception {assertThat(SalePaymentSessionController.class.getDeclaredMethod("active",Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/active");var query=SalePaymentSessionRepository.class.getDeclaredMethod("findActive",UUID.class,UUID.class,UUID.class).getAnnotation(org.springframework.data.jpa.repository.Query.class).value();assertThat(query).contains("s.storeId=:storeId","s.terminalId=:terminalId","s.userId=:userId");}
 
@@ -57,7 +60,7 @@ class SalePaymentSessionControllerContractTest {
 
  @Test void manualCardAllocationAcceptsAnOmittedReference() throws Exception {
   var fixture=httpFixture();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
-  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.MANUAL_CARD),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
+  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.MANUAL_CARD),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
 
   fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/allocations",sessionId)
       .contentType(MediaType.APPLICATION_JSON)
@@ -67,6 +70,28 @@ class SalePaymentSessionControllerContractTest {
             "idempotencyKey": "%s",
             "kind": "MANUAL_CARD",
             "amount": 10.00
+          }
+          """.formatted(allocationId,allocationId)))
+    .andExpect(status().isOk());
+ }
+
+ @Test void manualPaymentAllocationCarriesIndependentEphemeralAuthorization() throws Exception {
+  var fixture=httpFixture();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
+  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.TRANSFER),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),eq("TR-1"),isNull(),isNull(),isNull(),eq(new OperationAuthorizationRequest("ENCARGADO","secret")),nullable(Authentication.class))).thenReturn(session);
+
+  fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/allocations",sessionId)
+      .contentType(MediaType.APPLICATION_JSON)
+      .content("""
+          {
+            "allocationId": "%s",
+            "idempotencyKey": "%s",
+            "kind": "TRANSFER",
+            "amount": 10.00,
+            "reference": "TR-1",
+            "operationAuthorization": {
+              "authorizerUsername": "ENCARGADO",
+              "authorizerPassword": "secret"
+            }
           }
           """.formatted(allocationId,allocationId)))
     .andExpect(status().isOk());

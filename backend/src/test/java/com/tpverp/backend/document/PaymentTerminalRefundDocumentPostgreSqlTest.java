@@ -77,6 +77,8 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @Autowired private CompanyRepository companies;
     @Autowired private StoreRepository stores;
     @Autowired private UserAccountRepository users;
+    @Autowired private CommercialDocumentRepository documents;
+    @Autowired private DocumentFiscalIntegration fiscalIntegration;
     @Autowired private PlatformTransactionManager transactionManager;
     @MockitoBean private CurrentOrganization organization;
     @MockitoBean private CurrentTerminal currentTerminal;
@@ -90,6 +92,12 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private PromotionalCouponService promotionalCoupons;
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
+    @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
+            saleOperationSecurity;
+    @MockitoBean private SalesInvoiceRectificationService rectificationService;
+    @MockitoBean private com.tpverp.backend.installation.InstallationStatusService
+            installationStatus;
 
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -102,7 +110,19 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
     }
 
-    @BeforeEach void clearDatabase() { jdbc.execute("truncate table instalacion, empresa cascade"); }
+    @BeforeEach
+    void clearDatabase() {
+        jdbc.execute("truncate table instalacion, empresa cascade");
+        when(installationStatus.status()).thenReturn(
+                new com.tpverp.backend.installation.InstallationStatusService
+                        .InstallationStatus(
+                                UUID.randomUUID(),
+                                "INSTALL",
+                                NOW.minusSeconds(3600),
+                                NOW.plusSeconds(3600),
+                                com.tpverp.backend.shared.access.OperationalMode.LICENSED,
+                                "LICENSE"));
+    }
     @AfterAll static void dropSchema() { execute("drop schema if exists " + SCHEMA + " cascade"); }
 
     @Test
@@ -116,6 +136,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         when(organization.currentUser(any())).thenReturn(user);
         when(currentTerminal.terminalId(any())).thenReturn(fixture.terminalId());
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+        registerOriginalFiscalRecord(fixture.documentId());
 
         var first = inTransaction(() -> service.createApprovedCardRefund(
                 fixture.operationId(), fixture.documentId(), new BigDecimal("12.10"), authentication));
@@ -149,6 +170,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         when(currentTerminal.terminalId(any())).thenReturn(fixture.terminalId());
         jdbc.update("update payment_terminal_operation set amount = 6.05 where id = ?", fixture.operationId());
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "n/a");
+        registerOriginalFiscalRecord(fixture.documentId());
 
         var refund = inTransaction(() -> service.createApprovedCardRefund(fixture.operationId(), fixture.documentId(),
                 new BigDecimal("6.05"), List.of(new PaymentTerminalRefundLineSelection(
@@ -185,6 +207,13 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     }
 
     private <T> T inTransaction(java.util.function.Supplier<T> action) { return new TransactionTemplate(transactionManager).execute(status -> action.get()); }
+    private void registerOriginalFiscalRecord(UUID documentId) {
+        inTransaction(() -> {
+            fiscalIntegration.registerAlta(
+                    documents.findById(documentId).orElseThrow(), false);
+            return null;
+        });
+    }
     private static String required(String name) { var value=System.getenv(name); if(value==null||value.isBlank()) throw new IllegalStateException(name+" no configurada"); return value; }
     private static void execute(String sql) { try(var connection=DriverManager.getConnection(URL,USER,PASSWORD);var statement=connection.createStatement()){statement.execute(sql);}catch(Exception exception){throw new IllegalStateException(exception);} }
 

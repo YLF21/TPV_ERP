@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { SaleProduct } from "./SaleScreen";
+import { useProductInformationResources } from "./productInformationResources";
 
 type StockPage = {
   items?: Array<{
@@ -24,10 +25,33 @@ function matches(product: SaleProduct, query: string) {
 }
 
 function money(value: unknown) {
-  return Number(value ?? 0).toLocaleString("es-ES", {
+  if (value === null || value === undefined || value === "") return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString("es-ES", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+}
+
+function SaleConsultationProductImage({ product, token }: { product: SaleProduct; token?: string }) {
+  const { imageSource } = useProductInformationResources({
+    productId: product.id,
+    imageId: product.imageId,
+    token,
+    canReadSuppliers: false,
+  });
+  const name = product.name?.trim() || "Producto";
+
+  return (
+    <div className="sale-consultation-product-image">
+      {imageSource
+        ? <img src={imageSource} alt={`Imagen de ${name}`} />
+        : <span className="sale-consultation-image-placeholder" aria-label="Producto sin imagen">
+            {name.slice(0, 1).toLocaleUpperCase()}
+          </span>}
+    </div>
+  );
 }
 
 export function SaleProductConsultationDialog({
@@ -80,45 +104,67 @@ export function SaleProductConsultationDialog({
           <h2>Consulta de stock</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose}>×</button>
         </header>
-        <label>
-          Código, código de barras o nombre
-          <input
-            autoFocus
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setSelected(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") onClose();
-              if (event.key === "Enter") {
-                event.preventDefault();
-                choose(results[0]);
-              }
-            }}
-          />
-        </label>
-        {!selected && (
-          <div className="sale-consultation-results" role="listbox" aria-label="Productos">
-            {results.map((product) => (
-              <button type="button" role="option" aria-selected="false" key={product.id} onClick={() => choose(product)}>
-                <strong>{product.name ?? "Producto sin nombre"}</strong>
-                <span>{product.code ?? product.barcode ?? product.barcode2 ?? "—"}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {selected && (
-          <dl className="sale-consultation-summary">
-            <div><dt>Producto</dt><dd>{selected.name ?? "—"}</dd></div>
-            <div><dt>Código</dt><dd>{selected.code ?? selected.barcode ?? selected.barcode2 ?? "—"}</dd></div>
-            <div><dt>Precio</dt><dd>{money(selected.salePrice)} €</dd></div>
-            <div><dt>Stock</dt><dd>{stock == null ? "Consultando…" : money(stock)}</dd></div>
-            <div><dt>Cantidad por paquete</dt><dd>{money(selected.packageQuantity ?? 1)}</dd></div>
-          </dl>
-        )}
-        {stockError && <p className="sale-action-error" role="alert">{stockError}</p>}
-        <div className="sale-action-buttons"><button type="button" onClick={onClose}>Cerrar</button></div>
+        <div className="sale-consultation-search">
+          <label>
+            Código, código de barras o nombre
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSelected(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") onClose();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  choose(results[0]);
+                }
+              }}
+            />
+          </label>
+        </div>
+
+        <div className="sale-consultation-content">
+          {!selected && (
+            <div className="sale-consultation-results" role="listbox" aria-label="Productos">
+              {results.map((product) => (
+                <button type="button" role="option" aria-selected="false" key={product.id} onClick={() => choose(product)}>
+                  <span>{product.code ?? product.barcode ?? product.barcode2 ?? "—"}</span>
+                  <strong>{product.name ?? "Producto sin nombre"}</strong>
+                  <b>{money(product.salePrice)} €</b>
+                </button>
+              ))}
+              {results.length === 0 && <p>No se encontraron productos.</p>}
+            </div>
+          )}
+          {selected && (
+            <article className="sale-consultation-product">
+              <SaleConsultationProductImage product={selected} token={token} />
+              <div className="sale-consultation-product-data">
+                <p className="sale-consultation-eyebrow">Producto consultado</p>
+                <h3 title={selected.name ?? ""}>{selected.name ?? "Producto sin nombre"}</h3>
+                <div className="sale-consultation-metrics">
+                  <section>
+                    <span>Precio de venta</span>
+                    <strong>{money(selected.salePrice)} <small>€</small></strong>
+                  </section>
+                  <section className={stock == null ? "loading" : stock < 0 ? "negative" : stock === 0 ? "empty" : "positive"}>
+                    <span>Stock disponible</span>
+                    <strong aria-live="polite">{stock == null ? "Consultando…" : money(stock)}</strong>
+                  </section>
+                </div>
+                <dl className="sale-consultation-metadata">
+                  <div><dt>Código</dt><dd>{selected.code ?? selected.barcode ?? selected.barcode2 ?? "—"}</dd></div>
+                  <div><dt>Cantidad por paquete</dt><dd>{money(selected.packageQuantity ?? 1)}</dd></div>
+                </dl>
+              </div>
+            </article>
+          )}
+          {stockError && <p className="sale-action-error" role="alert">{stockError}</p>}
+        </div>
+
+        <footer className="sale-action-buttons"><button type="button" onClick={onClose}>Cerrar</button></footer>
       </section>
     </div>
   );

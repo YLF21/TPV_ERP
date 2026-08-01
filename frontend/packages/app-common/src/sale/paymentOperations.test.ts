@@ -11,19 +11,44 @@ describe("payment operation commands", () => {
 
   it("creates a distinct idempotent operation when voiding an approved charge", async () => {
     const request = vi.fn().mockResolvedValue({ id: "void-op", status: "CANCELLED" });
-    await voidPaymentOperation("original-charge", "token", "0000", "void-op", request);
+    await voidPaymentOperation(
+      "original-charge",
+      "token",
+      { authorizerUsername: "supervisor", authorizerPassword: "0000" },
+      "void-op",
+      request,
+    );
     expect(request).toHaveBeenCalledWith("/payment-terminal/operations/original-charge/void", {
       token: "token",
-      body: { operationId: "void-op", idempotencyKey: "void-op", password: "0000" }
+      body: {
+        operationId: "void-op",
+        idempotencyKey: "void-op",
+        authorizerUsername: "supervisor",
+        authorizerPassword: "0000",
+      }
     });
   });
 
   it("creates a distinct idempotent operation when refunding an approved charge", async () => {
     const request = vi.fn().mockResolvedValue({ id: "refund-op", status: "REFUNDED" });
-    await refundPaymentOperation("original-charge", "token", "5.00", "0000", "refund-op", [], request);
+    await refundPaymentOperation(
+      "original-charge",
+      "token",
+      "5.00",
+      { authorizerPassword: "0000" },
+      "refund-op",
+      [],
+      request,
+    );
     expect(request).toHaveBeenCalledWith("/payment-terminal/operations/original-charge/refund", {
       token: "token",
-      body: { operationId: "refund-op", idempotencyKey: "refund-op", amount: "5.00", password: "0000", lines: [] }
+      body: {
+        operationId: "refund-op",
+        idempotencyKey: "refund-op",
+        amount: "5.00",
+        lines: [],
+        authorizerPassword: "0000",
+      }
     });
   });
 

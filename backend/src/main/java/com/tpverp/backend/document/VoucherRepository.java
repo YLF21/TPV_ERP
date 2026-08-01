@@ -19,4 +19,27 @@ public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
             @Param("storeId") UUID tiendaId, @Param("code") String code);
 
     List<Voucher> findAllByTiendaIdOrderByCreatedAtDesc(UUID tiendaId);
+
+    @Query(value = """
+            select *
+              from vale
+             where tienda_id = :storeId
+               and tickets_origen @> jsonb_build_array(cast(:ticketNumber as text))
+             order by creado_en
+            """, nativeQuery = true)
+    List<Voucher> findAllByOriginTicket(
+            @Param("storeId") UUID storeId,
+            @Param("ticketNumber") String ticketNumber);
+
+    @Query(value = """
+            select *
+              from vale
+             where tienda_id = :storeId
+               and tickets_origen @> jsonb_build_array(cast(:ticketNumber as text))
+             order by creado_en
+             for update
+            """, nativeQuery = true)
+    List<Voucher> findAllLockedByOriginTicket(
+            @Param("storeId") UUID storeId,
+            @Param("ticketNumber") String ticketNumber);
 }

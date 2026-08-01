@@ -1,13 +1,12 @@
 package com.tpverp.backend.catalog;
 
-import static com.tpverp.backend.security.application.CorePermissionBootstrap.GESTION_PRODUCTO;
-
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.organization.CurrentOrganization;
-import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.OperationalSessionContext;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,7 +27,7 @@ public class ProductEditAuthorizationService {
 
     private final CatalogService catalog;
     private final CurrentOrganization organization;
-    private final OperationalPermissionAuthorizationService authorizations;
+    private final SaleOperationSecurityService operationSecurity;
     private final ControlAlertDetectionService controlAlerts;
     private final AuditService audit;
     private final Clock clock;
@@ -37,13 +36,13 @@ public class ProductEditAuthorizationService {
     public ProductEditAuthorizationService(
             CatalogService catalog,
             CurrentOrganization organization,
-            OperationalPermissionAuthorizationService authorizations,
+            SaleOperationSecurityService operationSecurity,
             ControlAlertDetectionService controlAlerts,
             AuditService audit,
             Clock clock) {
         this.catalog = catalog;
         this.organization = organization;
-        this.authorizations = authorizations;
+        this.operationSecurity = operationSecurity;
         this.controlAlerts = controlAlerts;
         this.audit = audit;
         this.clock = clock;
@@ -56,8 +55,11 @@ public class ProductEditAuthorizationService {
             String authorizerPassword,
             Authentication authentication) {
         var product = catalog.product(productId);
-        var authorization = authorizations.authorize(
-                GESTION_PRODUCTO, authorizerUsername, authorizerPassword, authentication);
+        var authorization = operationSecurity.authorize(
+                SaleOperationCode.EDIT_CATALOG_PRODUCT,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
         var operationId = UUID.randomUUID();
         var expiresAt = clock.instant().plus(VALIDITY);
         var grant = new Grant(

@@ -2,6 +2,7 @@ import { apiRequest } from "../api/client";
 import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext } from "../types";
 import { sanitizeReceiptText, type PaymentOperationEvent, type PaymentOperationView } from "../components/PaymentOperationPanel";
+import type { SaleOperationCredentials } from "./operationSecurity";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 const path = (id: string, suffix = "") => `/payment-terminal/operations/${encodeURIComponent(id)}${suffix}`;
@@ -12,8 +13,17 @@ export const queryPaymentOperation = (id: string, token: string | undefined, req
 export const loadPaymentOperationHistory = (id: string, token: string | undefined, request: Request = apiRequest) =>
   request<PaymentOperationEvent[]>(path(id, "/events"), { token });
 
-export const voidPaymentOperation = (id: string, token: string | undefined, password: string, operationId: string, request: Request = apiRequest) =>
-  request<PaymentOperationView>(path(id, "/void"), { token, body: { operationId, idempotencyKey: operationId, password } });
+export const voidPaymentOperation = (
+  id: string,
+  token: string | undefined,
+  credentials: SaleOperationCredentials,
+  operationId: string,
+  request: Request = apiRequest,
+) =>
+  request<PaymentOperationView>(path(id, "/void"), {
+    token,
+    body: { operationId, idempotencyKey: operationId, ...credentials },
+  });
 
 export type PaymentRefundLineOption = {
   lineId: string;
@@ -36,9 +46,19 @@ export type PaymentRefundLineSelection = {
 export const loadPaymentRefundLines = (id: string, token: string | undefined, request: Request = apiRequest) =>
   request<PaymentRefundLineOption[]>(path(id, "/refund-lines"), { token });
 
-export const refundPaymentOperation = (id: string, token: string | undefined, amount: string, password: string, operationId: string,
-  lines: PaymentRefundLineSelection[] = [], request: Request = apiRequest) =>
-  request<PaymentOperationView>(path(id, "/refund"), { token, body: { operationId, idempotencyKey: operationId, amount, password, lines } });
+export const refundPaymentOperation = (
+  id: string,
+  token: string | undefined,
+  amount: string,
+  credentials: SaleOperationCredentials,
+  operationId: string,
+  lines: PaymentRefundLineSelection[] = [],
+  request: Request = apiRequest,
+) =>
+  request<PaymentOperationView>(path(id, "/refund"), {
+    token,
+    body: { operationId, idempotencyKey: operationId, amount, lines, ...credentials },
+  });
 
 export async function printPaymentReceipt(
   id: string,

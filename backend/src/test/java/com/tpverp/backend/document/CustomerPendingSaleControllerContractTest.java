@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 class CustomerPendingSaleControllerContractTest {
 
     @Test
-    void exposesAuthoritativePendingSaleEndpointsWithReceivablePermission() throws Exception {
+    void exposesAuthoritativePendingSaleEndpointsWithBaseDocumentAccess() throws Exception {
         assertThat(CustomerPendingSaleController.class.getAnnotation(RequestMapping.class).value())
                 .containsExactly("/api/v1/pos/customer-pending-sales");
 
@@ -35,6 +35,23 @@ class CustomerPendingSaleControllerContractTest {
 
         assertThat(invoice.directo()).isTrue();
         assertThat(note.directo()).isTrue();
+    }
+
+    @Test
+    void createRequestCarriesSeparateOptionalEphemeralAuthorizationCredentials() {
+        var components = java.util.Arrays.stream(
+                        CustomerPendingSaleController.CreateRequest.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName)
+                .toList();
+
+        assertThat(components).contains(
+                "authorizerUsername",
+                "authorizerPassword",
+                "operationAuthorizations");
+        var request = request(CommercialDocumentType.FACTURA_VENTA);
+        assertThat(request.authorizerUsername()).isNull();
+        assertThat(request.authorizerPassword()).isNull();
+        assertThat(request.operationAuthorizations()).isEmpty();
     }
 
     @Test
@@ -76,7 +93,7 @@ class CustomerPendingSaleControllerContractTest {
                 name, requestType, org.springframework.security.core.Authentication.class);
         assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly(path);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
-                .contains("CUSTOMER_RECEIVABLES_CREATE")
-                .doesNotContain("GESTION_VENTAS", "VENTA");
+                .contains("GESTION_VENTAS", "VENTA")
+                .doesNotContain("CUSTOMER_RECEIVABLES_CREATE");
     }
 }

@@ -8,10 +8,19 @@ import java.util.UUID;
 public record ApprovedCardTicketSnapshot(
         UUID storeId, UUID warehouseId, LocalDate date, UUID customerId, UUID paymentMethodId,
         BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
-        BigDecimal total, List<DocumentLineCommand> lines) {
+        BigDecimal total, List<DocumentLineCommand> lines, String internalComment) {
+    public ApprovedCardTicketSnapshot(
+            UUID storeId, UUID warehouseId, LocalDate date, UUID customerId, UUID paymentMethodId,
+            BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
+            BigDecimal total, List<DocumentLineCommand> lines) {
+        this(storeId, warehouseId, date, customerId, paymentMethodId, globalDiscount,
+                baseTotal, taxTotal, total, lines, null);
+    }
+
     public static ApprovedCardTicketSnapshot from(CommercialDocument quoted,UUID paymentMethodId) {
         return new ApprovedCardTicketSnapshot(quoted.getTiendaId(),quoted.getAlmacenId(),quoted.getFecha(),
                 quoted.getClienteId(),paymentMethodId,quoted.getDescuentoGlobal(),quoted.getBaseTotal(),quoted.getImpuestoTotal(),
-                quoted.getTotal(),quoted.getLineas().stream().map(DocumentLineCommand::from).toList());
+                quoted.getTotal(),quoted.getLineas().stream().map(DocumentLineCommand::from).toList(),
+                quoted.getComentarioInterno());
     }
 }

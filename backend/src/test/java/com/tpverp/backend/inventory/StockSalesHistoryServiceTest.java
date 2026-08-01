@@ -98,7 +98,8 @@ class StockSalesHistoryServiceTest {
                 .contains("document.tienda_id = :storeId")
                 .contains("line.producto_id = :productId")
                 .contains("cast(:fromDate as date)", "cast(:toDate as date)")
-                .contains("document.fecha::timestamp at time zone store.timezone")
+                .contains("coalesce(document.confirmado_en, document.creado_en) as \"occurredAt\"")
+                .doesNotContain("document.fecha::timestamp")
                 .doesNotContain("then coalesce(document.anulado_en")
                 .contains("order by document.fecha desc");
     }

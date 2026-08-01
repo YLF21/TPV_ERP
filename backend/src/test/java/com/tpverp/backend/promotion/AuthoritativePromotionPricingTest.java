@@ -16,6 +16,7 @@ import com.tpverp.backend.party.MemberCategory;
 import com.tpverp.backend.party.MemberRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -106,6 +107,41 @@ class AuthoritativePromotionPricingTest {
 
         assertThat(priced.precioUnitario()).isEqualByComparingTo("7.25");
         assertThat(priced.tarifa()).isEqualTo("VENTA");
+    }
+
+    @Test
+    void authorizedTemporaryPriceOverridesCatalogPrice() {
+        when(product.getDiscountType()).thenReturn(DiscountType.NONE);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        var line = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P-1", "Producto", null,
+                new BigDecimal("7.25"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"), null, null, null, null, List.of(),
+                false, true);
+
+        var priced = service().priceLine(
+                product, DATE, AuthoritativePromotionPricing.CustomerContext.anonymous(), line);
+
+        assertThat(priced.precioUnitario()).isEqualByComparingTo("7.25");
+        assertThat(priced.tarifa()).isEqualTo("TEMPORAL");
+    }
+
+    @Test
+    void temporaryPriceMustBeStrictlyPositive() {
+        when(product.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        var line = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "P-1", "Producto", null,
+                BigDecimal.ZERO, BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"), null, null, null, null, List.of(),
+                false, true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().priceLine(
+                product,
+                DATE,
+                AuthoritativePromotionPricing.CustomerContext.anonymous(),
+                line))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("mayor que 0");
     }
 
     @Test

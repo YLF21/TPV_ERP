@@ -40,6 +40,9 @@ import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.promotion.PromotionCatalogGateway;
 import com.tpverp.backend.security.domain.Role;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -133,6 +136,10 @@ class DocumentServiceTest {
     private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @Mock
     private DocumentOperationalEventRecorder operationalEvents;
+    @Mock
+    private TicketCancellationOperationRepository ticketCancellations;
+    @Mock
+    private SaleOperationSecurityService saleOperationSecurity;
 
     private DocumentService service;
     private Store store;
@@ -158,6 +165,13 @@ class DocumentServiceTest {
                 .thenReturn(store.getEmpresa());
         lenient().when(currentOrganization.currentUser(any())).thenReturn(user);
         lenient().when(currentTerminal.terminalId(any())).thenReturn(terminalId);
+        lenient().when(saleOperationSecurity.authorize(
+                        org.mockito.ArgumentMatchers.eq(
+                                SaleOperationCode.CONVERT_TICKET_TO_INVOICE),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(new Authorization(user, user, false));
         lenient().when(importMetadata.findByDocumentId(any())).thenReturn(List.of());
         lenient().when(promotionRepository.findByEmpresaIdAndEstado(any(), any(PromotionStatus.class)))
                 .thenReturn(List.of());
@@ -215,6 +229,8 @@ class DocumentServiceTest {
                 stockSettings,
                 controlAlerts,
                 operationalEvents,
+                ticketCancellations,
+                saleOperationSecurity,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -886,7 +902,8 @@ class DocumentServiceTest {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         var customer = completeCustomer();
-        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
@@ -896,7 +913,11 @@ class DocumentServiceTest {
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
         var invoice = service.convertTicketToInvoice(
-                ticket.getId(), customer.getId(), authentication());
+                ticket.getId(),
+                customer.getId(),
+                "SUPERVISOR",
+                "secret",
+                authentication());
 
         assertThat(invoice.getTipo()).isEqualTo(CommercialDocumentType.FACTURA_VENTA);
         assertThat(invoice.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
@@ -906,6 +927,25 @@ class DocumentServiceTest {
         verify(stockGateway, never()).confirm(invoice);
         verify(relationRepository).save(any(DocumentRelation.class));
         verify(fiscalIntegration).registerInvoiceFromTicket(invoice, ticket);
+        verify(saleOperationSecurity).authorize(
+                org.mockito.ArgumentMatchers.eq(
+                        SaleOperationCode.CONVERT_TICKET_TO_INVOICE),
+                org.mockito.ArgumentMatchers.eq("SUPERVISOR"),
+                org.mockito.ArgumentMatchers.eq("secret"),
+                org.mockito.ArgumentMatchers.any(
+                        org.springframework.security.core.Authentication.class));
+        verify(operationalEvents).record(
+                org.mockito.ArgumentMatchers.eq(ticket),
+                org.mockito.ArgumentMatchers.eq(
+                        DocumentOperationalEventType.CONVERTIDO),
+                org.mockito.ArgumentMatchers.eq(user.getId()),
+                org.mockito.ArgumentMatchers.eq(terminalId),
+                org.mockito.ArgumentMatchers.eq(NOW),
+                org.mockito.ArgumentMatchers.argThat(data ->
+                        user.getId().toString().equals(data.get("operatorUserId"))
+                                && user.getId().toString().equals(
+                                        data.get("authorizerUserId"))
+                                && !data.containsValue("secret")));
     }
 
     @Test
@@ -913,7 +953,8 @@ class DocumentServiceTest {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         var customer = completeCustomer();
-        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
         when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
@@ -922,7 +963,7 @@ class DocumentServiceTest {
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var invoice = service.convertTicketToInvoice(
-                ticket.getId(), customer.getId(), authentication());
+                ticket.getId(), customer.getId(), null, null, authentication());
 
         var command = org.mockito.ArgumentCaptor.forClass(SyncOutboundEventCommand.class);
         verify(syncOutbox).enqueue(command.capture());
@@ -939,12 +980,13 @@ class DocumentServiceTest {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
         var customer = completeCustomer();
-        when(documentRepository.findById(ticket.getId())).thenReturn(Optional.of(ticket));
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
 
         assertThatThrownBy(() -> service.convertTicketToInvoice(
-                ticket.getId(), customer.getId(), authentication()))
+                ticket.getId(), customer.getId(), null, null, authentication()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("facturado");
     }

@@ -11,13 +11,19 @@ public interface CashMovementRepository extends JpaRepository<CashMovement, UUID
 
     List<CashMovement> findAllBySesionCajaId(UUID sessionId);
 
-    @Query("""
-            select movement
-            from CashMovement movement
-            where movement.terminalId = :terminalId
-              and movement.sesionCajaId is null
-            order by movement.creadoEn asc
-            """)
+    @Query(value = """
+            select movement.*
+            from movimiento_caja movement
+            where movement.terminal_id = :terminalId
+              and movement.sesion_caja_id is null
+              and movement.creado_en >= coalesce(
+                    (select max(closed.cerrada_en)
+                     from sesion_caja closed
+                     where closed.terminal_id = :terminalId
+                       and closed.estado = 'CERRADA'),
+                    '-infinity'::timestamptz)
+            order by movement.creado_en asc
+            """, nativeQuery = true)
     List<CashMovement> findAllByTerminalIdAndSesionCajaIsNullOrderByCreadoEnAsc(
             @Param("terminalId") UUID terminalId);
 

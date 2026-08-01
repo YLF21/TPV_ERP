@@ -44,6 +44,8 @@ import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.security.application.PermissionChecks;
 import com.tpverp.backend.security.application.CorePermissionBootstrap;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.sync.SyncOperation;
 import com.tpverp.backend.sync.SyncOutboundEventCommand;
 import com.tpverp.backend.sync.SyncOutboxService;
@@ -115,6 +117,8 @@ public class DocumentService {
     private final StockSettingsService stockSettings;
     private final ControlAlertDetectionService controlAlerts;
     private final DocumentOperationalEventRecorder operationalEvents;
+    private final TicketCancellationOperationRepository ticketCancellations;
+    private final SaleOperationSecurityService saleOperationSecurity;
     private final Clock clock;
 
     public DocumentService(
@@ -147,6 +151,8 @@ public class DocumentService {
             StockSettingsService stockSettings,
             ControlAlertDetectionService controlAlerts,
             DocumentOperationalEventRecorder operationalEvents,
+            TicketCancellationOperationRepository ticketCancellations,
+            SaleOperationSecurityService saleOperationSecurity,
             Clock clock) {
         this.documents = documents;
         this.counters = counters;
@@ -177,6 +183,8 @@ public class DocumentService {
         this.stockSettings = stockSettings;
         this.controlAlerts = controlAlerts;
         this.operationalEvents = operationalEvents;
+        this.ticketCancellations = ticketCancellations;
+        this.saleOperationSecurity = saleOperationSecurity;
         this.clock = clock;
     }
 
@@ -528,6 +536,7 @@ public class DocumentService {
                 CommercialDocumentType.TICKET, snapshot.date(),
                 organization.currentUser(authentication).getId(), snapshot.globalDiscount());
         ticket.setParties(snapshot.customerId(), null, null);
+        ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
         validateInactiveSaleProducts(ticket);
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
@@ -557,7 +566,7 @@ public class DocumentService {
     }
 
     @Transactional
-    public CommercialDocument createPendingTicketFromSnapshot(
+    CommercialDocument createPendingTicketFromSnapshot(
             ApprovedCardTicketSnapshot snapshot,
             List<PaymentCommand> payments,
             Authentication authentication) {
@@ -574,6 +583,7 @@ public class DocumentService {
                 CommercialDocumentType.TICKET, snapshot.date(),
                 organization.currentUser(authentication).getId(), snapshot.globalDiscount());
         ticket.setParties(customer.getId(), null, null);
+        ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
         validateInactiveSaleProducts(ticket);
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
@@ -1504,11 +1514,173 @@ public class DocumentService {
         return saved;
     }
 
+    @Transactional(readOnly = true)
+    public TicketCancellationValidation validateTicketCancellation(UUID id) {
+        var ticket = find(id);
+        requireCancellableTicket(ticket);
+        var voucherPlan = vouchers.cancellationPlan(ticket);
+        memberLoyalty.validateTicketCancellation(ticket);
+        var manualReferences = ticket.getPagos().stream()
+                .filter(DocumentService::requiresManualCancellationReference)
+                .map(payment -> new ManualCancellationReference(
+                        payment.getId(),
+                        payment.getMetodoPago().getNombre(),
+                        payment.getImporte()))
+                .toList();
+        var cashAmount = ticket.getPagos().stream()
+                .filter(payment -> payment.getMetodoPago().isCash())
+                .map(DocumentPayment::getImporte)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var integratedCardPayments = ticket.getPagos().stream()
+                .filter(payment -> payment.getCardMode()
+                        == com.tpverp.backend.terminal.PaymentCardMode.INTEGRATED)
+                .map(payment -> new IntegratedCardCancellation(
+                        payment.getId(), payment.getImporte()))
+                .toList();
+        return new TicketCancellationValidation(
+                ticket,
+                voucherPlan,
+                manualReferences,
+                integratedCardPayments,
+                Money.euros(cashAmount),
+                ticket.getPagos().stream()
+                        .anyMatch(payment -> payment.getMetodoPago().isCash()
+                                && payment.getMetodoPago().isAbreCajaRegistradora()));
+    }
+
+    @Transactional
+    public TicketCancellationApplied applyCompensatedTicketCancellation(
+            UUID id,
+            Authentication authentication,
+            String reason,
+            UUID authorizerUserId,
+            String authorizerUserName,
+            boolean delegated,
+            Map<String, String> manualCompensations) {
+        var storeId = organization.currentStore().getId();
+        var ticket = documents.findLockedDocument(id, storeId)
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        requireCancellableTicket(ticket);
+        var validation = validateCancellationDetails(ticket);
+        requireManualCancellationReferences(
+                validation.manualReferences(), manualCompensations);
+        var voucherResult = vouchers.compensateCancellation(ticket, authorizerUserId);
+        memberLoyalty.compensateTicketCancellation(ticket);
+        var terminalId = currentTerminal.terminalId(authentication);
+        cashPayments.recordTicketCancellation(
+                terminalId, ticket, validation.cashAmount(), authorizerUserId);
+        var operator = organization.currentUser(authentication);
+        var cancelledAt = Instant.now(clock);
+        ticket.cancel(operator.getId(), cancelledAt, reason);
+        if (ticket.isOrigenStock()) {
+            stockGateway.cancel(ticket);
+        }
+        var saved = documents.save(ticket);
+        var eventData = new LinkedHashMap<String, Object>();
+        eventData.put("motivo", reason.trim());
+        eventData.put("operadorUsuarioId", operator.getId().toString());
+        eventData.put("autorizadorUsuarioId", authorizerUserId.toString());
+        eventData.put("autorizadorUsuario", authorizerUserName);
+        eventData.put("autorizacionDelegada", delegated);
+        eventData.put("compensacionesManuales",
+                manualCompensations == null ? Map.of() : manualCompensations);
+        operationalEvents.record(saved, DocumentOperationalEventType.ANULADO,
+                operator.getId(), terminalId, cancelledAt, eventData);
+        fiscalIntegration.registerTicketCancellation(saved);
+        enqueueDocumentEvent(saved, terminalId, SyncOperation.ANULAR);
+        controlAlerts.detectTicketCancelled(
+                saved, terminalId, authorizerUserId, authorizerUserName,
+                delegated, authentication);
+        return new TicketCancellationApplied(
+                saved,
+                voucherResult,
+                validation.cashAmount(),
+                validation.openCashDrawer());
+    }
+
+    private TicketCancellationValidation validateCancellationDetails(
+            CommercialDocument ticket) {
+        var voucherPlan = vouchers.cancellationPlan(ticket);
+        memberLoyalty.validateTicketCancellation(ticket);
+        var manualReferences = ticket.getPagos().stream()
+                .filter(DocumentService::requiresManualCancellationReference)
+                .map(payment -> new ManualCancellationReference(
+                        payment.getId(),
+                        payment.getMetodoPago().getNombre(),
+                        payment.getImporte()))
+                .toList();
+        var integrated = ticket.getPagos().stream()
+                .filter(payment -> payment.getCardMode()
+                        == com.tpverp.backend.terminal.PaymentCardMode.INTEGRATED)
+                .map(payment -> new IntegratedCardCancellation(
+                        payment.getId(), payment.getImporte()))
+                .toList();
+        var cashAmount = ticket.getPagos().stream()
+                .filter(payment -> payment.getMetodoPago().isCash())
+                .map(DocumentPayment::getImporte)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new TicketCancellationValidation(
+                ticket, voucherPlan, manualReferences, integrated,
+                Money.euros(cashAmount),
+                ticket.getPagos().stream()
+                        .anyMatch(payment -> payment.getMetodoPago().isCash()
+                                && payment.getMetodoPago().isAbreCajaRegistradora()));
+    }
+
+    private void requireCancellableTicket(CommercialDocument ticket) {
+        if (ticket.getTipo() != CommercialDocumentType.TICKET
+                || ticket.getEstado() != DocumentStatus.CONFIRMADO) {
+            throw new IllegalStateException("solo se puede anular un ticket confirmado");
+        }
+        if (relations.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)) {
+            throw new IllegalStateException(
+                    "el ticket facturado debe corregirse con factura rectificativa");
+        }
+        if (relations.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.RECTIFICA)) {
+            throw new IllegalStateException(
+                    "el ticket tiene devoluciones previas y no puede anularse completo");
+        }
+    }
+
+    private static boolean requiresManualCancellationReference(
+            DocumentPayment payment) {
+        return payment.getCardMode()
+                        == com.tpverp.backend.terminal.PaymentCardMode.MANUAL
+                || "TRANSFERENCIA".equalsIgnoreCase(
+                        payment.getMetodoPago().getNombre());
+    }
+
+    private static void requireManualCancellationReferences(
+            List<ManualCancellationReference> requirements,
+            Map<String, String> references) {
+        var values = references == null ? Map.<String, String>of() : references;
+        for (var requirement : requirements) {
+            var reference = values.get(requirement.paymentId().toString());
+            if (reference == null || reference.isBlank()) {
+                throw new IllegalArgumentException(
+                        "la referencia de devolución es obligatoria para "
+                                + requirement.paymentMethod());
+            }
+        }
+    }
+
     // Converts a confirmed ticket into an F3 invoice without duplicating stock or payments.
     @Transactional
     public CommercialDocument convertTicketToInvoice(
-            UUID ticketId, UUID customerId, Authentication authentication) {
-        var ticket = find(ticketId);
+            UUID ticketId,
+            UUID customerId,
+            String authorizerUsername,
+            String authorizerPassword,
+            Authentication authentication) {
+        var ticket = documents.findLockedDocument(
+                        ticketId, organization.currentStore().getId())
+                .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+        if (ticketCancellations.hasActiveCancellation(ticketId)) {
+            throw new IllegalStateException(
+                    "el ticket tiene una anulación en curso");
+        }
         if (ticket.getTipo() != CommercialDocumentType.TICKET
                 || ticket.getEstado() != DocumentStatus.CONFIRMADO) {
             throw new IllegalStateException("solo se puede facturar un ticket confirmado");
@@ -1516,22 +1688,65 @@ public class DocumentService {
         if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.FACTURA_DE)) {
             throw new IllegalStateException("el ticket ya esta facturado");
         }
+        if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.RECTIFICA)) {
+            throw new IllegalStateException(
+                    "el ticket tiene devoluciones y no puede convertirse directamente en factura");
+        }
         var invoice = invoiceFromTicket(ticket, customerId, authentication);
         var terminalId = currentTerminalOrNull(authentication);
         invoice.assignOriginTerminal(terminalId);
         validateConfirmation(invoice);
+        var authorization = saleOperationSecurity.authorize(
+                SaleOperationCode.CONVERT_TICKET_TO_INVOICE,
+                authorizerUsername,
+                authorizerPassword,
+                authentication);
         invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
         var saved = documents.save(invoice);
         recordCreated(saved);
         recordConfirmed(saved, terminalId);
         relations.save(new DocumentRelation(saved, ticket, DocumentRelationType.FACTURA_DE));
+        var eventData = new LinkedHashMap<String, Object>();
+        eventData.put("documentoRelacionadoId", saved.getId().toString());
+        eventData.put("operatorUserId", authorization.operator().getId().toString());
+        eventData.put("operatorUsername", authorization.operator().getUserName());
+        eventData.put("authorizerUserId", authorization.authorizer().getId().toString());
+        eventData.put("authorizerUsername", authorization.authorizer().getUserName());
+        eventData.put("delegated", authorization.delegated());
         operationalEvents.record(ticket, DocumentOperationalEventType.CONVERTIDO,
-                organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
-                Map.of("documentoRelacionadoId", saved.getId().toString()));
+                authorization.operator().getId(), terminalId, Instant.now(clock),
+                Map.copyOf(eventData));
         fiscalIntegration.registerInvoiceFromTicket(saved, ticket);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
+    }
+
+    public record ManualCancellationReference(
+            UUID paymentId,
+            String paymentMethod,
+            BigDecimal amount) {
+    }
+
+    public record IntegratedCardCancellation(
+            UUID paymentId,
+            BigDecimal amount) {
+    }
+
+    public record TicketCancellationValidation(
+            CommercialDocument ticket,
+            VoucherService.VoucherCancellationPlan vouchers,
+            List<ManualCancellationReference> manualReferences,
+            List<IntegratedCardCancellation> integratedCardPayments,
+            BigDecimal cashAmount,
+            boolean openCashDrawer) {
+    }
+
+    public record TicketCancellationApplied(
+            CommercialDocument ticket,
+            VoucherService.VoucherCancellationResult vouchers,
+            BigDecimal cashAmount,
+            boolean openCashDrawer) {
     }
 
     @Transactional
@@ -1826,6 +2041,7 @@ public class DocumentService {
         document.assignOriginTerminal(currentTerminalOrNull(authentication));
         document.setParties(
                 command.clienteId(), command.proveedorId(), command.numeroExterno());
+        document.setInternalComment(command.comentarioInterno());
         document.setStockOrigin(
                 command.directo()
                         || command.tipo() == CommercialDocumentType.TICKET
@@ -1929,6 +2145,7 @@ public class DocumentService {
                 ticket.getDescuentoGlobal());
         invoice.assignOriginTerminal(currentTerminalOrNull(authentication));
         invoice.setParties(Objects.requireNonNull(customerId, "clienteId"), null, null);
+        invoice.setInternalComment(ticket.getComentarioInterno());
         invoice.setNumTicket(ticket.getNumero());
         ticket.getLineas().stream()
                 .map(DocumentLineCommand::from)

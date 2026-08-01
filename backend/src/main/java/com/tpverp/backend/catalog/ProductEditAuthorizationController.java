@@ -1,5 +1,6 @@
 package com.tpverp.backend.catalog;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -48,6 +49,14 @@ public class ProductEditAuthorizationController {
     public record AuthorizationRequest(
             @NotNull UUID productId,
             @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
             @Size(max = 128) String authorizerPassword) {
+
+        @Override
+        public String toString() {
+            return "AuthorizationRequest[productId=" + productId
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
     }
 }

@@ -4,13 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
+import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import com.tpverp.backend.terminal.PaymentTerminalOperation;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
@@ -25,6 +31,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,6 +44,8 @@ class TicketReturnServiceTest {
     @Mock CashPaymentRecorder cash;
     @Mock CurrentTerminal currentTerminal;
     @Mock VoucherService vouchers;
+    @Mock SaleOperationSecurityService operationSecurity;
+    @Mock AuditService audit;
     @Mock Authentication authentication;
 
     private TicketReturnService service;
@@ -47,13 +56,25 @@ class TicketReturnServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TicketReturnService(documents, terminalPayments, settlements, tenders, cash, currentTerminal, vouchers);
+        service = new TicketReturnService(
+                documents, terminalPayments, settlements, tenders, cash,
+                currentTerminal, vouchers, mock(TicketCancellationOperationRepository.class),
+                operationSecurity, audit);
         ticketId = UUID.randomUUID();
         requestId = UUID.randomUUID();
         terminalId = UUID.randomUUID();
         refundDocument = mock(CommercialDocument.class);
         lenient().when(refundDocument.getId()).thenReturn(UUID.randomUUID());
         lenient().when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
+        var operator = mock(UserAccount.class);
+        lenient().when(operator.getId()).thenReturn(UUID.randomUUID());
+        lenient().when(operator.getUserName()).thenReturn("CAJERO");
+        lenient().when(operationSecurity.authorize(
+                        eq(SaleOperationCode.RETURN_TICKET),
+                        any(),
+                        any(),
+                        eq(authentication)))
+                .thenReturn(new Authorization(operator, operator, false));
         lenient().when(settlements.record(eq(requestId), eq(ticketId), any(), any(), any(), eq(authentication)))
                 .thenReturn(refundDocument);
         lenient().when(tenders.findByRefundDocumentIdOrderByCreatedAtAsc(refundDocument.getId())).thenReturn(List.of());
@@ -137,6 +158,69 @@ class TicketReturnServiceTest {
             assertThat(payout.amount()).isEqualByComparingTo("12.10");
         });
         assertThat(result.voucher()).contains(voucher);
+    }
+
+    @Test
+    void authorizesAndAuditsOperatorAndAuthorizerBeforeRecordingReturn() {
+        service.create(
+                ticketId,
+                requestId,
+                new BigDecimal("12.10"),
+                BigDecimal.ZERO,
+                List.of(),
+                List.of(),
+                "ENCARGADO",
+                "super-secret",
+                authentication);
+
+        var order = inOrder(operationSecurity, audit, settlements);
+        order.verify(operationSecurity).authorize(
+                SaleOperationCode.RETURN_TICKET,
+                "ENCARGADO",
+                "super-secret",
+                authentication);
+        @SuppressWarnings("unchecked")
+        var details = ArgumentCaptor.forClass(java.util.Map.class);
+        order.verify(audit).record(
+                eq("TICKET_RETURN_AUTHORIZED"),
+                eq(com.tpverp.backend.audit.AuditResult.EXITO),
+                details.capture());
+        order.verify(settlements).record(
+                eq(requestId), eq(ticketId), any(), any(), any(), eq(authentication));
+        assertThat(details.getValue())
+                .containsKeys(
+                        "operatorId",
+                        "operatorUsername",
+                        "authorizerId",
+                        "authorizerUsername",
+                        "delegated")
+                .doesNotContainValue("super-secret");
+    }
+
+    @Test
+    void deniedReturnPolicyDoesNotMutateMoneyOrFiscalDocument() {
+        when(operationSecurity.authorize(
+                        SaleOperationCode.RETURN_TICKET,
+                        null,
+                        "wrong",
+                        authentication))
+                .thenThrow(new AccessDeniedException("denied"));
+
+        assertThatThrownBy(() -> service.create(
+                ticketId,
+                requestId,
+                BigDecimal.ZERO,
+                new BigDecimal("12.10"),
+                List.of(),
+                List.of(),
+                null,
+                "wrong",
+                authentication))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(audit, never()).record(any(), any(), any());
+        verify(terminalPayments, never()).refundPaymentOnly(any(), any(), any(), any());
+        verify(settlements, never()).record(any(), any(), any(), any(), any(), any());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

@@ -101,6 +101,10 @@ function validDraft(value: unknown): value is PendingSaleDraft {
   if (!isRecord(value) || !nonBlank(value.checkoutId) || !nonBlank(value.warehouseId) || !nonBlank(value.customerId)) return false;
   if (!validDate(value.date) || !validDate(value.dueDate)) return false;
   if (!['ALBARAN_VENTA', 'FACTURA_VENTA'].includes(String(value.type)) || !percentage(value.globalDiscount)) return false;
+  if (value.internalComment !== undefined
+    && (typeof value.internalComment !== "string" || value.internalComment.length > 500)) return false;
+  if (value.printMode !== undefined
+    && !["DEFAULT", "TICKET_PRINTER", "A4_PRINTER", "PDF", "NONE"].includes(String(value.printMode))) return false;
   if (value.creditOverride !== undefined
     && (!isRecord(value.creditOverride) || !nonBlank(value.creditOverride.reason) || value.creditOverride.reason.length > 500)) return false;
   return Array.isArray(value.lines) && value.lines.length > 0 && value.lines.every((line) => {
@@ -121,6 +125,12 @@ function validAllocation(value: unknown): value is PendingPaymentAllocation {
     && value.reference === undefined && value.operationId === undefined;
   if (value.kind === "TRANSFER") return value.status === "APPROVED" && nonBlank(value.reference)
     && value.deliveredCents === undefined && value.changeCents === undefined && value.operationId === undefined;
+  if (value.kind === "MANUAL_CARD") return value.status === "APPROVED"
+    && value.mode === "MANUAL"
+    && (value.reference === undefined || nonBlank(value.reference))
+    && value.deliveredCents === undefined
+    && value.changeCents === undefined
+    && value.operationId === undefined;
   if (value.kind === "INTEGRATED_CARD") return value.mode === "INTEGRATED" && nonBlank(value.operationId)
     && value.deliveredCents === undefined && value.changeCents === undefined && value.reference === undefined;
   return false;

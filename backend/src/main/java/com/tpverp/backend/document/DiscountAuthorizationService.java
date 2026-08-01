@@ -98,6 +98,22 @@ public class DiscountAuthorizationService {
         }
     }
 
+    /**
+     * Applies the personal percentage ceiling to the user that actually
+     * authorized a permission-protected discount.
+     */
+    public void enforceAuthorizerLimit(
+            BigDecimal requestedPercent,
+            UserAccount authorizer) {
+        var percent = normalizePercent(requestedPercent);
+        var resolvedAuthorizer = java.util.Objects.requireNonNull(
+                authorizer, "authorizer");
+        if (resolvedAuthorizer.getMaxDiscountPercent().compareTo(percent) < 0) {
+            throw new IllegalStateException(
+                    "El limite del responsable no cubre el descuento solicitado");
+        }
+    }
+
     private boolean canApplyDiscount(UserAccount user) {
         return user.getRol().isProtegido() || user.getRol().getPermisos().stream()
                 .anyMatch(value -> CorePermissionBootstrap.APLICAR_DESCUENTO

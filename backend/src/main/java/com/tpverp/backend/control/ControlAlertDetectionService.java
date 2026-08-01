@@ -123,12 +123,28 @@ public class ControlAlertDetectionService {
             UUID terminalId,
             Authentication authentication) {
         var user = organization.currentUser(authentication);
+        detectTicketCancelled(
+                document, terminalId, user.getId(), user.getUserName(), false, authentication);
+    }
+
+    @Transactional
+    public void detectTicketCancelled(
+            CommercialDocument document,
+            UUID terminalId,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        var user = organization.currentUser(authentication);
         var now = clock.instant();
         var data = new LinkedHashMap<String, Object>();
         data.put("documentType", document.getTipo().name());
         data.put("documentNumber", document.getNumero());
         data.put("reason", document.getMotivoAnulacion());
         data.put("total", document.getTotal());
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
         for (var rule : activeRules(document.getTiendaId(), ControlAlertType.TICKET_CANCELLED)) {
             emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
                     user.getId(), user.getUserName(), now, data);
@@ -297,6 +313,44 @@ public class ControlAlertDetectionService {
         for (var rule : activeRules(storeId, ControlAlertType.CASH_DRAWER_OPENED)) {
             emit(rule, "CASH_DRAWER", operationId, null, null, terminalId,
                     user.getId(), user.getUserName(), now, data);
+        }
+    }
+
+    @Transactional
+    public void detectCashSessionDiscrepancy(
+            UUID cashSessionId,
+            UUID storeId,
+            UUID terminalId,
+            BigDecimal expectedCash,
+            BigDecimal declaredFund,
+            BigDecimal discrepancy,
+            BigDecimal tolerance,
+            int reconciliationAttempt,
+            boolean sessionClosed,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        if (discrepancy.abs().compareTo(tolerance) <= 0) return;
+        var operator = organization.currentUser(authentication);
+        var now = clock.instant();
+        var data = new LinkedHashMap<String, Object>();
+        data.put("cashSessionId", cashSessionId.toString());
+        data.put("expectedCash", expectedCash);
+        data.put("declaredFund", declaredFund);
+        data.put("discrepancy", discrepancy);
+        data.put("absoluteDiscrepancy", discrepancy.abs());
+        data.put("tolerance", tolerance);
+        data.put("reconciliationAttempt", reconciliationAttempt);
+        data.put("sessionClosed", sessionClosed);
+        data.put("operatorId", operator.getId().toString());
+        data.put("operatorName", operator.getUserName());
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
+        for (var rule : activeRules(storeId, ControlAlertType.CASH_SESSION_DISCREPANCY)) {
+            emit(rule, "CASH_SESSION_DISCREPANCY", cashSessionId, null, null, terminalId,
+                    operator.getId(), operator.getUserName(), now, data);
         }
     }
 

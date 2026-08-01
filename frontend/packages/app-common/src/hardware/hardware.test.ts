@@ -77,6 +77,26 @@ describe("hardware facade", () => {
           printAutomatically: false,
           showPrintDialog: true
         }
+      ],
+      defaultProductLabelProfileId: "ticket-58x40",
+      productLabelProfiles: [
+        {
+          id: "ticket-58x40",
+          name: "Ticket 58 x 40 mm",
+          destination: "TICKET_PRINTER",
+          printerName: "",
+          widthMm: 58,
+          heightMm: 40,
+          orientation: "PORTRAIT",
+          marginTopMm: 5,
+          marginRightMm: 5,
+          marginBottomMm: 5,
+          marginLeftMm: 5,
+          horizontalGapMm: 2,
+          verticalGapMm: 2,
+          copies: 1,
+          showStoreName: true
+        }
       ]
     });
   });

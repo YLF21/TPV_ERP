@@ -14,6 +14,17 @@ export type ProductCreateDialogProps = {
   operationalAuthorizationId?: string;
   editProduct?: ProductCreateEditProduct | null;
   initialForm?: Partial<ProductCreateFormState>;
+  createProduct?: (
+    body: ReturnType<typeof buildCreateProductRequest>,
+    token: string,
+    headers?: Record<string, string>,
+  ) => Promise<ProductCreateResponse>;
+  uploadImage?: (
+    productId: string,
+    file: File,
+    token: string,
+    headers?: Record<string, string>,
+  ) => Promise<void>;
   onClose: () => void;
   onCreated?: (product: ProductCreateResponse) => void;
 };
@@ -704,6 +715,8 @@ export function ProductCreateDialog({
   operationalAuthorizationId,
   editProduct,
   initialForm,
+  createProduct,
+  uploadImage,
   onClose,
   onCreated
 }: ProductCreateDialogProps) {
@@ -1370,7 +1383,9 @@ export function ProductCreateDialog({
         imageFile,
         productId: editProduct?.id,
         initialData: editProduct?.initialData,
-        requestHeaders
+        requestHeaders,
+        createProduct,
+        uploadImage,
       });
       onCreated?.(result.product);
       resetDialogState();

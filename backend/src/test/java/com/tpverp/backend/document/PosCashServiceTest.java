@@ -18,6 +18,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -33,6 +34,23 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 
 class PosCashServiceTest {
+
+    @Test
+    void ticketSnapshotRemainsCompatibleWithStoredPayloadsWithoutFiscalTotals() {
+        var snapshots = new PosCashTicketSnapshot();
+
+        var restored = snapshots.deserialize("""
+                {"schemaVersion":1,"ticket":{
+                  "documentId":"00000000-0000-0000-0000-000000000001",
+                  "documentNumber":"T-OLD","issuedAt":"2026-07-15T10:15:30Z",
+                  "lines":[],"payments":[],"total":7.00
+                }}
+                """);
+
+        assertThat(restored.total()).isEqualByComparingTo("7.00");
+        assertThat(restored.baseTotal()).isNull();
+        assertThat(restored.taxTotal()).isNull();
+    }
 
     @Test
     void checkoutFixedDiscountIsAuthorizedUsingItsEffectivePercentage() {
@@ -156,16 +174,63 @@ class PosCashServiceTest {
     }
 
     @Test
-    void openPriceIsAcceptedOnlyWhenCatalogSalePriceIsZero() {
+    void cashIdempotencyHashIncludesNormalizedInternalCommentWithoutChangingBlankRequests() {
+        var line = new PosCashController.LineRequest(
+                UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO);
+        var checkoutId = UUID.randomUUID();
+        var legacy = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(line)),
+                BigDecimal.TEN,
+                BigDecimal.ONE);
+        var blank = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, "   "),
+                BigDecimal.TEN,
+                BigDecimal.ONE);
+        var first = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, "  Entregar tarde  "),
+                BigDecimal.TEN,
+                BigDecimal.ONE);
+        var sameNormalized = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, "Entregar tarde"),
+                BigDecimal.TEN,
+                BigDecimal.ONE);
+        var different = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(
+                        null, List.of(line), null, null, null, "Entregar manana"),
+                BigDecimal.TEN,
+                BigDecimal.ONE);
+
+        assertThat(PosCashService.requestHash(blank))
+                .isEqualTo(PosCashService.requestHash(legacy));
+        assertThat(PosCashService.requestHash(first))
+                .isEqualTo(PosCashService.requestHash(sameNormalized))
+                .isNotEqualTo(PosCashService.requestHash(different))
+                .isNotEqualTo(PosCashService.requestHash(legacy));
+    }
+
+    @Test
+    void suppliedPriceIsOpenForZeroCatalogPriceAndTemporaryOtherwise() {
         assertThat(PosCashService.authoritativeUnitPrice(
                 BigDecimal.ZERO, new BigDecimal("7.25")))
                 .isEqualByComparingTo("7.25");
 
+        assertThat(PosCashService.authoritativeUnitPrice(
+                new BigDecimal("10.00"), new BigDecimal("7.25")))
+                .isEqualByComparingTo("7.25");
+
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> PosCashService.authoritativeUnitPrice(
-                        new BigDecimal("10.00"), new BigDecimal("7.25")))
+                        new BigDecimal("10.00"), BigDecimal.ZERO))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("solo se admite");
+                .hasMessageContaining("mayor que 0");
     }
 
     @Test
@@ -223,6 +288,105 @@ class PosCashServiceTest {
                                 "product:" + productId + ":1", new BigDecimal("1.00")),
                         org.assertj.core.groups.Tuple.tuple(
                                 "product:" + productId + ":2", new BigDecimal("2.00")));
+    }
+
+    @Test
+    void cashIdempotencyHashIncludesNormalizedTemporaryName() {
+        var productId = UUID.randomUUID();
+        var checkoutId = UUID.randomUUID();
+        var catalogName = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO))),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+        var first = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO,
+                                null, List.of(), "  Nombre temporal  "))),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+        var sameNormalized = new PosCashController.CashRequest(
+                checkoutId,
+                new PosCashController.SaleRequest(null, List.of(
+                        new PosCashController.LineRequest(
+                                productId, BigDecimal.ONE, BigDecimal.ZERO,
+                                null, List.of(), "Nombre temporal"))),
+                BigDecimal.TEN,
+                BigDecimal.TEN);
+
+        assertThat(PosCashService.requestHash(first))
+                .isEqualTo(PosCashService.requestHash(sameNormalized))
+                .isNotEqualTo(PosCashService.requestHash(catalogName));
+    }
+
+    @Test
+    void preparedSaleClassifiesEverySensitiveLineOperation() {
+        var documents = mock(DocumentService.class);
+        var products = mock(ProductRepository.class);
+        var taxes = mock(StoreTaxRepository.class);
+        var warehouses = mock(WarehouseRepository.class);
+        var methods = mock(PaymentMethodRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var checkouts = mock(PosCashCheckoutRepository.class);
+        var currentTerminal = mock(CurrentTerminal.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        var warehouse = Warehouse.general(storeId);
+        var tax = new StoreTax(storeId, new BigDecimal("21.00"), true);
+        var regular = mock(Product.class);
+        var open = mock(Product.class);
+        var regularId = UUID.randomUUID();
+        var openId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(store.getTimezone()).thenReturn("Atlantic/Canary");
+        when(organization.currentStore()).thenReturn(store);
+        when(warehouses.findByStoreIdAndPredeterminadoTrue(storeId))
+                .thenReturn(Optional.of(warehouse));
+        configureSaleProduct(
+                regular, regularId, storeId, tax.getId(), "REG", "Regular",
+                new BigDecimal("10.00"));
+        configureSaleProduct(
+                open, openId, storeId, tax.getId(), "OPEN", "Abierto",
+                BigDecimal.ZERO);
+        when(products.findById(regularId)).thenReturn(Optional.of(regular));
+        when(products.findById(openId)).thenReturn(Optional.of(open));
+        when(taxes.findById(tax.getId())).thenReturn(Optional.of(tax));
+        var service = new PosCashService(
+                documents, products, taxes, warehouses, methods, organization,
+                checkouts, new PosCashTicketSnapshot(), currentTerminal);
+        var request = new PosCashController.SaleRequest(
+                null,
+                List.of(
+                        new PosCashController.LineRequest(
+                                regularId, BigDecimal.ONE.negate(),
+                                new BigDecimal("10.00"), new BigDecimal("8.00"),
+                                List.of(), "Nombre temporal"),
+                        new PosCashController.LineRequest(
+                                openId, BigDecimal.ONE, BigDecimal.ZERO,
+                                new BigDecimal("2.00"))),
+                null,
+                null,
+                BigDecimal.ONE);
+
+        var prepared = service.prepareSale(request, null);
+
+        assertThat(prepared.sensitiveOperations()).containsExactlyInAnyOrder(
+                SaleOperationCode.MANUAL_RETURN_WITHOUT_TICKET,
+                SaleOperationCode.TEMPORARY_NAME,
+                SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                SaleOperationCode.OPEN_PRICE_PRODUCT,
+                SaleOperationCode.APPLY_SALE_DISCOUNT,
+                SaleOperationCode.APPLY_CHECKOUT_DISCOUNT);
+        assertThat(prepared.command().lineas().get(0)).satisfies(line -> {
+            assertThat(line.nombre()).isEqualTo("Nombre temporal");
+            assertThat(line.precioUnitario()).isEqualByComparingTo("8.00");
+            assertThat(line.temporaryNameOverride()).isTrue();
+            assertThat(line.temporaryPriceOverride()).isTrue();
+        });
     }
 
     @Test
@@ -338,6 +502,8 @@ class PosCashServiceTest {
             assertThat(payment.amount()).isEqualByComparingTo("7.00");
         });
         assertThat(result.printTicket().total()).isEqualByComparingTo("7.00");
+        assertThat(result.printTicket().baseTotal()).isEqualByComparingTo("5.79");
+        assertThat(result.printTicket().taxTotal()).isEqualByComparingTo("1.21");
         verify(documents).createTicket(any(DocumentCommand.class), anyList(),
                 org.mockito.ArgumentMatchers.same(authentication));
         var command = org.mockito.ArgumentCaptor.forClass(DocumentCommand.class);
@@ -439,6 +605,23 @@ class PosCashServiceTest {
             PosCashTicketSnapshot snapshots, Authentication authentication,
             PosCashController.CashRequest request, UUID companyId, UUID storeId,
             UUID terminalId, UUID userId) {}
+
+    private static void configureSaleProduct(
+            Product product,
+            UUID productId,
+            UUID storeId,
+            UUID taxId,
+            String code,
+            String name,
+            BigDecimal salePrice) {
+        when(product.getId()).thenReturn(productId);
+        when(product.getStoreId()).thenReturn(storeId);
+        when(product.getTaxId()).thenReturn(taxId);
+        when(product.getCode()).thenReturn(code);
+        when(product.getName()).thenReturn(name);
+        when(product.getSalePrice()).thenReturn(salePrice);
+        when(product.isTaxesIncluded()).thenReturn(true);
+    }
 
     private static CommercialDocument confirmedTicket(
             UUID storeId,

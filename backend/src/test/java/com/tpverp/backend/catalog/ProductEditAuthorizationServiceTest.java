@@ -14,6 +14,8 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.sales.SaleOperationCode;
+import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -28,7 +30,7 @@ class ProductEditAuthorizationServiceTest {
 
     private CatalogService catalog;
     private CurrentOrganization organization;
-    private OperationalPermissionAuthorizationService authorizations;
+    private SaleOperationSecurityService operationSecurity;
     private ControlAlertDetectionService controlAlerts;
     private AuditService audit;
     private ProductEditAuthorizationService service;
@@ -42,11 +44,11 @@ class ProductEditAuthorizationServiceTest {
     void setUp() {
         catalog = mock(CatalogService.class);
         organization = mock(CurrentOrganization.class);
-        authorizations = mock(OperationalPermissionAuthorizationService.class);
+        operationSecurity = mock(SaleOperationSecurityService.class);
         controlAlerts = mock(ControlAlertDetectionService.class);
         audit = mock(AuditService.class);
         service = new ProductEditAuthorizationService(
-                catalog, organization, authorizations, controlAlerts, audit,
+                catalog, organization, operationSecurity, controlAlerts, audit,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         product = mock(Product.class);
         store = mock(Store.class);
@@ -64,7 +66,11 @@ class ProductEditAuthorizationServiceTest {
         when(catalog.product(product.getId())).thenReturn(product);
         when(organization.currentStore()).thenReturn(store);
         when(organization.currentUser(authentication)).thenReturn(operator);
-        when(authorizations.authorize(eq("GESTION_PRODUCTO"), any(), any(), eq(authentication)))
+        when(operationSecurity.authorize(
+                eq(SaleOperationCode.EDIT_CATALOG_PRODUCT),
+                any(),
+                any(),
+                eq(authentication)))
                 .thenReturn(new OperationalPermissionAuthorizationService.Authorization(
                         operator, authorizer, true));
     }
@@ -80,6 +86,11 @@ class ProductEditAuthorizationServiceTest {
                 authorization.operationId(), product.getId(), authentication)).isPresent();
         assertThat(service.validGrant(
                 authorization.operationId(), UUID.randomUUID(), authentication)).isEmpty();
+        verify(operationSecurity).authorize(
+                SaleOperationCode.EDIT_CATALOG_PRODUCT,
+                "encargado",
+                "1234",
+                authentication);
         verify(audit).record(eq("PRODUCT_EDIT_AUTHORIZED"), eq(AuditResult.EXITO), any());
     }
 

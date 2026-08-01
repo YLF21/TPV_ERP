@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { apiRequest } from "../api/client";
+import { apiBaseUrl } from "../api/runtime";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { AppKind, LocaleCode } from "../types";
 import { ErpSelect } from "./ErpSelect";
@@ -8,6 +9,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavigation";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { useOutsidePointerDown } from "./useOutsidePointerDown";
 
 export type StockSalesHistoryRow = {
   documentId: string;
@@ -31,7 +33,9 @@ export type StockSalesHistoryRow = {
 
 type StockSalesHistoryPanelProps = {
   productId: string;
+  productCode?: string;
   productName: string;
+  productImageSource?: string;
   locale: LocaleCode;
   app?: AppKind;
   username?: string;
@@ -82,13 +86,24 @@ export function filterStockSalesHistoryRows(rows: StockSalesHistoryRow[], status
   return rows.filter((row) => row.status === status);
 }
 
+export function effectiveStockSalesHistoryTotals(rows: StockSalesHistoryRow[]) {
+  return rows.reduce((totals, row) => {
+    if (row.status === "ANULADO") return totals;
+    totals.quantity += Number(row.quantity) || 0;
+    totals.amount += Number(row.lineTotal) || 0;
+    return totals;
+  }, { quantity: 0, amount: 0 });
+}
+
 export function stockSalesDocumentLabel(row: Pick<StockSalesHistoryRow, "documentId" | "documentNumber" | "documentType">) {
   return [row.documentType, row.documentNumber || row.documentId].filter(Boolean).join(" ");
 }
 
 export function StockSalesHistoryPanel({
   productId,
+  productCode = "",
   productName,
+  productImageSource = "",
   locale,
   app = "venta",
   username = "",
@@ -98,6 +113,7 @@ export function StockSalesHistoryPanel({
   onOpenDocument
 }: StockSalesHistoryPanelProps) {
   const t = createTranslator(locale);
+  const requestToken = accessToken ?? token;
   const initialRange = useMemo(() => defaultStockSalesHistoryRange(), []);
   const [dateFrom, setDateFrom] = useState(initialRange.from);
   const [dateTo, setDateTo] = useState(initialRange.to);
@@ -108,8 +124,13 @@ export function StockSalesHistoryPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [documentNotice, setDocumentNotice] = useState("");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
   const historyToolbarRef = useRef<HTMLDivElement | null>(null);
   const applyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  useOutsidePointerDown(exportMenuOpen, exportMenuRef, () => setExportMenuOpen(false));
   const tableLayout = useTableLayoutPreference({
     app,
     username,
@@ -123,23 +144,27 @@ export function StockSalesHistoryPanel({
     function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (exportMenuOpen) {
+          setExportMenuOpen(false);
+        } else {
+          onClose();
+        }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [exportMenuOpen, onClose]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!token || !productId) {
+    if (!requestToken || !productId) {
       setRows([]);
       setError(t("stock.history.noAccess"));
       return;
     }
     setLoading(true);
     setError("");
-    void apiRequest<StockSalesHistoryRow[]>(stockSalesHistoryPath(productId, appliedFrom, appliedTo), { token })
+    void apiRequest<StockSalesHistoryRow[]>(stockSalesHistoryPath(productId, appliedFrom, appliedTo), { token: requestToken })
       .then((result) => {
         if (!cancelled) {
           setRows(result);
@@ -159,10 +184,11 @@ export function StockSalesHistoryPanel({
     return () => {
       cancelled = true;
     };
-  }, [appliedFrom, appliedTo, productId, token]);
+  }, [appliedFrom, appliedTo, productId, requestToken]);
 
   const statuses = Array.from(new Set(rows.map((row) => row.status).filter(Boolean))).sort();
   const visibleRows = filterStockSalesHistoryRows(rows, statusFilter);
+  const totals = effectiveStockSalesHistoryTotals(visibleRows);
   const numberFormatter = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -185,6 +211,20 @@ export function StockSalesHistoryPanel({
     warehouse: t("stock.column.warehouse")
   };
 
+  function exportColumns() {
+    return visibleColumns.map((column) => ({ key: column.key, label: columnLabels[column.key] }));
+  }
+
+  function exportFileName(extension: "xlsx" | "pdf") {
+    const identity = (productCode || productName || "producto")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase();
+    return `historial-ventas-${identity || "producto"}.${extension}`;
+  }
+
   function applyFilters() {
     const from = dateFrom || dateTo;
     const to = dateTo || dateFrom;
@@ -193,6 +233,99 @@ export function StockSalesHistoryPanel({
     }
     setAppliedFrom(from <= to ? from : to);
     setAppliedTo(from <= to ? to : from);
+  }
+
+  async function exportExcel() {
+    if (!requestToken || exportBusy || visibleRows.length === 0) return;
+    setExportMenuOpen(false);
+    setExportBusy(true);
+    setExportError("");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/stock/products/${encodeURIComponent(productId)}/sales-history/export`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${requestToken}`,
+          },
+          body: JSON.stringify({
+            from: appliedFrom,
+            to: appliedTo,
+            status: statusFilter || null,
+            labels: {
+              title: t("stock.history.title"),
+              product: t("sale.main.product"),
+              code: t("stock.column.code"),
+              period: t("salesReport.filter.date"),
+              status: t("salesReport.filter.status"),
+              allStatuses: t("salesReport.filter.all"),
+              totalQuantity: t("stock.history.totalQuantity"),
+              totalAmount: t("stock.history.totalAmount"),
+            },
+            columns: exportColumns(),
+          }),
+        },
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const fileName = exportFileName("xlsx");
+      if (window.tpvDesktop?.reports) {
+        const result = await window.tpvDesktop.reports.saveFile({
+          defaultFileName: fileName,
+          filters: [{ name: "Excel", extensions: ["xlsx"] }],
+          bytes,
+        });
+        if (!result.ok) throw new Error(result.message);
+      } else {
+        downloadBytes(bytes, fileName,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      }
+    } catch (caught) {
+      setExportError(caught instanceof Error ? caught.message : t("stock.history.exportError"));
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function exportPdf() {
+    if (exportBusy || visibleRows.length === 0) return;
+    setExportMenuOpen(false);
+    setExportBusy(true);
+    setExportError("");
+    try {
+      if (!window.tpvDesktop?.reports?.exportTablePdf) {
+        printSalesHistoryInBrowser();
+        return;
+      }
+      const imageDataUrl = productImageSource
+        ? await imageSourceAsDataUrl(productImageSource)
+        : undefined;
+      const result = await window.tpvDesktop.reports.exportTablePdf({
+        title: t("stock.history.title"),
+        subject: productName,
+        code: productCode,
+        imageDataUrl,
+        imageFallback: productName.trim().slice(0, 1).toLocaleUpperCase() || "P",
+        filters: [
+          { label: t("salesReport.filter.dateFrom"), value: appliedFrom },
+          { label: t("salesReport.filter.dateTo"), value: appliedTo },
+          { label: t("salesReport.filter.status"), value: statusFilter || t("salesReport.filter.all") },
+        ],
+        columns: exportColumns(),
+        rows: visibleRows.map((row) => visibleColumns.map((column) =>
+          formattedHistoryCell(row, column.key, dateFormatter, numberFormatter))),
+        totals: [
+          { label: t("stock.history.totalQuantity"), value: numberFormatter.format(totals.quantity) },
+          { label: t("stock.history.totalAmount"), value: `${numberFormatter.format(totals.amount)} €` },
+        ],
+      }, exportFileName("pdf"));
+      if (!result.ok) throw new Error(result.message);
+    } catch (caught) {
+      setExportError(caught instanceof Error ? caught.message : t("stock.history.exportError"));
+    } finally {
+      setExportBusy(false);
+    }
   }
 
   function identifyDocument(row: StockSalesHistoryRow) {
@@ -256,6 +389,27 @@ export function StockSalesHistoryPanel({
           />
         </label>
         <button ref={applyButtonRef} type="button" onClick={applyFilters}>{t("salesReport.filter.apply")}</button>
+        <div className="stock-history-export" ref={exportMenuRef}>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+            disabled={exportBusy || loading || visibleRows.length === 0}
+            onClick={() => setExportMenuOpen((open) => !open)}
+          >
+            {exportBusy ? t("stock.history.exporting") : t("stock.history.export")}
+          </button>
+          {exportMenuOpen && (
+            <div className="stock-history-export-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => void exportExcel()}>
+                {t("stock.history.exportExcel")}
+              </button>
+              <button type="button" role="menuitem" onClick={() => void exportPdf()}>
+                {t("stock.history.exportPdf")}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="stock-history-context">
@@ -263,9 +417,12 @@ export function StockSalesHistoryPanel({
         <span>{t("stock.history.resultCount").replace("{count}", String(visibleRows.length))}</span>
       </div>
 
-      {loading && <p className="stock-operation-status" aria-live="polite">{t("stock.history.loading")}</p>}
-      {error && <p className="stock-operation-status error" role="alert">{error}</p>}
-      {documentNotice && <p className="stock-operation-status" aria-live="polite">{documentNotice}</p>}
+      <div className="stock-history-statuses">
+        {loading && <p className="stock-operation-status" aria-live="polite">{t("stock.history.loading")}</p>}
+        {error && <p className="stock-operation-status error" role="alert">{error}</p>}
+        {documentNotice && <p className="stock-operation-status" aria-live="polite">{documentNotice}</p>}
+        {exportError && <p className="stock-operation-status error" role="alert">{exportError}</p>}
+      </div>
 
       <div className="stock-history-table-scroll">
         <table className="report-table stock-history-table">
@@ -327,8 +484,74 @@ export function StockSalesHistoryPanel({
           </tbody>
         </table>
       </div>
+      <div className="stock-history-totals" aria-label={t("stock.history.totals")}>
+        <div>
+          <span>{t("stock.history.totalQuantity")}</span>
+          <strong>{numberFormatter.format(totals.quantity)}</strong>
+        </div>
+        <div>
+          <span>{t("stock.history.totalAmount")}</span>
+          <strong>{numberFormatter.format(totals.amount)} €</strong>
+        </div>
+      </div>
     </section>
   );
+}
+
+function formattedHistoryCell(
+  row: StockSalesHistoryRow,
+  column: StockSalesHistoryColumnKey,
+  dateFormatter: Intl.DateTimeFormat,
+  numberFormatter: Intl.NumberFormat,
+) {
+  if (column === "occurredAt") return formatOccurredAt(row.occurredAt, dateFormatter);
+  if (column === "document") return stockSalesDocumentLabel(row);
+  if (column === "status") return row.status;
+  if (column === "customer") return row.customerName || row.customerId || "";
+  if (column === "quantity") return numberFormatter.format(Number(row.quantity) || 0);
+  if (column === "unitPrice") return numberFormatter.format(Number(row.unitPrice) || 0);
+  if (column === "discount") return `${numberFormatter.format(Number(row.discountPercent) || 0)}%`;
+  if (column === "total") return numberFormatter.format(Number(row.lineTotal) || 0);
+  if (column === "user") return row.userName || row.userId || "";
+  if (column === "store") return row.storeName || row.storeId || "";
+  return row.warehouseName || row.warehouseId || "";
+}
+
+function downloadBytes(bytes: Uint8Array, fileName: string, type: string) {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const url = URL.createObjectURL(new Blob([copy.buffer], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function imageSourceAsDataUrl(source: string) {
+  if (source.startsWith("data:")) return source;
+  const blob = await fetch(source).then((response) => {
+    if (!response.ok) throw new Error("product_image_unavailable");
+    return response.blob();
+  });
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("product_image_unavailable"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function printSalesHistoryInBrowser() {
+  const root = document.documentElement;
+  root.dataset.salesHistoryPrint = "true";
+  const cleanup = () => {
+    delete root.dataset.salesHistoryPrint;
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  window.setTimeout(cleanup, 1_000);
 }
 
 function formatOccurredAt(value: string, formatter: Intl.DateTimeFormat) {

@@ -224,6 +224,60 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
     Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
             UUID tiendaId, CommercialDocumentType tipo, String numero);
 
+    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+              from CommercialDocument document
+             where document.tiendaId = :storeId
+               and document.terminalOrigenId = :terminalId
+               and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+               and document.estado = com.tpverp.backend.document.DocumentStatus.CONFIRMADO
+               and not exists (
+                   select relation.documento.id
+                     from DocumentRelation relation
+                    where relation.origen.id = document.id
+                      and relation.tipo in (
+                          com.tpverp.backend.document.DocumentRelationType.FACTURA_DE,
+                          com.tpverp.backend.document.DocumentRelationType.RECTIFICA)
+                      and relation.documento.estado not in (
+                          com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                          com.tpverp.backend.document.DocumentStatus.ANULADO)
+               )
+             order by coalesce(document.confirmadoEn, document.creadoEn) desc,
+                      document.id desc
+            """)
+    List<CommercialDocument> findLatestCancellableTicket(
+            @Param("storeId") UUID storeId,
+            @Param("terminalId") UUID terminalId,
+            Pageable pageable);
+
+    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
+    @Query("""
+            select document
+              from CommercialDocument document
+             where document.tiendaId = :storeId
+               and document.terminalOrigenId = :terminalId
+               and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+               and document.estado = com.tpverp.backend.document.DocumentStatus.CONFIRMADO
+               and not exists (
+                   select relation.documento.id
+                     from DocumentRelation relation
+                    where relation.origen.id = document.id
+                      and relation.tipo in (
+                          com.tpverp.backend.document.DocumentRelationType.FACTURA_DE,
+                          com.tpverp.backend.document.DocumentRelationType.RECTIFICA)
+                      and relation.documento.estado not in (
+                          com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                          com.tpverp.backend.document.DocumentStatus.ANULADO)
+               )
+             order by coalesce(document.confirmadoEn, document.creadoEn) desc,
+                      document.id desc
+            """)
+    List<CommercialDocument> findLatestConvertibleTicket(
+            @Param("storeId") UUID storeId,
+            @Param("terminalId") UUID terminalId,
+            Pageable pageable);
+
     @Query("""
             select serial
               from DocumentLine line
@@ -318,7 +372,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
                    document.tipo as "documentType",
                    document.numero as "documentNumber",
                    document.estado as "status",
-                   (document.fecha::timestamp at time zone store.timezone) as "occurredAt",
+                   coalesce(document.confirmado_en, document.creado_en) as "occurredAt",
                    document.cliente_id as "customerId",
                    customer.nombre_fiscal as "customerName",
                    line.cantidad as "quantity",

@@ -88,6 +88,35 @@ public class CashPaymentRecorder {
                 null));
     }
 
+    /** Records the full cash compensation caused by an administrative ticket cancellation. */
+    public void recordTicketCancellation(
+            UUID terminalId,
+            CommercialDocument ticket,
+            java.math.BigDecimal amount,
+            UUID authorizerUserId) {
+        var value = Money.euros(amount);
+        if (value.signum() <= 0
+                || movements.existsByDocumentIdAndType(
+                        ticket.getId(), CashMovementType.DEVOLUCION_EFECTIVO)) {
+            return;
+        }
+        var session = openSession(terminalId);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var operator = organization.currentUser(authentication);
+        movements.save(CashMovement.sessionMovement(
+                session.getStoreId(),
+                session.getTerminalId(),
+                session,
+                CashMovementType.DEVOLUCION_EFECTIVO,
+                value,
+                Instant.now(clock),
+                operator.getId(),
+                authorizerUserId,
+                "Anulacion " + ticket.getNumero(),
+                ticket.getId(),
+                null));
+    }
+
     private CashSession openSession(UUID terminalId) {
         return sessions.findByTerminalIdAndStatus(terminalId, CashSessionStatus.ABIERTA)
                 .orElseThrow(() -> new IllegalStateException("No hay una sesion de caja abierta"));

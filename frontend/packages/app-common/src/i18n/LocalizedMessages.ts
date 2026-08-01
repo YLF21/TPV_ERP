@@ -8,11 +8,14 @@ import { warehouseManagementMessages } from "./WarehouseMessages";
 import { verifactuManagementMessages } from "./VerifactuMessages";
 import { rectificationMessages } from "./RectificationMessages";
 import { sharedManagementMessages } from "./SharedManagementMessages";
+import { salesOperationSecurityMessages } from "./SalesOperationSecurityMessages";
+import { cashClosureMessages } from "./CashClosureMessages";
+import { cashCurrentBalanceMessages } from "./CashCurrentBalanceMessages";
 
 export const messages: Record<LocaleCode, Record<string, string>> = {
-  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...verifactuManagementMessages("es"), ...rectificationMessages("es"), ...sharedManagementMessages("es") },
-  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...verifactuManagementMessages("en"), ...rectificationMessages("en"), ...sharedManagementMessages("en") },
-  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...verifactuManagementMessages("zh"), ...rectificationMessages("zh"), ...sharedManagementMessages("zh") }
+  es: { ...MessagesEs.values, ...controlMessages("es"), ...securityMessages("es"), ...warehouseManagementMessages("es"), ...verifactuManagementMessages("es"), ...rectificationMessages("es"), ...sharedManagementMessages("es"), ...salesOperationSecurityMessages("es"), ...cashClosureMessages("es"), ...cashCurrentBalanceMessages("es") },
+  en: { ...MessagesEn.values, ...controlMessages("en"), ...securityMessages("en"), ...warehouseManagementMessages("en"), ...verifactuManagementMessages("en"), ...rectificationMessages("en"), ...sharedManagementMessages("en"), ...salesOperationSecurityMessages("en"), ...cashClosureMessages("en"), ...cashCurrentBalanceMessages("en") },
+  zh: { ...MessagesZh.values, ...controlMessages("zh"), ...securityMessages("zh"), ...warehouseManagementMessages("zh"), ...verifactuManagementMessages("zh"), ...rectificationMessages("zh"), ...sharedManagementMessages("zh"), ...salesOperationSecurityMessages("zh"), ...cashClosureMessages("zh"), ...cashCurrentBalanceMessages("zh") }
 };
 
 export class LocalizedMessages {

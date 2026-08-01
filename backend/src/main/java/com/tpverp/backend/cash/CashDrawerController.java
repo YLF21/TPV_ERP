@@ -1,5 +1,9 @@
 package com.tpverp.backend.cash;
 
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.CASH_OPERATE;
+import static com.tpverp.backend.security.application.CorePermissionBootstrap.VENTA;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -23,7 +27,7 @@ public class CashDrawerController {
     }
 
     @PostMapping("/open-authorizations")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashDrawerService.AuthorizationView authorize(
             @Valid @RequestBody AuthorizationRequest request,
             Authentication authentication) {
@@ -35,7 +39,7 @@ public class CashDrawerController {
     }
 
     @PostMapping("/open-authorizations/{operationId}/result")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + VENTA + "','" + CASH_OPERATE + "')")
     public CashDrawerService.CompletionView complete(
             @PathVariable UUID operationId,
             @Valid @RequestBody CompletionRequest request,
@@ -51,7 +55,15 @@ public class CashDrawerController {
     public record AuthorizationRequest(
             @NotNull UUID terminalId,
             @Size(max = 128) String authorizerUsername,
+            @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
             @Size(max = 128) String authorizerPassword) {
+
+        @Override
+        public String toString() {
+            return "AuthorizationRequest[terminalId=" + terminalId
+                    + ", authorizerUsername=" + authorizerUsername
+                    + ", authorizerPassword=<redacted>]";
+        }
     }
 
     public record CompletionRequest(

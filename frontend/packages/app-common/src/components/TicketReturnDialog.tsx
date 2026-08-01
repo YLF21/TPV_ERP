@@ -5,7 +5,13 @@ import type { LocaleCode, TerminalContext } from "../types";
 import type { ConfirmedTicketPrintSnapshot } from "../sale/ticketPrinting";
 import { printConfirmedTicketAutomatically } from "../sale/ticketPrinting";
 import type { PaymentRefundLineOption, PaymentRefundLineSelection } from "../sale/paymentOperations";
+import {
+  saleOperationAuthorizationComplete,
+  saleOperationCredentials,
+  type SaleOperationAuthorization,
+} from "../sale/operationSecurity";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
 
 type PreviewPayment = {
   id: string;
@@ -39,6 +45,7 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   terminalContext: TerminalContext;
+  authorization?: SaleOperationAuthorization;
   onClose: () => void;
   onFiscalMutation?: () => void;
 };
@@ -47,6 +54,11 @@ export function TicketReturnDialog({
   token,
   locale,
   terminalContext,
+  authorization = {
+    mode: "DIRECT",
+    requireUsername: false,
+    requirePassword: false,
+  },
   onClose,
   onFiscalMutation,
 }: Props) {
@@ -58,6 +70,7 @@ export function TicketReturnDialog({
   const [cashAmount, setCashAmount] = useState("0.00");
   const [voucherAmount, setVoucherAmount] = useState("0.00");
   const [cardAmounts, setCardAmounts] = useState<Record<string, string>>({});
+  const [authorizerUsername, setAuthorizerUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -119,6 +132,7 @@ export function TicketReturnDialog({
       setPreview(result);
       setTicketNumber(result.ticketNumber);
       setSelections([]);
+      setAuthorizerUsername("");
       setPassword("");
       if (result.lines.length === 0) setMessage(t("ticketReturn.noAvailableLines"));
     } catch (reason) {
@@ -165,7 +179,11 @@ export function TicketReturnDialog({
   }
 
   async function confirmReturn() {
-    if (!preview || !allocationMatches || !password || busy) return;
+    if (!preview || !allocationMatches || !saleOperationAuthorizationComplete(
+      authorization,
+      authorizerUsername,
+      password,
+    ) || busy) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -206,7 +224,11 @@ export function TicketReturnDialog({
           method: "POST",
           body: {
             requestId: attempt.requestId,
-            password,
+            ...saleOperationCredentials(
+              authorization,
+              authorizerUsername,
+              password,
+            ),
             cashAmount: Number(cashAmount || 0).toFixed(2),
             voucherAmount: Number(voucherAmount || 0).toFixed(2),
             cards,
@@ -219,12 +241,14 @@ export function TicketReturnDialog({
       const print = await printConfirmedTicketAutomatically(result.receipt, terminalContext);
       setPreview(null);
       setSelections([]);
+      setAuthorizerUsername("");
       setPassword("");
       setMessage(result.voucherCode
         ? `${t("ticketReturn.successVoucher")} ${result.voucherCode}`
         : t("ticketReturn.success"));
       if (print.status === "FAILED") setError(print.technicalMessage ?? t("ticketReturn.printError"));
     } catch (reason) {
+      setPassword("");
       if (reason instanceof Error && /DECLINED|CANCELLED|ERROR/.test(reason.message)) {
         globalThis.localStorage?.removeItem(attemptKey);
       }
@@ -342,8 +366,16 @@ export function TicketReturnDialog({
                 <label><span>{t("ticketReturn.voucher")}</span><input type="number" min="0" step="0.01" value={voucherAmount} onChange={(event) => setVoucherAmount(event.currentTarget.value)} /></label>
               </section>
               <section>
-                <h3>{t("ticketReturn.authorization")}</h3>
-                <label><span>{t("ticketReturn.password")}</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} /></label>
+                {authorization.mode !== "DIRECT" && <h3>{t("ticketReturn.authorization")}</h3>}
+                <SaleOperationAuthorizationFields
+                  locale={locale}
+                  authorization={authorization}
+                  username={authorizerUsername}
+                  password={password}
+                  disabled={busy}
+                  onUsernameChange={setAuthorizerUsername}
+                  onPasswordChange={setPassword}
+                />
                 <dl>
                   <div><dt>{t("ticketReturn.returnTotal")}</dt><dd>{money(amount, locale)}</dd></div>
                   <div><dt>{t("ticketReturn.allocated")}</dt><dd>{money(allocated, locale)}</dd></div>
@@ -359,7 +391,18 @@ export function TicketReturnDialog({
         <footer className="sale-action-buttons">
           <button type="button" disabled={busy} onClick={onClose}>{t("common.cancel")}</button>
           {preview && (
-            <button type="button" className="primary" disabled={!allocationMatches || !password || busy} onClick={() => void confirmReturn()}>
+            <button
+              type="button"
+              className="primary"
+              disabled={!allocationMatches
+                || !saleOperationAuthorizationComplete(
+                  authorization,
+                  authorizerUsername,
+                  password,
+                )
+                || busy}
+              onClick={() => void confirmReturn()}
+            >
               {t("ticketReturn.confirm")}
             </button>
           )}

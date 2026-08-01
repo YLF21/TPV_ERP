@@ -15,6 +15,13 @@
   --gestion-font-control: 14px;
 }
 
+html,
+body,
+#root {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-frame {
   height: 100vh;
   min-height: 0;
@@ -2260,5 +2267,1133 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 
   .gestion-payment-methods-header aside {
     width: auto;
+  }
+}
+
+.gestion-operation-security-workspace {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.gestion-operation-security-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 18px;
+  border: 1px solid var(--gestion-border);
+  background: var(--gestion-panel);
+}
+
+.gestion-operation-security-header > div > span {
+  color: var(--gestion-navy-2);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gestion-operation-security-header h2 {
+  margin: 4px 0 5px;
+  color: var(--gestion-navy);
+  font-size: 21px;
+}
+
+.gestion-operation-security-header p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--gestion-muted);
+  line-height: 1.45;
+}
+
+.gestion-operation-security-header aside {
+  width: min(300px, 34%);
+  display: grid;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 3px solid var(--gestion-navy-2);
+}
+
+.gestion-operation-security-header aside strong {
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-label);
+  text-transform: uppercase;
+}
+
+.gestion-operation-security-header aside small {
+  color: var(--gestion-muted);
+}
+
+.gestion-operation-security-header aside code {
+  color: var(--gestion-navy);
+  font-family: inherit;
+  font-weight: 900;
+}
+
+.gestion-operation-security-message {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid;
+  background: #fff;
+  font-weight: 800;
+}
+
+.gestion-operation-security-message > div {
+  display: grid;
+  gap: 2px;
+}
+
+.gestion-operation-security-message small {
+  font-weight: 600;
+}
+
+.gestion-operation-security-message.success {
+  border-color: #72a387;
+  color: var(--gestion-positive);
+}
+
+.gestion-operation-security-message.error,
+.gestion-operation-security-message.conflict {
+  border-color: #d79999;
+  color: var(--gestion-negative);
+}
+
+.gestion-operation-security-message button {
+  flex: 0 0 auto;
+  padding: 6px 11px;
+  border: 1px solid currentColor;
+  background: #fff;
+  color: inherit;
+  font-weight: 900;
+}
+
+.gestion-operation-security-toolbar {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px 11px;
+  border: 1px solid var(--gestion-border);
+  background: var(--gestion-panel);
+}
+
+.gestion-operation-security-toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.gestion-operation-security-toolbar > div:first-child strong {
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-control);
+}
+
+.gestion-operation-security-toolbar > div:first-child small {
+  color: var(--gestion-muted);
+}
+
+.gestion-operation-security-toolbar > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.gestion-operation-security-toolbar button,
+.gestion-operation-security-state button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+  color: var(--gestion-navy);
+  font-weight: 900;
+}
+
+.gestion-operation-security-toolbar button.primary {
+  border-color: var(--gestion-navy-2);
+  background: var(--gestion-navy-2);
+  color: #fff;
+}
+
+.gestion-operation-security-toolbar button:disabled,
+.gestion-operation-security-message button:disabled,
+.gestion-operation-security-state button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.gestion-operation-security-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--gestion-border-dark);
+  background: var(--gestion-panel);
+}
+
+.gestion-internal-ean-screen {
+  height: 100%;
+  overflow: auto;
+  padding: 18px;
+}
+
+.gestion-internal-ean-screen > header {
+  border-bottom: 1px solid #9fb0c2;
+  margin-bottom: 16px;
+}
+
+.gestion-internal-ean-screen h1 {
+  margin: 0 0 5px;
+  color: #082c59;
+}
+
+.gestion-internal-ean-card {
+  width: min(680px, 100%);
+  border: 1px solid #8fa2b8;
+  background: #fff;
+  padding: 18px;
+}
+
+.gestion-internal-ean-card > label {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+  color: #193653;
+  font-weight: 800;
+}
+
+.gestion-internal-ean-card input {
+  min-height: 42px;
+  border: 1px solid #8298b0;
+  padding: 7px 10px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .15em;
+}
+
+.gestion-internal-ean-example {
+  color: #31516f;
+  font-weight: 700;
+}
+
+.gestion-internal-ean-warning {
+  border-left: 4px solid #d39319;
+  background: #fff7df;
+  margin: 14px 0;
+  padding: 10px 12px;
+}
+
+.gestion-internal-ean-warning p {
+  margin: 4px 0 0;
+}
+
+.gestion-operation-security-row {
+  min-width: 1160px;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns:
+    minmax(230px, 1.2fr)
+    minmax(125px, 0.72fr)
+    minmax(220px, 1fr)
+    145px
+    155px
+    minmax(255px, 1.25fr);
+  align-items: stretch;
+  border-bottom: 1px solid var(--gestion-border);
+}
+
+.gestion-operation-security-row:nth-child(odd):not(.head) {
+  background: #f7f9fb;
+}
+
+.gestion-operation-security-row.head {
+  min-height: 38px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #dfe5eb;
+  color: #344b62;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.gestion-operation-security-row > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 11px;
+  border-right: 1px solid var(--gestion-border);
+}
+
+.gestion-operation-security-row > span:last-child {
+  border-right: 0;
+}
+
+.gestion-operation-security-group {
+  min-width: 1160px;
+}
+
+.gestion-operation-security-group h3 {
+  min-height: 31px;
+  position: sticky;
+  top: 38px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 5px 11px;
+  border-bottom: 1px solid #8fa2b4;
+  background: #cbd6e0;
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-label);
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.gestion-operation-security-function {
+  align-items: flex-start !important;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.gestion-operation-security-function strong {
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-control);
+  line-height: 1.25;
+}
+
+.gestion-operation-security-function small {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid #aab5c0;
+  background: #eef2f5;
+  color: #506477;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.gestion-operation-security-function small.customized {
+  border-color: #3b78af;
+  background: #e5f0fa;
+  color: #174f81;
+}
+
+.gestion-operation-security-shortcuts {
+  align-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gestion-operation-security-shortcuts kbd {
+  padding: 2px 5px;
+  border: 1px solid #9baabb;
+  border-bottom-width: 2px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.gestion-operation-security-shortcuts small,
+.gestion-operation-security-permissions > small {
+  color: var(--gestion-muted);
+  font-style: italic;
+}
+
+.gestion-operation-security-permissions {
+  align-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gestion-operation-security-permissions > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gestion-operation-security-permissions i {
+  color: var(--gestion-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.gestion-operation-security-permissions code {
+  padding: 2px 4px;
+  border: 1px solid #b7c1cb;
+  background: #edf1f5;
+  color: #2d465f;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.gestion-operation-security-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.gestion-operation-security-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gestion-operation-security-switch i {
+  width: 34px;
+  height: 18px;
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid var(--gestion-border-dark);
+  background: #d4dbe2;
+}
+
+.gestion-operation-security-switch i::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  border: 1px solid #748291;
+  background: #fff;
+}
+
+.gestion-operation-security-switch input:checked + i {
+  border-color: #155d34;
+  background: #2e7b4d;
+}
+
+.gestion-operation-security-switch input:checked + i::after {
+  left: 18px;
+  border-color: #fff;
+}
+
+.gestion-operation-security-switch input:focus-visible + i {
+  outline: 2px solid #2b74b8;
+  outline-offset: 2px;
+}
+
+.gestion-operation-security-switch input:disabled ~ * {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.gestion-operation-security-switch b {
+  font-size: var(--gestion-font-label);
+}
+
+.gestion-operation-security-effective {
+  color: #31485f;
+  font-size: var(--gestion-font-label);
+  font-weight: 700;
+  line-height: 1.32;
+}
+
+.gestion-operation-security-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin: 0;
+  padding: 28px 18px;
+  color: var(--gestion-muted);
+  font-weight: 800;
+}
+
+.gestion-operation-security-state p {
+  margin: 0;
+}
+
+.gestion-operation-security-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(19 36 54 / 52%);
+}
+
+.gestion-operation-security-dialog {
+  width: min(520px, 100%);
+  border: 1px solid #718397;
+  background: #fff;
+  box-shadow: 0 16px 38px rgb(15 36 59 / 28%);
+}
+
+.gestion-operation-security-dialog header {
+  padding: 12px 15px;
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-operation-security-dialog h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.gestion-operation-security-dialog p {
+  margin: 0;
+  padding: 18px 15px;
+  color: #263d54;
+  line-height: 1.45;
+}
+
+.gestion-operation-security-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 11px 15px;
+  border-top: 1px solid var(--gestion-border);
+  background: #edf1f5;
+}
+
+.gestion-operation-security-dialog button {
+  min-width: 112px;
+  min-height: 36px;
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+  color: var(--gestion-navy);
+  font-weight: 900;
+}
+
+.gestion-operation-security-dialog button.danger {
+  border-color: #9f2f2f;
+  background: #a92d2d;
+  color: #fff;
+}
+
+.gestion-operation-security-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 980px) {
+  .gestion-operation-security-workspace {
+    height: auto;
+    overflow: visible;
+  }
+
+  .gestion-operation-security-header {
+    display: grid;
+  }
+
+  .gestion-operation-security-header aside {
+    width: auto;
+  }
+
+  .gestion-operation-security-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gestion-operation-security-toolbar > div:last-child {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .gestion-operation-security-panel {
+    min-height: 620px;
+  }
+}
+
+/* Cash closure history */
+.gestion-cash-closures-workspace {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gestion-cash-closures-header {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.gestion-cash-closures-header > div {
+  min-width: 0;
+}
+
+.gestion-cash-closures-header p {
+  max-width: 780px;
+  margin: 5px 0 0;
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-body);
+  font-weight: 650;
+}
+
+.gestion-cash-closures-header > button,
+.gestion-cash-closures-toolbar > button,
+.gestion-cash-closures-filter-actions button,
+.gestion-cash-closures-state button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #8293a3;
+  border-radius: 2px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-size: var(--gestion-font-body);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gestion-cash-closures-header > button:disabled,
+.gestion-cash-closures-toolbar > button:disabled,
+.gestion-cash-closures-filter-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.gestion-cash-closures-toolbar {
+  flex: 0 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 9px 7px 12px;
+  border: 1px solid var(--gestion-border-dark);
+  border-left: 4px solid var(--gestion-navy);
+  background: #fff;
+}
+
+.gestion-cash-closures-toolbar > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.gestion-cash-closures-toolbar span {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.gestion-cash-closures-toolbar strong {
+  overflow: hidden;
+  color: var(--gestion-navy);
+  font-size: var(--gestion-font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gestion-cash-closures-toolbar > button.active {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-cash-closures-filters {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 142px 142px minmax(170px, 1fr) minmax(190px, 1.2fr) auto auto;
+  align-items: end;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--gestion-border-dark);
+  border-top: 0;
+  background: #f4f6f8;
+}
+
+.gestion-cash-closures-filters > label:not(.gestion-cash-closures-check) {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.gestion-cash-closures-filters > label > span {
+  color: #344b62;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.gestion-cash-closures-filters input[type="date"] {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid #8fa0b0;
+  border-radius: 2px;
+  background: #fff;
+  color: var(--gestion-text);
+  font: inherit;
+}
+
+.gestion-cash-closures-filters .erp-select {
+  width: 100%;
+}
+
+.gestion-cash-closures-filters .erp-select__trigger {
+  min-height: 34px;
+}
+
+.gestion-cash-closures-check {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid #a0adba;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.gestion-cash-closures-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--gestion-navy-2);
+}
+
+.gestion-cash-closures-check span {
+  color: var(--gestion-text) !important;
+  font-size: var(--gestion-font-label) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.gestion-cash-closures-filter-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.gestion-cash-closures-filter-actions button.primary {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-cash-closures-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 31px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+}
+
+.gestion-cash-closures-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.gestion-cash-closure-row {
+  width: max-content;
+  min-width: 100%;
+  min-height: 48px;
+  display: grid;
+  align-items: stretch;
+  border-bottom: 1px solid #c4cdd5;
+  background: #fff;
+}
+
+.gestion-cash-closure-row.terminal-start:not(.head) {
+  border-top: 2px solid #7f94a8;
+}
+
+.gestion-cash-closure-row.head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 35px;
+  border-top: 0;
+  border-bottom: 1px solid #4d657d;
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-cash-closure-row > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 7px 10px;
+  overflow: hidden;
+  border-right: 1px solid #c5ced7;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gestion-cash-closure-row.head > span {
+  padding-top: 0;
+  padding-bottom: 0;
+  border-right-color: #476584;
+  color: #fff;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.gestion-cash-closure-row:not(.head):nth-child(odd) {
+  background: #f6f8fa;
+}
+
+.gestion-cash-closure-row:not(.head):hover {
+  background: #e5eff8;
+}
+
+.gestion-cash-closure-row [data-column-key="expectedCash"],
+.gestion-cash-closure-row [data-column-key="retainedFund"],
+.gestion-cash-closure-row [data-column-key="discrepancy"] {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.gestion-cash-closure-user {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.gestion-cash-closure-user strong,
+.gestion-cash-closure-user small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gestion-cash-closure-user small {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+}
+
+.gestion-cash-discrepancy.shortage,
+.gestion-cash-discrepancy.surplus {
+  color: var(--gestion-negative);
+}
+
+.gestion-cash-discrepancy.balanced {
+  color: var(--gestion-positive);
+}
+
+.gestion-cash-closures-state,
+.gestion-cash-closures-more {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--gestion-muted);
+  font-weight: 800;
+}
+
+.gestion-cash-closures-state.error {
+  color: var(--gestion-negative);
+}
+
+.gestion-cash-closures-list > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-top: 1px solid var(--gestion-border-dark);
+  background: #edf1f5;
+  color: #40556a;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+}
+
+@media (max-width: 1180px) {
+  .gestion-cash-closures-filters {
+    grid-template-columns: 142px 142px minmax(160px, 1fr) minmax(180px, 1fr);
+  }
+
+  .gestion-cash-closures-check,
+  .gestion-cash-closures-filter-actions {
+    grid-column: span 2;
+  }
+
+  .gestion-cash-closures-filter-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* Current cash by terminal */
+.gestion-cash-balances-workspace {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gestion-cash-balances-header {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.gestion-cash-balances-header > div {
+  min-width: 0;
+}
+
+.gestion-cash-balances-header p {
+  max-width: 840px;
+  margin: 5px 0 0;
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-body);
+  font-weight: 650;
+}
+
+.gestion-cash-balances-header > button,
+.gestion-cash-balances-state button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #8293a3;
+  border-radius: 2px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-size: var(--gestion-font-body);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gestion-cash-balances-header > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.gestion-cash-balances-summary {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(240px, 1.35fr) minmax(145px, 0.7fr) minmax(145px, 0.7fr) minmax(250px, 1fr);
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+}
+
+.gestion-cash-balances-summary > div {
+  min-height: 78px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 10px 15px;
+  border-right: 1px solid #b9c4ce;
+}
+
+.gestion-cash-balances-summary > div:last-child {
+  border-right: 0;
+}
+
+.gestion-cash-balances-summary span,
+.gestion-cash-balances-summary small {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.gestion-cash-balances-summary strong {
+  color: var(--gestion-navy);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+
+.gestion-cash-balances-summary .total {
+  border-left: 5px solid var(--gestion-navy);
+  background: #eef4fa;
+}
+
+.gestion-cash-balances-summary .total strong {
+  font-size: 30px;
+}
+
+.gestion-cash-balances-summary .updated strong {
+  font-size: 18px;
+}
+
+.gestion-cash-balances-summary .updated small {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gestion-cash-balances-warning {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px solid #d79835;
+  border-left: 4px solid #c47700;
+  background: #fff6df;
+  color: #714700;
+  font-weight: 800;
+}
+
+.gestion-cash-balances-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 31px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--gestion-border-dark);
+  background: #fff;
+}
+
+.gestion-cash-balances-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.gestion-cash-balance-row {
+  width: max-content;
+  min-width: 100%;
+  min-height: 58px;
+  display: grid;
+  align-items: stretch;
+  border-bottom: 1px solid #c4cdd5;
+  background: #fff;
+}
+
+.gestion-cash-balance-row.head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 35px;
+  border-bottom-color: #4d657d;
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-cash-balance-row > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 11px;
+  overflow: hidden;
+  border-right: 1px solid #c5ced7;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gestion-cash-balance-row.head > span {
+  padding-top: 0;
+  padding-bottom: 0;
+  border-right-color: #476584;
+  color: #fff;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.gestion-cash-balance-row:not(.head):nth-child(even) {
+  background: #f6f8fa;
+}
+
+.gestion-cash-balance-row:not(.head):hover {
+  background: #e5eff8;
+}
+
+.gestion-cash-balance-row:not(.head) [data-column-key="expectedCash"] {
+  justify-content: flex-end;
+  background: #fff0bf;
+  box-shadow: inset 4px 0 0 #d28a00;
+  color: var(--gestion-navy);
+  font-size: 20px;
+  text-align: right;
+}
+
+.gestion-cash-balance-row:not(.head):hover [data-column-key="expectedCash"] {
+  background: #ffe59a;
+}
+
+.gestion-cash-balance-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--gestion-font-label);
+  font-weight: 900;
+}
+
+.gestion-cash-balance-status::before {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #7a8793;
+  content: "";
+}
+
+.gestion-cash-balance-status.abierta::before {
+  background: var(--gestion-positive);
+}
+
+.gestion-cash-balance-status.cerrada::before {
+  background: #9a6207;
+}
+
+.gestion-cash-balances-state {
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  color: var(--gestion-muted);
+  font-weight: 800;
+}
+
+.gestion-cash-balances-state.error {
+  color: var(--gestion-negative);
+}
+
+.gestion-cash-balances-list > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-top: 1px solid var(--gestion-border-dark);
+  background: #edf1f5;
+  color: #40556a;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+}
+
+@media (max-width: 1050px) {
+  .gestion-cash-balances-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gestion-cash-balances-summary > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .gestion-cash-balances-summary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid #b9c4ce;
   }
 }

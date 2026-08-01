@@ -37,7 +37,13 @@ export {
 export { createTranslator, LocalizedMessages, messages } from "./i18n/LocalizedMessages";
 export type { AppKind, LocaleCode, Permission, TerminalContext, UserSession } from "./types";
 export { addLocalDays, pendingCreateBody, pendingSummary } from "./sale/customerReceivables";
-export type { PendingPaymentAllocation, PendingSaleDraft } from "./sale/customerReceivables";
+export { resolvePendingCardPaymentMode } from "./sale/customerReceivables";
+export type {
+  PendingCardPaymentMode,
+  PendingPaymentAllocation,
+  PendingSaleDraft,
+  PendingTerminalPaymentConfiguration,
+} from "./sale/customerReceivables";
 export {
   defaultCheckoutPaymentMethodConfiguration,
   isReferenceConfigurablePaymentMethod,
@@ -52,6 +58,23 @@ export type {
   CheckoutPaymentMethodConfiguration,
   PaymentMethodView,
 } from "./sale/paymentMethods";
+export {
+  findSaleOperationAuthorization,
+  loadSalesOperationSecurity,
+  resetSalesOperationSecurity,
+  resolveSaleOperationAuthorization,
+  saleOperationAuthorizationComplete,
+  saleOperationCredentials,
+  saveSalesOperationSecurity,
+} from "./sale/operationSecurity";
+export type {
+  SaleOperationAuthorization,
+  SaleOperationAuthorizationMode,
+  SaleOperationCredentials,
+  SalesOperationSecurityConfiguration,
+  SalesOperationSecurityOperation,
+  SalesOperationSecurityUpdate,
+} from "./sale/operationSecurity";
 export type {
   PromotionPreview,
   PromotionPreviewAppliedPromotion,

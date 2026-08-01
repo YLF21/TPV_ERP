@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { ParkedSalesDialog } from "./ParkedSalesDialog";
@@ -123,5 +130,68 @@ describe("ParkedSalesDialog", () => {
     expect(screen.getByText(/Añade al menos un producto/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Volver a cargar" }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  });
+
+  it("sends protected sale credentials only in the immediate park request", async () => {
+    const currentSale = {
+      customerId: null,
+      lines: [{ productId: "product-1", quantity: -1, discount: 0 }],
+    };
+    request.mockResolvedValueOnce([]).mockResolvedValueOnce({}).mockResolvedValueOnce([]);
+    show({
+      currentSale,
+      saleMutationAuthorizations: [{
+        code: "MANUAL_RETURN_WITHOUT_TICKET",
+        label: "Devolución manual",
+        authorization: {
+          mode: "DELEGATED",
+          requireUsername: true,
+          requirePassword: true,
+        },
+      }],
+    });
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Aparcar venta actual",
+    }));
+    const authorization = await screen.findByRole("dialog", {
+      name: "Autorización de la venta",
+    });
+    fireEvent.change(
+      within(authorization).getByRole("textbox", {
+        name: "Usuario autorizador",
+      }),
+      { target: { value: "manager" } },
+    );
+    fireEvent.change(
+      within(authorization).getByLabelText("Contraseña del autorizador"),
+      { target: { value: "secret" } },
+    );
+    fireEvent.click(within(authorization).getByRole("button", {
+      name: "Confirmar y continuar",
+    }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/parked-sales/from-pos",
+      {
+        token: "token",
+        method: "POST",
+        body: {
+          sale: {
+            ...currentSale,
+            operationAuthorizations: {
+              MANUAL_RETURN_WITHOUT_TICKET: {
+                authorizerUsername: "manager",
+                authorizerPassword: "secret",
+              },
+            },
+          },
+          comment: null,
+          printMode: "DEFAULT",
+        },
+      },
+    ));
+    expect(currentSale).not.toHaveProperty("operationAuthorizations");
+    expect(localStorage.getItem(storageKey)).toBe("recovery-1");
   });
 });

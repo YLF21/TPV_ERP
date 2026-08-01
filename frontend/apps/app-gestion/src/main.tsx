@@ -25,6 +25,8 @@ import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import { ServerTerminalSetupScreen } from "./ServerTerminalSetupScreen";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import { PaymentMethodSettingsScreen } from "./PaymentMethodSettingsScreen";
+import { SalesOperationSecurityScreen } from "./SalesOperationSecurityScreen";
+import { InternalEanSettingsScreen } from "./InternalEanSettingsScreen";
 import { SecurityAdministrationScreen } from "./SecurityAdministrationScreen";
 
 const StockScreen = lazy(() =>
@@ -57,7 +59,19 @@ const VerifactuManagementScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods";
+const CashClosuresScreen = lazy(() =>
+  import("./CashClosuresScreen").then(({ CashClosuresScreen }) => ({
+    default: CashClosuresScreen
+  }))
+);
+
+const CashCurrentBalancesScreen = lazy(() =>
+  import("./CashCurrentBalancesScreen").then(({ CashCurrentBalancesScreen }) => ({
+    default: CashCurrentBalancesScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "internalEan";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -126,6 +140,8 @@ function App() {
         onOpenDashboard={() => setModule("dashboard")}
         onOpenVerifactu={() => setModule("verifactu")}
         onOpenControlAlerts={() => setModule("controlAlerts")}
+        onOpenCashClosures={() => setModule("cashClosures")}
+        onOpenCashCurrentBalances={() => setModule("cashCurrentBalances")}
         onOpenSales={(report) => {
           setSalesReport(report);
           setModule("sales");
@@ -134,6 +150,8 @@ function App() {
         onOpenUsers={() => setModule("users")}
         onOpenRoles={() => setModule("roles")}
         onOpenPaymentMethods={() => setModule("paymentMethods")}
+        onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
+        onOpenInternalEan={() => setModule("internalEan")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -155,11 +173,15 @@ function GestionScreen({
   onOpenDashboard,
   onOpenVerifactu,
   onOpenControlAlerts,
+  onOpenCashClosures,
+  onOpenCashCurrentBalances,
   onOpenSales,
   onOpenPromotions,
   onOpenUsers,
   onOpenRoles,
   onOpenPaymentMethods,
+  onOpenSalesOperationSecurity,
+  onOpenInternalEan,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -173,11 +195,15 @@ function GestionScreen({
   onOpenDashboard: () => void;
   onOpenVerifactu: () => void;
   onOpenControlAlerts: () => void;
+  onOpenCashClosures: () => void;
+  onOpenCashCurrentBalances: () => void;
   onOpenSales: (report: string) => void;
   onOpenPromotions: () => void;
   onOpenUsers: () => void;
   onOpenRoles: () => void;
   onOpenPaymentMethods: () => void;
+  onOpenSalesOperationSecurity: () => void;
+  onOpenInternalEan: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -187,7 +213,8 @@ function GestionScreen({
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
-    || (module === "paymentMethods" && !canConfigurePaymentMethods)
+    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "internalEan")
+      && !canConfigurePaymentMethods)
     ? "dashboard"
     : module;
   const canManageProducts = session.permissions.includes("ADMIN")
@@ -267,6 +294,23 @@ function GestionScreen({
       : [])
   ];
 
+  const cashChildren: GestionNavigationItem[] = [
+    ...(modules.includes("gestion.cashCurrentBalances")
+      ? [{
+          key: "cashCurrentBalances",
+          label: t("gestion.cashCurrentBalances.navigation"),
+          onOpen: onOpenCashCurrentBalances
+        }]
+      : []),
+    ...(modules.includes("gestion.cashClosures")
+      ? [{
+          key: "cashClosures",
+          label: t("gestion.cashClosures.navigation"),
+          onOpen: onOpenCashClosures
+        }]
+      : [])
+  ];
+
   const navigation: GestionNavigationItem[] = [
     { key: "dashboard", label: t("gestion.dashboard"), onOpen: onOpenDashboard },
     ...(verifactuAllowed
@@ -274,6 +318,13 @@ function GestionScreen({
       : []),
     ...(modules.includes("gestion.controlAlerts")
       ? [{ key: "controlAlerts", label: t("gestion.controlAlerts.navigation"), onOpen: onOpenControlAlerts }]
+      : []),
+    ...(cashChildren.length > 0
+      ? [{
+          key: "cash",
+          label: t("gestion.cash.navigation"),
+          children: cashChildren
+        }]
       : []),
     ...(modules.includes("gestion.sales")
       ? [{
@@ -304,6 +355,14 @@ function GestionScreen({
             key: "paymentMethods",
             label: t("gestion.paymentMethods.navigation"),
             onOpen: onOpenPaymentMethods
+          }, {
+            key: "salesOperationSecurity",
+            label: t("gestion.salesOperationSecurity.navigation"),
+            onOpen: onOpenSalesOperationSecurity
+          }, {
+            key: "internalEan",
+            label: t("gestion.internalEan.navigation"),
+            onOpen: onOpenInternalEan
           }]
         }]
       : [])
@@ -320,6 +379,10 @@ function GestionScreen({
     content = <VerifactuManagementScreen locale={locale} session={session} t={t} />;
   } else if (effectiveModule === "controlAlerts" && modules.includes("gestion.controlAlerts")) {
     content = <ControlAlertsScreen session={session} t={t} />;
+  } else if (effectiveModule === "cashClosures" && modules.includes("gestion.cashClosures")) {
+    content = <CashClosuresScreen session={session} t={t} />;
+  } else if (effectiveModule === "cashCurrentBalances" && modules.includes("gestion.cashCurrentBalances")) {
+    content = <CashCurrentBalancesScreen session={session} t={t} />;
   } else if (effectiveModule === "sales" && reports.includes(salesReport)) {
     content = (
       <SalesReportScreen
@@ -385,6 +448,10 @@ function GestionScreen({
     content = <SecurityAdministrationScreen mode="roles" session={session} t={t} />;
   } else if (effectiveModule === "paymentMethods" && canConfigurePaymentMethods) {
     content = <PaymentMethodSettingsScreen session={session} t={t} />;
+  } else if (effectiveModule === "salesOperationSecurity" && canConfigurePaymentMethods) {
+    content = <SalesOperationSecurityScreen session={session} t={t} />;
+  } else if (effectiveModule === "internalEan" && canConfigurePaymentMethods) {
+    content = <InternalEanSettingsScreen session={session} t={t} />;
   } else {
     content = (
       <GestionDashboard

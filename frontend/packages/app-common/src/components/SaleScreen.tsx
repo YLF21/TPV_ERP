@@ -25,14 +25,25 @@ import {
 } from "./SaleCommandMenuBar";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import {
-  printConfirmedTicketAutomatically,
+  outputConfirmedTicket,
   retryConfirmedTicketPrint,
   type ConfirmedTicketPrintSnapshot,
+  type SalePrintMode,
   type TicketPrintOutcome,
 } from "../sale/ticketPrinting";
+import {
+  saleCommandFromKeyboard,
+  type SaleCommandId,
+} from "../sale/saleCommands";
 import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
-import { addLocalDays, type PendingSaleDraft } from "../sale/customerReceivables";
+import {
+  addLocalDays,
+  resolvePendingCardPaymentMode,
+  type PendingCardPaymentMode,
+  type PendingSaleDraft,
+  type PendingTerminalPaymentConfiguration,
+} from "../sale/customerReceivables";
 import {
   clearPendingSaleRecovery,
   loadPendingSaleRecovery,
@@ -41,10 +52,17 @@ import {
   type PendingSaleRecoveryEnvelope,
   type PendingSaleRecoveryLoadResult,
 } from "../sale/pendingSaleRecovery";
+import {
+  clearCashCloseRecovery,
+  loadCashCloseRecovery,
+  saveCashCloseRecovery,
+  type CashCloseRecoveryLoadResult,
+} from "../sale/cashCloseRecovery";
 import { retryPrintSucceeded } from "../sale/printRetry";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { ParkedSalesDialog, type OpenedParkedSale } from "./ParkedSalesDialog";
-import { TicketManagementDialog } from "./TicketManagementDialog";
+import { SaleTicketCancellationDialog } from "./SaleTicketCancellationDialog";
+import { SaleTicketInvoiceDialog } from "./SaleTicketInvoiceDialog";
 import { VerifactuPosIndicator } from "./VerifactuPosIndicator";
 import {
   SaleProductSearchDialog,
@@ -55,10 +73,15 @@ import { SaleOpenPriceDialog } from "./SaleOpenPriceDialog";
 import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
 import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
-import { StockSalesHistoryPanel } from "./StockSalesHistoryPanel";
+import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
-import { SaleCashSessionDialog } from "./SaleCashSessionDialog";
+import {
+  createCashCloseUiFlow,
+  SaleCashSessionDialog,
+  type CashCloseUiFlow,
+} from "./SaleCashSessionDialog";
+import { SaleCashWithdrawalDialog } from "./SaleCashWithdrawalDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
@@ -74,7 +97,21 @@ import {
   productEditDialogValue,
   revokeProductEditAuthorization,
 } from "../sale/productEdit";
-import { prepareCashSessionForSales } from "../sale/cashSessions";
+import {
+  createCashCloseWithdrawalIdempotencyKey,
+  prepareCashSessionForSales,
+  recoverCashCloseOperation,
+} from "../sale/cashSessions";
+import {
+  findSaleOperationAuthorization,
+  loadSalesOperationSecurity,
+  type SalesOperationSecurityConfiguration,
+} from "../sale/operationSecurity";
+import {
+  detectSaleMutationOperations,
+  saleMutationAuthorizationRequirements,
+  type SaleMutationAuthorizationRequirement,
+} from "../sale/saleMutationAuthorizations";
 import { userCanManageStockProducts } from "./stockAccess";
 
 export type SaleProduct = {
@@ -111,6 +148,7 @@ export type SaleLine = {
   product: SaleProduct;
   quantity: number;
   openUnitPrice?: number;
+  temporaryName?: string;
   serialNumbers?: string[];
   // Operator-entered discount. Member benefit is kept separately.
   discountPercent: number;
@@ -508,6 +546,43 @@ export function updateSaleLineSerialNumbers(
     : line);
 }
 
+export function updateSaleLineTemporaryName(
+  lines: SaleLine[],
+  lineId: string,
+  value: string,
+) {
+  const normalized = value.trim();
+  if (normalized.length > 255) throw new Error("invalid_temporary_name");
+  return lines.map((line) => {
+    if (saleCartLineIdentity(line) !== lineId) return line;
+    const catalogName = line.product.name?.trim() ?? "";
+    const { temporaryName: _previous, ...withoutTemporaryName } = line;
+    return normalized && normalized !== catalogName
+      ? { ...withoutTemporaryName, temporaryName: normalized }
+      : withoutTemporaryName;
+  });
+}
+
+export function updateSaleLineTemporaryPrice(
+  lines: SaleLine[],
+  lineId: string,
+  value?: number,
+) {
+  if (value != null) {
+    const hasMoreThanTwoDecimals = Math.abs(value * 100 - Math.round(value * 100)) > 1e-9;
+    if (!Number.isFinite(value) || value <= 0 || hasMoreThanTwoDecimals) {
+      throw new Error("invalid_temporary_price");
+    }
+  }
+  return lines.map((line) => {
+    if (saleCartLineIdentity(line) !== lineId) return line;
+    const { openUnitPrice: _previous, ...withoutTemporaryPrice } = line;
+    return value == null
+      ? withoutTemporaryPrice
+      : { ...withoutTemporaryPrice, openUnitPrice: value };
+  });
+}
+
 export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
   return line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
 }
@@ -862,18 +937,26 @@ export function pendingSaleDraftForCustomer(
   warehouseId: string,
   now: Date,
   checkoutId: string,
+  internalComment = "",
+  printMode: SalePrintMode = "DEFAULT",
 ): PendingSaleDraft {
   return {
     checkoutId, warehouseId, type: "ALBARAN_VENTA", date: addLocalDays(now, 0),
     customerId: customer.id, dueDate: addLocalDays(now, Math.max(0, customer.paymentTermDays ?? 30)), globalDiscount: "0.00",
+    ...(internalComment.trim() ? { internalComment: internalComment.trim() } : {}),
+    printMode,
     lines: lines.map((line) => ({
       productId: line.product.id, quantity: line.quantity,
       code: line.product.code ?? line.product.barcode ?? line.product.id,
-      name: line.product.name ?? line.product.code ?? "Producto", rate: line.product.rate ?? null,
+      name: line.temporaryName ?? line.product.name ?? line.product.code ?? "Producto",
+      rate: line.product.rate ?? null,
       price: saleLineUnitPrice(line, customer.activeMember === true).toFixed(2),
       // Membership is backend-authoritative from customerId. Only the operator's manual discount crosses the boundary.
       discount: line.discountPercent.toFixed(2), ...saleProductFiscalSnapshot(line.product),
       serialNumbers: line.serialNumbers ?? [],
+      temporaryNameOverride: Boolean(line.temporaryName),
+      temporaryPriceOverride: line.openUnitPrice !== undefined
+        && salePriceNumber(line.product.salePrice) !== 0,
     })),
   };
 }
@@ -908,7 +991,10 @@ export function SaleScreen({
     shortcuts: t("sale.main.shortcuts"),
     priceLookup: t("sale.shortcut.priceLookup"),
     calculator: t("sale.shortcut.calculator"),
+    eanGenerator: t("sale.shortcut.eanGenerator"),
+    printProductLabel: t("sale.shortcut.printProductLabel"),
     cashDrawer: t("sale.shortcut.cashDrawer"),
+    cashWithdrawal: t("sale.shortcut.cashWithdrawal"),
     logout: t("sale.shortcut.logout"),
     selectedStock: t("sale.shortcut.selectedStock"),
     productSales: t("sale.shortcut.productSales"),
@@ -970,20 +1056,35 @@ export function SaleScreen({
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
-  const [actionDialog, setActionDialog] = useState<"quantity" | "discount" | "discountAuthorization" | "customer" | "remove" | null>(null);
+  const [actionDialog, setActionDialog] = useState<
+    "quantity"
+    | "discount"
+    | "temporaryName"
+    | "temporaryPrice"
+    | "customer"
+    | "remove"
+    | "comment"
+    | "clearSale"
+    | "clearLines"
+    | "printMethod"
+    | null
+  >(null);
   const [quantityInput, setQuantityInput] = useState("1");
   const [discountInput, setDiscountInput] = useState("0");
-  const [discountAuthorizationToken, setDiscountAuthorizationToken] = useState("");
-  const [discountAuthorizationPercent, setDiscountAuthorizationPercent] = useState(0);
-  const [managerName, setManagerName] = useState("");
-  const [managerPassword, setManagerPassword] = useState("");
-  const [managerAuthorizationBusy, setManagerAuthorizationBusy] = useState(false);
+  const [temporaryNameInput, setTemporaryNameInput] = useState("");
+  const [temporaryPriceInput, setTemporaryPriceInput] = useState("");
   const [actionError, setActionError] = useState("");
   const [customers, setCustomers] = useState<SaleCustomer[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
+  const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
+  const [saleComment, setSaleComment] = useState("");
+  const [commentInput, setCommentInput] = useState("");
+  const [salePrintMode, setSalePrintMode] = useState<SalePrintMode>("DEFAULT");
+  const [printModeInput, setPrintModeInput] = useState<SalePrintMode>("DEFAULT");
+  const [lastPrintMode, setLastPrintMode] = useState<SalePrintMode>("DEFAULT");
   const [pendingCustomerContinuation, setPendingCustomerContinuation] = useState(false);
   const [pendingRecovery, setPendingRecovery] = useState<PendingSaleRecoveryLoadResult>(() => {
     try {
@@ -1006,6 +1107,14 @@ export function SaleScreen({
     if (!pendingPrintRetry) return;
     if (await retryPrintSucceeded(pendingPrintRetry)) setPendingPrintRetry(null);
   };
+  const [cashCloseRecovery, setCashCloseRecovery] =
+    useState<CashCloseRecoveryLoadResult>(() => {
+      try { return loadCashCloseRecovery(localStorage, terminalContext.terminalCode); }
+      catch { return { status: "empty" }; }
+    });
+  const recoveredCashCloseFlow = cashCloseRecovery.status === "valid"
+    ? cashCloseRecovery.envelope.flow
+    : null;
   const [cashDialogOpen, setCashDialogOpen] = useState(false);
   const [cashOpening, setCashOpening] = useState(false);
   const [cashQuoteCents, setCashQuoteCents] = useState(0);
@@ -1027,7 +1136,27 @@ export function SaleScreen({
   const [cashSessionState, setCashSessionState] =
     useState<"LOADING" | "OPEN" | "REQUIRED" | "ERROR">("LOADING");
   const [cashSessionError, setCashSessionError] = useState("");
-  const [cashSessionCloseOpen, setCashSessionCloseOpen] = useState(false);
+  const [cashSessionCloseOpen, setCashSessionCloseOpen] =
+    useState(Boolean(recoveredCashCloseFlow));
+  const [cashSessionCloseFlow, setCashSessionCloseFlow] =
+    useState<CashCloseUiFlow | null>(recoveredCashCloseFlow);
+  const [cashWithdrawalOpen, setCashWithdrawalOpen] = useState(false);
+  const [cashWithdrawalPolicy, setCashWithdrawalPolicy] = useState<{
+    requireEntryBreakdown: boolean;
+    entryDenominations: number[];
+    requireBreakdown: boolean;
+    denominations: number[];
+  }>({
+    requireEntryBreakdown: false,
+    entryDenominations: [],
+    requireBreakdown: false,
+    denominations: [],
+  });
+  const [operationSecurity, setOperationSecurity] =
+    useState<SalesOperationSecurityConfiguration | null>(null);
+  const [operationSecurityReload, setOperationSecurityReload] = useState(0);
+  const [pendingCardPaymentMode, setPendingCardPaymentMode] =
+    useState<PendingCardPaymentMode | null>(null);
   const [reservedPaymentTotalCents, setReservedPaymentTotalCents] = useState<number | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
@@ -1045,17 +1174,20 @@ export function SaleScreen({
   const [authoritativeQuoteError, setAuthoritativeQuoteError] = useState("");
   const [checkoutDiscountCents, setCheckoutDiscountCents] = useState(0);
   const [parkedSalesOpen, setParkedSalesOpen] = useState(false);
-  const [ticketManagementOpen, setTicketManagementOpen] = useState(false);
+  const [ticketCancellationMode, setTicketCancellationMode] =
+    useState<"LAST" | "BY_NUMBER" | null>(null);
+  const [ticketInvoiceOpen, setTicketInvoiceOpen] = useState(false);
   const [ticketReturnOpen, setTicketReturnOpen] = useState(false);
   const [serialNumberOpen, setSerialNumberOpen] = useState(false);
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productSearchSelectedId, setProductSearchSelectedId] = useState("");
-  const [productSearchPurpose, setProductSearchPurpose] = useState<"ADD" | "HISTORY">("ADD");
   const [productInformationProduct, setProductInformationProduct] = useState<SaleProduct | null>(null);
   const [consultationMode, setConsultationMode] = useState<"PRICE" | "STOCK" | null>(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [salesUtilityOpening, setSalesUtilityOpening] = useState(false);
   const [salesHistoryProduct, setSalesHistoryProduct] = useState<SaleProduct | null>(null);
+  const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
   const [verifactuRefreshSignal, setVerifactuRefreshSignal] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const customerSearchInputRef = useRef<HTMLInputElement>(null);
@@ -1092,13 +1224,125 @@ export function SaleScreen({
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
   const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
   const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
-  const paymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening
+  const basePaymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening
     || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
-  const canApplyManualDiscount = hasPermission(session, "APLICAR_DESCUENTO");
+  const canApplyManualDiscount = Boolean(operationSecurity?.operations.some(
+    (operation) => operation.code === "APPLY_SALE_DISCOUNT",
+  ));
   const canOpenCustomerReceivables = Boolean(onOpenCustomerReceivables)
     && hasPermission(session, "CUSTOMER_RECEIVABLES_READ");
   const userDiscountLimit = session.permissions.includes("ADMIN") ? 100 : Number(session.maxDiscountPercent ?? 0);
   const cashSessionReady = cashSessionState === "OPEN";
+  const cashDrawerAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "OPEN_CASH_DRAWER",
+    session.permissions,
+  );
+  const productEditAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "EDIT_CATALOG_PRODUCT",
+    session.permissions,
+  );
+  const internalEanAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "GENERATE_PRODUCT_EAN",
+    session.permissions,
+  );
+  const cashSessionCloseAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CLOSE_CASH_SESSION",
+    session.permissions,
+  );
+  const cashMovementAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CASH_MOVEMENT",
+    session.permissions,
+  );
+  const ticketReturnAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "RETURN_TICKET",
+    session.permissions,
+  );
+  const ticketCancellationAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CANCEL_TICKET",
+    session.permissions,
+  );
+  const ticketInvoiceAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONVERT_TICKET_TO_INVOICE",
+    session.permissions,
+  );
+  const parkedSaleDeletionAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "DELETE_PARKED_SALE",
+    session.permissions,
+  );
+  const paymentTerminalVoidAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "PAYMENT_TERMINAL_VOID",
+    session.permissions,
+  );
+  const paymentTerminalRefundAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "PAYMENT_TERMINAL_REFUND",
+    session.permissions,
+  );
+  const paymentCompensationAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "PAYMENT_COMPENSATION_ACK",
+    session.permissions,
+  );
+  const createPendingAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CREATE_PENDING_RECEIVABLE",
+    session.permissions,
+  );
+  const creditOverrideAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CREDIT_OVERRIDE",
+    session.permissions,
+  );
+  const manualCardPaymentAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONFIRM_MANUAL_CARD_PAYMENT",
+    session.permissions,
+  );
+  const transferPaymentAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONFIRM_TRANSFER_PAYMENT",
+    session.permissions,
+  );
+  const checkoutDiscountPercent = checkoutDiscountCents > 0
+    ? Math.round((
+        checkoutDiscountCents
+        / Math.max(1, Math.round(authoritativeTotal * 100) + checkoutDiscountCents)
+      ) * 10_000) / 100
+    : 0;
+  const detectedSaleMutationOperations = detectSaleMutationOperations(
+    lines.map((line) => ({
+      quantity: line.quantity,
+      discountPercent: line.discountPercent,
+      catalogName: line.product.name,
+      temporaryName: line.temporaryName,
+      catalogUnitPrice: line.product.salePrice,
+      openUnitPrice: line.openUnitPrice,
+    })),
+    checkoutDiscountPercent,
+  );
+  const saleMutationAuthorizations: SaleMutationAuthorizationRequirement[] | null =
+    saleMutationAuthorizationRequirements(
+      operationSecurity,
+      detectedSaleMutationOperations.map((operation) => ({
+        ...operation,
+        label: t(`gestion.salesOperationSecurity.operation.${operation.code}`),
+      })),
+      session.permissions,
+      userDiscountLimit,
+    );
+  const saleMutationSecurityUnavailable = saleMutationAuthorizations === null;
+  const paymentActionsDisabled = basePaymentActionsDisabled
+    || saleMutationSecurityUnavailable;
   const cashSessionCopy = locale === "en"
     ? {
         close: "Close register",
@@ -1107,6 +1351,8 @@ export function SaleScreen({
         exit: "Exit Sales",
         loading: "Preparing cash register…",
         error: "The cash session could not be prepared.",
+        recoveryError: "The interrupted cash close could not be recovered safely.",
+        recovered: "The previous cash close was recovered successfully.",
       }
     : locale === "zh"
       ? {
@@ -1116,6 +1362,8 @@ export function SaleScreen({
           exit: "退出销售",
           loading: "正在准备收银会话…",
           error: "无法准备收银会话。",
+          recoveryError: "无法安全恢复中断的收银结账。",
+          recovered: "已成功恢复上一次收银结账。",
         }
       : {
           close: "Cerrar caja",
@@ -1124,6 +1372,8 @@ export function SaleScreen({
           exit: "Salir de Ventas",
           loading: "Preparando caja…",
           error: "No se pudo preparar la sesión de caja.",
+          recoveryError: "No se pudo recuperar con seguridad el cierre de caja interrumpido.",
+          recovered: "El cierre de caja anterior se recuperó correctamente.",
         };
 
   function cartColumnLabel(column: SaleCartColumnKey) {
@@ -1132,7 +1382,10 @@ export function SaleScreen({
 
   function renderCartRow(localLine: SaleLine, authoritativeLine?: AuthoritativeSaleLine) {
     const product = localLine.product;
-    const name = authoritativeLine?.name ?? product.name ?? t("sale.main.unnamedProduct");
+    const name = authoritativeLine?.name
+      ?? localLine.temporaryName
+      ?? product.name
+      ?? t("sale.main.unnamedProduct");
     const code = authoritativeLine?.code
       ?? product.code
       ?? product.barcode
@@ -1284,14 +1537,102 @@ export function SaleScreen({
     }
     setCashSessionState("LOADING");
     setCashSessionError("");
+    let closeFlowAfterReadiness = cashCloseRecovery.status === "valid"
+      ? cashCloseRecovery.envelope.flow
+      : null;
     try {
+      if (cashCloseRecovery.status === "blocked") {
+        setCashSessionError(cashSessionCopy.recoveryError);
+        setCashSessionState("ERROR");
+        return;
+      }
+      if (cashCloseRecovery.status === "valid") {
+        const persistedFlow = cashCloseRecovery.envelope.flow;
+        try {
+          const recovery = await recoverCashCloseOperation(
+            terminalContext.terminalId,
+            persistedFlow.closeOperationId,
+            session.accessToken,
+          );
+          if (recovery.status === "CERRADA" || recovery.result?.status === "CERRADA") {
+            clearCashCloseRecovery(localStorage, terminalContext.terminalCode);
+            setCashCloseRecovery({ status: "empty" });
+            setCashSessionCloseFlow(null);
+            setCashSessionCloseOpen(false);
+            setShortcutStatus(cashSessionCopy.recovered);
+            onBack?.();
+            return;
+          }
+          const nextAttemptId = recovery.latestReconciliationAttemptId
+            === persistedFlow.reconciliationAttemptId
+            ? createCashCloseWithdrawalIdempotencyKey()
+            : persistedFlow.reconciliationAttemptId;
+          const recoveredFlow: CashCloseUiFlow = {
+            ...persistedFlow,
+            reconciliationAttemptId: nextAttemptId,
+            phase: recovery.status === "REQUIERE_ARQUEO"
+              ? "RECONCILIATION_REQUIRED"
+              : persistedFlow.phase,
+            finalWithdrawal: String(recovery.finalWithdrawalAmount),
+            comment: recovery.finalWithdrawalComment ?? "",
+          };
+          saveCashCloseRecovery(
+            localStorage,
+            terminalContext.terminalCode,
+            recoveredFlow,
+          );
+          setCashCloseRecovery(loadCashCloseRecovery(
+            localStorage,
+            terminalContext.terminalCode,
+          ));
+          setCashSessionCloseFlow(recoveredFlow);
+          setCashSessionCloseOpen(true);
+          setCashSessionState("OPEN");
+          return;
+        } catch (failure) {
+          if (!(failure instanceof ApiError
+            && failure.status === 404
+            && failure.problem?.code === "NOT_FOUND")) {
+            throw failure;
+          }
+          closeFlowAfterReadiness = {
+            ...persistedFlow,
+            phase: "READY",
+          };
+          saveCashCloseRecovery(
+            localStorage,
+            terminalContext.terminalCode,
+            closeFlowAfterReadiness,
+          );
+          setCashCloseRecovery(loadCashCloseRecovery(
+            localStorage,
+            terminalContext.terminalCode,
+          ));
+        }
+      }
       const readiness = await prepareCashSessionForSales(
         terminalContext.terminalId,
         session.accessToken,
       );
+      setCashWithdrawalPolicy({
+        requireEntryBreakdown: Boolean(readiness.requireEntryBreakdown),
+        entryDenominations: Array.isArray(readiness.entryDenominations)
+          ? readiness.entryDenominations
+          : [],
+        requireBreakdown: Boolean(readiness.requireWithdrawalBreakdown),
+        denominations: Array.isArray(readiness.withdrawalDenominations)
+          ? readiness.withdrawalDenominations
+          : [],
+      });
       setCashSessionState(readiness.open ? "OPEN" : "REQUIRED");
+      if (readiness.open && closeFlowAfterReadiness) {
+        setCashSessionCloseFlow(closeFlowAfterReadiness);
+        setCashSessionCloseOpen(true);
+      }
     } catch (failure) {
-      setCashSessionError(failure instanceof Error ? failure.message : cashSessionCopy.error);
+      setCashSessionError(cashCloseRecovery.status === "valid"
+        ? cashSessionCopy.recoveryError
+        : failure instanceof Error ? failure.message : cashSessionCopy.error);
       setCashSessionState("ERROR");
     }
   }
@@ -1299,6 +1640,89 @@ export function SaleScreen({
   useEffect(() => {
     void prepareSalesCashSession();
   }, [session.accessToken, terminalContext.terminalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSalesOperationSecurity(session.accessToken)
+      .then((configuration) => {
+        if (!cancelled) setOperationSecurity(configuration);
+      })
+      .catch(() => {
+        if (!cancelled) setOperationSecurity(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [operationSecurityReload, session.accessToken]);
+
+  useEffect(() => {
+    if (!pendingDraft) {
+      setPendingCardPaymentMode(null);
+      return;
+    }
+    let cancelled = false;
+    void apiRequest<PendingTerminalPaymentConfiguration>(
+      "/terminal-configuration/payment",
+      { token: session.accessToken },
+    ).then((configuration) => {
+      if (!cancelled) {
+        setPendingCardPaymentMode(resolvePendingCardPaymentMode(configuration));
+      }
+    }).catch(() => {
+      if (!cancelled) setPendingCardPaymentMode(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDraft?.checkoutId, session.accessToken]);
+
+  function reportOperationSecurityUnavailable() {
+    setShortcutStatus(t("sale.operationSecurity.unavailable"));
+    setOperationSecurityReload((current) => current + 1);
+  }
+
+  async function openSalesUtilityWindow(
+    kind: "INTERNAL_EAN" | "PRODUCT_LABEL",
+  ) {
+    const desktop = window.tpvDesktop?.salesUtilities;
+    if (!desktop) {
+      setShortcutStatus(t("sale.utilityWindow.restartRequired"));
+      return;
+    }
+    setSalesUtilityOpening(true);
+    setShortcutStatus("");
+    try {
+      const result = await desktop.open({
+        kind,
+        locale,
+        session,
+        terminalContext,
+        initialProductId: selectedLine?.product.id,
+        ...(kind === "INTERNAL_EAN" && internalEanAuthorization
+          ? { authorization: internalEanAuthorization }
+          : {}),
+      });
+      if (!result.ok) {
+        setShortcutStatus(result.message);
+        return;
+      }
+      if (result.catalogChanged) {
+        setCatalogReload((current) => current + 1);
+        setShortcutStatus(t("sale.internalEan.assigned"));
+      } else if (result.printed) {
+        setShortcutStatus(t(result.pdf
+          ? "sale.productLabel.pdfSaved"
+          : "sale.productLabel.printed"));
+      }
+    } catch (failure) {
+      setShortcutStatus(failure instanceof Error
+        ? failure.message
+        : t("sale.operationSecurity.unavailable"));
+    } finally {
+      setSalesUtilityOpening(false);
+      queueMicrotask(() => searchInputRef.current?.focus());
+    }
+  }
 
   function invalidateCashOpening() {
     cashOpeningRef.current.generation += 1;
@@ -1310,8 +1734,11 @@ export function SaleScreen({
     setCashResult((current) => updateCashResultPrintOutcome(current, documentId, outcome));
   }
 
-  function startAutomaticTicketPrint(snapshot: ConfirmedTicketPrintSnapshot) {
-    void printConfirmedTicketAutomatically(snapshot, terminalContext)
+  function startAutomaticTicketPrint(
+    snapshot: ConfirmedTicketPrintSnapshot,
+    printMode: SalePrintMode = salePrintMode,
+  ) {
+    void outputConfirmedTicket(snapshot, terminalContext, printMode, locale)
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
   }
 
@@ -1321,7 +1748,10 @@ export function SaleScreen({
     setCashResult((current) => current?.printTicket?.documentId === snapshot.documentId
       ? { ...current, printStatus: "PRINTING", printTechnicalMessage: undefined }
       : current);
-    void retryConfirmedTicketPrint(snapshot, terminalContext)
+    const retry = lastPrintMode === "DEFAULT"
+      ? retryConfirmedTicketPrint(snapshot, terminalContext)
+      : outputConfirmedTicket(snapshot, terminalContext, lastPrintMode, locale);
+    void retry
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
   }
 
@@ -1498,6 +1928,22 @@ export function SaleScreen({
     setActionDialog("discount");
   }
 
+  function openTemporaryNameDialog() {
+    if (!selectedLine || paymentLocked) return;
+    setTemporaryNameInput(selectedLine.temporaryName ?? selectedLine.product.name ?? "");
+    setActionError("");
+    setActionDialog("temporaryName");
+  }
+
+  function openTemporaryPriceDialog() {
+    if (!selectedLine || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
+    setTemporaryPriceInput(
+      selectedLine.openUnitPrice == null ? "" : String(selectedLine.openUnitPrice),
+    );
+    setActionError("");
+    setActionDialog("temporaryPrice");
+  }
+
   function saveQuantity() {
     if (!selectedLineId) return;
     try {
@@ -1513,17 +1959,8 @@ export function SaleScreen({
     if (!selectedLineId) return;
     try {
       const discount = Number(discountInput);
-      updateSaleLineDiscount(lines, selectedLineId, discount);
-      if (discount > userDiscountLimit) {
-        setDiscountAuthorizationPercent(discount);
-        setManagerName("");
-        setManagerPassword("");
-        setActionError("");
-        setActionDialog("discountAuthorization");
-        return;
-      }
-      setLines((current) => updateSaleLineDiscount(current, selectedLineId, discount));
-      setDiscountAuthorizationToken("");
+      const nextLines = updateSaleLineDiscount(lines, selectedLineId, discount);
+      setLines(nextLines);
       setActionDialog(null);
     } catch (error) {
       setActionError(error instanceof Error && error.message === "discount_blocked"
@@ -1532,28 +1969,40 @@ export function SaleScreen({
     }
   }
 
-  async function authorizeDiscount() {
-    if (!selectedLineId || managerAuthorizationBusy) return;
-    setManagerAuthorizationBusy(true);
-    setActionError("");
+  function saveTemporaryName() {
+    if (!selectedLineId) return;
     try {
-      const authorization = await apiRequest<{ token: string }>("/pos/discount-authorizations", {
-        token: session.accessToken,
-        body: {
-          managerName,
-          password: managerPassword,
-          requestedPercent: discountAuthorizationPercent
-        }
-      });
-      setDiscountAuthorizationToken(authorization.token);
-      setLines((current) => updateSaleLineDiscount(current, selectedLineId, discountAuthorizationPercent));
-      setManagerPassword("");
+      const nextLines = updateSaleLineTemporaryName(
+        lines,
+        selectedLineId,
+        temporaryNameInput,
+      );
+      setLines(nextLines);
       setActionDialog(null);
-    } catch (error) {
-      setManagerPassword("");
-      setActionError(t("sale.discountAuthorization.error"));
-    } finally {
-      setManagerAuthorizationBusy(false);
+      queueMicrotask(() => searchInputRef.current?.focus());
+    } catch {
+      setActionError(t("sale.temporaryName.invalid"));
+    }
+  }
+
+  function saveTemporaryPrice() {
+    if (!selectedLineId) return;
+    const normalized = temporaryPriceInput.trim().replace(",", ".");
+    if (normalized && !/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      setActionError(t("sale.temporaryPrice.invalid"));
+      return;
+    }
+    try {
+      const nextLines = updateSaleLineTemporaryPrice(
+        lines,
+        selectedLineId,
+        normalized ? Number(normalized) : undefined,
+      );
+      setLines(nextLines);
+      setActionDialog(null);
+      queueMicrotask(() => searchInputRef.current?.focus());
+    } catch {
+      setActionError(t("sale.temporaryPrice.invalid"));
     }
   }
 
@@ -1564,10 +2013,57 @@ export function SaleScreen({
     setCustomerLoading(true);
     setCustomerError(false);
     apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken })
-      .then(setCustomers)
+      .then((options) => {
+        setCustomers(options);
+        setSelectedCustomerResultId(options[0]?.id ?? "");
+      })
       .catch(() => setCustomerError(true))
       .finally(() => setCustomerLoading(false));
   }
+
+  function chooseSaleCustomer(customer: SaleCustomer | null) {
+    setSelectedCustomer(customer);
+    setLines((current) => applyMemberDiscounts(current, customer));
+    setActionDialog(null);
+    if (pendingCustomerContinuation && customer) {
+      setPendingCustomerContinuation(false);
+      void beginPendingSale(customer);
+    }
+  }
+
+  function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.repeat) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedCustomerResultId((current) => {
+        if (customerResults.length === 0) return "";
+        const currentIndex = customerResults.findIndex((customer) => customer.id === current);
+        const nextIndex = currentIndex < 0
+          ? event.key === "ArrowDown" ? 0 : customerResults.length - 1
+          : (
+            currentIndex
+            + (event.key === "ArrowDown" ? 1 : -1)
+            + customerResults.length
+          ) % customerResults.length;
+        return customerResults[nextIndex].id;
+      });
+      return;
+    }
+    if (event.key !== "Insert") return;
+    event.preventDefault();
+    event.stopPropagation();
+    const customer = customerResults.find(
+      (candidate) => candidate.id === selectedCustomerResultId,
+    );
+    if (customer) chooseSaleCustomer(customer);
+  }
+
+  useEffect(() => {
+    if (actionDialog !== "customer") return;
+    if (customerResults.some((customer) => customer.id === selectedCustomerResultId)) return;
+    setSelectedCustomerResultId(customerResults[0]?.id ?? "");
+  }, [actionDialog, customerResults, selectedCustomerResultId]);
 
   async function beginPendingSale(customer: SaleCustomer) {
     if (pendingOpening || paymentActionsDisabled || paymentLocked
@@ -1580,7 +2076,15 @@ export function SaleScreen({
         ?? warehouses.find((candidate) => candidate.active !== false);
       if (!warehouse) throw new Error("No hay un almacen activo para registrar la venta");
       const now = new Date();
-      setPendingDraft(pendingSaleDraftForCustomer(lines, customer, warehouse.id, now, newCheckoutId()));
+      setPendingDraft(pendingSaleDraftForCustomer(
+        lines,
+        customer,
+        warehouse.id,
+        now,
+        newCheckoutId(),
+        saleComment,
+        salePrintMode,
+      ));
     } catch (failure) {
       setPendingError(failure instanceof Error ? failure.message : "No se pudo preparar la venta pendiente");
     } finally { setPendingOpening(false); }
@@ -1597,8 +2101,6 @@ export function SaleScreen({
     if (!selectedLineId || !selectedLine) return;
     const removedLine = selectedLine;
     const fullTicketClear = lines.length === 1;
-    const saleOperationId = deletionControl.currentSaleOperationId();
-    const deletionOperationId = deletionControl.newDeletionOperationId();
     setLines((current) => {
       const nextSelectedLineId = selectedProductAfterRemoval(current, selectedLineId);
       const remaining = removeSaleLine(current, selectedLineId);
@@ -1606,28 +2108,7 @@ export function SaleScreen({
       return remaining;
     });
     setActionDialog(null);
-    void deletionControl.enqueue(
-      () => apiRequest("/sale-line-deletions", {
-        token: session.accessToken,
-        body: {
-          saleOperationId,
-          deletionOperationId,
-          fullTicketClear,
-          lines: [{
-            productId: removedLine.product.id,
-            code: removedLine.product.code ?? "",
-            name: removedLine.product.name ?? "",
-            quantity: removedLine.quantity,
-            unitPrice: saleLineUnitPrice(removedLine, activeMember),
-          }],
-        },
-      }),
-      (error: unknown) => {
-        // Best effort: a control-event outage must never block the active sale.
-        console.warn("sale_line_deletion_not_recorded", error);
-      },
-    );
-    if (fullTicketClear) deletionControl.reset("CART_EMPTIED");
+    recordSaleLinesDeletion([removedLine], fullTicketClear);
   }
 
   function handleRemoveLineKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -1645,7 +2126,6 @@ export function SaleScreen({
       return;
     }
     if (!query.trim()) return;
-    setProductSearchPurpose("ADD");
     setProductSearchQuery(query);
     setProductSearchSelectedId("");
     setProductSearchOpen(true);
@@ -1653,15 +2133,8 @@ export function SaleScreen({
 
   function openProductSalesHistory() {
     if (paymentLocked) return;
-    const product = selectSaleProduct(selectableProducts, query) ?? selectedLine?.product;
-    if (product) {
-      setSalesHistoryProduct(product);
-      return;
-    }
-    setProductSearchPurpose("HISTORY");
-    setProductSearchQuery(query);
-    setProductSearchSelectedId("");
-    setProductSearchOpen(true);
+    setSalesHistoryProduct(selectedLine?.product ?? lines.at(-1)?.product ?? null);
+    setSalesHistoryOpen(true);
   }
 
   function openProductInformation(product: SaleProduct) {
@@ -1776,15 +2249,7 @@ export function SaleScreen({
     }
     setDiscountInput(String(discount));
     clearQuickEntry();
-    if (discount > userDiscountLimit) {
-      setDiscountAuthorizationPercent(discount);
-      setManagerName("");
-      setManagerPassword("");
-      setActionDialog("discountAuthorization");
-      return;
-    }
     setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
-    setDiscountAuthorizationToken("");
   }
 
   function applyQuickGlobalDiscount() {
@@ -1794,16 +2259,11 @@ export function SaleScreen({
       setShortcutStatus("Introduce un descuento entre 0 y 100");
       return;
     }
-    if (discount > userDiscountLimit) {
-      setShortcutStatus("El descuento global necesita autorización");
-      return;
-    }
     try {
       setLines((current) => current.reduce(
         (updated, line) => updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
         current,
       ));
-      setDiscountAuthorizationToken("");
       clearQuickEntry("Descuento aplicado a toda la compra");
     } catch (error) {
       setShortcutStatus(error instanceof Error && error.message === "discount_blocked"
@@ -1824,15 +2284,7 @@ export function SaleScreen({
     const discount = Math.round((1 - desiredPrice / currentPrice) * 10_000) / 100;
     setDiscountInput(String(discount));
     clearQuickEntry();
-    if (discount > userDiscountLimit) {
-      setDiscountAuthorizationPercent(discount);
-      setManagerName("");
-      setManagerPassword("");
-      setActionDialog("discountAuthorization");
-      return;
-    }
     setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
-    setDiscountAuthorizationToken("");
   }
 
   function cashSaleRequest() {
@@ -1843,10 +2295,11 @@ export function SaleScreen({
         quantity: line.quantity,
         discount: line.discountPercent,
         ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
-        ...(line.openUnitPrice != null ? { openUnitPrice: line.openUnitPrice } : {})
+        ...(line.openUnitPrice != null ? { openUnitPrice: line.openUnitPrice } : {}),
+        ...(line.temporaryName ? { temporaryName: line.temporaryName } : {}),
       })),
-      ...(discountAuthorizationToken ? { discountAuthorizationToken } : {}),
-      ...(checkoutDiscountCents > 0 ? { checkoutDiscountAmount: checkoutDiscountCents / 100 } : {})
+      ...(checkoutDiscountCents > 0 ? { checkoutDiscountAmount: checkoutDiscountCents / 100 } : {}),
+      ...(saleComment ? { internalComment: saleComment } : {}),
     };
   }
 
@@ -1855,12 +2308,103 @@ export function SaleScreen({
     setSelectedLineId(null);
     setSelectedCustomer(null);
     setQuery("");
-    setDiscountAuthorizationToken("");
     setCheckoutDiscountCents(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
+    setSaleComment("");
+    setCommentInput("");
+    setSalePrintMode("DEFAULT");
+    setPrintModeInput("DEFAULT");
     setShortcutStatus("");
     deletionControl.reset("CART_EMPTIED");
+  }
+
+  function recordSaleLinesDeletion(
+    removedLines: SaleLine[],
+    fullTicketClear: boolean,
+  ) {
+    if (removedLines.length === 0) return;
+    const saleOperationId = deletionControl.currentSaleOperationId();
+    const deletionOperationId = deletionControl.newDeletionOperationId();
+    void deletionControl.enqueue(
+      () => apiRequest("/sale-line-deletions", {
+        token: session.accessToken,
+        body: {
+          saleOperationId,
+          deletionOperationId,
+          fullTicketClear,
+          lines: removedLines.map((line) => ({
+            productId: line.product.id,
+            code: line.product.code ?? "",
+            name: line.product.name ?? "",
+            quantity: line.quantity,
+            unitPrice: saleLineUnitPrice(line, activeMember),
+          })),
+        },
+      }),
+      (error: unknown) => {
+        // Best effort: a control-event outage must never block the active sale.
+        console.warn("sale_line_deletion_not_recorded", error);
+      },
+    );
+    if (fullTicketClear) deletionControl.reset("CART_EMPTIED");
+  }
+
+  function clearSaleLines() {
+    const removedLines = lines;
+    setLines([]);
+    setSelectedLineId(null);
+    setQuery("");
+    setCheckoutDiscountCents(0);
+    setNextScanQuantity(1);
+    setNextScanMode("UNIT");
+    setActionDialog(null);
+    setShortcutStatus("");
+    recordSaleLinesDeletion(removedLines, true);
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function clearSaleFromCommand() {
+    const removedLines = lines;
+    recordSaleLinesDeletion(removedLines, true);
+    clearCurrentSale();
+    setActionDialog(null);
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function clearManualDiscounts() {
+    setLines((current) => current.map((line) => (
+      line.discountPercent === 0 ? line : { ...line, discountPercent: 0 }
+    )));
+    setCheckoutDiscountCents(0);
+    setShortcutStatus(t("sale.clearDiscounts.done"));
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function openSaleComment() {
+    if (paymentLocked) return;
+    setCommentInput(saleComment);
+    setActionError("");
+    setActionDialog("comment");
+  }
+
+  function saveSaleComment() {
+    const normalized = commentInput.trim();
+    if (normalized.length > 500) {
+      setActionError(t("sale.comment.tooLong"));
+      return;
+    }
+    setSaleComment(normalized);
+    setActionDialog(null);
+    setShortcutStatus(t("sale.comment.saved"));
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function savePrintMethod(mode: SalePrintMode) {
+    setSalePrintMode(mode);
+    setActionDialog(null);
+    setShortcutStatus(t("sale.printMethod.saved"));
+    queueMicrotask(() => searchInputRef.current?.focus());
   }
 
   async function openCashDrawer(authorizerUsername?: string, authorizerPassword?: string) {
@@ -1895,7 +2439,11 @@ export function SaleScreen({
 
   function startCashDrawerOpening() {
     if (cashDrawerBusy) return;
-    if (hasPermission(session, "ABRIR_CAJON")) {
+    if (!cashDrawerAuthorization) {
+      reportOperationSecurityUnavailable();
+      return;
+    }
+    if (cashDrawerAuthorization.mode === "DIRECT") {
       void openCashDrawer();
       return;
     }
@@ -1936,7 +2484,11 @@ export function SaleScreen({
       setShortcutStatus(t("sale.productEdit.selectLine"));
       return;
     }
-    if (hasPermission(session, "GESTION_PRODUCTO")) {
+    if (!productEditAuthorization) {
+      reportOperationSecurityUnavailable();
+      return;
+    }
+    if (productEditAuthorization.mode === "DIRECT") {
       void openProductEditor();
       return;
     }
@@ -1964,17 +2516,24 @@ export function SaleScreen({
         quantity: Number(line.cantidad),
         discountPercent: Number(line.descuento),
         serialNumbers: line.serialNumbers ?? [],
-        ...(Number(product.salePrice) === 0 && Number(line.precioUnitario) > 0
+        ...(line.temporaryNameOverride === true && line.nombre?.trim()
+          ? { temporaryName: line.nombre.trim() }
+          : {}),
+        ...((line.temporaryPriceOverride === true || Number(product.salePrice) === 0)
+          && Number(line.precioUnitario) > 0
           ? { openUnitPrice: Number(line.precioUnitario) }
           : {})
       } satisfies SaleLine];
     });
     setLines(recoveredLines);
     setSelectedLineId(recoveredLines[0] ? saleCartLineIdentity(recoveredLines[0]) : null);
-    setDiscountAuthorizationToken("");
     setCheckoutDiscountCents(0);
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
+    setSaleComment(opened.document.comentarioInterno?.trim() ?? "");
+    setCommentInput(opened.document.comentarioInterno?.trim() ?? "");
+    setSalePrintMode(opened.printMode ?? "DEFAULT");
+    setPrintModeInput(opened.printMode ?? "DEFAULT");
     setShortcutStatus("");
     setParkedSalesOpen(false);
     const customerId = opened.document.clienteId;
@@ -1990,11 +2549,6 @@ export function SaleScreen({
     } else {
       setSelectedCustomer(null);
     }
-    const maximumDiscount = recoveredLines.reduce((maximum, line) => Math.max(maximum, line.discountPercent), 0);
-    if (maximumDiscount > userDiscountLimit && recoveredLines[0]) {
-      setDiscountAuthorizationPercent(maximumDiscount);
-      setActionDialog("discountAuthorization");
-    }
   }
 
   useEffect(() => {
@@ -2004,7 +2558,6 @@ export function SaleScreen({
       setAuthoritativeQuoteRequestKey("");
       setAuthoritativeQuoteLoading(false);
       setAuthoritativeQuoteError("");
-      setDiscountAuthorizationToken("");
       setCheckoutDiscountCents(0);
       return;
     }
@@ -2074,6 +2627,8 @@ export function SaleScreen({
       });
       const confirmedResult = cashPaymentResultForAutomaticPrinting(result, cashQuoteCents, receivedCents);
       const transition = cashPaymentSuccessTransition(confirmedResult);
+      const completedPrintMode = salePrintMode;
+      setLastPrintMode(completedPrintMode);
       setCashDialogOpen(transition.cashDialogOpen);
       setLines(transition.lines);
       setSelectedLineId(transition.selectedLineId);
@@ -2082,9 +2637,13 @@ export function SaleScreen({
       setQuery(transition.query);
       setNextScanQuantity(1);
       setNextScanMode("UNIT");
+      setSaleComment("");
+      setCommentInput("");
+      setSalePrintMode("DEFAULT");
+      setPrintModeInput("DEFAULT");
       deletionControl.reset("SALE_FINALIZED");
       setVerifactuRefreshSignal((current) => current + 1);
-      startAutomaticTicketPrint(result.printTicket);
+      startAutomaticTicketPrint(result.printTicket, completedPrintMode);
       } catch (error) {
       const transition = cashPaymentErrorTransition(
         { cashDialogOpen, lines, selectedLineId, selectedCustomer, query },
@@ -2127,6 +2686,10 @@ export function SaleScreen({
           setCardDialogOpen(false); setLines([]); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
           setNextScanQuantity(1);
           setNextScanMode("UNIT");
+          setSaleComment("");
+          setCommentInput("");
+          setSalePrintMode("DEFAULT");
+          setPrintModeInput("DEFAULT");
           deletionControl.reset("SALE_FINALIZED");
           setVerifactuRefreshSignal((current) => current + 1);
         }
@@ -2182,59 +2745,237 @@ export function SaleScreen({
         : "Finaliza el cobro activo antes de cerrar la caja");
       return;
     }
+    setCashSessionCloseFlow((current) => current ?? createCashCloseUiFlow());
     setCashSessionCloseOpen(true);
+  }
+
+  function updateCashSessionCloseFlow(flow: CashCloseUiFlow) {
+    setCashSessionCloseFlow(flow);
+    if (flow.phase === "READY") return;
+    saveCashCloseRecovery(localStorage, terminalContext.terminalCode, flow);
+    setCashCloseRecovery(loadCashCloseRecovery(
+      localStorage,
+      terminalContext.terminalCode,
+    ));
+  }
+
+  function clearPersistedCashSessionClose() {
+    clearCashCloseRecovery(localStorage, terminalContext.terminalCode);
+    setCashCloseRecovery({ status: "empty" });
+    setCashSessionCloseFlow(null);
+  }
+
+  function saleCommandDisabled(command: SaleCommandId) {
+    switch (command) {
+      case "sales-document":
+        return paymentLocked || !onOpenSalesDocumentWindow;
+      case "stock":
+      case "quantity":
+      case "add-quantity":
+      case "subtract-quantity":
+      case "desired-price":
+      case "serial-number":
+      case "line-discount":
+        return !selectedLine || paymentLocked;
+      case "edit-product":
+        return !selectedLine || paymentLocked || productEditBusy;
+      case "ean-generator":
+        return paymentLocked || salesUtilityOpening || !internalEanAuthorization;
+      case "print-product-label":
+        return paymentLocked || salesUtilityOpening;
+      case "ticket-return":
+      case "cancel-last-ticket":
+      case "cancel-ticket":
+      case "convert-ticket":
+        return !paymentHydrated || paymentLocked;
+      case "checkout":
+        return paymentActionsDisabled || paymentLocked;
+      case "customer":
+      case "park-sale":
+      case "sale-comment":
+      case "print-method":
+      case "next-units":
+      case "next-package":
+        return paymentLocked;
+      case "clear-sale":
+        return paymentLocked || (
+          lines.length === 0
+          && !selectedCustomer
+          && !saleComment
+          && checkoutDiscountCents === 0
+          && salePrintMode === "DEFAULT"
+        );
+      case "clear-lines":
+        return paymentLocked || lines.length === 0;
+      case "clear-discounts":
+        return paymentLocked || (
+          checkoutDiscountCents === 0
+          && lines.every((line) => line.discountPercent === 0)
+        );
+      case "temporary-name":
+        return paymentLocked || !selectedLine;
+      case "temporary-price":
+        return paymentLocked || !selectedLine
+          || saleProductRequiresOpenPrice(selectedLine.product);
+      case "sale-discount":
+        return lines.length === 0 || paymentLocked || !canApplyManualDiscount;
+      case "close-cash":
+        return cashSessionCloseDisabled;
+      case "cash-withdrawal":
+        return !cashSessionReady || paymentLocked;
+      case "cash-drawer":
+        return cashDrawerBusy;
+      default:
+        return false;
+    }
+  }
+
+  function executeSaleCommand(
+    command: SaleCommandId,
+    source: "KEYBOARD" | "UI" = "UI",
+  ) {
+    if (saleCommandDisabled(command)) return false;
+    switch (command) {
+      case "sales-document":
+        onOpenSalesDocumentWindow?.();
+        break;
+      case "price-lookup":
+        setConsultationMode("PRICE");
+        break;
+      case "calculator":
+        setCalculatorOpen(true);
+        break;
+      case "ean-generator":
+        if (internalEanAuthorization) void openSalesUtilityWindow("INTERNAL_EAN");
+        else reportOperationSecurityUnavailable();
+        break;
+      case "print-product-label":
+        void openSalesUtilityWindow("PRODUCT_LABEL");
+        break;
+      case "cash-drawer":
+        startCashDrawerOpening();
+        break;
+      case "logout":
+        void handleSaleLogout();
+        break;
+      case "stock":
+        setConsultationMode("STOCK");
+        break;
+      case "sales-history":
+        openProductSalesHistory();
+        break;
+      case "edit-product":
+        startProductEditing();
+        break;
+      case "close-cash":
+        if (cashSessionCloseAuthorization) openCashSessionClose();
+        else reportOperationSecurityUnavailable();
+        break;
+      case "cash-withdrawal":
+        if (cashMovementAuthorization) setCashWithdrawalOpen(true);
+        else reportOperationSecurityUnavailable();
+        break;
+      case "ticket-return":
+        if (ticketReturnAuthorization) setTicketReturnOpen(true);
+        else reportOperationSecurityUnavailable();
+        break;
+      case "cancel-last-ticket":
+        if (ticketCancellationAuthorization) setTicketCancellationMode("LAST");
+        else reportOperationSecurityUnavailable();
+        break;
+      case "cancel-ticket":
+        if (ticketCancellationAuthorization) setTicketCancellationMode("BY_NUMBER");
+        else reportOperationSecurityUnavailable();
+        break;
+      case "convert-ticket":
+        if (ticketInvoiceAuthorization) setTicketInvoiceOpen(true);
+        else reportOperationSecurityUnavailable();
+        break;
+      case "checkout":
+        if (paymentCheckoutRef.current?.openCheckout) {
+          paymentCheckoutRef.current.openCheckout("CASH");
+        } else {
+          paymentCheckoutRef.current?.triggerCash();
+        }
+        break;
+      case "customer":
+        openCustomerDialog();
+        break;
+      case "park-sale":
+        setParkedSalesOpen(true);
+        break;
+      case "sale-comment":
+        openSaleComment();
+        break;
+      case "clear-sale":
+        setActionDialog("clearSale");
+        break;
+      case "clear-lines":
+        setActionDialog("clearLines");
+        break;
+      case "clear-discounts":
+        clearManualDiscounts();
+        break;
+      case "print-method":
+        setPrintModeInput(salePrintMode);
+        setActionDialog("printMethod");
+        break;
+      case "sale-discount":
+        applyQuickGlobalDiscount();
+        break;
+      case "quantity":
+        if (source === "KEYBOARD") applyPauseQuantity();
+        else openQuantityDialog();
+        break;
+      case "add-quantity":
+        addToSelectedQuantity();
+        break;
+      case "subtract-quantity":
+        subtractFromSelectedQuantity();
+        break;
+      case "next-units":
+        prepareNextProductQuantity(false);
+        break;
+      case "next-package":
+        prepareNextProductQuantity(true);
+        break;
+      case "desired-price":
+        applyDesiredLinePrice();
+        break;
+      case "temporary-name":
+        openTemporaryNameDialog();
+        break;
+      case "temporary-price":
+        openTemporaryPriceDialog();
+        break;
+      case "serial-number":
+        setSerialNumberOpen(true);
+        break;
+      case "line-discount":
+        if (source === "KEYBOARD") applyQuickLineDiscount();
+        else openDiscountDialog();
+        break;
+    }
+    return true;
   }
 
   saleShortcutHandlerRef.current = (event: KeyboardEvent) => {
       if (!cashSessionReady) return;
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (pendingRecoveryBlocked) return;
-      if (isSalesDocumentShortcut(event)) {
-        if (!paymentLocked && onOpenSalesDocumentWindow) {
-          event.preventDefault();
-          onOpenSalesDocumentWindow();
+      const command = saleCommandFromKeyboard(event);
+      if (command) {
+        if (!event.ctrlKey
+          && saleShortcutTargetIsEditable(event.target)
+          && event.target !== searchInputRef.current) {
+          return;
         }
+        event.preventDefault();
+        executeSaleCommand(command, "KEYBOARD");
         return;
       }
 
       if (event.ctrlKey && !event.altKey && !event.metaKey) {
-        const lowerKey = event.key.toLocaleLowerCase();
-        if (lowerKey === "g") {
-          if (!paymentLocked) {
-            event.preventDefault();
-            setParkedSalesOpen(true);
-          }
-          return;
-        }
-        if (lowerKey === "n") {
-          if (selectedLine && !paymentLocked) {
-            event.preventDefault();
-            setSerialNumberOpen(true);
-          }
-          return;
-        }
-        if (event.key === "+") {
-          event.preventDefault();
-          addToSelectedQuantity();
-          return;
-        }
-        if (event.key === "-") {
-          event.preventDefault();
-          subtractFromSelectedQuantity();
-          return;
-        }
-        if (event.key === "/") {
-          event.preventDefault();
-          applyQuickGlobalDiscount();
-          return;
-        }
-        if (event.key === "F11") {
-          if (paymentHydrated && !paymentLocked) {
-            event.preventDefault();
-            setTicketManagementOpen(true);
-          }
-          return;
-        }
         // Ctrl+C/V/X/Z/Y and every other standard editing shortcut remain native.
         return;
       }
@@ -2250,77 +2991,6 @@ export function SaleScreen({
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (paymentLocked || lines.length === 0) return;
         setSelectedLineId(saleLineSelectionAfterArrow(lines, selectedLineId, event.key));
-        event.preventDefault();
-        return;
-      }
-
-      let handled = true;
-      switch (event.key) {
-        case "F1":
-          setConsultationMode("PRICE");
-          break;
-        case "F2":
-          setCalculatorOpen(true);
-          break;
-        case "F3":
-          startCashDrawerOpening();
-          break;
-        case "F4":
-          void handleSaleLogout();
-          break;
-        case "F5":
-          if (!selectedLine || paymentLocked) return;
-          setConsultationMode("STOCK");
-          break;
-        case "F6":
-          openProductSalesHistory();
-          break;
-        case "F7":
-          startProductEditing();
-          break;
-        case "F8":
-          openCashSessionClose();
-          break;
-        case "F10":
-          if (!paymentHydrated || paymentLocked) return;
-          setTicketReturnOpen(true);
-          break;
-        case "F11":
-        case "F12":
-          if (!paymentHydrated || paymentLocked) return;
-          setTicketManagementOpen(true);
-          break;
-        case "End":
-          if (paymentLocked) return;
-          openCustomerDialog();
-          break;
-        case "Pause":
-          applyPauseQuantity();
-          break;
-        case "PageUp":
-          applyDesiredLinePrice();
-          break;
-        case "PageDown":
-          if (paymentActionsDisabled || paymentLocked) return;
-          if (paymentCheckoutRef.current?.openCheckout) {
-            paymentCheckoutRef.current.openCheckout("CASH");
-          } else {
-            paymentCheckoutRef.current?.triggerCash();
-          }
-          break;
-        case "+":
-          prepareNextProductQuantity(false);
-          break;
-        case "*":
-          prepareNextProductQuantity(true);
-          break;
-        case "/":
-          applyQuickLineDiscount();
-          break;
-        default:
-          handled = false;
-      }
-      if (handled) {
         event.preventDefault();
         return;
       }
@@ -2352,18 +3022,28 @@ export function SaleScreen({
       entries: [
         {
           type: "action", id: "calculator", label: commandLabels.calculator, shortcut: "F2",
-          onSelect: () => setCalculatorOpen(true),
+          onSelect: () => executeSaleCommand("calculator"),
+        },
+        {
+          type: "action", id: "ean-generator", label: commandLabels.eanGenerator, shortcut: "Ctrl+F2",
+          disabled: saleCommandDisabled("ean-generator"),
+          onSelect: () => executeSaleCommand("ean-generator"),
+        },
+        {
+          type: "action", id: "print-product-label", label: commandLabels.printProductLabel, shortcut: "Ctrl+I",
+          disabled: saleCommandDisabled("print-product-label"),
+          onSelect: () => executeSaleCommand("print-product-label"),
         },
         { type: "separator", id: "system-separator-1" },
         {
           type: "action", id: "cash-drawer", label: commandLabels.cashDrawer, shortcut: "F3",
           disabled: cashDrawerBusy,
           disabledReason: t("sale.cashDrawer.error"),
-          onSelect: startCashDrawerOpening,
+          onSelect: () => executeSaleCommand("cash-drawer"),
         },
         {
           type: "action", id: "logout", label: commandLabels.logout, shortcut: "F4",
-          onSelect: () => void handleSaleLogout(),
+          onSelect: () => executeSaleCommand("logout"),
         },
         { type: "separator", id: "system-separator-2" },
         {
@@ -2372,7 +3052,13 @@ export function SaleScreen({
           disabledReason: lines.length > 0
             ? "El carrito debe estar vacío para cerrar la caja"
             : "Finaliza el cobro activo antes de cerrar la caja",
-          onSelect: openCashSessionClose,
+          onSelect: () => executeSaleCommand("close-cash"),
+        },
+        {
+          type: "action", id: "cash-withdrawal", label: commandLabels.cashWithdrawal, shortcut: "F9",
+          disabled: saleCommandDisabled("cash-withdrawal"),
+          disabledReason: "Finaliza el cobro activo antes de registrar una retirada",
+          onSelect: () => executeSaleCommand("cash-withdrawal"),
         },
       ],
     },
@@ -2386,28 +3072,28 @@ export function SaleScreen({
           label: commandLabels.document,
           shortcut: "Ctrl+F",
           disabled: paymentLocked,
-          onSelect: () => onOpenSalesDocumentWindow(),
+          onSelect: () => executeSaleCommand("sales-document"),
         }] : []),
         {
           type: "action", id: "convert-ticket", label: commandLabels.convertInvoice, shortcut: "F12",
           disabled: !paymentHydrated || paymentLocked,
-          onSelect: () => setTicketManagementOpen(true),
+          onSelect: () => executeSaleCommand("convert-ticket"),
         },
         { type: "separator", id: "invoice-ticket-separator" },
         {
           type: "action", id: "ticket-return", label: commandLabels.ticketReturn, shortcut: "F10",
           disabled: !paymentHydrated || paymentLocked,
-          onSelect: () => setTicketReturnOpen(true),
+          onSelect: () => executeSaleCommand("ticket-return"),
         },
         {
           type: "action", id: "cancel-last-ticket", label: commandLabels.cancelTicket, shortcut: "F11",
           disabled: !paymentHydrated || paymentLocked,
-          onSelect: () => setTicketManagementOpen(true),
+          onSelect: () => executeSaleCommand("cancel-last-ticket"),
         },
         {
           type: "action", id: "cancel-ticket", label: commandLabels.cancelOtherTicket, shortcut: "Ctrl+F11",
           disabled: !paymentHydrated || paymentLocked,
-          onSelect: () => setTicketManagementOpen(true),
+          onSelect: () => executeSaleCommand("cancel-ticket"),
         },
       ],
     },
@@ -2418,25 +3104,51 @@ export function SaleScreen({
         {
           type: "action", id: "checkout", label: commandLabels.checkout, shortcut: commandLabels.pageDownKey,
           disabled: paymentActionsDisabled || paymentLocked,
-          onSelect: () => paymentCheckoutRef.current?.openCheckout("CASH"),
+          onSelect: () => executeSaleCommand("checkout"),
         },
         {
           type: "action", id: "customer", label: commandLabels.customer, shortcut: "Fin",
           disabled: paymentLocked,
-          onSelect: () => openCustomerDialog(),
+          onSelect: () => executeSaleCommand("customer"),
         },
         { type: "separator", id: "document-separator-1" },
         {
           type: "action", id: "park-sale", label: commandLabels.parkSale, shortcut: "Ctrl+G",
           disabled: paymentLocked,
-          onSelect: () => setParkedSalesOpen(true),
+          onSelect: () => executeSaleCommand("park-sale"),
         },
         { type: "separator", id: "document-separator-2" },
+        {
+          type: "action", id: "sale-comment", label: commandLabels.saleComment, shortcut: "Ctrl+O",
+          disabled: saleCommandDisabled("sale-comment"),
+          onSelect: () => executeSaleCommand("sale-comment"),
+        },
+        {
+          type: "action", id: "clear-sale", label: t("sale.clearSale.action"), shortcut: "Ctrl+F4",
+          disabled: saleCommandDisabled("clear-sale"),
+          onSelect: () => executeSaleCommand("clear-sale"),
+        },
+        {
+          type: "action", id: "clear-lines", label: t("sale.clearLines.action"), shortcut: "Ctrl+Shift+A",
+          disabled: saleCommandDisabled("clear-lines"),
+          onSelect: () => executeSaleCommand("clear-lines"),
+        },
+        {
+          type: "action", id: "clear-discounts", label: t("sale.clearDiscounts"), shortcut: "Ctrl+Shift+D",
+          disabled: saleCommandDisabled("clear-discounts"),
+          onSelect: () => executeSaleCommand("clear-discounts"),
+        },
+        {
+          type: "action", id: "print-method", label: commandLabels.printMethod, shortcut: "Ctrl+P",
+          disabled: saleCommandDisabled("print-method"),
+          onSelect: () => executeSaleCommand("print-method"),
+        },
+        { type: "separator", id: "document-separator-3" },
         {
           type: "action", id: "sale-discount", label: commandLabels.saleDiscount, shortcut: "Ctrl+/",
           disabled: lines.length === 0 || paymentLocked || !canApplyManualDiscount,
           disabledReason: !canApplyManualDiscount ? "No tienes el permiso APLICAR_DESCUENTO" : undefined,
-          onSelect: applyQuickGlobalDiscount,
+          onSelect: () => executeSaleCommand("sale-discount"),
         },
       ],
     },
@@ -2446,66 +3158,76 @@ export function SaleScreen({
       entries: [
         {
           type: "action", id: "price-lookup", label: commandLabels.priceLookup, shortcut: "F1",
-          onSelect: () => setConsultationMode("PRICE"),
+          onSelect: () => executeSaleCommand("price-lookup"),
         },
         {
           type: "action", id: "stock", label: commandLabels.selectedStock, shortcut: "F5",
           disabled: !selectedLine || paymentLocked,
-          onSelect: () => setConsultationMode("STOCK"),
+          onSelect: () => executeSaleCommand("stock"),
         },
         {
           type: "action", id: "sales-history", label: commandLabels.productSales, shortcut: "F6",
           disabled: paymentLocked,
-          onSelect: openProductSalesHistory,
+          onSelect: () => executeSaleCommand("sales-history"),
         },
         {
           type: "action", id: "edit-product", label: commandLabels.editProduct, shortcut: "F7",
           disabled: !selectedLine || paymentLocked || productEditBusy,
-          onSelect: startProductEditing,
+          onSelect: () => executeSaleCommand("edit-product"),
         },
         { type: "separator", id: "product-separator-1" },
         {
           type: "action", id: "quantity", label: commandLabels.setQuantity, shortcut: "Pausa",
           disabled: !selectedLine || paymentLocked,
-          onSelect: openQuantityDialog,
+          onSelect: () => executeSaleCommand("quantity"),
         },
         {
           type: "action", id: "add-quantity", label: commandLabels.addQuantity, shortcut: "Ctrl++",
           disabled: !selectedLine || paymentLocked,
-          onSelect: addToSelectedQuantity,
+          onSelect: () => executeSaleCommand("add-quantity"),
         },
         {
           type: "action", id: "subtract-quantity", label: commandLabels.subtractQuantity, shortcut: "Ctrl+-",
           disabled: !selectedLine || paymentLocked,
-          onSelect: subtractFromSelectedQuantity,
+          onSelect: () => executeSaleCommand("subtract-quantity"),
         },
         {
           type: "action", id: "next-units", label: commandLabels.nextUnits, shortcut: "+",
           disabled: paymentLocked,
-          onSelect: () => prepareNextProductQuantity(false),
+          onSelect: () => executeSaleCommand("next-units"),
         },
         {
           type: "action", id: "next-package", label: commandLabels.nextPackage, shortcut: "*",
           disabled: paymentLocked,
-          onSelect: () => prepareNextProductQuantity(true),
+          onSelect: () => executeSaleCommand("next-package"),
         },
         { type: "separator", id: "product-separator-2" },
+        {
+          type: "action", id: "temporary-name", label: commandLabels.temporaryName, shortcut: "Inicio",
+          disabled: saleCommandDisabled("temporary-name"),
+          onSelect: () => executeSaleCommand("temporary-name"),
+        },
         {
           type: "action", id: "desired-price", label: commandLabels.desiredPrice, shortcut: "RePág",
           disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
             || saleProductBlocksManualDiscount(selectedLine.product),
-          onSelect: applyDesiredLinePrice,
+          onSelect: () => executeSaleCommand("desired-price"),
+        },
+        {
+          type: "action", id: "temporary-price", label: commandLabels.temporaryPrice, shortcut: "Ctrl+RePág",
+          disabled: saleCommandDisabled("temporary-price"),
+          onSelect: () => executeSaleCommand("temporary-price"),
         },
         {
           type: "action", id: "serial-number", label: commandLabels.serialNumber, shortcut: "Ctrl+N",
           disabled: !selectedLine || paymentLocked,
-          onSelect: () => setSerialNumberOpen(true),
+          onSelect: () => executeSaleCommand("serial-number"),
         },
         {
           type: "action", id: "line-discount", label: commandLabels.lineDiscount, shortcut: "/",
           disabled: !selectedLine || paymentLocked || !canApplyManualDiscount
             || saleProductBlocksManualDiscount(selectedLine.product),
-          onSelect: applyQuickLineDiscount,
+          onSelect: () => executeSaleCommand("line-discount"),
         },
       ],
     },
@@ -2669,6 +3391,8 @@ export function SaleScreen({
               paymentLocked={paymentLocked}
               searchDisabled={catalogLoading || Boolean(catalogError) || paymentLocked}
               quantityDisabled={!selectedLine || paymentLocked}
+              temporaryNameDisabled={saleCommandDisabled("temporary-name")}
+              temporaryPriceDisabled={saleCommandDisabled("temporary-price")}
               editProductDisabled={!selectedLine || paymentLocked || productEditBusy}
               serialNumberDisabled={!selectedLine || paymentLocked}
               ticketReturnDisabled={paymentLocked || !paymentHydrated}
@@ -2687,17 +3411,24 @@ export function SaleScreen({
               receivablesAvailable={canOpenCustomerReceivables}
               receivablesCustomer={selectedCustomer?.fiscalName ?? undefined}
               onSearch={() => searchInputRef.current?.focus()}
-              onCashDrawer={startCashDrawerOpening}
-              onEditProduct={startProductEditing}
-              onSerialNumber={() => setSerialNumberOpen(true)}
-              onTicketReturn={() => setTicketReturnOpen(true)}
-              onDocument={() => onOpenSalesDocumentWindow?.()}
-              onQuantity={openQuantityDialog}
-              onDiscount={openDiscountDialog}
-              onCustomer={() => openCustomerDialog()}
+              onEanGenerator={() => executeSaleCommand("ean-generator")}
+              onPrintProductLabel={() => executeSaleCommand("print-product-label")}
+              onCashDrawer={() => executeSaleCommand("cash-drawer")}
+              onCashWithdrawal={() => executeSaleCommand("cash-withdrawal")}
+              onEditProduct={() => executeSaleCommand("edit-product")}
+              onSerialNumber={() => executeSaleCommand("serial-number")}
+              onTicketReturn={() => executeSaleCommand("ticket-return")}
+              onDocument={() => executeSaleCommand("sales-document")}
+              onQuantity={() => executeSaleCommand("quantity")}
+              onTemporaryName={() => executeSaleCommand("temporary-name")}
+              onTemporaryPrice={() => executeSaleCommand("temporary-price")}
+              onDiscount={() => executeSaleCommand("line-discount")}
+              onCustomer={() => executeSaleCommand("customer")}
               onRemoveLine={() => setActionDialog("remove")}
-              onParkedSales={() => setParkedSalesOpen(true)}
-              onManageTickets={() => setTicketManagementOpen(true)}
+              onParkedSales={() => executeSaleCommand("park-sale")}
+              onCancelLastTicket={() => executeSaleCommand("cancel-last-ticket")}
+              onCancelTicket={() => executeSaleCommand("cancel-ticket")}
+              onConvertTicket={() => executeSaleCommand("convert-ticket")}
               onReceivables={() => onOpenCustomerReceivables?.(selectedCustomer?.id)}
             />
           )}
@@ -2718,6 +3449,14 @@ export function SaleScreen({
               customerSelected={Boolean(selectedCustomer)}
               checkoutDiscountCents={checkoutDiscountCents}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
+              manualCardPaymentAuthorization={manualCardPaymentAuthorization}
+              transferPaymentAuthorization={transferPaymentAuthorization}
+              saleMutationAuthorizations={saleMutationAuthorizations}
+              paymentTerminalVoidAuthorization={paymentTerminalVoidAuthorization}
+              paymentTerminalRefundAuthorization={paymentTerminalRefundAuthorization}
+              paymentCompensationAuthorization={paymentCompensationAuthorization}
+              createPendingAuthorization={createPendingAuthorization}
+              creditOverrideAuthorization={creditOverrideAuthorization}
               onCash={() => void openCashDialog()}
               onPending={openPendingSale}
               onDiscount={setCheckoutDiscountCents}
@@ -2729,6 +3468,7 @@ export function SaleScreen({
                 );
               }}
               onFinalized={(printTicket, summary) => {
+                const completedPrintMode = salePrintMode;
                 invalidateCashOpening();
                 deletionControl.reset("SALE_FINALIZED");
                 setVerifactuRefreshSignal((current) => current + 1);
@@ -2738,11 +3478,16 @@ export function SaleScreen({
                 setQuery("");
                 setNextScanQuantity(1);
                 setNextScanMode("UNIT");
+                setSaleComment("");
+                setCommentInput("");
+                setSalePrintMode("DEFAULT");
+                setPrintModeInput("DEFAULT");
                 setCheckoutDiscountCents(0);
                 setReservedPaymentTotalCents(null);
+                setLastPrintMode(completedPrintMode);
                 const result = paymentResultFromFinalization(printTicket, summary);
                 setCashResult({ ...result, printStatus: "PRINTING" });
-                startAutomaticTicketPrint(printTicket);
+                startAutomaticTicketPrint(printTicket, completedPrintMode);
               }}
             />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
@@ -2764,6 +3509,12 @@ export function SaleScreen({
         busy={cashDrawerBusy}
         error={cashDrawerError}
         t={t}
+        locale={locale}
+        authorization={cashDrawerAuthorization ?? {
+          mode: "DELEGATED",
+          requireUsername: true,
+          requirePassword: true,
+        }}
         onCancel={() => {
           if (cashDrawerBusy) return;
           setCashDrawerAuthorizationOpen(false);
@@ -2772,11 +3523,43 @@ export function SaleScreen({
         onAuthorize={(username, password) => void openCashDrawer(username, password)}
       />
 
+      {cashWithdrawalOpen && cashSessionReady && terminalContext.terminalId && session.accessToken && (
+        <SaleCashWithdrawalDialog
+          locale={locale}
+          terminalId={terminalContext.terminalId}
+          terminalContext={terminalContext}
+          token={session.accessToken}
+          authorization={cashMovementAuthorization ?? {
+            mode: "DELEGATED",
+            requireUsername: true,
+            requirePassword: true,
+          }}
+          requireEntryDenominationBreakdown={cashWithdrawalPolicy.requireEntryBreakdown}
+          entryDenominations={cashWithdrawalPolicy.entryDenominations}
+          requireDenominationBreakdown={cashWithdrawalPolicy.requireBreakdown}
+          denominations={cashWithdrawalPolicy.denominations}
+          onCancel={() => setCashWithdrawalOpen(false)}
+          onCompleted={(movement) => {
+            setCashWithdrawalOpen(false);
+            setShortcutStatus(t(movement.type === "ENTRADA"
+              ? "sale.cashMovement.entryCompleted"
+              : "sale.cashMovement.withdrawalCompleted"));
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
+      )}
+
       <SaleCashDrawerAuthorizationDialog
         open={productEditAuthorizationOpen}
         busy={productEditBusy}
         error={productEditError}
         t={t}
+        locale={locale}
+        authorization={productEditAuthorization ?? {
+          mode: "DELEGATED",
+          requireUsername: true,
+          requirePassword: true,
+        }}
         translationPrefix="sale.productEdit"
         onCancel={() => {
           if (productEditBusy) return;
@@ -2831,10 +3614,17 @@ export function SaleScreen({
         customerName={selectedCustomer?.fiscalName ?? selectedCustomer?.clientId ?? recoveredPendingSale?.customer.name ?? "Cliente"}
         locale={locale}
         terminalContext={terminalContext}
+        printMode={salePrintMode}
         draft={pendingDraft}
         recovery={recoveredPendingSale}
         token={session.accessToken}
         permissions={session.permissions}
+        createPendingAuthorization={createPendingAuthorization}
+        creditOverrideAuthorization={creditOverrideAuthorization}
+        manualCardPaymentAuthorization={manualCardPaymentAuthorization}
+        transferPaymentAuthorization={transferPaymentAuthorization}
+        cardPaymentMode={pendingCardPaymentMode}
+        saleMutationAuthorizations={saleMutationAuthorizations}
         disabled={paymentLocked}
         onPersistRecovery={(envelope: PendingSaleRecoveryEnvelope) => {
           savePendingSaleRecovery(localStorage, envelope);
@@ -2852,7 +3642,10 @@ export function SaleScreen({
         onSuccess={(_result, retry) => {
           setPendingDraft(null); setLines([]); setSelectedLineId(null);
           setPendingPrintRetry(() => retry ?? null);
-          setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT"); searchInputRef.current?.focus();
+          setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT");
+          setSaleComment(""); setCommentInput(""); setSalePrintMode("DEFAULT");
+          setPrintModeInput("DEFAULT");
+          searchInputRef.current?.focus();
           setVerifactuRefreshSignal((current) => current + 1);
         }}
       />}
@@ -2896,10 +3689,6 @@ export function SaleScreen({
           }}
           onSelect={(product) => {
             setProductSearchOpen(false);
-            if (productSearchPurpose === "HISTORY") {
-              setSalesHistoryProduct(product);
-              return;
-            }
             requestAddProduct(product);
           }}
         />
@@ -2942,7 +3731,8 @@ export function SaleScreen({
 
       {calculatorOpen && (
         <SaleCalculatorDialog
-          taxRegime={(selectedLine?.product.taxRegime ?? products[0]?.taxRegime ?? "IVA") as "IVA" | "IGIC"}
+          locale={locale}
+          defaultTaxPercent={selectedLine?.product.taxPercentage ?? products[0]?.taxPercentage}
           onClose={() => {
             setCalculatorOpen(false);
             queueMicrotask(() => searchInputRef.current?.focus());
@@ -2950,25 +3740,20 @@ export function SaleScreen({
         />
       )}
 
-      {salesHistoryProduct && (
-        <div className="sale-action-overlay" role="presentation">
-          <section className="sale-action-dialog wide sale-sales-history-dialog" role="dialog" aria-modal="true"
-            aria-label={`Ventas de ${salesHistoryProduct.name ?? "producto"}`}>
-            <header>
-              <h2>Histórico de venta · {salesHistoryProduct.name ?? salesHistoryProduct.code}</h2>
-              <button type="button" aria-label="Cerrar" onClick={() => setSalesHistoryProduct(null)}>×</button>
-            </header>
-            <StockSalesHistoryPanel
-              productId={salesHistoryProduct.id}
-              productName={salesHistoryProduct.name ?? salesHistoryProduct.code ?? ""}
-              locale={locale}
-              app={app}
-              username={session.username}
-              accessToken={session.accessToken}
-              onClose={() => setSalesHistoryProduct(null)}
-            />
-          </section>
-        </div>
+      {salesHistoryOpen && (
+        <SaleProductSalesHistoryDialog
+          products={selectableProducts}
+          initialProduct={salesHistoryProduct}
+          locale={locale}
+          app={app}
+          username={session.username}
+          accessToken={session.accessToken}
+          onClose={() => {
+            setSalesHistoryOpen(false);
+            setSalesHistoryProduct(null);
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+        />
       )}
 
       {pendingOpenPriceProduct && (
@@ -2986,6 +3771,117 @@ export function SaleScreen({
           onCancel={cancelOpenPrice}
           onAccept={confirmOpenPrice}
         />
+      )}
+
+      {actionDialog === "comment" && (
+        <SaleActionDialog
+          title={t("sale.comment.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+        >
+          <form
+            className="sale-action-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveSaleComment();
+            }}
+          >
+            <label>
+              <span>{t("sale.comment.label")}</span>
+              <textarea
+                autoFocus
+                aria-label={t("sale.comment.label")}
+                maxLength={500}
+                rows={5}
+                value={commentInput}
+                onChange={(event) => {
+                  setCommentInput(event.target.value);
+                  setActionError("");
+                }}
+              />
+            </label>
+            <small className="sale-dialog-hint">
+              {t("sale.comment.hint")} {commentInput.length}/500
+            </small>
+            {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
+            <div className="sale-action-buttons">
+              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit">{t("sale.dialog.save")}</button>
+            </div>
+          </form>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "clearSale" && (
+        <SaleActionDialog
+          title={t("sale.clearSale.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+          onConfirm={clearSaleFromCommand}
+        >
+          <p>{t("sale.clearSale.confirm")}</p>
+          <div className="sale-action-buttons">
+            <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button type="button" className="danger" onClick={clearSaleFromCommand}>{t("sale.clearSale.action")}</button>
+          </div>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "clearLines" && (
+        <SaleActionDialog
+          title={t("sale.clearLines.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+          onConfirm={clearSaleLines}
+        >
+          <p>{t("sale.clearLines.confirm")}</p>
+          <div className="sale-action-buttons">
+            <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+            <button type="button" className="danger" onClick={clearSaleLines}>{t("sale.clearLines.action")}</button>
+          </div>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "printMethod" && (
+        <SaleActionDialog
+          title={t("sale.printMethod.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+        >
+          <form
+            className="sale-action-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              savePrintMethod(printModeInput);
+            }}
+          >
+            <fieldset className="sale-print-method-options">
+              {([
+                ["DEFAULT", "sale.printMethod.default"],
+                ["TICKET_PRINTER", "sale.printMethod.ticket"],
+                ["A4_PRINTER", "sale.printMethod.a4"],
+                ["PDF", "sale.printMethod.pdf"],
+                ["NONE", "sale.printMethod.none"],
+              ] as const).map(([mode, label]) => (
+                <label key={mode}>
+                  <input
+                    type="radio"
+                    name="sale-print-method"
+                    value={mode}
+                    checked={printModeInput === mode}
+                    onChange={() => setPrintModeInput(mode)}
+                  />
+                  <span>{t(label)}</span>
+                </label>
+              ))}
+            </fieldset>
+            <small className="sale-dialog-hint">{t("sale.printMethod.hint")}</small>
+            <div className="sale-action-buttons">
+              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit">{t("sale.dialog.save")}</button>
+            </div>
+          </form>
+        </SaleActionDialog>
       )}
 
       {actionDialog === "quantity" && selectedLine && (
@@ -3014,27 +3910,59 @@ export function SaleScreen({
         </SaleActionDialog>
       )}
 
-      {actionDialog === "discountAuthorization" && selectedLine && (
-        <SaleActionDialog title={t("sale.discountAuthorization.title")} closeLabel={t("sale.dialog.close")} onClose={() => { setManagerPassword(""); setActionDialog(null); }}>
-          <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); void authorizeDiscount(); }}>
-            <p>
-              {saleMainMessage(t, "sale.discountAuthorization.exceedsLimit", {
-                discount: formatSalePercentage(discountAuthorizationPercent, locale),
-                limit: formatSalePercentage(userDiscountLimit, locale),
-              })}
-            </p>
+      {actionDialog === "temporaryName" && selectedLine && (
+        <SaleActionDialog
+          title={t("sale.temporaryName.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+        >
+          <form className="sale-action-form" onSubmit={(event) => {
+            event.preventDefault();
+            saveTemporaryName();
+          }}>
             <label>
-              <span>{t("sale.discountAuthorization.managerUser")}</span>
-              <input autoFocus autoComplete="username" value={managerName} onChange={(event) => setManagerName(event.target.value)} />
+              <span>{t("sale.temporaryName.label")}</span>
+              <input
+                autoFocus
+                maxLength={255}
+                value={temporaryNameInput}
+                onChange={(event) => setTemporaryNameInput(event.target.value)}
+              />
             </label>
-            <label>
-              <span>{t("sale.discountAuthorization.managerPassword")}</span>
-              <input type="password" inputMode="numeric" autoComplete="current-password" value={managerPassword} onChange={(event) => setManagerPassword(event.target.value)} />
-            </label>
-            {actionError && <strong className="sale-action-error" role="alert">{actionError}</strong>}
+            <small className="sale-dialog-hint">{t("sale.temporaryName.hint")}</small>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons">
-              <button type="button" onClick={() => { setManagerPassword(""); setActionDialog(null); }}>{t("sale.dialog.cancel")}</button>
-              <button type="submit" disabled={managerAuthorizationBusy || !managerName.trim() || !managerPassword}>{t("sale.discountAuthorization.authorize")}</button>
+              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit">{t("sale.dialog.save")}</button>
+            </div>
+          </form>
+        </SaleActionDialog>
+      )}
+
+      {actionDialog === "temporaryPrice" && selectedLine && (
+        <SaleActionDialog
+          title={t("sale.temporaryPrice.title")}
+          closeLabel={t("sale.dialog.close")}
+          onClose={() => setActionDialog(null)}
+        >
+          <form className="sale-action-form" onSubmit={(event) => {
+            event.preventDefault();
+            saveTemporaryPrice();
+          }}>
+            <label>
+              <span>{t("sale.temporaryPrice.label")}</span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={temporaryPriceInput}
+                onChange={(event) => setTemporaryPriceInput(event.target.value)}
+              />
+            </label>
+            <small className="sale-dialog-hint">{t("sale.temporaryPrice.hint")}</small>
+            {actionError && <strong className="sale-action-error">{actionError}</strong>}
+            <div className="sale-action-buttons">
+              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit">{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
@@ -3046,6 +3974,7 @@ export function SaleScreen({
           closeLabel={t("sale.dialog.close")}
           initialFocusRef={customerSearchInputRef}
           onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}
+          onKeyDown={handleCustomerDialogKeyDown}
           wide
         >
           <label>
@@ -3056,15 +3985,24 @@ export function SaleScreen({
           {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
           {!customerLoading && !customerError && (
             <div className="sale-customer-results">
-              {!pendingCustomerContinuation && <button type="button" onClick={() => { setSelectedCustomer(null); setLines((current) => applyMemberDiscounts(current, null)); setActionDialog(null); }}>{t("sale.customer.none")}</button>}
+              {!pendingCustomerContinuation && <button type="button" onClick={() => chooseSaleCustomer(null)}>{t("sale.customer.none")}</button>}
               {customerResults.map((customer) => (
-                <button type="button" key={customer.id} onClick={() => { setSelectedCustomer(customer); setLines((current) => applyMemberDiscounts(current, customer)); setActionDialog(null); if (pendingCustomerContinuation) { setPendingCustomerContinuation(false); void beginPendingSale(customer); } }}>
+                <button
+                  type="button"
+                  className={customer.id === selectedCustomerResultId ? "selected" : undefined}
+                  aria-current={customer.id === selectedCustomerResultId}
+                  key={customer.id}
+                  onFocus={() => setSelectedCustomerResultId(customer.id)}
+                  onMouseEnter={() => setSelectedCustomerResultId(customer.id)}
+                  onClick={() => chooseSaleCustomer(customer)}
+                >
                   <strong>{customer.fiscalName ?? t("sale.customer.unnamed")}</strong>
                   <span>{customer.clientId ?? customer.documentNumber ?? t("sale.customer.noCode")}</span>
                 </button>
               ))}
             </div>
           )}
+          <p className="sale-dialog-hint"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
           <div className="sale-action-buttons"><button type="button" onClick={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}>{t("sale.dialog.close")}</button></div>
         </SaleActionDialog>
       )}
@@ -3081,20 +4019,47 @@ export function SaleScreen({
           token={session.accessToken}
           locale={locale}
           currentSale={cashSaleRequest()}
-          canPark={lines.length > 0 && !paymentLocked && !authoritativeQuoteLoading && !authoritativeQuoteError}
+          printMode={salePrintMode}
+          canPark={lines.length > 0 && !paymentLocked && !authoritativeQuoteLoading
+            && !authoritativeQuoteError && !saleMutationSecurityUnavailable}
+          saleMutationAuthorizations={saleMutationAuthorizations ?? []}
+          deletionAuthorization={parkedSaleDeletionAuthorization ?? {
+            mode: "DELEGATED",
+            requireUsername: true,
+            requirePassword: true,
+          }}
           onClose={() => setParkedSalesOpen(false)}
           onParked={clearCurrentSale}
           onRecovered={recoverParkedSale}
         />
       )}
 
-      {ticketManagementOpen && (
-        <TicketManagementDialog
+      {ticketCancellationMode && (
+        <SaleTicketCancellationDialog
           token={session.accessToken}
           locale={locale}
-          permissions={session.permissions}
+          authorization={ticketCancellationAuthorization ?? {
+            mode: "DELEGATED",
+            requireUsername: true,
+            requirePassword: true,
+          }}
           terminalContext={terminalContext}
-          onClose={() => setTicketManagementOpen(false)}
+          mode={ticketCancellationMode}
+          onClose={() => setTicketCancellationMode(null)}
+          onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
+        />
+      )}
+
+      {ticketInvoiceOpen && (
+        <SaleTicketInvoiceDialog
+          token={session.accessToken}
+          locale={locale}
+          authorization={ticketInvoiceAuthorization ?? {
+            mode: "DELEGATED",
+            requireUsername: true,
+            requirePassword: true,
+          }}
+          onClose={() => setTicketInvoiceOpen(false)}
           onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
         />
       )}
@@ -3104,6 +4069,11 @@ export function SaleScreen({
           token={session.accessToken}
           locale={locale}
           terminalContext={terminalContext}
+          authorization={ticketReturnAuthorization ?? {
+            mode: "DELEGATED",
+            requireUsername: true,
+            requirePassword: true,
+          }}
           onClose={() => setTicketReturnOpen(false)}
           onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
         />
@@ -3178,14 +4148,29 @@ export function SaleScreen({
         </div>
       )}
 
-      {cashSessionCloseOpen && cashSessionReady && terminalContext.terminalId && session.accessToken && (
+      {cashSessionCloseOpen && cashSessionCloseFlow && cashSessionReady
+        && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
           mode="CLOSE"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
-          onCancel={() => setCashSessionCloseOpen(false)}
-          onClosed={onBack}
+          authorization={cashSessionCloseAuthorization ?? {
+            mode: "CURRENT_PASSWORD",
+            requireUsername: false,
+            requirePassword: true,
+          }}
+          closeFlow={cashSessionCloseFlow}
+          onCloseFlowChange={updateCashSessionCloseFlow}
+          onCancel={() => {
+            if (cashSessionCloseFlow?.phase !== "READY") return;
+            setCashSessionCloseOpen(false);
+            clearPersistedCashSessionClose();
+          }}
+          onClosed={() => {
+            clearPersistedCashSessionClose();
+            onBack?.();
+          }}
         />
       )}
     </main>
