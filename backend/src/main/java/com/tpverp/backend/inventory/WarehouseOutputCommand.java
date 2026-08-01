@@ -12,5 +12,15 @@ public record WarehouseOutputCommand(
         @NotNull LocalDate date,
         String destination,
         String concept,
-        @NotEmpty List<@Valid WarehouseOutputLineCommand> lines) {
+        @NotEmpty List<@Valid WarehouseOutputLineCommand> lines,
+        @Valid WarehouseExcelImportMetadata excelImport) {
+
+    public WarehouseOutputCommand(
+            UUID warehouseId,
+            LocalDate date,
+            String destination,
+            String concept,
+            List<WarehouseOutputLineCommand> lines) {
+        this(warehouseId, date, destination, concept, lines, null);
+    }
 }

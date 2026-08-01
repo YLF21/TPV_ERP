@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class SaleOperationAuthorizationReservationMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V119__reserva_intentos_autorizacion_operativa.sql";
+            "db/migration/V121__reserva_intentos_autorizacion_operativa.sql";
 
     @Test
     void addsAtomicAuthorizationReservationWithoutPersistingCredentials() throws IOException {

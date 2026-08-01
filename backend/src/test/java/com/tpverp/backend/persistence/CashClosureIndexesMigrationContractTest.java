@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class CashClosureIndexesMigrationContractTest {
 
     private static final Path MIGRATION = Path.of(
-            "src/main/resources/db/migration/V120__indices_consulta_cierres_caja.sql");
+            "src/main/resources/db/migration/V122__indices_consulta_cierres_caja.sql");
 
     @Test
     void indexesClosedSessionsByTerminalAndClosingUser() throws Exception {

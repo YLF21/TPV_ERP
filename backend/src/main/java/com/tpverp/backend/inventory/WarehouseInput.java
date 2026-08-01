@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "entrada_almacen")
@@ -49,6 +51,10 @@ public class WarehouseInput {
 
     @Column(columnDefinition = "text")
     private String concepto;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "importacion_excel", columnDefinition = "jsonb")
+    private WarehouseExcelImportMetadata excelImport;
 
     @Column(name = "creada_por", nullable = false)
     private UUID createdBy;
@@ -126,7 +132,8 @@ public class WarehouseInput {
             UUID supplierId,
             String origin,
             String concept,
-            List<WarehouseInputLineCommand> newLines) {
+            List<WarehouseInputLineCommand> newLines,
+            WarehouseExcelImportMetadata newExcelImport) {
         requireDraft();
         if (newLines == null || newLines.isEmpty()) {
             throw new IllegalArgumentException("message.warehouse_input.at_least_one_line_required");
@@ -134,8 +141,24 @@ public class WarehouseInput {
         this.supplierId = supplierId;
         this.origen = optional(origin);
         this.concepto = optional(concept);
+        if (newExcelImport != null) {
+            this.excelImport = WarehouseExcelImportMetadata.copy(newExcelImport);
+        }
         lines.clear();
         newLines.forEach(line -> addLine(line.productId(), line.quantity()));
+    }
+
+    public void replace(
+            UUID supplierId,
+            String origin,
+            String concept,
+            List<WarehouseInputLineCommand> newLines) {
+        replace(supplierId, origin, concept, newLines, null);
+    }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public WarehouseExcelImportMetadata getExcelImport() {
+        return WarehouseExcelImportMetadata.copy(excelImport);
     }
 
     public void confirm(String number, UUID userId, Instant when) {

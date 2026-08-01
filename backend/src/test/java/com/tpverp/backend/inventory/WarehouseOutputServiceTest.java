@@ -93,12 +93,17 @@ class WarehouseOutputServiceTest {
                 new WarehouseOutputCommand(
                         warehouse.getId(), LocalDate.of(2026, 6, 9), "TALLER",
                         "Consumo interno",
-                        List.of(new WarehouseOutputLineCommand(product.getId(), 2))),
+                        List.of(new WarehouseOutputLineCommand(product.getId(), 2)),
+                        new WarehouseExcelImportMetadata(
+                                "salidas.xlsx",
+                                List.of(new WarehouseExcelImportMetadata.Formula(
+                                        "I2", "E2*2.5", "10.25")))),
                 authentication());
 
         assertThat(output.getStatus()).isEqualTo(WarehouseOutputStatus.BORRADOR);
         assertThat(output.getLines()).singleElement()
                 .extracting(WarehouseOutputLine::getQuantity).isEqualTo(2);
+        assertThat(output.getExcelImport().fileName()).isEqualTo("salidas.xlsx");
     }
 
     @Test

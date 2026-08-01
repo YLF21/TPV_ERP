@@ -6,6 +6,7 @@ const { renderA4DocumentHtml } = require("./a4-renderer.cjs");
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
 const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
 const { renderTableReportHtml } = require("./table-report-renderer.cjs");
+const { restrictNavigation, trustedOrigin } = require("./navigation-security.cjs");
 const { buildCashDrawerBuffer, buildTicketBuffer, sendEscposBuffer, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 const {
   executeEscposTicketPrint,
@@ -116,6 +117,8 @@ if (!appUrl) {
   throw new Error("TPV_DESKTOP_APP_URL is required");
 }
 
+const trustedAppOrigin = trustedOrigin(appUrl);
+
 function createWindow() {
   Menu.setApplicationMenu(null);
 
@@ -144,6 +147,7 @@ function createWindow() {
     });
   }
 
+  restrictNavigation(mainWindow, trustedAppOrigin);
   mainWindow.loadURL(appUrl);
 }
 
@@ -177,6 +181,7 @@ function createSalesDocumentWindow(bootstrap) {
       sandbox: true
     }
   });
+  restrictNavigation(salesDocumentWindow, trustedAppOrigin);
   const salesDocumentWebContentsId = salesDocumentWindow.webContents.id;
   salesDocumentBootstraps.set(salesDocumentWebContentsId, structuredClone(bootstrap));
   const target = new URL(appUrl);

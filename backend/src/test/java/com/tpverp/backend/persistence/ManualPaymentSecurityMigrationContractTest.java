@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ManualPaymentSecurityMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V114__ampliar_seguridad_pagos_manuales.sql";
+            "db/migration/V116__ampliar_seguridad_pagos_manuales.sql";
 
     @Test
     void extendsTheExistingOperationConstraintWithoutRewritingV112()

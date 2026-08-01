@@ -24,7 +24,7 @@ describe("WarehouseScreen", () => {
     expect(userCanManageWarehouse(warehouseSession(["GESTION_PRODUCTO"]))).toBe(false);
     expect(userCanManageWarehouse(warehouseSession(["GESTION_VENTAS"]))).toBe(false);
     expect(visibleWarehouseSectionsForSession(warehouseSession(["GESTION_ALMACEN"])))
-      .toEqual(["input", "output", "goodsCheck"]);
+      .toEqual(["input", "purchaseDeliveryNotes", "purchaseInvoices", "output", "goodsCheck"]);
     expect(visibleWarehouseSectionsForSession(warehouseSession(["WAREHOUSES_MANAGE"])))
       .toEqual([]);
   });
@@ -50,7 +50,7 @@ describe("WarehouseScreen", () => {
     expect(html).not.toContain("session-top-controls");
   });
 
-  it("renders only input, output and order checking in the warehouse navigation", () => {
+  it("renders warehouse movements and independent purchase document queries", () => {
     const html = renderToStaticMarkup(
       <WarehouseScreen
         app="venta"
@@ -63,6 +63,8 @@ describe("WarehouseScreen", () => {
     );
 
     expect(html).toContain("Entrada almacén");
+    expect(html).toContain("Albaranes de compra");
+    expect(html).toContain("Facturas de compra");
     expect(html).toContain("Salida almacén");
     expect(html).toContain("Comprobación de pedido");
     expect(html).not.toContain("Edición masiva");

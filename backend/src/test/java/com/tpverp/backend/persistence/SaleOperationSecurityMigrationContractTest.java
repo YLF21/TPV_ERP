@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class SaleOperationSecurityMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V112__seguridad_operaciones_venta.sql";
+            "db/migration/V114__seguridad_operaciones_venta.sql";
 
     @Test
     void createsVersionedPerStoreConfigurationAndValidatedOverrides()

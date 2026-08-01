@@ -96,7 +96,12 @@ public class WarehouseInputService {
         validate(command, store.getId());
         var input = new WarehouseInput(
                 store.getId(), command.warehouseId(), command.date(), user.getId());
-        input.replace(command.supplierId(), command.origin(), command.concept(), command.lines());
+        input.replace(
+                command.supplierId(),
+                command.origin(),
+                command.concept(),
+                command.lines(),
+                command.excelImport());
         return inputs.save(input);
     }
 
@@ -109,7 +114,12 @@ public class WarehouseInputService {
             throw new IllegalArgumentException(
                     "message.warehouse_input.warehouse_and_date_immutable");
         }
-        input.replace(command.supplierId(), command.origin(), command.concept(), command.lines());
+        input.replace(
+                command.supplierId(),
+                command.origin(),
+                command.concept(),
+                command.lines(),
+                command.excelImport());
         return inputs.save(input);
     }
 

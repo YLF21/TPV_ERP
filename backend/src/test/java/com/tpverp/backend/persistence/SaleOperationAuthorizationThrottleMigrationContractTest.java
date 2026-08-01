@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class SaleOperationAuthorizationThrottleMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V116__limite_intentos_autorizacion_operativa.sql";
+            "db/migration/V118__limite_intentos_autorizacion_operativa.sql";
 
     @Test
     void persistsOnlyScopedFailureStateWithoutCredentials() throws IOException {

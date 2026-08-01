@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class CashCloseOperationMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V118__operacion_durable_cierre_caja.sql";
+            "db/migration/V120__operacion_durable_cierre_caja.sql";
 
     @Test
     void persistsOneCloseOperationPerSessionAndIndependentIdempotentAttempts()

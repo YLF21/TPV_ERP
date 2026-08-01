@@ -3,6 +3,7 @@ import { apiRequest } from "../api/client";
 import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
+import { formatEuroAmount, localeTag, parseMoneyValue } from "../money";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import {
   applySavedVisualizationPreferences,
@@ -14,7 +15,7 @@ import { ErpSelect } from "./ErpSelect";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
-import type { TableColumnDefinition } from "./tableLayoutPreferences";
+import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
@@ -51,6 +52,7 @@ type SalesReportScreenProps = {
   embedded?: boolean;
   initialReport?: string;
   request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
+  loadVisualizationPreferences?: typeof loadReportVisualizationPreferences;
 };
 
 type SalesReportRequest = NonNullable<SalesReportScreenProps["request"]>;
@@ -123,9 +125,22 @@ const attributeLabelKey: Record<string, string> = {
   status: "salesReport.column.status",
   reason: "salesReport.column.reason",
   origin: "salesReport.column.origin",
+  base: "salesReport.column.base",
+  tax: "salesReport.column.tax",
+  discount: "salesReport.column.discount",
   dueDate: "salesReport.column.dueDate",
   tickets: "salesReport.column.tickets"
 };
+
+export function reportAttributeLabelKey(reportKey: string, attribute: string) {
+  if (attribute === "total" && reportKey === "salesReport.warehouseOutputs") {
+    return "salesReport.column.saleTotal";
+  }
+  if (attribute === "total" && reportKey === "salesReport.inputWarehouse") {
+    return "salesReport.column.purchaseTotal";
+  }
+  return attributeLabelKey[attribute] ?? attribute;
+}
 
 const attributeDefaultWidth: Record<string, number> = {
   date: 112,
@@ -152,6 +167,9 @@ const attributeDefaultWidth: Record<string, number> = {
   status: 128,
   reason: 184,
   origin: 184,
+  base: 112,
+  tax: 112,
+  discount: 112,
   dueDate: 112,
   tickets: 88
 };
@@ -162,6 +180,11 @@ type ReportSample = {
   rows: Array<Record<string, string>>;
   totals: Record<string, string>;
   dailySummaries?: Record<string, DailySalesSummary>;
+};
+
+type ReportNotice = {
+  kind: "info" | "success" | "error";
+  message: string;
 };
 
 type ReportTableLayout = UseTableLayoutPreferenceResult<string>;
@@ -252,6 +275,8 @@ type DocumentView = {
   comentarioInterno?: string | null;
   fecha?: string;
   fechaVencimiento?: string | null;
+  base?: number | string;
+  impuesto?: number | string;
   pendiente?: number | string;
   descuentoGlobal?: number | string;
   total?: number | string;
@@ -477,6 +502,24 @@ type ReportFilters = {
   warehouse: string;
 };
 
+export type ReportSort = {
+  attribute: string;
+  direction: "asc" | "desc";
+};
+
+type SavedReportView = {
+  id: string;
+  name: string;
+  reportKey: string;
+  filters: ReportFilters;
+  search: string;
+  sort: ReportSort | null;
+  layout: TableLayout<string>;
+};
+
+const reportSavedViewsStorageKey = (app: AppKind, username: string) =>
+  `tpv-erp:${app}:user:${encodeURIComponent(username.trim().toLowerCase())}:report-views`;
+
 const emptyFilters: ReportFilters = {
   dateFrom: "",
   dateTo: "",
@@ -497,6 +540,35 @@ function createDefaultFilters(): ReportFilters {
   return { ...emptyFilters, dateFrom: today, dateTo: today };
 }
 
+export function quickDateRange(kind: "today" | "week" | "month", now = new Date()) {
+  const end = toIsoDate(now);
+  if (kind === "today") return { dateFrom: end, dateTo: end };
+  const start = new Date(now);
+  if (kind === "week") {
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  } else {
+    start.setDate(1);
+  }
+  return { dateFrom: toIsoDate(start), dateTo: end };
+}
+
+function readSavedReportViews(app: AppKind, username: string): SavedReportView[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(reportSavedViewsStorageKey(app, username)) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((view): view is SavedReportView =>
+      view && typeof view.id === "string" && typeof view.name === "string"
+      && typeof view.reportKey === "string" && Array.isArray(view.layout)
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedReportViews(app: AppKind, username: string, views: SavedReportView[]) {
+  localStorage.setItem(reportSavedViewsStorageKey(app, username), JSON.stringify(views));
+}
+
 const reportSamples: Record<string, ReportSample> = {
   "salesReport.dailySales": {
     availableAttributes: ["date", "user", "terminal", "tickets", "invoice", "comment", "total"],
@@ -505,22 +577,22 @@ const reportSamples: Record<string, ReportSample> = {
     totals: { date: "salesReport.total", tickets: "0", invoice: "0", invoicedTicketTotal: "0.00", total: "0.00" }
   },
   "salesReport.tickets": {
-    availableAttributes: ["date", "time", "ticket", "invoiced", "terminal", "user", "productCount", "customer", "customerName", "payment", "comment", "total"],
+    availableAttributes: ["date", "time", "ticket", "invoiced", "terminal", "user", "productCount", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["date", "time", "terminal", "productCount", "customer", "payment", "invoiced", "total"],
     rows: [],
-    totals: { date: "salesReport.total", productCount: "0", invoiced: "0", total: "0.00" }
+    totals: { date: "salesReport.total", productCount: "0", invoiced: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.deliveryNotes": {
-    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "customerName", "comment", "status", "total"],
+    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "customerName", "comment", "status", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["deliveryNote", "customer", "date", "status", "total"],
     rows: [],
-    totals: { deliveryNote: "salesReport.total", status: "0", total: "0.00" }
+    totals: { deliveryNote: "salesReport.total", status: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.invoices": {
-    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "total"],
+    availableAttributes: ["date", "time", "invoice", "documentType", "terminal", "user", "customer", "customerName", "payment", "status", "pending", "comment", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["invoice", "documentType", "customer", "status", "pending", "total"],
     rows: [],
-    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", total: "0.00" }
+    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.warehouseOutputs": {
     availableAttributes: ["date", "time", "output", "terminal", "user", "warehouse", "productCount", "comment", "reason", "total"],
@@ -529,16 +601,16 @@ const reportSamples: Record<string, ReportSample> = {
     totals: { output: "salesReport.total", productCount: "0", total: "0.00" }
   },
   "salesReport.inputDeliveryNotes": {
-    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "supplier", "supplierName", "warehouse", "productCount", "pending", "comment", "total"],
+    availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "supplier", "supplierName", "warehouse", "productCount", "pending", "comment", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["deliveryNote", "supplier", "productCount", "pending", "date", "total"],
     rows: [],
-    totals: { deliveryNote: "salesReport.total", productCount: "0", pending: "0.00", total: "0.00" }
+    totals: { deliveryNote: "salesReport.total", productCount: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.inputInvoices": {
-    availableAttributes: ["date", "time", "invoice", "terminal", "user", "supplier", "supplierName", "warehouse", "pending", "dueDate", "comment", "status", "total"],
+    availableAttributes: ["date", "time", "invoice", "terminal", "user", "supplier", "supplierName", "warehouse", "pending", "dueDate", "comment", "status", "base", "tax", "discount", "total"],
     defaultVisibleAttributes: ["invoice", "supplier", "dueDate", "status", "pending", "total"],
     rows: [],
-    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", total: "0.00" }
+    totals: { invoice: "salesReport.total", status: "0", pending: "0.00", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.inputWarehouse": {
     availableAttributes: ["date", "time", "input", "terminal", "user", "warehouse", "productCount", "comment", "origin", "total"],
@@ -718,17 +790,15 @@ function weekdayLabels(locale: LocaleCode) {
 }
 
 function parseAmount(value: string) {
-  const normalized = value.replace(/,/g, "");
-  const amount = Number(normalized);
-  return Number.isFinite(amount) ? amount : 0;
+  return parseMoneyValue(value) ?? 0;
 }
 
 function formatAmount(value: number) {
-  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toFixed(2);
 }
 
 function formatWholeNumber(value: number) {
-  return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return Math.round(value).toString();
 }
 
 function normalizeSearchText(value: string) {
@@ -783,7 +853,7 @@ function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, st
       if (originalValue === "salesReport.total") {
         return [attribute, originalValue];
       }
-      if (["total", "pending", "invoicedTicketTotal"].includes(attribute)) {
+      if (["total", "pending", "invoicedTicketTotal", "base", "tax", "discount"].includes(attribute)) {
         return [attribute, formatAmount(rows.reduce((sum, row) => sum + parseAmount(row[attribute] ?? ""), 0))];
       }
       if (["tickets", "invoice", "productCount", "invoiced"].includes(attribute)) {
@@ -797,7 +867,35 @@ function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, st
   );
 }
 
-const REPORT_MONETARY_ATTRIBUTES = new Set(["total", "pending", "invoicedTicketTotal"]);
+const REPORT_MONETARY_ATTRIBUTES = new Set([
+  "total", "pending", "invoicedTicketTotal", "base", "tax", "discount"
+]);
+
+export function sortReportRows(
+  rows: Array<Record<string, string>>,
+  sort: ReportSort | null,
+  locale: LocaleCode
+) {
+  if (!sort) return rows;
+  const multiplier = sort.direction === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    const leftValue = left[sort.attribute] ?? "";
+    const rightValue = right[sort.attribute] ?? "";
+    if (
+      REPORT_MONETARY_ATTRIBUTES.has(sort.attribute)
+      || ["productCount", "tickets", "invoice", "invoiced"].includes(sort.attribute)
+    ) {
+      return (parseAmount(leftValue) - parseAmount(rightValue)) * multiplier;
+    }
+    if (sort.attribute === "date" || sort.attribute === "dueDate") {
+      return parseReportDate(leftValue).localeCompare(parseReportDate(rightValue)) * multiplier;
+    }
+    return leftValue.localeCompare(rightValue, localeTag(locale), {
+      numeric: true,
+      sensitivity: "base"
+    }) * multiplier;
+  });
+}
 
 export function formatReportDisplayValue(
   attribute: string,
@@ -807,19 +905,27 @@ export function formatReportDisplayValue(
   if (!REPORT_MONETARY_ATTRIBUTES.has(attribute) || !value.trim()) {
     return value;
   }
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) {
-    return value;
-  }
-  return new Intl.NumberFormat(
-    locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
-    {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+  return formatEuroAmount(value, locale);
+}
+
+export async function salesReportResponseError(response: Response) {
+  try {
+    const body = await response.clone().json() as { detail?: unknown; message?: unknown };
+    const detail = typeof body.detail === "string"
+      ? body.detail
+      : typeof body.message === "string"
+        ? body.message
+        : "";
+    if (detail.trim()) return detail;
+  } catch {
+    try {
+      const detail = await response.text();
+      if (detail.trim()) return detail;
+    } catch {
+      // Keep the stable HTTP fallback below.
     }
-  ).format(amount);
+  }
+  return `HTTP ${response.status}`;
 }
 
 function formatBackendDate(value: string | undefined) {
@@ -1114,6 +1220,9 @@ export function buildDocumentReports(
     customerName: "",
     payment: paymentText(document),
     comment: document.comentarioInterno || "",
+    base: formatAmount(Number(document.base ?? 0)),
+    tax: formatAmount(Number(document.impuesto ?? 0)),
+    discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const invoiceRows = invoices.filter(isSalesDocument).map((document) => ({
@@ -1132,6 +1241,9 @@ export function buildDocumentReports(
     status: documentStatus(document),
     pending: formatAmount(pendingAmount(document)),
     comment: document.comentarioInterno || document.numeroExterno || "",
+    base: formatAmount(Number(document.base ?? 0)),
+    tax: formatAmount(Number(document.impuesto ?? 0)),
+    discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputInvoiceRows = invoices.filter(isPurchaseDocument).map((document) => ({
@@ -1148,6 +1260,9 @@ export function buildDocumentReports(
     dueDate: formatBackendDate(document.fechaVencimiento ?? ""),
     comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
+    base: formatAmount(Number(document.base ?? 0)),
+    tax: formatAmount(Number(document.impuesto ?? 0)),
+    discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const deliveryNoteRows = deliveryNotes.filter(isSalesDocument).map((document) => ({
@@ -1161,6 +1276,9 @@ export function buildDocumentReports(
     customerName: document.clienteNombre || "",
     comment: document.comentarioInterno || document.numeroExterno || "",
     status: documentStatus(document),
+    base: formatAmount(Number(document.base ?? 0)),
+    tax: formatAmount(Number(document.impuesto ?? 0)),
+    discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const inputDeliveryNoteRows = deliveryNotes.filter(isPurchaseDocument).map((document) => ({
@@ -1176,6 +1294,9 @@ export function buildDocumentReports(
     productCount: formatWholeNumber(Number(document.lineas ?? 0)),
     pending: formatAmount(pendingAmount(document)),
     comment: document.comentarioInterno || document.numeroExterno || "",
+    base: formatAmount(Number(document.base ?? 0)),
+    tax: formatAmount(Number(document.impuesto ?? 0)),
+    discount: formatAmount(Number(document.descuentoGlobal ?? 0)),
     total: formatAmount(Number(document.total ?? 0))
   }));
   const warehouseOutputRows = warehouseOutputs.map((output) => ({
@@ -1334,6 +1455,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
   const [timeline, setTimeline] = useState<DocumentOperationalTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -1344,7 +1466,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
       .catch(() => { if (active) { setTimeline(null); setError(true); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [documentId, token]);
+  }, [documentId, reload, token]);
 
   useEffect(() => {
     function closeOnEscape(event: globalThis.KeyboardEvent) {
@@ -1373,7 +1495,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
         </header>
 
         {loading && <div className="document-activity-state">{t("common.loading")}</div>}
-        {!loading && error && <div className="document-activity-state error">{t("salesReport.activity.loadError")}</div>}
+        {!loading && error && <div className="document-activity-state error" role="alert"><span>{t("salesReport.activity.loadError")}</span><button type="button" onClick={() => setReload((current) => current + 1)}>{t("salesReport.retry")}</button></div>}
         {!loading && timeline && (
           <>
             <dl className="document-activity-summary">
@@ -1448,7 +1570,8 @@ export function SalesReportScreen({
   onLocaleChange,
   embedded = false,
   initialReport: requestedInitialReport,
-  request = apiRequest
+  request = apiRequest,
+  loadVisualizationPreferences = loadReportVisualizationPreferences
 }: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const reportOutputPreferences = readSalesReportOutputPreferences(app, session.username, terminalContext);
@@ -1463,7 +1586,16 @@ export function SalesReportScreen({
   const [visualizationOpen, setVisualizationOpen] = useState(false);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [reportExportBusy, setReportExportBusy] = useState(false);
+  const [reportExportProgress, setReportExportProgress] = useState(0);
+  const [reportNotice, setReportNotice] = useState<ReportNotice | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedReportView[]>(() =>
+    readSavedReportViews(app, session.username)
+  );
+  const [savedViewName, setSavedViewName] = useState("");
+  const [selectedSavedViewId, setSelectedSavedViewId] = useState("");
+  const [sortByReport, setSortByReport] = useState<Record<string, ReportSort | null>>({});
   const printMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
@@ -1487,6 +1619,7 @@ export function SalesReportScreen({
   const [reportLoadingMore, setReportLoadingMore] = useState(false);
   const [reportReloadKey, setReportReloadKey] = useState(0);
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
+  const [documentPreviewRow, setDocumentPreviewRow] = useState<Record<string, string> | null>(null);
   const [rectificationTarget, setRectificationTarget] = useState<{
     documentId: string;
     continueDraft: boolean;
@@ -1495,7 +1628,7 @@ export function SalesReportScreen({
   const [visualReport, setVisualReport] = useState(initialReport);
   const [dragAttribute, setDragAttribute] = useState<string | null>(null);
   const [selectedRowByReport, setSelectedRowByReport] = useState<Record<string, number>>(() =>
-    Object.fromEntries(allReports.map((reportKey) => [reportKey, 0]))
+    Object.fromEntries(allReports.map((reportKey) => [reportKey, -1]))
   );
   const [visibleAttributesByReport, setVisibleAttributesByReport] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(allReports.map((reportKey) => [reportKey, reportSamples[reportKey].defaultVisibleAttributes]))
@@ -1529,11 +1662,26 @@ export function SalesReportScreen({
     ? []
     : visibleTableColumns(selectedReportTableLayout.layout);
   const reportTableWidth = visibleColumnLayout.reduce((width, column) => width + column.width, 0);
-  const filteredRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
+  const matchingRows = sample.rows.filter((row) => rowMatchesFilters(row, filters) && rowMatchesSearch(row, reportSearch, t));
+  const activeSort = sortByReport[selectedReport] ?? null;
+  const filteredRows = sortReportRows(matchingRows, activeSort, locale);
   const filteredTotals = buildFilteredTotals(sample, filteredRows);
   const invoicedTicketTotal = buildInvoicedTicketTotal(selectedReport, filteredRows, filteredTotals);
+  const warehouseReconciliation = (() => {
+    const inputs = (reports["salesReport.inputWarehouse"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
+    const outputs = (reports["salesReport.warehouseOutputs"]?.rows ?? []).filter((row) => rowMatchesFilters(row, filters));
+    const inputUnits = inputs.reduce((sum, row) => sum + parseAmount(row.productCount ?? ""), 0);
+    const outputUnits = outputs.reduce((sum, row) => sum + parseAmount(row.productCount ?? ""), 0);
+    return {
+      inputUnits,
+      outputUnits,
+      unitBalance: inputUnits - outputUnits,
+      purchaseValue: inputs.reduce((sum, row) => sum + parseAmount(row.total ?? ""), 0),
+      saleValue: outputs.reduce((sum, row) => sum + parseAmount(row.total ?? ""), 0)
+    };
+  })();
   const selectedDailySummary = sample.dailySummaries?.[filters.dateFrom] ?? emptyDailySalesSummary(filters.dateFrom);
-  const selectedRowIndex = selectedRowByReport[selectedReport] ?? 0;
+  const selectedRowIndex = selectedRowByReport[selectedReport] ?? -1;
   const selectedReportRow = filteredRows[selectedRowIndex];
   const canOpenSelectedActivity = canOpenOperationalTimeline(app, session, selectedReport, selectedReportRow);
   const canOpenSelectedRectification = canManageSalesInvoiceRectification(
@@ -1565,6 +1713,12 @@ export function SalesReportScreen({
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
 
+  useEffect(() => {
+    if (reportNotice?.kind !== "success") return;
+    const timeout = window.setTimeout(() => setReportNotice(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [reportNotice]);
+
   useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
   useOutsidePointerDown(languageOpen, languagePickerRef, () => setLanguageOpen(false));
@@ -1583,7 +1737,7 @@ export function SalesReportScreen({
 
   useEffect(() => {
     let cancelled = false;
-    void loadReportVisualizationPreferences(app, session.accessToken)
+    void loadVisualizationPreferences(app, session.accessToken)
       .then((preferences) => {
         if (cancelled || preferences.length === 0) {
           return;
@@ -1596,7 +1750,7 @@ export function SalesReportScreen({
     return () => {
       cancelled = true;
     };
-  }, [app, session.accessToken]);
+  }, [app, loadVisualizationPreferences, session.accessToken]);
   const userOptions = filterOptionsFromRows(sample.rows, "user", t);
   const paymentOptions = filterOptionsFromRows(sample.rows, "payment", t);
   const terminalOptions = filterOptionsFromRows(sample.rows, "terminal", t);
@@ -1756,18 +1910,48 @@ export function SalesReportScreen({
     const keys = isDailySalesReport
       ? visibleAttributesByReport[selectedReport]
       : visibleColumnLayout.map((column) => column.key);
-    return keys.map((key) => ({ key, label: t(attributeLabelKey[key] ?? key) }));
+    return keys.map((key) => ({ key, label: t(reportAttributeLabelKey(selectedReport, key)) }));
+  }
+
+  async function saveExportBytes(
+    bytes: Uint8Array,
+    fileName: string,
+    extension: "xlsx" | "pdf",
+    mimeType: string
+  ) {
+    if (window.tpvDesktop?.reports) {
+      const result = await window.tpvDesktop.reports.saveFile({
+        defaultFileName: fileName,
+        filters: [{
+          name: extension === "xlsx" ? "Excel" : "PDF",
+          extensions: [extension]
+        }],
+        bytes
+      });
+      if (!result.ok) throw new Error(result.message);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: mimeType }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function exportExcelReport() {
     if (!session.accessToken || reportExportBusy) return;
     setPrintMenuOpen(false);
+    setReportNotice(null);
     setReportExportBusy(true);
+    setReportExportProgress(10);
+    setReportNotice({ kind: "info", message: t("salesReport.exportingExcel") });
     try {
       const response = await fetch(`${apiBaseUrl}/sales-reports/export`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept-Language": localeTag(locale),
           Authorization: `Bearer ${session.accessToken}`
         },
         body: JSON.stringify({
@@ -1777,53 +1961,90 @@ export function SalesReportScreen({
           columns: exportColumns()
         })
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await salesReportResponseError(response));
+      setReportExportProgress(70);
       const bytes = new Uint8Array(await response.arrayBuffer());
       const fileName = reportFileName("xlsx");
-      if (window.tpvDesktop?.reports) {
-        const result = await window.tpvDesktop.reports.saveFile({
-          defaultFileName: fileName,
-          filters: [{ name: "Excel", extensions: ["xlsx"] }],
-          bytes
-        });
-        if (!result.ok) throw new Error(result.message);
-        return;
-      }
-      const url = URL.createObjectURL(new Blob([bytes], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      URL.revokeObjectURL(url);
+      setReportExportProgress(90);
+      await saveExportBytes(
+        bytes,
+        fileName,
+        "xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      setReportExportProgress(100);
+      setReportNotice({ kind: "success", message: t("salesReport.exportExcelSuccess") });
     } catch (error) {
-      window.alert(`${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`);
+      setReportNotice({
+        kind: "error",
+        message: `${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`
+      });
     } finally {
       setReportExportBusy(false);
+      window.setTimeout(() => setReportExportProgress(0), 700);
     }
   }
 
   async function exportPdfReport() {
-    if (!window.tpvDesktop?.reports) {
-      flushSync(() => setPrintMenuOpen(false));
-      window.print();
-      return;
-    }
+    if (!session.accessToken || reportExportBusy) return;
     setPrintMenuOpen(false);
-    const result = await window.tpvDesktop.reports.exportPdf(reportFileName("pdf"));
-    if (!result.ok) window.alert(`${t("salesReport.exportFailed")}: ${result.message}`);
+    setReportExportBusy(true);
+    setReportExportProgress(10);
+    setReportNotice({ kind: "info", message: t("salesReport.exportingPdf") });
+    try {
+      const response = await fetch(`${apiBaseUrl}/sales-reports/export-pdf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept-Language": localeTag(locale),
+          Authorization: `Bearer ${session.accessToken}`
+        },
+        body: JSON.stringify({
+          reportKey: selectedReport,
+          filters,
+          search: reportSearch,
+          columns: exportColumns()
+        })
+      });
+      if (!response.ok) throw new Error(await salesReportResponseError(response));
+      setReportExportProgress(75);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      await saveExportBytes(bytes, reportFileName("pdf"), "pdf", "application/pdf");
+      setReportExportProgress(100);
+      setReportNotice({ kind: "success", message: t("salesReport.exportPdfSuccess") });
+    } catch (error) {
+      setReportNotice({
+        kind: "error",
+        message: `${t("salesReport.exportFailed")}: ${error instanceof Error ? error.message : ""}`
+      });
+    } finally {
+      setReportExportBusy(false);
+      window.setTimeout(() => setReportExportProgress(0), 700);
+    }
   }
 
   async function printCurrentReport() {
+    setReportNotice(null);
     if (!window.tpvDesktop?.reports) {
       flushSync(() => setPrintMenuOpen(false));
       window.print();
       return;
     }
     setPrintMenuOpen(false);
-    const result = await window.tpvDesktop.reports.print();
-    if (!result.ok) window.alert(`${t("salesReport.printFailed")}: ${result.message}`);
+    try {
+      const result = await window.tpvDesktop.reports.print();
+      if (!result.ok) {
+        setReportNotice({
+          kind: "error",
+          message: `${t("salesReport.printFailed")}: ${result.message}`
+        });
+      }
+    } catch (error) {
+      setReportNotice({
+        kind: "error",
+        message: `${t("salesReport.printFailed")}: ${error instanceof Error ? error.message : ""}`
+      });
+    }
   }
 
   function selectReport(reportKey: string) {
@@ -1835,7 +2056,7 @@ export function SalesReportScreen({
     setDateRangeText(formatDateFilterText(defaultFilters, locale, singleDay));
     setDateRangeStart(null);
     setOpenFilterControl(null);
-    setSelectedRowByReport((current) => ({ ...current, [reportKey]: current[reportKey] ?? 0 }));
+    setSelectedRowByReport((current) => ({ ...current, [reportKey]: current[reportKey] ?? -1 }));
   }
 
   function openFilters() {
@@ -1853,7 +2074,7 @@ export function SalesReportScreen({
 
   function updateReportSearch(value: string) {
     setReportSearch(value);
-    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
   }
 
   async function loadMoreReportRows() {
@@ -1927,7 +2148,7 @@ export function SalesReportScreen({
     setDateRangeText(formatDateFilterText(defaultFilters, locale, isDailySalesReport));
     setDateRangeStart(null);
     setOpenFilterControl(null);
-    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
   }
 
   function applyFilters() {
@@ -1937,7 +2158,7 @@ export function SalesReportScreen({
       : draftFilters;
     setFilters(nextFilters);
     setDateRangeText(formatDateFilterText(nextFilters, locale, isDailySalesReport));
-    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setFilterOpen(false);
@@ -2004,7 +2225,7 @@ export function SalesReportScreen({
       setDraftFilters(nextFilters);
       setFilters(nextFilters);
       setDateRangeText(formatDateFilterText(nextFilters, locale, true));
-      setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+      setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
       setDateRangeStart(null);
       setOpenFilterControl(null);
       setFilterOpen(false);
@@ -2015,7 +2236,7 @@ export function SalesReportScreen({
     setDraftFilters(nextFilters);
     setFilters(nextFilters);
     setDateRangeText(formatDateRange(nextFilters, locale));
-    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: 0 }));
+    setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setFilterOpen(false);
@@ -2178,6 +2399,71 @@ export function SalesReportScreen({
   function moveSelectedRow(rowIndex: number, direction: -1 | 1) {
     const nextIndex = Math.max(0, Math.min(filteredRows.length - 1, rowIndex + direction));
     selectRow(nextIndex);
+  }
+
+  function toggleSort(attribute: string) {
+    setSortByReport((current) => {
+      const previous = current[selectedReport];
+      const next: ReportSort | null = previous?.attribute !== attribute
+        ? { attribute, direction: "asc" }
+        : previous.direction === "asc"
+          ? { attribute, direction: "desc" }
+          : null;
+      return { ...current, [selectedReport]: next };
+    });
+    selectRow(-1);
+  }
+
+  function applyQuickFilter(kind: "today" | "week" | "month" | "pending") {
+    const next = kind === "pending"
+      ? { ...filters, status: filters.status ? "" : "salesReport.status.pending" }
+      : { ...filters, ...quickDateRange(kind) };
+    setFilters(next);
+    setDraftFilters(next);
+    setDateRangeText(formatDateFilterText(next, locale, isDailySalesReport));
+    selectRow(-1);
+  }
+
+  function saveCurrentView() {
+    const name = savedViewName.trim();
+    if (!name) return;
+    const view: SavedReportView = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      reportKey: selectedReport,
+      filters,
+      search: reportSearch,
+      sort: activeSort,
+      layout: selectedReportTableLayout.layout
+    };
+    const next = [...savedViews.filter((candidate) =>
+      candidate.reportKey !== selectedReport || candidate.name.toLocaleLowerCase() !== name.toLocaleLowerCase()
+    ), view];
+    setSavedViews(next);
+    writeSavedReportViews(app, session.username, next);
+    setSelectedSavedViewId(view.id);
+    setSavedViewName("");
+    setReportNotice({ kind: "success", message: t("salesReport.views.saved") });
+  }
+
+  function applySavedView() {
+    const view = savedViews.find((candidate) => candidate.id === selectedSavedViewId);
+    if (!view || view.reportKey !== selectedReport) return;
+    setFilters(view.filters);
+    setDraftFilters(view.filters);
+    setReportSearch(view.search);
+    setSortByReport((current) => ({ ...current, [selectedReport]: view.sort }));
+    selectedReportTableLayout.replaceLayout(view.layout);
+    setDateRangeText(formatDateFilterText(view.filters, locale, isDailySalesReport));
+    setViewsOpen(false);
+    selectRow(-1);
+  }
+
+  function deleteSavedView() {
+    const next = savedViews.filter((candidate) => candidate.id !== selectedSavedViewId);
+    setSavedViews(next);
+    writeSavedReportViews(app, session.username, next);
+    setSelectedSavedViewId("");
   }
 
   function genericTableLayout(reportKey: string): ReportTableLayout | null {
@@ -2420,10 +2706,29 @@ export function SalesReportScreen({
             </div>
           )}
         </div>
+        <div className="report-quick-filters" aria-label={t("salesReport.quickFilters")}>
+          <button type="button" onClick={() => applyQuickFilter("today")}>{t("salesReport.quick.today")}</button>
+          <button type="button" onClick={() => applyQuickFilter("week")}>{t("salesReport.quick.week")}</button>
+          <button type="button" onClick={() => applyQuickFilter("month")}>{t("salesReport.quick.month")}</button>
+          {hasStatusFilter && (
+            <button
+              type="button"
+              className={filters.status === "salesReport.status.pending" ? "active" : ""}
+              onClick={() => applyQuickFilter("pending")}
+            >
+              {t("salesReport.quick.pending")}
+            </button>
+          )}
+        </div>
         <button type="button" onClick={openFilters}>
           <img alt="" className="report-action-icon" src={filterIcon} />
           {t("salesReport.filter")}
         </button>
+        {!isDailySalesReport && (
+          <button type="button" aria-expanded={viewsOpen} onClick={() => setViewsOpen((open) => !open)}>
+            {t("salesReport.views")}
+          </button>
+        )}
         {app === "gestion" && !isDailySalesReport && (
           <button
             type="button"
@@ -2436,6 +2741,11 @@ export function SalesReportScreen({
             }}
           >
             {t("salesReport.activity.open")}
+          </button>
+        )}
+        {!isDailySalesReport && selectedReportRow?.__documentId && (
+          <button type="button" onClick={() => setDocumentPreviewRow(selectedReportRow)}>
+            {t("salesReport.openDocument")}
           </button>
         )}
         {app === "gestion" && selectedReport === "salesReport.invoices" && canAccessRectification && (
@@ -2494,6 +2804,19 @@ export function SalesReportScreen({
 
   return (
     <main className={`${embedded ? "report-screen gestion-embedded-module" : "report-screen"} report-density-${reportOutputPreferences.density}`}>
+      {reportNotice && (
+        <div
+          className={`report-feedback ${reportNotice.kind}`}
+          role={reportNotice.kind === "error" ? "alert" : "status"}
+          aria-live={reportNotice.kind === "error" ? "assertive" : "polite"}
+        >
+          <span>{reportNotice.message}</span>
+          {reportExportBusy && (
+            <progress value={reportExportProgress} max={100} aria-label={reportNotice.message} />
+          )}
+          <button type="button" aria-label={t("common.close")} onClick={() => setReportNotice(null)}>×</button>
+        </div>
+      )}
       {!embedded && <TopDateTime locale={locale} />}
       {!embedded && <div ref={userMenuRef} style={{ display: "contents" }}>
         <button
@@ -2629,6 +2952,15 @@ export function SalesReportScreen({
                   ))}
                 </div>
               )}
+              <div className="report-print-meta">
+                <span>
+                  {`${t("salesReport.generatedAt")}: ${new Intl.DateTimeFormat(localeTag(locale), {
+                    dateStyle: "short",
+                    timeStyle: "short"
+                  }).format(new Date())}`}
+                </span>
+                <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>
+              </div>
             </div>
           </header>
           {isDailySalesReport ? (
@@ -2639,7 +2971,41 @@ export function SalesReportScreen({
           ) : (
             <div className="report-data">
               {renderReportToolbar()}
-              <div className="report-table-scroll">
+              {viewsOpen && (
+                <section className="report-saved-views" aria-label={t("salesReport.views")}>
+                  <label>
+                    <span>{t("salesReport.views.available")}</span>
+                    <select value={selectedSavedViewId} onChange={(event) => setSelectedSavedViewId(event.target.value)}>
+                      <option value="">{t("salesReport.views.select")}</option>
+                      {savedViews.filter((view) => view.reportKey === selectedReport).map((view) => (
+                        <option key={view.id} value={view.id}>{view.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" disabled={!selectedSavedViewId} onClick={applySavedView}>{t("common.apply")}</button>
+                  <button type="button" disabled={!selectedSavedViewId} onClick={deleteSavedView}>{t("common.delete")}</button>
+                  <label>
+                    <span>{t("salesReport.views.name")}</span>
+                    <input value={savedViewName} onChange={(event) => setSavedViewName(event.target.value)} />
+                  </label>
+                  <button type="button" disabled={!savedViewName.trim()} onClick={saveCurrentView}>{t("salesReport.views.save")}</button>
+                </section>
+              )}
+              <div className="report-table-region">
+                {isWarehouseDocumentReport(selectedReport) && (
+                  <section className="warehouse-reconciliation" aria-label={t("salesReport.reconciliation")}>
+                    <header>
+                      <strong>{t("salesReport.reconciliation")}</strong>
+                      <span>{filters.warehouse || t("salesReport.filter.all")}</span>
+                    </header>
+                    <div><span>{t("salesReport.reconciliation.inputs")}</span><strong>{formatQuantity(warehouseReconciliation.inputUnits)}</strong></div>
+                    <div><span>{t("salesReport.reconciliation.outputs")}</span><strong>{formatQuantity(warehouseReconciliation.outputUnits)}</strong></div>
+                    <div><span>{t("salesReport.reconciliation.balance")}</span><strong>{formatQuantity(warehouseReconciliation.unitBalance)}</strong></div>
+                    <div><span>{t("salesReport.column.purchaseTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.purchaseValue, locale)}</strong></div>
+                    <div><span>{t("salesReport.column.saleTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.saleValue, locale)}</strong></div>
+                  </section>
+                )}
+                <div className="report-table-scroll">
                 {reportLoading && (
                   <p className="report-load-state" aria-live="polite">
                     {t("salesReport.loading")}
@@ -2674,7 +3040,7 @@ export function SalesReportScreen({
                           column={column}
                           key={column.key}
                           movable={column.key !== "total"}
-                          resizeLabel={`${t("stock.columns.resize")} ${t(attributeLabelKey[column.key] ?? column.key)}`}
+                          resizeLabel={`${t("stock.columns.resize")} ${t(reportAttributeLabelKey(selectedReport, column.key))}`}
                           onReorder={(draggedKey, targetKey) => {
                             if (draggedKey !== "total" && targetKey !== "total") {
                               selectedReportTableLayout.reorderColumns(draggedKey, targetKey);
@@ -2685,7 +3051,22 @@ export function SalesReportScreen({
                           }}
                           onResize={selectedReportTableLayout.resizeColumn}
                         >
-                          {t(attributeLabelKey[column.key] ?? column.key)}
+                          <button
+                            type="button"
+                            className="report-sort-button"
+                            aria-label={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleSort(column.key);
+                            }}
+                          >
+                            <span>{t(reportAttributeLabelKey(selectedReport, column.key))}</span>
+                            <i aria-hidden="true">
+                              {activeSort?.attribute === column.key
+                                ? activeSort.direction === "asc" ? "▲" : "▼"
+                                : "↕"}
+                            </i>
+                          </button>
                         </TableLayoutHeaderCell>
                       ))}
                     </tr>
@@ -2729,7 +3110,8 @@ export function SalesReportScreen({
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
               <div className="report-total-row">
                 <span>{`${t("salesReport.visibleLines")}: ${filteredRows.length}`}</span>
@@ -2737,7 +3119,7 @@ export function SalesReportScreen({
                   <strong>{`${t("salesReport.invoicedTicketTotal")}: ${formatReportDisplayValue("invoicedTicketTotal", invoicedTicketTotal, locale)}`}</strong>
                 )}
                 <strong className="report-main-total">
-                  {`${t("salesReport.total")}: ${formatReportDisplayValue("total", filteredTotals.total ?? "0.00", locale)}`}
+                  {`${t(reportAttributeLabelKey(selectedReport, "total"))}: ${formatReportDisplayValue("total", filteredTotals.total ?? "0.00", locale)}`}
                 </strong>
               </div>
             </div>
@@ -2763,6 +3145,42 @@ export function SalesReportScreen({
           t={t}
           onClose={() => setActivityDocumentId(null)}
         />
+      )}
+
+      {documentPreviewRow && (
+        <div
+          className="document-activity-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="report-document-preview-title"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setDocumentPreviewRow(null); }}
+        >
+          <section className="document-activity-dialog report-document-preview">
+            <header>
+              <div>
+                <span>{t("salesReport.openDocument")}</span>
+                <h2 id="report-document-preview-title">
+                  {documentPreviewRow.invoice || documentPreviewRow.deliveryNote || documentPreviewRow.ticket || documentPreviewRow.__documentId}
+                </h2>
+              </div>
+              <button type="button" aria-label={t("common.close")} onClick={() => setDocumentPreviewRow(null)}>×</button>
+            </header>
+            <dl className="document-activity-summary">
+              {visibleColumnLayout.map((column) => (
+                <div key={column.key}>
+                  <dt>{t(reportAttributeLabelKey(selectedReport, column.key))}</dt>
+                  <dd>{REPORT_MONETARY_ATTRIBUTES.has(column.key)
+                    ? formatReportDisplayValue(column.key, documentPreviewRow[column.key] ?? "", locale)
+                    : t(documentPreviewRow[column.key] ?? "")}</dd>
+                </div>
+              ))}
+            </dl>
+            <footer>
+              <small>{documentPreviewRow.__documentId}</small>
+              <button type="button" onClick={() => setDocumentPreviewRow(null)}>{t("common.close")}</button>
+            </footer>
+          </section>
+        </div>
       )}
 
       {rectificationTarget && session.accessToken && (
@@ -2814,7 +3232,7 @@ export function SalesReportScreen({
                       onDragStart={() => setDragAttribute(attribute)}
                       onDragEnd={() => setDragAttribute(null)}
                     >
-                      {t(attributeLabelKey[attribute])}
+                      {t(reportAttributeLabelKey(visualReport, attribute))}
                     </button>
                   ))}
                 </div>
@@ -2840,7 +3258,7 @@ export function SalesReportScreen({
                         onDragEnd={() => setDragAttribute(null)}
                       >
                         <span className="drag-handle">::</span>
-                        {t(attributeLabelKey[attribute])}
+                        {t(reportAttributeLabelKey(visualReport, attribute))}
                         {attribute !== "total" && (
                           <span className="attribute-actions">
                             <button

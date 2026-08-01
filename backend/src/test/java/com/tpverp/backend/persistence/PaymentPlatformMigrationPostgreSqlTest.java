@@ -10,13 +10,15 @@ import org.junit.jupiter.api.Test;
 
 class PaymentPlatformMigrationPostgreSqlTest {
 
+    private static final String PAYMENT_PLATFORM_VERSION = "64";
+
     @Test
     void installsPaymentPlatformFromAnEmptySchema() throws Exception {
         migrateAndVerify(null);
     }
 
     @Test
-    void upgradesAProductionCompatibleV45SchemaToV63() throws Exception {
+    void upgradesAProductionCompatibleV45SchemaToV64() throws Exception {
         migrateAndVerify("45");
     }
 
@@ -40,7 +42,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
                     .schemas(schema)
                     .defaultSchema(schema)
                     .createSchemas(true)
-                    .target("63")
+                    .target(PAYMENT_PLATFORM_VERSION)
                     .load()
                     .migrate();
 
@@ -51,7 +53,7 @@ class PaymentPlatformMigrationPostgreSqlTest {
                         where success order by installed_rank desc limit 1
                         """.formatted(schema))) {
                     assertThat(history.next()).isTrue();
-                    assertThat(history.getString(1)).isEqualTo("63");
+                    assertThat(history.getString(1)).isEqualTo(PAYMENT_PLATFORM_VERSION);
                 }
                 try (var tables = statement.executeQuery("""
                             select table_name

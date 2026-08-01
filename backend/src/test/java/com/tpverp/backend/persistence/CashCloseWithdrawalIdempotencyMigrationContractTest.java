@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class CashCloseWithdrawalIdempotencyMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V113__idempotencia_retirada_cierre_caja.sql";
+            "db/migration/V115__idempotencia_retirada_cierre_caja.sql";
 
     @Test
     void persistsOneGloballyUniqueKeyWithPayloadFingerprintAndMovementReference()

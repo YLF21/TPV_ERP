@@ -13,7 +13,7 @@
     "app:venta": "node scripts/start-electron-app.mjs venta",
     "app:gestion": "node scripts/start-electron-app.mjs gestion",
     "build": "npm run build --workspaces --if-present",
-    "test": "vitest run --exclude e2e/**",
+    "test": "vitest run --exclude \"e2e/**\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium"
@@ -25,16 +25,17 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^41.7.1",
+    "@vitejs/plugin-react": "^6.0.4",
+    "electron": "^43.2.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.7.3",
-    "vite": "^6.0.7",
+    "vite": "^8.1.5",
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "fflate": "^0.8.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "read-excel-file": "^9.2.0"
   }
 }

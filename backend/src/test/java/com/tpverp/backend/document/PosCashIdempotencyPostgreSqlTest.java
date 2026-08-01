@@ -65,7 +65,7 @@ class PosCashIdempotencyPostgreSqlTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", () -> URL + "?currentSchema=" + SCHEMA);
+        registry.add("spring.datasource.url", () -> URL + "?currentSchema=" + SCHEMA + ",public");
         registry.add("spring.datasource.username", () -> USER);
         registry.add("spring.datasource.password", () -> PASSWORD);
         registry.add("spring.flyway.schemas", () -> SCHEMA);

@@ -65,9 +65,18 @@ vi.mock("../../../packages/app-common/src/components/CustomerReceivablesScreen",
 }));
 
 vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
-  SaleScreen: ({ onOpenCustomerReceivables }: { onOpenCustomerReceivables?: (customerId?: string) => void }) => (
+  SaleScreen: ({
+    onOpenCustomerReceivables,
+    onOpenSalesDocumentWindow
+  }: {
+    onOpenCustomerReceivables?: (customerId?: string) => void;
+    onOpenSalesDocumentWindow?: () => void;
+  }) => (
     <section aria-label="sale">
       <button type="button" onClick={() => onOpenCustomerReceivables?.("customer-from-sale")}>Open sale receivables</button>
+      {onOpenSalesDocumentWindow && (
+        <button type="button" onClick={onOpenSalesDocumentWindow}>Open sales document window</button>
+      )}
     </section>
   ),
 }));
@@ -137,6 +146,38 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByLabelText("receivables")).toHaveTextContent("customer-from-sale");
     fireEvent.click(screen.getByRole("button", { name: "Back home" }));
     expect(await screen.findByLabelText("sale")).toBeVisible();
+  });
+
+  it("shows an accessible notice when the sales document window cannot open", async () => {
+    const openSalesDocuments = vi.fn().mockResolvedValue({ ok: false, message: "private technical detail" });
+    vi.stubGlobal("tpvDesktop", {
+      terminalIdentity: {
+        load: vi.fn().mockResolvedValue({
+          ok: true,
+          identity: {
+            storeName: "TIENDA DEMO",
+            terminalCode: "SERVIDOR",
+            terminalId: "terminal-real",
+            terminalCredential: "protected-secret"
+          }
+        })
+      },
+      salesDocuments: {
+        open: openSalesDocuments,
+        close: vi.fn().mockResolvedValue(undefined)
+      }
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open sales document window" }));
+
+    const notice = await screen.findByRole("alert");
+    expect(notice).toHaveTextContent("No se pudo abrir la ventana de venta documental");
+    expect(notice).not.toHaveTextContent("private technical detail");
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("waits for a successful backend compatibility check before opening APP VENTA", async () => {

@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,12 +32,20 @@ public class ControlAlertController {
             @RequestParam(required = false) ControlAlertStatus status,
             @RequestParam(required = false) ControlAlertType type,
             @RequestParam(required = false) UUID ruleId,
+            @RequestParam(required = false) ControlAlertPriority priority,
+            @RequestParam(required = false) UUID assigneeId,
+            @RequestParam(required = false) Boolean overdue,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
-        return service.list(status, type, ruleId, from, to, search, page, size);
+        return service.list(status, type, ruleId, priority, assigneeId, overdue, from, to, search, page, size);
+    }
+
+    @GetMapping("/assignees")
+    public java.util.List<ControlAlertService.AssigneeOptionView> assignees() {
+        return service.assigneeOptions();
     }
 
     @GetMapping("/groups")
@@ -81,6 +90,15 @@ public class ControlAlertController {
             @Valid @RequestBody ControlAlertService.TransitionRequest request,
             Authentication authentication) {
         return service.transition(id, ControlAlertStatus.DISMISSED, request, authentication);
+    }
+
+    @PutMapping("/{id}/work")
+    @PreAuthorize("hasRole('ADMIN') or (hasAuthority('APP_GESTION_ACCESS') and hasAuthority('CONTROL_ALERTS_MANAGE'))")
+    public ControlAlertService.AlertDetailView updateWork(
+            @PathVariable UUID id,
+            @Valid @RequestBody ControlAlertService.WorkUpdateRequest request,
+            Authentication authentication) {
+        return service.updateWork(id, request, authentication);
     }
 
     @GetMapping("/{id}/document")

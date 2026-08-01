@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.6</version>
+        <version>4.1.0</version>
         <relativePath/>
     </parent>
     <groupId>com.tpverp</groupId>
@@ -22,8 +22,8 @@
     </modules>
     <properties>
         <java.version>25</java.version>
-        <jackson.version>2.21.2</jackson.version>
-        <jna.version>5.18.1</jna.version>
+        <jackson.version>2.22.1</jackson.version>
+        <jna.version>5.19.1</jna.version>
     </properties>
     <dependencyManagement>
         <dependencies>

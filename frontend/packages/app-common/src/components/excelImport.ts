@@ -1,6 +1,11 @@
 import { readSheet } from "read-excel-file/browser";
+import {
+  excelFormulaCellText,
+  overlayExcelFormulas,
+  type ExcelFormulaCell
+} from "./excelFormula";
 
-export type ExcelCell = unknown;
+export type ExcelCell = unknown | ExcelFormulaCell;
 export type ExcelSheet = ExcelCell[][];
 export type ExcelTableRow = Record<string, ExcelCell>;
 
@@ -86,7 +91,8 @@ export type ExcelImportClassifiedRow = {
 export const excelImportAccept = ".xlsx,.xls,.csv";
 
 export async function readExcelSheet(file: File): Promise<ExcelSheet> {
-  return await readSheet(file);
+  const values = await readSheet(file);
+  return await overlayExcelFormulas(file, values);
 }
 
 export async function readExcelTable(file: File): Promise<ExcelTable> {
@@ -217,13 +223,14 @@ export function classifyExcelProductRows(
 }
 
 export function excelCellText(value: ExcelCell) {
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
+  const cellValue = excelFormulaCellText(value);
+  if (cellValue instanceof Date && Number.isFinite(cellValue.getTime())) {
+    const year = cellValue.getFullYear();
+    const month = String(cellValue.getMonth() + 1).padStart(2, "0");
+    const day = String(cellValue.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
-  return value === null || value === undefined ? "" : String(value).trim();
+  return cellValue === null || cellValue === undefined ? "" : String(cellValue).trim();
 }
 
 export function excelPriceText(value: ExcelCell) {

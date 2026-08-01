@@ -33,6 +33,34 @@ class ControlAlertTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void updatesOperationalAssignmentAndReturnsPreviousValues() {
+        var alert = alert();
+        var assigneeId = UUID.randomUUID();
+        var dueAt = Instant.EPOCH.plusSeconds(3600);
+
+        var previous = alert.updateWork(
+                ControlAlertPriority.CRITICAL, assigneeId, dueAt, Instant.EPOCH.plusSeconds(1));
+
+        assertThat(previous.priority()).isEqualTo(ControlAlertPriority.MEDIUM);
+        assertThat(alert.getPriority()).isEqualTo(ControlAlertPriority.CRITICAL);
+        assertThat(alert.getAssigneeId()).isEqualTo(assigneeId);
+        assertThat(alert.getDueAt()).isEqualTo(dueAt);
+    }
+
+    @Test
+    void rejectsNoOpAndAssignmentOnTerminalAlert() {
+        var alert = alert();
+        assertThatThrownBy(() -> alert.updateWork(
+                ControlAlertPriority.MEDIUM, null, null, Instant.EPOCH.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class);
+
+        alert.transition(ControlAlertStatus.CLOSED, Instant.EPOCH.plusSeconds(2));
+        assertThatThrownBy(() -> alert.updateWork(
+                ControlAlertPriority.HIGH, null, null, Instant.EPOCH.plusSeconds(3)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private static ControlAlert alert() {
         var storeId = UUID.randomUUID();
         var userId = UUID.randomUUID();

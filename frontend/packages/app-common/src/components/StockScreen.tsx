@@ -1949,7 +1949,6 @@ export function StockScreen({
   });
   const [topSalesFilterOpen, setTopSalesFilterOpen] = useState(false);
   const [inventoryFilterOpen, setInventoryFilterOpen] = useState(false);
-  const [draftInventoryView, setDraftInventoryView] = useState<StockViewKey>("stock.current");
   const [inventoryFilters, setInventoryFilters] = useState<StockInventoryFilters>(defaultStockInventoryFilters);
   const [draftInventoryFilters, setDraftInventoryFilters] = useState<StockInventoryFilters>(defaultStockInventoryFilters);
   const [inventoryDropdownOpen, setInventoryDropdownOpen] = useState("");
@@ -2021,6 +2020,22 @@ export function StockScreen({
   const [bulkConflictDraftId, setBulkConflictDraftId] = useState<string | null>(null);
   const [bulkFinder, setBulkFinder] = useState<{ rowId: string; query: string } | null>(null);
   const [stockSettingsMode, setStockSettingsMode] = useState<StockSettingsMode | null>(initialSettingsMode);
+
+  useEffect(() => {
+    if (initialPartyDirectory) {
+      setPartyDirectory(initialPartyDirectory);
+      setStockSettingsMode(null);
+      return;
+    }
+    if (initialSettingsMode) {
+      setStockSettingsMode(initialSettingsMode);
+      setPartyDirectory(null);
+      return;
+    }
+    setPartyDirectory(null);
+    setStockSettingsMode(null);
+    setSelectedView(initialView);
+  }, [initialPartyDirectory, initialSettingsMode, initialView]);
   const [stockSettings, setStockSettings] = useState<StockSettingsView | null>(null);
   const stockTableRef = useRef<HTMLDivElement | null>(null);
   const bulkTableRef = useRef<HTMLDivElement | null>(null);
@@ -2578,7 +2593,6 @@ export function StockScreen({
   }
 
   function openInventoryFilters() {
-    setDraftInventoryView(selectedView === "stock.topSales" ? "stock.current" : selectedView);
     setDraftInventoryFilters(inventoryFilters);
     setSelectedInventoryFamily(inventoryFilters.family);
     setInventoryDropdownOpen("");
@@ -2587,7 +2601,6 @@ export function StockScreen({
   }
 
   function applyInventoryFilters() {
-    setSelectedView(draftInventoryView);
     setInventoryFilters(draftInventoryFilters);
     setInventoryDropdownOpen("");
     setInventoryFamilyPickerOpen(false);
@@ -2595,7 +2608,6 @@ export function StockScreen({
   }
 
   function clearInventoryFilters() {
-    setDraftInventoryView("stock.current");
     setDraftInventoryFilters(defaultStockInventoryFilters);
     setSelectedInventoryFamily("");
   }
@@ -6425,6 +6437,7 @@ export function StockScreen({
           <img alt="" className="report-action-icon" src={stockFilterIcon} />
           {t("salesReport.filter")}
         </button>
+        <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleRows.length))}</span>
         {selectedView !== "stock.promotions" && (
           <button type="button" className="stock-columns-button" onClick={() => setStockColumnsOpen(true)}>{t("stock.columns")}</button>
         )}
@@ -6544,7 +6557,7 @@ export function StockScreen({
             </header>
           )}
           {partyDirectory ? (
-            <PartyDirectoryPanel app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} />
+            <PartyDirectoryPanel key={partyDirectory} app={app} kind={partyDirectory} locale={locale} session={session} onOpenCustomerReceivables={onOpenCustomerReceivables} />
           ) : selectedView === "stock.topSales" ? (
             <>
               <div className="stock-top-sales-toolbar">
@@ -6573,6 +6586,7 @@ export function StockScreen({
                   <img alt="" className="report-action-icon" src={stockFilterIcon} />
                   {t("salesReport.filter")}
                 </button>
+                <span className="stock-result-count" role="status">{t("stock.results").replace("{count}", String(visibleTopSalesRows.length))}</span>
                 <button type="button" className="stock-columns-button" onClick={() => setStockColumnsOpen(true)}>
                   {t("stock.columns")}
                 </button>
@@ -6824,21 +6838,6 @@ export function StockScreen({
               <button type="button" onClick={() => setInventoryFilterOpen(false)}>{t("common.close")}</button>
             </header>
             <div className="filter-grid">
-              <div className="filter-field filter-wide">
-                <span>{t("stock.filter.inventoryView")}</span>
-                <div className="stock-periods" aria-label={t("stock.filter.inventoryView")}>
-                  {visibleStockViews.filter((view) => view !== "stock.topSales").map((view) => (
-                    <button
-                      type="button"
-                      className={draftInventoryView === view ? "selected" : ""}
-                      key={view}
-                      onClick={() => setDraftInventoryView(view)}
-                    >
-                      {t(view)}
-                    </button>
-                  ))}
-                </div>
-              </div>
               {renderInventoryFilterDropdown(
                 "type",
                 t("stock.column.type"),

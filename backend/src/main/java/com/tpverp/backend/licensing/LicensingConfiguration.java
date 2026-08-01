@@ -9,7 +9,7 @@ import com.tpverp.backend.licensing.application.TrustedIssuerKeyProvider;
 import com.tpverp.backend.organization.CompanyRepository;
 import com.tpverp.backend.organization.StoreRepository;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
-import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
+import com.tpverp.backend.shared.crypto.SecretProtectorFactory;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.net.URI;
 import java.nio.file.Path;
@@ -63,8 +63,11 @@ class LicensingConfiguration {
 
     @Bean
     LicenseSaasCredentialStore licenseSaasCredentialStore(
-            @Value("${tpv.installation.key-directory}") Path keyDirectory) {
-        return new LicenseSaasCredentialStore(keyDirectory, new WindowsDpapiSecretProtector());
+            @Value("${tpv.installation.key-directory}") Path keyDirectory,
+            @Value("${tpv.installation.portable-secret-key:}") String portableSecretKey) {
+        return new LicenseSaasCredentialStore(
+                keyDirectory,
+                SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey));
     }
 
     @Bean

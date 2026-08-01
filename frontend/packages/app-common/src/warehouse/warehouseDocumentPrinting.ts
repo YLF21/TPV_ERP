@@ -151,7 +151,11 @@ function escapeHtml(value: unknown): string {
 }
 
 function formatMoney(value: number): string {
-  return Number(value || 0).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const amount = Number(value || 0).toLocaleString("es-ES", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  return `${amount} €`;
 }
 
 function formatNumber(value: number): string {

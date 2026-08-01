@@ -11,8 +11,10 @@ import {
   memberActivationPath,
   partyDirectoryGridTemplate,
   partyDirectoryColumnDefinitions,
+  partyDirectoryPreferenceStorageKey,
   PartyDirectoryPanel,
   partyFormFromView,
+  sortPartyDirectoryEntries,
   validatePartyForm
 } from "./PartyDirectoryPanel";
 const layoutSession: UserSession = {
@@ -166,6 +168,25 @@ describe("PartyDirectoryPanel", () => {
       session: layoutSession
     }));
     expect(html.match(/class="erp-select(?: [^"]*)?"/g)).toHaveLength(1);
+  });
+
+  it("sorts directory rows by the selected visible column", () => {
+    const entries = [
+      { id: "2", clientId: "C-10", fiscalName: "Zoe", documentType: "NIF", documentNumber: "10", discount: 0, isMember: false, active: true },
+      { id: "1", clientId: "C-2", fiscalName: "Ana", documentType: "NIF", documentNumber: "2", discount: 0, isMember: false, active: false }
+    ];
+
+    expect(sortPartyDirectoryEntries(entries, "customers", { column: "code", direction: "asc" }, "es").map((entry) => entry.id))
+      .toEqual(["1", "2"]);
+    expect(sortPartyDirectoryEntries(entries, "customers", { column: "name", direction: "desc" }, "es").map((entry) => entry.id))
+      .toEqual(["2", "1"]);
+  });
+
+  it("isolates persisted filters by app, user and directory", () => {
+    expect(partyDirectoryPreferenceStorageKey("gestion", "admin", "customers"))
+      .toBe("tpv.party.directory.gestion.admin.customers");
+    expect(partyDirectoryPreferenceStorageKey("venta", "admin", "customers"))
+      .not.toBe(partyDirectoryPreferenceStorageKey("gestion", "admin", "customers"));
   });
 
   it("offers only active customers that are not active members", () => {

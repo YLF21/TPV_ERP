@@ -10,7 +10,7 @@ class InternalEanMigrationContractTest {
     @Test
     void migrationCreatesDurableAllocationAndExtendsSecurityCatalog() throws Exception {
         try (var stream = getClass().getResourceAsStream(
-                "/db/migration/V122__ean_interno_y_seguridad.sql")) {
+                "/db/migration/V124__ean_interno_y_seguridad.sql")) {
             assertThat(stream).isNotNull();
             var sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             assertThat(sql)

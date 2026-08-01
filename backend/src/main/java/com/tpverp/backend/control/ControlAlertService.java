@@ -4,6 +4,7 @@ import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.document.DocumentLine;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +32,8 @@ public class ControlAlertService {
     private final ControlAlertRepository alerts;
     private final ControlRuleRepository rules;
     private final ControlAlertHistoryRepository history;
+    private final ControlAlertWorkHistoryRepository workHistory;
+    private final UserAccountRepository users;
     private final CommercialDocumentRepository documents;
     private final CurrentOrganization organization;
     private final Clock clock;
@@ -39,12 +42,16 @@ public class ControlAlertService {
             ControlAlertRepository alerts,
             ControlRuleRepository rules,
             ControlAlertHistoryRepository history,
+            ControlAlertWorkHistoryRepository workHistory,
+            UserAccountRepository users,
             CommercialDocumentRepository documents,
             CurrentOrganization organization,
             Clock clock) {
         this.alerts = alerts;
         this.rules = rules;
         this.history = history;
+        this.workHistory = workHistory;
+        this.users = users;
         this.documents = documents;
         this.organization = organization;
         this.clock = clock;
@@ -55,6 +62,9 @@ public class ControlAlertService {
             ControlAlertStatus status,
             ControlAlertType type,
             UUID ruleId,
+            ControlAlertPriority priority,
+            UUID assigneeId,
+            Boolean overdue,
             Instant from,
             Instant to,
             String search,
@@ -69,8 +79,8 @@ public class ControlAlertService {
             throw new IllegalArgumentException("search no puede superar 160 caracteres");
         }
         return alerts.findAll(filter(
-                        organization.currentStore().getId(), status, type, ruleId, from, to,
-                        normalizedSearch), pageable)
+                        organization.currentStore().getId(), status, type, ruleId, priority,
+                        assigneeId, overdue, clock.instant(), from, to, normalizedSearch), pageable)
                 .map(ControlAlertService::summary);
     }
 
@@ -117,6 +127,10 @@ public class ControlAlertService {
             ControlAlertStatus status,
             ControlAlertType type,
             UUID ruleId,
+            ControlAlertPriority priority,
+            UUID assigneeId,
+            Boolean overdue,
+            Instant now,
             Instant from,
             Instant to,
             String search) {
@@ -124,6 +138,13 @@ public class ControlAlertService {
             var predicates = new java.util.ArrayList<Predicate>();
             predicates.add(builder.equal(root.get("storeId"), storeId));
             if (status != null) predicates.add(builder.equal(root.get("status"), status));
+            if (priority != null) predicates.add(builder.equal(root.get("priority"), priority));
+            if (assigneeId != null) predicates.add(builder.equal(root.get("assigneeId"), assigneeId));
+            if (Boolean.TRUE.equals(overdue)) {
+                predicates.add(root.get("status").in(ControlAlertStatus.NEW, ControlAlertStatus.REVIEWED));
+                predicates.add(builder.isNotNull(root.get("dueAt")));
+                predicates.add(builder.lessThan(root.get("dueAt"), now));
+            }
             var event = root.join("event");
             if (type != null) predicates.add(builder.equal(event.get("type"), type));
             if (ruleId != null) predicates.add(builder.equal(event.get("ruleId"), ruleId));
@@ -149,7 +170,7 @@ public class ControlAlertService {
     @Transactional(readOnly = true)
     public AlertDetailView get(UUID id) {
         var alert = find(id);
-        return detail(alert, history.findAllByAlertIdOrderByChangedAtAsc(alert.getId()));
+        return detail(alert);
     }
 
     @Transactional
@@ -171,7 +192,52 @@ public class ControlAlertService {
         }
         history.save(new ControlAlertHistory(
                 alert, previous, next, request.comment(), user.getId(), now));
-        return detail(alert, history.findAllByAlertIdOrderByChangedAtAsc(alert.getId()));
+        return detail(alert);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssigneeOptionView> assigneeOptions() {
+        var store = organization.currentStore();
+        return users.findAllByEmpresaIdOrderByNombre(store.getEmpresa().getId()).stream()
+                .filter(user -> user.isActivo())
+                .filter(user -> user.getTienda().getId().equals(store.getId())
+                        || users.hasStoreAccess(user.getId(), store.getId()))
+                .map(user -> new AssigneeOptionView(
+                        user.getId(), user.getNombre(), user.getUserName()))
+                .toList();
+    }
+
+    @Transactional
+    public AlertDetailView updateWork(
+            UUID id,
+            WorkUpdateRequest request,
+            Authentication authentication) {
+        var alert = find(id);
+        requireVersion(alert, request.version());
+        var store = organization.currentStore();
+        if (request.dueAt() != null && request.dueAt().isBefore(alert.getCreatedAt())) {
+            throw new IllegalArgumentException("El vencimiento no puede ser anterior a la alerta");
+        }
+        if (request.assigneeId() != null) {
+            users.findByIdAndEmpresaId(request.assigneeId(), store.getEmpresa().getId())
+                    .filter(user -> user.isActivo())
+                    .filter(user -> user.getTienda().getId().equals(store.getId())
+                            || users.hasStoreAccess(user.getId(), store.getId()))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "El responsable no esta activo o no pertenece a la tienda"));
+        }
+        var actor = organization.currentUser(authentication);
+        var now = clock.instant();
+        var previous = alert.updateWork(
+                request.priority(), request.assigneeId(), request.dueAt(), now);
+        try {
+            alerts.saveAndFlush(alert);
+        } catch (ObjectOptimisticLockingFailureException | OptimisticLockException exception) {
+            throw staleVersion(alert.getId(), request.version(), null);
+        }
+        workHistory.save(new ControlAlertWorkHistory(
+                alert, previous, request.comment(), actor.getId(), now));
+        return detail(alert);
     }
 
     @Transactional(readOnly = true)
@@ -209,16 +275,24 @@ public class ControlAlertService {
                 event.getRuleVersion(), event.getRuleName(), event.getDocumentId(),
                 event.getDocumentNumber(), event.getTerminalId(),
                 event.getUserId(), event.getUserName(), event.getOccurredAt(),
-                event.getData(), alert.getUpdatedAt(), alert.getVersion());
+                event.getData(), alert.getPriority(), alert.getAssigneeId(), alert.getDueAt(),
+                alert.getUpdatedAt(), alert.getVersion());
     }
 
-    private static AlertDetailView detail(
-            ControlAlert alert, List<ControlAlertHistory> history) {
+    private AlertDetailView detail(ControlAlert alert) {
         return new AlertDetailView(
                 summary(alert),
-                history.stream().map(item -> new HistoryView(
+                history.findAllByAlertIdOrderByChangedAtAsc(alert.getId()).stream()
+                        .map(item -> new HistoryView(
                         item.getPreviousStatus(), item.getNewStatus(), item.getComment(),
-                        item.getChangedBy(), item.getChangedAt())).toList());
+                        item.getChangedBy(), item.getChangedAt())).toList(),
+                workHistory.findAllByAlertIdOrderByChangedAtAsc(alert.getId()).stream()
+                        .map(item -> new WorkHistoryView(
+                                item.getPreviousPriority(), item.getNewPriority(),
+                                item.getPreviousAssigneeId(), item.getNewAssigneeId(),
+                                item.getPreviousDueAt(), item.getNewDueAt(), item.getComment(),
+                                item.getChangedBy(), item.getChangedAt()))
+                        .toList());
     }
 
     private static RelatedDocumentView documentView(CommercialDocument document) {
@@ -252,6 +326,14 @@ public class ControlAlertService {
             @Size(max = 500) String comment) {
     }
 
+    public record WorkUpdateRequest(
+            @NotNull ControlAlertPriority priority,
+            UUID assigneeId,
+            Instant dueAt,
+            @NotNull Long version,
+            @Size(max = 500) String comment) {
+    }
+
     public record AlertSummaryView(
             UUID id,
             ControlAlertStatus status,
@@ -266,6 +348,9 @@ public class ControlAlertService {
             String userName,
             Instant occurredAt,
             Map<String, Object> data,
+            ControlAlertPriority priority,
+            UUID assigneeId,
+            Instant dueAt,
             Instant updatedAt,
             long version) {
     }
@@ -319,7 +404,10 @@ public class ControlAlertService {
         }
     }
 
-    public record AlertDetailView(AlertSummaryView alert, List<HistoryView> history) {
+    public record AlertDetailView(
+            AlertSummaryView alert,
+            List<HistoryView> history,
+            List<WorkHistoryView> workHistory) {
     }
 
     public record HistoryView(
@@ -328,6 +416,21 @@ public class ControlAlertService {
             String comment,
             UUID changedBy,
             Instant changedAt) {
+    }
+
+    public record WorkHistoryView(
+            ControlAlertPriority previousPriority,
+            ControlAlertPriority newPriority,
+            UUID previousAssigneeId,
+            UUID newAssigneeId,
+            Instant previousDueAt,
+            Instant newDueAt,
+            String comment,
+            UUID changedBy,
+            Instant changedAt) {
+    }
+
+    public record AssigneeOptionView(UUID id, String name, String userName) {
     }
 
     public record RelatedDocumentView(

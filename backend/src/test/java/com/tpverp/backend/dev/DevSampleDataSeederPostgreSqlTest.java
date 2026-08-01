@@ -43,7 +43,7 @@ class DevSampleDataSeederPostgreSqlTest {
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> databaseUrl()
                 + (databaseUrl().contains("?") ? "&" : "?")
-                + "currentSchema=" + SCHEMA);
+                + "currentSchema=" + SCHEMA + ",public");
         registry.add("spring.datasource.username", () -> environment("TPV_TEST_DB_USERNAME", "tpv_erp_test"));
         registry.add("spring.datasource.password", () -> environment("TPV_TEST_DB_PASSWORD", "admin"));
         registry.add("spring.flyway.schemas", () -> SCHEMA);
@@ -76,9 +76,9 @@ class DevSampleDataSeederPostgreSqlTest {
                 .containsAll(DevSampleDataSeeder.documentTypes().stream()
                         .map(CommercialDocumentType::name)
                         .toList());
-        assertThat(count("producto")).isGreaterThanOrEqualTo(7);
-        assertThat(count("cliente")).isGreaterThanOrEqualTo(1);
-        assertThat(count("proveedor")).isGreaterThanOrEqualTo(1);
+        assertThat(count("producto")).isGreaterThanOrEqualTo(55);
+        assertThat(count("cliente")).isGreaterThanOrEqualTo(16);
+        assertThat(count("proveedor")).isGreaterThanOrEqualTo(6);
         assertThat(count("salida_almacen")).isGreaterThanOrEqualTo(7);
         assertThat(count("entrada_almacen")).isGreaterThanOrEqualTo(6);
         assertThat(count("terminal")).isGreaterThanOrEqualTo(1);
@@ -148,10 +148,10 @@ class DevSampleDataSeederPostgreSqlTest {
     }
 
     @Test
-    void restoresDevelopmentTerminalCredentialWhenReseeding() {
+    void preservesProvisionedTerminalCredentialWhenReseeding() {
         jdbc.update(
                 "update terminal set credential_hash = ? where id = ?",
-                passwordEncoder.encode("stale-provisioned-credential"),
+                passwordEncoder.encode("provisioned-credential"),
                 DevSampleDataSeeder.terminalId());
 
         seeder.seed();
@@ -160,7 +160,23 @@ class DevSampleDataSeederPostgreSqlTest {
                 "select credential_hash from terminal where id = ?",
                 String.class,
                 DevSampleDataSeeder.terminalId());
-        assertThat(passwordEncoder.matches("DEV-SERVER", credentialHash)).isTrue();
+        assertThat(passwordEncoder.matches("provisioned-credential", credentialHash)).isTrue();
+    }
+
+    @Test
+    void seedsRichCurrentDataForGestionDashboards() {
+        assertThat(jdbc.queryForObject("select count(*) from familia where family_id like 'DEMO-F%'", Integer.class))
+                .isEqualTo(6);
+        assertThat(jdbc.queryForObject("select count(*) from producto_identificador where tipo = 'CODIGO' and valor like 'DEMO-%'", Integer.class))
+                .isGreaterThanOrEqualTo(48);
+        assertThat(jdbc.queryForObject("select count(*) from documento where fecha = date '2026-08-02' and tipo = 'TICKET'", Integer.class))
+                .isGreaterThanOrEqualTo(5);
+        assertThat(jdbc.queryForObject("select count(*) from promocion where estado = 'ACTIVE'", Integer.class))
+                .isGreaterThanOrEqualTo(4);
+        assertThat(jdbc.queryForObject("select count(*) from control_alerta", Integer.class))
+                .isGreaterThanOrEqualTo(9);
+        assertThat(jdbc.queryForList("select distinct prioridad from control_alerta", String.class))
+                .contains("CRITICAL", "HIGH", "MEDIUM", "INFORMATIONAL");
     }
 
     @Test

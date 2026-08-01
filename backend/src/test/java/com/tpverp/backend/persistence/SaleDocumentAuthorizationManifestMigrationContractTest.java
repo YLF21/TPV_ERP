@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class SaleDocumentAuthorizationManifestMigrationContractTest {
 
     private static final String MIGRATION =
-            "db/migration/V117__manifiesto_autorizacion_documento_venta.sql";
+            "db/migration/V119__manifiesto_autorizacion_documento_venta.sql";
 
     @Test
     void persistsDocumentFingerprintAndPolicyVersionsWithoutCredentials()

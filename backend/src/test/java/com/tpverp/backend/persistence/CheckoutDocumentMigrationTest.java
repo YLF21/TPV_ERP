@@ -66,7 +66,7 @@ class CheckoutDocumentMigrationTest {
 
     @Test
     void cashSessionDiscrepancyControlTypeIsAcceptedByTheDatabaseConstraints() throws Exception {
-        var sql = migration("db/migration/V115__alerta_descuadre_caja.sql");
+        var sql = migration("db/migration/V117__alerta_descuadre_caja.sql");
 
         assertThat(sql).contains(
                 "'cash_session_discrepancy'",

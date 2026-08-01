@@ -154,4 +154,30 @@ describe("GestionShell", () => {
     expect(openSuppliers).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Almacenes" })).not.toBeInTheDocument();
   });
+
+  it("finds permitted destinations and opens them from the navigation search", () => {
+    const openTickets = vi.fn();
+    render(
+      <GestionShell
+        session={session}
+        t={(key) => key}
+        activeKey="dashboard"
+        navigation={[
+          { key: "dashboard", label: "Resumen", onOpen: vi.fn() },
+          { key: "sales", label: "Ventas", children: [{ key: "tickets", label: "Tickets", onOpen: openTickets }] }
+        ]}
+      >
+        <section>Contenido</section>
+      </GestionShell>
+    );
+
+    const search = screen.getByRole("searchbox", { name: "gestion.navigationSearch" });
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "ticket" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ventas / Tickets" }));
+
+    expect(openTickets).toHaveBeenCalledOnce();
+    expect(search).toHaveValue("");
+  });
 });

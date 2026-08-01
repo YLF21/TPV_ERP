@@ -96,6 +96,39 @@ describe("HardwareSettingsScreen", () => {
     expect(html).not.toContain("<select");
   });
 
+  it("uses the shared configuration and summary layout in every hardware section", () => {
+    render(
+      <HardwareSettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />
+    );
+
+    const sections = [
+      "Impresora de ticket",
+      "Cajón de dinero",
+      "Escáner código de barras",
+      "ESC/POS",
+      "Impresora A4 y documentos",
+      "Pantalla cliente",
+      "Diagnóstico"
+    ];
+
+    for (const section of sections) {
+      fireEvent.click(screen.getByRole("button", { name: section }));
+      expect(screen.getByRole("complementary", { name: "Resumen" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeTruthy();
+      expect(document.querySelector(".hardware-config-main")).toBeTruthy();
+    }
+
+    expect(document.querySelector(".hardware-footer")).toBeNull();
+  });
+
   it("verifies a scanner with the fixed automatic timing rule", async () => {
     const testScannerInput = vi.fn(async (code: string) => ({
       ok: true as const,

@@ -15,8 +15,12 @@ import {
   moveReportColumnBeforeTotal,
   moveVisibleReportColumn,
   normalizeRequiredTotal,
+  reportAttributeLabelKey,
   reportTableKey,
+  quickDateRange,
+  salesReportResponseError,
   salesReportAccess,
+  sortReportRows,
   visibleSalesReports,
   SalesReportScreen
 } from "./SalesReportScreen";
@@ -42,6 +46,8 @@ const terminalContext: TerminalContext = {
   terminalCode: "01"
 };
 
+const noSavedVisualizationPreferences = vi.fn().mockResolvedValue([]);
+
 function createTableLayoutController(
   initialLayout: TableLayout<string>
 ): UseTableLayoutPreferenceResult<string> {
@@ -51,6 +57,9 @@ function createTableLayoutController(
       return layout;
     },
     ready: true,
+    replaceLayout(nextLayout) {
+      layout = nextLayout;
+    },
     reorderColumns(draggedKey, targetKey) {
       layout = reorderTableColumns(layout, draggedKey, targetKey);
     },
@@ -71,6 +80,19 @@ afterEach(() => {
 });
 
 describe("SalesReportScreen", () => {
+  it("ordena importes y alterna periodos rápidos de forma determinista", () => {
+    const rows = [{ total: "10,50" }, { total: "2,25" }, { total: "100,00" }];
+    expect(sortReportRows(rows, { attribute: "total", direction: "asc" }, "es")
+      .map((row) => row.total)).toEqual(["2,25", "10,50", "100,00"]);
+    expect(quickDateRange("week", new Date(2026, 6, 29))).toEqual({
+      dateFrom: "2026-07-27",
+      dateTo: "2026-07-29"
+    });
+    expect(quickDateRange("month", new Date(2026, 6, 29))).toEqual({
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-29"
+    });
+  });
   it("formats every report amount as euros and preserves non-monetary values", () => {
     expect(formatReportDisplayValue("pending", "-12.10", "es")).toBe(
       new Intl.NumberFormat("es-ES", {
@@ -81,7 +103,29 @@ describe("SalesReportScreen", () => {
       }).format(-12.1)
     );
     expect(formatReportDisplayValue("total", "60.50", "en")).toContain("€");
+    expect(formatReportDisplayValue("total", "1,018.96", "es")).toContain("1.018,96");
     expect(formatReportDisplayValue("productCount", "60.50", "es")).toBe("60.50");
+  });
+
+  it("uses explicit purchase and sale labels for warehouse totals", () => {
+    expect(reportAttributeLabelKey("salesReport.warehouseOutputs", "total"))
+      .toBe("salesReport.column.saleTotal");
+    expect(reportAttributeLabelKey("salesReport.inputWarehouse", "total"))
+      .toBe("salesReport.column.purchaseTotal");
+    expect(reportAttributeLabelKey("salesReport.invoices", "total"))
+      .toBe("salesReport.column.total");
+  });
+
+  it("extracts actionable backend details from failed exports", async () => {
+    const response = new Response(JSON.stringify({
+      detail: "La configuración de columnas no se puede exportar"
+    }), {
+      status: 400,
+      headers: { "Content-Type": "application/problem+json" }
+    });
+    expect(await salesReportResponseError(response))
+      .toBe("La configuración de columnas no se puede exportar");
+    expect(await salesReportResponseError(new Response("", { status: 503 }))).toBe("HTTP 503");
   });
 
   it("maps existing warehouse endpoints into output and input warehouse reports", () => {
@@ -502,6 +546,7 @@ describe("SalesReportScreen", () => {
         session={{ ...session, accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
         onBack={vi.fn()}
         onLogout={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -537,7 +582,7 @@ describe("SalesReportScreen", () => {
       }
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
     });
-    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
     expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
@@ -581,6 +626,7 @@ describe("SalesReportScreen", () => {
         session={{ username: "warehouse", displayName: "ALMACÉN", permissions: ["GESTION_ALMACEN"], accessToken: "token" }}
         terminalContext={terminalContext}
         request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
         initialReport="salesReport.warehouseOutputs"
         onBack={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -638,6 +684,60 @@ describe("SalesReportScreen", () => {
       window.tpvDesktop = previousDesktop;
       localStorage.clear();
     }
+  });
+
+  it("does not select the first report row until the user interacts with it", async () => {
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/warehouses") {
+        return Promise.resolve([{ id: "warehouse-1", name: "GENERAL" }]);
+      }
+      if (path.startsWith("/warehouse-inputs")) {
+        return Promise.resolve({
+          items: [{
+            id: "input-1",
+            number: "ENT-NO-SELECT",
+            date: today,
+            warehouseId: "warehouse-1",
+            origin: "PRUEBA",
+            lines: [{ quantity: 1, purchaseUnitPrice: 4.2, purchaseTotal: 4.2 }]
+          }],
+          nextCursor: null,
+          hasMore: false
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{
+          username: "warehouse",
+          displayName: "ALMACÉN",
+          permissions: ["GESTION_ALMACEN"],
+          accessToken: "token"
+        }}
+        terminalContext={terminalContext}
+        request={request}
+        initialReport="salesReport.inputWarehouse"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    const row = (await screen.findByText("ENT-NO-SELECT")).closest("tr");
+    expect(row).not.toHaveClass("selected");
+    expect(row).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(row!);
+    expect(row).toHaveClass("selected");
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {

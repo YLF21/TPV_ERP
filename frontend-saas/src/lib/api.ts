@@ -12,6 +12,7 @@ import type {
   CreateCompanyRequest,
   CreateCompanyResponse,
   Credentials,
+  LoginCredentials,
   CustomerHealth,
   DashboardData,
   ErpCustomer,
@@ -60,7 +61,10 @@ export class ApiError extends Error {
 }
 
 function authHeader(credentials: Credentials) {
-  return `Basic ${window.btoa(`${credentials.username}:${credentials.password}`)}`;
+  if (!credentials.accessToken) {
+    throw new ApiError(401, "La sesion no contiene un token de acceso");
+  }
+  return `Bearer ${credentials.accessToken}`;
 }
 
 async function request<T>(credentials: Credentials, path: string, options: RequestOptions = {}): Promise<T> {
@@ -87,6 +91,32 @@ async function request<T>(credentials: Credentials, path: string, options: Reque
 }
 
 export const api = {
+  async login(credentials: LoginCredentials) {
+    const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: credentials.username, password: credentials.password })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new ApiError(response.status, text || response.statusText || "Error de autenticacion");
+    }
+    return response.json() as Promise<{
+      username: string;
+      accessToken: string;
+      mode: "admin" | "tenant";
+      expiresAt: string;
+    }>;
+  },
+
+  async logout(credentials: Credentials) {
+    if (!credentials.accessToken) return;
+    await fetch(`${API_BASE}/api/v1/auth/logout`, {
+      method: "POST",
+      headers: { Authorization: authHeader(credentials) }
+    });
+  },
+
   dashboard(credentials: Credentials): Promise<DashboardData> {
     return Promise.all([
       this.licenses(credentials),

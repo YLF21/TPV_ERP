@@ -8,7 +8,7 @@ import com.tpverp.backend.security.domain.UserSessionRepository;
 import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.application.AuthenticationService;
 import com.tpverp.backend.shared.crypto.InstallationIdentityStore;
-import com.tpverp.backend.shared.crypto.WindowsDpapiSecretProtector;
+import com.tpverp.backend.shared.crypto.SecretProtectorFactory;
 import com.tpverp.backend.terminal.TerminalRepository;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -36,8 +36,10 @@ class InstallationBootstrapConfiguration {
 
 	@Bean
 	InstallationIdentityStore installationIdentityStore(
-			@Value("${tpv.installation.key-directory}") Path keyDirectory) {
-		return new InstallationIdentityStore(keyDirectory, new WindowsDpapiSecretProtector());
+			@Value("${tpv.installation.key-directory}") Path keyDirectory,
+			@Value("${tpv.installation.portable-secret-key:}") String portableSecretKey) {
+		return new InstallationIdentityStore(
+				keyDirectory, SecretProtectorFactory.portableOrWindowsDpapi(portableSecretKey));
 	}
 
 	@Bean

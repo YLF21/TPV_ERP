@@ -62,10 +62,59 @@ public class ControlAlertDetectionService {
         if (!SALES_TYPES.contains(document.getTipo())) return;
         var user = organization.currentUser(authentication);
         var now = clock.instant();
+        detectManualPriceChange(document, manualDiscounts, terminalId,
+                user.getId(), user.getUserName(), now);
         detectManualDiscount(document, manualDiscounts, terminalId, user.getId(), user.getUserName(), now);
         detectProductDiscount(document, manualDiscounts, terminalId, user.getId(), user.getUserName(), now);
         detectInactiveProducts(document, terminalId, user.getId(), user.getUserName(), now);
         detectManualNegativeQuantity(document, terminalId, user.getId(), user.getUserName(), now);
+    }
+
+    private void detectManualPriceChange(
+            CommercialDocument document,
+            ManualDiscountSnapshot originalSnapshot,
+            UUID terminalId,
+            UUID userId,
+            String userName,
+            java.time.Instant now) {
+        // APP VENTA expresses its "precio deseado" action as the percentage needed
+        // to lower the line price. Only the original request preserves that manual
+        // intent; the confirmed document can also contain automatic promotions.
+        if (originalSnapshot == null) return;
+        var changedLines = originalSnapshot.lines().stream()
+                .filter(line -> line.discountPercent().signum() > 0)
+                .toList();
+        if (changedLines.isEmpty()) return;
+
+        for (var rule : activeRules(document.getTiendaId(), ControlAlertType.MANUAL_PRICE_CHANGED)) {
+            emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
+                    userId, userName, now, manualPriceData(document, changedLines, null));
+        }
+        for (var rule : activeRules(
+                document.getTiendaId(), ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT)) {
+            var threshold = ControlRuleConfiguration.threshold(rule.getConfiguration());
+            var matchingLines = changedLines.stream()
+                    .filter(line -> line.discountPercent().compareTo(threshold) > 0)
+                    .toList();
+            if (matchingLines.isEmpty()) continue;
+            emit(rule, "DOCUMENT", document.getId(), document.getId(), document.getNumero(), terminalId,
+                    userId, userName, now, manualPriceData(document, matchingLines, threshold));
+        }
+    }
+
+    private static Map<String, Object> manualPriceData(
+            CommercialDocument document,
+            List<ManualLineDiscount> lines,
+            BigDecimal threshold) {
+        var data = new LinkedHashMap<String, Object>();
+        data.put("documentType", document.getTipo().name());
+        data.put("documentNumber", document.getNumero());
+        if (threshold != null) data.put("thresholdPercent", threshold);
+        data.put("changedLines", lines.stream().map(line -> Map.<String, Object>of(
+                "position", line.position(),
+                "productId", line.productId().toString(),
+                "changePercent", line.discountPercent())).toList());
+        return data;
     }
 
     @Transactional

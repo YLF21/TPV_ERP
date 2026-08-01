@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class CashCurrentBalanceIndexesMigrationContractTest {
 
     private static final Path MIGRATION = Path.of(
-            "src/main/resources/db/migration/V121__indices_efectivo_actual_terminal.sql");
+            "src/main/resources/db/migration/V123__indices_efectivo_actual_terminal.sql");
 
     @Test
     void indexesSessionAndBetweenSessionMovementLookups() throws Exception {

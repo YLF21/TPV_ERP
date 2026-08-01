@@ -70,7 +70,7 @@ class VerifactuPosRepositoryPostgreSqlTest {
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> URL
                 + (URL.contains("?") ? "&" : "?")
-                + "currentSchema=" + SCHEMA);
+                + "currentSchema=" + SCHEMA + ",public");
         registry.add("spring.datasource.username", () -> USER);
         registry.add("spring.datasource.password", () -> PASSWORD);
         registry.add("spring.flyway.schemas", () -> SCHEMA);
