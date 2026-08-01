@@ -14,6 +14,7 @@ import {
   saveDashboardPreference,
   type ActivePromotionData,
   type ControlAlertsSummaryData,
+  type DashboardPreference,
   type DashboardWidgetKey,
   type DashboardWidgetLayout,
   type SalesTodayData,
@@ -29,9 +30,29 @@ type GestionDashboardProps = {
   onOpenStock: () => void;
   onOpenPromotions: () => void;
   onOpenControlAlerts: () => void;
+  dataSource?: DashboardDataSource;
+};
+
+export type DashboardDataSource = {
+  loadPreference: (token?: string) => Promise<DashboardPreference>;
+  savePreference: (widgets: DashboardWidgetLayout[], token?: string) => Promise<DashboardPreference>;
+  loadSalesToday: (token?: string) => Promise<SalesTodayData>;
+  loadTopProducts: (token?: string) => Promise<TopProductData[]>;
+  loadActivePromotions: (token?: string) => Promise<ActivePromotionData[]>;
+  loadControlAlertsSummary: (token?: string) => Promise<ControlAlertsSummaryData>;
+};
+
+const defaultDashboardDataSource: DashboardDataSource = {
+  loadPreference: loadDashboardPreference,
+  savePreference: saveDashboardPreference,
+  loadSalesToday,
+  loadTopProducts,
+  loadActivePromotions,
+  loadControlAlertsSummary
 };
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+type DashboardDataState<T> = { loading: boolean; error: boolean; data?: T };
 
 export function GestionDashboard({
   session,
@@ -39,7 +60,8 @@ export function GestionDashboard({
   onOpenSales,
   onOpenStock,
   onOpenPromotions,
-  onOpenControlAlerts
+  onOpenControlAlerts,
+  dataSource = defaultDashboardDataSource
 }: GestionDashboardProps) {
   const [widgets, setWidgets] = useState<DashboardWidgetLayout[]>([]);
   const [availableWidgets, setAvailableWidgets] = useState<DashboardWidgetKey[]>([]);
@@ -51,12 +73,17 @@ export function GestionDashboard({
   const [refreshKey, setRefreshKey] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRevisionRef = useRef(0);
+  const configuredKeys = new Set(widgets.map((widget) => widget.key));
+  const salesState = useDashboardData(() => dataSource.loadSalesToday(session.accessToken), [dataSource, session.accessToken, refreshKey], configuredKeys.has("sales.today"));
+  const topProductsState = useDashboardData(() => dataSource.loadTopProducts(session.accessToken), [dataSource, session.accessToken, refreshKey], configuredKeys.has("sales.top-products"));
+  const promotionsState = useDashboardData(() => dataSource.loadActivePromotions(session.accessToken), [dataSource, session.accessToken, refreshKey], configuredKeys.has("promotions.active"));
+  const alertsState = useDashboardData(() => dataSource.loadControlAlertsSummary(session.accessToken), [dataSource, session.accessToken, refreshKey], configuredKeys.has("control.alerts"));
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(false);
-    void loadDashboardPreference(session.accessToken)
+    void dataSource.loadPreference(session.accessToken)
       .then((preference) => {
         if (!active) return;
         setWidgets(preference.widgets);
@@ -71,7 +98,7 @@ export function GestionDashboard({
     return () => {
       active = false;
     };
-  }, [session.accessToken]);
+  }, [dataSource, session.accessToken]);
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -84,7 +111,7 @@ export function GestionDashboard({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       setSaveState("saving");
-      void saveDashboardPreference(next, session.accessToken)
+      void dataSource.savePreference(next, session.accessToken)
         .then((preference) => {
           if (revision !== saveRevisionRef.current) return;
           setWidgets(preference.widgets);
@@ -97,7 +124,6 @@ export function GestionDashboard({
     }, 350);
   };
 
-  const configuredKeys = new Set(widgets.map((widget) => widget.key));
   const addableWidgets = availableWidgets.filter((key) => !configuredKeys.has(key));
 
   return (
@@ -160,7 +186,22 @@ export function GestionDashboard({
           </div>
         )}
 
-        {!loading && !loadError && widgets.length > 0 && (
+        {!loading && !loadError && widgets.length > 0 && !customizing && (
+          <DashboardOverviewLayout
+            widgets={widgets}
+            salesState={salesState}
+            topProductsState={topProductsState}
+            promotionsState={promotionsState}
+            alertsState={alertsState}
+            t={t}
+            onOpenSales={onOpenSales}
+            onOpenStock={onOpenStock}
+            onOpenPromotions={onOpenPromotions}
+            onOpenControlAlerts={onOpenControlAlerts}
+          />
+        )}
+
+        {!loading && !loadError && widgets.length > 0 && customizing && (
           <section className={`gestion-dashboard-grid ${customizing ? "customizing" : ""}`}>
             {widgets.map((widget, index) => (
               <DashboardWidgetFrame
@@ -181,22 +222,104 @@ export function GestionDashboard({
                 onRemove={() => updateWidgets(widgets.filter((candidate) => candidate.key !== widget.key))}
               >
                 {widget.key === "sales.today" && (
-                  <SalesTodayWidget token={session.accessToken} refreshKey={refreshKey} t={t} onOpen={onOpenSales} />
+                  <SalesTodayWidget state={salesState} t={t} onOpen={onOpenSales} />
                 )}
                 {widget.key === "sales.top-products" && (
-                  <TopProductsWidget token={session.accessToken} refreshKey={refreshKey} t={t} onOpen={onOpenStock} />
+                  <TopProductsWidget state={topProductsState} t={t} onOpen={onOpenStock} />
                 )}
                 {widget.key === "promotions.active" && (
-                  <ActivePromotionsWidget token={session.accessToken} refreshKey={refreshKey} t={t} onOpen={onOpenPromotions} />
+                  <ActivePromotionsWidget state={promotionsState} t={t} onOpen={onOpenPromotions} />
                 )}
                 {widget.key === "control.alerts" && (
-                  <ControlAlertsWidget token={session.accessToken} refreshKey={refreshKey} t={t} onOpen={onOpenControlAlerts} />
+                  <ControlAlertsWidget state={alertsState} t={t} onOpen={onOpenControlAlerts} />
                 )}
               </DashboardWidgetFrame>
             ))}
           </section>
         )}
     </section>
+  );
+}
+
+function DashboardOverviewLayout({
+  widgets,
+  salesState,
+  topProductsState,
+  promotionsState,
+  alertsState,
+  t,
+  onOpenSales,
+  onOpenStock,
+  onOpenPromotions,
+  onOpenControlAlerts
+}: {
+  widgets: DashboardWidgetLayout[];
+  salesState: DashboardDataState<SalesTodayData>;
+  topProductsState: DashboardDataState<TopProductData[]>;
+  promotionsState: DashboardDataState<ActivePromotionData[]>;
+  alertsState: DashboardDataState<ControlAlertsSummaryData>;
+  t: Translator;
+  onOpenSales: () => void;
+  onOpenStock: () => void;
+  onOpenPromotions: () => void;
+  onOpenControlAlerts: () => void;
+}) {
+  const visible = new Set(widgets.map((widget) => widget.key));
+  const hasActivity = visible.has("promotions.active") || visible.has("control.alerts");
+  return (
+    <section className="gestion-dashboard-overview" aria-label={t("gestion.dashboard") }>
+      <div className="gestion-dashboard-summary-strip">
+        {visible.has("sales.today") && (
+          <DashboardOverviewPanel title={t("gestion.widget.sales.today")} className="sales-summary">
+            <SalesTodayWidget state={salesState} t={t} onOpen={onOpenSales} />
+          </DashboardOverviewPanel>
+        )}
+        {visible.has("promotions.active") && (
+          <DashboardOverviewPanel title={t("gestion.widget.promotions.active")} className="dashboard-promotion-summary">
+            <PromotionSummaryWidget state={promotionsState} t={t} onOpen={onOpenPromotions} />
+          </DashboardOverviewPanel>
+        )}
+        {visible.has("control.alerts") && (
+          <DashboardOverviewPanel title={t("gestion.widget.control.alerts")} className="alert-summary">
+            <ControlAlertsSummaryWidget state={alertsState} t={t} onOpen={onOpenControlAlerts} />
+          </DashboardOverviewPanel>
+        )}
+      </div>
+
+      <div className={`gestion-dashboard-main-grid ${!hasActivity ? "single" : ""}`}>
+        {visible.has("sales.top-products") && (
+          <DashboardOverviewPanel title={t("gestion.widget.sales.top-products")} className="top-products-panel">
+            <TopProductsWidget state={topProductsState} t={t} onOpen={onOpenStock} />
+          </DashboardOverviewPanel>
+        )}
+        {hasActivity && (
+          <section className="gestion-dashboard-activity" aria-labelledby="gestion-dashboard-activity-title">
+            <h3 id="gestion-dashboard-activity-title">{t("gestion.dashboard.activity")}</h3>
+            <div className="gestion-dashboard-activity-body">
+              {visible.has("promotions.active") && (
+                <DashboardOverviewPanel title={t("gestion.widget.promotions.active")} className="activity-promotions">
+                  <ActivePromotionsWidget state={promotionsState} t={t} onOpen={onOpenPromotions} />
+                </DashboardOverviewPanel>
+              )}
+              {visible.has("control.alerts") && (
+                <DashboardOverviewPanel title={t("gestion.widget.control.alerts")} className="activity-alerts">
+                  <ControlAlertsWidget state={alertsState} t={t} onOpen={onOpenControlAlerts} />
+                </DashboardOverviewPanel>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardOverviewPanel({ title, className = "", children }: { title: string; className?: string; children: ReactNode }) {
+  return (
+    <article className={`gestion-dashboard-panel ${className}`}>
+      <header><strong>{title}</strong></header>
+      <div className="gestion-dashboard-panel-body">{children}</div>
+    </article>
   );
 }
 
@@ -258,8 +381,7 @@ function DashboardWidgetFrame({
   );
 }
 
-function SalesTodayWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
-  const state = useDashboardData(() => loadSalesToday(token), [token, refreshKey]);
+function SalesTodayWidget({ state, t, onOpen }: WidgetProps<SalesTodayData>) {
   if (state.loading) return <WidgetMessage text={t("common.loading")} />;
   if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
   const data = state.data as SalesTodayData;
@@ -284,8 +406,7 @@ function SalesTodayWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
   );
 }
 
-function TopProductsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
-  const state = useDashboardData(() => loadTopProducts(token), [token, refreshKey]);
+function TopProductsWidget({ state, t, onOpen }: WidgetProps<TopProductData[]>) {
   if (state.loading) return <WidgetMessage text={t("common.loading")} />;
   if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
   const rows = state.data as TopProductData[];
@@ -304,8 +425,7 @@ function TopProductsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
   );
 }
 
-function ActivePromotionsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
-  const state = useDashboardData(() => loadActivePromotions(token), [token, refreshKey]);
+function ActivePromotionsWidget({ state, t, onOpen }: WidgetProps<ActivePromotionData[]>) {
   if (state.loading) return <WidgetMessage text={t("common.loading")} />;
   if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
   const rows = state.data as ActivePromotionData[];
@@ -326,8 +446,7 @@ function ActivePromotionsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
   );
 }
 
-function ControlAlertsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
-  const state = useDashboardData(() => loadControlAlertsSummary(token), [token, refreshKey]);
+function ControlAlertsWidget({ state, t, onOpen }: WidgetProps<ControlAlertsSummaryData>) {
   if (state.loading) return <WidgetMessage text={t("common.loading")} />;
   if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
   const data = state.data as ControlAlertsSummaryData;
@@ -354,16 +473,44 @@ function ControlAlertsWidget({ token, refreshKey, t, onOpen }: WidgetProps) {
   );
 }
 
-type WidgetProps = {
-  token?: string;
-  refreshKey: number;
+function PromotionSummaryWidget({ state, t, onOpen }: WidgetProps<ActivePromotionData[]>) {
+  if (state.loading) return <WidgetMessage text={t("common.loading")} />;
+  if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
+  return (
+    <div className="gestion-dashboard-summary-content">
+      <div className="gestion-promotion-count"><strong>{state.data.length}</strong><span>{t("gestion.widget.activeCount")}</span></div>
+      <WidgetFooter label={t("gestion.widget.openPromotions")} onOpen={onOpen} />
+    </div>
+  );
+}
+
+function ControlAlertsSummaryWidget({ state, t, onOpen }: WidgetProps<ControlAlertsSummaryData>) {
+  if (state.loading) return <WidgetMessage text={t("common.loading")} />;
+  if (state.error || !state.data) return <WidgetMessage text={t("gestion.widget.loadError")} error />;
+  return (
+    <div className="gestion-dashboard-summary-content">
+      <div className="gestion-control-alert-counts">
+        <div><strong>{state.data.newCount}</strong><span>{t("gestion.widget.controlAlerts.new")}</span></div>
+        <div><strong>{state.data.reviewedCount}</strong><span>{t("gestion.widget.controlAlerts.reviewed")}</span></div>
+      </div>
+      <WidgetFooter label={t("gestion.widget.controlAlerts.open")} onOpen={onOpen} />
+    </div>
+  );
+}
+
+type WidgetProps<T> = {
+  state: DashboardDataState<T>;
   t: Translator;
   onOpen: () => void;
 };
 
-function useDashboardData<T>(loader: () => Promise<T>, dependencies: unknown[]) {
+function useDashboardData<T>(loader: () => Promise<T>, dependencies: unknown[], enabled = true) {
   const [state, setState] = useState<{ loading: boolean; error: boolean; data?: T }>({ loading: true, error: false });
   useEffect(() => {
+    if (!enabled) {
+      setState({ loading: false, error: false });
+      return;
+    }
     let active = true;
     setState({ loading: true, error: false });
     void loader()
@@ -378,7 +525,7 @@ function useDashboardData<T>(loader: () => Promise<T>, dependencies: unknown[]) 
     };
     // The caller supplies the stable reload identity for its loader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, dependencies);
+  }, [...dependencies, enabled]);
   return state;
 }
 

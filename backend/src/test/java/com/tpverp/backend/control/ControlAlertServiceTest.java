@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.document.CommercialDocumentRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -70,6 +71,8 @@ class ControlAlertServiceTest {
                 alerts,
                 mock(ControlRuleRepository.class),
                 history,
+                mock(ControlAlertWorkHistoryRepository.class),
+                mock(UserAccountRepository.class),
                 documents,
                 organization,
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -115,7 +118,8 @@ class ControlAlertServiceTest {
         var to = NOW.plusSeconds(1);
         when(alerts.countByRuleAndStatus(storeId, from, to)).thenReturn(List.of(count));
         var service = new ControlAlertService(
-                alerts, rules, history, documents, organization, Clock.fixed(NOW, ZoneOffset.UTC));
+                alerts, rules, history, mock(ControlAlertWorkHistoryRepository.class),
+                mock(UserAccountRepository.class), documents, organization, Clock.fixed(NOW, ZoneOffset.UTC));
 
         var result = service.countsByRule(from, to);
 
@@ -135,7 +139,8 @@ class ControlAlertServiceTest {
     void requiresBothOccurrenceBoundsWhenGroupingAlerts() {
         var service = new ControlAlertService(
                 mock(ControlAlertRepository.class), mock(ControlRuleRepository.class),
-                mock(ControlAlertHistoryRepository.class), mock(CommercialDocumentRepository.class),
+                mock(ControlAlertHistoryRepository.class), mock(ControlAlertWorkHistoryRepository.class),
+                mock(UserAccountRepository.class), mock(CommercialDocumentRepository.class),
                 mock(CurrentOrganization.class), Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> service.countsByRule(null, NOW))

@@ -40,9 +40,13 @@ public class DevSampleDataSeeder {
     private static final UUID PRODUCT_OFFER_DISCOUNT = id("product-galletas-offer-discount");
     private static final UUID PRODUCT_WHOLESALE = id("product-leche-wholesale");
     private static final UUID PRODUCT_NO_DISCOUNT = id("product-pan-no-discount");
-    private static final LocalDate TODAY = LocalDate.of(2026, 7, 5);
-    private static final Instant NOW = Instant.parse("2026-07-05T10:00:00Z");
+    private static final LocalDate TODAY = LocalDate.of(2026, 8, 2);
+    private static final Instant NOW = Instant.parse("2026-08-02T10:00:00Z");
     private static final int BULK_DOCUMENTS = 1_000;
+    private static final int DEMO_PRODUCTS = 48;
+    private static final int DEMO_CUSTOMERS = 12;
+    private static final int DEMO_SUPPLIERS = 5;
+    private static final int RECENT_SALES = 40;
     private static final List<CommercialDocumentType> TYPES = List.of(CommercialDocumentType.values());
 
     private final JdbcTemplate jdbc;
@@ -75,7 +79,10 @@ public class DevSampleDataSeeder {
         seedLicense(installation);
         seedCatalog();
         seedParties();
+        seedPromotions();
         seedDocuments();
+        seedRecentSales();
+        seedControlAlerts();
         synchronizeDocumentCounters();
         seedWarehouseDocuments();
     }
@@ -227,8 +234,7 @@ public class DevSampleDataSeeder {
                 insert into terminal (id, tienda_id, nombre, tipo, credential_hash, aprobada, activa)
                 values (?, ?, 'SERVIDOR PRUEBAS', 'SERVIDOR', ?, true, true)
                 on conflict (id) do update
-                set credential_hash = excluded.credential_hash,
-                    aprobada = true,
+                set aprobada = true,
                     activa = true
                 """, TERMINAL, STORE, passwordEncoder.encode("DEV-SERVER"));
     }
@@ -278,6 +284,11 @@ public class DevSampleDataSeeder {
     }
 
     private void seedCatalog() {
+        String[] families = {"BEBIDAS", "ALIMENTACION", "HIGIENE", "HOGAR", "PAPELERIA", "TECNOLOGIA"};
+        String[] subfamilies = {"DESTACADOS", "BASICOS", "PREMIUM", "TEMPORADA", "PROFESIONAL", "ACCESORIOS"};
+        for (int index = 0; index < families.length; index++) {
+            seedFamily(index, families[index], subfamilies[index]);
+        }
         product(PRODUCT_A, "DEV-CAFE", "8410000000011", "Cafe molido pruebas", "3.50", "12.10");
         product(PRODUCT_B, "DEV-AGUA", "8410000000028", "Agua mineral pruebas", "1.20", "6.05");
         pricedProduct(PRODUCT_MEMBER, "DEV-CAFE-SOCIO", "8410000000035",
@@ -302,10 +313,61 @@ public class DevSampleDataSeeder {
         stock(PRODUCT_OFFER_DISCOUNT, "45.000");
         stock(PRODUCT_WHOLESALE, "120.000");
         stock(PRODUCT_NO_DISCOUNT, "35.000");
+        for (int index = 1; index <= DEMO_PRODUCTS; index++) {
+            UUID productId = id("product-demo-catalog-" + index);
+            int familyIndex = (index - 1) % families.length;
+            BigDecimal cost = new BigDecimal("0.65").add(new BigDecimal("0.17").multiply(BigDecimal.valueOf(index)));
+            BigDecimal sale = cost.multiply(new BigDecimal("2.15")).setScale(2, java.math.RoundingMode.HALF_UP);
+            pricedProductInFamily(
+                    productId,
+                    "DEMO-%03d".formatted(index),
+                    "8421000%06d".formatted(index),
+                    "%s demo %02d".formatted(productNamePrefix(familyIndex), index),
+                    cost.toPlainString(),
+                    sale.toPlainString(),
+                    index % 9 == 0 ? sale.multiply(new BigDecimal("0.90")).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() : null,
+                    index % 8 == 0 ? sale.multiply(new BigDecimal("0.80")).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString() : null,
+                    index % 8 == 0 ? "DISCOUNT_PRICE" : index % 9 == 0 ? "MEMBER_PRICE" : "NORMAL",
+                    index % 8 == 0 ? "OFFER_PRICE" : index % 9 == 0 ? "MEMBER_PRICE" : "NORMAL",
+                    index % 8 == 0,
+                    null,
+                    id("family-demo-" + familyIndex),
+                    id("subfamily-demo-" + familyIndex));
+            stock(productId, new BigDecimal((index * 17) % 240).setScale(3).toPlainString());
+            if (index % 17 == 0) {
+                jdbc.update("update producto set activo = false where id = ?", productId);
+            }
+        }
         payment("EFECTIVO", false, true);
         payment("TARJETA", false, false);
         payment("TRANSFERENCIA", false, false);
         payment("VALE", false, false);
+    }
+
+    private void seedFamily(int index, String familyName, String subfamilyName) {
+        UUID familyId = id("family-demo-" + index);
+        jdbc.update("""
+                insert into familia (id, tienda_id, family_id, nombre, predeterminada)
+                values (?, ?, ?, ?, false)
+                on conflict (id) do update set nombre = excluded.nombre
+                """, familyId, STORE, "DEMO-F%02d".formatted(index + 1), familyName);
+        jdbc.update("""
+                insert into subfamilia (id, familia_id, subfamily_id, nombre)
+                values (?, ?, ?, ?)
+                on conflict (id) do update set nombre = excluded.nombre
+                """, id("subfamily-demo-" + index), familyId,
+                "DEMO-SF%02d".formatted(index + 1), subfamilyName);
+    }
+
+    private String productNamePrefix(int familyIndex) {
+        return switch (familyIndex) {
+            case 0 -> "Bebida";
+            case 1 -> "Alimento";
+            case 2 -> "Higiene";
+            case 3 -> "Hogar";
+            case 4 -> "Papeleria";
+            default -> "Accesorio tecnologico";
+        };
     }
 
     private void product(UUID id, String code, String barcode, String name, String cost, String sale) {
@@ -326,18 +388,37 @@ public class DevSampleDataSeeder {
             String priceUseMode,
             boolean offerActive,
             String offerDiscountPercent) {
+        pricedProductInFamily(id, code, barcode, name, cost, sale, member, offer,
+                discountType, priceUseMode, offerActive, offerDiscountPercent, FAMILY, null);
+    }
+
+    private void pricedProductInFamily(
+            UUID id,
+            String code,
+            String barcode,
+            String name,
+            String cost,
+            String sale,
+            String member,
+            String offer,
+            String discountType,
+            String priceUseMode,
+            boolean offerActive,
+            String offerDiscountPercent,
+            UUID familyId,
+            UUID subfamilyId) {
         jdbc.update("""
                 insert into producto
-                    (id, tienda_id, familia_id, impuesto_id, nombre, descripcion, precio_compra,
+                    (id, tienda_id, familia_id, subfamilia_id, impuesto_id, nombre, descripcion, precio_compra,
                      impuestos_incluidos, product_type, discount_type, price_use_mode,
                      oferta_activa, oferta_desde, oferta_hasta, oferta_descuento_porcentaje,
                      comments)
-                values (?, ?, ?, ?, ?, 'Producto de prueba para frontend', ?, true, 'UNIT', ?, ?,
+                values (?, ?, ?, ?, ?, ?, 'Producto de prueba para frontend', ?, true, 'UNIT', ?, ?,
                     ?, case when ? then date '2025-01-01' else null end,
                     case when ? then date '2035-12-31' else null end, ?,
                     'Dato generado por DevSampleDataSeeder')
                 on conflict (id) do nothing
-                """, id, STORE, FAMILY, TAX, name, new BigDecimal(cost), discountType, priceUseMode,
+                """, id, STORE, familyId, subfamilyId, TAX, name, new BigDecimal(cost), discountType, priceUseMode,
                 offerActive, offerActive, offerActive,
                 offerDiscountPercent == null ? null : new BigDecimal(offerDiscountPercent));
         identifier(id, "CODIGO", code);
@@ -408,6 +489,9 @@ public class DevSampleDataSeeder {
                 "C-001-999003", "PLATA", "M-001-999003", "SOCIO-PLATA-001");
         demoMember(CUSTOMER_GOLD, "CLIENTE ORO DEMO", "33333333P",
                 "C-001-999004", "ORO", "M-001-999004", "SOCIO-ORO-001");
+        for (int index = 1; index <= DEMO_CUSTOMERS; index++) {
+            seedDemoCustomer(index);
+        }
         jdbc.update("""
                 insert into proveedor
                     (id, empresa_id, razon_social, nombre_comercial, tipo_documento, numero_documento,
@@ -419,6 +503,9 @@ public class DevSampleDataSeeder {
                     'S-999001')
                 on conflict (id) do nothing
                 """, SUPPLIER, COMPANY);
+        for (int index = 1; index <= DEMO_SUPPLIERS; index++) {
+            seedDemoSupplier(index);
+        }
         jdbc.update("""
                 insert into producto_proveedor
                     (id, producto_id, proveedor_id, referencia_proveedor, ultimo_proveedor,
@@ -426,6 +513,127 @@ public class DevSampleDataSeeder {
                 values (?, ?, ?, 'PROV-DEV-CAFE', true, 3.50, 0.00, ?)
                 on conflict (producto_id, proveedor_id) do nothing
                 """, id("product-supplier"), PRODUCT_A, SUPPLIER, ts(NOW));
+        for (int index = 1; index <= DEMO_PRODUCTS; index++) {
+            UUID productId = id("product-demo-catalog-" + index);
+            UUID supplierId = id("supplier-demo-" + (((index - 1) % DEMO_SUPPLIERS) + 1));
+            jdbc.update("""
+                    insert into producto_proveedor
+                        (id, producto_id, proveedor_id, referencia_proveedor, ultimo_proveedor,
+                         precio_compra_bruto, descuento_compra, ultima_entrada_en)
+                    select ?, p.id, s.id, ?, true, p.precio_compra, ?, ?
+                    from producto p, proveedor s
+                    where p.id = ? and s.id = ?
+                    on conflict (producto_id, proveedor_id) do update
+                    set ultimo_proveedor = true,
+                        precio_compra_bruto = excluded.precio_compra_bruto,
+                        descuento_compra = excluded.descuento_compra,
+                        ultima_entrada_en = excluded.ultima_entrada_en
+                    """, id("product-supplier-demo-" + index), "REF-DEMO-%03d".formatted(index),
+                    new BigDecimal(index % 4 == 0 ? "5.00" : "0.00"), ts(NOW), productId, supplierId);
+        }
+    }
+
+    private void seedDemoCustomer(int index) {
+        String[] cities = {"Las Palmas", "Telde", "Arucas", "Galdar", "Maspalomas", "Aguimes"};
+        UUID customerId = id("customer-demo-" + index);
+        jdbc.update("""
+                insert into cliente
+                    (id, empresa_id, nombre_fiscal, tipo_documento, numero_documento, direccion,
+                     codigo_postal, poblacion, provincia, pais, telefono, email, observaciones,
+                     tarifa, descuento, client_id, client_code_store_id, activo)
+                values (?, ?, ?, 'NIF', ?, ?, ?, ?, 'Las Palmas', 'ES', ?, ?, ?, 'VENTA', ?, ?, ?, ?)
+                on conflict (id) do update
+                set nombre_fiscal = excluded.nombre_fiscal,
+                    poblacion = excluded.poblacion,
+                    telefono = excluded.telefono,
+                    email = excluded.email,
+                    activo = excluded.activo
+                """, customerId, COMPANY, "CLIENTE DEMO %02d".formatted(index),
+                "%08dX".formatted(40_000_000 + index), "Calle Demo " + index,
+                "35%03d".formatted(index), cities[(index - 1) % cities.length],
+                "610%06d".formatted(index), "cliente%02d@example.test".formatted(index),
+                "Cliente generado para filtros, ventas y formularios", new BigDecimal((index % 4) * 2),
+                "C-001-%06d".formatted(100 + index), STORE, index != DEMO_CUSTOMERS);
+    }
+
+    private void seedDemoSupplier(int index) {
+        UUID supplierId = id("supplier-demo-" + index);
+        jdbc.update("""
+                insert into proveedor
+                    (id, empresa_id, razon_social, nombre_comercial, tipo_documento, numero_documento,
+                     direccion, codigo_postal, poblacion, provincia, pais, telefono, email,
+                     observaciones, supplier_id, activo)
+                values (?, ?, ?, ?, 'CIF', ?, ?, ?, ?, 'Las Palmas', 'ES', ?, ?, ?, ?, true)
+                on conflict (id) do update
+                set razon_social = excluded.razon_social,
+                    nombre_comercial = excluded.nombre_comercial,
+                    telefono = excluded.telefono,
+                    email = excluded.email,
+                    activo = true
+                """, supplierId, COMPANY, "DISTRIBUCIONES DEMO %02d SL".formatted(index),
+                "Proveedor Demo %02d".formatted(index), "B%08d".formatted(50_000_000 + index),
+                "Avenida Proveedor " + index, "35%03d".formatted(100 + index),
+                index % 2 == 0 ? "Telde" : "Las Palmas", "620%06d".formatted(index),
+                "proveedor%02d@example.test".formatted(index), "Proveedor generado para compras y stock",
+                "S-%06d".formatted(100 + index));
+    }
+
+    private void seedPromotions() {
+        seedPromotion("promo-threshold", "10% en compras superiores a 30 EUR",
+                "PURCHASE_THRESHOLD_DISCOUNT", "ACTIVE", "ALL", "SALE",
+                new BigDecimal("30.00"), null, null, null, new BigDecimal("10.00"), null);
+        seedPromotion("promo-buy-two", "Lleva 2 y paga 1",
+                "BUY_X_PAY_Y", "ACTIVE", "ALL", "PRODUCT_LIST",
+                null, new BigDecimal("2"), new BigDecimal("1"), null, null, id("product-demo-catalog-1"));
+        seedPromotion("promo-second-unit", "Segunda unidad al 50%",
+                "SECOND_UNIT_PERCENT", "ACTIVE", "IDENTIFIED_CUSTOMERS", "PRODUCT_LIST",
+                null, null, null, null, new BigDecimal("50.00"), id("product-demo-catalog-2"));
+        seedPromotion("promo-pack", "Pack de 3 por 9,90 EUR",
+                "FIXED_PACK_PRICE", "ACTIVE", "MEMBERS_ONLY", "PRODUCT_LIST",
+                null, new BigDecimal("3"), null, new BigDecimal("9.90"), null, id("product-demo-catalog-3"));
+        seedPromotion("promo-draft", "Promocion borrador para editar",
+                "QUANTITY_DISCOUNT", "DRAFT", "ALL", "PRODUCT_LIST",
+                null, null, null, null, null, id("product-demo-catalog-4"));
+    }
+
+    private void seedPromotion(
+            String key,
+            String name,
+            String type,
+            String status,
+            String customerSegment,
+            String scope,
+            BigDecimal minimumAmount,
+            BigDecimal buyQuantity,
+            BigDecimal payQuantity,
+            BigDecimal packPrice,
+            BigDecimal discountPercent,
+            UUID targetProduct) {
+        UUID promotionId = id(key);
+        jdbc.update("""
+                insert into promocion
+                    (id, empresa_id, nombre, descripcion, tipo, estado, segmento_cliente,
+                     ambito, fecha_inicio, fecha_fin, minimo_importe, compra_cantidad,
+                     paga_cantidad, descuento_porcentaje, precio_lote, usada,
+                     creado_en, actualizado_en, version)
+                values (?, ?, ?, 'Dato de demostracion para APP GESTION', ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, false, ?, ?, 0)
+                on conflict (id) do update
+                set nombre = excluded.nombre,
+                    estado = excluded.estado,
+                    fecha_inicio = excluded.fecha_inicio,
+                    fecha_fin = excluded.fecha_fin,
+                    actualizado_en = excluded.actualizado_en
+                """, promotionId, COMPANY, name, type, status, customerSegment, scope,
+                TODAY.minusDays(15), TODAY.plusDays(45), minimumAmount, buyQuantity,
+                payQuantity, discountPercent, packPrice, ts(NOW), ts(NOW));
+        if (targetProduct != null) {
+            jdbc.update("""
+                    insert into promocion_objetivo (id, promocion_id, tipo, objetivo_id, version)
+                    values (?, ?, 'PRODUCT', ?, 0)
+                    on conflict (promocion_id, tipo, objetivo_id) do nothing
+                    """, id(key + "-target"), promotionId, targetProduct);
+        }
     }
 
     private void memberCategory(String code, String name, String discount, int sortOrder) {
@@ -499,6 +707,88 @@ public class DevSampleDataSeeder {
                 "-1.000", "5.00", "-5.00", "-1.05", "-6.05", false, null);
         draft();
         bulkDocuments();
+    }
+
+    private void seedRecentSales() {
+        for (int index = 0; index < RECENT_SALES; index++) {
+            LocalDate date = TODAY.minusDays(index % 7);
+            UUID product = id("product-demo-catalog-" + ((index % 12) + 1));
+            UUID customer = index % 3 == 0 ? id("customer-demo-" + ((index % DEMO_CUSTOMERS) + 1)) : null;
+            int quantity = (index % 4) + 1;
+            BigDecimal unitPrice = new BigDecimal("1.80").add(new BigDecimal("0.45").multiply(BigDecimal.valueOf(index % 10)));
+            BigDecimal base = unitPrice.multiply(BigDecimal.valueOf(quantity)).setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal tax = base.multiply(new BigDecimal("0.21")).setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal total = base.add(tax);
+            doc(CommercialDocumentType.TICKET,
+                    "001-%02d%02d%02d-%06d".formatted(date.getYear() % 100, date.getMonthValue(), date.getDayOfMonth(), 800_001 + index),
+                    "CONFIRMADO", product, customer, null, String.valueOf(quantity), unitPrice.toPlainString(),
+                    base.toPlainString(), tax.toPlainString(), total.toPlainString(), true,
+                    List.of("EFECTIVO", "TARJETA", "VALE").get(index % 3), date, "recent-sale-" + index);
+        }
+    }
+
+    private void seedControlAlerts() {
+        seedControlRule("rule-ticket-cancelled", "TICKET_CANCELLED", "Anulacion de ticket", "{}");
+        seedControlRule("rule-manual-discount", "MANUAL_DISCOUNT_OVER_PERCENT", "Descuento manual superior al 10%", "{\"thresholdPercent\":10}");
+        seedControlRule("rule-inactive-product", "INACTIVE_PRODUCT_SOLD", "Venta de producto desactivado", "{}");
+        String[] ruleKeys = {"rule-ticket-cancelled", "rule-manual-discount", "rule-inactive-product"};
+        String[] types = {"TICKET_CANCELLED", "MANUAL_DISCOUNT_OVER_PERCENT", "INACTIVE_PRODUCT_SOLD"};
+        String[] names = {"Anulacion de ticket", "Descuento manual superior al 10%", "Venta de producto desactivado"};
+        String[] statuses = {"NEW", "NEW", "REVIEWED", "NEW", "CLOSED", "REVIEWED", "NEW", "DISMISSED", "NEW"};
+        String[] priorities = {"CRITICAL", "HIGH", "MEDIUM", "HIGH", "INFORMATIONAL", "MEDIUM", "CRITICAL", "INFORMATIONAL", "HIGH"};
+        for (int index = 0; index < statuses.length; index++) {
+            int ruleIndex = index % ruleKeys.length;
+            UUID documentId = id("doc-recent-sale-" + index);
+            UUID ruleId = id(ruleKeys[ruleIndex]);
+            UUID eventId = id("control-event-demo-" + index);
+            Timestamp occurredAt = ts(NOW.minusSeconds(index * 3_600L));
+            jdbc.update("""
+                    insert into control_evento
+                        (id, tienda_id, regla_id, regla_numero_version, regla_nombre, tipo,
+                         origen_tipo, origen_id, documento_id, documento_numero, terminal_id,
+                         usuario_id, usuario_nombre, ocurrido_en, datos)
+                    values (?, ?, ?, 1, ?, ?, 'DOCUMENT', ?, ?, ?, ?, ?, 'VENDEDOR', ?, cast(? as jsonb))
+                    on conflict (id) do nothing
+                    """, eventId, STORE, ruleId, names[ruleIndex], types[ruleIndex], documentId,
+                    documentId, "T-DEMO-%03d".formatted(index + 1), TERMINAL, USER, occurredAt,
+                    "{\"summary\":\"Alerta de demostracion %d\",\"amount\":%d}".formatted(index + 1, 15 + index));
+            jdbc.update("""
+                    insert into control_alerta
+                        (id, tienda_id, evento_id, estado, creada_en, actualizada_en,
+                         prioridad, asignada_a, vence_en, version)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    on conflict (id) do update
+                    set estado = excluded.estado,
+                        prioridad = excluded.prioridad,
+                        asignada_a = excluded.asignada_a,
+                        vence_en = excluded.vence_en,
+                        actualizada_en = excluded.actualizada_en
+                    """, id("control-alert-demo-" + index), STORE, eventId, statuses[index], occurredAt, occurredAt,
+                    priorities[index], index % 2 == 0 ? ADMIN_USER : null,
+                    ts(NOW.plusSeconds((index - 3L) * 7_200L)));
+        }
+    }
+
+    private void seedControlRule(String key, String type, String name, String configuration) {
+        UUID ruleId = id(key);
+        jdbc.update("""
+                insert into control_regla
+                    (id, tienda_id, tipo, nombre, activa, configuracion, numero_version,
+                     creado_por, actualizado_por, creado_en, actualizado_en, version)
+                values (?, ?, ?, ?, true, cast(? as jsonb), 1, ?, ?, ?, ?, 0)
+                on conflict (id) do update
+                set nombre = excluded.nombre,
+                    activa = true,
+                    configuracion = excluded.configuracion,
+                    actualizado_en = excluded.actualizado_en
+                """, ruleId, STORE, type, name, configuration, ADMIN_USER, ADMIN_USER, ts(NOW), ts(NOW));
+        jdbc.update("""
+                insert into control_regla_version
+                    (id, regla_id, tienda_id, numero_version, tipo, nombre, activa,
+                     configuracion, cambiado_por, cambiado_en)
+                values (?, ?, ?, 1, ?, ?, true, cast(? as jsonb), ?, ?)
+                on conflict (regla_id, numero_version) do nothing
+                """, id(key + "-version-1"), ruleId, STORE, type, name, configuration, ADMIN_USER, ts(NOW));
     }
 
     private void doc(

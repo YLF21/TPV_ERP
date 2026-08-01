@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   controlAlertTypes,
   loadControlAlertGroups,
+  loadControlAlertsAnalytics,
   loadControlAlerts,
   loadControlRuleCatalog,
   saveControlRule,
-  transitionControlAlert
+  transitionControlAlert,
+  updateControlAlertWork
 } from "./controlAlertsApi";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -52,6 +54,19 @@ describe("control alerts API", () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain("/control/rules/catalog");
   });
 
+  it("loads analytics scoped by range and overdue threshold", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ total: 0, overdueCount: 0, byStatus: [], byType: [], byUser: [], byTerminal: [] }), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadControlAlertsAnalytics("2026-07-18T00:00:00.000Z", "2026-07-19T00:00:00.000Z", 24, "token");
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("/control/alerts/analytics?");
+    expect(url).toContain("overdueHours=24");
+    expect(url).toContain("from=2026-07-18T00%3A00%3A00.000Z");
+  });
+
   it("posts versioned transitions and exposes manual-price types for unsupported catalog display", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ alert: { id: "a-1" }, history: [] }), {
       status: 200,
@@ -76,5 +91,24 @@ describe("control alerts API", () => {
     await saveControlRule({ type: "TICKET_CANCELLED", active: false, configuration: {} }, null, "token");
     const [, options] = fetchMock.mock.calls[0];
     expect(JSON.parse(String(options.body))).toEqual({ type: "TICKET_CANCELLED", active: false, configuration: {} });
+  });
+
+  it("sends work queue filters and a versioned assignment update", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ content: [], number: 0, size: 25, totalElements: 0, totalPages: 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ alert: { id: "a-1", priority: "CRITICAL", version: 5 }, history: [], workHistory: [] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadControlAlerts({ search: "", status: "", priority: "HIGH", assigneeId: "u-1", overdue: true, page: 0, size: 25 }, "token");
+    await updateControlAlertWork({ id: "a-1", type: "TICKET_CANCELLED", status: "NEW", priority: "HIGH", occurredAt: "2026-07-18T10:00:00Z", version: 4 }, {
+      priority: "CRITICAL", assigneeId: "u-1", dueAt: "2026-07-19T10:00:00Z", comment: "Urgente"
+    }, "token");
+
+    const filterUrl = String(fetchMock.mock.calls[0][0]);
+    expect(filterUrl).toContain("priority=HIGH");
+    expect(filterUrl).toContain("assigneeId=u-1");
+    expect(filterUrl).toContain("overdue=true");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/control/alerts/a-1/work");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({ priority: "CRITICAL", assigneeId: "u-1", dueAt: "2026-07-19T10:00:00Z", comment: "Urgente", version: 4 });
   });
 });

@@ -1,5 +1,6 @@
 package com.tpverp.backend.control;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,73 @@ public interface ControlAlertRepository
             @Param("from") java.time.Instant from,
             @Param("to") java.time.Instant to);
 
+    @Query("""
+            select alert.status as status, count(alert) as total
+            from ControlAlert alert
+            join alert.event event
+            where alert.storeId = :storeId
+              and event.occurredAt >= :from
+              and event.occurredAt < :to
+            group by alert.status
+            order by count(alert) desc
+            """)
+    List<StatusCount> countByStatusInRange(
+            @Param("storeId") UUID storeId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query("""
+            select event.type as type, count(alert) as total
+            from ControlAlert alert
+            join alert.event event
+            where alert.storeId = :storeId
+              and event.occurredAt >= :from
+              and event.occurredAt < :to
+            group by event.type
+            order by count(alert) desc
+            """)
+    List<TypeCount> countByTypeInRange(
+            @Param("storeId") UUID storeId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query("""
+            select event.userId as userId, max(event.userName) as userName, count(alert) as total
+            from ControlAlert alert
+            join alert.event event
+            where alert.storeId = :storeId
+              and event.occurredAt >= :from
+              and event.occurredAt < :to
+            group by event.userId
+            order by count(alert) desc
+            """)
+    List<UserCount> countByUserInRange(
+            @Param("storeId") UUID storeId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query("""
+            select event.terminalId as terminalId, count(alert) as total
+            from ControlAlert alert
+            join alert.event event
+            where alert.storeId = :storeId
+              and event.occurredAt >= :from
+              and event.occurredAt < :to
+            group by event.terminalId
+            order by count(alert) desc
+            """)
+    List<TerminalCount> countByTerminalInRange(
+            @Param("storeId") UUID storeId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    long countByStoreIdAndStatusAndCreatedAtLessThanEqual(
+            UUID storeId, ControlAlertStatus status, Instant threshold);
+
+    @EntityGraph(attributePaths = "event")
+    List<ControlAlert> findAllByStoreIdAndStatusAndCreatedAtLessThanEqual(
+            UUID storeId, ControlAlertStatus status, Instant threshold, Pageable pageable);
+
     interface StatusCount {
         ControlAlertStatus getStatus();
 
@@ -51,6 +119,26 @@ public interface ControlAlertRepository
         UUID getRuleId();
 
         ControlAlertStatus getStatus();
+
+        long getTotal();
+    }
+
+    interface TypeCount {
+        ControlAlertType getType();
+
+        long getTotal();
+    }
+
+    interface UserCount {
+        UUID getUserId();
+
+        String getUserName();
+
+        long getTotal();
+    }
+
+    interface TerminalCount {
+        UUID getTerminalId();
 
         long getTotal();
     }

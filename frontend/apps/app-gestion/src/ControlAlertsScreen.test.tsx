@@ -10,9 +10,12 @@ vi.mock("./controlAlertsApi", async (importOriginal) => {
   return {
     ...original,
     loadControlAlertGroups: vi.fn(),
+    loadControlAlertsAnalytics: vi.fn(),
     loadControlAlerts: vi.fn(),
+    loadControlAlertAssignees: vi.fn(),
     loadControlAlert: vi.fn(),
     transitionControlAlert: vi.fn(),
+    updateControlAlertWork: vi.fn(),
     loadRelatedDocument: vi.fn(),
     loadControlRuleCatalog: vi.fn(),
     loadControlRules: vi.fn(),
@@ -25,6 +28,7 @@ const alert: api.ControlAlert = {
   id: "alert-1",
   type: "TICKET_CANCELLED",
   status: "NEW",
+  priority: "MEDIUM",
   occurredAt: "2026-07-18T10:30:00Z",
   documentId: "doc-1",
   documentNumber: "T-100",
@@ -84,9 +88,19 @@ function renderScreen(
 
 beforeEach(() => {
   vi.mocked(api.loadControlAlertGroups).mockResolvedValue([group]);
+  vi.mocked(api.loadControlAlertsAnalytics).mockResolvedValue({
+    total: 8,
+    overdueCount: 1,
+    byStatus: [{ key: "NEW", count: 3 }, { key: "REVIEWED", count: 2 }, { key: "CLOSED", count: 2 }, { key: "DISMISSED", count: 1 }],
+    byType: [{ key: "TICKET_CANCELLED", count: 8 }],
+    byUser: [{ key: "user-1", label: "cashier", count: 8 }],
+    byTerminal: [{ key: "terminal-1", label: "POS-1", count: 8 }]
+  });
   vi.mocked(api.loadControlAlerts).mockResolvedValue({ items: [alert], page: 0, size: 25, totalElements: 1, totalPages: 1 });
+  vi.mocked(api.loadControlAlertAssignees).mockResolvedValue([]);
   vi.mocked(api.loadControlAlert).mockResolvedValue(alert);
   vi.mocked(api.transitionControlAlert).mockResolvedValue({ ...alert, status: "REVIEWED", version: 1 });
+  vi.mocked(api.updateControlAlertWork).mockResolvedValue({ ...alert, priority: "CRITICAL", version: 1, workHistory: [] });
   vi.mocked(api.loadControlRuleCatalog).mockResolvedValue(catalog);
   vi.mocked(api.loadControlRules).mockResolvedValue([configuredRule]);
   vi.mocked(api.saveControlRule).mockResolvedValue({ id: "rule-2", type: "CONSECUTIVE_LINE_DELETIONS", name: "Eliminación de líneas consecutivas", active: false, configuration: { minimumCount: 4 }, ruleVersion: 1, version: 0 });
@@ -104,9 +118,9 @@ describe("ControlAlertsScreen", () => {
   it("loads only readable group data for CONTROL_ALERTS_READ and opens through the visible button", async () => {
     renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"]);
 
-    expect(await screen.findByText("Anulación de ticket")).not.toBeNull();
-    expect(screen.getByText("8")).not.toBeNull();
-    expect(screen.getByText("3")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "Anulación de ticket" })).not.toBeNull();
+    expect(screen.getAllByText("8").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("3").length).toBeGreaterThan(0);
     expect(api.loadControlRuleCatalog).not.toHaveBeenCalled();
     expect(api.loadControlRules).not.toHaveBeenCalled();
 
@@ -120,7 +134,7 @@ describe("ControlAlertsScreen", () => {
     ["Enter", (element: HTMLElement) => fireEvent.keyDown(element, { key: "Enter" })]
   ])("opens a rule list with %s", async (_label, activate) => {
     renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"]);
-    const card = (await screen.findByText("Anulación de ticket")).closest("article");
+    const card = (await screen.findByRole("heading", { name: "Anulación de ticket" })).closest("article");
     expect(card).not.toBeNull();
     activate(card as HTMLElement);
     await waitFor(() => expect(api.loadControlAlerts).toHaveBeenCalledWith(expect.objectContaining({ ruleId: "rule-1" }), "token"));
@@ -168,5 +182,68 @@ describe("ControlAlertsScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "gestion.controlAlerts.openList" }));
 
     expect(await screen.findByText("2 descuentos")).not.toBeNull();
+  });
+
+  it("updates the operational priority from the alert detail", async () => {
+    renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_MANAGE"]);
+    fireEvent.click(await screen.findByRole("button", { name: "gestion.controlAlerts.openList" }));
+    const prioritySelectors = await screen.findAllByRole("combobox", { name: "gestion.controlAlerts.priorityLabel" });
+    fireEvent.change(prioritySelectors.at(-1) as HTMLElement, { target: { value: "CRITICAL" } });
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.saveWork" }));
+
+    await waitFor(() => expect(api.updateControlAlertWork).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "alert-1", version: 0 }),
+      expect.objectContaining({ priority: "CRITICAL", assigneeId: null, dueAt: null }),
+      "token"
+    ));
+  });
+
+  it("shows analytics and requests a new snapshot when overdue hours change", async () => {
+    renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"]);
+    expect(await screen.findByText("cashier")).not.toBeNull();
+    expect(screen.getByText("POS-1")).not.toBeNull();
+    expect(api.loadControlAlertsAnalytics).toHaveBeenCalledWith(expect.any(String), expect.any(String), 24, "token");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "gestion.controlAlerts.overdueAfter" }), { target: { value: "8" } });
+    await waitFor(() => expect(api.loadControlAlertsAnalytics).toHaveBeenCalledWith(expect.any(String), expect.any(String), 8, "token"));
+  });
+
+  it("falls back to grouped data when analytics are unavailable and announces increases", async () => {
+    vi.mocked(api.loadControlAlertsAnalytics).mockRejectedValue(new Error("not available"));
+    vi.mocked(api.loadControlAlertGroups)
+      .mockResolvedValueOnce([group])
+      .mockResolvedValueOnce([{ ...group, newCount: 5, total: 10 }]);
+    renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"]);
+    expect(await screen.findByText("gestion.controlAlerts.analyticsLimited")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.refresh" }));
+    expect(await screen.findByText("gestion.controlAlerts.newNotice")).not.toBeNull();
+  });
+
+  it("offers a contextual retry when the overview cannot be loaded", async () => {
+    vi.mocked(api.loadControlAlertGroups)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce([group]);
+
+    renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ"]);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("gestion.controlAlerts.loadError");
+    fireEvent.click(screen.getByRole("button", { name: "gestion.controlAlerts.retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Anulación de ticket" })).not.toBeNull();
+    expect(api.loadControlAlertGroups).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses a compact actionable state when every rule is already configured", async () => {
+    vi.mocked(api.loadControlRuleCatalog).mockResolvedValue([catalog[0]]);
+    renderScreen(["APP_GESTION_ACCESS", "CONTROL_ALERTS_READ", "CONTROL_RULES_MANAGE"]);
+    await waitFor(() => expect(api.loadControlRuleCatalog).toHaveBeenCalledWith("token"));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "gestion.controlRules.add" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "gestion.controlRules.add" });
+
+    expect(dialog.classList.contains("empty")).toBe(true);
+    expect(dialog.textContent).toContain("gestion.controlRules.allConfigured");
+    expect(screen.getAllByRole("button", { name: "common.close" })).toHaveLength(2);
   });
 });

@@ -48,4 +48,21 @@ class ControlAlertRepositoryContractTest {
                 "event.occurredAt < :to",
                 "group by event.ruleId, alert.status");
     }
+
+    @Test
+    void analyticsAggregationsUseOccurrenceRangeAndStoreScope() throws Exception {
+        for (var methodName : java.util.List.of(
+                "countByStatusInRange", "countByTypeInRange",
+                "countByUserInRange", "countByTerminalInRange")) {
+            var method = ControlAlertRepository.class.getMethod(
+                    methodName, UUID.class, java.time.Instant.class, java.time.Instant.class);
+            var query = method.getAnnotation(Query.class);
+
+            assertThat(query).isNotNull();
+            assertThat(query.value()).contains(
+                    "alert.storeId = :storeId",
+                    "event.occurredAt >= :from",
+                    "event.occurredAt < :to");
+        }
+    }
 }

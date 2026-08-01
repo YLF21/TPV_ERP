@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 
@@ -96,6 +97,63 @@ class ControlAlertDetectionServiceTest {
                 .isEqualTo(ControlAlertType.MANUAL_DISCOUNT_OVER_PERCENT);
         assertThat(event.getValue().getDocumentId()).isEqualTo(document.getId());
         verify(history).save(any(ControlAlertHistory.class));
+    }
+
+    @Test
+    void createsManualPriceChangedAlertFromOriginalDesiredPriceSnapshot() {
+        var document = confirmedTicket();
+        var rule = priceRule(ControlAlertType.MANUAL_PRICE_CHANGED, Map.of());
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGED)).thenReturn(List.of(rule));
+
+        service.detectConfirmedDocument(document, snapshotWithLineChange(document, "7.50"),
+                UUID.randomUUID(), authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType()).isEqualTo(ControlAlertType.MANUAL_PRICE_CHANGED);
+        assertThat(event.getValue().getData().get("changedLines")).asList().hasSize(1);
+    }
+
+    @Test
+    void manualPricePercentageRuleIsStrictlyAboveConfiguredThreshold() {
+        var document = confirmedTicket();
+        var rule = priceRule(ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT,
+                Map.of("thresholdPercent", "10"));
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT))
+                .thenReturn(List.of(rule));
+
+        service.detectConfirmedDocument(document, snapshotWithLineChange(document, "10.00"),
+                UUID.randomUUID(), authentication());
+        verify(events, never()).save(any());
+
+        service.detectConfirmedDocument(document, snapshotWithLineChange(document, "10.01"),
+                UUID.randomUUID(), authentication());
+
+        var event = ArgumentCaptor.forClass(ControlEvent.class);
+        verify(events).save(event.capture());
+        assertThat(event.getValue().getType())
+                .isEqualTo(ControlAlertType.MANUAL_PRICE_CHANGE_OVER_PERCENT);
+        assertThat((BigDecimal) event.getValue().getData().get("thresholdPercent"))
+                .isEqualByComparingTo("10");
+    }
+
+    @Test
+    void repeatedDetectionDoesNotDuplicateManualPriceAlertForSameDocumentAndRule() {
+        var document = confirmedTicket();
+        var rule = priceRule(ControlAlertType.MANUAL_PRICE_CHANGED, Map.of());
+        when(rules.findAllByStoreIdAndTypeAndActiveTrue(
+                store.getId(), ControlAlertType.MANUAL_PRICE_CHANGED)).thenReturn(List.of(rule));
+        when(events.existsByRuleIdAndSourceTypeAndSourceId(
+                rule.getId(), "DOCUMENT", document.getId()))
+                .thenReturn(false, true);
+        var snapshot = snapshotWithLineChange(document, "5");
+
+        service.detectConfirmedDocument(document, snapshot, UUID.randomUUID(), authentication());
+        service.detectConfirmedDocument(document, snapshot, UUID.randomUUID(), authentication());
+
+        verify(events, times(1)).save(any());
     }
 
     @Test
@@ -260,6 +318,19 @@ class ControlAlertDetectionServiceTest {
     private ControlRule discountRule(String threshold) {
         return new ControlRule(store.getId(), ControlAlertType.MANUAL_DISCOUNT_OVER_PERCENT,
                 true, Map.of("thresholdPercent", threshold), user.getId(), NOW);
+    }
+
+    private ControlRule priceRule(ControlAlertType type, Map<String, Object> configuration) {
+        return new ControlRule(store.getId(), type, true, configuration, user.getId(), NOW);
+    }
+
+    private ControlAlertDetectionService.ManualDiscountSnapshot snapshotWithLineChange(
+            CommercialDocument document, String percentage) {
+        return new ControlAlertDetectionService.ManualDiscountSnapshot(
+                BigDecimal.ZERO,
+                List.of(new ControlAlertDetectionService.ManualLineDiscount(
+                        1, document.getLineas().getFirst().getProductoId(),
+                        new BigDecimal(percentage))));
     }
 
     private CommercialDocument confirmedTicket() {

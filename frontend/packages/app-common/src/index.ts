@@ -1,5 +1,5 @@
 export { authenticate, authenticateRemote, canAccessApp, hasPermission } from "./auth/auth";
-export { apiRequest, ApiConnectionError, ApiError } from "./api/client";
+export { apiRequest, checkBackendConnection, ApiConnectionError, ApiError } from "./api/client";
 export { apiBaseUrl, devTerminalContext } from "./api/runtime";
 export { loadTerminalIdentity, resolveTerminalIdentity } from "./terminalIdentity";
 export type { TerminalIdentityBridge, TerminalIdentityLoadResult } from "./terminalIdentity";

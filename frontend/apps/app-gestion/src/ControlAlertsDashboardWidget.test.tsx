@@ -51,9 +51,9 @@ describe("control alerts dashboard widget", () => {
     );
 
     expect(await screen.findByText("gestion.controlAlerts.type.TICKET_CANCELLED")).not.toBeNull();
-    expect(screen.getByText("4")).not.toBeNull();
-    expect(screen.getByText("7")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /gestion.widget.controlAlerts.open/ }));
+    expect(screen.getAllByText("4")).not.toHaveLength(0);
+    expect(screen.getAllByText("7")).not.toHaveLength(0);
+    fireEvent.click(screen.getAllByRole("button", { name: /gestion.widget.controlAlerts.open/ })[0]);
     expect(onOpenControlAlerts).toHaveBeenCalledOnce();
   });
 });

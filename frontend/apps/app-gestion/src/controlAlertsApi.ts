@@ -15,9 +15,11 @@ export const controlAlertTypes = [
 ] as const;
 
 export const controlAlertStatuses = ["NEW", "REVIEWED", "CLOSED", "DISMISSED"] as const;
+export const controlAlertPriorities = ["INFORMATIONAL", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
 export type ControlAlertType = typeof controlAlertTypes[number];
 export type ControlAlertStatus = typeof controlAlertStatuses[number];
+export type ControlAlertPriority = typeof controlAlertPriorities[number];
 export type ControlAlertTransition = "REVIEW" | "CLOSE" | "DISMISS";
 export type ControlRuleParameterKind = "NONE" | "QUANTITY" | "PERCENTAGE";
 
@@ -35,8 +37,12 @@ export type ControlAlert = {
   userId?: string | null;
   userName?: string | null;
   data?: Record<string, unknown> | null;
+  priority: ControlAlertPriority;
+  assigneeId?: string | null;
+  dueAt?: string | null;
   updatedAt?: string | null;
   history?: ControlAlertHistoryEntry[];
+  workHistory?: ControlAlertWorkHistoryEntry[];
   version: number;
 };
 
@@ -67,6 +73,7 @@ type SpringPage<T> = {
 type ControlAlertDetailResponse = {
   alert: ControlAlert;
   history: ControlAlertHistoryEntry[];
+  workHistory: ControlAlertWorkHistoryEntry[];
 };
 
 export type ControlAlertFilters = {
@@ -74,6 +81,9 @@ export type ControlAlertFilters = {
   status: "" | ControlAlertStatus;
   type?: "" | ControlAlertType;
   ruleId?: string;
+  priority?: "" | ControlAlertPriority;
+  assigneeId?: string;
+  overdue?: boolean;
   from?: string;
   to?: string;
   page: number;
@@ -169,6 +179,35 @@ export type ControlRuleAlertGroup = {
   configuration: Record<string, unknown>;
 };
 
+export type ControlAlertWorkHistoryEntry = {
+  previousPriority: ControlAlertPriority;
+  newPriority: ControlAlertPriority;
+  previousAssigneeId?: string | null;
+  newAssigneeId?: string | null;
+  previousDueAt?: string | null;
+  newDueAt?: string | null;
+  comment?: string | null;
+  changedBy?: string | null;
+  changedAt: string;
+};
+
+export type ControlAlertAssignee = { id: string; name: string; userName: string };
+
+export type ControlAlertMetric = {
+  key: string;
+  label?: string | null;
+  count: number;
+};
+
+export type ControlAlertsAnalytics = {
+  total: number;
+  overdueCount: number;
+  byStatus: ControlAlertMetric[];
+  byType: ControlAlertMetric[];
+  byUser: ControlAlertMetric[];
+  byTerminal: ControlAlertMetric[];
+};
+
 function queryString(filters: ControlAlertFilters): string {
   const params = new URLSearchParams({
     page: String(filters.page),
@@ -178,6 +217,9 @@ function queryString(filters: ControlAlertFilters): string {
   if (filters.status) params.set("status", filters.status);
   if (filters.type) params.set("type", filters.type);
   if (filters.ruleId) params.set("ruleId", filters.ruleId);
+  if (filters.priority) params.set("priority", filters.priority);
+  if (filters.assigneeId) params.set("assigneeId", filters.assigneeId);
+  if (filters.overdue) params.set("overdue", "true");
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   return params.toString();
@@ -196,7 +238,7 @@ export async function loadControlAlerts(filters: ControlAlertFilters, token?: st
 
 export async function loadControlAlert(id: string, token?: string): Promise<ControlAlert> {
   const detail = await apiRequest<ControlAlertDetailResponse>(`/control/alerts/${encodeURIComponent(id)}`, { token });
-  return { ...detail.alert, history: detail.history };
+  return { ...detail.alert, history: detail.history, workHistory: detail.workHistory };
 }
 
 export async function transitionControlAlert(
@@ -211,7 +253,24 @@ export async function transitionControlAlert(
     token,
     body: { comment: comment.trim() || null, version }
   });
-  return { ...detail.alert, history: detail.history };
+  return { ...detail.alert, history: detail.history, workHistory: detail.workHistory };
+}
+
+export function loadControlAlertAssignees(token?: string) {
+  return apiRequest<ControlAlertAssignee[]>("/control/alerts/assignees", { token });
+}
+
+export async function updateControlAlertWork(
+  alert: ControlAlert,
+  work: { priority: ControlAlertPriority; assigneeId?: string | null; dueAt?: string | null; comment?: string },
+  token?: string
+): Promise<ControlAlert> {
+  const detail = await apiRequest<ControlAlertDetailResponse>(`/control/alerts/${encodeURIComponent(alert.id)}/work`, {
+    method: "PUT",
+    token,
+    body: { ...work, comment: work.comment?.trim() || null, version: alert.version }
+  });
+  return { ...detail.alert, history: detail.history, workHistory: detail.workHistory };
 }
 
 export function loadRelatedDocument(id: string, token?: string) {
@@ -229,6 +288,11 @@ export function loadControlRuleCatalog(token?: string) {
 export function loadControlAlertGroups(from: string, to: string, token?: string) {
   const params = new URLSearchParams({ from, to });
   return apiRequest<ControlRuleAlertGroup[]>(`/control/alerts/groups?${params}`, { token });
+}
+
+export function loadControlAlertsAnalytics(from: string, to: string, overdueHours: number, token?: string) {
+  const params = new URLSearchParams({ from, to, overdueHours: String(overdueHours) });
+  return apiRequest<ControlAlertsAnalytics>(`/control/alerts/analytics?${params}`, { token });
 }
 
 export function saveControlRule(draft: ControlRuleDraft, existing: ControlRule | null, token?: string) {

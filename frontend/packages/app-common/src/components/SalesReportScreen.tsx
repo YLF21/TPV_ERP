@@ -1454,6 +1454,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
   const [timeline, setTimeline] = useState<DocumentOperationalTimeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -1464,7 +1465,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
       .catch(() => { if (active) { setTimeline(null); setError(true); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [documentId, token]);
+  }, [documentId, reload, token]);
 
   useEffect(() => {
     function closeOnEscape(event: globalThis.KeyboardEvent) {
@@ -1493,7 +1494,7 @@ function DocumentOperationalTimelineDialog({ documentId, locale, token, t, onClo
         </header>
 
         {loading && <div className="document-activity-state">{t("common.loading")}</div>}
-        {!loading && error && <div className="document-activity-state error">{t("salesReport.activity.loadError")}</div>}
+        {!loading && error && <div className="document-activity-state error" role="alert"><span>{t("salesReport.activity.loadError")}</span><button type="button" onClick={() => setReload((current) => current + 1)}>{t("salesReport.retry")}</button></div>}
         {!loading && timeline && (
           <>
             <dl className="document-activity-summary">

@@ -3,49 +3,70 @@ import type { LocaleCode } from "../types";
 const es = {
   navigation: "Alertas de control", eyebrow: "Supervisi\u00f3n operativa", title: "Alertas de control", refresh: "Actualizar", rules: "Reglas",
   search: "Buscar", filterStatus: "Estado", filterType: "Tipo", all: "Todos", apply: "Aplicar filtros", list: "Listado de alertas", detail: "Detalle de la alerta",
-  resize: "Redimensionar columna", loadError: "No se pudieron cargar las alertas", detailError: "No se pudo cargar el detalle o realizar la acci\u00f3n",
+  resize: "Redimensionar columna", loadError: "No se pudieron cargar las alertas", retry: "Reintentar", detailError: "No se pudo cargar el detalle o realizar la acci\u00f3n",
   empty: "No hay alertas para los filtros seleccionados", select: "Selecciona una alerta para consultar su detalle", results: "{count} alertas", previous: "Anterior", next: "Siguiente",
   noDocument: "Sin documento", summary: "Motivo registrado", reviewed: "Revisada", closed: "Cerrada", comment: "Comentario", openDocument: "Abrir venta relacionada",
   documentError: "No se pudo cargar la venta relacionada", actionComment: "Comentario de revisi\u00f3n", rule: "Regla aplicada", history: "Historial",
+  alertsGroup: "Alertas", updateGroup: "Actualizaci\u00f3n", refreshing: "Actualizando\u2026", lastUpdated: "Actualizado {time}",
+  filterPriority: "Prioridad", filterAssignee: "Responsable", filterOverdue: "Solo vencidas", priorityLabel: "Prioridad", assigneeLabel: "Responsable", dueLabel: "Vencimiento",
+  unassigned: "Sin asignar", noDueDate: "Sin vencimiento", workTitle: "Gesti\u00f3n operativa", workComment: "Motivo del cambio", saveWork: "Guardar asignaci\u00f3n", workHistory: "Historial operativo",
   summaryManualDiscount: "Umbral: {threshold} %. Descuento global: {global} %. L\u00edneas afectadas: {lines}.", summaryInactiveProducts: "{count} productos desactivados: {products}.",
   summaryTicketCancelled: "Ticket {document}. Motivo: {reason}.", summarySaleCleared: "Venta en curso borrada con {count} l\u00edneas e importe {total}.",
   backToRules: "Volver a reglas", dateFilter: "Periodo de supervisi\u00f3n", from: "Desde", to: "Hasta", quickRanges: "Periodos r\u00e1pidos", today: "Hoy", lastSevenDays: "7 d\u00edas", currentMonth: "Este mes",
   ruleBlocks: "Reglas de control", total: "Alertas del periodo", newCount: "Nuevas", openList: "Ver alertas",
   summaryConsecutiveDeletions: "{count} l\u00edneas eliminadas de forma consecutiva.", summaryProductDiscount: "Descuento manual aplicado a {count} l\u00edneas de producto.", summaryManualPrice: "Cambio manual de precio registrado.",
   summaryManualNegative: "Devoluci\u00f3n manual registrada con {count} l\u00edneas negativas.", summaryCashDrawer: "Apertura manual del caj\u00f3n autorizada por {authorizer}.",
-  summaryProductModified: "Producto {product} modificado desde APP VENTA. Autorizado por {authorizer}."
+  summaryProductModified: "Producto {product} modificado desde APP VENTA. Autorizado por {authorizer}.",
+  autoRefresh: "Actualización automática", autoRefreshOff: "Desactivada", newNotice: "Hay {count} alertas nuevas desde la última actualización.", dismissNotice: "Cerrar aviso", pendingIndicator: "Resumen de alertas pendientes",
+  analyticsEyebrow: "Resumen del periodo", analyticsTitle: "Panel analítico", overdueAfter: "Pendiente durante", pendingCount: "Pendientes", overdueCount: "Fuera de plazo",
+  byStatus: "Por estado", byType: "Por tipo", byUser: "Por usuario", byTerminal: "Por terminal", analyticsEmpty: "Sin datos", analyticsUnavailable: "No disponible",
+  analyticsLimited: "Vista parcial: el servidor todavía no ofrece el detalle analítico por usuario y terminal."
 };
 
 const en = {
   navigation: "Control alerts", eyebrow: "Operational supervision", title: "Control alerts", refresh: "Refresh", rules: "Rules",
   search: "Search", filterStatus: "Status", filterType: "Type", all: "All", apply: "Apply filters", list: "Alert list", detail: "Alert details",
-  resize: "Resize column", loadError: "Alerts could not be loaded", detailError: "The details or action could not be completed",
+  resize: "Resize column", loadError: "Alerts could not be loaded", retry: "Retry", detailError: "The details or action could not be completed",
   empty: "No alerts match the selected filters", select: "Select an alert to view its details", results: "{count} alerts", previous: "Previous", next: "Next",
   noDocument: "No document", summary: "Recorded reason", reviewed: "Reviewed", closed: "Closed", comment: "Comment", openDocument: "Open related sale",
   documentError: "The related sale could not be loaded", actionComment: "Review comment", rule: "Applied rule", history: "History",
+  alertsGroup: "Alerts", updateGroup: "Refresh", refreshing: "Refreshing\u2026", lastUpdated: "Updated {time}",
+  filterPriority: "Priority", filterAssignee: "Assignee", filterOverdue: "Overdue only", priorityLabel: "Priority", assigneeLabel: "Assignee", dueLabel: "Due date",
+  unassigned: "Unassigned", noDueDate: "No due date", workTitle: "Operational management", workComment: "Reason for change", saveWork: "Save assignment", workHistory: "Work history",
   summaryManualDiscount: "Threshold: {threshold}%. Global discount: {global}%. Affected lines: {lines}.", summaryInactiveProducts: "{count} inactive products: {products}.",
   summaryTicketCancelled: "Ticket {document}. Reason: {reason}.", summarySaleCleared: "Open sale cleared with {count} lines and amount {total}.",
   backToRules: "Back to rules", dateFilter: "Supervision period", from: "From", to: "To", quickRanges: "Quick periods", today: "Today", lastSevenDays: "7 days", currentMonth: "This month",
   ruleBlocks: "Control rules", total: "Period alerts", newCount: "New", openList: "View alerts",
   summaryConsecutiveDeletions: "{count} lines deleted consecutively.", summaryProductDiscount: "Manual discount applied to {count} product lines.", summaryManualPrice: "Manual price change recorded.",
   summaryManualNegative: "Manual return recorded with {count} negative lines.", summaryCashDrawer: "Manual cash drawer opening authorized by {authorizer}.",
-  summaryProductModified: "Product {product} modified from APP VENTA. Authorized by {authorizer}."
+  summaryProductModified: "Product {product} modified from APP VENTA. Authorized by {authorizer}.",
+  autoRefresh: "Automatic refresh", autoRefreshOff: "Off", newNotice: "{count} new alerts arrived since the last refresh.", dismissNotice: "Dismiss notification", pendingIndicator: "Pending alerts summary",
+  analyticsEyebrow: "Period summary", analyticsTitle: "Analytics panel", overdueAfter: "Pending for", pendingCount: "Pending", overdueCount: "Overdue",
+  byStatus: "By status", byType: "By type", byUser: "By user", byTerminal: "By terminal", analyticsEmpty: "No data", analyticsUnavailable: "Unavailable",
+  analyticsLimited: "Partial view: the server does not yet provide analytics by user and terminal."
 };
 
 const zh = {
   navigation: "\u63a7\u5236\u8b66\u62a5", eyebrow: "\u8fd0\u8425\u76d1\u7763", title: "\u63a7\u5236\u8b66\u62a5", refresh: "\u5237\u65b0", rules: "\u89c4\u5219",
   search: "\u641c\u7d22", filterStatus: "\u72b6\u6001", filterType: "\u7c7b\u578b", all: "\u5168\u90e8", apply: "\u5e94\u7528\u7b5b\u9009", list: "\u8b66\u62a5\u5217\u8868", detail: "\u8b66\u62a5\u8be6\u60c5",
-  resize: "\u8c03\u6574\u5217\u5bbd", loadError: "\u65e0\u6cd5\u52a0\u8f7d\u8b66\u62a5", detailError: "\u65e0\u6cd5\u52a0\u8f7d\u8be6\u60c5\u6216\u5b8c\u6210\u64cd\u4f5c",
+  resize: "\u8c03\u6574\u5217\u5bbd", loadError: "\u65e0\u6cd5\u52a0\u8f7d\u8b66\u62a5", retry: "\u91cd\u8bd5", detailError: "\u65e0\u6cd5\u52a0\u8f7d\u8be6\u60c5\u6216\u5b8c\u6210\u64cd\u4f5c",
   empty: "\u6ca1\u6709\u7b26\u5408\u5f53\u524d\u7b5b\u9009\u7684\u8b66\u62a5", select: "\u8bf7\u9009\u62e9\u8b66\u62a5\u67e5\u770b\u8be6\u60c5", results: "{count} \u6761\u8b66\u62a5", previous: "\u4e0a\u4e00\u9875", next: "\u4e0b\u4e00\u9875",
   noDocument: "\u65e0\u5355\u636e", summary: "\u8bb0\u5f55\u539f\u56e0", reviewed: "\u5df2\u5ba1\u6838", closed: "\u5df2\u5173\u95ed", comment: "\u5907\u6ce8", openDocument: "\u6253\u5f00\u76f8\u5173\u9500\u552e",
   documentError: "\u65e0\u6cd5\u52a0\u8f7d\u76f8\u5173\u9500\u552e", actionComment: "\u5ba1\u6838\u5907\u6ce8", rule: "\u5e94\u7528\u89c4\u5219", history: "\u5386\u53f2",
+  alertsGroup: "\u8b66\u62a5", updateGroup: "\u66f4\u65b0", refreshing: "\u6b63\u5728\u66f4\u65b0\u2026", lastUpdated: "\u5df2\u66f4\u65b0 {time}",
+  filterPriority: "\u4f18\u5148\u7ea7", filterAssignee: "\u8d1f\u8d23\u4eba", filterOverdue: "\u4ec5\u663e\u793a\u903e\u671f", priorityLabel: "\u4f18\u5148\u7ea7", assigneeLabel: "\u8d1f\u8d23\u4eba", dueLabel: "\u622a\u6b62\u65f6\u95f4",
+  unassigned: "\u672a\u5206\u914d", noDueDate: "\u65e0\u622a\u6b62\u65f6\u95f4", workTitle: "\u8fd0\u8425\u5904\u7406", workComment: "\u66f4\u6539\u539f\u56e0", saveWork: "\u4fdd\u5b58\u5206\u914d", workHistory: "\u5904\u7406\u5386\u53f2",
   summaryManualDiscount: "\u9608\u503c: {threshold}%. \u5168\u5c40\u6298\u6263: {global}%. \u53d7\u5f71\u54cd\u884c: {lines}.", summaryInactiveProducts: "{count} \u4e2a\u5df2\u505c\u7528\u5546\u54c1: {products}.",
   summaryTicketCancelled: "\u5c0f\u7968 {document}. \u539f\u56e0: {reason}.", summarySaleCleared: "\u5df2\u6e05\u9664\u5305\u542b {count} \u884c\u3001\u91d1\u989d {total} \u7684\u672a\u5b8c\u6210\u9500\u552e.",
   backToRules: "\u8fd4\u56de\u89c4\u5219", dateFilter: "\u76d1\u7763\u671f\u95f4", from: "\u5f00\u59cb", to: "\u7ed3\u675f", quickRanges: "\u5feb\u901f\u671f\u95f4", today: "\u4eca\u5929", lastSevenDays: "7\u5929", currentMonth: "\u672c\u6708",
   ruleBlocks: "\u63a7\u5236\u89c4\u5219", total: "\u671f\u95f4\u8b66\u62a5", newCount: "\u65b0\u5efa", openList: "\u67e5\u770b\u8b66\u62a5",
   summaryConsecutiveDeletions: "\u8fde\u7eed\u5220\u9664 {count} \u884c\u3002", summaryProductDiscount: "\u5bf9 {count} \u4e2a\u5546\u54c1\u884c\u5e94\u7528\u4e86\u624b\u52a8\u6298\u6263\u3002", summaryManualPrice: "\u5df2\u8bb0\u5f55\u624b\u52a8\u4ef7\u683c\u66f4\u6539\u3002",
   summaryManualNegative: "\u5df2\u8bb0\u5f55\u5305\u542b {count} \u4e2a\u8d1f\u6570\u884c\u7684\u624b\u52a8\u9000\u8d27\u3002", summaryCashDrawer: "\u7531 {authorizer} \u6388\u6743\u624b\u52a8\u6253\u5f00\u94b1\u7bb1\u3002",
-  summaryProductModified: "\u5546\u54c1 {product} \u5df2\u4ece APP VENTA \u4fee\u6539\uff0c\u6388\u6743\u4eba\uff1a{authorizer}\u3002"
+  summaryProductModified: "\u5546\u54c1 {product} \u5df2\u4ece APP VENTA \u4fee\u6539\uff0c\u6388\u6743\u4eba\uff1a{authorizer}\u3002",
+  autoRefresh: "\u81ea\u52a8\u5237\u65b0", autoRefreshOff: "\u5173\u95ed", newNotice: "\u81ea\u4e0a\u6b21\u5237\u65b0\u4ee5\u6765\u6709 {count} \u6761\u65b0\u8b66\u62a5\u3002", dismissNotice: "\u5173\u95ed\u901a\u77e5", pendingIndicator: "\u5f85\u5904\u7406\u8b66\u62a5\u6458\u8981",
+  analyticsEyebrow: "\u671f\u95f4\u6458\u8981", analyticsTitle: "\u5206\u6790\u9762\u677f", overdueAfter: "\u5f85\u5904\u7406\u65f6\u957f", pendingCount: "\u5f85\u5904\u7406", overdueCount: "\u5df2\u903e\u671f",
+  byStatus: "\u6309\u72b6\u6001", byType: "\u6309\u7c7b\u578b", byUser: "\u6309\u7528\u6237", byTerminal: "\u6309\u7ec8\u7aef", analyticsEmpty: "\u65e0\u6570\u636e", analyticsUnavailable: "\u4e0d\u53ef\u7528",
+  analyticsLimited: "\u90e8\u5206\u89c6\u56fe\uff1a\u670d\u52a1\u5668\u5c1a\u672a\u63d0\u4f9b\u6309\u7528\u6237\u548c\u7ec8\u7aef\u7684\u5206\u6790\u3002"
 };
 
 const localeValues = { es, en, zh } as const;
@@ -79,6 +100,8 @@ export function controlMessages(locale: LocaleCode): Record<string, string> {
   ["REVIEW", "CLOSE", "DISMISS"].forEach((key, index) => { result[`gestion.controlAlerts.action.${key}`] = data.actions[index]; });
   ["occurredAt", "username", "terminal", "document", "detail", "status"].forEach((key, index) => { result[`gestion.controlAlerts.column.${key}`] = data.columns[index]; });
   ["NEW", "REVIEWED", "CLOSED", "DISMISSED"].forEach((key, index) => { result[`gestion.controlAlerts.status.${key}`] = data.statuses[index]; });
+  const priorities = locale === "es" ? ["Informativa", "Media", "Alta", "Cr\u00edtica"] : locale === "en" ? ["Informational", "Medium", "High", "Critical"] : ["\u4fe1\u606f", "\u4e2d", "\u9ad8", "\u7d27\u6025"];
+  ["INFORMATIONAL", "MEDIUM", "HIGH", "CRITICAL"].forEach((key, index) => { result[`gestion.controlAlerts.priority.${key}`] = priorities[index]; });
   ["SALE_SCREEN_CLEARED", "CONSECUTIVE_LINE_DELETIONS", "MANUAL_PRICE_CHANGE_OVER_PERCENT", "MANUAL_PRICE_CHANGED", "MANUAL_DISCOUNT_OVER_PERCENT", "PRODUCT_DISCOUNT_APPLIED", "TICKET_CANCELLED", "INACTIVE_PRODUCT_SOLD", "MANUAL_NEGATIVE_QUANTITY", "CASH_DRAWER_OPENED", "PRODUCT_CATALOG_MODIFIED"].forEach((key, index) => { result[`gestion.controlAlerts.type.${key}`] = data.types[index]; });
   ["title", "list", "new", "empty", "edit", "create", "type", "threshold", "noConfig", "active", "inactive", "activate", "deactivate", "error"].forEach((key, index) => { result[`gestion.controlRules.${key}`] = data.rule[index]; });
   result["gestion.controlRules.name"] = locale === "es" ? "Nombre" : locale === "en" ? "Name" : "\u540d\u79f0";

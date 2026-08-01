@@ -1,7 +1,10 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
+  ApiConnectionError,
   ApiError,
+  apiBaseUrl,
   apiRequest,
+  checkBackendConnection,
   createTranslator,
   type LocaleCode,
   type TerminalContext
@@ -31,8 +34,24 @@ export function ServerTerminalSetupScreen({
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkBackendConnection().then((online) => {
+      if (!cancelled) setBackendOnline(online);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function retryConnection() {
+    setBackendOnline(null);
+    setError("");
+    setBackendOnline(await checkBackendConnection());
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +59,7 @@ export function ServerTerminalSetupScreen({
       setError(t("gestion.serverSetup.passwordFormat"));
       return;
     }
+    if (backendOnline !== true) return;
     setBusy(true);
     setError("");
     let token = "";
@@ -78,9 +98,12 @@ export function ServerTerminalSetupScreen({
       }
       onProvisioned(context);
     } catch (caught) {
-      setError(caught instanceof ApiError && caught.status === 401
-        ? t("gestion.serverSetup.invalidAdmin")
-        : t("gestion.serverSetup.error"));
+      if (caught instanceof ApiConnectionError) setBackendOnline(false);
+      setError(caught instanceof ApiConnectionError
+        ? t("gestion.serverSetup.offline")
+        : caught instanceof ApiError && caught.status === 401
+          ? t("gestion.serverSetup.invalidAdmin")
+          : t("gestion.serverSetup.error"));
     } finally {
       if (token) {
         void apiRequest("/auth/logout", { method: "POST", token }).catch(() => undefined);
@@ -99,14 +122,50 @@ export function ServerTerminalSetupScreen({
           <strong>{t("gestion.serverSetup.title")}</strong>
           <span>{t("gestion.serverSetup.description")}</span>
         </header>
+        <div className={`server-setup-connection ${backendOnline === true ? "online" : backendOnline === false ? "offline" : "checking"}`}>
+          <div>
+            <span>{t("gestion.serverSetup.server")}</span>
+            <code>{apiBaseUrl}</code>
+          </div>
+          <strong role="status" aria-live="polite">
+            {backendOnline === null
+              ? t("login.backendChecking")
+              : backendOnline
+                ? t("login.backendOnline")
+                : t("gestion.serverSetup.offline")}
+          </strong>
+          {backendOnline === false && (
+            <button type="button" disabled={busy} onClick={() => void retryConnection()}>
+              {t("login.backendRetry")}
+            </button>
+          )}
+        </div>
         <label>
           <span>{t("gestion.serverSetup.admin")}</span>
           <input autoFocus value={username} disabled={busy} onChange={(event) => setUsername(event.target.value)} />
         </label>
-        <label>
-          <span>{t("login.password")}</span>
-          <input type="password" value={password} disabled={busy} onChange={(event) => setPassword(event.target.value)} />
-        </label>
+        <div className="server-setup-password-control">
+          <label htmlFor="server-setup-password">{t("login.password")}</label>
+          <span className="server-setup-password-field">
+            <input
+              id="server-setup-password"
+              type={passwordVisible ? "text" : "password"}
+              autoComplete="current-password"
+              value={password}
+              disabled={busy}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              aria-label={t(passwordVisible ? "gestion.serverSetup.hidePassword" : "gestion.serverSetup.showPassword")}
+              aria-pressed={passwordVisible}
+              onClick={() => setPasswordVisible((visible) => !visible)}
+            >
+              {t(passwordVisible ? "gestion.serverSetup.hidePassword" : "gestion.serverSetup.showPassword")}
+            </button>
+          </span>
+        </div>
         {requiresPasswordChange && (
           <label>
             <span>{t("gestion.serverSetup.newPassword")}</span>
@@ -120,7 +179,7 @@ export function ServerTerminalSetupScreen({
           </label>
         )}
         {error && <strong className="login-error">{error}</strong>}
-        <button type="submit" disabled={busy}>{busy ? t("login.loading") : t("gestion.serverSetup.submit")}</button>
+        <button type="submit" disabled={busy || backendOnline !== true}>{busy ? t("login.loading") : t("gestion.serverSetup.submit")}</button>
         <p className="server-setup-note">{t("gestion.serverSetup.secureStorage")}</p>
       </form>
     </main>

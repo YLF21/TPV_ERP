@@ -353,7 +353,6 @@ function GestionScreen({
       />
     ) : (
       <StockScreen
-        key={stockSelection.key}
         app="gestion"
         locale={locale}
         session={session}
