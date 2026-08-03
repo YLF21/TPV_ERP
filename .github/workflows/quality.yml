@@ -104,4 +104,5 @@ jobs:
           TPV_DB_URL: jdbc:postgresql://localhost:5432/tpv_erp_test
           TPV_DEV_SAMPLE_DATA_ENABLED: "true"
           TPV_DEV_UNLICENSED_ACCESS_ENABLED: "true"
+          TPV_INSTALLATION_PORTABLE_SECRET_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
           E2E_MAVEN_COMMAND: ./mvnw
