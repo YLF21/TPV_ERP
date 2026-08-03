@@ -102,4 +102,6 @@ jobs:
           E2E_DB_PASSWORD: admin
           TPV_TEST_DB_URL: jdbc:postgresql://localhost:5432/tpv_erp_test
           TPV_DB_URL: jdbc:postgresql://localhost:5432/tpv_erp_test
+          TPV_DEV_SAMPLE_DATA_ENABLED: "true"
+          TPV_DEV_UNLICENSED_ACCESS_ENABLED: "true"
           E2E_MAVEN_COMMAND: ./mvnw
