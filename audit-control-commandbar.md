@@ -1,7 +1,5 @@
 # Auditoría del bloque de control de alertas
 
-Captura revisada: `audit-control-alerts-current.png`
-
 ## Veredicto
 
 El bloque ya presenta una jerarquía clara: indicadores, frecuencia de actualización, acción manual y acción primaria aparecen en un único recorrido horizontal. La siguiente mejora debería centrarse en convertir información pasiva en acciones y mostrar mejor el estado del sistema.
