@@ -37,6 +37,7 @@ export default defineConfig({
       cwd: path.join(repositoryRoot, "backend"),
       env: {
         ...process.env,
+        SPRING_PROFILES_ACTIVE: process.env.SPRING_PROFILES_ACTIVE ?? "dev",
         TPV_SERVER_ADDRESS: "127.0.0.1",
         TPV_SERVER_PORT: new URL(backendUrl).port || "18080",
         TPV_DB_USERNAME: process.env.E2E_DB_USERNAME ?? process.env.TPV_DB_USERNAME ?? "tpv_erp",
