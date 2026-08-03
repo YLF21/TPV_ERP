@@ -33,7 +33,7 @@ export default defineConfig({
   },
   webServer: reuseExternalServers ? undefined : [
     {
-      command: `${backendMavenCommand} -q spring-boot:run`,
+      command: `${backendMavenCommand} --batch-mode spring-boot:run`,
       cwd: path.join(repositoryRoot, "backend"),
       env: {
         ...process.env,
@@ -43,6 +43,8 @@ export default defineConfig({
         TPV_DB_USERNAME: process.env.E2E_DB_USERNAME ?? process.env.TPV_DB_USERNAME ?? "tpv_erp",
         TPV_DB_PASSWORD: process.env.E2E_DB_PASSWORD ?? process.env.TPV_DB_PASSWORD ?? "admin"
       },
+      stdout: "pipe",
+      stderr: "pipe",
       url: `${backendUrl}/actuator/health`,
       reuseExistingServer: true,
       timeout: 120_000
