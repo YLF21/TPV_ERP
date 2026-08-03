@@ -13,6 +13,8 @@
     "app:venta": "node scripts/start-electron-app.mjs venta",
     "app:gestion": "node scripts/start-electron-app.mjs gestion",
     "build": "npm run build --workspaces --if-present",
+    "check:bundle": "node scripts/check-bundle-budgets.mjs",
+    "check": "npm test && npm run build && npm run check:bundle",
     "test": "vitest run --exclude \"e2e/**\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

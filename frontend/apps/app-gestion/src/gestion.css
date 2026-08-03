@@ -3397,3 +3397,478 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
     border-bottom: 1px solid #b9c4ce;
   }
 }
+.gestion-dashboard-scope-control {
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Warehouse operational workspace: transfers, adjustments and physical counts. */
+.gestion-warehouse-operations {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--gestion-navy);
+}
+
+.gestion-warehouse-operations-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0 12px;
+  border-bottom: 2px solid var(--gestion-navy);
+}
+
+.gestion-warehouse-operations-header span {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.gestion-warehouse-operations-header h2 {
+  margin: 3px 0 0;
+  font-size: 25px;
+}
+
+.gestion-warehouse-operations-header p {
+  margin: 4px 0 0;
+  color: var(--gestion-muted);
+  font-weight: 650;
+}
+
+.gestion-warehouse-operations button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #8293a3;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gestion-warehouse-operations button:not(:disabled):hover {
+  border-color: var(--gestion-navy);
+  background: #edf3f8;
+}
+
+.gestion-warehouse-operations button[type="submit"]:not(:disabled):hover,
+.gestion-stock-count-detail > header button:last-child:not(:disabled):hover {
+  background: #174b78;
+  color: #fff;
+}
+
+.gestion-warehouse-operations button[type="submit"],
+.gestion-stock-count-detail > header button:last-child {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
+.gestion-warehouse-operations button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.gestion-warehouse-operations-message {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border-left: 4px solid;
+  font-weight: 800;
+}
+
+.gestion-warehouse-operations-message.error {
+  border-color: var(--gestion-negative);
+  background: #fff0f0;
+  color: var(--gestion-negative);
+}
+
+.gestion-warehouse-operations-message.success {
+  border-color: var(--gestion-positive);
+  background: #edf8ef;
+  color: #17662a;
+}
+
+.gestion-warehouse-operation-form {
+  width: min(1120px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  margin-top: 16px;
+  padding: 22px;
+  border: 1px solid var(--gestion-border-dark);
+  border-top: 4px solid #2779bb;
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(11 47 82 / 8%);
+}
+
+.gestion-warehouse-operation-form label,
+.gestion-stock-count-create label,
+.gestion-stock-count-add-line label,
+.gestion-stock-count-filters label {
+  display: grid;
+  gap: 5px;
+  color: #40556a;
+  font-size: var(--gestion-font-label);
+  font-weight: 900;
+}
+
+.gestion-warehouse-operation-form select,
+.gestion-warehouse-operation-form input,
+.gestion-warehouse-operation-form textarea,
+.gestion-stock-count-create select,
+.gestion-stock-count-create input,
+.gestion-stock-count-add-line select,
+.gestion-stock-count-add-line input,
+.gestion-stock-count-filters select,
+.gestion-stock-count-table input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid #8999a8;
+  border-radius: 2px;
+  background: #fff;
+  color: var(--gestion-navy);
+  font: inherit;
+}
+
+.gestion-warehouse-operation-form select:focus,
+.gestion-warehouse-operation-form input:focus,
+.gestion-warehouse-operation-form textarea:focus,
+.gestion-stock-count-create select:focus,
+.gestion-stock-count-create input:focus,
+.gestion-stock-count-add-line select:focus,
+.gestion-stock-count-add-line input:focus,
+.gestion-stock-count-filters select:focus,
+.gestion-stock-count-table input:focus {
+  border-color: #2779bb;
+  outline: 2px solid rgb(39 121 187 / 18%);
+  outline-offset: 0;
+}
+
+.gestion-warehouse-operation-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.gestion-warehouse-operation-form .wide,
+.gestion-warehouse-operation-form footer {
+  grid-column: 1 / -1;
+}
+
+.gestion-warehouse-operation-form fieldset {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #aeb9c3;
+}
+
+.gestion-warehouse-operation-form fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.gestion-warehouse-operation-form fieldset input {
+  min-height: auto;
+}
+
+.gestion-warehouse-balance {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 9px 13px;
+  border: 1px solid #c9d8e5;
+  border-left: 4px solid #2779bb;
+  border-radius: 3px;
+  background: #edf3f8;
+}
+
+.gestion-warehouse-balance span {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gestion-warehouse-balance strong {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gestion-warehouse-operation-form footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.gestion-stock-count-layout {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.gestion-stock-count-list,
+.gestion-stock-count-detail {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--gestion-border-dark);
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(11 47 82 / 7%);
+}
+
+.gestion-stock-count-create {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border-bottom: 1px solid #b7c1ca;
+  background: #f3f6f8;
+}
+
+.gestion-stock-count-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #c5ced6;
+}
+
+.gestion-stock-count-filters label {
+  flex: 1;
+}
+
+.gestion-stock-count-items {
+  max-height: calc(100% - 205px);
+  overflow: auto;
+}
+
+.gestion-stock-count-items > button {
+  width: 100%;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid #c8d0d8;
+  border-radius: 0;
+  text-align: left;
+}
+
+.gestion-stock-count-items > button:hover {
+  background: #f1f6fa;
+}
+
+.gestion-stock-count-items > button.selected {
+  box-shadow: inset 4px 0 0 #2779bb;
+  background: #e9f3fb;
+}
+
+.gestion-stock-count-status {
+  width: fit-content;
+  padding: 3px 7px;
+  border: 1px solid #9ba9b5;
+  border-radius: 999px;
+  background: #f1f4f6;
+  color: #52677a;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.gestion-stock-count-status.draft {
+  border-color: #d5a141;
+  background: #fff7df;
+  color: #7a5207;
+}
+
+.gestion-stock-count-status.confirmed {
+  border-color: #73ad7f;
+  background: #edf8ef;
+  color: #17662a;
+}
+
+.gestion-stock-count-status.cancelled {
+  border-color: #c28b8b;
+  background: #fff0f0;
+  color: #9f2929;
+}
+
+.gestion-stock-count-items small {
+  grid-column: 1 / -1;
+  color: var(--gestion-muted);
+}
+
+.gestion-stock-count-items > p {
+  padding: 20px;
+  color: var(--gestion-muted);
+  text-align: center;
+}
+
+.gestion-stock-count-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.gestion-stock-count-detail > header {
+  min-height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #aeb9c3;
+  background: #edf3f8;
+}
+
+.gestion-stock-count-detail > header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gestion-stock-count-add-line {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) 125px auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #c5ced6;
+  background: #f8fafb;
+}
+
+.gestion-stock-count-table {
+  min-height: 0;
+  overflow: auto;
+}
+
+.gestion-stock-count-table > div {
+  min-width: 620px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) 78px 105px 82px 82px;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.gestion-stock-count-table > div:nth-child(even):not(.head) {
+  background: #fbfcfd;
+}
+
+.gestion-stock-count-table > div > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  border-right: 1px solid #d0d7de;
+  font-variant-numeric: tabular-nums;
+}
+
+.gestion-stock-count-table .head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--gestion-navy);
+  color: #fff;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gestion-stock-count-table input {
+  width: 100%;
+}
+
+.gestion-stock-count-table .product-cell {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.gestion-stock-count-table .product-cell small {
+  overflow: hidden;
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gestion-stock-count-difference {
+  min-width: 34px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  text-align: center;
+}
+
+.gestion-stock-count-difference.positive {
+  background: #edf8ef;
+  color: #17662a;
+}
+
+.gestion-stock-count-difference.negative {
+  background: #fff0f0;
+  color: #a32929;
+}
+
+.gestion-stock-count-difference.neutral {
+  background: #edf1f5;
+  color: #52677a;
+}
+
+@media (max-width: 1050px) {
+  .gestion-stock-count-layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .gestion-stock-count-list,
+  .gestion-stock-count-detail {
+    min-height: 380px;
+  }
+}
+
+@media (max-width: 700px) {
+  .gestion-warehouse-operation-form {
+    grid-template-columns: 1fr;
+  }
+
+  .gestion-warehouse-operation-form .wide,
+  .gestion-warehouse-operation-form footer {
+    grid-column: auto;
+  }
+
+  .gestion-stock-count-add-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gestion-dashboard-scope-control input,
+.gestion-dashboard-scope-control select {
+  min-height: 32px;
+  border: 1px solid var(--gestion-border);
+  border-radius: 2px;
+  background: var(--gestion-panel);
+  color: var(--gestion-text);
+  font: inherit;
+  font-size: var(--gestion-font-body);
+  font-weight: 600;
+  letter-spacing: normal;
+  padding: 4px 8px;
+  text-transform: none;
+}

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createTranslator, type UserSession } from "@tpverp/app-common";
+import "../../../packages/app-common/src/styles/tpv.css";
 import { ControlAlertsScreen } from "./ControlAlertsScreen";
 import "./gestion.css";
 

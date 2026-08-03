@@ -18,6 +18,7 @@ import {
   type UserSession,
   type WarehouseSection
 } from "@tpverp/app-common";
+import "../../../packages/app-common/src/styles/tpv.css";
 import "./gestion.css";
 import { visibleGestionModules } from "./gestionAccess";
 import { GestionDashboard } from "./GestionDashboard";
@@ -53,6 +54,12 @@ const WarehouseManagementScreen = lazy(() =>
   }))
 );
 
+const WarehouseOperationsScreen = lazy(() =>
+  import("./WarehouseOperationsScreen").then(({ WarehouseOperationsScreen }) => ({
+    default: WarehouseOperationsScreen
+  }))
+);
+
 const VerifactuManagementScreen = lazy(() =>
   import("./VerifactuManagementScreen").then(({ VerifactuManagementScreen }) => ({
     default: VerifactuManagementScreen
@@ -79,6 +86,7 @@ type StockSelection = {
   settingsMode?: "configuration" | "permissions";
   warehouseSection?: WarehouseSection;
   warehouseManagement?: boolean;
+  warehouseOperation?: import("./WarehouseOperationsScreen").WarehouseOperationMode;
 };
 
 function App() {
@@ -255,6 +263,25 @@ function GestionScreen({
         warehouseManagement: true
       })
     }] : []),
+    ...((session.permissions.includes("ADMIN")
+      || session.permissions.includes("GESTION_ALMACEN")
+      || session.permissions.includes("STOCK_TRANSFER")) ? [{
+      key: "stock.warehouse.transfer",
+      label: t("warehouse.transfer.navigation"),
+      onOpen: () => onOpenStock({ key: "stock.warehouse.transfer", warehouseOperation: "transfer" })
+    }] : []),
+    ...((session.permissions.includes("ADMIN")
+      || session.permissions.includes("GESTION_ALMACEN")
+      || session.permissions.includes("STOCK_ADJUST")) ? [{
+      key: "stock.warehouse.adjustment",
+      label: t("warehouse.adjustment.navigation"),
+      onOpen: () => onOpenStock({ key: "stock.warehouse.adjustment", warehouseOperation: "adjustment" })
+    }] : []),
+    ...((session.permissions.includes("ADMIN") || session.permissions.includes("GESTION_ALMACEN")) ? [{
+      key: "stock.warehouse.count",
+      label: t("warehouse.count.navigation"),
+      onOpen: () => onOpenStock({ key: "stock.warehouse.count", warehouseOperation: "count" })
+    }] : []),
     ...warehouseSections.map((warehouseSection) => ({
       key: `stock.warehouse.${warehouseSection}`,
       label: t(warehouseSection === "input"
@@ -399,7 +426,14 @@ function GestionScreen({
       />
     );
   } else if (effectiveModule === "stock" && stockContentItems.some((item) => item.key === stockSelection.key)) {
-    content = stockSelection.warehouseManagement ? (
+    content = stockSelection.warehouseOperation ? (
+      <WarehouseOperationsScreen
+        key={stockSelection.key}
+        session={session}
+        mode={stockSelection.warehouseOperation}
+        t={t}
+      />
+    ) : stockSelection.warehouseManagement ? (
       <WarehouseManagementScreen session={session} t={t} />
     ) : stockSelection.warehouseSection ? (
       <WarehouseScreen

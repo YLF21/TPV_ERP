@@ -4,6 +4,8 @@ import {
   dashboardWidgetDefaults,
   loadControlAlertsSummary,
   loadDashboardPreference,
+  loadSalesToday,
+  loadTopProducts,
   moveDashboardWidget,
   reorderDashboardWidgets,
   resizeDashboardWidget,
@@ -68,5 +70,23 @@ describe("APP GESTION dashboard model", () => {
     expect(dashboardWidgetDefaults["control.alerts"]).toEqual({ key: "control.alerts", width: 4, height: 2 });
     await expect(loadControlAlertsSummary("token")).resolves.toEqual(response);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/control/alerts/summary");
+  });
+
+  it("scopes dashboard sales data by business date and warehouse", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({})
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const scope = { date: "2026-08-03", warehouseId: "warehouse-2" };
+    await loadSalesToday("token", scope);
+    await loadTopProducts("token", scope);
+
+    expect(String(fetchMock.mock.calls[0][0]))
+      .toContain("/gestion/dashboard/data/sales-today?date=2026-08-03&warehouseId=warehouse-2");
+    expect(String(fetchMock.mock.calls[1][0]))
+      .toContain("/gestion/dashboard/data/top-products?date=2026-08-03&warehouseId=warehouse-2");
   });
 });

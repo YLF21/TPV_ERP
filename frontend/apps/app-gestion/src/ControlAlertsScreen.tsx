@@ -90,6 +90,9 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   const [analytics, setAnalytics] = useState<ControlAlertsAnalytics | null>(null);
   const [analyticsLimited, setAnalyticsLimited] = useState(false);
   const [refreshSeconds, setRefreshSeconds] = useState(30);
+  const [documentVisible, setDocumentVisible] = useState(() =>
+    typeof document === "undefined" || document.visibilityState !== "hidden"
+  );
   const [overdueHours, setOverdueHours] = useState(24);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [newAlertNotice, setNewAlertNotice] = useState(0);
@@ -98,6 +101,12 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
   const [editorType, setEditorType] = useState<ControlAlertType | null | undefined>(undefined);
   const canManageRules = canManageControlRules(session);
+
+  useEffect(() => {
+    const updateVisibility = () => setDocumentVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
 
   async function refreshGroups() {
     if (refreshInFlight.current) return;
@@ -153,11 +162,11 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
   }, [range, token, overdueHours]);
 
   useEffect(() => {
-    if (refreshSeconds <= 0) return;
+    if (refreshSeconds <= 0 || !documentVisible) return;
     const timer = window.setInterval(() => void refreshGroups(), refreshSeconds * 1_000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, token, overdueHours, refreshSeconds]);
+  }, [range, token, overdueHours, refreshSeconds, documentVisible]);
 
   useEffect(() => {
     void refreshRules();
@@ -269,7 +278,14 @@ export function ControlAlertsScreen({ session, t }: ControlAlertsScreenProps) {
         )}
 
         {activeTile ? (
-          <AlertsByRuleView session={session} t={t} tile={activeTile} range={range} refreshSeconds={refreshSeconds} />
+          <AlertsByRuleView
+            session={session}
+            t={t}
+            tile={activeTile}
+            range={range}
+            refreshSeconds={refreshSeconds}
+            autoRefreshActive={documentVisible}
+          />
         ) : (
           <div className="gestion-control-overview-stage">
             <AnalyticsPanel
@@ -494,7 +510,14 @@ function RuleOverview({ tiles, loading, error, canManage, t, onOpen, onEdit, onT
   );
 }
 
-function AlertsByRuleView({ session, t, tile, range, refreshSeconds }: { session: UserSession; t: Translator; tile: RuleTile; range: DateRange; refreshSeconds: number }) {
+function AlertsByRuleView({ session, t, tile, range, refreshSeconds, autoRefreshActive }: {
+  session: UserSession;
+  t: Translator;
+  tile: RuleTile;
+  range: DateRange;
+  refreshSeconds: number;
+  autoRefreshActive: boolean;
+}) {
   const token = session.accessToken;
   const instants = useMemo(() => dateRangeToInstants(range), [range]);
   const [filters, setFilters] = useState<ControlAlertFilters>({
@@ -566,11 +589,11 @@ function AlertsByRuleView({ session, t, tile, range, refreshSeconds }: { session
   }, [filters, token]);
 
   useEffect(() => {
-    if (refreshSeconds <= 0) return;
+    if (refreshSeconds <= 0 || !autoRefreshActive) return;
     const timer = window.setInterval(() => void refresh(), refreshSeconds * 1_000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, token, refreshSeconds]);
+  }, [filters, token, refreshSeconds, autoRefreshActive]);
 
   useEffect(() => {
     if (!selectedId) {

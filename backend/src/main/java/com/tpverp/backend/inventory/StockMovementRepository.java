@@ -30,4 +30,6 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
     boolean existsByWarehouseOutputId(UUID outputId);
 
     boolean existsByWarehouseInputId(UUID inputId);
+
+    boolean existsByStockCountId(UUID stockCountId);
 }

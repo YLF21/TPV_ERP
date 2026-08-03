@@ -135,6 +135,90 @@ const values: Record<LocaleCode, Record<string, string>> = {
   }
 };
 
+const operationValues: Record<LocaleCode, Record<string, string>> = {
+  es: {
+    "warehouse.operations.section": "Operaciones de almacén",
+    "warehouse.operations.refresh": "Actualizar datos",
+    "warehouse.operations.loading": "Cargando datos de almacén...",
+    "warehouse.operations.loadError": "No se pudieron cargar los datos de almacén",
+    "warehouse.operations.noAccess": "No tienes permiso para realizar esta operación de almacén",
+    "warehouse.operations.product": "Producto",
+    "warehouse.operations.warehouse": "Almacén",
+    "warehouse.operations.quantity": "Cantidad",
+    "warehouse.operations.currentStock": "Stock actual",
+    "warehouse.operations.saving": "Guardando...",
+    "warehouse.operations.required": "Selecciona el producto y los almacenes",
+    "warehouse.operations.quantityInvalid": "Introduce una cantidad positiva con un máximo de tres decimales",
+    "warehouse.transfer.navigation": "Traspasos",
+    "warehouse.transfer.title": "Traspaso entre almacenes",
+    "warehouse.transfer.title.subtitle": "Mueve existencias entre dos almacenes y conserva la trazabilidad del movimiento",
+    "warehouse.transfer.source": "Almacén de origen",
+    "warehouse.transfer.target": "Almacén de destino",
+    "warehouse.transfer.sameWarehouse": "Los almacenes de origen y destino deben ser distintos",
+    "warehouse.transfer.submit": "Confirmar traspaso",
+    "warehouse.transfer.completed": "Traspaso completado correctamente",
+    "warehouse.transfer.error": "No se pudo completar el traspaso",
+    "warehouse.adjustment.navigation": "Ajustes de stock",
+    "warehouse.adjustment.title": "Ajuste de stock",
+    "warehouse.adjustment.title.subtitle": "Registra una corrección positiva o negativa con su motivo de auditoría",
+    "warehouse.adjustment.type": "Tipo de ajuste",
+    "warehouse.adjustment.positive": "Entrada / aumento",
+    "warehouse.adjustment.negative": "Salida / disminución",
+    "warehouse.adjustment.reason": "Motivo",
+    "warehouse.adjustment.required": "Selecciona producto y almacén e indica el motivo",
+    "warehouse.adjustment.submit": "Registrar ajuste",
+    "warehouse.adjustment.completed": "Ajuste registrado correctamente",
+    "warehouse.adjustment.error": "No se pudo registrar el ajuste",
+    "warehouse.count.navigation": "Recuentos físicos",
+    "warehouse.count.title": "Recuentos físicos",
+    "warehouse.count.title.subtitle": "Compara la cantidad contada con la existencia esperada y confirma las diferencias",
+    "warehouse.count.list": "Listado de recuentos",
+    "warehouse.count.detail": "Detalle del recuento",
+    "warehouse.count.notes": "Notas",
+    "warehouse.count.create": "Nuevo recuento",
+    "warehouse.count.created": "Recuento creado correctamente",
+    "warehouse.count.createError": "No se pudo crear el recuento",
+    "warehouse.count.loadError": "No se pudieron cargar los recuentos",
+    "warehouse.count.detailError": "No se pudo cargar el detalle del recuento",
+    "warehouse.count.statusError": "No se pudo cambiar el estado del recuento",
+    "warehouse.count.warehouseRequired": "Selecciona un almacén",
+    "warehouse.count.status": "Estado",
+    "warehouse.count.all": "Todos",
+    "warehouse.count.status.DRAFT": "Borrador",
+    "warehouse.count.status.CONFIRMED": "Confirmado",
+    "warehouse.count.status.CANCELLED": "Cancelado",
+    "warehouse.count.empty": "No hay recuentos para estos criterios",
+    "warehouse.count.select": "Selecciona o crea un recuento para consultar sus líneas",
+    "warehouse.count.expected": "Esperado",
+    "warehouse.count.counted": "Contado",
+    "warehouse.count.difference": "Diferencia",
+    "warehouse.count.action": "Acción",
+    "warehouse.count.selectProduct": "Selecciona un producto",
+    "warehouse.count.addLine": "Añadir al recuento",
+    "warehouse.count.lineAdded": "Producto añadido al recuento",
+    "warehouse.count.saveLine": "Guardar",
+    "warehouse.count.lineSaved": "cantidad guardada",
+    "warehouse.count.lineError": "No se pudo guardar la cantidad contada",
+    "warehouse.count.quantityInvalid": "La cantidad contada debe ser cero o positiva y tener un máximo de tres decimales",
+    "warehouse.count.confirm": "Confirmar recuento",
+    "warehouse.count.cancel": "Cancelar recuento",
+    "warehouse.count.confirmed": "Recuento confirmado; las diferencias se han aplicado",
+    "warehouse.count.cancelled": "Recuento cancelado"
+  },
+  en: {
+    "warehouse.operations.section": "Warehouse operations", "warehouse.operations.refresh": "Refresh data", "warehouse.operations.loading": "Loading warehouse data...", "warehouse.operations.loadError": "Warehouse data could not be loaded", "warehouse.operations.noAccess": "You do not have permission for this warehouse operation", "warehouse.operations.product": "Product", "warehouse.operations.warehouse": "Warehouse", "warehouse.operations.quantity": "Quantity", "warehouse.operations.currentStock": "Current stock", "warehouse.operations.saving": "Saving...", "warehouse.operations.required": "Select the product and warehouses", "warehouse.operations.quantityInvalid": "Enter a positive quantity with no more than three decimals",
+    "warehouse.transfer.navigation": "Transfers", "warehouse.transfer.title": "Warehouse transfer", "warehouse.transfer.title.subtitle": "Move stock between two warehouses while keeping movement traceability", "warehouse.transfer.source": "Source warehouse", "warehouse.transfer.target": "Target warehouse", "warehouse.transfer.sameWarehouse": "Source and target warehouses must be different", "warehouse.transfer.submit": "Confirm transfer", "warehouse.transfer.completed": "Transfer completed successfully", "warehouse.transfer.error": "The transfer could not be completed",
+    "warehouse.adjustment.navigation": "Stock adjustments", "warehouse.adjustment.title": "Stock adjustment", "warehouse.adjustment.title.subtitle": "Record a positive or negative correction with an audit reason", "warehouse.adjustment.type": "Adjustment type", "warehouse.adjustment.positive": "Input / increase", "warehouse.adjustment.negative": "Output / decrease", "warehouse.adjustment.reason": "Reason", "warehouse.adjustment.required": "Select a product and warehouse and enter a reason", "warehouse.adjustment.submit": "Record adjustment", "warehouse.adjustment.completed": "Adjustment recorded successfully", "warehouse.adjustment.error": "The adjustment could not be recorded",
+    "warehouse.count.navigation": "Physical counts", "warehouse.count.title": "Physical counts", "warehouse.count.title.subtitle": "Compare counted stock with expected stock and confirm differences", "warehouse.count.list": "Count list", "warehouse.count.detail": "Count details", "warehouse.count.notes": "Notes", "warehouse.count.create": "New count", "warehouse.count.created": "Count created successfully", "warehouse.count.createError": "The count could not be created", "warehouse.count.loadError": "Counts could not be loaded", "warehouse.count.detailError": "Count details could not be loaded", "warehouse.count.statusError": "Count status could not be changed", "warehouse.count.warehouseRequired": "Select a warehouse", "warehouse.count.status": "Status", "warehouse.count.all": "All", "warehouse.count.status.DRAFT": "Draft", "warehouse.count.status.CONFIRMED": "Confirmed", "warehouse.count.status.CANCELLED": "Cancelled", "warehouse.count.empty": "No counts match these criteria", "warehouse.count.select": "Select or create a count to view its lines", "warehouse.count.expected": "Expected", "warehouse.count.counted": "Counted", "warehouse.count.difference": "Difference", "warehouse.count.action": "Action", "warehouse.count.selectProduct": "Select a product", "warehouse.count.addLine": "Add to count", "warehouse.count.lineAdded": "Product added to count", "warehouse.count.saveLine": "Save", "warehouse.count.lineSaved": "quantity saved", "warehouse.count.lineError": "The counted quantity could not be saved", "warehouse.count.quantityInvalid": "The counted quantity must be zero or positive with no more than three decimals", "warehouse.count.confirm": "Confirm count", "warehouse.count.cancel": "Cancel count", "warehouse.count.confirmed": "Count confirmed; differences were applied", "warehouse.count.cancelled": "Count cancelled"
+  },
+  zh: {
+    "warehouse.operations.section": "仓库操作", "warehouse.operations.refresh": "刷新数据", "warehouse.operations.loading": "正在加载仓库数据...", "warehouse.operations.loadError": "无法加载仓库数据", "warehouse.operations.noAccess": "您没有执行此仓库操作的权限", "warehouse.operations.product": "商品", "warehouse.operations.warehouse": "仓库", "warehouse.operations.quantity": "数量", "warehouse.operations.currentStock": "当前库存", "warehouse.operations.saving": "正在保存...", "warehouse.operations.required": "请选择商品和仓库", "warehouse.operations.quantityInvalid": "请输入最多三位小数的正数",
+    "warehouse.transfer.navigation": "调拨", "warehouse.transfer.title": "仓库调拨", "warehouse.transfer.title.subtitle": "在两个仓库之间移动库存并保留可追溯记录", "warehouse.transfer.source": "来源仓库", "warehouse.transfer.target": "目标仓库", "warehouse.transfer.sameWarehouse": "来源仓库和目标仓库必须不同", "warehouse.transfer.submit": "确认调拨", "warehouse.transfer.completed": "调拨成功", "warehouse.transfer.error": "无法完成调拨",
+    "warehouse.adjustment.navigation": "库存调整", "warehouse.adjustment.title": "库存调整", "warehouse.adjustment.title.subtitle": "记录带有审计原因的正向或负向库存修正", "warehouse.adjustment.type": "调整类型", "warehouse.adjustment.positive": "入库 / 增加", "warehouse.adjustment.negative": "出库 / 减少", "warehouse.adjustment.reason": "原因", "warehouse.adjustment.required": "请选择商品和仓库并输入原因", "warehouse.adjustment.submit": "记录调整", "warehouse.adjustment.completed": "调整记录成功", "warehouse.adjustment.error": "无法记录调整",
+    "warehouse.count.navigation": "实物盘点", "warehouse.count.title": "实物盘点", "warehouse.count.title.subtitle": "比较盘点数量与预期库存并确认差异", "warehouse.count.list": "盘点列表", "warehouse.count.detail": "盘点详情", "warehouse.count.notes": "备注", "warehouse.count.create": "新建盘点", "warehouse.count.created": "盘点创建成功", "warehouse.count.createError": "无法创建盘点", "warehouse.count.loadError": "无法加载盘点", "warehouse.count.detailError": "无法加载盘点详情", "warehouse.count.statusError": "无法更改盘点状态", "warehouse.count.warehouseRequired": "请选择仓库", "warehouse.count.status": "状态", "warehouse.count.all": "全部", "warehouse.count.status.DRAFT": "草稿", "warehouse.count.status.CONFIRMED": "已确认", "warehouse.count.status.CANCELLED": "已取消", "warehouse.count.empty": "没有符合条件的盘点", "warehouse.count.select": "请选择或创建盘点以查看明细", "warehouse.count.expected": "预期", "warehouse.count.counted": "实盘", "warehouse.count.difference": "差异", "warehouse.count.action": "操作", "warehouse.count.selectProduct": "请选择商品", "warehouse.count.addLine": "添加到盘点", "warehouse.count.lineAdded": "商品已添加到盘点", "warehouse.count.saveLine": "保存", "warehouse.count.lineSaved": "数量已保存", "warehouse.count.lineError": "无法保存盘点数量", "warehouse.count.quantityInvalid": "盘点数量必须为零或正数且最多三位小数", "warehouse.count.confirm": "确认盘点", "warehouse.count.cancel": "取消盘点", "warehouse.count.confirmed": "盘点已确认并应用差异", "warehouse.count.cancelled": "盘点已取消"
+  }
+};
+
 export function warehouseManagementMessages(locale: LocaleCode) {
-  return values[locale];
+  return { ...values[locale], ...operationValues[locale] };
 }

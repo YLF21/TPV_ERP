@@ -4,6 +4,7 @@ import com.tpverp.backend.document.CommercialDocumentType;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,6 +21,9 @@ public class DevSampleDataSeeder {
     private static final UUID COMPANY = id("company");
     private static final UUID STORE = id("store");
     private static final UUID WAREHOUSE = STORE;
+    private static final UUID WAREHOUSE_RESERVE = id("warehouse-reserve");
+    private static final UUID WAREHOUSE_SHOWROOM = id("warehouse-showroom");
+    private static final UUID WAREHOUSE_QUARANTINE = id("warehouse-quarantine");
     private static final UUID FAMILY = STORE;
     private static final UUID TAX = id("tax-iva-21");
     private static final UUID ADMIN_ROLE = id("role-admin");
@@ -40,8 +44,6 @@ public class DevSampleDataSeeder {
     private static final UUID PRODUCT_OFFER_DISCOUNT = id("product-galletas-offer-discount");
     private static final UUID PRODUCT_WHOLESALE = id("product-leche-wholesale");
     private static final UUID PRODUCT_NO_DISCOUNT = id("product-pan-no-discount");
-    private static final LocalDate TODAY = LocalDate.of(2026, 8, 2);
-    private static final Instant NOW = Instant.parse("2026-08-02T10:00:00Z");
     private static final int BULK_DOCUMENTS = 1_000;
     private static final int DEMO_PRODUCTS = 48;
     private static final int DEMO_CUSTOMERS = 12;
@@ -51,10 +53,25 @@ public class DevSampleDataSeeder {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
+    private final LocalDate seedDate;
+    private final Instant seedInstant;
+    // Aliases kept local to the dataset recipes so their relative-date intent stays readable.
+    private final LocalDate TODAY;
+    private final Instant NOW;
 
-    public DevSampleDataSeeder(JdbcTemplate jdbc, PasswordEncoder passwordEncoder) {
+    public DevSampleDataSeeder(
+            JdbcTemplate jdbc,
+            PasswordEncoder passwordEncoder,
+            Clock clock,
+            String configuredBaseDate) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
+        this.seedDate = configuredBaseDate == null || configuredBaseDate.isBlank()
+                ? LocalDate.now(clock)
+                : LocalDate.parse(configuredBaseDate);
+        this.seedInstant = seedDate.atTime(10, 0).toInstant(ZoneOffset.UTC);
+        this.TODAY = seedDate;
+        this.NOW = seedInstant;
     }
 
     public static List<CommercialDocumentType> documentTypes() {
@@ -85,6 +102,11 @@ public class DevSampleDataSeeder {
         seedControlAlerts();
         synchronizeDocumentCounters();
         seedWarehouseDocuments();
+        rebuildStockSnapshots();
+    }
+
+    LocalDate seedDate() {
+        return seedDate;
     }
 
     private void synchronizeDocumentCounters() {
@@ -159,6 +181,9 @@ public class DevSampleDataSeeder {
                 values (?, ?, 'GENERAL', true, true)
                 on conflict do nothing
                 """, WAREHOUSE, STORE);
+        seedWarehouse(WAREHOUSE_RESERVE, "RESERVA Y REPOSICION");
+        seedWarehouse(WAREHOUSE_SHOWROOM, "TIENDA Y EXPOSICION");
+        seedWarehouse(WAREHOUSE_QUARANTINE, "DEVOLUCIONES Y CUARENTENA");
         jdbc.update("""
                 insert into familia (id, tienda_id, family_id, nombre, predeterminada)
                 values (?, ?, 'GENERAL', 'GENERAL', true)
@@ -169,6 +194,16 @@ public class DevSampleDataSeeder {
                 values (?, ?, 21.00, true, true)
                 on conflict do nothing
                 """, TAX, STORE);
+    }
+
+    private void seedWarehouse(UUID warehouseId, String name) {
+        jdbc.update("""
+                insert into almacen (id, tienda_id, nombre, predeterminado, activo)
+                values (?, ?, ?, false, true)
+                on conflict (id) do update
+                set nombre = excluded.nombre,
+                    activo = true
+                """, warehouseId, STORE, name);
     }
 
     private void seedSecurity() {
@@ -338,6 +373,7 @@ public class DevSampleDataSeeder {
                 jdbc.update("update producto set activo = false where id = ?", productId);
             }
         }
+        seedMultiWarehouseStock();
         payment("EFECTIVO", false, true);
         payment("TARJETA", false, false);
         payment("TRANSFERENCIA", false, false);
@@ -449,11 +485,63 @@ public class DevSampleDataSeeder {
     }
 
     private void stock(UUID product, String quantity) {
+        stock(product, WAREHOUSE, quantity);
+    }
+
+    private void stock(UUID product, UUID warehouse, String quantity) {
+        var openingQuantity = new BigDecimal(quantity);
+        var movementId = id("opening-stock-" + product + "-" + warehouse);
+        if (openingQuantity.signum() == 0) {
+            // A zero is not a business movement and must not manufacture an empty snapshot.
+            jdbc.update("delete from movimiento_stock where id = ?", movementId);
+            return;
+        }
         jdbc.update("""
-                insert into existencia (id, producto_id, almacen_id, cantidad)
-                values (?, ?, ?, ?)
-                on conflict (producto_id, almacen_id) do update set cantidad = excluded.cantidad
-                """, id("stock-" + product), product, WAREHOUSE, new BigDecimal(quantity));
+                insert into movimiento_stock
+                    (id, producto_id, almacen_id, usuario_id, tipo, cantidad, motivo, creado_en)
+                values (?, ?, ?, ?, 'AJUSTE', ?, 'Saldo inicial de datos de demostracion', ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    almacen_id = excluded.almacen_id,
+                    usuario_id = excluded.usuario_id,
+                    tipo = excluded.tipo,
+                    cantidad = excluded.cantidad,
+                    motivo = excluded.motivo,
+                    creado_en = excluded.creado_en
+                """, movementId, product, warehouse, USER, openingQuantity,
+                ts(NOW.minusSeconds(30L * 24L * 60L * 60L)));
+    }
+
+    private void rebuildStockSnapshots() {
+        jdbc.update("delete from existencia");
+        jdbc.update("""
+                insert into existencia (id, producto_id, almacen_id, cantidad, version)
+                select md5(producto_id::text || ':' || almacen_id::text)::uuid,
+                       producto_id,
+                       almacen_id,
+                       sum(cantidad),
+                       0
+                from movimiento_stock
+                group by producto_id, almacen_id
+                """);
+    }
+
+    private void seedMultiWarehouseStock() {
+        UUID[] featuredProducts = {
+                PRODUCT_A, PRODUCT_B, PRODUCT_MEMBER, PRODUCT_OFFER,
+                PRODUCT_OFFER_DISCOUNT, PRODUCT_WHOLESALE, PRODUCT_NO_DISCOUNT
+        };
+        for (int index = 0; index < featuredProducts.length; index++) {
+            stock(featuredProducts[index], WAREHOUSE_RESERVE, "%d.000".formatted(45 + index * 7));
+            stock(featuredProducts[index], WAREHOUSE_SHOWROOM, "%d.000".formatted(12 + index * 3));
+            stock(featuredProducts[index], WAREHOUSE_QUARANTINE, "%d.000".formatted(index % 3));
+        }
+        for (int index = 1; index <= 18; index++) {
+            UUID productId = id("product-demo-catalog-" + index);
+            stock(productId, WAREHOUSE_RESERVE, "%d.000".formatted(20 + (index * 9) % 80));
+            stock(productId, WAREHOUSE_SHOWROOM, "%d.000".formatted(4 + (index * 5) % 25));
+            stock(productId, WAREHOUSE_QUARANTINE, "%d.000".formatted(index % 4));
+        }
     }
 
     private void payment(String name, boolean reference, boolean drawer) {
@@ -1027,62 +1115,137 @@ public class DevSampleDataSeeder {
 
     private void seedWarehouseDocuments() {
         seedWarehouseOutput(
-                "warehouse-output", "SAL-2026-000001", TODAY,
+                "warehouse-output", warehouseNumber("SAL", "000001"), TODAY,
                 "MERMA PRUEBAS", "Salida de almacen de prueba frontend",
                 PRODUCT_A, 1, "12.10", 0);
         seedWarehouseOutput(
-                "warehouse-output-900001", "SAL-2026-900001", TODAY.minusDays(1),
+                "warehouse-output-900001", warehouseNumber("SAL", "900001"), TODAY.minusDays(1),
                 "CONSUMO INTERNO", "Material utilizado por el equipo",
                 PRODUCT_B, 6, "6.05", 1);
         seedWarehouseOutput(
-                "warehouse-output-900002", "SAL-2026-900002", TODAY.minusDays(2),
+                "warehouse-output-900002", warehouseNumber("SAL", "900002"), TODAY.minusDays(2),
                 "ROTURA", "Unidades dañadas durante la manipulación",
                 PRODUCT_MEMBER, 2, "9.90", 2);
         seedWarehouseOutput(
-                "warehouse-output-900003", "SAL-2026-900003", TODAY.minusDays(3),
+                "warehouse-output-900003", warehouseNumber("SAL", "900003"), TODAY.minusDays(3),
                 "CADUCIDAD", "Retirada preventiva de producto",
                 PRODUCT_OFFER, 4, "2.80", 3);
         seedWarehouseOutput(
-                "warehouse-output-900004", "SAL-2026-900004", TODAY.minusDays(5),
+                "warehouse-output-900004", warehouseNumber("SAL", "900004"), TODAY.minusDays(5),
                 "PROMOCIÓN", "Muestras entregadas en campaña",
                 PRODUCT_OFFER_DISCOUNT, 8, "3.00", 5);
         seedWarehouseOutput(
-                "warehouse-output-900005", "SAL-2026-900005", TODAY.minusDays(7),
+                "warehouse-output-900005", warehouseNumber("SAL", "900005"), TODAY.minusDays(7),
                 "TRASPASO EXTERNO", "Material enviado a exposición",
                 PRODUCT_WHOLESALE, 12, "1.35", 7);
         seedWarehouseOutput(
-                "warehouse-output-900006", "SAL-2026-900006", TODAY.minusDays(10),
+                "warehouse-output-900006", warehouseNumber("SAL", "900006"), TODAY.minusDays(10),
                 "AJUSTE INVENTARIO", "Regularización de conteo físico",
                 PRODUCT_NO_DISCOUNT, 3, "1.20", 10);
 
         seedWarehouseInput(
-                "warehouse-input-900001", "ENT-2026-900001", TODAY,
+                "warehouse-input-900001", warehouseNumber("ENT", "900001"), TODAY,
                 "PROVEEDOR HABITUAL", "Reposición semanal de café",
                 PRODUCT_A, 24, "3.50", 0);
         seedWarehouseInput(
-                "warehouse-input-900002", "ENT-2026-900002", TODAY.minusDays(1),
+                "warehouse-input-900002", warehouseNumber("ENT", "900002"), TODAY.minusDays(1),
                 "PEDIDO PROGRAMADO", "Entrada de bebidas",
                 PRODUCT_B, 48, "1.20", 1);
         seedWarehouseInput(
-                "warehouse-input-900003", "ENT-2026-900003", TODAY.minusDays(2),
+                "warehouse-input-900003", warehouseNumber("ENT", "900003"), TODAY.minusDays(2),
                 "COMPRA PROMOCIONAL", "Entrada para campaña de socios",
                 PRODUCT_MEMBER, 12, "4.20", 2);
         seedWarehouseInput(
-                "warehouse-input-900004", "ENT-2026-900004", TODAY.minusDays(4),
+                "warehouse-input-900004", warehouseNumber("ENT", "900004"), TODAY.minusDays(4),
                 "REPOSICIÓN URGENTE", "Reposición de producto en oferta",
                 PRODUCT_OFFER, 18, "1.10", 4);
         seedWarehouseInput(
-                "warehouse-input-900005", "ENT-2026-900005", TODAY.minusDays(6),
+                "warehouse-input-900005", warehouseNumber("ENT", "900005"), TODAY.minusDays(6),
                 "PEDIDO MAYORISTA", "Entrada de leche por volumen",
                 PRODUCT_WHOLESALE, 36, "0.65", 6);
         seedWarehouseInput(
-                "warehouse-input-900006", "ENT-2026-900006", TODAY.minusDays(9),
+                "warehouse-input-900006", warehouseNumber("ENT", "900006"), TODAY.minusDays(9),
                 "REGULARIZACIÓN", "Existencias localizadas en inventario",
                 PRODUCT_NO_DISCOUNT, 10, "0.55", 9);
+
+        seedWarehouseInput(
+                "warehouse-reserve-input-1", WAREHOUSE_RESERVE, warehouseNumber("ENT", "910001"), TODAY.minusDays(1),
+                "PLATAFORMA LOGISTICA", "Recepcion de pedido para reserva",
+                PRODUCT_A, 80, "3.50", 1);
+        seedWarehouseInput(
+                "warehouse-reserve-input-2", WAREHOUSE_RESERVE, warehouseNumber("ENT", "910002"), TODAY.minusDays(8),
+                "PROVEEDOR BEBIDAS", "Reposicion semanal de bebidas",
+                PRODUCT_B, 120, "1.20", 8);
+        seedWarehouseOutput(
+                "warehouse-reserve-output-1", WAREHOUSE_RESERVE, warehouseNumber("SAL", "910001"), TODAY.minusDays(2),
+                "TIENDA Y EXPOSICION", "Preparacion de reposicion de lineal",
+                PRODUCT_A, 18, "12.10", 2);
+        seedWarehouseOutput(
+                "warehouse-reserve-output-2", WAREHOUSE_RESERVE, warehouseNumber("SAL", "910002"), TODAY.minusDays(9),
+                "EVENTO COMERCIAL", "Material reservado para degustacion",
+                PRODUCT_B, 24, "6.05", 9);
+
+        seedWarehouseInput(
+                "warehouse-showroom-input-1", WAREHOUSE_SHOWROOM, warehouseNumber("ENT", "920001"), TODAY.minusDays(3),
+                "RESERVA Y REPOSICION", "Entrada para reposicion de estanterias",
+                PRODUCT_MEMBER, 20, "4.20", 3);
+        seedWarehouseInput(
+                "warehouse-showroom-input-2", WAREHOUSE_SHOWROOM, warehouseNumber("ENT", "920002"), TODAY.minusDays(11),
+                "MONTAJE EXPOSICION", "Productos destinados a exposicion",
+                PRODUCT_OFFER, 30, "1.10", 11);
+        seedWarehouseOutput(
+                "warehouse-showroom-output-1", WAREHOUSE_SHOWROOM, warehouseNumber("SAL", "920001"), TODAY.minusDays(4),
+                "CLIENTE PROFESIONAL", "Entrega de muestras comerciales",
+                PRODUCT_MEMBER, 5, "9.90", 4);
+        seedWarehouseOutput(
+                "warehouse-showroom-output-2", WAREHOUSE_SHOWROOM, warehouseNumber("SAL", "920002"), TODAY.minusDays(12),
+                "DEVOLUCIONES Y CUARENTENA", "Retirada de producto con embalaje deteriorado",
+                PRODUCT_OFFER, 3, "2.80", 12);
+
+        seedWarehouseInput(
+                "warehouse-quarantine-input-1", WAREHOUSE_QUARANTINE, warehouseNumber("ENT", "930001"), TODAY.minusDays(5),
+                "DEVOLUCION DE CLIENTE", "Producto pendiente de revision",
+                PRODUCT_OFFER_DISCOUNT, 6, "1.25", 5);
+        seedWarehouseInput(
+                "warehouse-quarantine-input-2", WAREHOUSE_QUARANTINE, warehouseNumber("ENT", "930002"), TODAY.minusDays(14),
+                "CONTROL DE CALIDAD", "Lote inmovilizado preventivamente",
+                PRODUCT_WHOLESALE, 8, "0.65", 14);
+        seedWarehouseOutput(
+                "warehouse-quarantine-output-1", WAREHOUSE_QUARANTINE, warehouseNumber("SAL", "930001"), TODAY.minusDays(6),
+                "GESTOR DE RESIDUOS", "Baja definitiva por producto no apto",
+                PRODUCT_OFFER_DISCOUNT, 2, "3.00", 6);
+        seedWarehouseOutput(
+                "warehouse-quarantine-output-2", WAREHOUSE_QUARANTINE, warehouseNumber("SAL", "930002"), TODAY.minusDays(15),
+                "PROVEEDOR", "Devolucion de mercancia defectuosa",
+                PRODUCT_WHOLESALE, 3, "1.35", 15);
+
+        seedWarehouseDrafts();
+        seedWarehouseTransfers();
+        seedWarehouseAdjustments();
+        seedWarehouseMinimums();
+    }
+
+    private String warehouseNumber(String prefix, String sequence) {
+        return "%s-%d-%s".formatted(prefix, TODAY.getYear(), sequence);
     }
 
     private void seedWarehouseOutput(
             String key,
+            String number,
+            LocalDate date,
+            String destination,
+            String concept,
+            UUID productId,
+            int quantity,
+            String saleUnitPrice,
+            int daysAgo) {
+        seedWarehouseOutput(key, WAREHOUSE, number, date, destination, concept,
+                productId, quantity, saleUnitPrice, daysAgo);
+    }
+
+    private void seedWarehouseOutput(
+            String key,
+            UUID warehouseId,
             String number,
             LocalDate date,
             String destination,
@@ -1100,10 +1263,11 @@ public class DevSampleDataSeeder {
                      creada_por, confirmada_por, confirmada_en)
                 values (?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?, ?, ?, ?)
                 on conflict (id) do update
-                set fecha = excluded.fecha,
+                set almacen_id = excluded.almacen_id,
+                    fecha = excluded.fecha,
                     destino = excluded.destino,
                     concepto = excluded.concepto
-                """, outputId, STORE, WAREHOUSE, number, date, destination, concept,
+                """, outputId, STORE, warehouseId, number, date, destination, concept,
                 USER, USER, occurredAt);
         jdbc.update("""
                 insert into salida_almacen_linea
@@ -1120,14 +1284,30 @@ public class DevSampleDataSeeder {
                 values (?, ?, ?, ?, ?, 'SALIDA_ALMACEN', ?, ?)
                 on conflict (id) do update
                 set producto_id = excluded.producto_id,
+                    almacen_id = excluded.almacen_id,
                     cantidad = excluded.cantidad,
                     creado_en = excluded.creado_en
-                """, id(movementKey), productId, WAREHOUSE, USER, outputId,
+                """, id(movementKey), productId, warehouseId, USER, outputId,
                 BigDecimal.valueOf(-quantity), occurredAt);
     }
 
     private void seedWarehouseInput(
             String key,
+            String number,
+            LocalDate date,
+            String origin,
+            String concept,
+            UUID productId,
+            int quantity,
+            String purchaseUnitPrice,
+            int daysAgo) {
+        seedWarehouseInput(key, WAREHOUSE, number, date, origin, concept,
+                productId, quantity, purchaseUnitPrice, daysAgo);
+    }
+
+    private void seedWarehouseInput(
+            String key,
+            UUID warehouseId,
             String number,
             LocalDate date,
             String origin,
@@ -1144,11 +1324,12 @@ public class DevSampleDataSeeder {
                      concepto, creada_por, confirmada_por, confirmada_en)
                 values (?, ?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?, ?, ?, ?)
                 on conflict (id) do update
-                set fecha = excluded.fecha,
+                set almacen_id = excluded.almacen_id,
+                    fecha = excluded.fecha,
                     proveedor_id = excluded.proveedor_id,
                     origen = excluded.origen,
                     concepto = excluded.concepto
-                """, inputId, STORE, WAREHOUSE, SUPPLIER, number, date, origin, concept,
+                """, inputId, STORE, warehouseId, SUPPLIER, number, date, origin, concept,
                 USER, USER, occurredAt);
         jdbc.update("""
                 insert into entrada_almacen_linea
@@ -1165,10 +1346,143 @@ public class DevSampleDataSeeder {
                 values (?, ?, ?, ?, ?, 'ENTRADA_ALMACEN', ?, ?)
                 on conflict (id) do update
                 set producto_id = excluded.producto_id,
+                    almacen_id = excluded.almacen_id,
                     cantidad = excluded.cantidad,
                     creado_en = excluded.creado_en
-                """, id(key + "-movement"), productId, WAREHOUSE, USER, inputId,
+                """, id(key + "-movement"), productId, warehouseId, USER, inputId,
                 BigDecimal.valueOf(quantity), occurredAt);
+    }
+
+    private void seedWarehouseDrafts() {
+        UUID inputId = id("warehouse-input-draft-reserve");
+        jdbc.update("""
+                insert into entrada_almacen
+                    (id, tienda_id, almacen_id, proveedor_id, fecha, estado, origen,
+                     concepto, creada_por)
+                values (?, ?, ?, ?, ?, 'BORRADOR', 'PEDIDO PENDIENTE',
+                        'Borrador para comprobar la edicion antes de confirmar', ?)
+                on conflict (id) do update
+                set almacen_id = excluded.almacen_id,
+                    fecha = excluded.fecha,
+                    concepto = excluded.concepto
+                """, inputId, STORE, WAREHOUSE_RESERVE, SUPPLIER, TODAY.plusDays(1), USER);
+        jdbc.update("""
+                insert into entrada_almacen_linea
+                    (id, entrada_id, producto_id, cantidad, precio_unitario_compra)
+                values (?, ?, ?, 25, 1.20)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    precio_unitario_compra = excluded.precio_unitario_compra
+                """, id("warehouse-input-draft-reserve-line"), inputId, PRODUCT_B);
+
+        UUID outputId = id("warehouse-output-draft-showroom");
+        jdbc.update("""
+                insert into salida_almacen
+                    (id, tienda_id, almacen_id, fecha, estado, destino, concepto, creada_por)
+                values (?, ?, ?, ?, 'BORRADOR', 'ACCION COMERCIAL',
+                        'Borrador para preparar muestras de la proxima campana', ?)
+                on conflict (id) do update
+                set almacen_id = excluded.almacen_id,
+                    fecha = excluded.fecha,
+                    concepto = excluded.concepto
+                """, outputId, STORE, WAREHOUSE_SHOWROOM, TODAY.plusDays(2), USER);
+        jdbc.update("""
+                insert into salida_almacen_linea
+                    (id, salida_id, producto_id, cantidad, precio_unitario_venta)
+                values (?, ?, ?, 4, 3.00)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    cantidad = excluded.cantidad,
+                    precio_unitario_venta = excluded.precio_unitario_venta
+                """, id("warehouse-output-draft-showroom-line"), outputId, PRODUCT_OFFER_DISCOUNT);
+    }
+
+    private void seedWarehouseTransfers() {
+        seedWarehouseTransfer("warehouse-transfer-general-reserve", PRODUCT_A,
+                WAREHOUSE, WAREHOUSE_RESERVE, 15, 2);
+        seedWarehouseTransfer("warehouse-transfer-reserve-showroom", PRODUCT_B,
+                WAREHOUSE_RESERVE, WAREHOUSE_SHOWROOM, 20, 4);
+        seedWarehouseTransfer("warehouse-transfer-showroom-quarantine", PRODUCT_OFFER,
+                WAREHOUSE_SHOWROOM, WAREHOUSE_QUARANTINE, 3, 7);
+        seedWarehouseTransfer("warehouse-transfer-quarantine-reserve", PRODUCT_WHOLESALE,
+                WAREHOUSE_QUARANTINE, WAREHOUSE_RESERVE, 2, 13);
+    }
+
+    private void seedWarehouseTransfer(
+            String key,
+            UUID productId,
+            UUID sourceWarehouseId,
+            UUID targetWarehouseId,
+            int quantity,
+            int daysAgo) {
+        UUID transferId = id(key);
+        Timestamp occurredAt = ts(NOW.minusSeconds(daysAgo * 86_400L));
+        seedWarehouseMovement(key + "-out", productId, sourceWarehouseId,
+                "TRANSFERENCIA_SALIDA", BigDecimal.valueOf(-quantity),
+                "Traspaso interno entre almacenes", transferId, occurredAt);
+        seedWarehouseMovement(key + "-in", productId, targetWarehouseId,
+                "TRANSFERENCIA_ENTRADA", BigDecimal.valueOf(quantity),
+                "Traspaso interno entre almacenes", transferId, occurredAt);
+    }
+
+    private void seedWarehouseAdjustments() {
+        seedWarehouseMovement("warehouse-adjustment-reserve-positive", PRODUCT_MEMBER,
+                WAREHOUSE_RESERVE, "AJUSTE", new BigDecimal("4.000"),
+                "Sobrante detectado en recuento", null, ts(NOW.minusSeconds(3 * 86_400L)));
+        seedWarehouseMovement("warehouse-adjustment-showroom-negative", PRODUCT_NO_DISCOUNT,
+                WAREHOUSE_SHOWROOM, "AJUSTE", new BigDecimal("-2.000"),
+                "Regularizacion por diferencia de inventario", null, ts(NOW.minusSeconds(6 * 86_400L)));
+        seedWarehouseMovement("warehouse-adjustment-quarantine-positive", PRODUCT_OFFER_DISCOUNT,
+                WAREHOUSE_QUARANTINE, "AJUSTE", new BigDecimal("1.000"),
+                "Unidad localizada durante la revision", null, ts(NOW.minusSeconds(10 * 86_400L)));
+    }
+
+    private void seedWarehouseMovement(
+            String key,
+            UUID productId,
+            UUID warehouseId,
+            String type,
+            BigDecimal quantity,
+            String reason,
+            UUID transferId,
+            Timestamp occurredAt) {
+        jdbc.update("""
+                insert into movimiento_stock
+                    (id, producto_id, almacen_id, usuario_id, tipo, cantidad, motivo,
+                     transferencia_id, creado_en)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict (id) do update
+                set producto_id = excluded.producto_id,
+                    almacen_id = excluded.almacen_id,
+                    tipo = excluded.tipo,
+                    cantidad = excluded.cantidad,
+                    motivo = excluded.motivo,
+                    transferencia_id = excluded.transferencia_id,
+                    creado_en = excluded.creado_en
+                """, id(key), productId, warehouseId, USER, type, quantity, reason,
+                transferId, occurredAt);
+    }
+
+    private void seedWarehouseMinimums() {
+        seedWarehouseMinimum("warehouse-minimum-general-cafe", PRODUCT_A, WAREHOUSE, "20.000");
+        seedWarehouseMinimum("warehouse-minimum-reserve-cafe", PRODUCT_A, WAREHOUSE_RESERVE, "35.000");
+        seedWarehouseMinimum("warehouse-minimum-reserve-water", PRODUCT_B, WAREHOUSE_RESERVE, "50.000");
+        seedWarehouseMinimum("warehouse-minimum-showroom-member", PRODUCT_MEMBER, WAREHOUSE_SHOWROOM, "8.000");
+        seedWarehouseMinimum("warehouse-minimum-showroom-offer", PRODUCT_OFFER, WAREHOUSE_SHOWROOM, "10.000");
+        seedWarehouseMinimum("warehouse-minimum-quarantine-offer", PRODUCT_OFFER_DISCOUNT,
+                WAREHOUSE_QUARANTINE, "1.000");
+    }
+
+    private void seedWarehouseMinimum(
+            String key, UUID productId, UUID warehouseId, String quantity) {
+        jdbc.update("""
+                insert into stock_minimo_almacen
+                    (id, tienda_id, producto_id, almacen_id, cantidad_minima)
+                values (?, ?, ?, ?, ?)
+                on conflict (producto_id, almacen_id) do update
+                set cantidad_minima = excluded.cantidad_minima
+                """, id(key), STORE, productId, warehouseId, new BigDecimal(quantity));
     }
 
     private static UUID id(String value) {

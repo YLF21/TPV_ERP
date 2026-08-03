@@ -9,6 +9,8 @@ const ventaUrl = process.env.E2E_VENTA_URL ?? "http://127.0.0.1:4173";
 const gestionUrl = process.env.E2E_GESTION_URL ?? "http://127.0.0.1:4174";
 const reuseExternalServers = process.env.E2E_REUSE_EXTERNAL_SERVERS === "true";
 const backendMavenCommand = process.env.E2E_MAVEN_COMMAND ?? ".\\mvnw.cmd";
+const terminalId = process.env.E2E_TERMINAL_ID ?? "06d2ce45-8ead-349d-b844-4ecdead5e1ec";
+const terminalCredential = process.env.E2E_TERMINAL_CREDENTIAL ?? "DEV-SERVER";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -47,7 +49,12 @@ export default defineConfig({
     {
       command: "npm run dev --workspace @tpverp/app-venta -- --host 127.0.0.1 --port 4173 --strictPort",
       cwd: frontendRoot,
-      env: { ...process.env, VITE_TPV_BACKEND_URL: backendUrl },
+      env: {
+        ...process.env,
+        VITE_TPV_BACKEND_URL: backendUrl,
+        VITE_TPV_TERMINAL_ID: terminalId,
+        VITE_TPV_TERMINAL_CREDENTIAL: terminalCredential
+      },
       url: ventaUrl,
       reuseExistingServer: true,
       timeout: 60_000
@@ -55,7 +62,12 @@ export default defineConfig({
     {
       command: "npm run dev --workspace @tpverp/app-gestion -- --host 127.0.0.1 --port 4174 --strictPort",
       cwd: frontendRoot,
-      env: { ...process.env, VITE_TPV_BACKEND_URL: backendUrl },
+      env: {
+        ...process.env,
+        VITE_TPV_BACKEND_URL: backendUrl,
+        VITE_TPV_TERMINAL_ID: terminalId,
+        VITE_TPV_TERMINAL_CREDENTIAL: terminalCredential
+      },
       url: gestionUrl,
       reuseExistingServer: true,
       timeout: 60_000

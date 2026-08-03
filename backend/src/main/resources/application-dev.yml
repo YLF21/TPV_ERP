@@ -22,3 +22,5 @@ tpv:
     unlicensed-access-enabled: ${TPV_DEV_UNLICENSED_ACCESS_ENABLED:false}
     sample-data:
       enabled: ${TPV_DEV_SAMPLE_DATA_ENABLED:false}
+      # Optional ISO date (yyyy-MM-dd). Empty keeps demo periods relative to today.
+      base-date: ${TPV_DEV_SAMPLE_DATA_BASE_DATE:}

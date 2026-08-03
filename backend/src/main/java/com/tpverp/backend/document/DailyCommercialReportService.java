@@ -4,6 +4,7 @@ import com.tpverp.backend.organization.CurrentOrganization;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,11 @@ public class DailyCommercialReportService {
     // Calculates commercial activity by issue date and real payment date.
     @Transactional(readOnly = true)
     public DailyCommercialReportView report(LocalDate date) {
+        return report(date, null);
+    }
+
+    @Transactional(readOnly = true)
+    public DailyCommercialReportView report(LocalDate date, UUID warehouseId) {
         if (date == null) {
             throw new IllegalArgumentException("date es obligatorio");
         }
@@ -36,8 +42,13 @@ public class DailyCommercialReportService {
         var zone = ZoneId.of(store.getTimezone());
         var from = date.atStartOfDay(zone).toInstant();
         var to = date.plusDays(1).atStartOfDay(zone).toInstant();
-        var issued = documents.findAllByTiendaIdAndFecha(store.getId(), date);
-        var collected = payments.findAllByStoreAndCreatedBetween(store.getId(), from, to);
+        var issued = documents.findAllByTiendaIdAndFecha(store.getId(), date).stream()
+                .filter(document -> warehouseId == null || warehouseId.equals(document.getAlmacenId()))
+                .toList();
+        var collected = payments.findAllByStoreAndCreatedBetween(store.getId(), from, to).stream()
+                .filter(payment -> warehouseId == null
+                        || warehouseId.equals(payment.getDocumento().getAlmacenId()))
+                .toList();
         var invoicedOrigins = relations.findInvoicedOriginIds(store.getId(), date);
         var invoiced = issued.stream()
                 .filter(DailyCommercialReportService::isCustomerReceivableSale)
