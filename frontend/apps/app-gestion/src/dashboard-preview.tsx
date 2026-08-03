@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { AppFrame, createTranslator, type UserSession } from "@tpverp/app-common";
+import "../../../packages/app-common/src/styles/tpv.css";
 import { GestionDashboard, type DashboardDataSource } from "./GestionDashboard";
 import { GestionShell, type GestionNavigationItem } from "./GestionShell";
 import type { DashboardWidgetLayout } from "./dashboardModel";
@@ -38,7 +39,11 @@ const dataSource: DashboardDataSource = {
   }),
   loadTopProducts: async () => [],
   loadActivePromotions: async () => [],
-  loadControlAlertsSummary: async () => ({ newCount: 0, reviewedCount: 0, recentAlerts: [] })
+  loadControlAlertsSummary: async () => ({ newCount: 0, reviewedCount: 0, recentAlerts: [] }),
+  loadWarehouses: async () => [
+    { id: "preview-general", name: "Almacén general", active: true },
+    { id: "preview-secondary", name: "Almacén secundario", active: true }
+  ]
 };
 
 const navigation: GestionNavigationItem[] = [

@@ -39,6 +39,9 @@ class DashboardControllerContractTest {
     }
 
     private static Method method(String name) throws NoSuchMethodException {
-        return GestionDashboardDataController.class.getMethod(name);
+        return java.util.Arrays.stream(GestionDashboardDataController.class.getMethods())
+                .filter(candidate -> candidate.getName().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new NoSuchMethodException(name));
     }
 }

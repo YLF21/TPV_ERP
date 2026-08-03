@@ -84,6 +84,7 @@ class PosCashIdempotencyPostgreSqlTest {
     @Autowired private PosCashService service;
     @Autowired private JdbcTemplate jdbc;
     @MockitoBean private DocumentService documents;
+    @MockitoBean private GiftReceiptService giftReceiptService;
     @MockitoBean private ProductRepository products;
     @MockitoBean private StoreTaxRepository taxes;
     @MockitoBean private WarehouseRepository warehouses;

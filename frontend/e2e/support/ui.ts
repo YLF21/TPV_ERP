@@ -16,11 +16,18 @@ export async function loginUi(
 
 export async function openStock(page: Page, app: "venta" | "gestion") {
   if (app === "venta") {
-    await page.getByRole("button", { name: /^stock$/i }).click();
+    await page.getByRole("button", { name: "PRODUCTO", exact: true }).click();
   } else {
-    await page.locator(".gestion-nav").getByRole("button", { name: "Stock", exact: true }).click();
+    const stockGroup = page.locator(".gestion-nav-item.group").filter({
+      has: page.getByRole("button", { name: "Stock", exact: true })
+    }).first();
+    await stockGroup.locator(":scope > button").click();
+    await stockGroup.locator(".gestion-nav-children")
+      .getByRole("button", { name: "Stock", exact: true })
+      .click();
   }
-  await expect(page.getByRole("heading", { level: 1, name: "STOCK" })).toBeVisible();
+  await expect(page.locator(".stock-screen")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Stock", exact: true })).toBeVisible();
 }
 
 export async function openBulkEdit(page: Page) {

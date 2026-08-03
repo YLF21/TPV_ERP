@@ -88,6 +88,31 @@ class DailyCommercialReportServiceTest {
     }
 
     @Test
+    void limitsDocumentsAndPaymentsToTheSelectedWarehouse() {
+        var fixture = fixture();
+        var selectedWarehouse = UUID.randomUUID();
+        var otherWarehouse = UUID.randomUUID();
+        var selected = confirmed(
+                CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "75.00", selectedWarehouse);
+        var other = confirmed(
+                CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "125.00", otherWarehouse);
+        var selectedPayment = payment(fixture, selected, "25.00", start(REPORT_DATE).plusSeconds(1));
+        var otherPayment = payment(fixture, other, "50.00", start(REPORT_DATE).plusSeconds(2));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(selected, other));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(selectedPayment, otherPayment));
+
+        var report = fixture.service().report(REPORT_DATE, selectedWarehouse);
+
+        assertThat(report.invoiced()).isEqualByComparingTo("75.00");
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("25.00");
+        assertThat(report.newPending()).isEqualByComparingTo("50.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
     void excludesInvoicedDeliveryNoteButKeepsItsRealPaymentOnThePaymentDate() {
         var fixture = fixture();
         var deliveryNote = receivable(CommercialDocumentType.ALBARAN_VENTA, REPORT_DATE.minusDays(2), "100.00");
@@ -154,8 +179,13 @@ class DailyCommercialReportServiceTest {
 
     private static CommercialDocument confirmed(
             CommercialDocumentType type, LocalDate date, String amount) {
+        return confirmed(type, date, amount, UUID.randomUUID());
+    }
+
+    private static CommercialDocument confirmed(
+            CommercialDocumentType type, LocalDate date, String amount, UUID warehouseId) {
         var document = new CommercialDocument(
-                UUID.randomUUID(), UUID.randomUUID(), type,
+                UUID.randomUUID(), warehouseId, type,
                 date, UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
                 document, UUID.randomUUID(), 1, 1, "P1", "Producto", "VENTA",

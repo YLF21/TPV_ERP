@@ -56,6 +56,9 @@ public class StockMovement {
     @Column(name = "transferencia_id")
     private UUID transferId;
 
+    @Column(name = "recuento_stock_id")
+    private UUID stockCountId;
+
     @Version
     private long version;
 
@@ -88,6 +91,14 @@ public class StockMovement {
     public static StockMovement adjustment(
             UUID productId, UUID warehouseId, UUID userId, int quantity, String reason, Instant createdAt) {
         return adjustment(productId, warehouseId, userId, BigDecimal.valueOf(quantity), reason, createdAt);
+    }
+
+    public static StockMovement stockCountAdjustment(
+            UUID productId, UUID warehouseId, UUID userId, BigDecimal quantity,
+            String reason, UUID stockCountId, Instant createdAt) {
+        var movement = adjustment(productId, warehouseId, userId, quantity, reason, createdAt);
+        movement.stockCountId = Objects.requireNonNull(stockCountId, "stockCountId");
+        return movement;
     }
 
     public static StockMovement adjustment(
@@ -275,6 +286,8 @@ public class StockMovement {
     public UUID getCompensationOfId() {
         return compensationOfId;
     }
+
+    public UUID getStockCountId() { return stockCountId; }
 
     private static BigDecimal positive(BigDecimal quantity) {
         var value = quantity(quantity);

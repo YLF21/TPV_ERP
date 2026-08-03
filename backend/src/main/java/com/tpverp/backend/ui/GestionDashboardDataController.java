@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -52,10 +53,12 @@ public class GestionDashboardDataController {
 
     @GetMapping("/sales-today")
     @PreAuthorize(SALES_WIDGET_PERMISSION)
-    public SalesTodayView salesToday() {
-        var today = businessDate();
-        var current = dailyReports.report(today);
-        var previous = dailyReports.report(today.minusDays(1));
+    public SalesTodayView salesToday(
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) UUID warehouseId) {
+        var today = selectedDate(date);
+        var current = dailyReports.report(today, warehouseId);
+        var previous = dailyReports.report(today.minusDays(1), warehouseId);
         return new SalesTodayView(
                 today,
                 current.invoiced(),
@@ -66,8 +69,10 @@ public class GestionDashboardDataController {
 
     @GetMapping("/top-products")
     @PreAuthorize(SALES_WIDGET_PERMISSION)
-    public List<TopProductView> topProducts() {
-        return topSales.topSales(StockTopSalesPeriod.DAY, businessDate()).stream()
+    public List<TopProductView> topProducts(
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) UUID warehouseId) {
+        return topSales.topSales(StockTopSalesPeriod.DAY, selectedDate(date), warehouseId).stream()
                 .limit(8)
                 .map(row -> new TopProductView(
                         row.productId(), row.name(), row.soldQuantity(), row.netAmount()))
@@ -76,8 +81,8 @@ public class GestionDashboardDataController {
 
     @GetMapping("/active-promotions")
     @PreAuthorize(PRODUCT_WIDGET_PERMISSION)
-    public List<ActivePromotionView> activePromotions() {
-        var today = businessDate();
+    public List<ActivePromotionView> activePromotions(@RequestParam(required = false) LocalDate date) {
+        var today = selectedDate(date);
         return promotions.list().stream()
                 .filter(promotion -> promotion.status() == PromotionStatus.ACTIVE)
                 .filter(promotion -> !today.isBefore(promotion.startDate()))
@@ -90,6 +95,10 @@ public class GestionDashboardDataController {
     private LocalDate businessDate() {
         var zone = ZoneId.of(organization.currentStore().getTimezone());
         return LocalDate.now(clock.withZone(zone));
+    }
+
+    private LocalDate selectedDate(LocalDate requestedDate) {
+        return requestedDate == null ? businessDate() : requestedDate;
     }
 
     static BigDecimal percentageChange(BigDecimal current, BigDecimal previous) {

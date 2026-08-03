@@ -3,10 +3,12 @@ package com.tpverp.backend.dev;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.inventory.StockSnapshotRebuildService;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
@@ -39,6 +41,9 @@ class DevSampleDataSeederPostgreSqlTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private StockSnapshotRebuildService stockSnapshotRebuildService;
+
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> databaseUrl()
@@ -52,6 +57,7 @@ class DevSampleDataSeederPostgreSqlTest {
         registry.add("tpv.installation.key-directory", KEY_DIRECTORY::toString);
         registry.add("tpv.verifactu.secret-directory", CERTIFICATE_DIRECTORY::toString);
         registry.add("tpv.dev.sample-data.enabled", () -> "true");
+        registry.add("tpv.dev.sample-data.base-date", () -> "2026-08-02");
     }
 
     @AfterAll
@@ -108,6 +114,133 @@ class DevSampleDataSeederPostgreSqlTest {
                 join salida_almacen salida on salida.id = linea.salida_id
                 where salida.numero like 'SAL-2026-9%'
                 """, BigDecimal.class)).isGreaterThan(BigDecimal.ZERO);
+    }
+
+    @Test
+    void seedsCompleteOperationsAcrossDifferentWarehousesIdempotently() {
+        assertThat(jdbc.queryForList("""
+                select nombre
+                from almacen
+                where tienda_id = (select id from tienda where codigo_tienda = '001')
+                order by nombre
+                """, String.class)).containsExactly(
+                "DEVOLUCIONES Y CUARENTENA",
+                "GENERAL",
+                "RESERVA Y REPOSICION",
+                "TIENDA Y EXPOSICION");
+
+        assertThat(jdbc.queryForObject("""
+                select count(distinct almacen_id)
+                from entrada_almacen
+                where numero like 'ENT-2026-9%'
+                """, Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+                select count(distinct almacen_id)
+                from salida_almacen
+                where numero like 'SAL-2026-9%'
+                """, Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from entrada_almacen
+                where estado = 'BORRADOR' and almacen_id = (
+                    select id from almacen where nombre = 'RESERVA Y REPOSICION')
+                """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from salida_almacen
+                where estado = 'BORRADOR' and almacen_id = (
+                    select id from almacen where nombre = 'TIENDA Y EXPOSICION')
+                """, Integer.class)).isEqualTo(1);
+
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from (
+                    select transferencia_id
+                    from movimiento_stock
+                    where transferencia_id is not null
+                    group by transferencia_id
+                    having count(*) = 2 and sum(cantidad) = 0
+                ) transfers
+                """, Integer.class)).isGreaterThanOrEqualTo(4);
+        assertThat(jdbc.queryForObject("""
+                select count(distinct almacen_id)
+                from movimiento_stock
+                where tipo = 'AJUSTE' and motivo is not null
+                """, Integer.class)).isGreaterThanOrEqualTo(3);
+        assertThat(jdbc.queryForObject("""
+                select count(distinct almacen_id)
+                from existencia
+                where cantidad > 0
+                """, Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject(
+                "select count(*) from stock_minimo_almacen", Integer.class))
+                .isGreaterThanOrEqualTo(6);
+
+        var warehouseDocuments = jdbc.queryForObject("""
+                select count(*) from entrada_almacen where numero like 'ENT-2026-9%'
+                """, Integer.class) + jdbc.queryForObject("""
+                select count(*) from salida_almacen where numero like 'SAL-2026-9%'
+                """, Integer.class);
+        seeder.seed();
+        assertThat(jdbc.queryForObject("""
+                select count(*) from entrada_almacen where numero like 'ENT-2026-9%'
+                """, Integer.class) + jdbc.queryForObject("""
+                select count(*) from salida_almacen where numero like 'SAL-2026-9%'
+                """, Integer.class)).isEqualTo(warehouseDocuments);
+    }
+
+    @Test
+    void derivesEveryStockSnapshotExactlyFromStockMovements() {
+        assertStockSnapshotsMatchMovements();
+        assertThat(jdbc.queryForObject("""
+                select count(*)
+                from movimiento_stock
+                where motivo = 'Saldo inicial de datos de demostracion'
+                """, Integer.class)).isGreaterThanOrEqualTo(100);
+    }
+
+    @Test
+    void rebuildRestoresAChangedSnapshotFromTheMovementLedger() {
+        var stockId = jdbc.queryForObject("select id from existencia limit 1", UUID.class);
+        jdbc.update("update existencia set cantidad = cantidad + 999 where id = ?", stockId);
+        assertThat(stockSnapshotMismatchCount()).isGreaterThan(0);
+
+        stockSnapshotRebuildService.rebuild();
+
+        assertStockSnapshotsMatchMovements();
+    }
+
+    @Test
+    void reseedingKeepsTheMovementLedgerAndSnapshotsIdempotent() {
+        var movementsBefore = jdbc.queryForList("""
+                select id::text || '|' || producto_id::text || '|' || almacen_id::text
+                       || '|' || cantidad::text || '|' || creado_en::text
+                from movimiento_stock
+                order by id
+                """, String.class);
+        var snapshotsBefore = stockSnapshotValues();
+
+        seeder.seed();
+
+        assertThat(jdbc.queryForList("""
+                select id::text || '|' || producto_id::text || '|' || almacen_id::text
+                       || '|' || cantidad::text || '|' || creado_en::text
+                from movimiento_stock
+                order by id
+                """, String.class)).isEqualTo(movementsBefore);
+        assertThat(stockSnapshotValues()).isEqualTo(snapshotsBefore);
+        assertStockSnapshotsMatchMovements();
+    }
+
+    @Test
+    void usesTheConfiguredBaseDateForRecentDemoPeriods() {
+        assertThat(seeder.seedDate()).isEqualTo(LocalDate.of(2026, 8, 2));
+        assertThat(jdbc.queryForObject("""
+                select count(*) from documento where fecha = ? and tipo = 'TICKET'
+                """, Integer.class, seeder.seedDate())).isGreaterThanOrEqualTo(5);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from salida_almacen where fecha = ? and estado = 'CONFIRMADA'
+                """, Integer.class, seeder.seedDate())).isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -295,6 +428,45 @@ class DevSampleDataSeederPostgreSqlTest {
 
     private Integer count(String table) {
         return jdbc.queryForObject("select count(*) from " + table, Integer.class);
+    }
+
+    private void assertStockSnapshotsMatchMovements() {
+        assertThat(stockSnapshotMismatchCount()).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from existencia", Integer.class))
+                .isEqualTo(jdbc.queryForObject("""
+                        select count(*) from (
+                            select producto_id, almacen_id
+                            from movimiento_stock
+                            group by producto_id, almacen_id
+                        ) ledger
+                        """, Integer.class));
+    }
+
+    private int stockSnapshotMismatchCount() {
+        return jdbc.queryForObject("""
+                select count(*)
+                from (
+                    select coalesce(e.producto_id, m.producto_id) as producto_id,
+                           coalesce(e.almacen_id, m.almacen_id) as almacen_id,
+                           e.cantidad as snapshot_quantity,
+                           m.cantidad as ledger_quantity
+                    from existencia e
+                    full join (
+                        select producto_id, almacen_id, sum(cantidad) as cantidad
+                        from movimiento_stock
+                        group by producto_id, almacen_id
+                    ) m using (producto_id, almacen_id)
+                    where e.cantidad is distinct from m.cantidad
+                ) mismatch
+                """, Integer.class);
+    }
+
+    private java.util.List<String> stockSnapshotValues() {
+        return jdbc.queryForList("""
+                select producto_id::text || '|' || almacen_id::text || '|' || cantidad::text
+                from existencia
+                order by producto_id, almacen_id
+                """, String.class);
     }
 
     private void assertProductPricing(

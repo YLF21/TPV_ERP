@@ -54,6 +54,17 @@ export type ControlAlertsSummaryData = {
   recentAlerts: ControlAlertSummaryItem[];
 };
 
+export type DashboardScope = {
+  date?: string;
+  warehouseId?: string;
+};
+
+export type DashboardWarehouse = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
 export const dashboardWidgetDefaults: Record<DashboardWidgetKey, DashboardWidgetLayout> = {
   "sales.today": { key: "sales.today", width: 4, height: 1 },
   "sales.top-products": { key: "sales.top-products", width: 8, height: 2 },
@@ -78,20 +89,32 @@ export function saveDashboardPreference(
   });
 }
 
-export function loadSalesToday(token?: string): Promise<SalesTodayData> {
-  return apiRequest<SalesTodayData>("/gestion/dashboard/data/sales-today", { token });
+export function loadSalesToday(token?: string, scope: DashboardScope = {}): Promise<SalesTodayData> {
+  return apiRequest<SalesTodayData>(dashboardDataPath("sales-today", scope), { token });
 }
 
-export function loadTopProducts(token?: string): Promise<TopProductData[]> {
-  return apiRequest<TopProductData[]>("/gestion/dashboard/data/top-products", { token });
+export function loadTopProducts(token?: string, scope: DashboardScope = {}): Promise<TopProductData[]> {
+  return apiRequest<TopProductData[]>(dashboardDataPath("top-products", scope), { token });
 }
 
-export function loadActivePromotions(token?: string): Promise<ActivePromotionData[]> {
-  return apiRequest<ActivePromotionData[]>("/gestion/dashboard/data/active-promotions", { token });
+export function loadActivePromotions(token?: string, scope: DashboardScope = {}): Promise<ActivePromotionData[]> {
+  return apiRequest<ActivePromotionData[]>(dashboardDataPath("active-promotions", { date: scope.date }), { token });
+}
+
+export function loadDashboardWarehouses(token?: string): Promise<DashboardWarehouse[]> {
+  return apiRequest<DashboardWarehouse[]>("/warehouses", { token });
 }
 
 export function loadControlAlertsSummary(token?: string): Promise<ControlAlertsSummaryData> {
   return apiRequest<ControlAlertsSummaryData>("/control/alerts/summary", { token });
+}
+
+function dashboardDataPath(resource: string, scope: DashboardScope): string {
+  const query = new URLSearchParams();
+  if (scope.date) query.set("date", scope.date);
+  if (scope.warehouseId) query.set("warehouseId", scope.warehouseId);
+  const suffix = query.toString();
+  return `/gestion/dashboard/data/${resource}${suffix ? `?${suffix}` : ""}`;
 }
 
 export function reorderDashboardWidgets(
