@@ -38,10 +38,12 @@ function buildTicketBuffer(ticket) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
   const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
+  const giftReceipt = ticket.layout === "GIFT_RECEIPT";
   const chunks = [
     Buffer.from([ESC, 0x40]),
     Buffer.from([ESC, 0x61, 0x01]),
-    line(raw?.storeName || ticket.storeName || "APP VENTA"),
+    line(giftReceipt ? "TICKET REGALO" : raw?.storeName || ticket.storeName || "APP VENTA"),
+    ...(giftReceipt ? [line(raw?.storeName || ticket.storeName || "APP VENTA")] : []),
     line(raw?.documentNumber || ticket.documentNumber || ""),
     line(`${labels.terminal} ${raw?.terminalCode || ticket.terminalCode || ""}`),
     line(ticket.issuedAt || ""),
@@ -56,28 +58,35 @@ function buildTicketBuffer(ticket) {
     if (party.address) chunks.push(line(party.address));
   }
   if (ticket.issuer || ticket.customer) chunks.push(line("------------------------------------------"));
-  if (suppliedLabels) chunks.push(line(padColumns(`${labels.item} / ${labels.quantity} / ${labels.price}`, labels.total)));
+  if (suppliedLabels) chunks.push(line(giftReceipt
+    ? `${labels.item} / ${labels.quantity}`
+    : padColumns(`${labels.item} / ${labels.quantity} / ${labels.price}`, labels.total)));
 
   for (const [index, item] of (ticket.lines || []).entries()) {
+    if (item.code) chunks.push(line(String(item.code).slice(0, 42)));
     chunks.push(line(String(raw?.lineNames?.[index] || item.name || "").slice(0, 42)));
-    chunks.push(line(padColumns(`${item.quantity} x ${money(item.price)}`, money(item.total))));
+    chunks.push(line(giftReceipt
+      ? `${labels.quantity}: ${item.quantity}`
+      : padColumns(`${item.quantity} x ${money(item.price)}`, money(item.total))));
     for (const serial of (item.serialNumbers || [])) {
       chunks.push(line(`  S/N: ${String(serial).slice(0, 35)}`));
     }
   }
 
-  chunks.push(line("------------------------------------------"));
-  for (const [index, payment] of (ticket.payments || []).entries()) {
-    chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
+  if (!giftReceipt) {
+    chunks.push(line("------------------------------------------"));
+    for (const [index, payment] of (ticket.payments || []).entries()) {
+      chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
+    }
+    if (ticket.subtotal !== undefined || ticket.tax !== undefined) {
+      chunks.push(line(padColumns(labels.base, money(ticket.subtotal))));
+      chunks.push(line(padColumns(labels.tax, money(ticket.tax))));
+    }
+    chunks.push(line("------------------------------------------"));
+    chunks.push(Buffer.from([ESC, 0x45, 0x01]));
+    chunks.push(line(padColumns(labels.total, money(ticket.total))));
+    chunks.push(Buffer.from([ESC, 0x45, 0x00]));
   }
-  if (ticket.subtotal !== undefined || ticket.tax !== undefined) {
-    chunks.push(line(padColumns(labels.base, money(ticket.subtotal))));
-    chunks.push(line(padColumns(labels.tax, money(ticket.tax))));
-  }
-  chunks.push(line("------------------------------------------"));
-  chunks.push(Buffer.from([ESC, 0x45, 0x01]));
-  chunks.push(line(padColumns(labels.total, money(ticket.total))));
-  chunks.push(Buffer.from([ESC, 0x45, 0x00]));
   chunks.push(Buffer.from([0x0a, 0x0a, 0x0a]));
   chunks.push(Buffer.from([GS, 0x56, 0x00]));
 

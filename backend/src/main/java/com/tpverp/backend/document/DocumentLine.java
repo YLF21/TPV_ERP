@@ -46,6 +46,8 @@ public class DocumentLine {
     private UUID promotionalCouponId;
     @Column(name = "original_document_line_id")
     private UUID originalDocumentLineId;
+    @Column(name = "ticket_regalo_linea_id")
+    private UUID giftReceiptLineId;
     @ElementCollection
     @CollectionTable(
             name = "documento_linea_numero_serie",
@@ -149,13 +151,30 @@ public class DocumentLine {
             UUID promotionId,
             UUID promotionVersionId,
             UUID promotionalCouponId) {
+        this(documento, posicion, description, amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, promotionId,
+                promotionVersionId, promotionalCouponId, null);
+    }
+
+    private DocumentLine(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId,
+            DocumentLineType explicitType) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
         this.id = UUID.randomUUID();
         this.documento = Objects.requireNonNull(documento, "documento");
         this.productoId = null;
-        this.lineType = promotionalCouponId != null
+        this.lineType = explicitType != null ? explicitType : promotionalCouponId != null
                 ? DocumentLineType.PROMOTIONAL_COUPON
                 : promotionId != null ? DocumentLineType.PROMOTION
                 : DocumentLineType.MANUAL_DISCOUNT;
@@ -218,6 +237,21 @@ public class DocumentLine {
                 regimenImpuesto, porcentajeImpuesto, null, null, null);
     }
 
+    static DocumentLine returnAdjustment(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto) {
+        var value = Money.euros(amount);
+        return new DocumentLine(
+                documento, posicion, description, value, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, null, null, null,
+                DocumentLineType.RETURN_ADJUSTMENT);
+    }
+
     public CommercialDocument getDocumento() {
         return documento;
     }
@@ -233,6 +267,22 @@ public class DocumentLine {
     public void identifyRefundOf(UUID originalLineId) {
         if (originalDocumentLineId != null) throw new IllegalStateException("La linea ya identifica su origen fiscal");
         originalDocumentLineId = Objects.requireNonNull(originalLineId, "originalLineId");
+    }
+
+    public UUID getGiftReceiptLineId() {
+        return giftReceiptLineId;
+    }
+
+    public void identifyGiftReceiptLine(UUID receiptLineId) {
+        if (originalDocumentLineId == null) {
+            throw new IllegalStateException(
+                    "La linea de ticket regalo necesita un origen fiscal");
+        }
+        if (giftReceiptLineId != null) {
+            throw new IllegalStateException(
+                    "La linea ya identifica su ticket regalo");
+        }
+        giftReceiptLineId = Objects.requireNonNull(receiptLineId, "receiptLineId");
     }
 
     public List<String> getSerialNumbers() {

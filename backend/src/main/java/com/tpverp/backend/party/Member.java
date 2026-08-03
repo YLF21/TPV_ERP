@@ -49,6 +49,12 @@ public class Member {
     @Column(name = "member_points", nullable = false)
     private long memberPoints;
 
+    @Column(name = "loyalty_balance_debt", nullable = false, precision = 19, scale = 2)
+    private BigDecimal loyaltyBalanceDebt;
+
+    @Column(name = "loyalty_points_debt", nullable = false)
+    private long loyaltyPointsDebt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_category_id")
     private MemberCategory memberCategory;
@@ -85,6 +91,7 @@ public class Member {
         this.memberId = PartyValues.required(code, "memberId");
         this.memberSince = Objects.requireNonNull(date, "memberSince");
         this.memberBalance = BigDecimal.ZERO.setScale(2);
+        this.loyaltyBalanceDebt = BigDecimal.ZERO.setScale(2);
         this.officialMemberBalance = BigDecimal.ZERO.setScale(2);
         this.active = true;
     }
@@ -120,6 +127,11 @@ public class Member {
         changeBalance(amount);
     }
 
+    void applyReturnBalance(BigDecimal amount) {
+        changeBalance(amount);
+    }
+    // Return compensation must also update inactive historical members.
+
     public void expireBalance(BigDecimal amount) {
         changeBalance(PartyValues.money(amount).negate());
     }
@@ -139,6 +151,37 @@ public class Member {
             throw new IllegalArgumentException("Los puntos no pueden ser negativos");
         }
         memberPoints = updated;
+    }
+
+    public void addLoyaltyDebt(BigDecimal balance, long points) {
+        var balanceValue = PartyValues.money(balance);
+        if (balanceValue.signum() < 0 || points < 0) {
+            throw new IllegalArgumentException(
+                    "La deuda de fidelizacion no puede ser negativa");
+        }
+        loyaltyBalanceDebt = loyaltyBalanceDebt.add(balanceValue);
+        loyaltyPointsDebt = Math.addExact(loyaltyPointsDebt, points);
+    }
+
+    public BigDecimal repayBalanceDebt(BigDecimal earned) {
+        var value = PartyValues.money(earned);
+        if (value.signum() < 0) {
+            throw new IllegalArgumentException(
+                    "El saldo generado no puede ser negativo");
+        }
+        var repaid = value.min(loyaltyBalanceDebt);
+        loyaltyBalanceDebt = loyaltyBalanceDebt.subtract(repaid);
+        return repaid;
+    }
+
+    public long repayPointsDebt(long earned) {
+        if (earned < 0) {
+            throw new IllegalArgumentException(
+                    "Los puntos generados no pueden ser negativos");
+        }
+        var repaid = Math.min(earned, loyaltyPointsDebt);
+        loyaltyPointsDebt -= repaid;
+        return repaid;
     }
 
     public void applyOfficialState(BigDecimal balance, long points, MemberCategory category, Instant syncedAt) {
@@ -189,6 +232,14 @@ public class Member {
 
     public long getMemberPoints() {
         return memberPoints;
+    }
+
+    public BigDecimal getLoyaltyBalanceDebt() {
+        return loyaltyBalanceDebt;
+    }
+
+    public long getLoyaltyPointsDebt() {
+        return loyaltyPointsDebt;
     }
 
     public MemberCategory getMemberCategory() {

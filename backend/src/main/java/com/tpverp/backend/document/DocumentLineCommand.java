@@ -21,7 +21,27 @@ public record DocumentLineCommand(
         UUID promotionalCouponId,
         List<String> serialNumbers,
         boolean temporaryNameOverride,
-        boolean temporaryPriceOverride) {
+        boolean temporaryPriceOverride,
+        TicketReturnService.ReturnSourceType returnSourceType,
+        String returnSourceCode,
+        UUID returnSourceTicketId,
+        UUID originalDocumentLineId,
+        UUID giftReceiptLineId) {
+
+    public DocumentLineCommand(
+            UUID productoId, BigDecimal cantidad, String codigo, String nombre,
+            String tarifa, BigDecimal precioUnitario, BigDecimal descuento,
+            boolean impuestosIncluidos, String regimenImpuesto,
+            BigDecimal porcentajeImpuesto, DocumentLineType lineType,
+            UUID promotionId, UUID promotionVersionId, UUID promotionalCouponId,
+            List<String> serialNumbers, boolean temporaryNameOverride,
+            boolean temporaryPriceOverride) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                temporaryNameOverride, temporaryPriceOverride,
+                null, null, null, null, null);
+    }
 
     public DocumentLineCommand(
             UUID productoId,
@@ -102,7 +122,9 @@ public record DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, price, descuento,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
                 promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
-                temporaryNameOverride, temporaryPriceOverride);
+                temporaryNameOverride, temporaryPriceOverride,
+                returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
@@ -110,7 +132,9 @@ public record DocumentLineCommand(
                 productoId, cantidad, codigo, nombre, rate, precioUnitario, discount,
                 impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
                 promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
-                temporaryNameOverride, temporaryPriceOverride);
+                temporaryNameOverride, temporaryPriceOverride,
+                returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId);
     }
 
     public void requireClientProductLine() {
@@ -125,6 +149,16 @@ public record DocumentLineCommand(
         if (productoId == null) {
             throw new IllegalArgumentException("productoId es obligatorio");
         }
+        if (giftReceiptLineId != null && originalDocumentLineId == null) {
+            throw new IllegalArgumentException(
+                    "La linea de ticket regalo necesita un origen fiscal");
+        }
+        if (originalDocumentLineId != null
+                && (returnSourceType == null || returnSourceCode == null
+                        || returnSourceCode.isBlank() || returnSourceTicketId == null)) {
+            throw new IllegalArgumentException(
+                    "La linea de devolucion necesita identificar su documento de origen");
+        }
     }
 
     static DocumentLineCommand from(DocumentLine line) {
@@ -134,11 +168,24 @@ public record DocumentLineCommand(
                 line.getDescuento(), line.isImpuestosIncluidos(),
                 line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                 line.getLineType(), line.getPromotionId(), line.getPromotionVersionId(),
-                line.getPromotionalCouponId(), line.getSerialNumbers(), false, false);
+                line.getPromotionalCouponId(), line.getSerialNumbers(), false, false,
+                line.getOriginalDocumentLineId() == null
+                        ? null
+                        : line.getGiftReceiptLineId() == null
+                                ? TicketReturnService.ReturnSourceType.TICKET
+                                : TicketReturnService.ReturnSourceType.GIFT_RECEIPT,
+                null,
+                line.getDocumento().getId(),
+                line.getOriginalDocumentLineId(), line.getGiftReceiptLineId());
     }
 
     // Converts validated input into a line with a fiscal snapshot.
     public DocumentLine toEntity(CommercialDocument document, int position) {
+        if (lineType == DocumentLineType.RETURN_ADJUSTMENT) {
+            return DocumentLine.returnAdjustment(
+                    document, position, nombre, precioUnitario, impuestosIncluidos,
+                    regimenImpuesto, porcentajeImpuesto);
+        }
         if (lineType != null && lineType != DocumentLineType.PRODUCT) {
             return DocumentLine.special(
                     document, position, nombre, precioUnitario, impuestosIncluidos,
@@ -150,6 +197,12 @@ public record DocumentLineCommand(
                 precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
                 porcentajeImpuesto);
         line.assignSerialNumbers(serialNumbers);
+        if (originalDocumentLineId != null) {
+            line.identifyRefundOf(originalDocumentLineId);
+        }
+        if (giftReceiptLineId != null) {
+            line.identifyGiftReceiptLine(giftReceiptLineId);
+        }
         return line;
     }
 

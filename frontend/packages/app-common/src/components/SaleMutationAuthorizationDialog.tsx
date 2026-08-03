@@ -19,6 +19,7 @@ type Draft = {
 type Props = {
   open: boolean;
   locale: LocaleCode;
+  currentUsername?: string;
   requirements: readonly SaleMutationAuthorizationRequirement[];
   busy?: boolean;
   error?: string;
@@ -62,6 +63,7 @@ function emptyDrafts(
 export function SaleMutationAuthorizationDialog({
   open,
   locale,
+  currentUsername = "",
   requirements,
   busy = false,
   error = "",
@@ -165,6 +167,7 @@ export function SaleMutationAuthorizationDialog({
                   <legend>{requirement.label}</legend>
                   <SaleOperationAuthorizationFields
                     locale={locale}
+                    currentUsername={currentUsername}
                     authorization={requirement.authorization}
                     username={draft.username}
                     password={draft.password}

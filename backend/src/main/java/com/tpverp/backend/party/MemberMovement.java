@@ -71,7 +71,9 @@ public class MemberMovement {
             MemberMovementType type, BigDecimal balanceAmount, long pointsAmount,
             UUID previousCategoryId, UUID newCategoryId, String reason, Instant now) {
         if (pointsAmount < 0 && type != MemberMovementType.AJUSTE_MANUAL_PUNTOS
-                && type != MemberMovementType.AJUSTE_SAAS) {
+                && type != MemberMovementType.AJUSTE_SAAS
+                && type != MemberMovementType.ANULACION_ACUMULACION_PUNTOS
+                && type != MemberMovementType.DEVOLUCION_ACUMULACION_PUNTOS) {
             throw new IllegalArgumentException("message.member.points_invalid");
         }
         id = UUID.randomUUID();

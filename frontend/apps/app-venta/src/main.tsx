@@ -275,6 +275,7 @@ function SalesUtilityWindowApp() {
   return <SaleInternalEanDialog
     open
     locale={bootstrap.locale}
+    currentUsername={bootstrap.session.username}
     token={bootstrap.session.accessToken}
     products={products}
     initialProductId={bootstrap.initialProductId}

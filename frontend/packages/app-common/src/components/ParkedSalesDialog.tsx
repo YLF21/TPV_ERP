@@ -38,6 +38,11 @@ export type OpenedParkedSale = {
       temporaryNameOverride?: boolean | null;
       temporaryPriceOverride?: boolean | null;
       serialNumbers?: string[];
+      returnSourceType?: "TICKET" | "GIFT_RECEIPT" | null;
+      returnSourceCode?: string | null;
+      returnSourceTicketId?: string | null;
+      originalDocumentLineId?: string | null;
+      giftReceiptLineId?: string | null;
     }>;
   };
   comment?: string | null;
@@ -54,6 +59,7 @@ type ParkedSaleRecovery = {
 type Props = {
   token?: string;
   locale: LocaleCode;
+  currentUsername?: string;
   currentSale: unknown;
   printMode?: SalePrintMode;
   canPark: boolean;
@@ -67,6 +73,7 @@ type Props = {
 export function ParkedSalesDialog({
   token,
   locale,
+  currentUsername = "",
   currentSale,
   printMode = "DEFAULT",
   canPark,
@@ -290,6 +297,7 @@ export function ParkedSalesDialog({
                 <div className="parked-sale-delete-authorization">
                   <SaleOperationAuthorizationFields
                     locale={locale}
+                    currentUsername={currentUsername}
                     authorization={deletionAuthorization}
                     username={authorizerUsername}
                     password={authorizerPassword}
@@ -333,6 +341,7 @@ export function ParkedSalesDialog({
       <SaleMutationAuthorizationDialog
         open={parkAuthorizationOpen}
         locale={locale}
+        currentUsername={currentUsername}
         requirements={requiredParkCredentials}
         busy={busyId === "new"}
         error={parkAuthorizationOpen ? error : ""}

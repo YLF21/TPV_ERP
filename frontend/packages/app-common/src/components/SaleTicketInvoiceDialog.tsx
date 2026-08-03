@@ -28,6 +28,7 @@ type Customer = {
 type Props = {
   token?: string;
   locale: LocaleCode;
+  currentUsername?: string;
   authorization?: SaleOperationAuthorization;
   onClose: () => void;
   onFiscalMutation?: () => void;
@@ -36,6 +37,7 @@ type Props = {
 export function SaleTicketInvoiceDialog({
   token,
   locale,
+  currentUsername = "",
   authorization = {
     mode: "DIRECT",
     requireUsername: false,
@@ -186,6 +188,7 @@ export function SaleTicketInvoiceDialog({
             </label>
             <SaleOperationAuthorizationFields
               locale={locale}
+              currentUsername={currentUsername}
               authorization={authorization}
               username={authorizerUsername}
               password={authorizerPassword}

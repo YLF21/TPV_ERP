@@ -128,4 +128,8 @@ public class MemberBalanceLot {
     public Member getMember() {
         return member;
     }
+
+    public Instant getExpiredAt() {
+        return expiredAt;
+    }
 }

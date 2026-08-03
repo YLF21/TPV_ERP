@@ -607,6 +607,7 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
           customerName={recovery?.customer.name
             ?? customer?.fiscalName ?? customer?.clientId ?? t("salesDocument.customer")}
           locale={locale}
+          currentUsername={session.username}
           draft={checkoutDraft}
           recovery={recovery ?? undefined}
           token={session.accessToken}

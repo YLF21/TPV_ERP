@@ -110,13 +110,25 @@ public class PosCashController {
             @NotNull @DecimalMin("0.00") BigDecimal discount,
             BigDecimal openUnitPrice,
             List<String> serialNumbers,
-            @Size(max = 255) String temporaryName) {
+            @Size(max = 255) String temporaryName,
+            @Valid ReturnOriginRequest returnOrigin) {
+        public LineRequest(
+                UUID productId,
+                BigDecimal quantity,
+                BigDecimal discount,
+                BigDecimal openUnitPrice,
+                List<String> serialNumbers,
+                String temporaryName) {
+            this(productId, quantity, discount, openUnitPrice, serialNumbers,
+                    temporaryName, null);
+        }
+
         public LineRequest(
                 UUID productId,
                 BigDecimal quantity,
                 BigDecimal discount,
                 BigDecimal openUnitPrice) {
-            this(productId, quantity, discount, openUnitPrice, List.of(), null);
+            this(productId, quantity, discount, openUnitPrice, List.of(), null, null);
         }
 
         public LineRequest(
@@ -125,20 +137,35 @@ public class PosCashController {
                 BigDecimal discount,
                 BigDecimal openUnitPrice,
                 List<String> serialNumbers) {
-            this(productId, quantity, discount, openUnitPrice, serialNumbers, null);
+            this(productId, quantity, discount, openUnitPrice, serialNumbers, null, null);
         }
 
         public LineRequest(
                 UUID productId,
                 BigDecimal quantity,
                 BigDecimal discount) {
-            this(productId, quantity, discount, null, List.of(), null);
+            this(productId, quantity, discount, null, List.of(), null, null);
         }
 
-        @AssertTrue(message = "La cantidad debe ser positiva o exactamente -1")
+        @AssertTrue(message = "La cantidad no es válida para el origen indicado")
         public boolean isQuantityAllowed() {
-            return quantity != null
-                    && (quantity.signum() > 0 || quantity.compareTo(BigDecimal.ONE.negate()) == 0);
+            if (quantity == null) return false;
+            if (returnOrigin != null) return quantity.signum() < 0;
+            return quantity.signum() > 0 || quantity.compareTo(BigDecimal.ONE.negate()) == 0;
+        }
+    }
+
+    public record ReturnOriginRequest(
+            @NotNull TicketReturnService.ReturnSourceType sourceType,
+            @NotNull @Size(max = 64) String sourceCode,
+            @NotNull UUID sourceTicketId,
+            @NotNull UUID sourceLineId,
+            UUID giftReceiptLineId) {
+
+        @AssertTrue(message = "El ticket regalo requiere su línea de origen")
+        public boolean isGiftReceiptOriginValid() {
+            return sourceType != TicketReturnService.ReturnSourceType.GIFT_RECEIPT
+                    || giftReceiptLineId != null;
         }
     }
 

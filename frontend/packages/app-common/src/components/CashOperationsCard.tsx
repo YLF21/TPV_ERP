@@ -26,6 +26,7 @@ type CashReport = {
 
 type Props = {
   locale: LocaleCode;
+  currentUsername?: string;
   token?: string;
   terminalId?: string;
   request?: RequestFunction;
@@ -51,6 +52,7 @@ const copy = {
     openCash: "Abrir caja",
     entry: "Entrada de efectivo",
     withdrawal: "Retirada de efectivo",
+    currentOperator: "Operador actual",
     managerUser: "Usuario autorizador",
     managerPassword: "Contraseña autorizador",
     registerEntry: "Registrar entrada",
@@ -85,6 +87,7 @@ const copy = {
     openCash: "Open register",
     entry: "Cash entry",
     withdrawal: "Cash withdrawal",
+    currentOperator: "Current operator",
     managerUser: "Authorizer username",
     managerPassword: "Authorizer password",
     registerEntry: "Register entry",
@@ -119,6 +122,7 @@ const copy = {
     openCash: "打开钱箱",
     entry: "现金存入",
     withdrawal: "现金取出",
+    currentOperator: "当前操作员",
     managerUser: "授权用户名",
     managerPassword: "授权密码",
     registerEntry: "登记存入",
@@ -172,6 +176,7 @@ function startOfTodayIso() {
 
 export function CashOperationsCard({
   locale,
+  currentUsername = "",
   token,
   terminalId,
   request = apiRequest,
@@ -509,6 +514,15 @@ export function CashOperationsCard({
           </div>
 
           <div className="cash-authorization-row">
+            <div className="cash-authorization-operator sale-operation-authorization-identity">
+              <span className="sale-operation-authorization-avatar" aria-hidden="true">
+                {currentUsername.trim().slice(0, 1).toLocaleUpperCase(locale) || "?"}
+              </span>
+              <span className="sale-operation-authorization-user">
+                <small>{t.currentOperator}</small>
+                <strong>{currentUsername.trim() || "-"}</strong>
+              </span>
+            </div>
             <label>
               <span>{t.comment}</span>
               <input value={comment} onChange={(event) => setComment(event.target.value)} />

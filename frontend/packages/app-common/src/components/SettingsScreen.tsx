@@ -297,6 +297,7 @@ export function SettingsScreen({
               {app === "venta" ? (
                 <CashOperationsCard
                   locale={locale}
+                  currentUsername={session.username}
                   token={session.accessToken}
                   terminalId={terminalContext.terminalId}
                   request={request}

@@ -97,6 +97,52 @@ class TicketReturnServiceTest {
     }
 
     @Test
+    void historicalPromotionCanConfirmZeroValueReturnWithoutPayout() {
+        var valuations = mock(TicketReturnValuationService.class);
+        service.setTicketReturnValuationService(valuations);
+        var original = mock(CommercialDocument.class);
+        var lineId = UUID.randomUUID();
+        var selected = List.of(new com.tpverp.backend.terminal.PaymentTerminalRefundLineSelection(
+                lineId, BigDecimal.ONE));
+        var valuation = new TicketReturnValuationService.Valuation(
+                new BigDecimal("10.00"),
+                new BigDecimal("10.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("20.00"),
+                List.of(new TicketReturnValuationService.TaxAdjustment(
+                        true, "IVA", new BigDecimal("21.00"),
+                        new BigDecimal("10.00"))));
+        when(documents.find(ticketId)).thenReturn(original);
+        when(valuations.value(eq(original), any())).thenReturn(valuation);
+        when(settlements.record(
+                eq(requestId),
+                eq(ticketId),
+                eq(new BigDecimal("0.00")),
+                eq(selected),
+                eq(List.of()),
+                eq(valuation),
+                eq(authentication)))
+                .thenReturn(refundDocument);
+
+        var result = service.create(
+                ticketId,
+                requestId,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                List.of(),
+                selected,
+                authentication);
+
+        verify(documents, never()).validateApprovedCardRefund(any(), any(), any());
+        verify(cash, never()).requireOpenSession(any());
+        assertThat(result.document()).isSameAs(refundDocument);
+    }
+
+    @Test
     void mixedReturnCombinesApprovedCardAndCashInOneSettlement() {
         var paymentId = UUID.randomUUID();
         var originalOperationId = UUID.randomUUID();

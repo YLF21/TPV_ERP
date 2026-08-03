@@ -1491,6 +1491,8 @@ describe("SaleScreen", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Movimiento de efectivo" });
     expect(within(dialog).getByText("Desglose de efectivo")).toBeInTheDocument();
+    expect(within(dialog).getByText("Usuario que confirma")).toBeInTheDocument();
+    expect(within(dialog).getByText("admin")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Tu contraseña")).toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Usuario autorizador")).not.toBeInTheDocument();
   });
@@ -1537,6 +1539,8 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(search, { key: "F3" });
     const dialog = await screen.findByRole("dialog", { name: "Autorizar apertura de cajón" });
+    expect(within(dialog).getByText("Operador actual")).toBeInTheDocument();
+    expect(within(dialog).getByText("admin")).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Usuario autorizador"), {
       target: { value: "encargado" }
     });
@@ -1917,6 +1921,22 @@ describe("SaleScreen", () => {
       if (path.endsWith("/tickets")) {
         return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       }
+      if (path.endsWith("/tickets/cancellation-preview/last")) {
+        return new Response(JSON.stringify({
+          ticket: { id: "ticket-1", numero: "T-001", fecha: "2026-08-01", total: "10.00" },
+          manualReferences: [],
+          integratedCardPayments: [],
+          cashAmount: "10.00",
+          openCashDrawer: true,
+          consumedVoucherCodes: [],
+          generatedVoucherCodes: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/tickets/last-current-terminal")) {
+        return new Response(JSON.stringify({
+          id: "ticket-1", numero: "T-001", fecha: "2026-08-01", total: "10.00",
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       if (path.endsWith("/customers/sale-options")) {
         return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -1951,6 +1971,20 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(window, { key: "F10" });
     expect(await screen.findByRole("dialog", { name: "Devolución por ticket" })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "F11" });
+    const cancellationDialog = await screen.findByRole("dialog", { name: "Anular ticket" });
+    const cancelCancellation = within(cancellationDialog).getByRole("button", { name: "Cancelar" });
+    await waitFor(() => expect(cancelCancellation).toBeEnabled());
+    fireEvent.click(cancelCancellation);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "F12" });
+    const invoiceDialog = await screen.findByRole("dialog", { name: "Convertir ticket a factura" });
+    const cancelInvoice = within(invoiceDialog).getByRole("button", { name: "Cancelar" });
+    await waitFor(() => expect(cancelInvoice).toBeEnabled());
+    fireEvent.click(cancelInvoice);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     expect(onOpenCustomerReceivables).not.toHaveBeenCalled();

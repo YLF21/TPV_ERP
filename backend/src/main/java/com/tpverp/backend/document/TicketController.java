@@ -84,6 +84,19 @@ public class TicketController {
         return ReturnPreviewView.from(returns.preview(ticketNumber));
     }
 
+    @PostMapping("/return-valuation")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
+    public ReturnValuationView returnValuation(
+            @Valid @RequestBody ReturnValuationRequest request) {
+        var selections = new java.util.ArrayList<TicketReturnService.ReturnSelection>();
+        for (var line : request.lines()) {
+            selections.add(new TicketReturnService.ReturnSelection(
+                    line.lineId(), line.quantity()));
+        }
+        return ReturnValuationView.from(
+                returns.value(request.ticketNumber(), List.copyOf(selections)));
+    }
+
     @PostMapping("/{id}/returns")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_CREATE','VENTA')")
     public ReturnView createReturn(
@@ -284,6 +297,34 @@ public class TicketController {
         }
     }
 
+    public record ReturnValuationRequest(
+            @NotBlank String ticketNumber,
+            @NotNull @Size(min = 1) List<@Valid ReturnLineRequest> lines) {
+    }
+
+    public record ReturnValuationView(
+            BigDecimal selectedGross,
+            BigDecimal lostBenefits,
+            BigDecimal refundableAmount,
+            BigDecimal eligibleRefundableAmount,
+            BigDecimal cumulativeEligibleRefundableAmount,
+            BigDecimal cumulativeRefundableAmount,
+            BigDecimal previouslyRefundedAmount,
+            BigDecimal remainingBasketValue) {
+        static ReturnValuationView from(
+                TicketReturnValuationService.Valuation valuation) {
+            return new ReturnValuationView(
+                    valuation.selectedGross(),
+                    valuation.lostBenefits(),
+                    valuation.refundableAmount(),
+                    valuation.eligibleRefundableAmount(),
+                    valuation.cumulativeEligibleRefundableAmount(),
+                    valuation.cumulativeRefundableAmount(),
+                    valuation.previouslyRefundedAmount(),
+                    valuation.remainingBasketValue());
+        }
+    }
+
     public record ReturnPayoutView(
             String type,
             BigDecimal amount,
@@ -298,15 +339,19 @@ public class TicketController {
     }
 
     public record ReturnPreviewView(
+            String sourceType,
+            String sourceCode,
             UUID ticketId,
             String ticketNumber,
             java.time.LocalDate date,
             BigDecimal total,
-            List<DocumentService.CardRefundLineOption> lines,
+            List<TicketReturnService.ReturnLineOption> lines,
             List<DocumentView.PaymentView> payments) {
         static ReturnPreviewView from(TicketReturnService.ReturnPreview preview) {
             var ticket = preview.ticket();
             return new ReturnPreviewView(
+                    preview.sourceType().name(),
+                    preview.sourceCode(),
                     ticket.getId(),
                     ticket.getNumero(),
                     ticket.getFecha(),

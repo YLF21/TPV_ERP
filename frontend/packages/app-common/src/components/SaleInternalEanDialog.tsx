@@ -20,6 +20,7 @@ import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFi
 type Props = {
   open: boolean;
   locale: LocaleCode;
+  currentUsername?: string;
   token?: string;
   products: InternalEanProduct[];
   initialProductId?: string;
@@ -91,6 +92,7 @@ function validationMessage(
 export function SaleInternalEanDialog({
   open,
   locale,
+  currentUsername = "",
   token,
   products,
   initialProductId = "",
@@ -232,7 +234,7 @@ export function SaleInternalEanDialog({
             <label><span>{t.code}</span><input autoFocus inputMode="numeric" maxLength={13} value={code} disabled={busy || Boolean(reservation)} onChange={(event) => { setCode(event.currentTarget.value); setValidation(null); }} onKeyDown={(event) => { if (event.key === "Enter") void check(); }} /></label>
           )}
           {!reservation && (
-            <SaleOperationAuthorizationFields locale={locale} authorization={authorization} username={username} password={password} disabled={busy} onUsernameChange={setUsername} onPasswordChange={setPassword} />
+            <SaleOperationAuthorizationFields locale={locale} currentUsername={currentUsername} authorization={authorization} username={username} password={password} disabled={busy} onUsernameChange={setUsername} onPasswordChange={setPassword} />
           )}
           {tab === "GENERATE" && !reservation && <button type="button" disabled={busy || !credentialsComplete} onClick={() => void generate()}>{t.generateAction}</button>}
           {tab === "CHECK" && !reservation && <div className="sale-internal-ean-check-actions"><button type="button" disabled={busy || !code.trim()} onClick={() => void check()}>{t.checkAction}</button>{validation?.valid && <button type="button" disabled={busy || !credentialsComplete} onClick={() => void prepareManual()}>{t.prepare}</button>}</div>}

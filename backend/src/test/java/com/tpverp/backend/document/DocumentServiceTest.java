@@ -3,6 +3,8 @@ package com.tpverp.backend.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -466,7 +468,7 @@ class DocumentServiceTest {
         assertThat(ticket.getPagos()).hasSize(2);
         assertThat(ticket.isOrigenStock()).isFalse();
         verify(cashPaymentRecorder).recordDocumentPayments(terminalId, ticket);
-        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
     }
 
     @Test
@@ -502,6 +504,86 @@ class DocumentServiceTest {
         assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("15.00"),
                 List.of(new PaymentTerminalRefundLineSelection(line.getId(), new BigDecimal("3.000")))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("saldo reembolsable");
+    }
+
+    @Test
+    void historicalReturnCreatesBalancedR5AdjustmentAndReversesLoyaltyOnConfirmation() {
+        var original = new CommercialDocument(
+                store.getId(),
+                UUID.randomUUID(),
+                CommercialDocumentType.TICKET,
+                LocalDate.now(),
+                user.getId(),
+                BigDecimal.ZERO);
+        var productLine = new DocumentLine(
+                original,
+                UUID.randomUUID(),
+                1,
+                new BigDecimal("3.000"),
+                "P-3X2",
+                "Producto 3x2",
+                "VENTA",
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                true,
+                "IVA",
+                new BigDecimal("21.00"));
+        original.addLine(productLine);
+        original.addLine(DocumentLine.special(
+                original,
+                2,
+                "PROMOCION 3X2",
+                new BigDecimal("-10.00"),
+                true,
+                "IVA",
+                new BigDecimal("21.00"),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                null));
+        original.confirm("001-260608-00001", user.getId(), NOW, false);
+        var requestId = UUID.randomUUID();
+        var selected = List.of(new PaymentTerminalRefundLineSelection(
+                productLine.getId(), BigDecimal.ONE));
+        var valuation = new TicketReturnValuationService.Valuation(
+                new BigDecimal("10.00"),
+                new BigDecimal("10.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("0.00"),
+                new BigDecimal("20.00"),
+                List.of(new TicketReturnValuationService.TaxAdjustment(
+                        true,
+                        "IVA",
+                        new BigDecimal("21.00"),
+                        new BigDecimal("10.00"))));
+        when(documentRepository.findLockedRefundSource(original.getId(), store.getId()))
+                .thenReturn(Optional.of(original));
+        when(documentRepository.confirmedRefundedQuantity(productLine.getId()))
+                .thenReturn(new BigDecimal("0.000"));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(stockGateway.confirm(any())).thenReturn(false);
+
+        var refund = service.createApprovedReturn(
+                requestId,
+                original.getId(),
+                BigDecimal.ZERO,
+                selected,
+                null,
+                valuation,
+                authentication());
+
+        assertThat(refund.getTotal()).isEqualByComparingTo("0.00");
+        assertThat(refund.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(DocumentLineType.PRODUCT, DocumentLineType.RETURN_ADJUSTMENT);
+        assertThat(refund.getLineas().get(0).getTotal()).isEqualByComparingTo("-10.00");
+        assertThat(refund.getLineas().get(1).getTotal()).isEqualByComparingTo("10.00");
+        verify(fiscalIntegration).registerTicketRectification(refund, original);
+        verify(memberLoyaltyService).reverseConfirmedReturn(
+                original, refund, new BigDecimal("0.00"), new BigDecimal("0.00"));
     }
 
     @Test
@@ -595,7 +677,7 @@ class DocumentServiceTest {
                 .isEqualTo(PaymentTerminalProvider.GLOBAL_PAYMENTS);
         verify(productRepository, never()).findById(any());
         verify(memberLoyaltyService, never()).applyLineBenefit(any(), any(), any());
-        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
         verifyNoInteractions(promotionRepository);
         verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
     }
@@ -678,7 +760,7 @@ class DocumentServiceTest {
 
         assertThat(ticket.getPagos()).hasSize(2);
         verify(memberLoyaltyService).consumeBalanceForPayment(ticket, new BigDecimal("4.00"));
-        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("6.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("6.00"));
     }
 
     @Test
@@ -689,6 +771,7 @@ class DocumentServiceTest {
         var eligible = org.mockito.Mockito.mock(Product.class);
         var excluded = org.mockito.Mockito.mock(Product.class);
         when(eligible.getId()).thenReturn(eligibleId);
+        when(excluded.getId()).thenReturn(excludedId);
         when(eligible.getProductType()).thenReturn(ProductType.UNIT);
         when(eligible.getDiscountType()).thenReturn(DiscountType.NORMAL);
         when(eligible.isActive()).thenReturn(true);
@@ -714,7 +797,7 @@ class DocumentServiceTest {
                 List.of(new PaymentCommand(paidMethod.getId(), new BigDecimal("40.00"), true, null, null)),
                 authentication());
 
-        verify(memberLoyaltyService).recordPaidSale(ticket, new BigDecimal("10.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
     }
 
     @Test
@@ -1009,7 +1092,7 @@ class DocumentServiceTest {
 
         assertThat(partial.getEstado()).isEqualTo(DocumentStatus.PARCIAL);
         assertThat(partial.getPendingTotal()).isEqualByComparingTo("6.00");
-        verify(memberLoyaltyService).recordPaidSale(partial, new BigDecimal("4.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(partial), accrualOf("4.00"));
 
         var paid = service.payInvoice(
                 invoice.getId(),
@@ -1019,7 +1102,7 @@ class DocumentServiceTest {
 
         assertThat(paid.getEstado()).isEqualTo(DocumentStatus.PAGADO);
         assertThat(paid.getPagos()).hasSize(2);
-        verify(memberLoyaltyService).recordPaidSale(paid, new BigDecimal("6.00"));
+        verify(memberLoyaltyService).recordPaidSale(same(paid), accrualOf("10.00"));
     }
 
     @Test
@@ -2110,6 +2193,11 @@ class DocumentServiceTest {
                 new BigDecimal("10.00"),List.of(new DocumentLineCommand(UUID.randomUUID(),BigDecimal.ONE,"P","Producto",
                 "VENTA",new BigDecimal("10.00"),BigDecimal.ZERO,true,"IVA",new BigDecimal("21"))));
         return service.createApprovedCardTicketFromSnapshot(frozen,payments,authentication());
+    }
+
+    private static MemberLoyaltyService.LoyaltyAccrual accrualOf(String amount) {
+        return argThat(accrual -> accrual != null
+                && accrual.eligiblePaidAmount().compareTo(new BigDecimal(amount)) == 0);
     }
 
     private UsernamePasswordAuthenticationToken authentication() {

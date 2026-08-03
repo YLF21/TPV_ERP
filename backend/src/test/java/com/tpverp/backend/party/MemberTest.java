@@ -54,6 +54,21 @@ class MemberTest {
                 .hasMessageContaining("puntos");
     }
 
+    @Test
+    void loyaltyDebtIsSeparateAndFutureRewardsRepayItFirst() {
+        var member = member();
+        member.addLoyaltyDebt(new BigDecimal("5.00"), 30);
+
+        assertThat(member.repayBalanceDebt(new BigDecimal("2.59")))
+                .isEqualByComparingTo("2.59");
+        assertThat(member.repayPointsDebt(25)).isEqualTo(25);
+
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("0.00");
+        assertThat(member.getMemberPoints()).isZero();
+        assertThat(member.getLoyaltyBalanceDebt()).isEqualByComparingTo("2.41");
+        assertThat(member.getLoyaltyPointsDebt()).isEqualTo(5);
+    }
+
     private Member member() {
         var customer = new Customer(
                 PartyTestData.company(), "Member", DocumentType.NIF, "1",

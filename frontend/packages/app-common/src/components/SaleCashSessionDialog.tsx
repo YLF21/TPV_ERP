@@ -18,6 +18,7 @@ import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFi
 
 type Props = {
   locale: LocaleCode;
+  currentUsername?: string;
   mode: "OPEN" | "CLOSE";
   terminalId: string;
   token: string;
@@ -136,6 +137,7 @@ function amount(value: string) {
 
 export function SaleCashSessionDialog({
   locale,
+  currentUsername = "",
   mode,
   terminalId,
   token,
@@ -321,6 +323,7 @@ export function SaleCashSessionDialog({
               </label>
               <SaleOperationAuthorizationFields
                 locale={locale}
+                currentUsername={currentUsername}
                 authorization={authorization}
                 username={authorizerUsername}
                 password={authorizerPassword}

@@ -70,6 +70,7 @@ type PendingSaleQuote = { total: number | string; credit?: CustomerCreditQuote }
 type Props = {
   customerName: string;
   locale?: LocaleCode;
+  currentUsername?: string;
   draft: PendingSaleDraft;
   token?: string;
   permissions?: Permission[];
@@ -116,6 +117,7 @@ export function cardQueryResultStatus(current: PendingPaymentAllocation["status"
 export function CustomerPendingSaleDialog({
   customerName,
   locale = "es",
+  currentUsername = "",
   draft: initialDraft,
   token,
   permissions = [],
@@ -771,6 +773,7 @@ export function CustomerPendingSaleDialog({
             <label>{t("pendingSale.credit.overrideReason")}<textarea required maxLength={500} value={creditOverrideReason} disabled={disabled || submitting} onChange={(event) => setCreditOverrideReason(event.target.value)} /></label>
             <SaleOperationAuthorizationFields
               locale={locale}
+              currentUsername={currentUsername}
               authorization={effectiveCreditOverrideAuthorization}
               username={creditOverrideUsername}
               password={creditOverridePassword}
@@ -798,6 +801,7 @@ export function CustomerPendingSaleDialog({
           <h3>{t("pendingSale.authorization.pendingTitle")}</h3>
           <SaleOperationAuthorizationFields
             locale={locale}
+            currentUsername={currentUsername}
             authorization={effectiveCreatePendingAuthorization}
             username={createPendingUsername}
             password={createPendingPassword}
@@ -819,6 +823,7 @@ export function CustomerPendingSaleDialog({
           <h3>{t("pendingSale.authorization.manualCardTitle")}</h3>
           <SaleOperationAuthorizationFields
             locale={locale}
+            currentUsername={currentUsername}
             authorization={effectiveManualCardPaymentAuthorization}
             username={manualCardPaymentUsername}
             password={manualCardPaymentPassword}
@@ -840,6 +845,7 @@ export function CustomerPendingSaleDialog({
           <h3>{t("pendingSale.authorization.transferTitle")}</h3>
           <SaleOperationAuthorizationFields
             locale={locale}
+            currentUsername={currentUsername}
             authorization={effectiveTransferPaymentAuthorization}
             username={transferPaymentUsername}
             password={transferPaymentPassword}
@@ -890,6 +896,7 @@ export function CustomerPendingSaleDialog({
     <SaleMutationAuthorizationDialog
       open={Boolean(mutationAuthorizationAction)}
       locale={locale}
+      currentUsername={currentUsername}
       requirements={mutationCredentialRequirements}
       busy={submitting}
       error={error}

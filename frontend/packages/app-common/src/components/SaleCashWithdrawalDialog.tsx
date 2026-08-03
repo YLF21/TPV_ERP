@@ -20,6 +20,7 @@ import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFi
 
 type Props = {
   locale: LocaleCode;
+  currentUsername?: string;
   terminalId: string;
   terminalContext: Pick<TerminalContext, "storeName" | "terminalCode">;
   token: string;
@@ -60,6 +61,7 @@ function denominationKey(value: number) {
 
 export function SaleCashWithdrawalDialog({
   locale,
+  currentUsername = "",
   terminalId,
   terminalContext,
   token,
@@ -365,6 +367,7 @@ export function SaleCashWithdrawalDialog({
           <div className="sale-cash-withdrawal-authorization">
             <SaleOperationAuthorizationFields
               locale={locale}
+              currentUsername={currentUsername}
               authorization={effectiveAuthorization}
               username={authorizerUsername}
               password={authorizerPassword}

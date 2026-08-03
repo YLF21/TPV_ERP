@@ -98,6 +98,7 @@ export type ExportedFileResult = {
 };
 
 export type TicketLinePrint = {
+  code?: string;
   name: string;
   quantity: number;
   price: number;
@@ -112,6 +113,7 @@ export type TicketPaymentPrint = {
 };
 
 export type TicketPrintRequest = {
+  layout?: "STANDARD" | "GIFT_RECEIPT";
   documentNumber: string;
   storeName: string;
   terminalCode: string;

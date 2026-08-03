@@ -8,4 +8,6 @@ public interface MemberBalanceLotConsumptionRepository
         extends JpaRepository<MemberBalanceLotConsumption, MemberBalanceLotConsumptionId> {
 
     List<MemberBalanceLotConsumption> findByMovement_Id(UUID movementId);
+
+    List<MemberBalanceLotConsumption> findByLot_Id(UUID lotId);
 }

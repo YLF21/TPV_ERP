@@ -31,6 +31,8 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.HexFormat;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -55,6 +57,7 @@ public class PosCashService {
     private final AuthoritativePromotionPricing promotionPricing;
     private final SaleOperationSecurityService operationSecurity;
     private final AuditService audit;
+    private GiftReceiptService giftReceipts;
 
     @org.springframework.beans.factory.annotation.Autowired
     public PosCashService(
@@ -84,6 +87,11 @@ public class PosCashService {
         this.promotionPricing = promotionPricing;
         this.operationSecurity = operationSecurity;
         this.audit = audit;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setGiftReceiptService(GiftReceiptService giftReceipts) {
+        this.giftReceipts = giftReceipts;
     }
 
     PosCashService(
@@ -249,7 +257,15 @@ public class PosCashService {
                     maximumDiscount, request.discountAuthorizationToken(), authentication);
         }
         var sensitiveOperations = EnumSet.noneOf(SaleOperationCode.class);
+        var returnOrigins = new HashSet<UUID>();
         var lines = request.lines().stream().map(line -> {
+            if (line.returnOrigin() != null) {
+                if (!returnOrigins.add(line.returnOrigin().sourceLineId())) {
+                    throw new IllegalArgumentException(
+                            "Una linea de origen solo puede aparecer una vez en el carrito");
+                }
+                return authoritativeReturnLine(line, store.getId());
+            }
             var product = products.findById(line.productId())
                     .filter(value -> value.getStoreId().equals(store.getId()))
                     .orElseThrow(() -> new IllegalArgumentException("Producto no encontrado"));
@@ -291,6 +307,103 @@ public class PosCashService {
                 LocalDate.now(ZoneId.of(store.getTimezone())), request.customerId(), null, null,
                 BigDecimal.ZERO.setScale(2), true, lines, request.internalComment());
         return new PreparedSale(command, sensitiveOperations);
+    }
+
+    private DocumentLineCommand authoritativeReturnLine(
+            PosCashController.LineRequest request,
+            UUID storeId) {
+        if (giftReceipts == null) {
+            throw new IllegalStateException("gift_receipt_service_unavailable");
+        }
+        var origin = request.returnOrigin();
+        CommercialDocument ticket;
+        BigDecimal available;
+        List<String> availableSerials;
+        UUID giftReceiptLineId = null;
+        if (origin.sourceType() == TicketReturnService.ReturnSourceType.GIFT_RECEIPT) {
+            var context = giftReceipts.returnContext(origin.sourceCode());
+            ticket = context.ticket();
+            var option = context.lines().stream()
+                    .filter(line -> line.sourceLineId().equals(origin.sourceLineId())
+                            && line.giftReceiptLineId().equals(origin.giftReceiptLineId()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "La linea ya no esta disponible en el ticket regalo"));
+            available = option.refundableQuantity();
+            availableSerials = option.serialNumbers();
+            giftReceiptLineId = option.giftReceiptLineId();
+        } else {
+            ticket = documents.ticketForReturnByNumber(origin.sourceCode());
+            var option = documents.cardRefundLineOptions(ticket.getId()).stream()
+                    .filter(line -> line.lineId().equals(origin.sourceLineId())
+                            && line.lineType() == DocumentLineType.PRODUCT)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "La linea ya no esta disponible para devolucion"));
+            available = option.refundableQuantity();
+            availableSerials = option.refundableSerialNumbers();
+        }
+        if (!ticket.getTiendaId().equals(storeId)
+                || !ticket.getId().equals(origin.sourceTicketId())) {
+            throw new IllegalArgumentException("El origen de devolucion no pertenece al ticket indicado");
+        }
+        var quantity = request.quantity().abs().setScale(3, Money.ROUNDING);
+        if (quantity.signum() <= 0 || quantity.compareTo(available) > 0) {
+            throw new IllegalArgumentException(
+                    "La cantidad supera el saldo pendiente de devolucion");
+        }
+        var source = ticket.getLineas().stream()
+                .filter(line -> line.getId().equals(origin.sourceLineId())
+                        && line.getLineType() == DocumentLineType.PRODUCT)
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "La linea no pertenece al ticket original"));
+        if (!source.getProductoId().equals(request.productId())) {
+            throw new IllegalArgumentException("El producto no coincide con la linea original");
+        }
+        var serials = request.serialNumbers() == null
+                ? List.<String>of()
+                : request.serialNumbers().stream().map(String::trim).toList();
+        validateReturnSerials(quantity, serials, availableSerials);
+        if (request.openUnitPrice() != null || request.temporaryName() != null
+                || request.discount().compareTo(source.getDescuento()) != 0) {
+            throw new IllegalArgumentException(
+                    "Las condiciones fiscales de una devolucion no se pueden modificar");
+        }
+        return new DocumentLineCommand(
+                source.getProductoId(), quantity.negate(), source.getCodigo(),
+                source.getNombre(), source.getTarifa(), source.getPrecioUnitario(),
+                source.getDescuento(), source.isImpuestosIncluidos(),
+                source.getRegimenImpuesto(), source.getPorcentajeImpuesto(),
+                DocumentLineType.PRODUCT, null, null, null, serials,
+                false, false, origin.sourceType(), origin.sourceCode(),
+                ticket.getId(), source.getId(), giftReceiptLineId);
+    }
+
+    private static void validateReturnSerials(
+            BigDecimal quantity,
+            List<String> requested,
+            List<String> available) {
+        if (available == null || available.isEmpty()) {
+            if (!requested.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "La linea original no tiene numeros de serie pendientes");
+            }
+            return;
+        }
+        var normalizedAvailable = available.stream()
+                .map(value -> value.trim().toUpperCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toSet());
+        var normalizedRequested = requested.stream()
+                .map(value -> value.trim().toUpperCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toSet());
+        if (quantity.stripTrailingZeros().scale() > 0
+                || quantity.intValueExact() != requested.size()
+                || normalizedRequested.size() != requested.size()
+                || !normalizedAvailable.containsAll(normalizedRequested)) {
+            throw new IllegalArgumentException(
+                    "Los numeros de serie no coinciden con la devolucion seleccionada");
+        }
     }
 
     @Transactional(readOnly = true)

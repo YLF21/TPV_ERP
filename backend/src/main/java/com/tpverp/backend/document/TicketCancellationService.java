@@ -65,16 +65,16 @@ public class TicketCancellationService {
 
     public DocumentService.TicketCancellationValidation latestPreview(
             Authentication authentication) {
-        var candidates = documentRepository.findLatestCancellableTicket(
+        var candidateIds = documentRepository.findLatestCancellableTicketIds(
                 organization.currentStore().getId(),
                 currentTerminal.terminalId(authentication),
                 PageRequest.of(0, 25));
-        for (var ticket : candidates) {
-            if (operations.hasActiveCancellation(ticket.getId())) {
+        for (var ticketId : candidateIds) {
+            if (operations.hasActiveCancellation(ticketId)) {
                 continue;
             }
             try {
-                return documents.validateTicketCancellation(ticket.getId());
+                return documents.validateTicketCancellation(ticketId);
             } catch (IllegalStateException ignored) {
                 // Sigue buscando el último ticket realmente anulable.
             }
@@ -93,7 +93,7 @@ public class TicketCancellationService {
     }
 
     public CommercialDocument latestConvertibleTicket(Authentication authentication) {
-        return documentRepository.findLatestConvertibleTicket(
+        var ticketId = documentRepository.findLatestConvertibleTicketIds(
                         organization.currentStore().getId(),
                         currentTerminal.terminalId(authentication),
                         PageRequest.of(0, 1))
@@ -101,17 +101,14 @@ public class TicketCancellationService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "no existe un ticket anterior convertible en esta terminal"));
+        return documents.findDetailed(ticketId);
     }
 
     public CommercialDocument ticketByNumber(String ticketNumber) {
         if (ticketNumber == null || ticketNumber.isBlank()) {
             throw new IllegalArgumentException("el código de ticket es obligatorio");
         }
-        return documentRepository.findByTiendaIdAndTipoAndNumeroIgnoreCase(
-                        organization.currentStore().getId(),
-                        CommercialDocumentType.TICKET,
-                        ticketNumber.trim())
-                .orElseThrow(() -> new IllegalArgumentException("ticket no encontrado"));
+        return documents.detailedTicketByNumber(ticketNumber);
     }
 
     public CancellationResult cancel(

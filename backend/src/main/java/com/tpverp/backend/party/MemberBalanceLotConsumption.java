@@ -44,6 +44,10 @@ public class MemberBalanceLotConsumption {
         return lot;
     }
 
+    public MemberMovement getMovement() {
+        return movement;
+    }
+
     public BigDecimal getAmount() {
         return amount;
     }

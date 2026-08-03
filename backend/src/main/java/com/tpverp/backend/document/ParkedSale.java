@@ -152,7 +152,13 @@ public class ParkedSale {
                 uuid(value.get("cuponPromocionalId")),
                 stringList(value.get("numerosSerie")),
                 booleanFlag(value, "temporaryNameOverride"),
-                booleanFlag(value, "temporaryPriceOverride"));
+                booleanFlag(value, "temporaryPriceOverride"),
+                enumValue(value.get("returnSourceType"),
+                        TicketReturnService.ReturnSourceType.class),
+                clean((String) value.get("returnSourceCode")),
+                uuid(value.get("returnSourceTicketId")),
+                uuid(value.get("originalDocumentLineId")),
+                uuid(value.get("giftReceiptLineId")));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -189,6 +195,12 @@ public class ParkedSale {
                 ? List.of() : List.copyOf(line.serialNumbers()));
         value.put("temporaryNameOverride", line.temporaryNameOverride());
         value.put("temporaryPriceOverride", line.temporaryPriceOverride());
+        value.put("returnSourceType", line.returnSourceType() == null
+                ? null : line.returnSourceType().name());
+        value.put("returnSourceCode", clean(line.returnSourceCode()));
+        value.put("returnSourceTicketId", string(line.returnSourceTicketId()));
+        value.put("originalDocumentLineId", string(line.originalDocumentLineId()));
+        value.put("giftReceiptLineId", string(line.giftReceiptLineId()));
         return value;
     }
 
@@ -214,6 +226,10 @@ public class ParkedSale {
 
     private static UUID uuid(Object value) {
         return value == null ? null : UUID.fromString(value.toString());
+    }
+
+    private static <E extends Enum<E>> E enumValue(Object value, Class<E> type) {
+        return value == null ? null : Enum.valueOf(type, value.toString());
     }
 
     private static BigDecimal decimal(Object value) {

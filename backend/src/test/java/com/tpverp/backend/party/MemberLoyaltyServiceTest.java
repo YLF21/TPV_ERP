@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -40,6 +41,8 @@ class MemberLoyaltyServiceTest {
     @Mock MemberMovementRepository movements;
     @Mock MemberBalanceLotRepository lots;
     @Mock MemberBalanceLotConsumptionRepository lotConsumptions;
+    @Mock MemberDocumentLoyaltySettlementRepository loyaltySettlements;
+    @Mock MemberDocumentLoyaltyLineRepository loyaltyLines;
     @Mock MemberCardDeliveryRepository cardDeliveries;
     @Mock MemberSmtpSettingsRepository smtpSettings;
     @Mock CommercialContactChannelRepository channels;
@@ -108,6 +111,82 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
+    void paidSaleRepaysLoyaltyDebtBeforeMakingRewardsSpendable() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.addLoyaltyDebt(new BigDecimal("5.00"), 30);
+        var settings = new MemberSettings(company);
+        settings.update(new BigDecimal("10.00"), BalanceExpirationPolicy.NO_CADUCA,
+                BigDecimal.ONE, true, false, MemberCardCodeFormat.QR, null, null);
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
+        when(document.getClienteId()).thenReturn(customer.getId());
+        when(document.getId()).thenReturn(UUID.randomUUID());
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(settingsRepository.findById(company.getId())).thenReturn(Optional.of(settings));
+        when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsDesc(company.getId()))
+                .thenReturn(java.util.List.of());
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().recordPaidSale(document, new BigDecimal("25.99"));
+
+        assertThat(member.getMemberPoints()).isZero();
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("0.00");
+        assertThat(member.getLoyaltyPointsDebt()).isEqualTo(5);
+        assertThat(member.getLoyaltyBalanceDebt()).isEqualByComparingTo("2.41");
+        verify(lots, never()).save(any(MemberBalanceLot.class));
+        verify(syncOutbox, org.mockito.Mockito.times(2)).enqueue(any());
+    }
+
+    @Test
+    void repeatedCumulativeAccrualDoesNotGenerateBenefitsTwice() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var settings = new MemberSettings(company);
+        settings.update(BigDecimal.ZERO, BalanceExpirationPolicy.NO_CADUCA,
+                BigDecimal.ONE, true, false, MemberCardCodeFormat.QR, null, null);
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        var documentId = UUID.randomUUID();
+        when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
+        when(document.getClienteId()).thenReturn(customer.getId());
+        when(document.getId()).thenReturn(documentId);
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(settingsRepository.findById(company.getId())).thenReturn(Optional.of(settings));
+        when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsDesc(company.getId()))
+                .thenReturn(java.util.List.of());
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var stored = new AtomicReference<MemberDocumentLoyaltySettlement>();
+        when(loyaltySettlements.findById(documentId))
+                .thenAnswer(ignored -> Optional.ofNullable(stored.get()));
+        when(loyaltySettlements.save(any())).thenAnswer(invocation -> {
+            stored.set(invocation.getArgument(0));
+            return stored.get();
+        });
+
+        service().recordPaidSale(document, new BigDecimal("10.00"));
+        service().recordPaidSale(document, new BigDecimal("10.00"));
+
+        assertThat(member.getMemberPoints()).isEqualTo(10);
+        assertThat(stored.get().getEligiblePaidAmount()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
     void paidSaleUsesDefaultCategorySettingsWithoutPersistingSharedPrimaryKeyEntity() {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);
@@ -133,6 +212,96 @@ class MemberLoyaltyServiceTest {
 
         assertThat(member.getMemberPoints()).isEqualTo(10);
         verify(settingsRepository, never()).save(any(MemberSettings.class));
+    }
+
+    @Test
+    void confirmedReturnCreatesPointsDebtOnlyOnceWhenGrantedPointsWereSpent() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var originalId = UUID.randomUUID();
+        var returnId = UUID.randomUUID();
+        var settlement = new MemberDocumentLoyaltySettlement(
+                originalId, member, new BigDecimal("10.00"),
+                new BigDecimal("10.00"), Instant.parse("2026-07-02T12:00:00Z"));
+        settlement.recordAccrual(
+                new BigDecimal("10.00"), 10, 10, 0,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                Instant.parse("2026-07-02T12:00:00Z"));
+        var original = org.mockito.Mockito.mock(CommercialDocument.class);
+        var returned = org.mockito.Mockito.mock(CommercialDocument.class);
+        when(original.getId()).thenReturn(originalId);
+        when(original.getNumero()).thenReturn("001-260702-00001");
+        when(returned.getId()).thenReturn(returnId);
+        when(loyaltySettlements.findById(originalId)).thenReturn(Optional.of(settlement));
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(categories.findByCompanyIdAndActiveTrueOrderByMinPointsDesc(company.getId()))
+                .thenReturn(java.util.List.of());
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().reverseConfirmedReturn(
+                original, returned, new BigDecimal("10.00"), new BigDecimal("10.00"));
+        service().reverseConfirmedReturn(
+                original, returned, new BigDecimal("10.00"), new BigDecimal("10.00"));
+
+        assertThat(member.getLoyaltyPointsDebt()).isEqualTo(10);
+        assertThat(settlement.getReversedPoints()).isEqualTo(10);
+        assertThat(settlement.getReturnPointsDebtCreated()).isEqualTo(10);
+    }
+
+    @Test
+    void confirmedPartialReturnRestoresMemberBalanceUsedProportionally() {
+        var company = PartyTestData.company();
+        var store = PartyTestData.store(company);
+        var user = new UserAccount(store, "ADMIN", "hash", new Role(store, "ADMIN"));
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        member.applyBalance(new BigDecimal("10.00"));
+        member.applyBalance(new BigDecimal("-4.00"));
+        var originalId = UUID.randomUUID();
+        var returnId = UUID.randomUUID();
+        var earnedMovement = new MemberMovement(
+                member, store, user, UUID.randomUUID(), MemberMovementType.ACUMULACION_SALDO,
+                new BigDecimal("10.00"), 0, null, null, "origen", Instant.now());
+        var sourceLot = new MemberBalanceLot(
+                member, earnedMovement, new BigDecimal("10.00"), Instant.now(), null);
+        sourceLot.consume(new BigDecimal("4.00"));
+        var usageMovement = new MemberMovement(
+                member, store, user, originalId, MemberMovementType.USO_SALDO,
+                new BigDecimal("-4.00"), 0, null, null, "pago", Instant.now());
+        var consumption = new MemberBalanceLotConsumption(
+                usageMovement, sourceLot, new BigDecimal("4.00"));
+        var settlement = new MemberDocumentLoyaltySettlement(
+                originalId, member, new BigDecimal("10.00"),
+                BigDecimal.ZERO, Instant.parse("2026-07-02T12:00:00Z"));
+        settlement.updateMemberBalanceUsed(new BigDecimal("4.00"), Instant.now());
+        var original = org.mockito.Mockito.mock(CommercialDocument.class);
+        var returned = org.mockito.Mockito.mock(CommercialDocument.class);
+        when(original.getId()).thenReturn(originalId);
+        when(original.getNumero()).thenReturn("001-260702-00001");
+        when(returned.getId()).thenReturn(returnId);
+        when(loyaltySettlements.findById(originalId)).thenReturn(Optional.of(settlement));
+        when(movements.findByDocumentIdOrderByCreatedAtAsc(originalId))
+                .thenReturn(java.util.List.of(usageMovement));
+        when(lotConsumptions.findByMovement_Id(usageMovement.getId()))
+                .thenReturn(java.util.List.of(consumption));
+        when(context.currentCompany()).thenReturn(company);
+        when(context.currentStore()).thenReturn(store);
+        when(context.currentUser()).thenReturn(user);
+        when(movements.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().reverseConfirmedReturn(
+                original, returned, new BigDecimal("5.00"), BigDecimal.ZERO);
+
+        assertThat(member.getMemberBalance()).isEqualByComparingTo("8.00");
+        assertThat(sourceLot.getAmountRemaining()).isEqualByComparingTo("8.00");
+        assertThat(settlement.getRestoredMemberBalance()).isEqualByComparingTo("2.00");
     }
 
     @Test
@@ -460,6 +629,7 @@ class MemberLoyaltyServiceTest {
     private MemberLoyaltyService service() {
         return new MemberLoyaltyService(
                 members, categories, settingsRepository, movements, lots, lotConsumptions,
+                loyaltySettlements, loyaltyLines,
                 cardDeliveries, smtpSettings, channels,
                 syncOutbox, context,
                 Clock.fixed(Instant.parse("2026-07-02T12:00:00Z"), ZoneOffset.UTC));

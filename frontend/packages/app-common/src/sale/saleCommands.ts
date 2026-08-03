@@ -12,6 +12,7 @@ export type SaleCommandId =
   | "close-cash"
   | "cash-withdrawal"
   | "ticket-return"
+  | "gift-receipt"
   | "cancel-last-ticket"
   | "cancel-ticket"
   | "convert-ticket"
@@ -64,6 +65,7 @@ export function saleCommandFromKeyboard(
     if (key === "n") return "serial-number";
     if (key === "o") return "sale-comment";
     if (key === "p") return "print-method";
+    if (key === "r") return "gift-receipt";
     if (event.key === "F4") return "clear-sale";
     if (event.key === "F11") return "cancel-ticket";
     if (event.key === "PageUp") return "temporary-price";

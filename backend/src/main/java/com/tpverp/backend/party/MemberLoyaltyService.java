@@ -7,6 +7,7 @@ import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.document.CommercialDocument;
 import com.tpverp.backend.document.CommercialDocumentType;
+import com.tpverp.backend.document.DocumentLineType;
 import com.tpverp.backend.document.DocumentLineCommand;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -14,9 +15,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +34,8 @@ public class MemberLoyaltyService {
     private final MemberMovementRepository movements;
     private final MemberBalanceLotRepository lots;
     private final MemberBalanceLotConsumptionRepository lotConsumptions;
+    private final MemberDocumentLoyaltySettlementRepository loyaltySettlements;
+    private final MemberDocumentLoyaltyLineRepository loyaltyLines;
     private final MemberCardDeliveryRepository cardDeliveries;
     private final MemberSmtpSettingsRepository smtpSettings;
     private final CommercialContactChannelRepository channels;
@@ -43,6 +50,8 @@ public class MemberLoyaltyService {
             MemberMovementRepository movements,
             MemberBalanceLotRepository lots,
             MemberBalanceLotConsumptionRepository lotConsumptions,
+            MemberDocumentLoyaltySettlementRepository loyaltySettlements,
+            MemberDocumentLoyaltyLineRepository loyaltyLines,
             MemberCardDeliveryRepository cardDeliveries,
             MemberSmtpSettingsRepository smtpSettings,
             CommercialContactChannelRepository channels,
@@ -55,6 +64,8 @@ public class MemberLoyaltyService {
         this.movements = movements;
         this.lots = lots;
         this.lotConsumptions = lotConsumptions;
+        this.loyaltySettlements = loyaltySettlements;
+        this.loyaltyLines = loyaltyLines;
         this.cardDeliveries = cardDeliveries;
         this.smtpSettings = smtpSettings;
         this.channels = channels;
@@ -101,6 +112,12 @@ public class MemberLoyaltyService {
 
     @Transactional
     public void recordPaidSale(CommercialDocument document, BigDecimal paidAmount) {
+        var paid = PartyValues.money(paidAmount);
+        recordPaidSale(document, new LoyaltyAccrual(paid, paid, paid, Map.of()));
+    }
+
+    @Transactional
+    public void recordPaidSale(CommercialDocument document, LoyaltyAccrual accrual) {
         if (!isSaleForAccrual(document) || document.getClienteId() == null) {
             return;
         }
@@ -111,29 +128,87 @@ public class MemberLoyaltyService {
         if (member == null) {
             return;
         }
+        var now = Instant.now(clock);
+        var settlement = loyaltySettlements.findById(document.getId())
+                .orElseGet(() -> new MemberDocumentLoyaltySettlement(
+                        document.getId(), member, accrual.documentAmount(),
+                        accrual.eligibleDocumentAmount(), now));
+        if (!settlement.getMember().getId().equals(member.getId())) {
+            throw new IllegalStateException(
+                    "El documento ya tiene una liquidacion de otro miembro");
+        }
+        settlement.verifyAndUpdateEligibility(
+                accrual.documentAmount(), accrual.eligibleDocumentAmount(), now);
+        saveEligibilitySnapshot(document, accrual);
+        var balanceUsed = movements.findByDocumentIdOrderByCreatedAtAsc(document.getId())
+                .stream()
+                .filter(movement -> movement.getType() == MemberMovementType.USO_SALDO)
+                .map(MemberMovement::getBalanceAmount)
+                .map(BigDecimal::abs)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        settlement.updateMemberBalanceUsed(balanceUsed, now);
         var config = settings.findById(context.currentCompany().getId())
                 .orElseGet(() -> new MemberSettings(context.currentCompany()));
-        var paid = PartyValues.money(paidAmount);
+        var paid = PartyValues.money(
+                accrual.eligiblePaidAmount().subtract(
+                        settlement.getEligiblePaidAmount()));
+        if (paid.signum() < 0) {
+            throw new IllegalStateException(
+                    "El importe elegible cobrado acumulado no puede disminuir");
+        }
         if (paid.signum() <= 0) {
+            loyaltySettlements.save(settlement);
             return;
         }
         var points = paid.multiply(config.getPointsPerEuro()).setScale(0, RoundingMode.FLOOR).longValue();
         var balance = paid.multiply(config.getBalanceAccrualPercent())
                 .movePointLeft(2)
                 .setScale(2, RoundingMode.DOWN);
+        long repaidPoints = 0;
+        long availablePoints = 0;
         if (points > 0) {
-            member.applyPoints(points);
+            repaidPoints = member.repayPointsDebt(points);
+            if (repaidPoints > 0) {
+                movement(member, document.getId(), MemberMovementType.PAGO_DEUDA_PUNTOS,
+                        BigDecimal.ZERO, repaidPoints, null, null,
+                        "compensacion de deuda con puntos generados");
+            }
+            availablePoints = points - repaidPoints;
+            if (availablePoints > 0) {
+                member.applyPoints(availablePoints);
+                movement(member, document.getId(), MemberMovementType.ACUMULACION_PUNTOS,
+                        BigDecimal.ZERO, availablePoints, null, null, "documento cobrado");
+            }
             autoCategory(member);
-            movement(member, document.getId(), MemberMovementType.ACUMULACION_PUNTOS,
-                    BigDecimal.ZERO, points, null, null, "documento cobrado");
         }
+        var repaidBalance = BigDecimal.ZERO.setScale(2);
+        var availableBalance = BigDecimal.ZERO.setScale(2);
         if (balance.signum() > 0) {
-            member.applyBalance(balance);
-            var movement = saveMovement(member, document.getId(), MemberMovementType.ACUMULACION_SALDO,
-                    balance, 0, null, null, "documento cobrado");
-            lots.save(new MemberBalanceLot(member, movement, balance, Instant.now(clock),
-                    expiration(config.getBalanceExpirationPolicy())));
+            repaidBalance = member.repayBalanceDebt(balance);
+            if (repaidBalance.signum() > 0) {
+                movement(member, document.getId(), MemberMovementType.PAGO_DEUDA_SALDO,
+                        repaidBalance, 0, null, null,
+                        "compensacion de deuda con saldo generado");
+            }
+            availableBalance = PartyValues.money(balance.subtract(repaidBalance));
+            if (availableBalance.signum() > 0) {
+                member.applyBalance(availableBalance);
+                var movement = saveMovement(member, document.getId(), MemberMovementType.ACUMULACION_SALDO,
+                        availableBalance, 0, null, null, "documento cobrado");
+                lots.save(new MemberBalanceLot(member, movement, availableBalance, Instant.now(clock),
+                        expiration(config.getBalanceExpirationPolicy())));
+            }
         }
+        settlement.recordAccrual(
+                paid,
+                points,
+                availablePoints,
+                repaidPoints,
+                balance,
+                availableBalance,
+                repaidBalance,
+                now);
+        loyaltySettlements.save(settlement);
     }
     // Accrues benefits from actual collected amount, not from document total.
 
@@ -179,6 +254,187 @@ public class MemberLoyaltyService {
         return value;
     }
     // Consumes member balance against FIFO earned lots after checking the SaaS snapshot is recent.
+
+    @Transactional
+    public void reverseConfirmedReturn(
+            CommercialDocument original,
+            CommercialDocument returnDocument,
+            BigDecimal cumulativeRefund,
+            BigDecimal cumulativeEligibleRefund) {
+        Objects.requireNonNull(original, "original");
+        Objects.requireNonNull(returnDocument, "returnDocument");
+        if (original.getId().equals(returnDocument.getId())) {
+            throw new IllegalArgumentException(
+                    "La devolucion no puede ser su propio documento de origen");
+        }
+        var settlement = loyaltySettlements.findById(original.getId()).orElse(null);
+        if (settlement == null) {
+            return;
+        }
+        var now = Instant.now(clock);
+        var plan = settlement.planReversal(
+                cumulativeRefund, cumulativeEligibleRefund);
+        var member = settlement.getMember();
+        long pointsDebtCreated = 0;
+        var balanceDebtCreated = BigDecimal.ZERO.setScale(2);
+
+        var reversedPointsNow = plan.grantedPointsDelta() + plan.debtPointsDelta();
+        if (reversedPointsNow > 0) {
+            var removable = Math.min(member.getMemberPoints(), plan.grantedPointsDelta());
+            if (removable > 0) {
+                member.applyPoints(-removable);
+            }
+            pointsDebtCreated = Math.addExact(
+                    plan.debtPointsDelta(), plan.grantedPointsDelta() - removable);
+            movement(
+                    member,
+                    returnDocument.getId(),
+                    MemberMovementType.DEVOLUCION_ACUMULACION_PUNTOS,
+                    BigDecimal.ZERO,
+                    -reversedPointsNow,
+                    null,
+                    null,
+                    "devolucion del documento " + original.getNumero());
+        }
+
+        var reversedBalanceNow = plan.grantedBalanceDelta()
+                .add(plan.debtBalanceDelta());
+        if (reversedBalanceNow.signum() > 0) {
+            var reversalMovement = saveMovement(
+                    member,
+                    returnDocument.getId(),
+                    MemberMovementType.DEVOLUCION_ACUMULACION_SALDO,
+                    reversedBalanceNow.negate(),
+                    0,
+                    null,
+                    null,
+                    "devolucion del documento " + original.getNumero());
+            var sourceLots = originalAccrualLots(original.getId());
+            var cancelledAvailable = cancelAvailableAccrual(
+                    sourceLots, reversalMovement, plan.grantedBalanceDelta());
+            if (cancelledAvailable.signum() > 0) {
+                member.applyReturnBalance(cancelledAvailable.negate());
+            }
+            var unavailableGranted = PartyValues.money(
+                    plan.grantedBalanceDelta().subtract(cancelledAvailable));
+            var previouslyCreatedForSpentBalance = PartyValues.money(
+                    settlement.getReturnBalanceDebtCreated()
+                            .subtract(settlement.getReversedOriginalBalanceDebt()))
+                    .max(BigDecimal.ZERO.setScale(2));
+            var spentCapacity = PartyValues.money(
+                    originalAccrualSpentAmount(sourceLots)
+                            .subtract(previouslyCreatedForSpentBalance))
+                    .max(BigDecimal.ZERO.setScale(2));
+            var spentGranted = unavailableGranted.min(spentCapacity);
+            balanceDebtCreated = plan.debtBalanceDelta().add(spentGranted);
+        }
+
+        if (pointsDebtCreated > 0 || balanceDebtCreated.signum() > 0) {
+            member.addLoyaltyDebt(balanceDebtCreated, pointsDebtCreated);
+        }
+
+        if (plan.memberBalanceRestoreDelta().signum() > 0) {
+            var restored = restoreOriginalBalanceUsage(
+                    original.getId(),
+                    settlement.getRestoredMemberBalance(),
+                    plan.memberBalanceRestoreDelta());
+            member.applyReturnBalance(restored);
+            movement(
+                    member,
+                    returnDocument.getId(),
+                    MemberMovementType.DEVOLUCION_RESTAURACION_SALDO,
+                    restored,
+                    0,
+                    null,
+                    null,
+                    "restauracion por devolucion del documento " + original.getNumero());
+        }
+
+        if (reversedPointsNow > 0) {
+            autoCategory(member);
+        }
+        settlement.recordReversal(
+                plan, pointsDebtCreated, balanceDebtCreated, now);
+        loyaltySettlements.save(settlement);
+    }
+
+    private List<MemberBalanceLot> originalAccrualLots(UUID documentId) {
+        return movements.findByDocumentIdOrderByCreatedAtAsc(documentId).stream()
+                .filter(movement ->
+                        movement.getType() == MemberMovementType.ACUMULACION_SALDO)
+                .flatMap(movement -> lots.findBySourceMovement_Id(movement.getId()).stream())
+                .sorted(Comparator.comparing(MemberBalanceLot::getCreatedAt)
+                        .thenComparing(MemberBalanceLot::getId))
+                .toList();
+    }
+
+    private BigDecimal cancelAvailableAccrual(
+            List<MemberBalanceLot> sourceLots,
+            MemberMovement reversalMovement,
+            BigDecimal requested) {
+        var remaining = PartyValues.money(requested);
+        var cancelled = BigDecimal.ZERO.setScale(2);
+        for (var lot : sourceLots) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+            var amount = lot.getAmountRemaining().min(remaining);
+            if (amount.signum() <= 0) {
+                continue;
+            }
+            lot.consume(amount);
+            lotConsumptions.save(new MemberBalanceLotConsumption(
+                    reversalMovement, lot, amount));
+            cancelled = cancelled.add(amount);
+            remaining = remaining.subtract(amount);
+        }
+        return PartyValues.money(cancelled);
+    }
+
+    private BigDecimal originalAccrualSpentAmount(
+            List<MemberBalanceLot> sourceLots) {
+        return PartyValues.money(sourceLots.stream()
+                .flatMap(lot -> lotConsumptions.findByLot_Id(lot.getId()).stream())
+                .filter(consumption -> consumption.getMovement().getType()
+                        == MemberMovementType.USO_SALDO)
+                .map(MemberBalanceLotConsumption::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    private BigDecimal restoreOriginalBalanceUsage(
+            UUID documentId,
+            BigDecimal alreadyRestored,
+            BigDecimal requested) {
+        var skip = PartyValues.money(alreadyRestored);
+        var remaining = PartyValues.money(requested);
+        var consumptions = movements.findByDocumentIdOrderByCreatedAtAsc(documentId).stream()
+                .filter(movement -> movement.getType() == MemberMovementType.USO_SALDO)
+                .flatMap(movement -> lotConsumptions.findByMovement_Id(movement.getId()).stream())
+                .sorted(Comparator
+                        .comparing((MemberBalanceLotConsumption value) ->
+                                value.getLot().getCreatedAt())
+                        .thenComparing(value -> value.getLot().getId()))
+                .toList();
+        for (var consumption : consumptions) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+            if (skip.compareTo(consumption.getAmount()) >= 0) {
+                skip = skip.subtract(consumption.getAmount());
+                continue;
+            }
+            var available = consumption.getAmount().subtract(skip);
+            skip = BigDecimal.ZERO.setScale(2);
+            var amount = available.min(remaining);
+            consumption.getLot().restore(amount);
+            remaining = remaining.subtract(amount);
+        }
+        if (remaining.signum() > 0) {
+            throw new IllegalStateException(
+                    "No se puede reconstruir el saldo de miembro usado por el documento");
+        }
+        return PartyValues.money(requested);
+    }
 
     @Transactional(readOnly = true)
     public void validateTicketCancellation(CommercialDocument document) {
@@ -595,10 +851,87 @@ public class MemberLoyaltyService {
         }
     }
 
+    private void saveEligibilitySnapshot(
+            CommercialDocument document,
+            LoyaltyAccrual accrual) {
+        if (accrual.lines().isEmpty()) {
+            return;
+        }
+        var documentLineIds = document.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .map(line -> line.getId())
+                .collect(Collectors.toSet());
+        if (!documentLineIds.containsAll(accrual.lines().keySet())
+                || !accrual.lines().keySet().containsAll(documentLineIds)) {
+            throw new IllegalArgumentException(
+                    "La instantanea de fidelizacion no coincide con las lineas del documento");
+        }
+        var existing = loyaltyLines.findAllById(documentLineIds).stream()
+                .collect(Collectors.toMap(
+                        MemberDocumentLoyaltyLine::getDocumentLineId,
+                        Function.identity()));
+        var pending = new java.util.ArrayList<MemberDocumentLoyaltyLine>();
+        accrual.lines().forEach((lineId, expected) -> {
+            var current = existing.get(lineId);
+            if (current == null) {
+                pending.add(new MemberDocumentLoyaltyLine(
+                        document.getId(), lineId, expected.eligible(), expected.amount()));
+                return;
+            }
+            if (!current.getDocumentId().equals(document.getId())
+                    || current.isEligible() != expected.eligible()
+                    || current.getEligibleAmount().compareTo(expected.amount()) != 0) {
+                throw new IllegalStateException(
+                        "La instantanea historica de la linea de fidelizacion no coincide");
+            }
+        });
+        if (!pending.isEmpty()) {
+            loyaltyLines.saveAll(pending);
+        }
+    }
+
     private static boolean isSaleForAccrual(CommercialDocument document) {
         return document.getTipo() == CommercialDocumentType.TICKET
                 || document.getTipo() == CommercialDocumentType.FACTURA_VENTA
                 || document.getTipo() == CommercialDocumentType.ALBARAN_VENTA;
+    }
+
+    public record LoyaltyLineEligibility(boolean eligible, BigDecimal amount) {
+
+        public LoyaltyLineEligibility {
+            amount = PartyValues.money(amount);
+            if (amount.signum() < 0 || (!eligible && amount.signum() != 0)) {
+                throw new IllegalArgumentException(
+                        "El importe elegible de la linea no es valido");
+            }
+        }
+    }
+
+    public record LoyaltyAccrual(
+            BigDecimal documentAmount,
+            BigDecimal eligibleDocumentAmount,
+            BigDecimal eligiblePaidAmount,
+            Map<UUID, LoyaltyLineEligibility> lines) {
+
+        public LoyaltyAccrual {
+            documentAmount = PartyValues.money(documentAmount);
+            eligibleDocumentAmount = PartyValues.money(eligibleDocumentAmount);
+            eligiblePaidAmount = PartyValues.money(eligiblePaidAmount);
+            if (documentAmount.signum() < 0
+                    || eligibleDocumentAmount.signum() < 0
+                    || eligiblePaidAmount.signum() < 0
+                    || eligibleDocumentAmount.compareTo(documentAmount) > 0
+                    || eligiblePaidAmount.compareTo(eligibleDocumentAmount) > 0) {
+                throw new IllegalArgumentException(
+                        "La liquidacion de fidelizacion no es valida");
+            }
+            var canonical = new LinkedHashMap<UUID, LoyaltyLineEligibility>();
+            Objects.requireNonNull(lines, "lines").forEach((id, line) ->
+                    canonical.put(
+                            Objects.requireNonNull(id, "documentLineId"),
+                            Objects.requireNonNull(line, "line")));
+            lines = Map.copyOf(canonical);
+        }
     }
 
     private Member member(UUID id) {

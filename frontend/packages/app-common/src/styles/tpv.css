@@ -4024,6 +4024,10 @@ textarea {
   background: #ffffff;
 }
 
+.cash-authorization-operator {
+  grid-column: 1 / -1;
+}
+
 .cash-daily-summary {
   display: grid;
   gap: 10px;
@@ -19573,20 +19577,87 @@ textarea:focus,
 .sale-operation-authorization-fields {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 10px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 12px;
+  border: 1px solid #bdcad8;
   border-left: 4px solid #2c66a3;
-  background: #edf3f9;
+  background: #f4f7fa;
 }
 
-.sale-operation-authorization-fields > p {
-  grid-column: 1 / -1;
+.ticket-return-selection-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ticket-return-selection-tools button {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.sale-operation-authorization-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #cfdae5;
+}
+
+.sale-operation-authorization-avatar {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid #174f89;
+  border-radius: 2px;
+  background: #0a315f;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.sale-operation-authorization-user {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sale-operation-authorization-user small {
+  color: #526982;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.sale-operation-authorization-user strong {
+  overflow: hidden;
+  color: #0a315f;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-operation-authorization-hint {
   margin: 0;
   color: #2f4d70;
   font-size: 12px;
   font-weight: 750;
+}
+
+.sale-operation-authorization-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.sale-operation-authorization-fields[data-authorization-mode="CURRENT_PASSWORD"] .sale-operation-authorization-inputs {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sale-operation-authorization-fields label {
@@ -19651,7 +19722,7 @@ textarea:focus,
     grid-template-columns: 1fr;
   }
 
-  .sale-operation-authorization-fields {
+  .sale-operation-authorization-inputs {
     grid-template-columns: 1fr;
   }
 
@@ -21349,5 +21420,157 @@ textarea:focus,
 
   .purchase-query-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.gift-receipt-dialog {
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  background: #f8fafc;
+  border: 1px solid #8da2ba;
+  box-shadow: 0 24px 64px rgb(9 30 56 / 28%);
+}
+
+.gift-receipt-dialog > header,
+.gift-receipt-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.gift-receipt-dialog > header {
+  color: #fff;
+  background: #0b315d;
+}
+
+.gift-receipt-dialog > header h2,
+.gift-receipt-dialog > header p {
+  margin: 0;
+}
+
+.gift-receipt-dialog > header p {
+  margin-top: 4px;
+  color: #dce9f7;
+}
+
+.gift-receipt-dialog > footer {
+  justify-content: flex-end;
+  border-top: 1px solid #b7c5d4;
+  background: #eef3f8;
+}
+
+.gift-receipt-dialog > footer > strong {
+  margin-right: auto;
+  color: #0b315d;
+  font-size: 18px;
+}
+
+.gift-receipt-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #c5d1de;
+}
+
+.gift-receipt-search label {
+  display: grid;
+  gap: 6px;
+  color: #344b66;
+  font-weight: 800;
+}
+
+.gift-receipt-search input {
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid #8da2ba;
+  font: inherit;
+}
+
+.gift-receipt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #e8eef5;
+  border-bottom: 1px solid #b7c5d4;
+}
+
+.gift-receipt-toolbar > div {
+  display: flex;
+  gap: 8px;
+}
+
+.gift-receipt-lines {
+  min-height: 330px;
+  overflow: auto;
+  margin: 0 20px 14px;
+  border: 1px solid #9fb0c4;
+  background: #fff;
+}
+
+.gift-receipt-lines table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gift-receipt-lines th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px;
+  text-align: left;
+  color: #fff;
+  background: #0b315d;
+}
+
+.gift-receipt-lines td {
+  padding: 9px 10px;
+  border-right: 1px solid #cad4df;
+  border-bottom: 1px solid #cad4df;
+  vertical-align: middle;
+}
+
+.gift-receipt-lines td:first-child,
+.gift-receipt-lines th:first-child {
+  width: 42px;
+  text-align: center;
+}
+
+.gift-receipt-lines input[type="number"] {
+  width: 100px;
+  padding: 6px;
+}
+
+.gift-receipt-serials {
+  background: #edf4fb;
+}
+
+.gift-receipt-serials label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 16px 4px 0;
+}
+
+@media (max-width: 760px) {
+  .gift-receipt-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .gift-receipt-search {
+    grid-template-columns: 1fr;
+  }
+
+  .gift-receipt-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

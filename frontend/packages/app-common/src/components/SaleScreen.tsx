@@ -37,6 +37,7 @@ import {
 } from "../sale/saleCommands";
 import type { TicketPrintUiStatus } from "./CashPaymentResultDialog";
 import { CustomerPendingSaleDialog } from "./CustomerPendingSaleDialog";
+import { GiftReceiptDialog } from "./GiftReceiptDialog";
 import {
   addLocalDays,
   resolvePendingCardPaymentMode,
@@ -86,7 +87,7 @@ import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
-import { TicketReturnDialog } from "./TicketReturnDialog";
+import { TicketReturnDialog, type ReturnCartLine } from "./TicketReturnDialog";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
   CashDrawerResultReportingError,
@@ -148,11 +149,20 @@ export type SaleLine = {
   product: SaleProduct;
   quantity: number;
   openUnitPrice?: number;
+  returnUnitPrice?: number;
   temporaryName?: string;
   serialNumbers?: string[];
   // Operator-entered discount. Member benefit is kept separately.
   discountPercent: number;
   memberDiscountPercent?: number;
+  returnOrigin?: {
+    sourceType: "TICKET" | "GIFT_RECEIPT";
+    sourceCode: string;
+    sourceTicketId: string;
+    sourceTicketNumber: string;
+    sourceLineId: string;
+    giftReceiptLineId?: string | null;
+  };
 };
 
 export type SaleCustomer = {
@@ -584,7 +594,7 @@ export function updateSaleLineTemporaryPrice(
 }
 
 export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
-  return line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
+  return line.returnUnitPrice ?? line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
 }
 
 export function saleProductRequiresOpenPrice(product: SaleProduct) {
@@ -600,7 +610,9 @@ export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lin
 }
 
 export function effectiveSaleLineDiscount(line: SaleLine) {
-  return Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
+  return line.returnOrigin
+    ? line.discountPercent
+    : Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
 }
 
 export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer | null) {
@@ -1178,6 +1190,7 @@ export function SaleScreen({
     useState<"LAST" | "BY_NUMBER" | null>(null);
   const [ticketInvoiceOpen, setTicketInvoiceOpen] = useState(false);
   const [ticketReturnOpen, setTicketReturnOpen] = useState(false);
+  const [giftReceiptOpen, setGiftReceiptOpen] = useState(false);
   const [serialNumberOpen, setSerialNumberOpen] = useState(false);
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState("");
@@ -1256,11 +1269,6 @@ export function SaleScreen({
   const cashMovementAuthorization = findSaleOperationAuthorization(
     operationSecurity,
     "CASH_MOVEMENT",
-    session.permissions,
-  );
-  const ticketReturnAuthorization = findSaleOperationAuthorization(
-    operationSecurity,
-    "RETURN_TICKET",
     session.permissions,
   );
   const ticketCancellationAuthorization = findSaleOperationAuthorization(
@@ -1843,6 +1851,45 @@ export function SaleScreen({
     searchInputRef.current?.focus();
   }
 
+  function addReturnLinesToCart(returnLines: ReturnCartLine[]) {
+    if (paymentLocked || returnLines.length === 0) return;
+    const added = returnLines.map((returnLine): SaleLine => {
+      const catalogProduct = products.find((product) => product.id === returnLine.productId);
+      const product: SaleProduct = catalogProduct ?? {
+        id: returnLine.productId,
+        active: true,
+        code: returnLine.code,
+        name: returnLine.name,
+        salePrice: returnLine.unitPrice,
+        taxId: "return-origin",
+        taxesIncluded: returnLine.taxesIncluded,
+        taxRegime: returnLine.taxRegime === "IGIC" ? "IGIC" : "IVA",
+        taxPercentage: returnLine.taxPercentage,
+      };
+      return {
+        cartLineId: createSaleCartLineId(),
+        product,
+        quantity: -returnLine.returnQuantity,
+        returnUnitPrice: Number(returnLine.unitPrice),
+        discountPercent: Number(returnLine.discount),
+        serialNumbers: returnLine.selectedSerialNumbers,
+        returnOrigin: {
+          sourceType: returnLine.sourceType,
+          sourceCode: returnLine.sourceCode,
+          sourceTicketId: returnLine.sourceTicketId,
+          sourceTicketNumber: returnLine.sourceTicketNumber,
+          sourceLineId: returnLine.lineId,
+          giftReceiptLineId: returnLine.giftReceiptLineId,
+        },
+      };
+    });
+    setLines((current) => [...current, ...added]);
+    setSelectedLineId(saleCartLineIdentity(added[added.length - 1]));
+    setTicketReturnOpen(false);
+    setShortcutStatus(t("ticketReturn.addedToCart"));
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
   function requestPriceOrAddProduct(product: SaleProduct) {
     const packageQuantity = Number(product.packageQuantity ?? 1);
     const quantity = nextScanMode === "PACKAGE"
@@ -1915,28 +1962,28 @@ export function SaleScreen({
   }
 
   function openQuantityDialog() {
-    if (!selectedLine) return;
+    if (!selectedLine || selectedLine.returnOrigin) return;
     setQuantityInput(String(selectedLine.quantity));
     setActionError("");
     setActionDialog("quantity");
   }
 
   function openDiscountDialog() {
-    if (!selectedLine || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
+    if (!selectedLine || selectedLine.returnOrigin || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
     setDiscountInput(String(selectedLine.discountPercent));
     setActionError("");
     setActionDialog("discount");
   }
 
   function openTemporaryNameDialog() {
-    if (!selectedLine || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
     setTemporaryNameInput(selectedLine.temporaryName ?? selectedLine.product.name ?? "");
     setActionError("");
     setActionDialog("temporaryName");
   }
 
   function openTemporaryPriceDialog() {
-    if (!selectedLine || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
     setTemporaryPriceInput(
       selectedLine.openUnitPrice == null ? "" : String(selectedLine.openUnitPrice),
     );
@@ -2165,7 +2212,7 @@ export function SaleScreen({
   }
 
   function applyPauseQuantity() {
-    if (!selectedLine || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
     const quantity = salePauseQuantity(query);
     if (quantity == null) {
       setShortcutStatus("Introduce una cantidad y pulsa Pausa");
@@ -2183,7 +2230,7 @@ export function SaleScreen({
   }
 
   function addToSelectedQuantity() {
-    if (!selectedLine || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
     const operand = quickOperand();
     if (operand == null || operand < 1) {
       setShortcutStatus("Introduce la cantidad que quieres sumar");
@@ -2199,7 +2246,7 @@ export function SaleScreen({
   }
 
   function subtractFromSelectedQuantity() {
-    if (!selectedLine || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
     const operand = quickOperand();
     if (operand == null || operand < 1) {
       setShortcutStatus("Introduce la cantidad que quieres restar");
@@ -2240,7 +2287,7 @@ export function SaleScreen({
   }
 
   function applyQuickLineDiscount() {
-    if (!selectedLine || paymentLocked || !canApplyManualDiscount
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || !canApplyManualDiscount
       || saleProductBlocksManualDiscount(selectedLine.product)) return;
     const discount = quickOperand();
     if (discount == null || discount < 0 || discount > 100) {
@@ -2261,7 +2308,9 @@ export function SaleScreen({
     }
     try {
       setLines((current) => current.reduce(
-        (updated, line) => updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
+        (updated, line) => line.returnOrigin
+          ? updated
+          : updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
         current,
       ));
       clearQuickEntry("Descuento aplicado a toda la compra");
@@ -2273,7 +2322,7 @@ export function SaleScreen({
   }
 
   function applyDesiredLinePrice() {
-    if (!selectedLine || paymentLocked || !canApplyManualDiscount
+    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || !canApplyManualDiscount
       || saleProductBlocksManualDiscount(selectedLine.product)) return;
     const desiredPrice = quickOperand();
     const currentPrice = saleLineUnitPrice(selectedLine, activeMember);
@@ -2297,6 +2346,13 @@ export function SaleScreen({
         ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
         ...(line.openUnitPrice != null ? { openUnitPrice: line.openUnitPrice } : {}),
         ...(line.temporaryName ? { temporaryName: line.temporaryName } : {}),
+        ...(line.returnOrigin ? { returnOrigin: {
+          sourceType: line.returnOrigin.sourceType,
+          sourceCode: line.returnOrigin.sourceCode,
+          sourceTicketId: line.returnOrigin.sourceTicketId,
+          sourceLineId: line.returnOrigin.sourceLineId,
+          giftReceiptLineId: line.returnOrigin.giftReceiptLineId ?? null,
+        } } : {}),
       })),
       ...(checkoutDiscountCents > 0 ? { checkoutDiscountAmount: checkoutDiscountCents / 100 } : {}),
       ...(saleComment ? { internalComment: saleComment } : {}),
@@ -2374,7 +2430,7 @@ export function SaleScreen({
 
   function clearManualDiscounts() {
     setLines((current) => current.map((line) => (
-      line.discountPercent === 0 ? line : { ...line, discountPercent: 0 }
+      line.returnOrigin || line.discountPercent === 0 ? line : { ...line, discountPercent: 0 }
     )));
     setCheckoutDiscountCents(0);
     setShortcutStatus(t("sale.clearDiscounts.done"));
@@ -2516,10 +2572,25 @@ export function SaleScreen({
         quantity: Number(line.cantidad),
         discountPercent: Number(line.descuento),
         serialNumbers: line.serialNumbers ?? [],
+        ...(line.originalDocumentLineId && line.returnSourceType
+          && line.returnSourceCode && line.returnSourceTicketId
+          ? {
+              returnUnitPrice: Number(line.precioUnitario),
+              returnOrigin: {
+                sourceType: line.returnSourceType,
+                sourceCode: line.returnSourceCode,
+                sourceTicketId: line.returnSourceTicketId,
+                sourceTicketNumber: line.returnSourceCode,
+                sourceLineId: line.originalDocumentLineId,
+                giftReceiptLineId: line.giftReceiptLineId,
+              },
+            }
+          : {}),
         ...(line.temporaryNameOverride === true && line.nombre?.trim()
           ? { temporaryName: line.nombre.trim() }
           : {}),
-        ...((line.temporaryPriceOverride === true || Number(product.salePrice) === 0)
+        ...(!line.originalDocumentLineId
+          && (line.temporaryPriceOverride === true || Number(product.salePrice) === 0)
           && Number(line.precioUnitario) > 0
           ? { openUnitPrice: Number(line.precioUnitario) }
           : {})
@@ -2776,7 +2847,7 @@ export function SaleScreen({
       case "desired-price":
       case "serial-number":
       case "line-discount":
-        return !selectedLine || paymentLocked;
+        return !selectedLine || Boolean(selectedLine.returnOrigin) || paymentLocked;
       case "edit-product":
         return !selectedLine || paymentLocked || productEditBusy;
       case "ean-generator":
@@ -2784,6 +2855,7 @@ export function SaleScreen({
       case "print-product-label":
         return paymentLocked || salesUtilityOpening;
       case "ticket-return":
+      case "gift-receipt":
       case "cancel-last-ticket":
       case "cancel-ticket":
       case "convert-ticket":
@@ -2813,9 +2885,9 @@ export function SaleScreen({
           && lines.every((line) => line.discountPercent === 0)
         );
       case "temporary-name":
-        return paymentLocked || !selectedLine;
+        return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin);
       case "temporary-price":
-        return paymentLocked || !selectedLine
+        return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin)
           || saleProductRequiresOpenPrice(selectedLine.product);
       case "sale-discount":
         return lines.length === 0 || paymentLocked || !canApplyManualDiscount;
@@ -2876,8 +2948,10 @@ export function SaleScreen({
         else reportOperationSecurityUnavailable();
         break;
       case "ticket-return":
-        if (ticketReturnAuthorization) setTicketReturnOpen(true);
-        else reportOperationSecurityUnavailable();
+        setTicketReturnOpen(true);
+        break;
+      case "gift-receipt":
+        setGiftReceiptOpen(true);
         break;
       case "cancel-last-ticket":
         if (ticketCancellationAuthorization) setTicketCancellationMode("LAST");
@@ -2949,7 +3023,7 @@ export function SaleScreen({
         openTemporaryPriceDialog();
         break;
       case "serial-number":
-        setSerialNumberOpen(true);
+        if (!selectedLine?.returnOrigin) setSerialNumberOpen(true);
         break;
       case "line-discount":
         if (source === "KEYBOARD") applyQuickLineDiscount();
@@ -3084,6 +3158,11 @@ export function SaleScreen({
           type: "action", id: "ticket-return", label: commandLabels.ticketReturn, shortcut: "F10",
           disabled: !paymentHydrated || paymentLocked,
           onSelect: () => executeSaleCommand("ticket-return"),
+        },
+        {
+          type: "action", id: "gift-receipt", label: t("sale.shortcut.giftReceipt"), shortcut: "Ctrl+R",
+          disabled: !paymentHydrated || paymentLocked,
+          onSelect: () => executeSaleCommand("gift-receipt"),
         },
         {
           type: "action", id: "cancel-last-ticket", label: commandLabels.cancelTicket, shortcut: "F11",
@@ -3437,6 +3516,7 @@ export function SaleScreen({
             <SalePaymentCheckout
               ref={paymentCheckoutRef}
               locale={locale}
+              currentUsername={session.username}
               totalCents={Math.round(authoritativeTotal * 100)}
               sale={cashSaleRequest()}
               token={session.accessToken}
@@ -3510,6 +3590,7 @@ export function SaleScreen({
         error={cashDrawerError}
         t={t}
         locale={locale}
+        currentUsername={session.username}
         authorization={cashDrawerAuthorization ?? {
           mode: "DELEGATED",
           requireUsername: true,
@@ -3526,6 +3607,7 @@ export function SaleScreen({
       {cashWithdrawalOpen && cashSessionReady && terminalContext.terminalId && session.accessToken && (
         <SaleCashWithdrawalDialog
           locale={locale}
+          currentUsername={session.username}
           terminalId={terminalContext.terminalId}
           terminalContext={terminalContext}
           token={session.accessToken}
@@ -3555,6 +3637,7 @@ export function SaleScreen({
         error={productEditError}
         t={t}
         locale={locale}
+        currentUsername={session.username}
         authorization={productEditAuthorization ?? {
           mode: "DELEGATED",
           requireUsername: true,
@@ -3613,6 +3696,7 @@ export function SaleScreen({
       {pendingDraft && (selectedCustomer || recoveredPendingSale) && <CustomerPendingSaleDialog
         customerName={selectedCustomer?.fiscalName ?? selectedCustomer?.clientId ?? recoveredPendingSale?.customer.name ?? "Cliente"}
         locale={locale}
+        currentUsername={session.username}
         terminalContext={terminalContext}
         printMode={salePrintMode}
         draft={pendingDraft}
@@ -4018,6 +4102,7 @@ export function SaleScreen({
         <ParkedSalesDialog
           token={session.accessToken}
           locale={locale}
+          currentUsername={session.username}
           currentSale={cashSaleRequest()}
           printMode={salePrintMode}
           canPark={lines.length > 0 && !paymentLocked && !authoritativeQuoteLoading
@@ -4038,6 +4123,7 @@ export function SaleScreen({
         <SaleTicketCancellationDialog
           token={session.accessToken}
           locale={locale}
+          currentUsername={session.username}
           authorization={ticketCancellationAuthorization ?? {
             mode: "DELEGATED",
             requireUsername: true,
@@ -4054,6 +4140,7 @@ export function SaleScreen({
         <SaleTicketInvoiceDialog
           token={session.accessToken}
           locale={locale}
+          currentUsername={session.username}
           authorization={ticketInvoiceAuthorization ?? {
             mode: "DELEGATED",
             requireUsername: true,
@@ -4068,14 +4155,17 @@ export function SaleScreen({
         <TicketReturnDialog
           token={session.accessToken}
           locale={locale}
-          terminalContext={terminalContext}
-          authorization={ticketReturnAuthorization ?? {
-            mode: "DELEGATED",
-            requireUsername: true,
-            requirePassword: true,
-          }}
           onClose={() => setTicketReturnOpen(false)}
-          onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
+          onAddToCart={addReturnLinesToCart}
+        />
+      )}
+
+      {giftReceiptOpen && (
+        <GiftReceiptDialog
+          token={session.accessToken}
+          locale={locale}
+          terminalContext={terminalContext}
+          onClose={() => setGiftReceiptOpen(false)}
         />
       )}
 
@@ -4118,6 +4208,7 @@ export function SaleScreen({
       {cashSessionState === "REQUIRED" && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
+          currentUsername={session.username}
           mode="OPEN"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}
@@ -4152,6 +4243,7 @@ export function SaleScreen({
         && terminalContext.terminalId && session.accessToken && (
         <SaleCashSessionDialog
           locale={locale}
+          currentUsername={session.username}
           mode="CLOSE"
           terminalId={terminalContext.terminalId}
           token={session.accessToken}

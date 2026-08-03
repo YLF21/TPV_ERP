@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -34,6 +35,8 @@ public class TicketReturnService {
     private final TicketCancellationOperationRepository cancellations;
     private final SaleOperationSecurityService operationSecurity;
     private final AuditService audit;
+    private GiftReceiptService giftReceipts;
+    private TicketReturnValuationService valuations;
 
     public TicketReturnService(
             DocumentService documents,
@@ -56,6 +59,45 @@ public class TicketReturnService {
         this.cancellations = cancellations;
         this.operationSecurity = operationSecurity;
         this.audit = audit;
+    }
+
+    @Autowired
+    void setGiftReceiptService(GiftReceiptService giftReceipts) {
+        this.giftReceipts = giftReceipts;
+    }
+
+    @Autowired
+    void setTicketReturnValuationService(TicketReturnValuationService valuations) {
+        this.valuations = valuations;
+    }
+
+    public TicketReturnValuationService.Valuation value(
+            String sourceCode,
+            List<ReturnSelection> requested) {
+        if (valuations == null) {
+            throw new IllegalStateException("return_valuation_service_unavailable");
+        }
+        var preview = preview(sourceCode);
+        var options = preview.lines().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ReturnLineOption::lineId, java.util.function.Function.identity()));
+        var selected = new java.util.LinkedHashMap<UUID, BigDecimal>();
+        for (var request : List.copyOf(requested == null ? List.of() : requested)) {
+            var option = options.get(Objects.requireNonNull(request.lineId(), "lineId"));
+            if (option == null) {
+                throw new IllegalArgumentException(
+                        "La linea no esta disponible en el documento indicado");
+            }
+            var quantity = Objects.requireNonNull(request.quantity(), "quantity")
+                    .setScale(3, Money.ROUNDING);
+            if (quantity.signum() <= 0
+                    || quantity.compareTo(option.refundableQuantity()) > 0) {
+                throw new IllegalArgumentException(
+                        "La cantidad supera el saldo pendiente de devolucion");
+            }
+            selected.merge(option.lineId(), quantity, BigDecimal::add);
+        }
+        return valuations.value(preview.ticket(), selected);
     }
 
     public ReturnResult create(
@@ -109,8 +151,28 @@ public class TicketReturnService {
             total = total.add(value);
         }
         total = Money.euros(total);
-        if (total.signum() <= 0) throw new IllegalArgumentException("Se requiere un importe de devolucion");
-        documents.validateApprovedCardRefund(ticketId, total, selectedLines);
+        TicketReturnValuationService.Valuation valuation = null;
+        if (valuations != null && !selectedLines.isEmpty()) {
+            var selectedQuantities = selectedLines.stream()
+                    .collect(java.util.stream.Collectors.toMap(
+                            PaymentTerminalRefundLineSelection::lineId,
+                            PaymentTerminalRefundLineSelection::quantity,
+                            BigDecimal::add,
+                            LinkedHashMap::new));
+            valuation = valuations.value(documents.find(ticketId), selectedQuantities);
+            if (total.compareTo(valuation.refundableAmount()) != 0) {
+                throw new IllegalArgumentException(
+                        "El importe de devolucion no coincide con la valoracion historica");
+            }
+        } else {
+            documents.validateApprovedCardRefund(ticketId, total, selectedLines);
+        }
+        if (total.signum() < 0
+                || (total.signum() == 0
+                        && (valuation == null
+                                || valuation.refundableAmount().signum() != 0))) {
+            throw new IllegalArgumentException("Se requiere un importe de devolucion");
+        }
 
         // Preflight cash before sending any irreversible request to the acquirer.
         if (cashValue.signum() > 0) {
@@ -168,8 +230,23 @@ public class TicketReturnService {
                     refund.getId(),
                     refund.getExternalReference()));
         }
-        var refundDocument = settlements.record(
-                requestId, ticketId, total, selectedLines, List.copyOf(recorded), authentication);
+        var payouts = List.copyOf(recorded);
+        var refundDocument = valuation == null
+                ? settlements.record(
+                        requestId,
+                        ticketId,
+                        total,
+                        selectedLines,
+                        payouts,
+                        authentication)
+                : settlements.record(
+                        requestId,
+                        ticketId,
+                        total,
+                        selectedLines,
+                        payouts,
+                        valuation,
+                        authentication);
         var issuedVoucher = voucherValue.signum() > 0
                 ? Optional.of(vouchers.issueOrFindFromNegativeTicket(refundDocument, voucherValue))
                 : Optional.<Voucher>empty();
@@ -201,11 +278,39 @@ public class TicketReturnService {
     }
 
     public ReturnPreview preview(String ticketNumber) {
+        if (giftReceipts != null) {
+            var gift = giftReceipts.findReturnContext(ticketNumber);
+            if (gift.isPresent()) {
+                var context = gift.orElseThrow();
+                requireNoCancellationInProgress(context.ticket().getId());
+                return new ReturnPreview(
+                        ReturnSourceType.GIFT_RECEIPT,
+                        context.receipt().getCode(),
+                        context.ticket(),
+                        context.lines().stream().map(line -> new ReturnLineOption(
+                                line.sourceLineId(), line.giftReceiptLineId(), line.productId(),
+                                line.code(), line.name(), DocumentLineType.PRODUCT,
+                                line.refundableQuantity(), line.unitPrice(),
+                                line.refundableTotal(), line.serialNumbers(),
+                                line.discount(), line.taxesIncluded(), line.taxRegime(),
+                                line.taxPercentage())).toList());
+            }
+        }
         var ticket = documents.ticketForReturnByNumber(ticketNumber);
         requireNoCancellationInProgress(ticket.getId());
         return new ReturnPreview(
+                ReturnSourceType.TICKET,
+                ticket.getNumero(),
                 ticket,
-                documents.cardRefundLineOptions(ticket.getId()));
+                documents.cardRefundLineOptions(ticket.getId()).stream()
+                        .filter(line -> line.lineType() == DocumentLineType.PRODUCT)
+                        .map(line -> new ReturnLineOption(
+                                line.lineId(), null, line.productId(), line.code(), line.name(),
+                                line.lineType(), line.refundableQuantity(), line.unitPrice(),
+                                line.refundableTotal(), line.refundableSerialNumbers(),
+                                line.discount(), line.taxesIncluded(), line.taxRegime(),
+                                line.taxPercentage()))
+                        .toList());
     }
 
     private void requireNoCancellationInProgress(UUID ticketId) {
@@ -233,8 +338,35 @@ public class TicketReturnService {
             Optional<Voucher> voucher) {
     }
 
+    public enum ReturnSourceType {
+        TICKET,
+        GIFT_RECEIPT
+    }
+
+    public record ReturnLineOption(
+            UUID lineId,
+            UUID giftReceiptLineId,
+            UUID productId,
+            String code,
+            String name,
+            DocumentLineType lineType,
+            BigDecimal refundableQuantity,
+            BigDecimal unitPrice,
+            BigDecimal refundableTotal,
+            List<String> refundableSerialNumbers,
+            BigDecimal discount,
+            boolean taxesIncluded,
+            String taxRegime,
+            BigDecimal taxPercentage) {
+    }
+
+    public record ReturnSelection(UUID lineId, BigDecimal quantity) {
+    }
+
     public record ReturnPreview(
+            ReturnSourceType sourceType,
+            String sourceCode,
             CommercialDocument ticket,
-            List<DocumentService.CardRefundLineOption> lines) {
+            List<ReturnLineOption> lines) {
     }
 }

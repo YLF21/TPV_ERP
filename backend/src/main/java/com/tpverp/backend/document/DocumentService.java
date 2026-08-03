@@ -259,7 +259,7 @@ public class DocumentService {
         var saved = documents.save(document);
         cashPayments.recordDocumentPayments(terminalId, saved);
         if (!resolved.isEmpty()) {
-            memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+            memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
                     saved, loyaltyAccrualCommandTotal(resolved)));
         }
         generatePromotionalCoupons(saved, promotions);
@@ -505,7 +505,7 @@ public class DocumentService {
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
-        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+        memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
                 saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
         if (saved.getTotal().signum() < 0) {
             vouchers.issueFromNegativeTicket(saved);
@@ -557,7 +557,7 @@ public class DocumentService {
         ticket.setStockOrigin(stockGateway.confirm(ticket));
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
-        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+        memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
                 saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
@@ -619,7 +619,7 @@ public class DocumentService {
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
         if (!resolved.isEmpty()) {
-            memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(
+            memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
                     saved, loyaltyAccrualCommandTotal(resolved)));
         }
         fiscalIntegration.registerAlta(saved, false);
@@ -870,22 +870,33 @@ public class DocumentService {
             }
             return new CardRefundLineOption(line.getId(), line.getCodigo(), line.getNombre(), line.getLineType(),
                     purchased, available, line.getPrecioUnitario(), availableTotal,
-                    line.getSerialNumbers(), refundableSerials);
+                    line.getSerialNumbers(), refundableSerials, line.getProductoId(),
+                    line.getDescuento(), line.isImpuestosIncluidos(),
+                    line.getRegimenImpuesto(), line.getPorcentajeImpuesto());
         }).filter(option -> option.refundableQuantity().signum() > 0).toList();
     }
 
     @Transactional(readOnly = true)
     public CommercialDocument ticketForReturnByNumber(String ticketNumber) {
-        if (ticketNumber == null || ticketNumber.isBlank()) {
-            throw new IllegalArgumentException("El codigo de ticket es obligatorio");
-        }
-        var ticket = documents.findByTiendaIdAndTipoAndNumeroIgnoreCase(
-                        organization.currentStore().getId(),
-                        CommercialDocumentType.TICKET,
-                        ticketNumber.trim())
-                .orElseThrow(() -> new IllegalArgumentException("Ticket no encontrado"));
+        var ticket = loadDetailedTicketByNumber(ticketNumber);
         requireRefundableDocument(ticket);
         return ticket;
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument detailedTicketByNumber(String ticketNumber) {
+        return loadDetailedTicketByNumber(ticketNumber);
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument findDetailed(UUID id) {
+        var storeId = organization.currentStore().getId();
+        var document = documents.findByIdAndTiendaId(
+                        Objects.requireNonNull(id, "id"), storeId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "documento no encontrado"));
+        initializeDetailedCollections(document, storeId);
+        return document;
     }
 
     @Transactional(readOnly = true)
@@ -916,6 +927,25 @@ public class DocumentService {
             List<PaymentTerminalRefundLineSelection> selections,
             UUID paymentTerminalRefundOperationId,
             Authentication authentication) {
+        return createApprovedReturn(
+                requestId,
+                originalDocumentId,
+                approvedAmount,
+                selections,
+                paymentTerminalRefundOperationId,
+                null,
+                authentication);
+    }
+
+    @Transactional
+    public CommercialDocument createApprovedReturn(
+            UUID requestId,
+            UUID originalDocumentId,
+            BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> selections,
+            UUID paymentTerminalRefundOperationId,
+            TicketReturnValuationService.Valuation valuation,
+            Authentication authentication) {
         var canonicalRequestId = Objects.requireNonNull(requestId, "requestId");
         var replay = documents.findByReturnRequestId(canonicalRequestId);
         if (replay.isPresent()) return replay.orElseThrow();
@@ -925,7 +955,12 @@ public class DocumentService {
         }
         var original = documents.findLockedRefundSource(Objects.requireNonNull(originalDocumentId, "originalDocumentId"),
                 organization.currentStore().getId()).orElseThrow(() -> new IllegalArgumentException("Documento no encontrado"));
-        var plan = refundPlan(original, approvedAmount, selections);
+        var plan = refundPlan(
+                original,
+                approvedAmount,
+                selections,
+                valuation == null ? List.of() : valuation.taxAdjustments(),
+                valuation != null);
         var refund = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
                 CommercialDocumentType.TICKET, LocalDate.now(clock),
                 organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
@@ -937,6 +972,9 @@ public class DocumentService {
             refund.identifyPaymentTerminalRefund(paymentTerminalRefundOperationId);
         }
         for (var selected : plan.lines()) refund.addLine(refundLine(refund, selected));
+        for (var adjustment : plan.adjustments()) {
+            refund.addLine(returnAdjustmentLine(refund, adjustment));
+        }
         if (refund.getTotal().compareTo(plan.amount().negate()) != 0) {
             throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");
         }
@@ -951,23 +989,49 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
                 Map.of("documentoRelacionadoId", saved.getId().toString()));
         fiscalIntegration.registerTicketRectification(saved, original);
+        if (valuation != null) {
+            memberLoyalty.reverseConfirmedReturn(
+                    original,
+                    saved,
+                    valuation.cumulativeRefundableAmount(),
+                    valuation.cumulativeEligibleRefundableAmount());
+        }
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
     }
 
     private RefundPlan refundPlan(CommercialDocument original, BigDecimal approvedAmount,
             List<PaymentTerminalRefundLineSelection> requested) {
+        return refundPlan(original, approvedAmount, requested, List.of(), false);
+    }
+
+    private RefundPlan refundPlan(
+            CommercialDocument original,
+            BigDecimal approvedAmount,
+            List<PaymentTerminalRefundLineSelection> requested,
+            List<TicketReturnValuationService.TaxAdjustment> adjustments,
+            boolean historicalValuation) {
         requireRefundableDocument(original);
         var amount = Money.euros(approvedAmount);
-        if (amount.signum() <= 0) throw new IllegalArgumentException("El importe de devolucion debe ser positivo");
+        if (amount.signum() < 0 || (amount.signum() == 0 && !historicalValuation)) {
+            throw new IllegalArgumentException(
+                    "El importe de devolucion debe ser positivo");
+        }
         var selections = requested == null ? List.<PaymentTerminalRefundLineSelection>of() : List.copyOf(requested);
+        if (historicalValuation && selections.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "La devolucion historica requiere desglose de lineas");
+        }
         if (selections.isEmpty()) {
             if (amount.compareTo(original.getTotal()) != 0) {
                 throw new IllegalArgumentException("La devolucion parcial requiere desglose explicito de lineas y cantidades");
             }
-            return new RefundPlan(amount, original.getLineas().stream()
+            var plan = new RefundPlan(amount, original.getLineas().stream()
                     .map(line -> new SelectedRefundLine(
-                            line, line.getCantidad().abs(), line.getSerialNumbers())).toList());
+                            line, line.getCantidad().abs(), line.getSerialNumbers())).toList(),
+                    List.copyOf(adjustments));
+            buildRefundPreview(original, plan);
+            return plan;
         }
         PaymentTerminalRefundLineSelection.canonical(selections);
         var source = original.getLineas().stream().collect(java.util.stream.Collectors.toMap(DocumentLine::getId, line -> line));
@@ -988,7 +1052,8 @@ public class DocumentService {
             validateRefundSerialNumbers(line, request.quantity(), requestedSerials);
             selected.add(new SelectedRefundLine(line, request.quantity(), requestedSerials));
         }
-        var plan = new RefundPlan(amount, List.copyOf(selected));
+        var plan = new RefundPlan(
+                amount, List.copyOf(selected), List.copyOf(adjustments));
         buildRefundPreview(original, plan);
         return plan;
     }
@@ -1012,6 +1077,9 @@ public class DocumentService {
         var preview = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
                 CommercialDocumentType.TICKET, LocalDate.now(clock), UUID.randomUUID(), original.getDescuentoGlobal());
         for (var selected : plan.lines()) preview.addLine(refundLine(preview, selected));
+        for (var adjustment : plan.adjustments()) {
+            preview.addLine(returnAdjustmentLine(preview, adjustment));
+        }
         if (preview.getTotal().compareTo(plan.amount().negate()) != 0) {
             throw new IllegalArgumentException("El importe no coincide con el desglose fiscal seleccionado");
         }
@@ -1038,22 +1106,48 @@ public class DocumentService {
         return line;
     }
 
+    private static DocumentLine returnAdjustmentLine(
+            CommercialDocument refund,
+            TicketReturnValuationService.TaxAdjustment adjustment) {
+        var globalFactor = BigDecimal.ONE.subtract(
+                refund.getDescuentoGlobal().movePointLeft(2));
+        if (globalFactor.signum() <= 0) {
+            throw new IllegalStateException(
+                    "No se puede aplicar un ajuste a una venta con descuento global del 100%");
+        }
+        var amountBeforeGlobal = Money.euros(adjustment.amount()
+                .divide(globalFactor, Money.SCALE + 6, Money.ROUNDING));
+        return DocumentLine.returnAdjustment(
+                refund,
+                refund.getLineas().size() + 1,
+                "AJUSTE HISTORICO DE DEVOLUCION",
+                amountBeforeGlobal,
+                adjustment.taxesIncluded(),
+                adjustment.taxRegime(),
+                adjustment.taxPercentage());
+    }
+
     public record CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
             BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
             BigDecimal refundableTotal, List<String> serialNumbers,
-            List<String> refundableSerialNumbers) {
+            List<String> refundableSerialNumbers, UUID productId, BigDecimal discount,
+            boolean taxesIncluded, String taxRegime, BigDecimal taxPercentage) {
         public CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
                 BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
                 BigDecimal refundableTotal) {
             this(lineId, code, name, lineType, purchasedQuantity, refundableQuantity,
-                    unitPrice, refundableTotal, List.of(), List.of());
+                    unitPrice, refundableTotal, List.of(), List.of(), null,
+                    BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
         }
     }
     private record SelectedRefundLine(
             DocumentLine source,
             BigDecimal quantity,
             List<String> serialNumbers) { }
-    private record RefundPlan(BigDecimal amount, List<SelectedRefundLine> lines) { }
+    private record RefundPlan(
+            BigDecimal amount,
+            List<SelectedRefundLine> lines,
+            List<TicketReturnValuationService.TaxAdjustment> adjustments) { }
 
     private void validateRefundSerialNumbers(
             DocumentLine line,
@@ -1516,7 +1610,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public TicketCancellationValidation validateTicketCancellation(UUID id) {
-        var ticket = find(id);
+        var ticket = findDetailed(id);
         requireCancellableTicket(ticket);
         var voucherPlan = vouchers.cancellationPlan(ticket);
         memberLoyalty.validateTicketCancellation(ticket);
@@ -1824,7 +1918,8 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
                 Map.of("importe", paidNow.toPlainString()));
         cashPayments.recordDocumentPayments(terminalId, saved);
-        memberLoyalty.recordPaidSale(saved, eligibleAccrualAmount(saved, paidNow));
+        memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
+                saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
         enqueueDocumentEvent(saved, terminalId, SyncOperation.ACTUALIZAR);
         return saved;
     }
@@ -2066,7 +2161,10 @@ public class DocumentService {
         }
         values.forEach(DocumentLineCommand::requireClientProductLine);
         var snapshots = promotionCatalog.products(
-                storeId, values.stream().map(DocumentLineCommand::productoId).toList());
+                storeId, values.stream()
+                        .filter(line -> line.originalDocumentLineId() == null)
+                        .map(DocumentLineCommand::productoId)
+                        .toList());
         var salesDocument = PROMOTION_SALES_DOCUMENTS.contains(documentType);
         validateInactiveSaleProducts(storeId, documentType, snapshots);
         if (salesDocument && globalDiscount.signum() > 0
@@ -2076,6 +2174,13 @@ public class DocumentService {
                     "DiscountType.NONE no admite descuento global manual");
         }
         return values.stream().map(line -> {
+            if (line.originalDocumentLineId() != null) {
+                if (line.cantidad().signum() >= 0) {
+                    throw new IllegalArgumentException(
+                            "Una linea de devolucion debe tener cantidad negativa");
+                }
+                return line;
+            }
             var snapshot = snapshots.get(line.productoId());
             validateLineQuantity(line, snapshot.product());
             var priced = salesDocument
@@ -2307,37 +2412,57 @@ public class DocumentService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private BigDecimal eligibleAccrualAmount(CommercialDocument document, BigDecimal paidAmount) {
+    private MemberLoyaltyService.LoyaltyAccrual loyaltyAccrual(
+            CommercialDocument document,
+            BigDecimal paidAmount) {
         var paid = Money.euros(paidAmount);
-        if (paid.signum() <= 0 || document.getTotal().signum() <= 0) {
-            return BigDecimal.ZERO.setScale(Money.SCALE);
+        if (document.getTotal().signum() <= 0) {
+            return new MemberLoyaltyService.LoyaltyAccrual(
+                    BigDecimal.ZERO.setScale(Money.SCALE),
+                    BigDecimal.ZERO.setScale(Money.SCALE),
+                    BigDecimal.ZERO.setScale(Money.SCALE),
+                    Map.of());
         }
-        var eligibleTotal = eligibleDocumentTotal(document);
-        if (eligibleTotal.compareTo(document.getTotal()) >= 0) {
-            return paid;
-        }
-        return Money.euros(paid.multiply(eligibleTotal)
-                .divide(document.getTotal(), Money.SCALE + 4, Money.ROUNDING));
-    }
-    // Applies loyalty only to the paid proportion of document lines that allow automatic benefits.
-
-    private BigDecimal eligibleDocumentTotal(CommercialDocument document) {
         var ids = document.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
                 .map(DocumentLine::getProductoId)
                 .distinct()
                 .toList();
-        var eligibleIds = products.findAllByStoreIdAndIdIn(document.getTiendaId(), ids).stream()
-                .filter(product -> product.getDiscountType() != DiscountType.NONE)
-                .map(Product::getId)
-                .collect(java.util.stream.Collectors.toSet());
-        var lineTotal = document.getLineas().stream()
-                .filter(line -> eligibleIds.contains(line.getProductoId()))
-                .map(DocumentLine::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        var catalog = products.findAllByStoreIdAndIdIn(document.getTiendaId(), ids).stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, product -> product));
+        if (catalog.size() != ids.size()) {
+            throw new IllegalStateException(
+                    "No se puede guardar la elegibilidad historica de fidelizacion");
+        }
         var globalFactor = BigDecimal.ONE.subtract(document.getDescuentoGlobal().movePointLeft(2));
-        return Money.euros(lineTotal.multiply(globalFactor));
+        var lines = new LinkedHashMap<UUID, MemberLoyaltyService.LoyaltyLineEligibility>();
+        var eligibleTotal = BigDecimal.ZERO;
+        for (var line : document.getLineas()) {
+            if (line.getLineType() != DocumentLineType.PRODUCT) {
+                continue;
+            }
+            var eligible = catalog.get(line.getProductoId()).getDiscountType()
+                    != DiscountType.NONE;
+            var amount = eligible
+                    ? Money.euros(line.getTotal().multiply(globalFactor))
+                    : BigDecimal.ZERO.setScale(Money.SCALE);
+            lines.put(line.getId(),
+                    new MemberLoyaltyService.LoyaltyLineEligibility(eligible, amount));
+            eligibleTotal = eligibleTotal.add(amount);
+        }
+        var eligibleDocumentAmount = Money.euros(eligibleTotal)
+                .min(Money.euros(document.getTotal()));
+        var eligiblePaidAmount = eligibleDocumentAmount.compareTo(document.getTotal()) >= 0
+                ? paid
+                : Money.euros(paid.multiply(eligibleDocumentAmount)
+                        .divide(document.getTotal(), Money.SCALE + 4, Money.ROUNDING));
+        return new MemberLoyaltyService.LoyaltyAccrual(
+                Money.euros(document.getTotal()),
+                eligibleDocumentAmount,
+                eligiblePaidAmount,
+                lines);
     }
+    // Snapshots line eligibility and applies loyalty only to its paid proportion.
 
     private static void requireReferenceIfNeeded(PaymentMethod method, PaymentCommand command) {
         if (!VOUCHER_METHOD.equals(method.getNombre())
@@ -2447,6 +2572,29 @@ public class DocumentService {
         return documents.findById(id)
                 .filter(document -> document.getTiendaId().equals(storeId))
                 .orElseThrow(() -> new IllegalArgumentException("documento no encontrado"));
+    }
+
+    private CommercialDocument loadDetailedTicketByNumber(String ticketNumber) {
+        if (ticketNumber == null || ticketNumber.isBlank()) {
+            throw new IllegalArgumentException("El codigo de ticket es obligatorio");
+        }
+        var storeId = organization.currentStore().getId();
+        var ticket = documents.findByTiendaIdAndTipoAndNumeroIgnoreCase(
+                        storeId,
+                        CommercialDocumentType.TICKET,
+                        ticketNumber.trim())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Ticket no encontrado"));
+        initializeDetailedCollections(ticket, storeId);
+        return ticket;
+    }
+
+    private void initializeDetailedCollections(
+            CommercialDocument document, UUID storeId) {
+        documents.loadLineSerialNumbers(document.getId());
+        documents.findByIdAndTiendaIdWithPayments(document.getId(), storeId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "documento no encontrado"));
     }
 
     private boolean requiresStock(CommercialDocument document) {

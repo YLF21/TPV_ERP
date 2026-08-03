@@ -13,6 +13,7 @@ type Props = {
   error: string;
   t: (key: string) => string;
   locale?: LocaleCode;
+  currentUsername?: string;
   authorization?: SaleOperationAuthorization;
   translationPrefix?: "sale.cashDrawer" | "sale.productEdit";
   onCancel: () => void;
@@ -25,6 +26,7 @@ export function SaleCashDrawerAuthorizationDialog({
   error,
   t,
   locale = "es",
+  currentUsername = "",
   authorization = {
     mode: "DELEGATED",
     requireUsername: true,
@@ -82,6 +84,7 @@ export function SaleCashDrawerAuthorizationDialog({
         >
           <SaleOperationAuthorizationFields
             locale={locale}
+            currentUsername={currentUsername}
             authorization={authorization}
             username={username}
             password={password}

@@ -203,6 +203,47 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             """, nativeQuery = true)
     BigDecimal confirmedRefundedQuantity(@Param("lineId") UUID lineId);
 
+    @Query(value = """
+            select coalesce(sum(abs(rectified.total)), 0)
+              from documento_relacion relation
+              join documento rectified on rectified.id = relation.documento_id
+             where relation.origen_id = :documentId
+               and relation.tipo = 'RECTIFICA'
+               and rectified.estado not in ('BORRADOR', 'ANULADO')
+               and rectified.total <= 0
+            """, nativeQuery = true)
+    BigDecimal confirmedReturnAmount(@Param("documentId") UUID documentId);
+
+    @Query(value = """
+            select line.impuestos_incluidos as "taxIncluded",
+                   line.regimen_impuesto as "taxRegime",
+                   line.porcentaje_impuesto as "taxPercent",
+                   coalesce(sum(-line.total *
+                       (1 - rectified.descuento_global / 100)), 0) as amount
+              from documento_relacion relation
+              join documento rectified on rectified.id = relation.documento_id
+              join documento_linea line on line.documento_id = rectified.id
+             where relation.origen_id = :documentId
+               and relation.tipo = 'RECTIFICA'
+               and rectified.estado not in ('BORRADOR', 'ANULADO')
+               and rectified.total <= 0
+             group by line.impuestos_incluidos,
+                      line.regimen_impuesto,
+                      line.porcentaje_impuesto
+            """, nativeQuery = true)
+    List<ConfirmedReturnTaxTotal> confirmedReturnTaxTotals(
+            @Param("documentId") UUID documentId);
+
+    interface ConfirmedReturnTaxTotal {
+        boolean getTaxIncluded();
+
+        String getTaxRegime();
+
+        BigDecimal getTaxPercent();
+
+        BigDecimal getAmount();
+    }
+
     @EntityGraph(attributePaths = "lineas")
     Optional<CommercialDocument> findByIdAndTiendaId(UUID id, UUID tiendaId);
 
@@ -220,13 +261,32 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             @Param("storeId") UUID storeId,
             @Param("types") Collection<CommercialDocumentType> types);
 
-    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
+    @EntityGraph(attributePaths = "lineas")
     Optional<CommercialDocument> findByTiendaIdAndTipoAndNumeroIgnoreCase(
             UUID tiendaId, CommercialDocumentType tipo, String numero);
 
-    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
+    @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     @Query("""
             select document
+              from CommercialDocument document
+             where document.id = :id
+               and document.tiendaId = :storeId
+            """)
+    Optional<CommercialDocument> findByIdAndTiendaIdWithPayments(
+            @Param("id") UUID id,
+            @Param("storeId") UUID storeId);
+
+    @Query("""
+            select distinct line
+              from DocumentLine line
+              left join fetch line.serialNumbers
+             where line.documento.id = :documentId
+            """)
+    List<DocumentLine> loadLineSerialNumbers(
+            @Param("documentId") UUID documentId);
+
+    @Query("""
+            select document.id
               from CommercialDocument document
              where document.tiendaId = :storeId
                and document.terminalOrigenId = :terminalId
@@ -246,14 +306,13 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
              order by coalesce(document.confirmadoEn, document.creadoEn) desc,
                       document.id desc
             """)
-    List<CommercialDocument> findLatestCancellableTicket(
+    List<UUID> findLatestCancellableTicketIds(
             @Param("storeId") UUID storeId,
             @Param("terminalId") UUID terminalId,
             Pageable pageable);
 
-    @EntityGraph(attributePaths = {"lineas", "lineas.serialNumbers", "pagos", "pagos.metodoPago"})
     @Query("""
-            select document
+            select document.id
               from CommercialDocument document
              where document.tiendaId = :storeId
                and document.terminalOrigenId = :terminalId
@@ -273,7 +332,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
              order by coalesce(document.confirmadoEn, document.creadoEn) desc,
                       document.id desc
             """)
-    List<CommercialDocument> findLatestConvertibleTicket(
+    List<UUID> findLatestConvertibleTicketIds(
             @Param("storeId") UUID storeId,
             @Param("terminalId") UUID terminalId,
             Pageable pageable);

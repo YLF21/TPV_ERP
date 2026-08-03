@@ -52,6 +52,7 @@ type StoredCancellationAttempt = {
 type Props = {
   token?: string;
   locale: LocaleCode;
+  currentUsername?: string;
   permissions?: Permission[];
   authorization?: SaleOperationAuthorization;
   terminalContext: TerminalContext;
@@ -63,6 +64,7 @@ type Props = {
 export function SaleTicketCancellationDialog({
   token,
   locale,
+  currentUsername = "",
   permissions = [],
   authorization,
   terminalContext,
@@ -316,6 +318,7 @@ export function SaleTicketCancellationDialog({
 
             <SaleOperationAuthorizationFields
               locale={locale}
+              currentUsername={currentUsername}
               authorization={effectiveAuthorization}
               username={authorizerUsername}
               password={password}

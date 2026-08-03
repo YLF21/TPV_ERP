@@ -4,106 +4,80 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
-import { printConfirmedTicketAutomatically } from "../sale/ticketPrinting";
 import { TicketReturnDialog } from "./TicketReturnDialog";
 
 vi.mock("../api/client", () => ({ apiRequest: vi.fn() }));
-vi.mock("../sale/ticketPrinting", () => ({
-  printConfirmedTicketAutomatically: vi.fn(),
-}));
-
 const request = vi.mocked(apiRequest);
-const print = vi.mocked(printConfirmedTicketAutomatically);
 
 describe("TicketReturnDialog", () => {
   beforeEach(() => {
     request.mockReset();
-    print.mockReset();
-    localStorage.clear();
-    request.mockImplementation(async (path) => {
-      if (path === "/tickets/return-preview?ticketNumber=T-001") {
-        return {
+    request.mockImplementation(async (path) => path === "/tickets/return-valuation"
+      ? {
+          selectedGross: "10.00",
+          lostBenefits: "0.00",
+          refundableAmount: "10.00",
+          eligibleRefundableAmount: "10.00",
+          cumulativeEligibleRefundableAmount: "10.00",
+          cumulativeRefundableAmount: "10.00",
+          previouslyRefundedAmount: "0.00",
+          remainingBasketValue: "10.00",
+        } as never
+      : {
+          sourceType: "TICKET",
+          sourceCode: "T-001",
           ticketId: "ticket-1",
           ticketNumber: "T-001",
           date: "2026-07-24",
           total: "20.00",
-          payments: [],
           lines: [{
             lineId: "line-1",
+            giftReceiptLineId: null,
+            productId: "product-1",
             code: "PORTATIL",
             name: "Portátil",
             lineType: "PRODUCT",
-            purchasedQuantity: 2,
             refundableQuantity: 1,
             unitPrice: "10.00",
             refundableTotal: "10.00",
-            serialNumbers: ["SN-001", "SN-002"],
             refundableSerialNumbers: ["SN-002"],
+            discount: "0.00",
+            taxesIncluded: true,
+            taxRegime: "IVA",
+            taxPercentage: "21.00",
           }],
-        } as never;
-      }
-      if (path === "/tickets/ticket-1/returns") {
-        return {
-          documentId: "return-1",
-          receipt: {
-            documentId: "return-1",
-            documentNumber: "T-RET-1",
-            issuedAt: "2026-07-24T12:00:00Z",
-            lines: [],
-            payments: [],
-            total: -10,
-          },
-        } as never;
-      }
-      throw new Error(`Unexpected request: ${path}`);
-    });
-    print.mockResolvedValue({ status: "PRINTED" });
+        } as never);
   });
 
-  afterEach(() => {
-    cleanup();
-    localStorage.clear();
-  });
+  afterEach(cleanup);
 
-  it("searches by exact ticket code and returns only the still available serial number", async () => {
-    const onFiscalMutation = vi.fn();
-    render(
-      <TicketReturnDialog
-        token="token"
-        locale="es"
-        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
-        onClose={vi.fn()}
-        onFiscalMutation={onFiscalMutation}
-      />,
-    );
+  it("selects all remaining lines and only adds them to the cart", async () => {
+    const onAddToCart = vi.fn();
+    const onClose = vi.fn();
+    render(<TicketReturnDialog token="token" locale="es" onClose={onClose} onAddToCart={onAddToCart} />);
 
-    fireEvent.change(screen.getByLabelText("Código de ticket"), {
+    fireEvent.change(screen.getByLabelText(/ticket o ticket regalo/i), {
       target: { value: "T-001" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Buscar ticket" }));
+    fireEvent.click(screen.getByRole("button", { name: /Buscar ticket/i }));
 
-    expect(await screen.findByText("S/N: SN-002")).toBeInTheDocument();
-    expect(screen.queryByText("S/N: SN-001")).toBeNull();
-    fireEvent.click(screen.getByLabelText("S/N: SN-002"));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Confirmar devolución" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar devolución" }));
+    expect(await screen.findByText("Portátil")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Seleccionar todo el ticket/i }));
+    expect(screen.getByText("S/N: SN-002")).toBeInTheDocument();
+    const addButton = screen.getByRole("button", { name: /carrito en negativo/i });
+    await waitFor(() => expect(addButton).toBeEnabled());
+    fireEvent.click(addButton);
 
-    await waitFor(() => expect(request).toHaveBeenCalledWith(
-      "/tickets/ticket-1/returns",
+    await waitFor(() => expect(onAddToCart).toHaveBeenCalledWith([
       expect.objectContaining({
-        token: "token",
-        method: "POST",
-        body: expect.objectContaining({
-          cashAmount: "10.00",
-          lines: [{
-            lineId: "line-1",
-            quantity: "1",
-            serialNumbers: ["SN-002"],
-          }],
-        }),
+        sourceType: "TICKET",
+        sourceTicketId: "ticket-1",
+        lineId: "line-1",
+        returnQuantity: 1,
+        selectedSerialNumbers: ["SN-002"],
       }),
-    ));
-    expect(onFiscalMutation).toHaveBeenCalledOnce();
-    expect(print).toHaveBeenCalledOnce();
+    ]));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });

@@ -46,12 +46,37 @@ public class RefundSettlementRecorder {
             List<PaymentTerminalRefundLineSelection> lines,
             List<TenderCommand> payouts,
             Authentication authentication) {
+        return record(
+                requestId,
+                originalDocumentId,
+                total,
+                lines,
+                payouts,
+                null,
+                authentication);
+    }
+
+    @Transactional
+    public CommercialDocument record(
+            UUID requestId,
+            UUID originalDocumentId,
+            BigDecimal total,
+            List<PaymentTerminalRefundLineSelection> lines,
+            List<TenderCommand> payouts,
+            TicketReturnValuationService.Valuation valuation,
+            Authentication authentication) {
         var firstCardOperation = payouts.stream()
                 .filter(value -> value.type() == RefundTenderType.CARD)
                 .map(TenderCommand::terminalOperationId)
                 .findFirst().orElse(null);
         var refund = documents.createApprovedReturn(
-                requestId, originalDocumentId, total, lines, firstCardOperation, authentication);
+                requestId,
+                originalDocumentId,
+                total,
+                lines,
+                firstCardOperation,
+                valuation,
+                authentication);
         if (tenders.findByRefundDocumentIdOrderByCreatedAtAsc(refund.getId()).isEmpty()) {
             for (var payout : payouts) {
                 tenders.save(new RefundTender(
