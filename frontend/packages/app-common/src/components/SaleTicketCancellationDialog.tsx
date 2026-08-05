@@ -57,6 +57,7 @@ type Props = {
   authorization?: SaleOperationAuthorization;
   terminalContext: TerminalContext;
   mode: "LAST" | "BY_NUMBER";
+  initialTicketNumber?: string;
   onClose: () => void;
   onFiscalMutation?: () => void;
 };
@@ -69,13 +70,14 @@ export function SaleTicketCancellationDialog({
   authorization,
   terminalContext,
   mode,
+  initialTicketNumber = "",
   onClose,
   onFiscalMutation,
 }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [ticketNumber, setTicketNumber] = useState("");
+  const [ticketNumber, setTicketNumber] = useState(initialTicketNumber);
   const [preview, setPreview] = useState<CancellationPreview | null>(null);
   const [reason, setReason] = useState("");
   const [authorizerUsername, setAuthorizerUsername] = useState("");
@@ -134,8 +136,9 @@ export function SaleTicketCancellationDialog({
 
   useEffect(() => {
     if (mode === "LAST") void loadPreview();
+    else if (initialTicketNumber.trim()) void loadPreview(initialTicketNumber);
     else searchRef.current?.focus();
-  }, [mode, token]);
+  }, [initialTicketNumber, mode, token]);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)

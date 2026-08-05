@@ -10,7 +10,19 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: "dist"
+    outDir: "dist",
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{
+            name: "app",
+            tags: ["$initial"],
+            maxSize: 500_000,
+            includeDependenciesRecursively: false
+          }]
+        }
+      }
+    }
   },
   server: {
     proxy: {

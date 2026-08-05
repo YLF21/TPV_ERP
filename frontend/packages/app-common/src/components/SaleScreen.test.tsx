@@ -2772,6 +2772,31 @@ describe("SaleScreen", () => {
     labels.forEach((label) => expect(html).toContain(label));
   });
 
+  it("changes the selected line with touch plus and minus controls and the numeric keypad", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    renderSaleScreen(vi.fn(), "es", { interfaceMode: "TOUCH" });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Aumentar cantidad: Cafe molido/ }));
+    expect(screen.getByRole("button", { name: /Cafe molido.*2 x 10,00/s })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reducir cantidad: Cafe molido/ }));
+    expect(screen.getByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cantidad" }));
+    const dialog = screen.getByRole("dialog", { name: "Cambiar cantidad" });
+    expect(within(dialog).getByRole("group", { name: "Teclado numérico" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "3" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+
+    expect(screen.getByRole("button", { name: /Cafe molido.*3 x 10,00/s })).toBeInTheDocument();
+  });
+
   it.each(["en", "zh"] as const)("keeps dynamic product names and codes literal in %s", async (locale) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
       { id: "literal-product", name: "Café 原样", code: "SKU-原样-001", salePrice: 12.34 },
@@ -2958,7 +2983,7 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("button", { name: /Cafe molido.*1 x 10,00/s })).not.toBeInTheDocument();
   });
 
-  it("opens product information with a mouse double click in touch mode and adds from that dialog", async () => {
+  it("opens product information with the explicit touch action and adds from that dialog", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const parsed = new URL(url, "http://localhost");
       const path = parsed.pathname;
@@ -3025,8 +3050,8 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "Cafe");
 
     const productOption = await screen.findByRole("option", { name: /Cafe molido/ });
-    fireEvent.pointerDown(productOption, { pointerType: "mouse" });
-    fireEvent.doubleClick(productOption);
+    fireEvent.click(productOption);
+    fireEvent.click(screen.getByRole("button", { name: "Ver información" }));
 
     const informationDialog = await screen.findByRole("dialog", { name: "Cafe molido" });
     expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();

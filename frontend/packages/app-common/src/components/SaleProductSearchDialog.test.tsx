@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SaleProductSearchDialog,
@@ -25,6 +25,9 @@ const labels = {
   price: "Precio",
   empty: "No se encontraron productos",
   close: "Cerrar",
+  add: "Añadir al ticket",
+  details: "Ver información",
+  selected: "Producto seleccionado",
   unnamedProduct: "Producto sin nombre",
   missingCode: "Sin código",
 };
@@ -139,8 +142,7 @@ describe("SaleProductSearchDialog", () => {
     expect(onSelect).toHaveBeenCalledWith(products[0]);
   });
 
-  it("opens information with one touch and selects with a double touch", () => {
-    vi.useFakeTimers();
+  it("selects with one touch and uses explicit information and add actions", () => {
     const onInspect = vi.fn();
     const onSelect = vi.fn();
     render(
@@ -156,25 +158,19 @@ describe("SaleProductSearchDialog", () => {
     );
 
     const product = screen.getByRole("option");
-    fireEvent.pointerDown(product, { pointerType: "touch" });
     fireEvent.click(product);
+    expect(product).toHaveAttribute("aria-selected", "true");
     expect(onInspect).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(300));
-    expect(onInspect).toHaveBeenCalledWith(products[0]);
     expect(onSelect).not.toHaveBeenCalled();
 
-    onInspect.mockClear();
-    fireEvent.pointerDown(product, { pointerType: "touch" });
-    fireEvent.click(product);
-    fireEvent.pointerDown(product, { pointerType: "touch" });
-    fireEvent.click(product);
-    fireEvent.doubleClick(product);
-    act(() => vi.advanceTimersByTime(300));
-    expect(onInspect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: labels.details }));
+    expect(onInspect).toHaveBeenCalledWith(products[0]);
+
+    fireEvent.click(screen.getByRole("button", { name: labels.add }));
     expect(onSelect).toHaveBeenCalledWith(products[0]);
   });
 
-  it("opens information with a mouse double click even when the terminal uses touch mode", () => {
+  it("does not add or inspect a product through repeated taps in touch mode", () => {
     const onInspect = vi.fn();
     const onSelect = vi.fn();
     render(
@@ -190,14 +186,11 @@ describe("SaleProductSearchDialog", () => {
     );
 
     const product = screen.getByRole("option");
-    fireEvent.pointerDown(product, { pointerType: "mouse" });
     fireEvent.click(product);
-    fireEvent.pointerDown(product, { pointerType: "mouse" });
     fireEvent.click(product);
     fireEvent.doubleClick(product);
 
-    expect(onInspect).toHaveBeenCalledOnce();
-    expect(onInspect).toHaveBeenCalledWith(products[0]);
+    expect(onInspect).not.toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
   });
 });

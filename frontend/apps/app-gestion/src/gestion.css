@@ -3744,6 +3744,43 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   gap: 8px;
 }
 
+.gestion-stock-count-progress {
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #c5ced6;
+  background: #fff;
+}
+
+.gestion-stock-count-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #40556a;
+  font-size: var(--gestion-font-label);
+}
+
+.gestion-stock-count-progress > div:first-child span {
+  color: var(--gestion-muted);
+  font-weight: 800;
+}
+
+.gestion-stock-count-progress-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dbe4ec;
+}
+
+.gestion-stock-count-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2779bb;
+  transition: width 180ms ease-out;
+}
+
 .gestion-stock-count-add-line {
   display: grid;
   grid-template-columns: minmax(210px, 1fr) 125px auto;
@@ -3752,6 +3789,54 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   padding: 10px 12px;
   border-bottom: 1px solid #c5ced6;
   background: #f8fafb;
+}
+
+.gestion-stock-count-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid #c5ced6;
+  background: #f8fafb;
+}
+
+.gestion-stock-count-summary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-right: 1px solid #d5dde4;
+}
+
+.gestion-stock-count-summary > div:last-child {
+  border-right: 0;
+}
+
+.gestion-stock-count-summary span,
+.gestion-stock-count-confirm-metrics span {
+  color: var(--gestion-muted);
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gestion-stock-count-summary strong,
+.gestion-stock-count-confirm-metrics strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gestion-stock-count-summary .positive,
+.gestion-stock-count-confirm-metrics .positive {
+  color: #17662a;
+}
+
+.gestion-stock-count-summary .negative,
+.gestion-stock-count-confirm-metrics .negative {
+  color: #a32929;
+}
+
+.gestion-stock-count-summary .neutral {
+  color: #52677a;
 }
 
 .gestion-stock-count-table {
@@ -3831,6 +3916,82 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   color: #52677a;
 }
 
+.gestion-stock-count-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(9 30 52 / 52%);
+}
+
+.gestion-stock-count-confirm-dialog {
+  width: min(560px, 100%);
+  overflow: hidden;
+  border: 1px solid #6f8192;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgb(0 20 40 / 28%);
+}
+
+.gestion-stock-count-confirm-dialog > header {
+  padding: 18px 20px 15px;
+  border-bottom: 1px solid #c5ced6;
+  background: #edf3f8;
+}
+
+.gestion-stock-count-confirm-dialog > header > span {
+  color: #52677a;
+  font-size: var(--gestion-font-micro);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.gestion-stock-count-confirm-dialog h3 {
+  margin: 4px 0 5px;
+  font-size: 22px;
+}
+
+.gestion-stock-count-confirm-dialog p {
+  margin: 0;
+  color: var(--gestion-muted);
+  line-height: 1.45;
+}
+
+.gestion-stock-count-confirm-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px 20px;
+}
+
+.gestion-stock-count-confirm-metrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid #e0e5ea;
+}
+
+.gestion-stock-count-confirm-metrics > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.gestion-stock-count-confirm-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 12px 20px 16px;
+}
+
+.gestion-stock-count-confirm-dialog > footer .primary {
+  border-color: var(--gestion-navy);
+  background: var(--gestion-navy);
+  color: #fff;
+}
+
 @media (max-width: 1050px) {
   .gestion-stock-count-layout {
     grid-template-columns: 1fr;
@@ -3855,6 +4016,19 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
 
   .gestion-stock-count-add-line {
     grid-template-columns: 1fr;
+  }
+
+  .gestion-stock-count-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .gestion-stock-count-summary > div {
+    border-right: 0;
+    border-bottom: 1px solid #d5dde4;
+  }
+
+  .gestion-stock-count-summary > div:last-child {
+    border-bottom: 0;
   }
 }
 

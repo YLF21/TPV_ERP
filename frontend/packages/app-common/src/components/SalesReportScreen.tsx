@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
+import { lazy, Suspense } from "react";
 import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
@@ -11,6 +12,10 @@ import {
   saveReportVisualizationPreference
 } from "./salesReportVisualizationPreferences";
 import { SalesInvoiceRectificationDialog } from "./SalesInvoiceRectificationDialog";
+import {
+  findSaleOperationAuthorization,
+  type SalesOperationSecurityConfiguration
+} from "../sale/operationAuthorization";
 import { ErpSelect } from "./ErpSelect";
 import { TopDateTime } from "./TopDateTime";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
@@ -37,6 +42,11 @@ import warehouseInputIcon from "../assets/reports/warehouse-input.png";
 import warehouseOutputIcon from "../assets/reports/warehouse-output.png";
 import filterIcon from "../assets/reports/filter.png";
 import printIcon from "../assets/reports/print.png";
+
+const SaleTicketInvoiceDialog = lazy(() => import("./SaleTicketInvoiceDialog")
+  .then((module) => ({ default: module.SaleTicketInvoiceDialog })));
+const SaleTicketCancellationDialog = lazy(() => import("./SaleTicketCancellationDialog")
+  .then((module) => ({ default: module.SaleTicketCancellationDialog })));
 import searchIcon from "../assets/reports/search.png";
 import visualizeIcon from "../assets/reports/visualize.png";
 import "../styles/report-print.css";
@@ -367,6 +377,32 @@ export function canManageSalesInvoiceRectification(
   return row.__documentType === "FACTURA_VENTA"
     && row.__documentStatus !== "BORRADOR"
     && row.__documentStatus !== "ANULADO";
+}
+
+export function canConvertSelectedTicketToInvoice(
+  session: Pick<UserSession, "permissions">,
+  reportKey: string,
+  row: Record<string, string> | undefined
+) {
+  return reportKey === "salesReport.tickets"
+    && Boolean(row?.__documentId && row.ticket)
+    && row?.__documentStatus === "CONFIRMADO"
+    && session.permissions.some((permission) =>
+      permission === "ADMIN" || permission === "GESTION_VENTAS" || permission === "VENTA"
+    );
+}
+
+export function canCancelSelectedTicket(
+  session: Pick<UserSession, "permissions">,
+  reportKey: string,
+  row: Record<string, string> | undefined
+) {
+  return reportKey === "salesReport.tickets"
+    && Boolean(row?.__documentId && row.ticket)
+    && row?.__documentStatus === "CONFIRMADO"
+    && session.permissions.some((permission) =>
+      ["ADMIN", "GESTION_VENTAS", "GESTION_CUENTAS", "TICKETS_CANCEL", "VENTA"].includes(permission)
+    );
 }
 
 export function canAccessSalesInvoiceRectification(
@@ -1209,6 +1245,7 @@ export function buildDocumentReports(
   const warehouseName = (warehouseId: string) => warehouseNames.get(warehouseId) ?? warehouseId;
   const ticketRows = tickets.map((document) => ({
     __documentId: document.id || "",
+    __documentStatus: document.estado || "",
     date: formatBackendDate(document.fecha),
     time: formatBackendTime(document.ocurridoEn ?? undefined),
     ticket: document.numTicket || document.numero || "",
@@ -1618,6 +1655,9 @@ export function SalesReportScreen({
   const [reportLoadErrors, setReportLoadErrors] = useState<Record<string, string>>({});
   const [reportLoadingMore, setReportLoadingMore] = useState(false);
   const [reportReloadKey, setReportReloadKey] = useState(0);
+  const [operationSecurity, setOperationSecurity] = useState<SalesOperationSecurityConfiguration | null>(null);
+  const [ticketInvoiceNumber, setTicketInvoiceNumber] = useState<string | null>(null);
+  const [ticketCancellationNumber, setTicketCancellationNumber] = useState<string | null>(null);
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
   const [documentPreviewRow, setDocumentPreviewRow] = useState<Record<string, string> | null>(null);
   const [rectificationTarget, setRectificationTarget] = useState<{
@@ -1691,6 +1731,18 @@ export function SalesReportScreen({
     selectedReportRow
   );
   const canAccessRectification = canAccessSalesInvoiceRectification(session);
+  const canConvertSelectedTicket = canConvertSelectedTicketToInvoice(session, selectedReport, selectedReportRow);
+  const ticketInvoiceAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CONVERT_TICKET_TO_INVOICE",
+    session.permissions
+  );
+  const canCancelSelectedTicketRow = canCancelSelectedTicket(session, selectedReport, selectedReportRow);
+  const ticketCancellationAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "CANCEL_TICKET",
+    session.permissions
+  );
   const selectedIsRectificationDraft = selectedReportRow?.__documentType === "RECTIFICATIVA_VENTA"
     && selectedReportRow.__documentStatus === "BORRADOR";
   const dbLabel = apiServerLabel();
@@ -1718,6 +1770,24 @@ export function SalesReportScreen({
     const timeout = window.setTimeout(() => setReportNotice(null), 4500);
     return () => window.clearTimeout(timeout);
   }, [reportNotice]);
+
+  useEffect(() => {
+    if (!session.accessToken) {
+      setOperationSecurity(null);
+      return;
+    }
+    let cancelled = false;
+    request<SalesOperationSecurityConfiguration>("/sales/operation-security", {
+      token: session.accessToken
+    }).then((configuration) => {
+      if (!cancelled) setOperationSecurity(configuration);
+    }).catch(() => {
+      if (!cancelled) setOperationSecurity(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [request, session.accessToken]);
 
   useOutsidePointerDown(printMenuOpen, printMenuRef, () => setPrintMenuOpen(false));
   useOutsidePointerDown(userMenuOpen, userMenuRef, () => setUserMenuOpen(false));
@@ -2765,6 +2835,38 @@ export function SalesReportScreen({
             {t(selectedIsRectificationDraft ? "rectification.continue" : "rectification.open")}
           </button>
         )}
+        {selectedReport === "salesReport.tickets" && session.permissions.some(
+          (permission) => permission === "ADMIN" || permission === "GESTION_VENTAS" || permission === "VENTA"
+        ) && (
+          <button
+            type="button"
+            disabled={!canConvertSelectedTicket || !ticketInvoiceAuthorization}
+            title={t("sale.shortcut.convertInvoice")}
+            onClick={() => {
+              if (canConvertSelectedTicket && ticketInvoiceAuthorization && selectedReportRow?.ticket) {
+                setTicketInvoiceNumber(selectedReportRow.ticket);
+              }
+            }}
+          >
+            {t("sale.shortcut.convertInvoice")}
+          </button>
+        )}
+        {selectedReport === "salesReport.tickets" && session.permissions.some(
+          (permission) => ["ADMIN", "GESTION_VENTAS", "GESTION_CUENTAS", "TICKETS_CANCEL", "VENTA"].includes(permission)
+        ) && (
+          <button
+            type="button"
+            disabled={!canCancelSelectedTicketRow || !ticketCancellationAuthorization}
+            title={t("sale.ticketCancel.title")}
+            onClick={() => {
+              if (canCancelSelectedTicketRow && ticketCancellationAuthorization && selectedReportRow?.ticket) {
+                setTicketCancellationNumber(selectedReportRow.ticket);
+              }
+            }}
+          >
+            {t("sale.ticketCancel.title")}
+          </button>
+        )}
         {selectedReportPage?.hasMore && (
           <button
             type="button"
@@ -3194,6 +3296,37 @@ export function SalesReportScreen({
           onClose={() => setRectificationTarget(null)}
           onChanged={() => setReportReloadKey((current) => current + 1)}
         />
+      )}
+
+      {ticketInvoiceNumber && session.accessToken && ticketInvoiceAuthorization && (
+        <Suspense fallback={null}>
+          <SaleTicketInvoiceDialog
+            token={session.accessToken}
+            locale={locale}
+            currentUsername={session.username}
+            initialTicketNumber={ticketInvoiceNumber}
+            authorization={ticketInvoiceAuthorization}
+            onClose={() => setTicketInvoiceNumber(null)}
+            onFiscalMutation={() => setReportReloadKey((current) => current + 1)}
+          />
+        </Suspense>
+      )}
+
+      {ticketCancellationNumber && session.accessToken && ticketCancellationAuthorization && (
+        <Suspense fallback={null}>
+          <SaleTicketCancellationDialog
+            token={session.accessToken}
+            locale={locale}
+            currentUsername={session.username}
+            permissions={session.permissions}
+            authorization={ticketCancellationAuthorization}
+            terminalContext={terminalContext}
+            mode="BY_NUMBER"
+            initialTicketNumber={ticketCancellationNumber}
+            onClose={() => setTicketCancellationNumber(null)}
+            onFiscalMutation={() => setReportReloadKey((current) => current + 1)}
+          />
+        </Suspense>
       )}
 
       {visualizationOpen && (
