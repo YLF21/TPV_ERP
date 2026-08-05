@@ -57,4 +57,38 @@ describe("SaleTicketInvoiceDialog", () => {
     ));
     expect(onFiscalMutation).toHaveBeenCalledOnce();
   });
+
+  it("loads the selected ticket number when opened from a report", async () => {
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/by-number?number=T-REPORT-7") {
+        return {
+          id: "ticket-report-7",
+          numero: "T-REPORT-7",
+          fecha: "2026-08-05",
+          total: "31.50",
+        } as never;
+      }
+      if (path === "/customers/sale-options") return [] as never;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketInvoiceDialog
+        token="token"
+        locale="es"
+        initialTicketNumber="T-REPORT-7"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-REPORT-7")).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith(
+      "/tickets/by-number?number=T-REPORT-7",
+      { token: "token" },
+    );
+    expect(request).not.toHaveBeenCalledWith(
+      "/tickets/last-current-terminal",
+      expect.anything(),
+    );
+  });
 });

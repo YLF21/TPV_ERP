@@ -50,6 +50,10 @@ const labels: SaleCommandLabels = {
   cash: "Efectivo",
   card: "Tarjeta",
   pending: "Pendiente cliente",
+  productActions: "Producto",
+  saleActions: "Venta",
+  cashActions: "Caja",
+  ticketActions: "Tickets",
   pageDownKey: "AvPág",
   operations: "Gestión"
 };
@@ -140,5 +144,12 @@ describe("sale command presentations", () => {
     expect(onTemporaryPrice).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: /Ventas aparcadas/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Deudas de clientes/ })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      "Producto",
+      "Venta",
+      "Caja",
+      "Tickets",
+    ]);
+    expect(document.querySelectorAll(".touch-sale-action-grid .danger")).toHaveLength(3);
   });
 });

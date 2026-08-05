@@ -29,6 +29,7 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   currentUsername?: string;
+  initialTicketNumber?: string;
   authorization?: SaleOperationAuthorization;
   onClose: () => void;
   onFiscalMutation?: () => void;
@@ -38,6 +39,7 @@ export function SaleTicketInvoiceDialog({
   token,
   locale,
   currentUsername = "",
+  initialTicketNumber = "",
   authorization = {
     mode: "DIRECT",
     requireUsername: false,
@@ -49,7 +51,7 @@ export function SaleTicketInvoiceDialog({
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [ticketNumber, setTicketNumber] = useState("");
+  const [ticketNumber, setTicketNumber] = useState(initialTicketNumber);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [authorizerUsername, setAuthorizerUsername] = useState("");
@@ -76,13 +78,16 @@ export function SaleTicketInvoiceDialog({
   }
 
   useEffect(() => {
+    const normalizedTicketNumber = initialTicketNumber.trim();
     void Promise.all([
-      loadTicket("/tickets/last-current-terminal"),
+      loadTicket(normalizedTicketNumber
+        ? `/tickets/by-number?number=${encodeURIComponent(normalizedTicketNumber)}`
+        : "/tickets/last-current-terminal"),
       apiRequest<Customer[]>("/customers/sale-options", { token })
         .then(setCustomers)
         .catch(() => setCustomers([])),
     ]);
-  }, [token]);
+  }, [initialTicketNumber, token]);
 
   useEffect(() => dialogRef.current
     ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)

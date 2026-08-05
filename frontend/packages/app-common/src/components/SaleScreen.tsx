@@ -84,6 +84,7 @@ import {
 } from "./SaleCashSessionDialog";
 import { SaleCashWithdrawalDialog } from "./SaleCashWithdrawalDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
+import { TouchNumericKeypad } from "./TouchNumericKeypad";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
@@ -1047,7 +1048,11 @@ export function SaleScreen({
     card: t("sale.main.card"),
     pending: t("sale.main.pending"),
     pageDownKey: t("sale.main.pageDownKey"),
-    operations: t("sale.main.management")
+    operations: t("sale.main.management"),
+    productActions: t("sale.touch.productActions"),
+    saleActions: t("sale.touch.saleActions"),
+    cashActions: t("sale.touch.cashActions"),
+    ticketActions: t("sale.touch.ticketActions")
   };
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [allowInactiveProductSales, setAllowInactiveProductSales] = useState(false);
@@ -1436,6 +1441,14 @@ export function SaleScreen({
     const selectionLabel = `${name} ${quantity} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
+    const touchQuantityLocked = paymentLocked || Boolean(localLine.returnOrigin);
+
+    function adjustTouchQuantity(delta: number) {
+      if (touchQuantityLocked) return;
+      const nextQuantity = Math.min(9999, Math.max(1, localLine.quantity + delta));
+      setSelectedLineId(cartLineId);
+      setLines((current) => updateSaleLineQuantity(current, cartLineId, nextQuantity));
+    }
 
     function renderCell(column: SaleCartColumnKey) {
       if (column === "image") {
@@ -1480,7 +1493,27 @@ export function SaleScreen({
         );
       }
       if (column === "quantity") {
-        return <td className="sale-cart-number sale-cart-quantity" data-column-key={column} key={column}>{quantity}</td>;
+        return (
+          <td className="sale-cart-number sale-cart-quantity" data-column-key={column} key={column}>
+            {interfaceMode === "TOUCH" ? (
+              <div className="sale-cart-touch-quantity">
+                <button
+                  type="button"
+                  aria-label={`${t("sale.touch.decreaseQuantity")}: ${name}`}
+                  disabled={touchQuantityLocked || quantity <= 1}
+                  onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(-1); }}
+                >−</button>
+                <output aria-label={`${t("sale.quantity.label")}: ${name}`}>{quantity}</output>
+                <button
+                  type="button"
+                  aria-label={`${t("sale.touch.increaseQuantity")}: ${name}`}
+                  disabled={touchQuantityLocked || quantity >= 9999}
+                  onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(1); }}
+                >+</button>
+              </div>
+            ) : quantity}
+          </td>
+        );
       }
       if (column === "package") {
         return (
@@ -1847,7 +1880,9 @@ export function SaleScreen({
     ));
     setSelectedLineId(cartLineId);
     setQuery("");
-    setShortcutStatus("");
+    setShortcutStatus(interfaceMode === "TOUCH"
+      ? `${t("sale.touch.productAdded")}: ${product.name || product.code || t("sale.main.unnamedProduct")}`
+      : "");
     searchInputRef.current?.focus();
   }
 
@@ -3759,6 +3794,9 @@ export function SaleScreen({
             price: t("sale.searchDialog.price"),
             empty: t("sale.searchDialog.empty"),
             close: t("common.close"),
+            add: t("sale.searchDialog.add"),
+            details: t("sale.searchDialog.details"),
+            selected: t("sale.searchDialog.selected"),
             unnamedProduct: t("sale.main.unnamedProduct"),
             missingCode: t("sale.main.missingCode"),
           }}
@@ -3975,6 +4013,15 @@ export function SaleScreen({
               <span>{t("sale.quantity.label")}</span>
               <input ref={quantityInputRef} aria-label={t("sale.quantity.inputAria")} type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
             </label>
+            {interfaceMode === "TOUCH" && (
+              <TouchNumericKeypad
+                value={quantityInput}
+                ariaLabel={t("sale.touch.numericKeypad")}
+                clearLabel={t("sale.touch.clearNumber")}
+                backspaceLabel={t("sale.touch.backspace")}
+                onChange={setQuantityInput}
+              />
+            )}
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
           </form>
@@ -3988,6 +4035,17 @@ export function SaleScreen({
               <span>{t("sale.discount.label")}</span>
               <input ref={discountInputRef} aria-label={t("sale.discount.inputAria")} type="number" min="0" max="100" step="0.01" value={discountInput} onChange={(event) => setDiscountInput(event.target.value)} />
             </label>
+            {interfaceMode === "TOUCH" && (
+              <TouchNumericKeypad
+                value={discountInput}
+                allowDecimal
+                decimalLabel={locale === "es" ? "," : "."}
+                ariaLabel={t("sale.touch.numericKeypad")}
+                clearLabel={t("sale.touch.clearNumber")}
+                backspaceLabel={t("sale.touch.backspace")}
+                onChange={setDiscountInput}
+              />
+            )}
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons"><button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button><button type="submit">{t("sale.dialog.save")}</button></div>
           </form>
@@ -4042,6 +4100,17 @@ export function SaleScreen({
                 onChange={(event) => setTemporaryPriceInput(event.target.value)}
               />
             </label>
+            {interfaceMode === "TOUCH" && (
+              <TouchNumericKeypad
+                value={temporaryPriceInput}
+                allowDecimal
+                decimalLabel={locale === "es" ? "," : "."}
+                ariaLabel={t("sale.touch.numericKeypad")}
+                clearLabel={t("sale.touch.clearNumber")}
+                backspaceLabel={t("sale.touch.backspace")}
+                onChange={setTemporaryPriceInput}
+              />
+            )}
             <small className="sale-dialog-hint">{t("sale.temporaryPrice.hint")}</small>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons">

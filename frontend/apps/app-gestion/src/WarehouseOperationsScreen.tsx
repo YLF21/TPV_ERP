@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserSession } from "../../../packages/app-common/src/types";
+import {
+  activateModalFocusTrap,
+  type ModalFocusRoot
+} from "../../../packages/app-common/src/components/modalFocusTrap";
 import {
   cancelStockCount,
   confirmStockCount,
@@ -75,6 +79,26 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
   const [countProductQuantity, setCountProductQuantity] = useState("");
   const [selectedCount, setSelectedCount] = useState<StockCountDetail | null>(null);
   const [countedValues, setCountedValues] = useState<Record<string, string>>({});
+  const [confirmingCount, setConfirmingCount] = useState(false);
+  const countConfirmDialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!confirmingCount) return;
+    const dialog = countConfirmDialogRef.current;
+    const deactivateFocusTrap = dialog
+      ? activateModalFocusTrap(dialog as unknown as ModalFocusRoot, document)
+      : undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setConfirmingCount(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      deactivateFocusTrap?.();
+    };
+  }, [confirmingCount]);
 
   const allowed = mode === "transfer"
     ? hasPermission(session, "STOCK_TRANSFER")
@@ -213,6 +237,7 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
   async function openCount(id: string) {
     setLoading(true);
     setError("");
+    setConfirmingCount(false);
     try {
       const detail = await loadStockCount(id, token);
       setSelectedCount(detail);
@@ -323,6 +348,18 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
     : mode === "adjustment"
       ? "warehouse.adjustment.title"
       : "warehouse.count.title";
+  const countedProducts = selectedCount?.lines.filter((line) => line.countedQuantity != null).length ?? 0;
+  const totalCountProducts = selectedCount?.lines.length ?? 0;
+  const countProgress = totalCountProducts === 0
+    ? 0
+    : Math.min(100, Math.round((countedProducts / totalCountProducts) * 100));
+  const countDifferenceSummary = selectedCount?.lines.reduce((summary, line) => {
+    const difference = numeric(line.difference);
+    if (difference > 0) summary.positive += difference;
+    if (difference < 0) summary.negative += Math.abs(difference);
+    summary.net += difference;
+    return summary;
+  }, { positive: 0, negative: 0, net: 0 }) ?? { positive: 0, negative: 0, net: 0 };
 
   return (
     <section className="gestion-warehouse-operations" aria-labelledby="warehouse-operation-title">
@@ -385,7 +422,11 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
           <section className="gestion-stock-count-detail" aria-label={t("warehouse.count.detail")}>
             {!selectedCount && <div className="gestion-security-state">{t("warehouse.count.select")}</div>}
             {selectedCount && <>
-              <header><div><strong>{warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div>{selectedCount.status === "DRAFT" && <div><button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button><button type="button" disabled={saving} onClick={() => void changeCountStatus("confirm")}>{t("warehouse.count.confirm")}</button></div>}</header>
+              <header><div><strong>{warehouses.find((warehouse) => warehouse.id === selectedCount.warehouseId)?.name ?? selectedCount.warehouseId}</strong><span className={`gestion-stock-count-status ${selectedCount.status.toLowerCase()}`}>{t(`warehouse.count.status.${selectedCount.status}`)}</span></div>{selectedCount.status === "DRAFT" && <div><button type="button" disabled={saving} onClick={() => void changeCountStatus("cancel")}>{t("warehouse.count.cancel")}</button><button type="button" disabled={saving || selectedCount.lines.length === 0} onClick={() => setConfirmingCount(true)}>{t("warehouse.count.confirm")}</button></div>}</header>
+              <div className="gestion-stock-count-progress" aria-label={t("warehouse.count.progress")}>
+                <div><strong>{t("warehouse.count.progress")}</strong><span>{countedProducts} / {totalCountProducts} {t("warehouse.count.productsCounted")}</span></div>
+                <div className="gestion-stock-count-progress-track" aria-hidden="true"><span style={{ width: `${countProgress}%` }} /></div>
+              </div>
               {selectedCount.status === "DRAFT" && (
                 <form className="gestion-stock-count-add-line" onSubmit={addCountLine}>
                   <label><span>{t("warehouse.operations.product")}</span><select value={countProductId} onChange={(event) => setCountProductId(event.target.value)} required><option value="">{t("warehouse.count.selectProduct")}</option>{products.filter((product) => !selectedCount.lines.some((line) => line.productId === product.id)).map((product) => <option value={product.id} key={product.id}>{productLabel(product)}</option>)}</select></label>
@@ -393,6 +434,11 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
                   <button type="submit" disabled={saving || !countProductId}>{t("warehouse.count.addLine")}</button>
                 </form>
               )}
+              <div className="gestion-stock-count-summary" aria-label={t("warehouse.count.summary")}>
+                <div><span>{t("warehouse.count.increases")}</span><strong className="positive">+{countDifferenceSummary.positive.toLocaleString()}</strong></div>
+                <div><span>{t("warehouse.count.decreases")}</span><strong className="negative">-{countDifferenceSummary.negative.toLocaleString()}</strong></div>
+                <div><span>{t("warehouse.count.netDifference")}</span><strong className={countDifferenceSummary.net > 0 ? "positive" : countDifferenceSummary.net < 0 ? "negative" : "neutral"}>{countDifferenceSummary.net > 0 ? "+" : ""}{countDifferenceSummary.net.toLocaleString()}</strong></div>
+              </div>
               <div className="gestion-stock-count-table" role="table">
                 <div role="row" className="head"><span role="columnheader">{t("warehouse.operations.product")}</span><span role="columnheader">{t("warehouse.count.expected")}</span><span role="columnheader">{t("warehouse.count.counted")}</span><span role="columnheader">{t("warehouse.count.difference")}</span><span role="columnheader">{t("warehouse.count.action")}</span></div>
                 {selectedCount.lines.map((line) => {
@@ -403,6 +449,28 @@ export function WarehouseOperationsScreen({ session, mode, t }: Props) {
                 })}
               </div>
             </>}
+          </section>
+        </div>
+      )}
+
+      {confirmingCount && selectedCount && (
+        <div className="gestion-stock-count-confirm-backdrop" role="presentation">
+          <section ref={countConfirmDialogRef} className="gestion-stock-count-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="stock-count-confirm-title">
+            <header>
+              <span>{t("warehouse.count.confirmEyebrow")}</span>
+              <h3 id="stock-count-confirm-title">{t("warehouse.count.confirmTitle")}</h3>
+              <p>{t("warehouse.count.confirmDescription")}</p>
+            </header>
+            <div className="gestion-stock-count-confirm-metrics">
+              <div><span>{t("warehouse.count.productsCounted")}</span><strong>{countedProducts}</strong></div>
+              <div><span>{t("warehouse.count.increases")}</span><strong className="positive">+{countDifferenceSummary.positive.toLocaleString()}</strong></div>
+              <div><span>{t("warehouse.count.decreases")}</span><strong className="negative">-{countDifferenceSummary.negative.toLocaleString()}</strong></div>
+              <div><span>{t("warehouse.count.netDifference")}</span><strong>{countDifferenceSummary.net > 0 ? "+" : ""}{countDifferenceSummary.net.toLocaleString()}</strong></div>
+            </div>
+            <footer>
+              <button type="button" disabled={saving} onClick={() => setConfirmingCount(false)}>{t("warehouse.count.keepEditing")}</button>
+              <button type="button" className="primary" disabled={saving} onClick={() => { setConfirmingCount(false); void changeCountStatus("confirm"); }}>{t("warehouse.count.applyDifferences")}</button>
+            </footer>
           </section>
         </div>
       )}

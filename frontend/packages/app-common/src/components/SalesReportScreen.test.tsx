@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDocumentReports,
   buildReportColumnDefinitions,
+  canCancelSelectedTicket,
   canConfirmSalesInvoiceRectification,
+  canConvertSelectedTicketToInvoice,
   canManageSalesInvoiceRectification,
   canOpenOperationalTimeline,
   formatReportDisplayValue,
@@ -80,6 +82,125 @@ afterEach(() => {
 });
 
 describe("SalesReportScreen", () => {
+  it("only enables cancellation for a selected confirmed ticket and an authorized role", () => {
+    const confirmedTicket = {
+      __documentId: "ticket-1",
+      __documentStatus: "CONFIRMADO",
+      ticket: "T-001"
+    };
+    expect(canCancelSelectedTicket(
+      { permissions: ["GESTION_CUENTAS"] },
+      "salesReport.tickets",
+      confirmedTicket
+    )).toBe(true);
+    expect(canCancelSelectedTicket(
+      { permissions: ["VENTA"] },
+      "salesReport.tickets",
+      { ...confirmedTicket, __documentStatus: "ANULADO" }
+    )).toBe(false);
+    expect(canCancelSelectedTicket(
+      { permissions: ["GESTION_PRODUCTO"] },
+      "salesReport.tickets",
+      confirmedTicket
+    )).toBe(false);
+  });
+
+  it("only enables ticket conversion for a selected confirmed ticket and an authorized role", () => {
+    const confirmedTicket = {
+      __documentId: "ticket-1",
+      __documentStatus: "CONFIRMADO",
+      ticket: "T-001"
+    };
+    expect(canConvertSelectedTicketToInvoice(
+      { permissions: ["GESTION_VENTAS"] },
+      "salesReport.tickets",
+      confirmedTicket
+    )).toBe(true);
+    expect(canConvertSelectedTicketToInvoice(
+      { permissions: ["GESTION_VENTAS"] },
+      "salesReport.tickets",
+      { ...confirmedTicket, __documentStatus: "BORRADOR" }
+    )).toBe(false);
+    expect(canConvertSelectedTicketToInvoice(
+      { permissions: ["GESTION_CUENTAS"] },
+      "salesReport.tickets",
+      confirmedTicket
+    )).toBe(false);
+    expect(canConvertSelectedTicketToInvoice(
+      { permissions: ["GESTION_VENTAS"] },
+      "salesReport.invoices",
+      confirmedTicket
+    )).toBe(false);
+  });
+
+  it("enables the conversion button after selecting a confirmed ticket in the report", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/sales/operation-security") {
+        return Promise.resolve({
+          storeId: "store-1",
+          version: 1,
+          operations: [{
+            code: "CONVERT_TICKET_TO_INVOICE",
+            category: "TICKET",
+            shortcuts: ["F12"],
+            permissions: ["GESTION_VENTAS"],
+            defaultRequirePermission: true,
+            defaultRequirePassword: false,
+            requirePermission: true,
+            requirePassword: false,
+            customized: false
+          }, {
+            code: "CANCEL_TICKET",
+            category: "TICKET",
+            shortcuts: ["F11"],
+            permissions: ["GESTION_VENTAS"],
+            defaultRequirePermission: true,
+            defaultRequirePassword: true,
+            requirePermission: true,
+            requirePassword: true,
+            customized: false
+          }]
+        });
+      }
+      if (path === "/tickets") {
+        return Promise.resolve([{
+          id: "ticket-1",
+          tipo: "TICKET",
+          estado: "CONFIRMADO",
+          numero: "T-001",
+          numTicket: "T-001",
+          fecha: "2026-08-05",
+          total: "12.10"
+        }]);
+      }
+      if (path === "/warehouses") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    const { container } = render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        initialReport="salesReport.tickets"
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    const convertButton = screen.getByRole("button", { name: "Convertir ticket a factura" });
+    const cancelButton = screen.getByRole("button", { name: "Anular ticket" });
+    expect(convertButton).toBeDisabled();
+    expect(cancelButton).toBeDisabled();
+    await waitFor(() => expect(container.querySelector("tbody tr")).not.toBeNull());
+    fireEvent.click(container.querySelector("tbody tr")!);
+    await waitFor(() => expect(convertButton).toBeEnabled());
+    expect(cancelButton).toBeEnabled();
+  });
+
   it("ordena importes y alterna periodos rápidos de forma determinista", () => {
     const rows = [{ total: "10,50" }, { total: "2,25" }, { total: "100,00" }];
     expect(sortReportRows(rows, { attribute: "total", direction: "asc" }, "es")

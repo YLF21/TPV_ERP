@@ -103,6 +103,13 @@ describe("WarehouseOperationsScreen", () => {
   });
 
   it("opens a draft count, saves a line and confirms it", async () => {
+    vi.mocked(api.loadWarehouseOperationResources).mockResolvedValue({
+      ...resources,
+      products: [
+        ...resources.products,
+        { id: "tea", code: "TEA", name: "Té", active: true, productType: "UNIT" }
+      ]
+    });
     vi.mocked(api.loadStockCounts).mockResolvedValue([{
       ...draftCount,
       lineCount: 1,
@@ -124,11 +131,22 @@ describe("WarehouseOperationsScreen", () => {
     render(<WarehouseOperationsScreen session={session(["GESTION_ALMACEN"])} mode="count" t={t} />);
     const countButton = await screen.findByRole("button", { name: /GENERAL/ });
     fireEvent.click(countButton);
+    expect(await screen.findByText(/0 \/ 1 warehouse\.count\.productsCounted/)).toBeInTheDocument();
     const counted = await screen.findByRole("spinbutton", { name: /warehouse.count.counted Café/ });
     fireEvent.change(counted, { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: "warehouse.count.saveLine" }));
     await waitFor(() => expect(api.updateStockCountLine).toHaveBeenCalledWith("count-1", "coffee", 9, "token"));
-    fireEvent.click(screen.getByRole("button", { name: "warehouse.count.confirm" }));
+    const confirmButton = screen.getByRole("button", { name: "warehouse.count.confirm" });
+    confirmButton.focus();
+    fireEvent.click(confirmButton);
+    expect(screen.getByRole("dialog", { name: "warehouse.count.confirmTitle" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "warehouse.count.keepEditing" })).toHaveFocus();
+    expect(api.confirmStockCount).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "warehouse.count.confirmTitle" })).not.toBeInTheDocument();
+    expect(confirmButton).toHaveFocus();
+    fireEvent.click(confirmButton);
+    fireEvent.click(screen.getByRole("button", { name: "warehouse.count.applyDifferences" }));
     await waitFor(() => expect(api.confirmStockCount).toHaveBeenCalledWith("count-1", "token"));
   });
 

@@ -530,6 +530,9 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             price: t("sale.searchDialog.price"),
             empty: t("sale.searchDialog.empty"),
             close: t("common.close"),
+            add: t("sale.searchDialog.add"),
+            details: t("sale.searchDialog.details"),
+            selected: t("sale.searchDialog.selected"),
             unnamedProduct: t("sale.main.unnamedProduct"),
             missingCode: t("sale.main.missingCode"),
           }}

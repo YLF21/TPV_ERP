@@ -47,6 +47,10 @@ type SaleCommandLabels = {
   pending: string;
   pageDownKey: string;
   operations: string;
+  productActions: string;
+  saleActions: string;
+  cashActions: string;
+  ticketActions: string;
 };
 
 type KeyboardSaleCommandBarProps = {
@@ -169,63 +173,60 @@ export function TouchSaleActionPanel({
   return (
     <section className="touch-sale-actions" aria-label={labels.operations}>
       <h2>{labels.operations}</h2>
-      <div className="touch-sale-action-grid">
-        <button type="button" disabled={searchDisabled} onClick={onSearch}>{labels.search}</button>
-        <button type="button" disabled={paymentLocked} onClick={onEanGenerator}>{labels.eanGenerator}</button>
-        <button type="button" disabled={paymentLocked} onClick={onPrintProductLabel}>{labels.printProductLabel}</button>
-        <button type="button" onClick={onCashDrawer}>{labels.cashDrawer}</button>
-        <button type="button" disabled={paymentLocked} onClick={onCashWithdrawal}>{labels.cashWithdrawal}</button>
-        <button type="button" disabled={editProductDisabled} onClick={onEditProduct}>{labels.editProduct}</button>
-        <button type="button" disabled={serialNumberDisabled} onClick={onSerialNumber}>{labels.serialNumber}</button>
-        <button type="button" disabled={ticketReturnDisabled} onClick={onTicketReturn}>{labels.ticketReturn}</button>
-        {documentAvailable && (
-          <button type="button" disabled={paymentLocked} onClick={onDocument}>{labels.document}</button>
-        )}
-        <button type="button" disabled={quantityDisabled} onClick={onQuantity}>{labels.quantity}</button>
-        {onTemporaryName && (
-          <button type="button" disabled={temporaryNameDisabled} onClick={onTemporaryName}>
-            {labels.temporaryName}
-          </button>
-        )}
-        {onTemporaryPrice && (
-          <button type="button" disabled={temporaryPriceDisabled} onClick={onTemporaryPrice}>
-            {labels.temporaryPrice}
-          </button>
-        )}
-        <button
-          type="button"
-          disabled={discountDisabled}
-          title={discountTitle}
-          onClick={onDiscount}
-        >
-          {labels.discount}
-        </button>
-        <button type="button" disabled={paymentLocked} onClick={onCustomer}>{labels.customer}</button>
-        <button type="button" disabled={quantityDisabled} onClick={onRemoveLine}>{labels.removeLine}</button>
-        <button type="button" disabled={paymentLocked} onClick={onParkedSales}>
-          <span>{labels.parkedSales}</span>
-          <small>{labels.parkedSalesHint}</small>
-        </button>
-        <button type="button" disabled={paymentLocked} onClick={onCancelLastTicket}>
-          {labels.cancelTicket}
-        </button>
-        <button type="button" disabled={paymentLocked} onClick={onCancelTicket}>
-          {labels.cancelOtherTicket}
-        </button>
-        <button type="button" disabled={paymentLocked} onClick={onConvertTicket}>
-          {labels.convertInvoice}
-        </button>
-        {receivablesAvailable && (
-          <button
-            type="button"
-            className="touch-sale-receivables"
-            disabled={paymentLocked}
-            onClick={onReceivables}
-          >
-            <span>{labels.receivables}</span>
-            {receivablesCustomer && <small>{receivablesCustomer}</small>}
-          </button>
-        )}
+      <div className="touch-sale-action-groups">
+        <section className="touch-sale-action-group" aria-labelledby="touch-product-actions">
+          <h3 id="touch-product-actions">{labels.productActions}</h3>
+          <div className="touch-sale-action-grid">
+            <button type="button" className="primary" disabled={searchDisabled} onClick={onSearch}>{labels.search}</button>
+            <button type="button" disabled={quantityDisabled} onClick={onQuantity}>{labels.quantity}</button>
+            <button type="button" disabled={editProductDisabled} onClick={onEditProduct}>{labels.editProduct}</button>
+            <button type="button" disabled={serialNumberDisabled} onClick={onSerialNumber}>{labels.serialNumber}</button>
+            {onTemporaryName && (
+              <button type="button" disabled={temporaryNameDisabled} onClick={onTemporaryName}>{labels.temporaryName}</button>
+            )}
+            {onTemporaryPrice && (
+              <button type="button" disabled={temporaryPriceDisabled} onClick={onTemporaryPrice}>{labels.temporaryPrice}</button>
+            )}
+            <button type="button" disabled={discountDisabled} title={discountTitle} onClick={onDiscount}>{labels.discount}</button>
+            <button type="button" className="danger" disabled={quantityDisabled} onClick={onRemoveLine}>{labels.removeLine}</button>
+            <button type="button" disabled={paymentLocked} onClick={onEanGenerator}>{labels.eanGenerator}</button>
+            <button type="button" disabled={paymentLocked} onClick={onPrintProductLabel}>{labels.printProductLabel}</button>
+          </div>
+        </section>
+
+        <section className="touch-sale-action-group" aria-labelledby="touch-sale-actions">
+          <h3 id="touch-sale-actions">{labels.saleActions}</h3>
+          <div className="touch-sale-action-grid">
+            <button type="button" disabled={paymentLocked} onClick={onCustomer}>{labels.customer}</button>
+            {documentAvailable && <button type="button" disabled={paymentLocked} onClick={onDocument}>{labels.document}</button>}
+            <button type="button" disabled={paymentLocked} onClick={onParkedSales}>
+              <span>{labels.parkedSales}</span><small>{labels.parkedSalesHint}</small>
+            </button>
+            {receivablesAvailable && (
+              <button type="button" className="touch-sale-receivables" disabled={paymentLocked} onClick={onReceivables}>
+                <span>{labels.receivables}</span>{receivablesCustomer && <small>{receivablesCustomer}</small>}
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section className="touch-sale-action-group" aria-labelledby="touch-cash-actions">
+          <h3 id="touch-cash-actions">{labels.cashActions}</h3>
+          <div className="touch-sale-action-grid">
+            <button type="button" onClick={onCashDrawer}>{labels.cashDrawer}</button>
+            <button type="button" disabled={paymentLocked} onClick={onCashWithdrawal}>{labels.cashWithdrawal}</button>
+          </div>
+        </section>
+
+        <section className="touch-sale-action-group" aria-labelledby="touch-ticket-actions">
+          <h3 id="touch-ticket-actions">{labels.ticketActions}</h3>
+          <div className="touch-sale-action-grid">
+            <button type="button" disabled={ticketReturnDisabled} onClick={onTicketReturn}>{labels.ticketReturn}</button>
+            <button type="button" disabled={paymentLocked} onClick={onConvertTicket}>{labels.convertInvoice}</button>
+            <button type="button" className="danger" disabled={paymentLocked} onClick={onCancelLastTicket}>{labels.cancelTicket}</button>
+            <button type="button" className="danger" disabled={paymentLocked} onClick={onCancelTicket}>{labels.cancelOtherTicket}</button>
+          </div>
+        </section>
       </div>
     </section>
   );

@@ -116,4 +116,35 @@ describe("SaleTicketCancellationDialog", () => {
 
     expect(await screen.findByLabelText("Usuario autorizador")).toBeInTheDocument();
   });
+
+  it("loads the selected ticket immediately when opened from the report", async () => {
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview?number=T-REPORT-9") {
+        return {
+          ...preview,
+          ticket: { ...preview.ticket, id: "ticket-report-9", numero: "T-REPORT-9" },
+          manualReferences: [],
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="BY_NUMBER"
+        initialTicketNumber="T-REPORT-9"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-REPORT-9")).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith(
+      "/tickets/cancellation-preview?number=T-REPORT-9",
+      { token: "token" },
+    );
+  });
 });

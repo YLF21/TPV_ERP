@@ -5005,6 +5005,43 @@ textarea {
   font: inherit;
 }
 
+.touch-numeric-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.touch-numeric-keypad button {
+  min-height: 54px;
+  border: 1px solid #91a8c0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #102f55;
+  font-size: 21px;
+  font-weight: 900;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.touch-numeric-keypad button:hover,
+.touch-numeric-keypad button:focus-visible {
+  border-color: #176fb6;
+  background: #eaf4fd;
+  outline: 2px solid #176fb6;
+  outline-offset: -2px;
+}
+
+.touch-numeric-keypad button.utility {
+  background: #e7edf4;
+  color: #314b68;
+}
+
+.touch-numeric-keypad button.decimal {
+  grid-column: 1 / -1;
+  min-height: 46px;
+  background: #dbeaf8;
+}
+
 .sale-action-dialog textarea {
   min-height: 112px;
   resize: vertical;
@@ -12484,7 +12521,7 @@ body,
   width: min(1320px, calc(100vw - 56px));
   height: min(900px, calc(100dvh - 56px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--tpv-v3-line, #b9c6d6);
   border-radius: var(--tpv-v3-radius, 4px);
@@ -12657,6 +12694,57 @@ body,
   padding: 28px 16px;
   color: var(--tpv-v3-muted, #5b6f8c);
   text-align: center;
+}
+
+.sale-product-search-touch-actions {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.35fr) minmax(180px, 0.45fr);
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--tpv-v3-line, #b9c6d6);
+  background: var(--tpv-v3-surface-alt, #edf2f7);
+}
+
+.sale-product-search-touch-actions p {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+}
+
+.sale-product-search-touch-actions p span {
+  color: var(--tpv-v3-muted, #5b6f8c);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sale-product-search-touch-actions p strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-product-search-touch-actions button {
+  min-height: 54px;
+  border: 1px solid #71859a;
+  border-radius: 4px;
+  background: #fff;
+  color: #17324f;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 850;
+  touch-action: manipulation;
+}
+
+.sale-product-search-touch-actions button.primary {
+  border-color: #165f9d;
+  background: #1d6faf;
+  color: #fff;
 }
 
 .sale-product-information-dialog {
@@ -19748,6 +19836,28 @@ textarea:focus,
   text-transform: uppercase;
 }
 
+.touch-sale-action-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.touch-sale-action-group {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #c8d2dd;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.touch-sale-action-group h3 {
+  margin: 0 0 7px;
+  color: #52677e;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .touch-sale-action-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -19791,6 +19901,31 @@ textarea:focus,
   background: #d6e6f5;
 }
 
+.touch-sale-action-grid button.primary {
+  border-color: #165f9d;
+  background: #1d6faf;
+  color: #fff;
+}
+
+.touch-sale-action-grid button.primary:hover:not(:disabled),
+.touch-sale-action-grid button.primary:focus-visible {
+  border-color: #0f4f86;
+  background: #145f9d;
+}
+
+.touch-sale-action-grid button.danger {
+  border-color: #c27b76;
+  background: #fff6f5;
+  color: #8f241d;
+}
+
+.touch-sale-action-grid button.danger:hover:not(:disabled),
+.touch-sale-action-grid button.danger:focus-visible {
+  border-color: #a8332a;
+  background: #fbe5e3;
+  color: #741b15;
+}
+
 .touch-sale-action-grid button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
@@ -19820,9 +19955,76 @@ textarea:focus,
   scrollbar-gutter: stable;
 }
 
+.sale-screen.touch-mode .sale-tools .sale-total {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.sale-screen.touch-mode .sale-payment {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 10px;
+  border-top: 2px solid #9eb0c3;
+  background: #f4f7fa;
+  box-shadow: 0 -5px 14px rgb(27 49 76 / 10%);
+}
+
+.sale-screen.touch-mode button,
+.sale-screen.touch-mode input,
+.sale-screen.touch-mode select {
+  touch-action: manipulation;
+}
+
 @media (max-width: 900px) {
   .settings-sale-interface-options {
     grid-template-columns: 1fr;
+  }
+
+  .sale-product-search-overlay {
+    padding: 8px !important;
+  }
+
+  .sale-product-search-dialog {
+    width: calc(100dvw - 16px);
+    height: calc(100dvh - 16px);
+  }
+
+  .sale-product-search-field {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .sale-product-search-field input {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .sale-product-search-touch-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sale-product-search-touch-actions p {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .sale-product-search-head,
+  .sale-product-search-row {
+    grid-template-columns: 54px 92px minmax(150px, 1fr) 78px;
+  }
+
+  .sale-product-search-head span:nth-child(3),
+  .sale-product-search-head span:nth-child(4),
+  .sale-product-search-row > span:nth-child(3),
+  .sale-product-search-row > span:nth-child(4) {
+    display: none;
+  }
+
+  .sale-product-search-row {
+    min-height: 58px;
   }
 }
 .sale-checkout-overlay {
@@ -20587,6 +20789,45 @@ textarea:focus,
 .sale-cart-quantity {
   font-size: 16px;
   font-weight: 950;
+}
+
+.sale-cart-touch-quantity {
+  display: grid;
+  grid-template-columns: 42px minmax(38px, 1fr) 42px;
+  align-items: center;
+  gap: 5px;
+}
+
+.sale-cart-touch-quantity button {
+  min-width: 42px;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #8ba5c0;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #0b4f8a;
+  padding: 0;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sale-cart-touch-quantity button:disabled {
+  cursor: not-allowed;
+  opacity: .38;
+}
+
+.sale-cart-touch-quantity output {
+  min-width: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-screen.touch-mode .sale-cart-table [data-column-key="quantity"] {
+  min-width: 148px;
 }
 
 .sale-cart-package {

@@ -24,6 +24,9 @@ type SaleProductSearchLabels = {
   price: string;
   empty: string;
   close: string;
+  add: string;
+  details: string;
+  selected: string;
   unnamedProduct: string;
   missingCode: string;
 };
@@ -76,8 +79,6 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   const [selectedId, setSelectedId] = useState(initialSelectedId);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const touchClickTimerRef = useRef<number | null>(null);
-  const lastPointerTypeRef = useRef("mouse");
   const results = useMemo(() => filterSaleProductSearch(products, query), [products, query]);
   const activeId = results.some((product) => product.id === selectedId)
     ? selectedId
@@ -91,9 +92,6 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
     inputRef.current?.select();
     return () => {
       deactivate();
-      if (touchClickTimerRef.current !== null) {
-        window.clearTimeout(touchClickTimerRef.current);
-      }
     };
   }, []);
 
@@ -148,32 +146,19 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   function handleProductClick(product: T) {
     selectProduct(product.id);
     if (interfaceMode === "KEYBOARD") return;
-    if (interfaceMode !== "TOUCH" || !onInspect) {
+    if (interfaceMode !== "TOUCH") {
       onSelect(product);
-      return;
     }
-    if (lastPointerTypeRef.current === "mouse") return;
-    if (touchClickTimerRef.current !== null) {
-      window.clearTimeout(touchClickTimerRef.current);
-    }
-    touchClickTimerRef.current = window.setTimeout(() => {
-      touchClickTimerRef.current = null;
-      onInspect(product);
-    }, 300);
   }
 
   function handleProductDoubleClick(product: T) {
-    if (interfaceMode === "KEYBOARD" || lastPointerTypeRef.current === "mouse") {
+    if (interfaceMode === "KEYBOARD") {
       onInspect?.(product);
       return;
     }
-    if (interfaceMode !== "TOUCH") return;
-    if (touchClickTimerRef.current !== null) {
-      window.clearTimeout(touchClickTimerRef.current);
-      touchClickTimerRef.current = null;
-    }
-    onSelect(product);
   }
+
+  const activeProduct = results.find((product) => product.id === activeId);
 
   return (
     <div
@@ -234,9 +219,6 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
                 aria-selected={product.id === activeId}
                 className={`sale-product-search-row${product.id === activeId ? " selected" : ""}`}
                 key={product.id}
-                onPointerDown={(event) => {
-                  lastPointerTypeRef.current = event.pointerType || "mouse";
-                }}
                 onClick={() => handleProductClick(product)}
                 onDoubleClick={() => handleProductDoubleClick(product)}
                 onMouseEnter={() => selectProduct(product.id)}
@@ -251,6 +233,20 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
             ))}
           </div>
         </div>
+        {interfaceMode === "TOUCH" && (
+          <footer className="sale-product-search-touch-actions">
+            <p aria-live="polite">
+              <span>{labels.selected}</span>
+              <strong>{activeProduct?.name || activeProduct?.code || labels.unnamedProduct}</strong>
+            </p>
+            <button type="button" disabled={!activeProduct || !onInspect} onClick={() => activeProduct && onInspect?.(activeProduct)}>
+              {labels.details}
+            </button>
+            <button type="button" className="primary" disabled={!activeProduct} onClick={() => activeProduct && onSelect(activeProduct)}>
+              {labels.add}
+            </button>
+          </footer>
+        )}
       </section>
     </div>
   );
