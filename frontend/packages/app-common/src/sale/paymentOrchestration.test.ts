@@ -9,6 +9,16 @@ import {
 } from "./paymentOrchestration";
 
 describe("payment allocation orchestration", () => {
+  it("creates a covered zero-total session without a payment allocation", () => {
+    expect(createPaymentSession(0, () => "zero")).toEqual({
+      id: "zero",
+      totalCents: 0,
+      direction: "ZERO",
+      status: "COVERED",
+      allocations: [],
+    });
+  });
+
   it("keeps one stable idempotency key for every cash, manual card and integrated card allocation", () => {
     let session = createPaymentSession(10_00, () => "cash-key");
     session = addPaymentAllocation(session, { kind: "CASH", amountCents: 2_00 }, () => "cash-key");

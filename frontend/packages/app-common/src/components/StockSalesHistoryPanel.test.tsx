@@ -207,7 +207,7 @@ describe("StockSalesHistoryPanel", () => {
 
     await waitFor(() => expect(container.querySelectorAll("tbody tr").length).toBe(3));
     expect(container.querySelector(".stock-history-totals")?.textContent)
-      .toContain("Cantidad total vendida1,00");
+      .toContain("Cantidad total vendida1");
     expect(container.querySelector(".stock-history-totals")?.textContent)
       .toContain("Importe total3,60 €");
   });

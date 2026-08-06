@@ -81,6 +81,41 @@ class TicketReturnValuationServiceTest {
     }
 
     @Test
+    void threeForTwoReturnsOneUnitWhenTwoUnitsAreReturnedTogether() {
+        var promotion = buyXPayY(3, 2);
+        var fixture = ticketWithPromotion(3, "10.00", "10.00", promotion);
+        historicalPromotion(promotion);
+
+        var result = service().value(
+                fixture.ticket(),
+                Map.of(fixture.productLine().getId(), new BigDecimal("2.000")));
+
+        assertThat(result.selectedGross()).isEqualByComparingTo("20.00");
+        assertThat(result.lostBenefits()).isEqualByComparingTo("10.00");
+        assertThat(result.refundableAmount()).isEqualByComparingTo("10.00");
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo("10.00");
+        assertThat(result.taxAdjustments()).singleElement()
+                .extracting(TicketReturnValuationService.TaxAdjustment::amount)
+                .isEqualTo(new BigDecimal("10.00"));
+    }
+
+    @Test
+    void threeForTwoNeverRefundsMoreThanPaidWhenAllUnitsAreReturnedTogether() {
+        var promotion = buyXPayY(3, 2);
+        var fixture = ticketWithPromotion(3, "10.00", "10.00", promotion);
+        historicalPromotion(promotion);
+
+        var result = service().value(
+                fixture.ticket(),
+                Map.of(fixture.productLine().getId(), new BigDecimal("3.000")));
+
+        assertThat(result.selectedGross()).isEqualByComparingTo("30.00");
+        assertThat(result.lostBenefits()).isEqualByComparingTo("10.00");
+        assertThat(result.refundableAmount()).isEqualByComparingTo("20.00");
+        assertThat(result.remainingBasketValue()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     void secondUnitAtHalfPriceReturnsFiveWhenOneUnitIsReturned() {
         var promotion = secondUnitPercent("50.00");
         var fixture = ticketWithPromotion(2, "10.00", "5.00", promotion);

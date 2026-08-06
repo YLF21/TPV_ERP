@@ -52,6 +52,7 @@ public class CommercialBootstrapService {
         createPaymentMethod(companyId, "DESCUENTO", false, false);
         createPaymentMethod(companyId, "OTRO", false, false);
         createPaymentMethod(companyId, "SALDO_MIEMBRO", false, false);
+        createPaymentMethod(companyId, "COMPENSACION_DEVOLUCION", false, false);
     }
 
     private void createPaymentMethod(

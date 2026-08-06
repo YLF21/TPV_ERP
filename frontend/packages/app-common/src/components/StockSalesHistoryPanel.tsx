@@ -10,6 +10,7 @@ import { enterNavigationIntent, focusRelativeEnterTarget } from "./keyboardNavig
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
+import { formatProductQuantity } from "../sale/productQuantity";
 
 export type StockSalesHistoryRow = {
   documentId: string;
@@ -35,6 +36,7 @@ type StockSalesHistoryPanelProps = {
   productId: string;
   productCode?: string;
   productName: string;
+  productType?: string | null;
   productImageSource?: string;
   locale: LocaleCode;
   app?: AppKind;
@@ -103,6 +105,7 @@ export function StockSalesHistoryPanel({
   productId,
   productCode = "",
   productName,
+  productType,
   productImageSource = "",
   locale,
   app = "venta",
@@ -314,9 +317,9 @@ export function StockSalesHistoryPanel({
         ],
         columns: exportColumns(),
         rows: visibleRows.map((row) => visibleColumns.map((column) =>
-          formattedHistoryCell(row, column.key, dateFormatter, numberFormatter))),
+          formattedHistoryCell(row, column.key, dateFormatter, numberFormatter, productType, locale))),
         totals: [
-          { label: t("stock.history.totalQuantity"), value: numberFormatter.format(totals.quantity) },
+          { label: t("stock.history.totalQuantity"), value: formatProductQuantity(totals.quantity, productType, locale) },
           { label: t("stock.history.totalAmount"), value: `${numberFormatter.format(totals.amount)} €` },
         ],
       }, exportFileName("pdf"));
@@ -465,7 +468,7 @@ export function StockSalesHistoryPanel({
                     {column.key === "document" && stockSalesDocumentLabel(row)}
                     {column.key === "status" && row.status}
                     {column.key === "customer" && (row.customerName || row.customerId || "-")}
-                    {column.key === "quantity" && numberFormatter.format(Number(row.quantity) || 0)}
+                    {column.key === "quantity" && formatProductQuantity(row.quantity, productType, locale)}
                     {column.key === "unitPrice" && numberFormatter.format(Number(row.unitPrice) || 0)}
                     {column.key === "discount" && `${numberFormatter.format(Number(row.discountPercent) || 0)}%`}
                     {column.key === "total" && numberFormatter.format(Number(row.lineTotal) || 0)}
@@ -487,7 +490,7 @@ export function StockSalesHistoryPanel({
       <div className="stock-history-totals" aria-label={t("stock.history.totals")}>
         <div>
           <span>{t("stock.history.totalQuantity")}</span>
-          <strong>{numberFormatter.format(totals.quantity)}</strong>
+          <strong>{formatProductQuantity(totals.quantity, productType, locale)}</strong>
         </div>
         <div>
           <span>{t("stock.history.totalAmount")}</span>
@@ -503,12 +506,14 @@ function formattedHistoryCell(
   column: StockSalesHistoryColumnKey,
   dateFormatter: Intl.DateTimeFormat,
   numberFormatter: Intl.NumberFormat,
+  productType?: string | null,
+  locale: LocaleCode = "es",
 ) {
   if (column === "occurredAt") return formatOccurredAt(row.occurredAt, dateFormatter);
   if (column === "document") return stockSalesDocumentLabel(row);
   if (column === "status") return row.status;
   if (column === "customer") return row.customerName || row.customerId || "";
-  if (column === "quantity") return numberFormatter.format(Number(row.quantity) || 0);
+  if (column === "quantity") return formatProductQuantity(row.quantity, productType, locale);
   if (column === "unitPrice") return numberFormatter.format(Number(row.unitPrice) || 0);
   if (column === "discount") return `${numberFormatter.format(Number(row.discountPercent) || 0)}%`;
   if (column === "total") return numberFormatter.format(Number(row.lineTotal) || 0);

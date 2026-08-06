@@ -18,6 +18,8 @@ export type PendingSaleLine = {
   serialNumbers?: string[];
   temporaryNameOverride?: boolean;
   temporaryPriceOverride?: boolean;
+  cartLineId?: string;
+  temporaryPriceAuthorizationToken?: string;
 };
 
 export type PendingSaleDraft = {
@@ -163,6 +165,10 @@ export function pendingCreateBody(
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
       temporaryNameOverride: line.temporaryNameOverride === true,
       temporaryPriceOverride: line.temporaryPriceOverride === true,
+      ...(line.cartLineId ? { cartLineId: line.cartLineId } : {}),
+      ...(line.temporaryPriceAuthorizationToken
+        ? { temporaryPriceAuthorizationToken: line.temporaryPriceAuthorizationToken }
+        : {}),
     })),
     payments: approved.map((payment, index) => ({
       kind: payment.kind === "INTEGRATED_CARD"

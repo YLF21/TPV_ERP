@@ -15,6 +15,7 @@ import java.util.UUID;
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductQuantityPolicy;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.control.ControlAlertDetectionService;
@@ -484,9 +485,11 @@ public class DocumentService {
         }
         applyCheckoutDiscount(ticket, checkoutDiscountAmount);
         validateInactiveSaleProducts(ticket);
-        if (ticket.getTotal().signum() >= 0) {
+        if (ticket.getTotal().signum() > 0) {
             requirePaymentsPresent(payments);
             requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total del ticket");
+        } else if (payments != null && !payments.isEmpty()) {
+            throw new IllegalArgumentException("un ticket sin importe a cobrar no admite pagos entrantes");
         }
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.assignOriginTerminal(terminalId);
@@ -495,7 +498,7 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(),
                 Instant.now(clock),
                 false);
-        if (ticket.getTotal().signum() >= 0) {
+        if (ticket.getTotal().signum() > 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket", terminalId);
         }
         // Stock movements reference the document, so its row must exist before the gateway inserts them.
@@ -544,13 +547,19 @@ public class DocumentService {
                 || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
             throw new IllegalStateException("La instantanea fiscal no cuadra con sus lineas");
         }
-        requirePaymentsPresent(payments);
-        requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
+        if (ticket.getTotal().signum() > 0) {
+            requirePaymentsPresent(payments);
+            requirePaymentTotal(payments, ticket.getTotal(), "los pagos deben cuadrar con el total autorizado");
+        } else if (payments != null && !payments.isEmpty()) {
+            throw new IllegalArgumentException("un ticket sin importe a cobrar no admite pagos entrantes");
+        }
         validateAndConsumeSnapshotCoupon(ticket, authentication);
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.assignOriginTerminal(terminalId);
         ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
-        addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
+        if (ticket.getTotal().signum() > 0) {
+            addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
+        }
         documents.saveAndFlush(ticket);
         recordCreated(ticket);
         recordConfirmed(ticket, terminalId);
@@ -563,6 +572,66 @@ public class DocumentService {
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
         return saved;
+    }
+
+    /**
+     * Confirms the sale side of an exchange. Return-origin lines remain only in
+     * the rectification; the customer-facing receipt is assembled from both
+     * related documents.
+     */
+    @Transactional
+    public CommercialDocument createApprovedExchangeSaleFromSnapshot(
+            ApprovedCardTicketSnapshot snapshot,
+            List<PaymentCommand> payments,
+            CommercialDocument refund,
+            Authentication authentication) {
+        var saleSnapshot = exchangeSaleSnapshot(snapshot, refund, authentication);
+        var sale = createApprovedCardTicketFromSnapshot(saleSnapshot, payments, authentication);
+        relations.save(new DocumentRelation(sale, refund, DocumentRelationType.COMPENSA));
+        return sale;
+    }
+
+    @Transactional
+    CommercialDocument createPendingExchangeSaleFromSnapshot(
+            ApprovedCardTicketSnapshot snapshot,
+            List<PaymentCommand> payments,
+            CommercialDocument refund,
+            Authentication authentication) {
+        var saleSnapshot = exchangeSaleSnapshot(snapshot, refund, authentication);
+        var sale = createPendingTicketFromSnapshot(saleSnapshot, payments, authentication);
+        relations.save(new DocumentRelation(sale, refund, DocumentRelationType.COMPENSA));
+        return sale;
+    }
+
+    private ApprovedCardTicketSnapshot exchangeSaleSnapshot(
+            ApprovedCardTicketSnapshot snapshot,
+            CommercialDocument refund,
+            Authentication authentication) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(refund, "refund");
+        var sale = new CommercialDocument(
+                snapshot.storeId(), snapshot.warehouseId(), CommercialDocumentType.TICKET,
+                snapshot.date(), organization.currentUser(authentication).getId(),
+                snapshot.globalDiscount());
+        sale.setParties(snapshot.customerId(), null, null);
+        sale.setInternalComment(snapshot.internalComment());
+        snapshot.lines().stream()
+                .filter(line -> line.originalDocumentLineId() == null)
+                .filter(line -> line.lineType() != DocumentLineType.RETURN_ADJUSTMENT)
+                .forEach(line -> sale.addLine(line.toEntity(sale)));
+        if (sale.getLineas().isEmpty() || sale.getTotal().signum() <= 0) {
+            throw new IllegalArgumentException("exchange_requires_positive_sale_lines");
+        }
+        var expectedSaleTotal = Money.euros(snapshot.total().subtract(refund.getTotal()));
+        if (sale.getTotal().compareTo(expectedSaleTotal) != 0) {
+            throw new IllegalStateException("exchange_checkout_valuation_changed");
+        }
+        return new ApprovedCardTicketSnapshot(
+                snapshot.storeId(), snapshot.warehouseId(), snapshot.date(),
+                snapshot.customerId(), snapshot.paymentMethodId(), snapshot.globalDiscount(),
+                sale.getBaseTotal(), sale.getImpuestoTotal(), sale.getTotal(),
+                sale.getLineas().stream().map(DocumentLineCommand::from).toList(),
+                snapshot.internalComment());
     }
 
     @Transactional
@@ -848,6 +917,15 @@ public class DocumentService {
         var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
         requireRefundableDocument(original);
         var factor = BigDecimal.ONE.subtract(original.getDescuentoGlobal().movePointLeft(2));
+        var returnProducts = products.findAllByStoreIdAndIdIn(
+                        original.getTiendaId(),
+                        original.getLineas().stream()
+                                .map(DocumentLine::getProductoId)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .toList())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, product -> product));
         return original.getLineas().stream().map(line -> {
             var purchased = line.getCantidad().abs();
             var refunded = documents.confirmedRefundedQuantity(line.getId());
@@ -868,11 +946,18 @@ public class DocumentService {
                         line.getTotal().multiply(factor).multiply(available)
                                 .divide(purchased, Money.SCALE + 4, Money.ROUNDING)).abs();
             }
-            return new CardRefundLineOption(line.getId(), line.getCodigo(), line.getNombre(), line.getLineType(),
+            var product = returnProducts.get(line.getProductoId());
+            return new CardRefundLineOption(line.getId(), line.getCodigo(),
+                    product == null ? null : product.getBarcode(),
+                    product == null ? null : product.getBarcode2(),
+                    line.getNombre(), line.getLineType(),
                     purchased, available, line.getPrecioUnitario(), availableTotal,
                     line.getSerialNumbers(), refundableSerials, line.getProductoId(),
                     line.getDescuento(), line.isImpuestosIncluidos(),
-                    line.getRegimenImpuesto(), line.getPorcentajeImpuesto());
+                    line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
+                    product == null || product.getProductType() == null
+                            ? ProductType.UNIT
+                            : product.getProductType());
         }).filter(option -> option.refundableQuantity().signum() > 0).toList();
     }
 
@@ -1034,11 +1119,17 @@ public class DocumentService {
             return plan;
         }
         PaymentTerminalRefundLineSelection.canonical(selections);
+        var productTypes = productTypesFor(original);
         var source = original.getLineas().stream().collect(java.util.stream.Collectors.toMap(DocumentLine::getId, line -> line));
         var selected = new java.util.ArrayList<SelectedRefundLine>();
         for (var request : selections) {
             var line = source.get(request.lineId());
             if (line == null) throw new IllegalArgumentException("La linea seleccionada no pertenece al documento original");
+            if (line.getLineType() == DocumentLineType.PRODUCT) {
+                ProductQuantityPolicy.requireValid(
+                        productTypes.getOrDefault(line.getProductoId(), ProductType.UNIT),
+                        request.quantity());
+            }
             var purchased = line.getCantidad().abs();
             var refunded = documents.confirmedRefundedQuantity(line.getId());
             var available = purchased.subtract(refunded == null ? BigDecimal.ZERO : refunded);
@@ -1056,6 +1147,21 @@ public class DocumentService {
                 amount, List.copyOf(selected), List.copyOf(adjustments));
         buildRefundPreview(original, plan);
         return plan;
+    }
+
+    private Map<UUID, ProductType> productTypesFor(CommercialDocument document) {
+        var productIds = document.getLineas().stream()
+                .map(DocumentLine::getProductoId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        return products.findAllByStoreIdAndIdIn(document.getTiendaId(), productIds).stream()
+                .filter(product -> product.getProductType() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        Product::getId, Product::getProductType));
     }
 
     private void requireRefundableDocument(CommercialDocument original) {
@@ -1127,17 +1233,19 @@ public class DocumentService {
                 adjustment.taxPercentage());
     }
 
-    public record CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
+    public record CardRefundLineOption(UUID lineId, String code, String barcode, String barcode2,
+            String name, DocumentLineType lineType,
             BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
             BigDecimal refundableTotal, List<String> serialNumbers,
             List<String> refundableSerialNumbers, UUID productId, BigDecimal discount,
-            boolean taxesIncluded, String taxRegime, BigDecimal taxPercentage) {
+            boolean taxesIncluded, String taxRegime, BigDecimal taxPercentage,
+            ProductType productType) {
         public CardRefundLineOption(UUID lineId, String code, String name, DocumentLineType lineType,
                 BigDecimal purchasedQuantity, BigDecimal refundableQuantity, BigDecimal unitPrice,
                 BigDecimal refundableTotal) {
-            this(lineId, code, name, lineType, purchasedQuantity, refundableQuantity,
+            this(lineId, code, null, null, name, lineType, purchasedQuantity, refundableQuantity,
                     unitPrice, refundableTotal, List.of(), List.of(), null,
-                    BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
+                    BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO, ProductType.UNIT);
         }
     }
     private record SelectedRefundLine(
@@ -1567,6 +1675,15 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public CommercialDocument loadForPrint(UUID id) {
         return find(id);
+    }
+
+    @Transactional(readOnly = true)
+    public TicketPrintView loadTicketPrintView(UUID id) {
+        var sale = loadForPrint(id);
+        return relations.findOriginId(sale.getId(), DocumentRelationType.COMPENSA)
+                .map(this::loadForPrint)
+                .map(refund -> TicketPrintView.fromExchange(sale, refund))
+                .orElseGet(() -> TicketPrintView.from(sale));
     }
 
     @Transactional(readOnly = true)
@@ -2165,6 +2282,14 @@ public class DocumentService {
                         .filter(line -> line.originalDocumentLineId() == null)
                         .map(DocumentLineCommand::productoId)
                         .toList());
+        var returnProducts = products.findAllByStoreIdAndIdIn(
+                        storeId,
+                        values.stream()
+                                .filter(line -> line.originalDocumentLineId() != null)
+                                .map(DocumentLineCommand::productoId)
+                                .distinct()
+                                .toList()).stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, product -> product));
         var salesDocument = PROMOTION_SALES_DOCUMENTS.contains(documentType);
         validateInactiveSaleProducts(storeId, documentType, snapshots);
         if (salesDocument && globalDiscount.signum() > 0
@@ -2175,6 +2300,11 @@ public class DocumentService {
         }
         return values.stream().map(line -> {
             if (line.originalDocumentLineId() != null) {
+                var product = returnProducts.get(line.productoId());
+                if (product == null) {
+                    throw new IllegalArgumentException("Producto no encontrado");
+                }
+                validateLineQuantity(line, product);
                 if (line.cantidad().signum() >= 0) {
                     throw new IllegalArgumentException(
                             "Una linea de devolucion debe tener cantidad negativa");
@@ -2199,10 +2329,7 @@ public class DocumentService {
     }
 
     private void validateLineQuantity(DocumentLineCommand line, Product product) {
-        if (product.getProductType() == ProductType.UNIT
-                && line.cantidad().stripTrailingZeros().scale() > 0) {
-            throw new IllegalArgumentException("message.product.unit_quantity_must_be_integer");
-        }
+        ProductQuantityPolicy.requireValid(product.getProductType(), line.cantidad());
     }
 
     private void validateInactiveSaleProducts(CommercialDocument document) {

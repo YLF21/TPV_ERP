@@ -54,7 +54,7 @@ class ControlRuleServiceTest {
 
         var catalog = service.catalog();
 
-        assertThat(catalog).hasSize(12);
+        assertThat(catalog).hasSize(ControlAlertType.values().length);
         assertThat(catalog).filteredOn(item -> item.type() == ControlAlertType.TICKET_CANCELLED)
                 .singleElement().satisfies(item -> {
                     assertThat(item.name()).isEqualTo(ControlAlertType.TICKET_CANCELLED.systemName());

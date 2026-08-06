@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PaymentMethodService {
 
+    public static final String EXCHANGE_COMPENSATION_METHOD = "COMPENSACION_DEVOLUCION";
+
     private final PaymentMethodRepository repository;
     private final CurrentOrganization organization;
 
@@ -38,7 +40,9 @@ public class PaymentMethodService {
         if (companyId != null && !currentCompanyId.equals(companyId)) {
             throw new IllegalArgumentException("empresa no encontrada");
         }
-        return repository.findAllByEmpresaIdOrderByNombre(currentCompanyId);
+        return repository.findAllByEmpresaIdOrderByNombre(currentCompanyId).stream()
+                .filter(method -> !EXCHANGE_COMPENSATION_METHOD.equals(method.getNombre()))
+                .toList();
     }
 
     // Activates or deactivates while respecting protected system methods.
@@ -47,6 +51,9 @@ public class PaymentMethodService {
         var method = repository.findByIdAndEmpresaId(
                         id, organization.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
+        if (EXCHANGE_COMPENSATION_METHOD.equals(method.getNombre())) {
+            throw new IllegalArgumentException("internal_payment_method_not_configurable");
+        }
         method.setActivo(active);
         return method;
     }
@@ -57,6 +64,9 @@ public class PaymentMethodService {
         var method = repository.findByIdAndEmpresaId(
                         id, organization.currentCompany().getId())
                 .orElseThrow(() -> new IllegalArgumentException("message.payment_method.not_found"));
+        if (EXCHANGE_COMPENSATION_METHOD.equals(method.getNombre())) {
+            throw new IllegalArgumentException("internal_payment_method_not_configurable");
+        }
         if ("VALE".equals(method.getNombre()) && requiresReference) {
             throw new IllegalArgumentException("voucher_external_reference_not_configurable");
         }

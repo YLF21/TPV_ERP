@@ -93,6 +93,32 @@ class PaymentMethodServiceTest {
     }
 
     @Test
+    void hidesTheInternalExchangeCompensationMethodFromAdminConfiguration() {
+        var companyId = currentCompany();
+        var cash = new PaymentMethod(companyId, "EFECTIVO", true);
+        var compensation = new PaymentMethod(
+                companyId, PaymentMethodService.EXCHANGE_COMPENSATION_METHOD, true);
+        when(repository.findAllByEmpresaIdOrderByNombre(companyId))
+                .thenReturn(java.util.List.of(compensation, cash));
+
+        assertThat(service().list(null)).containsExactly(cash);
+    }
+
+    @Test
+    void internalExchangeCompensationCannotBeDisabledOrReconfigured() {
+        var companyId = currentCompany();
+        var compensation = new PaymentMethod(
+                companyId, PaymentMethodService.EXCHANGE_COMPENSATION_METHOD, true);
+        when(repository.findByIdAndEmpresaId(compensation.getId(), companyId))
+                .thenReturn(Optional.of(compensation));
+
+        assertThatThrownBy(() -> service().setActive(compensation.getId(), false))
+                .hasMessage("internal_payment_method_not_configurable");
+        assertThatThrownBy(() -> service().configure(compensation.getId(), true, true))
+                .hasMessage("internal_payment_method_not_configurable");
+    }
+
+    @Test
     void rejectsPaymentMethodUuidFromAnotherTenant() {
         var companyId = currentCompany();
         var foreignMethodId = UUID.randomUUID();

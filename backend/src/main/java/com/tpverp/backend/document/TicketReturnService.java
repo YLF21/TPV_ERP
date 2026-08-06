@@ -3,6 +3,8 @@ package com.tpverp.backend.document;
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.catalog.ProductQuantityPolicy;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService.Authorization;
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
@@ -21,6 +23,7 @@ import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TicketReturnService {
@@ -37,6 +40,7 @@ public class TicketReturnService {
     private final AuditService audit;
     private GiftReceiptService giftReceipts;
     private TicketReturnValuationService valuations;
+    private SalePaymentSessionRepository paymentSessions;
 
     public TicketReturnService(
             DocumentService documents,
@@ -71,6 +75,11 @@ public class TicketReturnService {
         this.valuations = valuations;
     }
 
+    @Autowired
+    void setSalePaymentSessionRepository(SalePaymentSessionRepository paymentSessions) {
+        this.paymentSessions = paymentSessions;
+    }
+
     public TicketReturnValuationService.Valuation value(
             String sourceCode,
             List<ReturnSelection> requested) {
@@ -88,8 +97,9 @@ public class TicketReturnService {
                 throw new IllegalArgumentException(
                         "La linea no esta disponible en el documento indicado");
             }
-            var quantity = Objects.requireNonNull(request.quantity(), "quantity")
-                    .setScale(3, Money.ROUNDING);
+            var requestedQuantity = Objects.requireNonNull(request.quantity(), "quantity");
+            ProductQuantityPolicy.requireValid(option.productType(), requestedQuantity);
+            var quantity = requestedQuantity.setScale(3, Money.ROUNDING);
             if (quantity.signum() <= 0
                     || quantity.compareTo(option.refundableQuantity()) > 0) {
                 throw new IllegalArgumentException(
@@ -277,6 +287,7 @@ public class TicketReturnService {
         return documents.cardRefundLineOptions(ticketId);
     }
 
+    @Transactional(readOnly = true)
     public ReturnPreview preview(String ticketNumber) {
         if (giftReceipts != null) {
             var gift = giftReceipts.findReturnContext(ticketNumber);
@@ -289,11 +300,15 @@ public class TicketReturnService {
                         context.ticket(),
                         context.lines().stream().map(line -> new ReturnLineOption(
                                 line.sourceLineId(), line.giftReceiptLineId(), line.productId(),
-                                line.code(), line.name(), DocumentLineType.PRODUCT,
+                                line.code(), line.barcode(), line.barcode2(),
+                                line.name(), DocumentLineType.PRODUCT,
                                 line.refundableQuantity(), line.unitPrice(),
                                 line.refundableTotal(), line.serialNumbers(),
                                 line.discount(), line.taxesIncluded(), line.taxRegime(),
-                                line.taxPercentage())).toList());
+                                line.taxPercentage(), line.productType())).toList(),
+                        RefundPaymentAvailability.calculate(
+                                context.ticket(), tenders,
+                                activePaymentReservations(context.ticket())));
             }
         }
         var ticket = documents.ticketForReturnByNumber(ticketNumber);
@@ -305,12 +320,24 @@ public class TicketReturnService {
                 documents.cardRefundLineOptions(ticket.getId()).stream()
                         .filter(line -> line.lineType() == DocumentLineType.PRODUCT)
                         .map(line -> new ReturnLineOption(
-                                line.lineId(), null, line.productId(), line.code(), line.name(),
+                                line.lineId(), null, line.productId(), line.code(),
+                                line.barcode(), line.barcode2(), line.name(),
                                 line.lineType(), line.refundableQuantity(), line.unitPrice(),
                                 line.refundableTotal(), line.refundableSerialNumbers(),
                                 line.discount(), line.taxesIncluded(), line.taxRegime(),
-                                line.taxPercentage()))
-                        .toList());
+                                line.taxPercentage(), line.productType()))
+                        .toList(),
+                RefundPaymentAvailability.calculate(
+                        ticket, tenders, activePaymentReservations(ticket)));
+    }
+
+    private List<SalePaymentAllocation> activePaymentReservations(
+            CommercialDocument ticket) {
+        if (paymentSessions == null || ticket.getPagos().isEmpty()) {
+            return List.of();
+        }
+        return paymentSessions.findActiveRefundReservations(
+                ticket.getPagos().stream().map(DocumentPayment::getId).toList());
     }
 
     private void requireNoCancellationInProgress(UUID ticketId) {
@@ -348,6 +375,8 @@ public class TicketReturnService {
             UUID giftReceiptLineId,
             UUID productId,
             String code,
+            String barcode,
+            String barcode2,
             String name,
             DocumentLineType lineType,
             BigDecimal refundableQuantity,
@@ -357,7 +386,8 @@ public class TicketReturnService {
             BigDecimal discount,
             boolean taxesIncluded,
             String taxRegime,
-            BigDecimal taxPercentage) {
+            BigDecimal taxPercentage,
+            ProductType productType) {
     }
 
     public record ReturnSelection(UUID lineId, BigDecimal quantity) {
@@ -367,6 +397,7 @@ public class TicketReturnService {
             ReturnSourceType sourceType,
             String sourceCode,
             CommercialDocument ticket,
-            List<ReturnLineOption> lines) {
+            List<ReturnLineOption> lines,
+            List<RefundPaymentAvailability.View> paymentAvailability) {
     }
 }

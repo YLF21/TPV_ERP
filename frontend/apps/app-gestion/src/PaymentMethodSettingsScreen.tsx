@@ -32,6 +32,7 @@ export function PaymentMethodSettingsScreen({
   const [methods, setMethods] = useState<PaymentMethodView[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [returnPolicy, setReturnPolicy] = useState<"REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY">("REFUND_ALLOWED");
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const canManage = session.permissions.includes("ADMIN");
 
@@ -61,6 +62,35 @@ export function PaymentMethodSettingsScreen({
       });
     return () => { active = false; };
   }, [request, session.accessToken, t]);
+
+  useEffect(() => {
+    let active = true;
+    void request<{ policy: "REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY" }>(
+      "/return-policy",
+      { token: session.accessToken },
+    ).then((value) => {
+      if (active) setReturnPolicy(value.policy);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [request, session.accessToken]);
+
+  async function updateReturnPolicy(policy: "REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY") {
+    if (!canManage || busyId) return;
+    setBusyId("return-policy");
+    setMessage(null);
+    try {
+      const saved = await request<{ policy: "REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY" }>(
+        "/return-policy",
+        { token: session.accessToken, method: "PUT", body: { policy } },
+      );
+      setReturnPolicy(saved.policy);
+      setMessage({ kind: "success", text: t("gestion.paymentMethods.saved") });
+    } catch (error) {
+      setMessage({ kind: "error", text: failureMessage(error, t("gestion.paymentMethods.saveError")) });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   function replaceMethod(saved: PaymentMethodView) {
     setMethods((current) => current.map((method) => method.id === saved.id ? saved : method));
@@ -127,6 +157,24 @@ export function PaymentMethodSettingsScreen({
           {message.text}
         </p>
       )}
+
+      <section className="gestion-return-policy" aria-labelledby="gestion-return-policy-title">
+        <div>
+          <h3 id="gestion-return-policy-title">{t("gestion.paymentMethods.returnPolicy.title")}</h3>
+          <p>{t("gestion.paymentMethods.returnPolicy.description")}</p>
+        </div>
+        <label>
+          <span>{t("gestion.paymentMethods.returnPolicy.label")}</span>
+          <select
+            value={returnPolicy}
+            disabled={!canManage || busyId !== null}
+            onChange={(event) => void updateReturnPolicy(event.currentTarget.value as typeof returnPolicy)}
+          >
+            <option value="REFUND_ALLOWED">{t("gestion.paymentMethods.returnPolicy.refundAllowed")}</option>
+            <option value="EXCHANGE_OR_VOUCHER_ONLY">{t("gestion.paymentMethods.returnPolicy.voucherOnly")}</option>
+          </select>
+        </label>
+      </section>
 
       <section className="gestion-payment-methods-panel" aria-label={t("gestion.paymentMethods.title")}>
         <header className="gestion-payment-methods-row head">

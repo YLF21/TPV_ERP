@@ -197,6 +197,8 @@ class DocumentServiceTest {
             return ids.stream().map(id -> {
                 Product product = org.mockito.Mockito.mock(Product.class);
                 lenient().when(product.getId()).thenReturn(id);
+                lenient().when(product.getStoreId()).thenReturn(store.getId());
+                lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
                 lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
                 return product;
             }).toList();
@@ -419,6 +421,32 @@ class DocumentServiceTest {
     }
 
     @Test
+    void unitProductReturnAlsoRejectsDecimalQuantity() {
+        var productId = UUID.randomUUID();
+        var command = new DocumentCommand(
+                UUID.randomUUID(),
+                CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 6, 8),
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                false,
+                List.of(new DocumentLineCommand(
+                        productId, new BigDecimal("-1.500"), "P-1", "Producto", "VENTA",
+                        BigDecimal.TEN, BigDecimal.ZERO, true, "IVA", new BigDecimal("21"),
+                        DocumentLineType.PRODUCT, null, null, null, List.of(), false, false,
+                        TicketReturnService.ReturnSourceType.TICKET, "T-1", UUID.randomUUID(),
+                        UUID.randomUUID(), null)));
+
+        assertThatThrownBy(() -> service.createTicket(command, List.of(), authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.unit_quantity_must_be_integer");
+
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
     void ticketCreationLetsCashRecorderRequireOpenSessionWhenNeeded() {
         when(currentOrganization.currentStore()).thenReturn(store);
         when(currentOrganization.currentUser(any())).thenReturn(user);
@@ -499,6 +527,13 @@ class DocumentServiceTest {
         var oneUnit = List.of(new PaymentTerminalRefundLineSelection(line.getId(), BigDecimal.ONE));
 
         service.validateApprovedCardRefund(original.getId(), new BigDecimal("5.00"), oneUnit);
+        assertThatThrownBy(() -> service.validateApprovedCardRefund(
+                original.getId(),
+                new BigDecimal("2.50"),
+                List.of(new PaymentTerminalRefundLineSelection(
+                        line.getId(), new BigDecimal("0.500")))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("message.product.unit_quantity_must_be_integer");
         assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("4.99"), oneUnit))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("importe");
         assertThatThrownBy(() -> service.validateApprovedCardRefund(original.getId(), new BigDecimal("15.00"),
@@ -590,7 +625,8 @@ class DocumentServiceTest {
     void serializedReturnOnlyOffersSerialNumbersNotPreviouslyReturned() {
         var original = new CommercialDocument(store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.now(), user.getId(), BigDecimal.ZERO);
-        var line = new DocumentLine(original, UUID.randomUUID(), 1, new BigDecimal("2.000"),
+        var productId = UUID.randomUUID();
+        var line = new DocumentLine(original, productId, 1, new BigDecimal("2.000"),
                 "P-SN", "Producto con serie", "VENTA", new BigDecimal("5.00"),
                 BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO);
         line.assignSerialNumbers(List.of("SN-001", "SN-002"));
@@ -601,10 +637,19 @@ class DocumentServiceTest {
                 .thenReturn(new BigDecimal("1.000"));
         when(documentRepository.confirmedRefundedSerialNumbers(line.getId()))
                 .thenReturn(List.of("sn-001"));
+        var product = org.mockito.Mockito.mock(Product.class);
+        when(product.getId()).thenReturn(productId);
+        when(product.getProductType()).thenReturn(ProductType.UNIT);
+        when(product.getBarcode()).thenReturn("8430000000010");
+        when(product.getBarcode2()).thenReturn("20000001");
+        doReturn(List.of(product)).when(productRepository)
+                .findAllByStoreIdAndIdIn(any(), any());
 
         assertThat(service.cardRefundLineOptions(original.getId())).singleElement().satisfies(option -> {
             assertThat(option.refundableQuantity()).isEqualByComparingTo("1.000");
             assertThat(option.refundableSerialNumbers()).containsExactly("SN-002");
+            assertThat(option.barcode()).isEqualTo("8430000000010");
+            assertThat(option.barcode2()).isEqualTo("20000001");
         });
 
         service.validateApprovedCardRefund(
@@ -680,6 +725,66 @@ class DocumentServiceTest {
         verify(memberLoyaltyService).recordPaidSale(same(ticket), accrualOf("10.00"));
         verifyNoInteractions(promotionRepository);
         verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+    }
+
+    @Test
+    void positiveExchangePersistsOnlySaleLinesAndLinksItsInternalRectification() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var compensation = new PaymentMethod(
+                store.getEmpresa().getId(),
+                PaymentMethodService.EXCHANGE_COMPENSATION_METHOD,
+                true);
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(paymentMethodRepository.findById(compensation.getId()))
+                .thenReturn(Optional.of(compensation));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var sourceLineId = UUID.randomUUID();
+        var sourceTicketId = UUID.randomUUID();
+        var returnedProductId = UUID.randomUUID();
+        var soldProductId = UUID.randomUUID();
+        var refund = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 5), user.getId(), BigDecimal.ZERO);
+        refund.addLine(new DocumentLineCommand(
+                returnedProductId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21")).toEntity(refund));
+        refund.confirm("001-260805-00001", user.getId(), NOW, false);
+
+        var returnLine = new DocumentLineCommand(
+                returnedProductId, new BigDecimal("-1"), "RETURN", "Devuelto", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21"), DocumentLineType.PRODUCT, null, null, null,
+                List.of(), false, false, TicketReturnService.ReturnSourceType.TICKET,
+                "001-260804-00001", sourceTicketId, sourceLineId, null);
+        var saleLine = new DocumentLineCommand(
+                soldProductId, BigDecimal.ONE, "SALE", "Comprado", "VENTA",
+                new BigDecimal("101.10"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21"));
+        var mixed = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 5), null,
+                cash.getId(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("1.10"), List.of(returnLine, saleLine));
+
+        var sale = service.createApprovedExchangeSaleFromSnapshot(
+                mixed,
+                List.of(
+                        new PaymentCommand(cash.getId(), new BigDecimal("1.10"), true,
+                                new BigDecimal("1.10"), BigDecimal.ZERO),
+                        new PaymentCommand(compensation.getId(), new BigDecimal("100.00"),
+                                false, null, null, null, refund.getNumero())),
+                refund,
+                authentication());
+
+        assertThat(sale.getTotal()).isEqualByComparingTo("101.10");
+        assertThat(sale.getLineas()).singleElement()
+                .satisfies(line -> assertThat(line.getProductoId()).isEqualTo(soldProductId));
+        assertThat(sale.getPagos()).hasSize(2);
+        verify(relationRepository).save(any(DocumentRelation.class));
     }
 
     @Test

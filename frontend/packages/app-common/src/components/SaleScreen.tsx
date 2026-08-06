@@ -32,6 +32,10 @@ import {
   type TicketPrintOutcome,
 } from "../sale/ticketPrinting";
 import {
+  outputIssuedVoucher,
+  type IssuedVoucherPrintSnapshot,
+} from "../sale/voucherPrinting";
+import {
   saleCommandFromKeyboard,
   type SaleCommandId,
 } from "../sale/saleCommands";
@@ -88,7 +92,11 @@ import { TouchNumericKeypad } from "./TouchNumericKeypad";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
-import { TicketReturnDialog, type ReturnCartLine } from "./TicketReturnDialog";
+import {
+  TicketReturnDialog,
+  type ReturnCartLine,
+  type ReturnCartReservation,
+} from "./TicketReturnDialog";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import {
   CashDrawerResultReportingError,
@@ -107,19 +115,30 @@ import {
 import {
   findSaleOperationAuthorization,
   loadSalesOperationSecurity,
+  type SaleOperationCredentials,
   type SalesOperationSecurityConfiguration,
 } from "../sale/operationSecurity";
 import {
   detectSaleMutationOperations,
   saleMutationAuthorizationRequirements,
   type SaleMutationAuthorizationRequirement,
+  type SaleMutationOperationAuthorizations,
 } from "../sale/saleMutationAuthorizations";
+import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDialog";
 import { userCanManageStockProducts } from "./stockAccess";
+import {
+  formatProductQuantity,
+  isProductQuantityPrecisionValid,
+  normalizeProductQuantity,
+  parseProductQuantityInput,
+  productQuantityStep,
+} from "../sale/productQuantity";
 
 export type SaleProduct = {
   id: string;
   imageId?: string | null;
   active?: boolean | null;
+  productType?: "UNIT" | "WEIGHT" | "SERVICE" | string | null;
   code?: string | null;
   barcode?: string | null;
   barcode2?: string | null;
@@ -150,6 +169,14 @@ export type SaleLine = {
   product: SaleProduct;
   quantity: number;
   openUnitPrice?: number;
+  temporaryPriceAuthorization?: {
+    token: string;
+    expiresAt: string;
+    unitPrice: number;
+    productId: string;
+    cartLineId: string;
+    policyVersion: number;
+  };
   returnUnitPrice?: number;
   temporaryName?: string;
   serialNumbers?: string[];
@@ -196,7 +223,8 @@ type PosAuthoritativeQuote = {
 type AuthoritativeSaleLine = {
   lineId: string;
   position: number;
-  productId: string;
+  lineType?: string;
+  productId?: string | null;
   code: string;
   name: string;
   quantity: number | string;
@@ -370,7 +398,7 @@ export function isCompleteAuthoritativeQuote(
 ): quote is PosAuthoritativeQuote & { pricingVersion: 1; lineBreakdown: AuthoritativeSaleLine[] } {
   if (quote?.pricingVersion !== 1 || !Array.isArray(quote.lineBreakdown)) return false;
   const total = Number(quote.total);
-  if (!Number.isFinite(total) || total < 0 || quote.lineBreakdown.length === 0) return false;
+  if (!Number.isFinite(total) || quote.lineBreakdown.length === 0) return false;
   const lineTotal = quote.lineBreakdown.reduce((sum, line) => {
     const subtotal = Number(line.finalSubtotal);
     return Number.isFinite(subtotal) ? sum + subtotal : Number.NaN;
@@ -431,7 +459,65 @@ export function saleQuickOperand(value: string) {
 
 export function salePauseQuantity(value: string) {
   if (value === "-1") return -1;
-  return saleQuickOperand(value);
+  const quantity = parseProductQuantityInput(value);
+  return Number.isFinite(quantity) ? quantity : null;
+}
+
+export function salePauseQuantityAllowed(line: SaleLine, quantity: number) {
+  return !line.returnOrigin || quantity === 0;
+}
+
+export function saleKeyboardReturnRemovalAllowed(
+  line: SaleLine | undefined,
+  quickValue: string,
+  paymentLocked: boolean,
+) {
+  return !paymentLocked
+    && Boolean(line?.returnOrigin)
+    && salePauseQuantity(quickValue) === 0;
+}
+
+export function saleReturnCartReservations(lines: readonly SaleLine[]): ReturnCartReservation[] {
+  return lines.flatMap((line) => line.returnOrigin ? [{
+    sourceTicketId: line.returnOrigin.sourceTicketId,
+    sourceCode: line.returnOrigin.sourceCode,
+    lineId: line.returnOrigin.sourceLineId,
+    returnQuantity: Math.abs(line.quantity),
+    selectedSerialNumbers: line.serialNumbers ?? [],
+  }] : []);
+}
+
+export function saleReturnSourceConflict(
+  lines: readonly SaleLine[],
+  additions: readonly ReturnCartLine[],
+) {
+  const currentSources = new Set(saleReturnCartReservations(lines).map((line) => line.sourceTicketId));
+  const addedSources = new Set(additions.map((line) => line.sourceTicketId));
+  return currentSources.size > 1 || addedSources.size > 1
+    || (currentSources.size === 1 && addedSources.size === 1
+      && currentSources.values().next().value !== addedSources.values().next().value);
+}
+
+export function mergeSaleReturnLines(lines: readonly SaleLine[], additions: readonly SaleLine[]) {
+  const merged = [...lines];
+  for (const addition of additions) {
+    const origin = addition.returnOrigin;
+    const index = origin ? merged.findIndex((line) => line.returnOrigin
+      && line.returnOrigin.sourceTicketId === origin.sourceTicketId
+      && line.returnOrigin.sourceLineId === origin.sourceLineId
+      && (line.returnOrigin.giftReceiptLineId ?? null) === (origin.giftReceiptLineId ?? null)) : -1;
+    if (index < 0) {
+      merged.push(addition);
+      continue;
+    }
+    const current = merged[index];
+    merged[index] = {
+      ...current,
+      quantity: current.quantity + addition.quantity,
+      serialNumbers: [...new Set([...(current.serialNumbers ?? []), ...(addition.serialNumbers ?? [])])],
+    };
+  }
+  return merged;
 }
 
 export function addSaleLine(
@@ -441,7 +527,8 @@ export function addSaleLine(
   quantity = 1,
   cartLineId: string = createSaleCartLineId(),
 ) {
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+  if (!isProductQuantityPrecisionValid(quantity, product.productType)
+      || quantity < productQuantityStep(product.productType) || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
   // An explicitly entered price defines a new economic line. Never merge it
@@ -459,7 +546,7 @@ export function addSaleLine(
     }];
   }
   return lines.map((line) => saleCartLineIdentity(line) === saleCartLineIdentity(existing)
-    ? { ...line, quantity: Math.min(9999, line.quantity + quantity) }
+    ? { ...line, quantity: Math.min(9999, normalizeProductQuantity(line.quantity + quantity)) }
     : line);
 }
 
@@ -475,7 +562,10 @@ export function saleCartLineIdentity(line: SaleLine) {
 }
 
 export function updateSaleLineQuantity(lines: SaleLine[], lineId: string, quantity: number) {
-  if (!Number.isInteger(quantity) || quantity === 0 || quantity < -1 || quantity > 9999) {
+  const selectedLine = lines.find((line) => saleCartLineIdentity(line) === lineId);
+  if (!selectedLine
+      || !isProductQuantityPrecisionValid(quantity, selectedLine.product.productType)
+      || quantity === 0 || quantity < -1 || quantity > 9999) {
     throw new Error("invalid_quantity");
   }
   return lines.map((line) => saleCartLineIdentity(line) === lineId ? { ...line, quantity } : line);
@@ -578,6 +668,7 @@ export function updateSaleLineTemporaryPrice(
   lines: SaleLine[],
   lineId: string,
   value?: number,
+  authorization?: SaleLine["temporaryPriceAuthorization"],
 ) {
   if (value != null) {
     const hasMoreThanTwoDecimals = Math.abs(value * 100 - Math.round(value * 100)) > 1e-9;
@@ -587,15 +678,58 @@ export function updateSaleLineTemporaryPrice(
   }
   return lines.map((line) => {
     if (saleCartLineIdentity(line) !== lineId) return line;
-    const { openUnitPrice: _previous, ...withoutTemporaryPrice } = line;
+    const {
+      openUnitPrice: _previous,
+      temporaryPriceAuthorization: _previousAuthorization,
+      ...withoutTemporaryPrice
+    } = line;
     return value == null
       ? withoutTemporaryPrice
-      : { ...withoutTemporaryPrice, openUnitPrice: value };
+      : {
+          ...withoutTemporaryPrice,
+          openUnitPrice: value,
+          ...(authorization ? { temporaryPriceAuthorization: authorization } : {}),
+        };
   });
+}
+
+export function saleLineHasValidTemporaryPriceAuthorization(
+  line: SaleLine,
+  now = Date.now(),
+  policyVersion?: number,
+) {
+  const authorization = line.temporaryPriceAuthorization;
+  return Boolean(
+    authorization
+    && line.openUnitPrice != null
+    && authorization.productId === line.product.id
+    && authorization.cartLineId === saleCartLineIdentity(line)
+    && authorization.unitPrice === line.openUnitPrice
+    && (policyVersion == null || authorization.policyVersion === policyVersion)
+    && Number.isFinite(Date.parse(authorization.expiresAt))
+    && Date.parse(authorization.expiresAt) > now,
+  );
 }
 
 export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
   return line.returnUnitPrice ?? line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
+}
+
+export function saleCartDisplayedUnitPrice(
+  line: SaleLine,
+  activeMember = false,
+  authoritativeLine?: AuthoritativeSaleLine,
+) {
+  const appliedUnitPrice = finiteAmount(
+    authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(line, activeMember),
+  );
+  if (line.returnOrigin) return appliedUnitPrice;
+  const catalogSalePrice = authoritativeLine
+    ? finiteAmount(authoritativeLine.normalUnitPrice)
+    : finiteAmount(line.product.salePrice);
+  return catalogSalePrice === 0 && line.openUnitPrice != null
+    ? appliedUnitPrice
+    : catalogSalePrice;
 }
 
 export function saleProductRequiresOpenPrice(product: SaleProduct) {
@@ -647,6 +781,9 @@ export type CashPaymentResult = {
   printTicket?: ConfirmedTicketPrintSnapshot;
   printStatus?: TicketPrintUiStatus;
   printTechnicalMessage?: string;
+  issuedVoucher?: IssuedVoucherPrintSnapshot;
+  voucherPrintStatus?: TicketPrintUiStatus;
+  voucherPrintTechnicalMessage?: string;
 };
 
 type CardPaymentResponse = { status: string; ticketId?: string | null; ticketNumber?: string | null; total?: number | string; reference?: string | null; authorization?: string | null; message?: string | null };
@@ -759,13 +896,25 @@ export function paymentResultFromFinalization(
     return {
       ...cashResultFromFinalization(printTicket.documentNumber, summary.totalCents, summary.receivedCents),
       printTicket,
+      ...(summary.issuedVoucher ? {
+        issuedVoucher: summary.issuedVoucher,
+        voucherPrintStatus: "PRINTING" as const,
+      } : {}),
     };
   }
   return {
     ticketNumber: printTicket.documentNumber,
     totalCents: summary.totalCents,
-    method: summary.kind === "CARD" ? "Tarjeta" : summary.kind === "VOUCHER" ? "Vale" : "Mixto",
+    method: summary.kind === "CARD" ? "Tarjeta"
+      : summary.kind === "VOUCHER" ? "Vale"
+        : summary.kind === "REFUND" ? "Devolución"
+          : summary.kind === "ZERO" ? "Sin liquidación"
+            : "Mixto",
     printTicket,
+    ...(summary.issuedVoucher ? {
+      issuedVoucher: summary.issuedVoucher,
+      voucherPrintStatus: "PRINTING" as const,
+    } : {}),
   };
 }
 
@@ -791,6 +940,20 @@ export function updateCashResultPrintOutcome(
         ...current,
         printStatus: outcome.status,
         printTechnicalMessage: outcome.technicalMessage,
+      }
+    : current;
+}
+
+export function updateCashResultVoucherPrintOutcome(
+  current: CashPaymentResult | null,
+  voucherCode: string,
+  outcome: TicketPrintOutcome,
+) {
+  return current?.issuedVoucher?.code === voucherCode
+    ? {
+        ...current,
+        voucherPrintStatus: outcome.status,
+        voucherPrintTechnicalMessage: outcome.technicalMessage,
       }
     : current;
 }
@@ -970,6 +1133,10 @@ export function pendingSaleDraftForCustomer(
       temporaryNameOverride: Boolean(line.temporaryName),
       temporaryPriceOverride: line.openUnitPrice !== undefined
         && salePriceNumber(line.product.salePrice) !== 0,
+      ...(line.temporaryPriceAuthorization ? {
+        cartLineId: saleCartLineIdentity(line),
+        temporaryPriceAuthorizationToken: line.temporaryPriceAuthorization.token,
+      } : {}),
     })),
   };
 }
@@ -1090,6 +1257,13 @@ export function SaleScreen({
   const [discountInput, setDiscountInput] = useState("0");
   const [temporaryNameInput, setTemporaryNameInput] = useState("");
   const [temporaryPriceInput, setTemporaryPriceInput] = useState("");
+  const [pendingTemporaryPriceChange, setPendingTemporaryPriceChange] = useState<{
+    lineId: string;
+    productId: string;
+    unitPrice: number;
+  } | null>(null);
+  const [temporaryPriceAuthorizationBusy, setTemporaryPriceAuthorizationBusy] = useState(false);
+  const [temporaryPriceAuthorizationError, setTemporaryPriceAuthorizationError] = useState("");
   const [actionError, setActionError] = useState("");
   const [customers, setCustomers] = useState<SaleCustomer[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
@@ -1211,6 +1385,8 @@ export function SaleScreen({
   const customerSearchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
+  const temporaryNameInputRef = useRef<HTMLInputElement>(null);
+  const temporaryPriceInputRef = useRef<HTMLInputElement>(null);
   const removeConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const cashSubmissionRef = useRef(false);
   const cashOpeningRef = useRef({ current: false, generation: 0 });
@@ -1231,6 +1407,14 @@ export function SaleScreen({
   );
   const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
+  useEffect(() => {
+    if (!selectedLineId) return;
+    const escaped = globalThis.CSS?.escape
+      ? globalThis.CSS.escape(selectedLineId)
+      : selectedLineId.replace(/["\\]/g, "\\$&");
+    document.querySelector<HTMLElement>(`[data-cart-line-id="${escaped}"]`)
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [selectedLineId]);
   const activeMember = selectedCustomer?.activeMember === true;
   const visibleCartColumns = visibleSaleCartColumns(cartTableLayout.layout);
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
@@ -1242,7 +1426,7 @@ export function SaleScreen({
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
   const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
   const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
-  const basePaymentActionsDisabled = lines.length === 0 || authoritativeTotal <= 0 || cashOpening
+  const basePaymentActionsDisabled = lines.length === 0 || cashOpening
     || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
   const canApplyManualDiscount = Boolean(operationSecurity?.operations.some(
     (operation) => operation.code === "APPLY_SALE_DISCOUNT",
@@ -1301,6 +1485,16 @@ export function SaleScreen({
     "PAYMENT_TERMINAL_REFUND",
     session.permissions,
   );
+  const refundPolicyOverrideAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "REFUND_POLICY_OVERRIDE",
+    session.permissions,
+  );
+  const refundTenderOverrideAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "REFUND_TENDER_OVERRIDE",
+    session.permissions,
+  );
   const paymentCompensationAuthorization = findSaleOperationAuthorization(
     operationSecurity,
     "PAYMENT_COMPENSATION_ACK",
@@ -1326,6 +1520,11 @@ export function SaleScreen({
     "CONFIRM_TRANSFER_PAYMENT",
     session.permissions,
   );
+  const temporaryPriceChangeAuthorization = findSaleOperationAuthorization(
+    operationSecurity,
+    "TEMPORARY_PRICE_CHANGE",
+    session.permissions,
+  );
   const checkoutDiscountPercent = checkoutDiscountCents > 0
     ? Math.round((
         checkoutDiscountCents
@@ -1343,10 +1542,25 @@ export function SaleScreen({
     })),
     checkoutDiscountPercent,
   );
+  const temporaryPriceLines = lines.filter(
+    (line) => line.openUnitPrice != null && Number(line.product.salePrice ?? 0) !== 0,
+  );
+  const temporaryPriceAuthorizationsReady = temporaryPriceLines.every(
+    (line) => saleLineHasValidTemporaryPriceAuthorization(
+      line,
+      Date.now(),
+      operationSecurity?.version,
+    ),
+  );
+  // Temporary price changes are authorized when the price is accepted, never
+  // by the checkout dialog. Missing or expired grants fail closed here.
+  const unresolvedSaleMutationOperations = detectedSaleMutationOperations.filter(
+    (operation) => operation.code !== "TEMPORARY_PRICE_CHANGE",
+  );
   const saleMutationAuthorizations: SaleMutationAuthorizationRequirement[] | null =
     saleMutationAuthorizationRequirements(
       operationSecurity,
-      detectedSaleMutationOperations.map((operation) => ({
+      unresolvedSaleMutationOperations.map((operation) => ({
         ...operation,
         label: t(`gestion.salesOperationSecurity.operation.${operation.code}`),
       })),
@@ -1355,7 +1569,8 @@ export function SaleScreen({
     );
   const saleMutationSecurityUnavailable = saleMutationAuthorizations === null;
   const paymentActionsDisabled = basePaymentActionsDisabled
-    || saleMutationSecurityUnavailable;
+    || saleMutationSecurityUnavailable
+    || !temporaryPriceAuthorizationsReady;
   const cashSessionCopy = locale === "en"
     ? {
         close: "Close register",
@@ -1405,6 +1620,7 @@ export function SaleScreen({
       ?? t("sale.main.missingCode");
     const barcode = product.barcode?.trim() ?? "";
     const quantity = finiteAmount(authoritativeLine?.quantity ?? localLine.quantity);
+    const quantityText = formatProductQuantity(quantity, product.productType, locale);
     const packageQuantity = finiteAmount(product.packageQuantity, Number.NaN);
     const packageText = Number.isFinite(packageQuantity) && packageQuantity > 0
       ? packageQuantity.toLocaleString(locale, { maximumFractionDigits: 3 })
@@ -1412,12 +1628,11 @@ export function SaleScreen({
     const appliedUnitPrice = finiteAmount(
       authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(localLine, activeMember),
     );
-    const catalogSalePrice = authoritativeLine
-      ? finiteAmount(authoritativeLine.normalUnitPrice)
-      : finiteAmount(product.salePrice);
-    const displayedSalePrice = catalogSalePrice === 0 && localLine.openUnitPrice != null
-      ? appliedUnitPrice
-      : catalogSalePrice;
+    const displayedSalePrice = saleCartDisplayedUnitPrice(
+      localLine,
+      activeMember,
+      authoritativeLine,
+    );
     const manualDiscount = authoritativeLine
       ? finiteAmount(authoritativeLine.manualDiscountPercent)
       : finiteAmount(localLine.discountPercent);
@@ -1438,7 +1653,7 @@ export function SaleScreen({
     const totalAmount = authoritativeLine
       ? finiteAmount(authoritativeLine.finalSubtotal)
       : saleLineSubtotal(localLine, activeMember);
-    const selectionLabel = `${name} ${quantity} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
+    const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
     const touchQuantityLocked = paymentLocked || Boolean(localLine.returnOrigin);
@@ -1503,7 +1718,7 @@ export function SaleScreen({
                   disabled={touchQuantityLocked || quantity <= 1}
                   onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(-1); }}
                 >−</button>
-                <output aria-label={`${t("sale.quantity.label")}: ${name}`}>{quantity}</output>
+                <output aria-label={`${t("sale.quantity.label")}: ${name}`}>{quantityText}</output>
                 <button
                   type="button"
                   aria-label={`${t("sale.touch.increaseQuantity")}: ${name}`}
@@ -1511,7 +1726,7 @@ export function SaleScreen({
                   onClick={(event) => { event.stopPropagation(); adjustTouchQuantity(1); }}
                 >+</button>
               </div>
-            ) : quantity}
+            ) : quantityText}
           </td>
         );
       }
@@ -1563,6 +1778,7 @@ export function SaleScreen({
       <tr
         className={`sale-cart-row${selected ? " selected" : ""}`}
         key={cartLineId}
+        data-cart-line-id={cartLineId}
         onClick={() => setSelectedLineId(cartLineId)}
       >
         {visibleCartColumns.map((column) => renderCell(column.key))}
@@ -1783,6 +1999,51 @@ export function SaleScreen({
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
   }
 
+  function renderReturnPromotionAdjustmentRow(line: AuthoritativeSaleLine) {
+    function renderCell(column: SaleCartColumnKey) {
+      if (column === "code") {
+        return <td className="sale-cart-code" data-column-key={column} key={column}>{t("sale.cart.returnAdjustment.code")}</td>;
+      }
+      if (column === "name") {
+        return (
+          <td className="sale-cart-name" data-column-key={column} key={column}>
+            <strong className="sale-return-adjustment-name">{t("sale.cart.returnAdjustment.name")}</strong>
+          </td>
+        );
+      }
+      if (column === "total") {
+        return (
+          <td className="sale-cart-number sale-cart-total" data-column-key={column} key={column}>
+            +{formatSaleAmount(finiteAmount(line.finalSubtotal))} €
+          </td>
+        );
+      }
+      return <td data-column-key={column} key={column} />;
+    }
+
+    return (
+      <tr className="sale-cart-return-adjustment" key={line.lineId}>
+        {visibleCartColumns.map((column) => renderCell(column.key))}
+      </tr>
+    );
+  }
+
+  function updateMatchingVoucherPrintOutcome(
+    voucherCode: string,
+    outcome: TicketPrintOutcome,
+  ) {
+    setCashResult((current) => updateCashResultVoucherPrintOutcome(
+      current,
+      voucherCode,
+      outcome,
+    ));
+  }
+
+  function startAutomaticVoucherPrint(snapshot: IssuedVoucherPrintSnapshot) {
+    void outputIssuedVoucher(snapshot, terminalContext, locale)
+      .then((outcome) => updateMatchingVoucherPrintOutcome(snapshot.code, outcome));
+  }
+
   function retryTicketPrint() {
     const snapshot = cashResult?.printTicket;
     if (!snapshot) return;
@@ -1794,6 +2055,20 @@ export function SaleScreen({
       : outputConfirmedTicket(snapshot, terminalContext, lastPrintMode, locale);
     void retry
       .then((outcome) => updateMatchingPrintOutcome(snapshot.documentId, outcome));
+  }
+
+  function retryVoucherPrint() {
+    const snapshot = cashResult?.issuedVoucher;
+    if (!snapshot) return;
+    setCashResult((current) => current?.issuedVoucher?.code === snapshot.code
+      ? {
+          ...current,
+          voucherPrintStatus: "PRINTING",
+          voucherPrintTechnicalMessage: undefined,
+        }
+      : current);
+    void outputIssuedVoucher(snapshot, terminalContext, locale)
+      .then((outcome) => updateMatchingVoucherPrintOutcome(snapshot.code, outcome));
   }
 
   async function handleSaleLogout() {
@@ -1888,12 +2163,19 @@ export function SaleScreen({
 
   function addReturnLinesToCart(returnLines: ReturnCartLine[]) {
     if (paymentLocked || returnLines.length === 0) return;
+    if (saleReturnSourceConflict(lines, returnLines)) {
+      setShortcutStatus(t("ticketReturn.singleSourceOnly"));
+      return;
+    }
     const added = returnLines.map((returnLine): SaleLine => {
       const catalogProduct = products.find((product) => product.id === returnLine.productId);
       const product: SaleProduct = catalogProduct ?? {
         id: returnLine.productId,
         active: true,
+        productType: returnLine.productType,
         code: returnLine.code,
+        barcode: returnLine.barcode,
+        barcode2: returnLine.barcode2,
         name: returnLine.name,
         salePrice: returnLine.unitPrice,
         taxId: "return-origin",
@@ -1918,8 +2200,15 @@ export function SaleScreen({
         },
       };
     });
-    setLines((current) => [...current, ...added]);
-    setSelectedLineId(saleCartLineIdentity(added[added.length - 1]));
+    const lastAddition = added[added.length - 1];
+    const existingTarget = lines.find((line) => line.returnOrigin
+      && lastAddition.returnOrigin
+      && line.returnOrigin.sourceTicketId === lastAddition.returnOrigin.sourceTicketId
+      && line.returnOrigin.sourceLineId === lastAddition.returnOrigin.sourceLineId
+      && (line.returnOrigin.giftReceiptLineId ?? null)
+        === (lastAddition.returnOrigin.giftReceiptLineId ?? null));
+    setLines((current) => mergeSaleReturnLines(current, added));
+    setSelectedLineId(saleCartLineIdentity(existingTarget ?? lastAddition));
     setTicketReturnOpen(false);
     setShortcutStatus(t("ticketReturn.addedToCart"));
     queueMicrotask(() => searchInputRef.current?.focus());
@@ -1932,7 +2221,8 @@ export function SaleScreen({
       : nextScanQuantity;
     setNextScanQuantity(1);
     setNextScanMode("UNIT");
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+    if (!isProductQuantityPrecisionValid(quantity, product.productType)
+        || quantity < productQuantityStep(product.productType) || quantity > 9999) {
       setShortcutStatus("La cantidad resultante del paquete no es válida");
       return;
     }
@@ -1952,6 +2242,14 @@ export function SaleScreen({
     if (actionDialog === "discount") {
       discountInputRef.current?.focus();
       discountInputRef.current?.select();
+    }
+    if (actionDialog === "temporaryName") {
+      temporaryNameInputRef.current?.focus();
+      temporaryNameInputRef.current?.select();
+    }
+    if (actionDialog === "temporaryPrice") {
+      temporaryPriceInputRef.current?.focus();
+      temporaryPriceInputRef.current?.select();
     }
     if (actionDialog === "remove") removeConfirmButtonRef.current?.focus();
   }, [actionDialog]);
@@ -2029,7 +2327,11 @@ export function SaleScreen({
   function saveQuantity() {
     if (!selectedLineId) return;
     try {
-      const nextLines = updateSaleLineQuantity(lines, selectedLineId, Number(quantityInput));
+      const nextLines = updateSaleLineQuantity(
+        lines,
+        selectedLineId,
+        parseProductQuantityInput(quantityInput),
+      );
       setLines(nextLines);
       setActionDialog(null);
     } catch {
@@ -2067,7 +2369,55 @@ export function SaleScreen({
     }
   }
 
-  function saveTemporaryPrice() {
+  async function authorizeTemporaryPriceChange(
+    change: { lineId: string; productId: string; unitPrice: number },
+    credentials: SaleOperationCredentials,
+  ) {
+    setTemporaryPriceAuthorizationBusy(true);
+    setTemporaryPriceAuthorizationError("");
+    setActionError("");
+    try {
+      const authorization = await apiRequest<{
+        token: string;
+        expiresAt: string;
+          policyVersion: number;
+      }>("/pos/sale-operation-authorizations/temporary-price", {
+        token: session.accessToken,
+        body: {
+          productId: change.productId,
+          cartLineId: change.lineId,
+          unitPrice: change.unitPrice,
+          authorization: credentials,
+        },
+      });
+      setLines((current) => updateSaleLineTemporaryPrice(
+        current,
+        change.lineId,
+        change.unitPrice,
+        {
+          token: authorization.token,
+          expiresAt: authorization.expiresAt,
+          unitPrice: change.unitPrice,
+          productId: change.productId,
+          cartLineId: change.lineId,
+          policyVersion: authorization.policyVersion,
+        },
+      ));
+      setPendingTemporaryPriceChange(null);
+      setActionDialog(null);
+      queueMicrotask(() => searchInputRef.current?.focus());
+    } catch (error) {
+      const message = error instanceof ApiError
+        ? error.message
+        : t("sale.temporaryPrice.invalid");
+      if (pendingTemporaryPriceChange) setTemporaryPriceAuthorizationError(message);
+      else setActionError(message);
+    } finally {
+      setTemporaryPriceAuthorizationBusy(false);
+    }
+  }
+
+  async function saveTemporaryPrice() {
     if (!selectedLineId) return;
     const normalized = temporaryPriceInput.trim().replace(",", ".");
     if (normalized && !/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
@@ -2075,14 +2425,34 @@ export function SaleScreen({
       return;
     }
     try {
-      const nextLines = updateSaleLineTemporaryPrice(
-        lines,
-        selectedLineId,
-        normalized ? Number(normalized) : undefined,
-      );
-      setLines(nextLines);
+      const unitPrice = normalized ? Number(normalized) : undefined;
+      if (unitPrice == null || salePriceNumber(selectedLine?.product.salePrice) === 0) {
+        const nextLines = updateSaleLineTemporaryPrice(
+          lines,
+          selectedLineId,
+          unitPrice,
+        );
+        setLines(nextLines);
+        setActionDialog(null);
+        queueMicrotask(() => searchInputRef.current?.focus());
+        return;
+      }
+      if (!selectedLine || !temporaryPriceChangeAuthorization) {
+        setActionError(t("sale.temporaryPrice.authorizationUnavailable"));
+        return;
+      }
+      const change = {
+        lineId: selectedLineId,
+        productId: selectedLine.product.id,
+        unitPrice,
+      };
+      if (temporaryPriceChangeAuthorization.mode === "DIRECT") {
+        await authorizeTemporaryPriceChange(change, {});
+        return;
+      }
+      setPendingTemporaryPriceChange(change);
+      setTemporaryPriceAuthorizationError("");
       setActionDialog(null);
-      queueMicrotask(() => searchInputRef.current?.focus());
     } catch {
       setActionError(t("sale.temporaryPrice.invalid"));
     }
@@ -2246,16 +2616,30 @@ export function SaleScreen({
     return saleQuickOperand(query);
   }
 
+  function quantityOperand() {
+    const quantity = parseProductQuantityInput(query);
+    return Number.isFinite(quantity) ? quantity : null;
+  }
+
   function applyPauseQuantity() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
+    if (!selectedLine || paymentLocked) return;
     const quantity = salePauseQuantity(query);
     if (quantity == null) {
       setShortcutStatus("Introduce una cantidad y pulsa Pausa");
       return;
     }
+    if (quantity !== -1
+        && !isProductQuantityPrecisionValid(quantity, selectedLine.product.productType)) {
+      setShortcutStatus(t("sale.quantity.invalid"));
+      return;
+    }
     if (quantity === 0) {
       confirmRemoveLine();
       clearQuickEntry();
+      return;
+    }
+    if (!salePauseQuantityAllowed(selectedLine, quantity)) {
+      setShortcutStatus("Las devoluciones de F10 solo pueden eliminarse con 0 + Pausa");
       return;
     }
     setLines((current) => updateSaleLineQuantity(current, saleCartLineIdentity(selectedLine), quantity));
@@ -2266,12 +2650,14 @@ export function SaleScreen({
 
   function addToSelectedQuantity() {
     if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
-    const operand = quickOperand();
-    if (operand == null || operand < 1) {
+    const operand = quantityOperand();
+    if (operand == null
+        || operand < productQuantityStep(selectedLine.product.productType)
+        || !isProductQuantityPrecisionValid(operand, selectedLine.product.productType)) {
       setShortcutStatus("Introduce la cantidad que quieres sumar");
       return;
     }
-    const result = selectedLine.quantity + operand;
+    const result = normalizeProductQuantity(selectedLine.quantity + operand);
     if (result > 9999) {
       setShortcutStatus("La cantidad no puede superar 9999");
       return;
@@ -2282,12 +2668,14 @@ export function SaleScreen({
 
   function subtractFromSelectedQuantity() {
     if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
-    const operand = quickOperand();
-    if (operand == null || operand < 1) {
+    const operand = quantityOperand();
+    if (operand == null
+        || operand < productQuantityStep(selectedLine.product.productType)
+        || !isProductQuantityPrecisionValid(operand, selectedLine.product.productType)) {
       setShortcutStatus("Introduce la cantidad que quieres restar");
       return;
     }
-    const result = selectedLine.quantity - operand;
+    const result = normalizeProductQuantity(selectedLine.quantity - operand);
     if (result < 0) {
       setShortcutStatus("Ctrl+- no permite dejar una cantidad negativa");
       return;
@@ -2303,8 +2691,8 @@ export function SaleScreen({
 
   function prepareNextProductQuantity(asPackage: boolean) {
     if (paymentLocked) return;
-    const operand = quickOperand();
-    if (operand == null || operand < 1) {
+    const operand = asPackage ? quickOperand() : quantityOperand();
+    if (operand == null || operand <= 0) {
       setShortcutStatus(asPackage
         ? "Introduce el número de paquetes antes de *"
         : "Introduce la cantidad antes de +");
@@ -2376,10 +2764,14 @@ export function SaleScreen({
       customerId: selectedCustomer?.id ?? null,
       lines: lines.map((line) => ({
         productId: line.product.id,
+        cartLineId: saleCartLineIdentity(line),
         quantity: line.quantity,
         discount: line.discountPercent,
         ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
         ...(line.openUnitPrice != null ? { openUnitPrice: line.openUnitPrice } : {}),
+        ...(line.temporaryPriceAuthorization
+          ? { temporaryPriceAuthorizationToken: line.temporaryPriceAuthorization.token }
+          : {}),
         ...(line.temporaryName ? { temporaryName: line.temporaryName } : {}),
         ...(line.returnOrigin ? { returnOrigin: {
           sourceType: line.returnOrigin.sourceType,
@@ -2941,7 +3333,10 @@ export function SaleScreen({
     command: SaleCommandId,
     source: "KEYBOARD" | "UI" = "UI",
   ) {
-    if (saleCommandDisabled(command)) return false;
+    const keyboardReturnRemoval = command === "quantity"
+      && source === "KEYBOARD"
+      && saleKeyboardReturnRemovalAllowed(selectedLine, query, paymentLocked);
+    if (saleCommandDisabled(command) && !keyboardReturnRemoval) return false;
     switch (command) {
       case "sales-document":
         onOpenSalesDocumentWindow?.();
@@ -3092,11 +3487,6 @@ export function SaleScreen({
       if (saleShortcutTargetIsEditable(event.target) && event.target !== searchInputRef.current) {
         return;
       }
-      if (event.target === searchInputRef.current
-        && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-        return;
-      }
-
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (paymentLocked || lines.length === 0) return;
         setSelectedLineId(saleLineSelectionAfterArrow(lines, selectedLineId, event.key));
@@ -3437,10 +3827,16 @@ export function SaleScreen({
               </thead>
               <tbody>
                 {authoritativeLineBreakdown
-                  ? authoritativeLineBreakdown.map((line, index) => {
-                      const localLine = lines[index];
-                      return localLine ? renderCartRow(localLine, line) : null;
-                    })
+                  ? (() => {
+                      let productIndex = 0;
+                      return authoritativeLineBreakdown.map((line) => {
+                        if (line.lineType === "RETURN_ADJUSTMENT") {
+                          return renderReturnPromotionAdjustmentRow(line);
+                        }
+                        const localLine = lines[productIndex++];
+                        return localLine ? renderCartRow(localLine, line) : null;
+                      });
+                    })()
                   : lines.map((line) => renderCartRow(line))}
                 <tr className="sale-cart-grid-filler" aria-hidden="true">
                   {visibleCartColumns.map((column) => (
@@ -3498,6 +3894,11 @@ export function SaleScreen({
                 : ""}
             </p>
             {shortcutStatus && <p className="sale-search-status" role="status">{shortcutStatus}</p>}
+            {temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady && (
+              <p className="sale-search-status sale-search-error" role="alert">
+                {t("sale.temporaryPrice.authorizationRequired")}
+              </p>
+            )}
           </div>
           {interfaceMode === "TOUCH" && (
             <TouchSaleActionPanel
@@ -3569,6 +3970,8 @@ export function SaleScreen({
               saleMutationAuthorizations={saleMutationAuthorizations}
               paymentTerminalVoidAuthorization={paymentTerminalVoidAuthorization}
               paymentTerminalRefundAuthorization={paymentTerminalRefundAuthorization}
+              refundPolicyOverrideAuthorization={refundPolicyOverrideAuthorization}
+              refundTenderOverrideAuthorization={refundTenderOverrideAuthorization}
               paymentCompensationAuthorization={paymentCompensationAuthorization}
               createPendingAuthorization={createPendingAuthorization}
               creditOverrideAuthorization={creditOverrideAuthorization}
@@ -3603,6 +4006,9 @@ export function SaleScreen({
                 const result = paymentResultFromFinalization(printTicket, summary);
                 setCashResult({ ...result, printStatus: "PRINTING" });
                 startAutomaticTicketPrint(printTicket, completedPrintMode);
+                if (summary.issuedVoucher) {
+                  startAutomaticVoucherPrint(summary.issuedVoucher);
+                }
               }}
             />
             {cashStatus && <p className="sale-payment-status" role="status">{cashStatus}</p>}
@@ -3720,9 +4126,8 @@ export function SaleScreen({
           {...cashResult}
           locale={locale}
           onRetryPrint={retryTicketPrint}
-          onFinish={() => {
-            finishCashPaymentResult(setCashResult, () => searchInputRef.current?.focus());
-          }}
+          onRetryVoucherPrint={retryVoucherPrint}
+          onFinish={() => setCashResult(null)}
         />
       )}
 
@@ -4011,7 +4416,16 @@ export function SaleScreen({
           <form className="sale-action-form" onSubmit={(event) => { event.preventDefault(); saveQuantity(); }}>
             <label>
               <span>{t("sale.quantity.label")}</span>
-              <input ref={quantityInputRef} aria-label={t("sale.quantity.inputAria")} type="number" min="1" max="9999" step="1" value={quantityInput} onChange={(event) => setQuantityInput(event.target.value)} />
+              <input
+                ref={quantityInputRef}
+                aria-label={t("sale.quantity.inputAria")}
+                type="number"
+                min={productQuantityStep(selectedLine.product.productType)}
+                max="9999"
+                step={productQuantityStep(selectedLine.product.productType)}
+                value={quantityInput}
+                onChange={(event) => setQuantityInput(event.target.value)}
+              />
             </label>
             {interfaceMode === "TOUCH" && (
               <TouchNumericKeypad
@@ -4056,16 +4470,22 @@ export function SaleScreen({
         <SaleActionDialog
           title={t("sale.temporaryName.title")}
           closeLabel={t("sale.dialog.close")}
+          className="sale-inline-edit-dialog"
+          initialFocusRef={temporaryNameInputRef}
           onClose={() => setActionDialog(null)}
         >
           <form className="sale-action-form" onSubmit={(event) => {
             event.preventDefault();
             saveTemporaryName();
           }}>
+            <div className="sale-inline-edit-product" aria-label={t("sale.main.product")}>
+              <span>{selectedLine.product.code ?? selectedLine.product.barcode ?? ""}</span>
+              <strong>{selectedLine.temporaryName ?? selectedLine.product.name ?? ""}</strong>
+            </div>
             <label>
               <span>{t("sale.temporaryName.label")}</span>
               <input
-                autoFocus
+                ref={temporaryNameInputRef}
                 maxLength={255}
                 value={temporaryNameInput}
                 onChange={(event) => setTemporaryNameInput(event.target.value)}
@@ -4085,17 +4505,24 @@ export function SaleScreen({
         <SaleActionDialog
           title={t("sale.temporaryPrice.title")}
           closeLabel={t("sale.dialog.close")}
+          className="sale-inline-edit-dialog"
+          initialFocusRef={temporaryPriceInputRef}
           onClose={() => setActionDialog(null)}
         >
           <form className="sale-action-form" onSubmit={(event) => {
             event.preventDefault();
             saveTemporaryPrice();
           }}>
+            <div className="sale-inline-edit-product" aria-label={t("sale.main.product")}>
+              <span>{selectedLine.product.code ?? selectedLine.product.barcode ?? ""}</span>
+              <strong>{selectedLine.temporaryName ?? selectedLine.product.name ?? ""}</strong>
+            </div>
             <label>
               <span>{t("sale.temporaryPrice.label")}</span>
               <input
-                autoFocus
+                ref={temporaryPriceInputRef}
                 inputMode="decimal"
+                disabled={temporaryPriceAuthorizationBusy}
                 value={temporaryPriceInput}
                 onChange={(event) => setTemporaryPriceInput(event.target.value)}
               />
@@ -4114,11 +4541,35 @@ export function SaleScreen({
             <small className="sale-dialog-hint">{t("sale.temporaryPrice.hint")}</small>
             {actionError && <strong className="sale-action-error">{actionError}</strong>}
             <div className="sale-action-buttons">
-              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit">{t("sale.dialog.save")}</button>
+              <button type="button" disabled={temporaryPriceAuthorizationBusy} onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+              <button type="submit" disabled={temporaryPriceAuthorizationBusy}>{t("sale.dialog.save")}</button>
             </div>
           </form>
         </SaleActionDialog>
+      )}
+
+      {pendingTemporaryPriceChange && temporaryPriceChangeAuthorization && (
+        <SaleMutationAuthorizationDialog
+          open
+          locale={locale}
+          currentUsername={session.username}
+          requirements={[{
+            code: "TEMPORARY_PRICE_CHANGE",
+            label: t("gestion.salesOperationSecurity.operation.TEMPORARY_PRICE_CHANGE"),
+            authorization: temporaryPriceChangeAuthorization,
+          }]}
+          busy={temporaryPriceAuthorizationBusy}
+          error={temporaryPriceAuthorizationError}
+          onCancel={() => {
+            setPendingTemporaryPriceChange(null);
+            setTemporaryPriceAuthorizationError("");
+            queueMicrotask(() => searchInputRef.current?.focus());
+          }}
+          onConfirm={(authorizations: SaleMutationOperationAuthorizations) => {
+            const credentials = authorizations.TEMPORARY_PRICE_CHANGE ?? {};
+            void authorizeTemporaryPriceChange(pendingTemporaryPriceChange, credentials);
+          }}
+        />
       )}
 
       {actionDialog === "customer" && (
@@ -4224,6 +4675,7 @@ export function SaleScreen({
         <TicketReturnDialog
           token={session.accessToken}
           locale={locale}
+          existingCartLines={saleReturnCartReservations(lines)}
           onClose={() => setTicketReturnOpen(false)}
           onAddToCart={addReturnLinesToCart}
         />
@@ -4346,6 +4798,7 @@ function SaleActionDialog({
   onKeyDown,
   onConfirm,
   initialFocusRef,
+  className = "",
   wide = false
 }: {
   title: string;
@@ -4355,6 +4808,7 @@ function SaleActionDialog({
   onKeyDown?: (event: ReactKeyboardEvent<HTMLElement>) => void;
   onConfirm?: () => void;
   initialFocusRef?: RefObject<HTMLElement | null>;
+  className?: string;
   wide?: boolean;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
@@ -4383,7 +4837,7 @@ function SaleActionDialog({
 
   return (
     <div className="sale-action-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section ref={dialogRef} className={`sale-action-dialog${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
+      <section ref={dialogRef} className={`sale-action-dialog${wide ? " wide" : ""}${className ? ` ${className}` : ""}`} role="dialog" aria-modal="true" aria-label={title} onKeyDown={handleKeyDown}>
         <header><h2>{title}</h2><button type="button" aria-label={closeLabel} onClick={onClose}>x</button></header>
         {children}
       </section>

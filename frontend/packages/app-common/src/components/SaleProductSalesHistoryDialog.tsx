@@ -157,6 +157,7 @@ export function SaleProductSalesHistoryDialog({
               productId={selectedProduct.id}
               productCode={selectedProduct.code ?? selectedProduct.barcode ?? selectedProduct.barcode2 ?? ""}
               productName={selectedProduct.name ?? selectedProduct.code ?? ""}
+              productType={selectedProduct.productType}
               productImageSource={imageSource}
               locale={locale}
               app={app}

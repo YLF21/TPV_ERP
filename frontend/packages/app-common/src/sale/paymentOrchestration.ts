@@ -19,18 +19,35 @@ export type PaymentAllocation = {
   message?: string;
 };
 
+export type RefundPaymentAvailability = {
+  paymentMethod: string;
+  kind?: AllocationKind | null;
+  originalAmountCents: number;
+  refundedAmountCents: number;
+  reservedAmountCents: number;
+  availableAmountCents: number;
+};
+
 export type PaymentSession = {
   id: string;
   totalCents: number;
+  direction?: "SALE" | "REFUND" | "ZERO";
   status: "COLLECTING" | "COVERED" | "COMPENSATION_REQUIRED";
   allocations: PaymentAllocation[];
+  refundPaymentAvailability?: RefundPaymentAvailability[];
 };
 
 type NewAllocation = Omit<PaymentAllocation, "idempotencyKey" | "status"> & Partial<Pick<PaymentAllocation, "idempotencyKey" | "status">>;
 
 export function createPaymentSession(totalCents: number, generateId: () => string): PaymentSession {
-  if (!Number.isInteger(totalCents) || totalCents <= 0) throw new Error("invalid_payment_total");
-  return { id: generateId(), totalCents, status: "COLLECTING", allocations: [] };
+  if (!Number.isInteger(totalCents) || totalCents < 0) throw new Error("invalid_payment_total");
+  return {
+    id: generateId(),
+    totalCents,
+    direction: totalCents === 0 ? "ZERO" : "SALE",
+    status: totalCents === 0 ? "COVERED" : "COLLECTING",
+    allocations: [],
+  };
 }
 
 export function addPaymentAllocation(session: PaymentSession, input: NewAllocation, generateId: () => string): PaymentSession {

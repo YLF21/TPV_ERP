@@ -64,6 +64,20 @@ public class SaleOperationSecurityRegistry {
                     false,
                     false),
             definition(
+                    SaleOperationCode.REFUND_POLICY_OVERRIDE,
+                    SaleOperationCategory.TICKET,
+                    List.of(),
+                    List.of(GESTION_VENTAS),
+                    true,
+                    true),
+            definition(
+                    SaleOperationCode.REFUND_TENDER_OVERRIDE,
+                    SaleOperationCategory.TICKET,
+                    List.of(),
+                    List.of(GESTION_VENTAS),
+                    true,
+                    true),
+            definition(
                     SaleOperationCode.CANCEL_TICKET,
                     SaleOperationCategory.TICKET,
                     List.of("F11", "Ctrl+F11"),

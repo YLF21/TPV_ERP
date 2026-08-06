@@ -69,7 +69,7 @@ public class TicketController {
     @GetMapping("/{id}/print")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','TICKETS_READ','VENTA')")
     public TicketPrintView print(@PathVariable UUID id) {
-        return TicketPrintView.from(service.loadForPrint(id));
+        return service.loadTicketPrintView(id);
     }
 
     @GetMapping("/{id}/return-options")
@@ -346,7 +346,8 @@ public class TicketController {
             java.time.LocalDate date,
             BigDecimal total,
             List<TicketReturnService.ReturnLineOption> lines,
-            List<DocumentView.PaymentView> payments) {
+            List<DocumentView.PaymentView> payments,
+            List<RefundPaymentAvailability.View> paymentAvailability) {
         static ReturnPreviewView from(TicketReturnService.ReturnPreview preview) {
             var ticket = preview.ticket();
             return new ReturnPreviewView(
@@ -360,7 +361,8 @@ public class TicketController {
                     ticket.getPagos().stream()
                             .sorted(java.util.Comparator.comparingInt(DocumentPayment::getPosicion))
                             .map(DocumentView.PaymentView::from)
-                            .toList());
+                            .toList(),
+                    preview.paymentAvailability());
         }
     }
 

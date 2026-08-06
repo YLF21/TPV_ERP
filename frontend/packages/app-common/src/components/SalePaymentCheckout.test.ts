@@ -6,6 +6,7 @@ import { createElement,createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
  allocationFailureIsSafePreEffect,
+ allocationFailureRecovery,
  authorizationPasswordIsEphemeral,
  canManuallyFinalizePayment,
  checkoutPresentation,
@@ -17,6 +18,7 @@ import {
  paymentLogoutDisposition,
  paymentSessionAfterFinalization,
  paymentSessionLocksSale,
+ parseStoredAllocationAttempt,
  prepareAutomaticExit,
  allocationRecoveryInput,
  stableAllocationAttempt,
@@ -51,6 +53,320 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("opens the unified checkout for a negative return total", async () => {
+  const collecting:ServerSession={id:"refund-new-empty",total:"100.00",documentTotal:"-100.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"EXCHANGE_OR_VOUCHER_ONLY"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-10000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("VOUCHER"));
+
+  expect(await screen.findByRole("heading",{name:"DEVOLUCIÓN"})).toBeInTheDocument();
+  await waitFor(()=>expect(apiRequestMock.mock.calls.some(([path])=>path==="/pos/payment-sessions")).toBe(true));
+  expect(screen.getByRole("textbox",{name:"IMPORTE A DEVOLVER"})).toBeEnabled();
+  expect(screen.getByRole("button",{name:/Vale/})).toBeEnabled();
+  expect(screen.queryByRole("button",{name:/Pendiente/})).toBeNull();
+ });
+
+ it("keeps a cash refund retryable after a server failure and reuses the same attempt", async () => {
+  const collecting:ServerSession={id:"refund-cash-retry",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  const allocationIds:string[]=[];
+  let allocationCalls=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/refund-cash-retry/allocations"){
+    allocationCalls+=1;
+    const id=(options?.body as {allocationId:string}).allocationId;
+    allocationIds.push(id);
+    if(allocationCalls===1)throw new ApiError("No se pudo registrar la devolución",500);
+    return {...collecting,status:"COVERED",allocations:[{id,idempotencyKey:id,kind:"CASH",amount:"10.00",delivered:"10.00",change:"0.00",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/refund-cash-retry/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-1",printTicket:printTicket("R-1")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByRole("textbox",{name:"IMPORTE A DEVOLVER"});
+
+  fireEvent.keyDown(amount,{key:"Enter"});
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("No se pudo registrar la devolución"));
+  expect(screen.getByRole("button",{name:/Efectivo/})).toBeEnabled();
+  expect(amount).toBeEnabled();
+
+  fireEvent.keyDown(amount,{key:"Enter"});
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(allocationIds).toHaveLength(2);
+ expect(allocationIds[1]).toBe(allocationIds[0]);
+ });
+
+ it("requests authorization and retries when cash differs from the original tender", async () => {
+  const collecting:ServerSession={id:"refund-tender-override",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  let allocationCalls=0;
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/refund-tender-override/allocations"){
+    allocationCalls+=1;
+    const body=options?.body as {allocationId:string;refundTenderAuthorization?:{authorizerPassword?:string}};
+    if(allocationCalls===1)throw new ApiError("La forma de devoluciÃ³n no coincide con el pago original y requiere autorizaciÃ³n",409,{code:"REFUND_TENDER_OVERRIDE_REQUIRED"});
+    expect(body.refundTenderAuthorization?.authorizerPassword).toBe("secret");
+    return {...collecting,status:"COVERED",allocations:[{id:body.allocationId,idempotencyKey:body.allocationId,kind:"CASH",amount:"10.00",delivered:"10.00",change:"0.00",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/refund-tender-override/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-OVERRIDE",printTicket:printTicket("R-OVERRIDE")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",currentUsername:"CAJERO",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,
+   refundTenderOverrideAuthorization:{mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true},
+   onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  fireEvent.keyDown(await screen.findByLabelText(/importe a devolver/i),{key:"Enter"});
+
+  const dialog=await screen.findByRole("dialog",{name:/Autorización de la venta/i});
+  expect(dialog.parentElement).toHaveClass("sale-mutation-authorization-overlay");
+  fireEvent.change(within(dialog).getByLabelText(/contraseña/i),{target:{value:"secret"}});
+  fireEvent.click(within(dialog).getByRole("button",{name:/Confirmar y continuar/i}));
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(allocationCalls).toBe(2);
+ });
+
+ it("returns the exact issued voucher from refund finalization", async () => {
+  const collecting:ServerSession={id:"refund-voucher",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  const issuedVoucher={code:"VREFUND1",amount:"10.00",issuedAt:"2026-08-04T12:00:00Z",originTicketNumber:"R-1"};
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   if(path==="/pos/payment-sessions/refund-voucher/allocations"){
+    const body=options?.body as {allocationId:string};
+    return {...collecting,status:"COVERED",allocations:[{id:body.allocationId,idempotencyKey:body.allocationId,kind:"VOUCHER",amount:"10.00",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/refund-voucher/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-1",printTicket:printTicket("R-1"),issuedVoucher};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("VOUCHER"));
+  fireEvent.keyDown(await screen.findByLabelText(/importe a devolver/i),{key:"Enter"});
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(
+   printTicket("R-1"),
+   {kind:"REFUND",totalCents:-1000,issuedVoucher},
+  ));
+ });
+
+ it("recovers a matching active refund checkout after a reservation conflict", async () => {
+  const collecting:ServerSession={id:"refund-active",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  let activeCalls=0;
+  const reserveIds:string[]=[];
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active"){
+    activeCalls+=1;
+    return activeCalls===1?null:collecting;
+   }
+   if(path==="/pos/payment-sessions"){
+    const sessionId=(options?.body as {sessionId:string}).sessionId;
+    reserveIds.push(sessionId);
+    if(sessionId!==collecting.id)throw new ApiError("La operación entra en conflicto con los datos existentes",409,{code:"DATA_INTEGRITY_CONFLICT"});
+    return collecting;
+   }
+   if(path==="/pos/payment-sessions/refund-active/allocations"){
+    const id=(options?.body as {allocationId:string}).allocationId;
+    return {...collecting,status:"COVERED",allocations:[{id,idempotencyKey:id,kind:"CASH",amount:"10.00",delivered:"10.00",change:"0.00",status:"APPROVED"}]};
+   }
+   if(path==="/pos/payment-sessions/refund-active/finalize")return {...collecting,status:"FINALIZED",ticketNumber:"R-ACTIVE",printTicket:printTicket("R-ACTIVE")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(reserveIds).toHaveLength(2);
+  expect(reserveIds[1]).toBe(collecting.id);
+  expect(screen.queryByText("La operación entra en conflicto con los datos existentes")).not.toBeInTheDocument();
+ });
+
+ it("reuses the same reservation id after a transient reservation failure", async () => {
+  const collecting:ServerSession={id:"refund-stable-reserve",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  const reserveIds:string[]=[];
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions"){
+    const sessionId=(options?.body as {sessionId:string}).sessionId;
+    reserveIds.push(sessionId);
+    if(reserveIds.length===1)throw new ApiError("No se pudo iniciar la devolución",500);
+    return {...collecting,id:sessionId};
+   }
+   if(path.startsWith("/pos/payment-sessions/")&&path.endsWith("/allocations")){
+    const id=(options?.body as {allocationId:string}).allocationId;
+    return {...collecting,id:reserveIds[1],status:"COVERED",allocations:[{id,idempotencyKey:id,kind:"CASH",amount:"10.00",delivered:"10.00",change:"0.00",status:"APPROVED"}]};
+   }
+   if(path.endsWith("/finalize"))return {...collecting,id:reserveIds[1],status:"FINALIZED",ticketNumber:"R-STABLE",printTicket:printTicket("R-STABLE")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("No se pudo iniciar la devolución"));
+  fireEvent.keyDown(amount,{key:"Enter"});
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
+  expect(reserveIds).toHaveLength(2);
+  expect(reserveIds[1]).toBe(reserveIds[0]);
+ });
+
+ it("offers an explicit retry when active payment hydration fails", async () => {
+  let activeCalls=0;
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:false,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active"){
+    activeCalls+=1;
+    if(activeCalls===1)throw new ApiError("offline",500);
+    return null;
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+  const onHydrationChange=vi.fn();
+  render(createElement(SalePaymentCheckout,{locale:"es",totalCents:1000,sale:{customerId:null,lines:[]},permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},onHydrationChange,onFinalized:vi.fn()}));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo comprobar el estado del cobro");
+  fireEvent.click(screen.getByRole("button",{name:"Reintentar"}));
+
+  await waitFor(()=>expect(onHydrationChange).toHaveBeenLastCalledWith(true));
+  expect(activeCalls).toBe(2);
+  expect(screen.queryByText("No se pudo comprobar el estado del cobro")).not.toBeInTheDocument();
+ });
+
+ it("opens and finalizes a zero-total checkout without registering a payment", async () => {
+  const zeroSession:ServerSession={id:"session-zero",total:"0.00",documentTotal:"0.00",direction:"ZERO",status:"COVERED",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return zeroSession;
+   if(path==="/pos/payment-sessions/session-zero/finalize")return {...zeroSession,status:"FINALIZED",ticketNumber:"T-ZERO",printTicket:printTicket("T-ZERO")};
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();const onFinalized=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:0,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0},{productId:"p-2",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized,
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const accept=await screen.findByRole("button",{name:"ACEPTAR"});
+  await waitFor(()=>expect(accept).toBeEnabled());
+  fireEvent.click(accept);
+
+  await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(printTicket("T-ZERO"),{kind:"ZERO",totalCents:0}));
+ expect(apiRequestMock.mock.calls.filter(([path])=>path.endsWith("/allocations"))).toHaveLength(0);
+ });
+
+ it("authorizes protected cart mutations before reserving a zero-total checkout", async () => {
+  const zeroSession:ServerSession={id:"session-zero-protected",total:"0.00",documentTotal:"0.00",direction:"ZERO",status:"COVERED",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return zeroSession;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",currentUsername:"ADMIN",totalCents:0,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0},{productId:"p-2",quantity:1,discount:0}]},
+   saleMutationAuthorizations:[{
+    code:"TEMPORARY_PRICE_CHANGE",
+    label:"Cambiar precio en esta venta",
+    authorization:{mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true},
+   }],
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+  const dialog=await screen.findByRole("dialog",{name:/Autorizaci.n de la venta/i});
+  fireEvent.change(within(dialog).getByLabelText(/Tu contrase/i),{target:{value:"secret"}});
+  fireEvent.click(within(dialog).getByRole("button",{name:/Confirmar y continuar/i}));
+
+  await waitFor(()=>expect(apiRequestMock).toHaveBeenCalledWith(
+   "/pos/payment-sessions",
+   expect.objectContaining({body:expect.objectContaining({
+    sale:expect.objectContaining({operationAuthorizations:{
+     TEMPORARY_PRICE_CHANGE:{authorizerPassword:"secret"},
+    }}),
+   })}),
+  ));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"ACEPTAR"})).toBeEnabled());
+ });
+
  it("recognizes the missing cash-session error with or without accents", () => {
   expect(isMissingCashSessionError("No hay una sesion de caja abierta")).toBe(true);
   expect(isMissingCashSessionError("No hay una sesión de caja abierta")).toBe(true);
@@ -1462,7 +1778,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith("/finalize"))).toHaveLength(2);
  });
 
- it("reconciles the active session after an uncertain allocation error mentioning missing cash", async () => {
+ it("keeps a failed cash allocation retryable without an unnecessary active-session recovery", async () => {
   const session = { id: "session-uncertain-cash", total: "12.10", status: "COLLECTING", allocations: [] };
   let activeCalls = 0;
   apiRequestMock.mockImplementation(async (path: string) => {
@@ -1497,7 +1813,10 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   fireEvent.click(within(dialog).getByRole("button", { name: "Exacto" }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar cobro" }));
 
-  await waitFor(() => expect(activeCalls).toBe(2));
+  await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("No hay una sesión de caja abierta"));
+  expect(activeCalls).toBe(1);
+  expect(within(dialog).getByRole("button", { name: "Confirmar cobro" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeEnabled();
   expect(apiRequestMock.mock.calls.filter(([path]) => path.includes("/allocations"))).toHaveLength(1);
  });
 
@@ -1650,6 +1969,18 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
  it("reuses the persisted allocation id after an uncertain response",()=>{const input={kind:"INTEGRATED_CARD",amountCents:1000,provider:"PAYTEF"};const first=stableAllocationAttempt(null,"session",input,()=>"stable-id");expect(stableAllocationAttempt(first,"session",input,()=>"duplicate-id").allocationId).toBe("stable-id");});
  it("clears an attempt only for known safe 4xx pre-effect failures",()=>{expect(allocationFailureIsSafePreEffect(new ApiError("validation",400))).toBe(true);expect(allocationFailureIsSafePreEffect(new ApiError("conflict",409))).toBe(true);});
  it("keeps an attempt for 5xx and unknown HTTP outcomes",()=>{expect(allocationFailureIsSafePreEffect(new ApiError("server",500))).toBe(false);expect(allocationFailureIsSafePreEffect(new ApiError("unknown",418))).toBe(false);});
+ it("allows idempotent retries for non-terminal methods while preserving uncertain terminal protection",()=>{
+  expect(allocationFailureRecovery("CASH",false,new ApiError("server",500))).toBe("RETRY_SAME_ATTEMPT");
+  expect(allocationFailureRecovery("VOUCHER",false,new Error("offline"))).toBe("RETRY_SAME_ATTEMPT");
+  expect(allocationFailureRecovery("MANUAL_CARD",false,new ApiError("server",500))).toBe("RETRY_SAME_ATTEMPT");
+  expect(allocationFailureRecovery("INTEGRATED_CARD",false,new ApiError("server",500))).toBe("UNCERTAIN");
+  expect(allocationFailureRecovery("CASH",false,new ApiError("invalid",400))).toBe("RETRY_NEW_ATTEMPT");
+  expect(allocationFailureRecovery("CASH",true,new ApiError("finalize",500))).toBe("UNCERTAIN");
+ });
+ it("ignores malformed persisted attempts instead of trapping checkout before the request",()=>{
+  expect(parseStoredAllocationAttempt("not-json")).toBeNull();
+  expect(parseStoredAllocationAttempt(JSON.stringify({sessionId:"s",allocationId:"a",input:{kind:"CASH"}}))).toEqual({sessionId:"s",allocationId:"a",input:{kind:"CASH"}});
+ });
  it("clears an authorization password before invoking the payment operation",async()=>{let visible="secret";await authorizationPasswordIsEphemeral(visible,value=>{visible=value;},async password=>{expect(visible).toBe("");expect(password).toBe("secret");});expect(visible).toBe("");});
  it("clears and trims the compensation note before sending it",async()=>{let visible=" resolución ";await compensationNoteIsEphemeral(visible,value=>{visible=value;},async note=>{expect(visible).toBe("");expect(note).toBe("resolución");});expect(visible).toBe("");});
 });

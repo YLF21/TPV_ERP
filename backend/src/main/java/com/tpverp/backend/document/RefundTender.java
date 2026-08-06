@@ -62,15 +62,18 @@ public class RefundTender {
         if (this.amount.signum() <= 0) {
             throw new IllegalArgumentException("El importe devuelto debe ser positivo");
         }
-        if (type == RefundTenderType.CARD && terminalOperationId == null) {
-            throw new IllegalArgumentException("La devolucion con tarjeta requiere operacion de datafono");
+        this.reference = reference == null || reference.isBlank() ? null : reference.trim();
+        if (type == RefundTenderType.CARD && terminalOperationId == null
+                && originalPaymentId == null
+                && (this.reference == null || this.reference.isBlank())) {
+            throw new IllegalArgumentException(
+                    "La devolucion manual con tarjeta requiere referencia");
         }
         if (type != RefundTenderType.CARD && terminalOperationId != null) {
             throw new IllegalArgumentException("Solo la devolucion con tarjeta admite operacion de datafono");
         }
         this.originalPaymentId = originalPaymentId;
         this.terminalOperationId = terminalOperationId;
-        this.reference = reference == null || reference.isBlank() ? null : reference.trim();
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
     }
 

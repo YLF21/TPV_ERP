@@ -3,6 +3,7 @@ package com.tpverp.backend.shared.api;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
+import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -124,6 +125,24 @@ public class ApiExceptionHandler {
                 HttpStatus.BAD_REQUEST,
                 SystemErrorCode.VALIDATION_ERROR.name(),
                 localizedExceptionDetail(exception.getMessage(), SystemErrorCode.VALIDATION_ERROR, language),
+                language,
+                request);
+    }
+
+    @ExceptionHandler(RefundTenderOverrideRequiredException.class)
+    ProblemDetail refundTenderOverrideRequired(
+            RefundTenderOverrideRequiredException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        var detail = switch (language) {
+            case EN -> "The selected refund method differs from the original payment method and requires authorization";
+            case ZH -> "所选退款方式与原付款方式不同，需要授权";
+            default -> "La forma de devolución no coincide con el pago original y requiere autorización";
+        };
+        return problem(
+                HttpStatus.CONFLICT,
+                RefundTenderOverrideRequiredException.CODE,
+                detail,
                 language,
                 request);
     }

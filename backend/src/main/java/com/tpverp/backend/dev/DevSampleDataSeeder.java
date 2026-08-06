@@ -378,6 +378,7 @@ public class DevSampleDataSeeder {
         payment("TARJETA", false, false);
         payment("TRANSFERENCIA", false, false);
         payment("VALE", false, false);
+        payment("COMPENSACION_DEVOLUCION", false, false);
     }
 
     private void seedFamily(int index, String familyName, String subfamilyName) {

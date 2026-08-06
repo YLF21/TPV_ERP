@@ -93,14 +93,14 @@ describe("CustomerReceivablePaymentDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Efectivo" }));
     fireEvent.change(screen.getByLabelText("Dinero recibido"), { target: { value: "50" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar cobro" }));
-    expect(await screen.findByRole("dialog", { name: "Pago completado" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Pago completado" })).toBeVisible();
     expect(screen.getByText("20,00")).toBeVisible();
     expect(screen.getByText("50,00")).toBeVisible();
     expect(screen.getByText("30,00")).toBeVisible();
     expect(onPaid).not.toHaveBeenCalled();
     const payment = (request.mock.calls as any[]).find(([path]) => path.endsWith("/payments"))?.[1].body.pagos[0];
     expect(payment).toMatchObject({ metodoPagoId: "cash", importe: "20.00", entregado: "50.00", cambio: "30.00" });
-    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    fireEvent.keyDown(document.body, { key: "Enter" });
     expect(onPaid).toHaveBeenCalledWith(receivable);
   });
 
@@ -240,13 +240,13 @@ describe("CustomerReceivablePaymentDialog", () => {
       .mockResolvedValueOnce({ status: "PRINTED" });
     render(<CustomerReceivablePaymentDialog receivable={receivable} token="token" terminalCode="01" terminalContext={{ storeName: "Tienda", terminalCode: "01" }} printReceipt={printReceipt} request={request as any} onCancel={vi.fn()} onPaid={onPaid} />);
     fireEvent.click(await screen.findByRole("button", { name: "Reintentar cobro" }));
-    expect(await screen.findByRole("dialog", { name: "Pago completado" })).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Pago completado" })).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("El cobro se ha completado");
     expect(onPaid).not.toHaveBeenCalled();
     expect(localStorage.getItem("tpverp.receivable.01.doc-1.card-attempt.standard")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
     expect(await screen.findByText("Ticket enviado a la impresora")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    fireEvent.keyDown(document.body, { key: "Enter" });
     expect(onPaid).toHaveBeenCalledWith(receivable);
   });
 });

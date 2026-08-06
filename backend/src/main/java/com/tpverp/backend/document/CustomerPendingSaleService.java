@@ -345,6 +345,7 @@ public class CustomerPendingSaleService {
             String sourceType) {
         documentMutationAuthorization.authorize(
                 request.toCommand(),
+                request.lines(),
                 request.operationAuthorizations(),
                 authentication,
                 sourceType,

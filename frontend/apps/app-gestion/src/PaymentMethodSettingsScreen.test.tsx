@@ -27,13 +27,9 @@ afterEach(cleanup);
 
 describe("PaymentMethodSettingsScreen", () => {
   it("shows only operational checkout methods and limits document configuration", async () => {
-    const request = vi.fn(async () => [
-      method("EFECTIVO"),
-      method("TARJETA"),
-      method("TRANSFERENCIA"),
-      method("VALE"),
-      method("DESCUENTO"),
-    ]);
+    const request = vi.fn(async (path: string) => path === "/return-policy"
+      ? { policy: "REFUND_ALLOWED" }
+      : [method("EFECTIVO"), method("TARJETA"), method("TRANSFERENCIA"), method("VALE"), method("DESCUENTO")]);
     render(<PaymentMethodSettingsScreen
       session={session}
       t={createTranslator("es")}
@@ -55,9 +51,11 @@ describe("PaymentMethodSettingsScreen", () => {
 
   it("updates the external document requirement while preserving drawer configuration", async () => {
     const card = method("TARJETA", { opensCashDrawer: true });
-    const request = vi.fn()
-      .mockResolvedValueOnce([method("EFECTIVO"), card, method("TRANSFERENCIA"), method("VALE")])
-      .mockResolvedValueOnce({ ...card, requiresReference: true });
+    const request = vi.fn(async (path: string, options?: { method?: string }) => {
+      if (path === "/return-policy") return { policy: "REFUND_ALLOWED" };
+      if (options?.method === "PATCH") return { ...card, requiresReference: true };
+      return [method("EFECTIVO"), card, method("TRANSFERENCIA"), method("VALE")];
+    });
     render(<PaymentMethodSettingsScreen
       session={session}
       t={createTranslator("es")}
@@ -82,9 +80,11 @@ describe("PaymentMethodSettingsScreen", () => {
 
   it("updates whether a payment method is available", async () => {
     const transfer = method("TRANSFERENCIA");
-    const request = vi.fn()
-      .mockResolvedValueOnce([method("EFECTIVO"), method("TARJETA"), transfer, method("VALE")])
-      .mockResolvedValueOnce({ ...transfer, active: false });
+    const request = vi.fn(async (path: string, options?: { method?: string }) => {
+      if (path === "/return-policy") return { policy: "REFUND_ALLOWED" };
+      if (options?.method === "PATCH") return { ...transfer, active: false };
+      return [method("EFECTIVO"), method("TARJETA"), transfer, method("VALE")];
+    });
     render(<PaymentMethodSettingsScreen
       session={session}
       t={createTranslator("es")}
@@ -103,5 +103,33 @@ describe("PaymentMethodSettingsScreen", () => {
         body: { active: false },
       },
     ));
+  });
+
+  it("configures whether the store permits monetary refunds", async () => {
+    const request = vi.fn(async (path: string, options?: { method?: string; body?: unknown }) => {
+      if (path === "/return-policy" && options?.method === "PUT") {
+        return { policy: "EXCHANGE_OR_VOUCHER_ONLY" };
+      }
+      if (path === "/return-policy") return { policy: "REFUND_ALLOWED" };
+      return [method("EFECTIVO"), method("TARJETA"), method("TRANSFERENCIA"), method("VALE")];
+    });
+    render(<PaymentMethodSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request as unknown as typeof apiRequest}
+    />);
+
+    const policy = await screen.findByRole("combobox", { name: /liquidación permitida/i });
+    fireEvent.change(policy, { target: { value: "EXCHANGE_OR_VOUCHER_ONLY" } });
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/return-policy",
+      {
+        token: "token",
+        method: "PUT",
+        body: { policy: "EXCHANGE_OR_VOUCHER_ONLY" },
+      },
+    ));
+    expect((policy as HTMLSelectElement).value).toBe("EXCHANGE_OR_VOUCHER_ONLY");
   });
 });

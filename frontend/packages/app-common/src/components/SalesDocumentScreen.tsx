@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { formatQuantityValue } from "../sale/productQuantity";
 import {
   addLocalDays,
   pendingCreateBody,
@@ -451,7 +452,7 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
                     aria-label={`${t("sale.main.quantity")} -1`}
                     onClick={() => updateQuantity(line.product.id, -1)}
                   >{"\u2212"}</button>
-                  <b>{line.quantity}</b>
+                  <b>{formatQuantityValue(line.quantity, locale)}</b>
                   <button
                     type="button"
                     aria-label={`${t("sale.main.quantity")} +1`}

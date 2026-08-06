@@ -105,7 +105,33 @@ public record DocumentRequest(
             UUID promotionalCouponId,
             List<String> serialNumbers,
             boolean temporaryNameOverride,
-            boolean temporaryPriceOverride) {
+            boolean temporaryPriceOverride,
+            @Size(max = 128) String cartLineId,
+            @Size(max = 256) String temporaryPriceAuthorizationToken) {
+
+        public LineRequest(
+                UUID productoId,
+                BigDecimal cantidad,
+                String codigo,
+                String nombre,
+                String tarifa,
+                BigDecimal precioUnitario,
+                BigDecimal descuento,
+                boolean impuestosIncluidos,
+                String regimenImpuesto,
+                BigDecimal porcentajeImpuesto,
+                DocumentLineType lineType,
+                UUID promotionId,
+                UUID promotionVersionId,
+                UUID promotionalCouponId,
+                List<String> serialNumbers,
+                boolean temporaryNameOverride,
+                boolean temporaryPriceOverride) {
+            this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
+                    impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
+                    promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
+                    temporaryNameOverride, temporaryPriceOverride, null, null);
+        }
 
         public LineRequest(
                 UUID productoId,
@@ -126,7 +152,7 @@ public record DocumentRequest(
             this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
                     impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
                     promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
-                    false, false);
+                    false, false, null, null);
         }
 
         public LineRequest(
@@ -147,7 +173,7 @@ public record DocumentRequest(
             this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario, descuento,
                     impuestosIncluidos, regimenImpuesto, porcentajeImpuesto, lineType,
                     promotionId, promotionVersionId, promotionalCouponId, List.of(),
-                    false, false);
+                    false, false, null, null);
         }
 
         DocumentLineCommand toCommand() {

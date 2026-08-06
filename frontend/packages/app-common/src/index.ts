@@ -73,3 +73,13 @@ export type {
   HardwareResult,
   TicketPrintRequest
 } from "./hardware/hardware";
+export {
+  canonicalProductQuantity,
+  formatProductQuantity,
+  formatQuantityValue,
+  isProductQuantityPrecisionValid,
+  normalizedProductQuantityType,
+  parseProductQuantityInput,
+  productQuantityStep,
+} from "./sale/productQuantity";
+import "./styles/tpv.css";

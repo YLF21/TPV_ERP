@@ -15,6 +15,48 @@ import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDial
 afterEach(cleanup);
 
 describe("SaleMutationAuthorizationDialog", () => {
+  it("focuses the current user's password when the modal opens", async () => {
+    render(<SaleMutationAuthorizationDialog
+      open
+      locale="es"
+      currentUsername="ADMIN"
+      requirements={[{
+        code: "TEMPORARY_PRICE_CHANGE",
+        label: "Cambiar precio en esta venta",
+        authorization: {
+          mode: "CURRENT_PASSWORD",
+          requireUsername: false,
+          requirePassword: true,
+        },
+      }]}
+      onCancel={vi.fn()}
+      onConfirm={vi.fn()}
+    />);
+
+    await waitFor(() => expect(screen.getByLabelText(/Tu contrase/i)).toHaveFocus());
+  });
+
+  it("focuses the authorizing username first for delegated authorization", async () => {
+    render(<SaleMutationAuthorizationDialog
+      open
+      locale="es"
+      currentUsername="CAJERO"
+      requirements={[{
+        code: "TEMPORARY_PRICE_CHANGE",
+        label: "Cambiar precio en esta venta",
+        authorization: {
+          mode: "DELEGATED",
+          requireUsername: true,
+          requirePassword: true,
+        },
+      }]}
+      onCancel={vi.fn()}
+      onConfirm={vi.fn()}
+    />);
+
+    await waitFor(() => expect(screen.getByLabelText("Usuario autorizador")).toHaveFocus());
+  });
+
   it("returns separate per-operation credentials and clears passwords before the caller runs", async () => {
     const onConfirm = vi.fn(() => {
       expect(screen.getAllByLabelText<HTMLInputElement>(
@@ -70,5 +112,39 @@ describe("SaleMutationAuthorizationDialog", () => {
         authorizerPassword: "discount-secret",
       },
     }));
+  });
+
+  it("confirms with Enter and suppresses a synchronous duplicate submission", async () => {
+    const onConfirm = vi.fn();
+    render(<SaleMutationAuthorizationDialog
+      open
+      locale="es"
+      currentUsername="ADMIN"
+      requirements={[{
+        code: "REFUND_TENDER_OVERRIDE",
+        label: "Devolver mediante una forma de pago distinta a la original",
+        authorization: {
+          mode: "CURRENT_PASSWORD",
+          requireUsername: false,
+          requirePassword: true,
+        },
+      }]}
+      onCancel={vi.fn()}
+      onConfirm={onConfirm}
+    />);
+
+    const password = await screen.findByLabelText(/Tu contraseña/i);
+    fireEvent.change(password, { target: { value: "secret" } });
+    const form = password.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    fireEvent.submit(form!);
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+    expect(onConfirm).toHaveBeenCalledWith({
+      REFUND_TENDER_OVERRIDE: {
+        authorizerPassword: "secret",
+      },
+    });
   });
 });

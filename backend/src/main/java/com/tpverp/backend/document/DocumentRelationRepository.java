@@ -2,6 +2,7 @@ package com.tpverp.backend.document;
 
 import java.util.UUID;
 import java.util.Set;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +16,15 @@ public interface DocumentRelationRepository
 
     boolean existsByDocumento_IdAndOrigen_IdAndTipo(
             UUID documentId, UUID originId, DocumentRelationType type);
+
+    @Query("""
+            select relation.origen.id from DocumentRelation relation
+            where relation.documento.id = :documentId
+              and relation.tipo = :type
+            """)
+    Optional<UUID> findOriginId(
+            @Param("documentId") UUID documentId,
+            @Param("type") DocumentRelationType type);
 
     @Query("""
             select relation.origen.id from DocumentRelation relation

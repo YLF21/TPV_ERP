@@ -21,6 +21,10 @@ describe("SaleOpenPriceDialog", () => {
   it("accepts positive prices with comma or dot and at most two decimals", () => {
     expect(parseSaleOpenPrice(" 12,50 ")).toBe(12.5);
     expect(parseSaleOpenPrice("0.01")).toBe(0.01);
+    expect(parseSaleOpenPrice("101.")).toBe(101);
+    expect(parseSaleOpenPrice("101,")).toBe(101);
+    expect(parseSaleOpenPrice("0.1")).toBe(0.1);
+    expect(parseSaleOpenPrice("0,1")).toBe(0.1);
     expect(parseSaleOpenPrice("0")).toBeNull();
     expect(parseSaleOpenPrice("-1")).toBeNull();
     expect(parseSaleOpenPrice("1.001")).toBeNull();
@@ -42,9 +46,9 @@ describe("SaleOpenPriceDialog", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("máximo de 2 decimales");
     expect(onAccept).not.toHaveBeenCalled();
 
-    fireEvent.change(input, { target: { value: "7,25" } });
+    fireEvent.change(input, { target: { value: "7," } });
     fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
-    expect(onAccept).toHaveBeenCalledWith(7.25);
+    expect(onAccept).toHaveBeenCalledWith(7);
   });
 
   it("cancels with Escape", () => {

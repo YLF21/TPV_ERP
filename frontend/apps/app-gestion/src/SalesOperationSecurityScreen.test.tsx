@@ -51,6 +51,36 @@ const configuration = (
 afterEach(cleanup);
 
 describe("SalesOperationSecurityScreen", () => {
+  it("renders every effective protection condition as a separate bullet line", async () => {
+    const request = vi.fn(async () => configuration());
+
+    render(<SalesOperationSecurityScreen
+      session={adminSession}
+      t={createTranslator("es")}
+      request={request as unknown as typeof apiRequest}
+    />);
+
+    const permissionRow = (await screen.findByText("Abrir cajón")).closest("article");
+    const passwordRow = screen.getByText("Anular ticket").closest("article");
+    expect(permissionRow).not.toBeNull();
+    expect(passwordRow).not.toBeNull();
+
+    expect(within(permissionRow as HTMLElement).getAllByRole("listitem").map((item) => (
+      item.textContent
+    ))).toEqual([
+      "Acceso directo con permiso.",
+      "Autorización delegada si no lo tiene.",
+    ]);
+    expect(within(passwordRow as HTMLElement).getAllByRole("listitem").map((item) => (
+      item.textContent
+    ))).toEqual([
+      "Contraseña propia con permiso.",
+      "Autorización delegada si no lo tiene.",
+    ]);
+    expect(permissionRow).not.toHaveTextContent(";");
+    expect(passwordRow).not.toHaveTextContent(";");
+  });
+
   it("edits a draft and saves the complete versioned configuration explicitly", async () => {
     const current = configuration();
     const saved = configuration({

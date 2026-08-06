@@ -111,7 +111,21 @@ public class PosCashController {
             BigDecimal openUnitPrice,
             List<String> serialNumbers,
             @Size(max = 255) String temporaryName,
-            @Valid ReturnOriginRequest returnOrigin) {
+            @Valid ReturnOriginRequest returnOrigin,
+            @Size(max = 128) String cartLineId,
+            @Size(max = 256) String temporaryPriceAuthorizationToken) {
+        public LineRequest(
+                UUID productId,
+                BigDecimal quantity,
+                BigDecimal discount,
+                BigDecimal openUnitPrice,
+                List<String> serialNumbers,
+                String temporaryName,
+                ReturnOriginRequest returnOrigin) {
+            this(productId, quantity, discount, openUnitPrice, serialNumbers,
+                    temporaryName, returnOrigin, null, null);
+        }
+
         public LineRequest(
                 UUID productId,
                 BigDecimal quantity,
@@ -120,7 +134,7 @@ public class PosCashController {
                 List<String> serialNumbers,
                 String temporaryName) {
             this(productId, quantity, discount, openUnitPrice, serialNumbers,
-                    temporaryName, null);
+                    temporaryName, null, null, null);
         }
 
         public LineRequest(

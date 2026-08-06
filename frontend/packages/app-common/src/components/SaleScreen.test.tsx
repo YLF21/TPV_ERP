@@ -18,6 +18,7 @@ import {
   cashResultFromFinalization,
   finishCashPaymentResult,
   isCompleteAuthoritativeQuote,
+  saleCartDisplayedUnitPrice,
   isSalesDocumentShortcut,
   readCashModeForOpening,
   runGuardedCashSubmission,
@@ -51,6 +52,11 @@ import {
   saleProductBlocksManualDiscount,
   saleProductRequiresOpenPrice,
   salePauseQuantity,
+  salePauseQuantityAllowed,
+  saleKeyboardReturnRemovalAllowed,
+  saleReturnCartReservations,
+  saleReturnSourceConflict,
+  mergeSaleReturnLines,
   saleQuickOperand,
   saleTotal,
   selectSaleProduct,
@@ -58,6 +64,7 @@ import {
   updateSaleLineQuantity,
   updateSaleLineSerialNumbers,
   type SaleCustomer,
+  type SaleLine,
   type SaleProduct
 } from "./SaleScreen";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -84,6 +91,8 @@ type CheckoutMockProps = {
       quantity: number;
       discount: number;
       openUnitPrice?: number;
+      cartLineId?: string;
+      temporaryPriceAuthorizationToken?: string;
     }>;
   };
   onCash?: () => void;
@@ -575,6 +584,63 @@ describe("SaleScreen", () => {
       ...valid,
       lineBreakdown: [{ ...valid.lineBreakdown[0], finalSubtotal: "9.99" }],
     })).toBe(false);
+    expect(isCompleteAuthoritativeQuote({
+      ...valid,
+      total: "-10.00",
+      productTotal: "-10.00",
+      lineBreakdown: [{
+        ...valid.lineBreakdown[0],
+        quantity: "-1.000",
+        baseSubtotal: "-10.00",
+        finalSubtotal: "-10.00",
+      }],
+    })).toBe(true);
+    expect(isCompleteAuthoritativeQuote({
+      ...valid,
+      total: "0.00",
+      productTotal: "-10.00",
+      lineBreakdown: [
+        {
+          ...valid.lineBreakdown[0],
+          lineType: "PRODUCT",
+          quantity: "-1.000",
+          baseSubtotal: "-10.00",
+          finalSubtotal: "-10.00",
+        },
+        {
+          ...valid.lineBreakdown[0],
+          lineId: "return-adjustment:2",
+          position: 2,
+          lineType: "RETURN_ADJUSTMENT",
+          productId: null,
+          code: "AJUSTE POR PERDIDA DE PROMOCION",
+          name: "AJUSTE POR PERDIDA DE PROMOCION",
+          quantity: "1.000",
+          normalUnitPrice: "0.00",
+          baseUnitPrice: "10.00",
+          baseSubtotal: "10.00",
+          finalSubtotal: "10.00",
+        },
+      ],
+    })).toBe(true);
+  });
+
+  it("shows the historical unit price for an F10 return instead of the current catalog price", () => {
+    const line = {
+      product: { ...products[0], salePrice: "8.20" },
+      quantity: -1,
+      discountPercent: 0,
+      returnUnitPrice: 100,
+      returnOrigin: {
+        sourceType: "TICKET" as const,
+        sourceCode: "001-260803-00001",
+        sourceTicketId: "ticket-1",
+        sourceTicketNumber: "001-260803-00001",
+        sourceLineId: "line-1",
+      },
+    };
+
+    expect(saleCartDisplayedUnitPrice(line)).toBe(100);
   });
 
   it("keeps every requested cart column visible by default", () => {
@@ -1834,6 +1900,95 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("button", { name: /Cafe molido.*20,00%/s })).toBeInTheDocument();
   });
 
+  it("focuses and selects the complete current name when the temporary name dialog opens", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([products[0]]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+
+    fireEvent.keyDown(window, { key: "Home" });
+
+    const nameInput = await screen.findByLabelText("Nombre para esta compra") as HTMLInputElement;
+    await waitFor(() => expect(nameInput).toHaveFocus());
+    expect(nameInput.value).toBe("Cafe molido");
+    expect(nameInput.selectionStart).toBe(0);
+    expect(nameInput.selectionEnd).toBe(nameInput.value.length);
+  });
+
+  it("authorizes a temporary price when it is saved and does not defer it to checkout", async () => {
+    const authorizationRequests: Array<Record<string, unknown>> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sale-operation-authorizations/temporary-price")) {
+        authorizationRequests.push(JSON.parse(String(options?.body)));
+        return new Response(JSON.stringify({
+          token: "temporary-price-proof",
+          expiresAt: new Date(Date.now() + 20 * 60_000).toISOString(),
+          authorizedBy: "ADMIN",
+          delegated: false,
+          policyVersion: 1,
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+
+    fireEvent.keyDown(window, { key: "PageUp", ctrlKey: true });
+    const priceInput = await screen.findByLabelText("Precio para esta compra");
+    fireEvent.change(priceInput, { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    const authorizationDialog = await screen.findByRole("dialog", {
+      name: /Autorizaci.n de la venta/i,
+    });
+    expect(authorizationRequests).toHaveLength(0);
+    fireEvent.change(within(authorizationDialog).getByLabelText("Tu contraseña"), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(within(authorizationDialog).getByRole("button", {
+      name: "Confirmar y continuar",
+    }));
+
+    await waitFor(() => expect(authorizationRequests).toHaveLength(1));
+    expect(authorizationRequests[0]).toMatchObject({
+      productId: "coffee",
+      unitPrice: 8,
+      cartLineId: expect.any(String),
+      authorization: { authorizerPassword: "secret" },
+    });
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines[0]).toMatchObject({
+      productId: "coffee",
+      openUnitPrice: 8,
+      temporaryPriceAuthorizationToken: "temporary-price-proof",
+    }));
+    expect(checkoutProps.current?.saleMutationAuthorizations ?? [])
+      .not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "TEMPORARY_PRICE_CHANGE" }),
+      ]));
+  });
+
   it("cancels customer selection with Escape without changing the customer", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", {
@@ -2451,7 +2606,7 @@ describe("SaleScreen", () => {
     expect(bread).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("leaves vertical arrows to editable targets and ignores repeats, payment locks, and modals", async () => {
+  it("uses vertical arrows from the product entry for the cart, but leaves other editable targets untouched", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(products.slice(0, 2)), {
       status: 200,
       headers: { "Content-Type": "application/json" }
@@ -2469,7 +2624,14 @@ describe("SaleScreen", () => {
     const editable = document.createElement("div");
     editable.contentEditable = "true";
     document.body.appendChild(editable);
-    for (const target of [search, document.createElement("textarea"), document.createElement("select"), editable]) {
+    const searchArrow = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
+    act(() => search.dispatchEvent(searchArrow));
+    expect(searchArrow.defaultPrevented).toBe(true);
+    expect(coffee).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(bread).toHaveAttribute("aria-pressed", "true");
+
+    for (const target of [document.createElement("textarea"), document.createElement("select"), editable]) {
       if (!target.isConnected) document.body.appendChild(target);
       const event = new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true });
       target.dispatchEvent(event);
@@ -2528,23 +2690,21 @@ describe("SaleScreen", () => {
 
     act(() => checkoutProps.current?.onFinalized?.(printSnapshot("CARD-1"), { kind: "CARD", totalCents: 1210 }));
 
-    const cardResult = within(screen.getByRole("dialog"));
+    const cardResult = within(screen.getByRole("region", { name: "Pago completado" }));
     expect(cardResult.getByText("Tarjeta")).toBeInTheDocument();
     expect(cardResult.queryByText("Dinero recibido")).not.toBeInTheDocument();
     expect(cardResult.queryByText("Cambio")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
     act(() => checkoutProps.current?.onFinalized?.(printSnapshot("CASH-1"), { kind: "CASH", totalCents: 1210, receivedCents: 2000 }));
 
-    const cashResult = within(screen.getByRole("dialog"));
+    const cashResult = within(screen.getByRole("region", { name: "Pago completado" }));
     expect(cashResult.getByText("Dinero recibido")).toBeInTheDocument();
     expect(cashResult.getByText("Cambio")).toBeInTheDocument();
     expect(cashResult.getByText("7,90")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
     act(() => checkoutProps.current?.onFinalized?.(printSnapshot("MIXED-1"), { kind: "MIXED", totalCents: 1210 }));
 
-    const mixedResult = within(screen.getByRole("dialog"));
+    const mixedResult = within(screen.getByRole("region", { name: "Pago completado" }));
     expect(mixedResult.getByText("Mixto")).toBeInTheDocument();
     expect(mixedResult.queryByText("Dinero recibido")).not.toBeInTheDocument();
     expect(mixedResult.queryByText("Cambio")).not.toBeInTheDocument();
@@ -2578,6 +2738,10 @@ describe("SaleScreen", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
+    const search = screen.getByRole("combobox", { name: "Buscar producto" });
+    fireEvent.keyDown(document.body, { key: "8" });
+    expect(screen.queryByText("Pago completado")).not.toBeInTheDocument();
+    expect(search).toHaveValue("8");
   });
 
   it("automatically prints a MIXED checkout ticket", async () => {
@@ -2593,6 +2757,48 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
 
+  it("prints the exact issued refund voucher and retries only its note", async () => {
+    const voucherAttempts = new Map<string, number>();
+    const printTicket = vi.fn(async (request: { documentNumber: string }) => {
+      if (request.documentNumber !== "VREFUND1") return { ok: true };
+      const attempt = (voucherAttempts.get(request.documentNumber) ?? 0) + 1;
+      voucherAttempts.set(request.documentNumber, attempt);
+      return attempt === 1
+        ? { ok: false, code: "PRINT_FAILED", message: "paper jam" }
+        : { ok: true };
+    });
+    installTicketHardware(printTicket);
+    renderSaleScreen();
+    await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
+    const issuedVoucher = {
+      code: "VREFUND1",
+      amount: "10.00",
+      issuedAt: "2026-08-04T12:00:00Z",
+      originTicketNumber: "R-1",
+    };
+
+    act(() => checkoutProps.current?.onFinalized(
+      printSnapshot("R-1"),
+      { kind: "REFUND", totalCents: -1000, issuedVoucher },
+    ));
+
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+    expect(printTicket.mock.calls.slice(0, 2).map(([request]) => request.documentNumber).sort())
+      .toEqual(["R-1", "VREFUND1"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El vale se ha generado, pero no ha sido posible imprimir su nota.",
+    );
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Reintentar impresión del vale",
+    }));
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(3));
+    expect(printTicket.mock.calls[2][0].documentNumber).toBe("VREFUND1");
+    expect(screen.queryByRole("button", {
+      name: "Reintentar impresión del vale",
+    })).not.toBeInTheDocument();
+  });
+
   it("keeps completion after print failure and retries hardware without finalizing payment again", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -2606,7 +2812,7 @@ describe("SaleScreen", () => {
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-RETRY"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
-    expect(screen.getByRole("button", { name: "Finalizar" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
     expect(screen.getByRole("status")).toHaveTextContent("Imprimiendo ticket");
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
@@ -2614,7 +2820,7 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ticket enviado a la impresora"));
   });
 
-  it("ignores a late print result after the completed-payment dialog is closed", async () => {
+  it("keeps a late print failure recoverable after the operator has already continued", async () => {
     let resolvePrint!: (result: { ok: false; code: "PRINT_FAILED"; message: string }) => void;
     const printTicket = vi.fn(() => new Promise((resolve) => { resolvePrint = resolve; }));
     installTicketHardware(printTicket);
@@ -2622,11 +2828,12 @@ describe("SaleScreen", () => {
     await waitFor(() => expect(checkoutProps.current?.onFinalized).toBeTypeOf("function"));
     act(() => checkoutProps.current?.onFinalized(printSnapshot("CASH-CLOSED"), { kind: "CASH", totalCents: 1210, receivedCents: 1210 }));
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+    fireEvent.pointerDown(document.body);
 
     resolvePrint({ ok: false, code: "PRINT_FAILED", message: "late failure" });
     await act(async () => { await Promise.resolve(); });
-    expect(screen.queryByText("Pago completado")).not.toBeInTheDocument();
+    expect(screen.getByText("Pago completado")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reintentar impresi/ })).toBeEnabled();
   });
 
   it("does not apply an old print result to a newer completed ticket", async () => {
@@ -3303,9 +3510,87 @@ describe("SaleScreen", () => {
     expect(() => updateSaleLineQuantity(lines, lineId, 0)).toThrow("invalid_quantity");
     expect(() => updateSaleLineQuantity(lines, lineId, -2)).toThrow("invalid_quantity");
     expect(() => updateSaleLineQuantity(lines, lineId, 1.5)).toThrow("invalid_quantity");
+    const weighted = addSaleLine([], { ...products[0], id: "weight", productType: "WEIGHT" }, undefined, 0.125);
+    expect(weighted[0].quantity).toBe(0.125);
+    expect(updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 4.992)[0].quantity).toBe(4.992);
+    expect(() => updateSaleLineQuantity(weighted, saleCartLineIdentity(weighted[0]), 1.2345)).toThrow("invalid_quantity");
     expect(saleQuickOperand("5")).toBe(5);
     expect(saleQuickOperand("-1")).toBeNull();
     expect(salePauseQuantity("-1")).toBe(-1);
+  });
+
+  it("allows zero plus Pause to remove an F10 return without making it editable", () => {
+    const returnLine = {
+      ...addSaleLine([], products[0])[0],
+      quantity: -1,
+      returnOrigin: {
+        sourceType: "TICKET" as const,
+        sourceCode: "001-260805-00001",
+        sourceTicketId: "ticket-1",
+        sourceTicketNumber: "001-260805-00001",
+        sourceLineId: "line-1",
+      },
+    };
+
+    expect(salePauseQuantityAllowed(returnLine, 0)).toBe(true);
+    expect(salePauseQuantityAllowed(returnLine, 1)).toBe(false);
+    expect(salePauseQuantityAllowed(returnLine, -1)).toBe(false);
+    expect(saleKeyboardReturnRemovalAllowed(returnLine, "0", false)).toBe(true);
+    expect(saleKeyboardReturnRemovalAllowed(returnLine, "1", false)).toBe(false);
+    expect(saleKeyboardReturnRemovalAllowed(returnLine, "0", true)).toBe(false);
+    expect(removeSaleLine([returnLine], saleCartLineIdentity(returnLine))).toEqual([]);
+  });
+
+  it("keeps a single F10 source and merges additional units into its existing cart row", () => {
+    const baseReturn: SaleLine = {
+      ...addSaleLine([], products[0])[0],
+      quantity: -1,
+      serialNumbers: ["SN-1"],
+      returnOrigin: {
+        sourceType: "TICKET",
+        sourceCode: "T-001",
+        sourceTicketId: "ticket-1",
+        sourceTicketNumber: "T-001",
+        sourceLineId: "line-1",
+      },
+    };
+    const additional: SaleLine = {
+      ...baseReturn,
+      cartLineId: "additional-return",
+      quantity: -2,
+      serialNumbers: ["SN-2"],
+    };
+
+    const merged = mergeSaleReturnLines([baseReturn], [additional]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].quantity).toBe(-3);
+    expect(merged[0].serialNumbers).toEqual(["SN-1", "SN-2"]);
+    expect(saleReturnCartReservations(merged)).toEqual([{
+      sourceTicketId: "ticket-1",
+      sourceCode: "T-001",
+      lineId: "line-1",
+      returnQuantity: 3,
+      selectedSerialNumbers: ["SN-1", "SN-2"],
+    }]);
+    expect(saleReturnSourceConflict(merged, [{
+      sourceType: "TICKET", sourceCode: "T-001", sourceTicketId: "ticket-1",
+      sourceTicketNumber: "T-001", lineId: "line-2", productId: "p-1",
+      code: "P-1", name: "Producto", lineType: "PRODUCT", productType: "UNIT",
+      refundableQuantity: 1, unitPrice: 10, refundableTotal: 10,
+      refundableSerialNumbers: [], discount: 0, taxesIncluded: true,
+      taxRegime: "IVA", taxPercentage: 21, returnQuantity: 1,
+      selectedSerialNumbers: [],
+    }])).toBe(false);
+    expect(saleReturnSourceConflict(merged, [{
+      sourceType: "TICKET", sourceCode: "T-002", sourceTicketId: "ticket-2",
+      sourceTicketNumber: "T-002", lineId: "line-2", productId: "p-1",
+      code: "P-1", name: "Producto", lineType: "PRODUCT", productType: "UNIT",
+      refundableQuantity: 1, unitPrice: 10, refundableTotal: 10,
+      refundableSerialNumbers: [], discount: 0, taxesIncluded: true,
+      taxRegime: "IVA", taxPercentage: 21, returnQuantity: 1,
+      selectedSerialNumbers: [],
+    }])).toBe(true);
   });
 
   it("applies a line discount and recalculates subtotal and total", () => {
@@ -3623,7 +3908,12 @@ describe("SaleScreen", () => {
         const request = JSON.parse(String(options?.body));
         expect(request.sale).toEqual({
           customerId: "member-customer",
-          lines: [{ productId: "member-coffee", quantity: 1, discount: 3 }],
+          lines: [{
+            productId: "member-coffee",
+            cartLineId: expect.any(String),
+            quantity: 1,
+            discount: 3,
+          }],
         });
         return new Response(JSON.stringify({ number: "DIRECT-UI", total: "10.00", change: "10.00", printTicket: snapshot }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -3657,7 +3947,7 @@ describe("SaleScreen", () => {
     expect(printTicket).toHaveBeenNthCalledWith(1, expect.objectContaining({ documentNumber: "DIRECT-UI" }), expect.anything());
     failFirstPrint({ ok: false, code: "PRINT_FAILED", message: "paper jam" });
     expect(await screen.findByRole("alert")).toHaveTextContent("El cobro se ha completado");
-    expect(screen.getByRole("button", { name: "Finalizar" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Finalizar" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar impresión" }));
 
     await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));

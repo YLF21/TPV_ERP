@@ -79,17 +79,23 @@ function shortcutLabel(t: Translator, shortcut: string) {
   return key ? translatedValue(t, key, shortcut) : shortcut;
 }
 
-function effectiveProtectionKey(operation: SalesOperationSecurityOperation) {
+function effectiveProtectionKeys(operation: SalesOperationSecurityOperation) {
   if (operation.requirePermission && operation.requirePassword) {
-    return "gestion.salesOperationSecurity.effective.permissionAndPassword";
+    return [
+      "gestion.salesOperationSecurity.effective.permissionAndPassword",
+      "gestion.salesOperationSecurity.effective.delegated",
+    ];
   }
   if (operation.requirePermission) {
-    return "gestion.salesOperationSecurity.effective.permission";
+    return [
+      "gestion.salesOperationSecurity.effective.permission",
+      "gestion.salesOperationSecurity.effective.delegated",
+    ];
   }
   if (operation.requirePassword) {
-    return "gestion.salesOperationSecurity.effective.password";
+    return ["gestion.salesOperationSecurity.effective.password"];
   }
-  return "gestion.salesOperationSecurity.effective.direct";
+  return ["gestion.salesOperationSecurity.effective.direct"];
 }
 
 function operationChanged(
@@ -458,8 +464,10 @@ export function SalesOperationSecurityScreen({
                           <b>{operation.requirePassword ? t("common.yes") : t("common.no")}</b>
                         </label>
                       </span>
-                      <span className="gestion-operation-security-effective">
-                        {t(effectiveProtectionKey(operation))}
+                      <span className="gestion-operation-security-effective" role="list">
+                        {effectiveProtectionKeys(operation).map((key) => (
+                          <span role="listitem" key={key}>{t(key)}</span>
+                        ))}
                       </span>
                     </article>
                   );

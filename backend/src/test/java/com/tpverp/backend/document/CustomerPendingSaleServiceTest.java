@@ -247,7 +247,7 @@ class CustomerPendingSaleServiceTest {
         stubQuote(request, new BigDecimal("100.00"));
         doThrow(new org.springframework.security.access.AccessDeniedException("forbidden"))
                 .when(documentMutationAuthorization)
-                .authorize(any(), any(), eq(authentication),
+                .authorize(any(), any(), any(), eq(authentication),
                         eq("CUSTOMER_PENDING_CARD_CHARGE"), eq(request.checkoutId()));
 
         assertThatThrownBy(() -> service.chargeCard(
@@ -311,7 +311,7 @@ class CustomerPendingSaleServiceTest {
         stubQuote(request, new BigDecimal("100.00"));
         doThrow(new org.springframework.security.access.AccessDeniedException("forbidden"))
                 .when(documentMutationAuthorization)
-                .authorize(any(), any(), eq(authentication),
+                .authorize(any(), any(), any(), eq(authentication),
                         eq("CUSTOMER_PENDING_DOCUMENT"), eq(request.checkoutId()));
 
         assertThatThrownBy(() -> service.createDocument(request, authentication))

@@ -117,11 +117,12 @@ public class ParkedSaleService {
             throw new IllegalStateException(
                     "pos_sale_authorization_service_unavailable");
         }
+        var authorizationSourceId = UUID.randomUUID();
         var command = posSales.authorizeCommandForMutation(
                 sale,
                 authentication,
                 "PARKED_SALE",
-                null);
+                authorizationSourceId);
         return persist(command, comment, printMode, authentication);
     }
 

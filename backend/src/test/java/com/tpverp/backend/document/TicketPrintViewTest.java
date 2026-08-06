@@ -56,4 +56,47 @@ class TicketPrintViewTest {
         });
         assertThat(view.total()).isEqualByComparingTo("7.00");
     }
+
+    @Test
+    void exchangeReceiptCombinesReturnedAndSoldLinesButPrintsOnlyCollectedMoney() {
+        var companyId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var issuedAt = Instant.parse("2026-08-05T10:15:30Z");
+        var refund = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 5), userId, BigDecimal.ZERO);
+        refund.addLine(new DocumentLine(
+                refund, UUID.randomUUID(), 1, BigDecimal.ONE.negate(), "OLD", "Devuelto",
+                null, new BigDecimal("100.00"), BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21")));
+        refund.confirm("001-260805-000001", userId, issuedAt, false);
+
+        var sale = new CommercialDocument(
+                refund.getTiendaId(), refund.getAlmacenId(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 5), userId, BigDecimal.ZERO);
+        sale.addLine(new DocumentLine(
+                sale, UUID.randomUUID(), 1, BigDecimal.ONE, "NEW", "Comprado",
+                null, new BigDecimal("101.10"), BigDecimal.ZERO, true,
+                "IVA", new BigDecimal("21")));
+        sale.confirm("001-260805-000002", userId, issuedAt, false);
+        var cash = new PaymentMethod(companyId, "EFECTIVO", true);
+        var compensation = new PaymentMethod(
+                companyId, PaymentMethodService.EXCHANGE_COMPENSATION_METHOD, true);
+        sale.addPayment(new DocumentPayment(
+                sale, cash, 1, new BigDecimal("1.10"), true,
+                new BigDecimal("1.10"), BigDecimal.ZERO, issuedAt));
+        sale.addPayment(new DocumentPayment(
+                sale, compensation, 2, new BigDecimal("100.00"), false,
+                null, null, issuedAt));
+
+        var view = TicketPrintView.fromExchange(sale, refund);
+
+        assertThat(view.lines()).extracting(TicketPrintView.Line::name)
+                .containsExactly("Devuelto", "Comprado");
+        assertThat(view.payments()).singleElement().satisfies(payment -> {
+            assertThat(payment.method()).isEqualTo("EFECTIVO");
+            assertThat(payment.amount()).isEqualByComparingTo("1.10");
+        });
+        assertThat(view.total()).isEqualByComparingTo("1.10");
+    }
 }

@@ -317,6 +317,31 @@ public class ControlAlertDetectionService {
     }
 
     @Transactional
+    public void detectRefundPolicyOverride(
+            UUID paymentSessionId,
+            UUID terminalId,
+            BigDecimal amount,
+            String method,
+            UUID authorizerId,
+            String authorizerName,
+            boolean delegated,
+            Authentication authentication) {
+        var storeId = organization.currentStore().getId();
+        var user = organization.currentUser(authentication);
+        var now = clock.instant();
+        var data = new LinkedHashMap<String, Object>();
+        data.put("amount", amount == null ? BigDecimal.ZERO : amount);
+        data.put("method", method);
+        data.put("authorizerId", authorizerId.toString());
+        data.put("authorizerName", authorizerName);
+        data.put("delegated", delegated);
+        for (var rule : activeRules(storeId, ControlAlertType.REFUND_POLICY_OVERRIDE)) {
+            emit(rule, "PAYMENT_SESSION", paymentSessionId, null, null, terminalId,
+                    user.getId(), user.getUserName(), now, data);
+        }
+    }
+
+    @Transactional
     public void detectCashSessionDiscrepancy(
             UUID cashSessionId,
             UUID storeId,

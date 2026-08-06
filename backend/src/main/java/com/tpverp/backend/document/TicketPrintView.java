@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.UUID;
 
 public record TicketPrintView(
@@ -53,11 +54,46 @@ public record TicketPrintView(
                                             case CASH -> "EFECTIVO";
                                             case CARD -> "TARJETA";
                                             case VOUCHER -> "VALE";
+                                            case EXCHANGE -> "COMPENSACION DE CAMBIO";
                                         }, payout.getAmount().negate()))
                                 .toList(),
                 document.getTotal(),
                 document.getBaseTotal(),
                 document.getImpuestoTotal());
+    }
+
+    /**
+     * Prints one customer-facing exchange receipt while keeping the fiscal
+     * rectification and the new sale as two independently traceable documents.
+     */
+    public static TicketPrintView fromExchange(
+            CommercialDocument sale,
+            CommercialDocument refund) {
+        requireConfirmed(sale);
+        requireConfirmed(refund);
+        var lines = Stream.concat(refund.getLineas().stream(), sale.getLineas().stream())
+                .map(line -> new Line(line.getNombre(), line.getCantidad(),
+                        line.getPrecioUnitario(), line.getTotal(), line.getSerialNumbers()))
+                .toList();
+        var payments = sale.getPagos().stream()
+                .filter(payment -> !PaymentMethodService.EXCHANGE_COMPENSATION_METHOD
+                        .equals(payment.getMetodoPago().getNombre()))
+                .map(payment -> new Payment(
+                        payment.getMetodoPago().getNombre(), payment.getImporte()))
+                .toList();
+        return new TicketPrintView(
+                sale.getId(), sale.getNumero(), sale.getConfirmadoEn(), lines, payments,
+                Money.euros(sale.getTotal().add(refund.getTotal())),
+                Money.euros(sale.getBaseTotal().add(refund.getBaseTotal())),
+                Money.euros(sale.getImpuestoTotal().add(refund.getImpuestoTotal())));
+    }
+
+    private static void requireConfirmed(CommercialDocument document) {
+        if (document.getEstado() != DocumentStatus.CONFIRMADO
+                || document.getConfirmadoEn() == null) {
+            throw new IllegalArgumentException(
+                    "message.document.print_ticket_requires_confirmed_document");
+        }
     }
 
     public record Line(

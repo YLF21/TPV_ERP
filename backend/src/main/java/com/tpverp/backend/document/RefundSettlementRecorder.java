@@ -109,4 +109,44 @@ public class RefundSettlementRecorder {
             UUID terminalOperationId,
             String reference) {
     }
+
+    @Transactional
+    public CommercialDocument recordExistingNegativeTicket(
+            CommercialDocument refund,
+            List<TenderCommand> payouts,
+            Authentication authentication) {
+        if (refund == null || refund.getTotal().signum() >= 0) {
+            throw new IllegalArgumentException("refund_document_must_be_negative");
+        }
+        var expected = refund.getTotal().abs();
+        var actual = payouts.stream().map(TenderCommand::amount)
+                .map(Money::euros).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (Money.euros(actual).compareTo(expected) != 0) {
+            throw new IllegalArgumentException("refund_settlement_total_mismatch");
+        }
+        if (!tenders.findByRefundDocumentIdOrderByCreatedAtAsc(refund.getId()).isEmpty()) {
+            return refund;
+        }
+        for (var payout : payouts) {
+            tenders.save(new RefundTender(
+                    refund,
+                    payout.type(),
+                    payout.amount(),
+                    payout.originalPaymentId(),
+                    payout.terminalOperationId(),
+                    payout.reference(),
+                    Instant.now(clock)));
+        }
+        var cashAmount = payouts.stream()
+                .filter(value -> value.type() == RefundTenderType.CASH)
+                .map(TenderCommand::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        cash.recordRefund(currentTerminal.terminalId(authentication), refund, cashAmount);
+        payouts.stream()
+                .filter(value -> value.type() == RefundTenderType.CARD
+                        && value.terminalOperationId() != null)
+                .forEach(value -> terminalOperations.linkDocument(
+                        value.terminalOperationId(), refund.getId(), null));
+        return refund;
+    }
 }

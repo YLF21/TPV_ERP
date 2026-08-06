@@ -4,6 +4,8 @@ import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.Product;
+import com.tpverp.backend.catalog.ProductQuantityPolicy;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.catalog.StoreTaxRepository;
 import com.tpverp.backend.catalog.WarehouseRepository;
 import com.tpverp.backend.organization.CurrentOrganization;
@@ -58,6 +60,8 @@ public class PosCashService {
     private final SaleOperationSecurityService operationSecurity;
     private final AuditService audit;
     private GiftReceiptService giftReceipts;
+    private TemporaryPriceAuthorizationService temporaryPriceAuthorizations;
+    private ReturnAwareSaleQuoteService returnAwareQuotes;
 
     @org.springframework.beans.factory.annotation.Autowired
     public PosCashService(
@@ -92,6 +96,17 @@ public class PosCashService {
     @org.springframework.beans.factory.annotation.Autowired
     void setGiftReceiptService(GiftReceiptService giftReceipts) {
         this.giftReceipts = giftReceipts;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemporaryPriceAuthorizationService(
+            TemporaryPriceAuthorizationService temporaryPriceAuthorizations) {
+        this.temporaryPriceAuthorizations = temporaryPriceAuthorizations;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setReturnAwareSaleQuoteService(ReturnAwareSaleQuoteService returnAwareQuotes) {
+        this.returnAwareQuotes = returnAwareQuotes;
     }
 
     PosCashService(
@@ -143,13 +158,8 @@ public class PosCashService {
 
     @Transactional(readOnly = true)
     public Quote quote(PosCashController.SaleRequest request, Authentication authentication) {
-        var command = authoritativeCommand(request, authentication);
-        var ticket = hasCheckoutDiscount(request)
-                ? documents.quoteTicket(command, request.promotionalCouponCode(),
-                        request.checkoutDiscountAmount(), authentication)
-                : hasText(request.promotionalCouponCode())
-                        ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
-                        : documents.quoteTicket(command, authentication);
+        var prepared = prepareSale(request, authentication);
+        var ticket = quotePreparedSale(prepared, request, authentication);
         authorizeCheckoutDiscount(request, ticket.getTotal(), authentication);
         var catalog = products.findAllByStoreIdAndIdIn(
                         ticket.getTiendaId(),
@@ -160,6 +170,28 @@ public class PosCashService {
                 : promotionPricing.customerContext(
                 organization.currentCompany().getId(), request.customerId());
         return Quote.from(ticket, request, catalog, customer);
+    }
+
+    CommercialDocument quotePreparedSale(
+            PreparedSale prepared,
+            PosCashController.SaleRequest request,
+            Authentication authentication) {
+        var command = prepared.command();
+        var ticket = hasCheckoutDiscount(request)
+                ? documents.quoteTicket(command, request.promotionalCouponCode(),
+                        request.checkoutDiscountAmount(), authentication)
+                : hasText(request.promotionalCouponCode())
+                        ? documents.quoteTicket(command, request.promotionalCouponCode(), authentication)
+                        : documents.quoteTicket(command, authentication);
+        var hasTicketReturn = command.lineas().stream().anyMatch(line ->
+                line.originalDocumentLineId() != null && line.cantidad().signum() < 0);
+        if (!hasTicketReturn) {
+            return ticket;
+        }
+        if (returnAwareQuotes == null) {
+            throw new IllegalStateException("return_quote_service_unavailable");
+        }
+        return returnAwareQuotes.apply(ticket, command.lineas());
     }
 
     @Transactional
@@ -223,6 +255,7 @@ public class PosCashService {
                         ? documents.createTicket(command, payment,
                                 request.sale().promotionalCouponCode(), authentication)
                         : documents.createTicket(command, payment, authentication);
+        completeTemporaryPriceAuthorizations("POS_CASH", request.checkoutId());
         var printTicket = TicketPrintView.from(ticket);
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
@@ -257,6 +290,7 @@ public class PosCashService {
                     maximumDiscount, request.discountAuthorizationToken(), authentication);
         }
         var sensitiveOperations = EnumSet.noneOf(SaleOperationCode.class);
+        var temporaryPriceClaims = new ArrayList<TemporaryPriceAuthorizationService.ClaimRequest>();
         var returnOrigins = new HashSet<UUID>();
         var lines = request.lines().stream().map(line -> {
             if (line.returnOrigin() != null) {
@@ -291,6 +325,11 @@ public class PosCashService {
                 sensitiveOperations.add(temporaryPriceOverride
                         ? SaleOperationCode.TEMPORARY_PRICE_CHANGE
                         : SaleOperationCode.OPEN_PRICE_PRODUCT);
+                if (temporaryPriceOverride) {
+                    temporaryPriceClaims.add(new TemporaryPriceAuthorizationService.ClaimRequest(
+                            line.cartLineId(), product.getId(), unitPrice,
+                            line.temporaryPriceAuthorizationToken()));
+                }
             }
             return new DocumentLineCommand(
                     product.getId(), line.quantity(), product.getCode(), temporaryName, null,
@@ -306,7 +345,7 @@ public class PosCashService {
                 warehouse.getId(), CommercialDocumentType.TICKET,
                 LocalDate.now(ZoneId.of(store.getTimezone())), request.customerId(), null, null,
                 BigDecimal.ZERO.setScale(2), true, lines, request.internalComment());
-        return new PreparedSale(command, sensitiveOperations);
+        return new PreparedSale(command, sensitiveOperations, temporaryPriceClaims);
     }
 
     private DocumentLineCommand authoritativeReturnLine(
@@ -318,6 +357,7 @@ public class PosCashService {
         var origin = request.returnOrigin();
         CommercialDocument ticket;
         BigDecimal available;
+        ProductType productType;
         List<String> availableSerials;
         UUID giftReceiptLineId = null;
         if (origin.sourceType() == TicketReturnService.ReturnSourceType.GIFT_RECEIPT) {
@@ -330,6 +370,7 @@ public class PosCashService {
                     .orElseThrow(() -> new IllegalArgumentException(
                             "La linea ya no esta disponible en el ticket regalo"));
             available = option.refundableQuantity();
+            productType = option.productType();
             availableSerials = option.serialNumbers();
             giftReceiptLineId = option.giftReceiptLineId();
         } else {
@@ -341,13 +382,16 @@ public class PosCashService {
                     .orElseThrow(() -> new IllegalArgumentException(
                             "La linea ya no esta disponible para devolucion"));
             available = option.refundableQuantity();
+            productType = option.productType();
             availableSerials = option.refundableSerialNumbers();
         }
         if (!ticket.getTiendaId().equals(storeId)
                 || !ticket.getId().equals(origin.sourceTicketId())) {
             throw new IllegalArgumentException("El origen de devolucion no pertenece al ticket indicado");
         }
-        var quantity = request.quantity().abs().setScale(3, Money.ROUNDING);
+        var requestedQuantity = request.quantity().abs();
+        ProductQuantityPolicy.requireValid(productType, requestedQuantity);
+        var quantity = requestedQuantity.setScale(3, Money.ROUNDING);
         if (quantity.signum() <= 0 || quantity.compareTo(available) > 0) {
             throw new IllegalArgumentException(
                     "La cantidad supera el saldo pendiente de devolucion");
@@ -413,10 +457,18 @@ public class PosCashService {
 
     record PreparedSale(
             DocumentCommand command,
-            Set<SaleOperationCode> sensitiveOperations) {
+            Set<SaleOperationCode> sensitiveOperations,
+            List<TemporaryPriceAuthorizationService.ClaimRequest> temporaryPriceClaims) {
+
+        PreparedSale(
+                DocumentCommand command,
+                Set<SaleOperationCode> sensitiveOperations) {
+            this(command, sensitiveOperations, List.of());
+        }
 
         PreparedSale {
             sensitiveOperations = Set.copyOf(sensitiveOperations);
+            temporaryPriceClaims = List.copyOf(temporaryPriceClaims);
         }
     }
 
@@ -427,18 +479,7 @@ public class PosCashService {
             String sourceType,
             UUID sourceId) {
         var prepared = prepareSale(request, authentication);
-        var quoted = hasCheckoutDiscount(request)
-                ? documents.quoteTicket(
-                        prepared.command(),
-                        request.promotionalCouponCode(),
-                        request.checkoutDiscountAmount(),
-                        authentication)
-                : hasText(request.promotionalCouponCode())
-                        ? documents.quoteTicket(
-                                prepared.command(),
-                                request.promotionalCouponCode(),
-                                authentication)
-                        : documents.quoteTicket(prepared.command(), authentication);
+        var quoted = quotePreparedSale(prepared, request, authentication);
         authorizeSensitiveOperations(
                 prepared,
                 request,
@@ -446,6 +487,7 @@ public class PosCashService {
                 authentication,
                 sourceType,
                 sourceId);
+        completeTemporaryPriceAuthorizations(sourceType, sourceId);
         return prepared.command();
     }
 
@@ -470,13 +512,36 @@ public class PosCashService {
                     SaleOperationCode.APPLY_CHECKOUT_DISCOUNT,
                     checkoutDiscountPercent(request, discountedTotal));
         }
+        var remainingOperations = EnumSet.noneOf(SaleOperationCode.class);
+        remainingOperations.addAll(prepared.sensitiveOperations());
+        if (remainingOperations.remove(SaleOperationCode.TEMPORARY_PRICE_CHANGE)) {
+            if (temporaryPriceAuthorizations != null
+                    && !prepared.temporaryPriceClaims().isEmpty()) {
+                temporaryPriceAuthorizations.claimAll(
+                        prepared.temporaryPriceClaims(), authentication, sourceType, sourceId);
+            } else {
+                remainingOperations.add(SaleOperationCode.TEMPORARY_PRICE_CHANGE);
+            }
+        }
         authorizeOperations(
-                prepared.sensitiveOperations(),
+                remainingOperations,
                 request.operationAuthorizations(),
                 discountPercentages,
                 authentication,
                 sourceType,
                 sourceId);
+    }
+
+    void completeTemporaryPriceAuthorizations(String sourceType, UUID sourceId) {
+        if (temporaryPriceAuthorizations != null && sourceId != null) {
+            temporaryPriceAuthorizations.consume(sourceType, sourceId);
+        }
+    }
+
+    void releaseTemporaryPriceAuthorizations(String sourceType, UUID sourceId) {
+        if (temporaryPriceAuthorizations != null && sourceId != null) {
+            temporaryPriceAuthorizations.release(sourceType, sourceId);
+        }
     }
 
     void authorizeLegacyTicketMutation(
@@ -896,6 +961,7 @@ public class PosCashService {
     public record AuthoritativeLineBreakdown(
             String lineId,
             int position,
+            DocumentLineType lineType,
             UUID productId,
             String code,
             String name,
@@ -948,17 +1014,57 @@ public class PosCashService {
 
         ticket.getLineas().stream()
                 .filter(line -> line.getLineType() != DocumentLineType.PRODUCT)
+                .filter(line -> line.getLineType() != DocumentLineType.RETURN_ADJUSTMENT)
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
                 .forEach(adjustment -> allocateAdjustment(builders, adjustment));
 
-        var result = builders.stream().map(MutableAuthoritativeLine::view).toList();
+        var result = new ArrayList<>(builders.stream()
+                .map(MutableAuthoritativeLine::view)
+                .toList());
+        ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.RETURN_ADJUSTMENT)
+                .map(PosCashService::returnAdjustmentBreakdown)
+                .forEach(result::add);
+        result.sort(Comparator.comparingInt(AuthoritativeLineBreakdown::position));
         var reconciled = Money.euros(result.stream()
                 .map(AuthoritativeLineBreakdown::finalSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         if (reconciled.compareTo(ticket.getTotal()) != 0) {
             throw new IllegalStateException("authoritative_quote_line_total_mismatch");
         }
-        return result;
+        return List.copyOf(result);
+    }
+
+    private static AuthoritativeLineBreakdown returnAdjustmentBreakdown(
+            DocumentLine line) {
+        var zero = Money.euros(BigDecimal.ZERO);
+        return new AuthoritativeLineBreakdown(
+                "return-adjustment:" + line.getPosicion(),
+                line.getPosicion(),
+                DocumentLineType.RETURN_ADJUSTMENT,
+                null,
+                line.getCodigo(),
+                line.getNombre(),
+                line.getCantidad(),
+                zero,
+                null,
+                line.getPrecioUnitario(),
+                null,
+                zero,
+                zero,
+                zero,
+                zero,
+                zero,
+                zero,
+                zero,
+                line.isImpuestosIncluidos(),
+                line.getRegimenImpuesto(),
+                line.getPorcentajeImpuesto(),
+                line.getBase(),
+                line.getImpuesto(),
+                line.getTotal(),
+                zero,
+                line.getTotal());
     }
 
     private static void allocateAdjustment(
@@ -1100,7 +1206,7 @@ public class PosCashService {
                     .subtract(couponDiscount));
             var rounding = Money.euros(finalTotal.subtract(expected));
             return new AuthoritativeLineBreakdown(
-                    lineId, line.getPosicion(), line.getProductoId(), line.getCodigo(),
+                    lineId, line.getPosicion(), line.getLineType(), line.getProductoId(), line.getCodigo(),
                     line.getNombre(), line.getCantidad(), normalUnitPrice, memberUnitPrice,
                     line.getPrecioUnitario(), line.getTarifa(), memberPriceSaving,
                     memberDiscountPercent, memberDiscount, manualDiscountPercent,

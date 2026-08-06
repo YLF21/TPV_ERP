@@ -2,6 +2,8 @@ package com.tpverp.backend.document;
 
 import com.tpverp.backend.audit.AuditResult;
 import com.tpverp.backend.audit.AuditService;
+import com.tpverp.backend.catalog.ProductQuantityPolicy;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.terminal.CurrentTerminal;
 import java.math.BigDecimal;
@@ -178,6 +180,8 @@ public class GiftReceiptService {
                     source.lineId(),
                     source.productId(),
                     source.code(),
+                    source.barcode(),
+                    source.barcode2(),
                     source.name(),
                     available,
                     source.unitPrice(),
@@ -186,7 +190,8 @@ public class GiftReceiptService {
                     source.discount(),
                     source.taxesIncluded(),
                     source.taxRegime(),
-                    source.taxPercentage()));
+                    source.taxPercentage(),
+                    source.productType()));
         }
         return new GiftReturnContext(receipt, ticket, List.copyOf(options));
     }
@@ -199,7 +204,8 @@ public class GiftReceiptService {
                         option.code(),
                         option.name(),
                         option.refundableQuantity(),
-                        option.refundableSerialNumbers()))
+                        option.refundableSerialNumbers(),
+                        option.productType()))
                 .toList();
         return new Preview(
                 ticket.getId(), ticket.getNumero(), ticket.getConfirmadoEn(), options);
@@ -228,8 +234,10 @@ public class GiftReceiptService {
             if (option == null) {
                 throw new IllegalArgumentException("gift_receipt_line_not_available");
             }
-            var quantity = Objects.requireNonNull(requestedLine.quantity(), "quantity")
-                    .setScale(3, Money.ROUNDING);
+            var requestedQuantity = Objects.requireNonNull(
+                    requestedLine.quantity(), "quantity");
+            ProductQuantityPolicy.requireValid(option.productType(), requestedQuantity);
+            var quantity = requestedQuantity.setScale(3, Money.ROUNDING);
             if (quantity.signum() <= 0 || quantity.compareTo(option.refundableQuantity()) > 0) {
                 throw new IllegalArgumentException("gift_receipt_quantity_not_available");
             }
@@ -340,7 +348,8 @@ public class GiftReceiptService {
             String code,
             String name,
             BigDecimal availableQuantity,
-            List<String> serialNumbers) {
+            List<String> serialNumbers,
+            ProductType productType) {
     }
 
     public record View(
@@ -372,6 +381,8 @@ public class GiftReceiptService {
             UUID sourceLineId,
             UUID productId,
             String code,
+            String barcode,
+            String barcode2,
             String name,
             BigDecimal refundableQuantity,
             BigDecimal unitPrice,
@@ -380,6 +391,7 @@ public class GiftReceiptService {
             BigDecimal discount,
             boolean taxesIncluded,
             String taxRegime,
-            BigDecimal taxPercentage) {
+            BigDecimal taxPercentage,
+            ProductType productType) {
     }
 }

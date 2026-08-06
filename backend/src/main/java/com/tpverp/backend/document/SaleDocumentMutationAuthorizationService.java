@@ -14,6 +14,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -39,6 +40,7 @@ public class SaleDocumentMutationAuthorizationService {
     private final SaleOperationSecurityService operationSecurity;
     private final DiscountAuthorizationService discountAuthorizations;
     private final AuditService audit;
+    private TemporaryPriceAuthorizationService temporaryPriceAuthorizations;
 
     public SaleDocumentMutationAuthorizationService(
             ProductRepository products,
@@ -55,8 +57,25 @@ public class SaleDocumentMutationAuthorizationService {
         this.audit = audit;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemporaryPriceAuthorizationService(
+            TemporaryPriceAuthorizationService temporaryPriceAuthorizations) {
+        this.temporaryPriceAuthorizations = temporaryPriceAuthorizations;
+    }
+
     public AuthorizationProof authorize(
             DocumentCommand command,
+            Map<SaleOperationCode, OperationAuthorizationRequest> requestedAuthorizations,
+            Authentication authentication,
+            String sourceType,
+            UUID sourceId) {
+        return authorize(command, List.of(), requestedAuthorizations,
+                authentication, sourceType, sourceId);
+    }
+
+    public AuthorizationProof authorize(
+            DocumentCommand command,
+            List<DocumentRequest.LineRequest> requestedLines,
             Map<SaleOperationCode, OperationAuthorizationRequest> requestedAuthorizations,
             Authentication authentication,
             String sourceType,
@@ -130,13 +149,42 @@ public class SaleDocumentMutationAuthorizationService {
                     SaleOperationCode.APPLY_SALE_DISCOUNT, maximumDiscount);
         }
 
-        return authorizeOperations(
+        Long temporaryPricePolicyVersion = null;
+        if (operations.contains(SaleOperationCode.TEMPORARY_PRICE_CHANGE)
+                && temporaryPriceAuthorizations != null
+                && requestedLines != null
+                && !requestedLines.isEmpty()) {
+            if (requestedLines.size() != command.lineas().size()) {
+                throw new IllegalArgumentException(
+                        "temporary_price_authorization_lines_mismatch");
+            }
+            var claims = requestedLines.stream()
+                    .filter(DocumentRequest.LineRequest::temporaryPriceOverride)
+                    .map(line -> new TemporaryPriceAuthorizationService.ClaimRequest(
+                            line.cartLineId(), line.productoId(), line.precioUnitario(),
+                            line.temporaryPriceAuthorizationToken()))
+                    .toList();
+            temporaryPriceAuthorizations.claimAll(
+                    claims, authentication, sourceType, sourceId);
+            temporaryPricePolicyVersion = operationSecurity
+                    .resolve(SaleOperationCode.TEMPORARY_PRICE_CHANGE).version();
+            operations.remove(SaleOperationCode.TEMPORARY_PRICE_CHANGE);
+        }
+
+        var proof = authorizeOperations(
                 operations,
                 discountPercentages,
                 requestedAuthorizations,
                 authentication,
                 sourceType,
                 sourceId);
+        if (temporaryPricePolicyVersion == null) return proof;
+        temporaryPriceAuthorizations.consume(sourceType, sourceId);
+        var versions = new EnumMap<SaleOperationCode, Long>(SaleOperationCode.class);
+        versions.putAll(proof.policyVersions());
+        versions.put(SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                temporaryPricePolicyVersion);
+        return new AuthorizationProof(versions);
     }
 
     public AuthorizationProof reauthorize(

@@ -134,6 +134,12 @@ describe("SalesReportScreen", () => {
   });
 
   it("enables the conversion button after selecting a confirmed ticket in the report", async () => {
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
     const request = vi.fn().mockImplementation((path: string) => {
       if (path === "/sales/operation-security") {
         return Promise.resolve({
@@ -169,7 +175,7 @@ describe("SalesReportScreen", () => {
           estado: "CONFIRMADO",
           numero: "T-001",
           numTicket: "T-001",
-          fecha: "2026-08-05",
+          fecha: today,
           total: "12.10"
         }]);
       }

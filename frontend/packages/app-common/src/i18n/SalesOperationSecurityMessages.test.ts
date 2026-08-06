@@ -42,6 +42,14 @@ const shortcuts = [
   "PAGE_UP",
 ] as const;
 
+const effectiveProtectionKeys = [
+  "direct",
+  "password",
+  "permission",
+  "permissionAndPassword",
+  "delegated",
+] as const;
+
 describe("sales operation security translations", () => {
   it.each(["es", "en", "zh"] as const)(
     "translates every backend category and operation in %s",
@@ -56,11 +64,20 @@ describe("sales operation security translations", () => {
         ...shortcuts.map((shortcut) => (
           `gestion.salesOperationSecurity.shortcut.${shortcut}`
         )),
+        ...effectiveProtectionKeys.map((protection) => (
+          `gestion.salesOperationSecurity.effective.${protection}`
+        )),
       ];
 
       keys.forEach((key) => {
         expect(messages[locale][key]).toBeTruthy();
         expect(messages[locale][key]).not.toBe(key);
+      });
+
+      effectiveProtectionKeys.forEach((protection) => {
+        expect(messages[locale][
+          `gestion.salesOperationSecurity.effective.${protection}`
+        ]).not.toContain(";");
       });
     },
   );

@@ -31,6 +31,7 @@ const copy = {
   es: {
     title: "Autorización de la venta",
     description: "Confirma las operaciones protegidas antes de continuar.",
+    protectedOperation: "Operación protegida",
     cancel: "Cancelar",
     confirm: "Confirmar y continuar",
     close: "Cerrar",
@@ -38,6 +39,7 @@ const copy = {
   en: {
     title: "Sale authorization",
     description: "Confirm the protected operations before continuing.",
+    protectedOperation: "Protected operation",
     cancel: "Cancel",
     confirm: "Confirm and continue",
     close: "Close",
@@ -45,6 +47,7 @@ const copy = {
   zh: {
     title: "销售授权",
     description: "请先确认受保护的操作，然后继续。",
+    protectedOperation: "受保护操作",
     cancel: "取消",
     confirm: "确认并继续",
     close: "关闭",
@@ -71,6 +74,7 @@ export function SaleMutationAuthorizationDialog({
   onConfirm,
 }: Props) {
   const dialogRef = useRef<HTMLElement>(null);
+  const submittingRef = useRef(false);
   const requirementKey = requirements
     .map((requirement) => `${requirement.code}:${requirement.authorization.mode}`)
     .join("|");
@@ -81,12 +85,28 @@ export function SaleMutationAuthorizationDialog({
 
   useEffect(() => {
     if (!open) return;
+    submittingRef.current = false;
     setDrafts(emptyDrafts(requirements));
-    return activateModalFocusTrap(
+    const deactivateFocusTrap = activateModalFocusTrap(
       dialogRef.current as unknown as ModalFocusRoot,
       document,
     );
+    // The close button is the first focusable element in the modal. Move the
+    // initial focus to the first credential actually required by the policy:
+    // password for the current user, or username for delegated authorization.
+    queueMicrotask(() => {
+      dialogRef.current
+        ?.querySelector<HTMLInputElement>(
+          ".sale-operation-authorization-fields input:not([disabled])",
+        )
+        ?.focus();
+    });
+    return deactivateFocusTrap;
   }, [open, requirementKey]);
+
+  useEffect(() => {
+    if (!busy) submittingRef.current = false;
+  }, [busy]);
 
   const complete = useMemo(
     () => requirements.every((requirement) => {
@@ -108,7 +128,7 @@ export function SaleMutationAuthorizationDialog({
   }
 
   return (
-    <div className="sale-action-overlay" role="presentation">
+    <div className="sale-action-overlay sale-mutation-authorization-overlay" role="presentation">
       <section
         ref={dialogRef}
         className="sale-action-dialog sale-mutation-authorization-dialog"
@@ -136,7 +156,8 @@ export function SaleMutationAuthorizationDialog({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (busy || !complete) return;
+            if (busy || !complete || submittingRef.current) return;
+            submittingRef.current = true;
             const authorizations = Object.fromEntries(requirements.map((requirement) => {
               const draft = drafts[requirement.code] ?? {
                 username: "",
@@ -163,8 +184,16 @@ export function SaleMutationAuthorizationDialog({
                 password: "",
               };
               return (
-                <fieldset key={requirement.code}>
-                  <legend>{requirement.label}</legend>
+                <section
+                  key={requirement.code}
+                  className="sale-mutation-authorization-requirement"
+                  role="group"
+                  aria-label={requirement.label}
+                >
+                  <div className="sale-mutation-authorization-operation">
+                    <small>{t.protectedOperation}</small>
+                    <strong>{requirement.label}</strong>
+                  </div>
                   <SaleOperationAuthorizationFields
                     locale={locale}
                     currentUsername={currentUsername}
@@ -182,7 +211,7 @@ export function SaleMutationAuthorizationDialog({
                       [requirement.code]: { ...draft, password },
                     }))}
                   />
-                </fieldset>
+                </section>
               );
             })}
           </div>

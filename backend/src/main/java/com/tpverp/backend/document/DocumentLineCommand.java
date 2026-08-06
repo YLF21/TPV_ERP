@@ -162,6 +162,7 @@ public record DocumentLineCommand(
     }
 
     static DocumentLineCommand from(DocumentLine line) {
+        var hasReturnOrigin = line.getOriginalDocumentLineId() != null;
         return new DocumentLineCommand(
                 line.getProductoId(), line.getCantidad(), line.getCodigo(),
                 line.getNombre(), line.getTarifa(), line.getPrecioUnitario(),
@@ -169,13 +170,13 @@ public record DocumentLineCommand(
                 line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                 line.getLineType(), line.getPromotionId(), line.getPromotionVersionId(),
                 line.getPromotionalCouponId(), line.getSerialNumbers(), false, false,
-                line.getOriginalDocumentLineId() == null
+                !hasReturnOrigin
                         ? null
                         : line.getGiftReceiptLineId() == null
                                 ? TicketReturnService.ReturnSourceType.TICKET
                                 : TicketReturnService.ReturnSourceType.GIFT_RECEIPT,
                 null,
-                line.getDocumento().getId(),
+                hasReturnOrigin ? line.getDocumento().getId() : null,
                 line.getOriginalDocumentLineId(), line.getGiftReceiptLineId());
     }
 

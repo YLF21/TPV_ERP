@@ -8,6 +8,7 @@ public record SaleProductView(
         UUID id,
         UUID imageId,
         boolean active,
+        ProductType productType,
         String code,
         String barcode,
         String barcode2,

@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { RefObject } from "react";
 import type { LocaleCode } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import { activateModalFocusTrap, modalFocusTarget, type ModalFocusRoot } from "./modalFocusTrap";
+import type { IssuedVoucherPrintSnapshot } from "../sale/voucherPrinting";
 
 export type TicketPrintUiStatus = "PRINTING" | "PRINTED" | "FAILED" | "SKIPPED";
 
@@ -16,27 +15,78 @@ type CashPaymentResultDialogProps = {
   authorization?: string;
   reference?: string;
   printStatus?: TicketPrintUiStatus;
+  issuedVoucher?: IssuedVoucherPrintSnapshot;
+  voucherPrintStatus?: TicketPrintUiStatus;
   onRetryPrint?: () => void;
+  onRetryVoucherPrint?: () => void;
   onFinish: () => void;
 };
 
-type CashPaymentResultContentProps = CashPaymentResultDialogProps & {
-  dialogRef?: RefObject<HTMLElement | null>;
-};
-
-export const focusTrapTarget = modalFocusTarget;
-
-export function CashPaymentResultDialog(props: CashPaymentResultDialogProps) {
-  const dialogRef = useRef<HTMLElement>(null);
-
-  useEffect(() => dialogRef.current
-    ? activateCashResultFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
-    : undefined, []);
-
-  return <CashPaymentResultContent {...props} dialogRef={dialogRef} />;
+export function combinedResultPrintStatus(
+  ticketStatus: TicketPrintUiStatus | undefined,
+  voucherStatus: TicketPrintUiStatus | undefined,
+): TicketPrintUiStatus {
+  const statuses = [ticketStatus ?? "SKIPPED", voucherStatus].filter(Boolean);
+  if (statuses.includes("FAILED")) return "FAILED";
+  if (statuses.includes("PRINTING")) return "PRINTING";
+  if (statuses.includes("PRINTED")) return "PRINTED";
+  return "SKIPPED";
 }
 
-export const activateCashResultFocusTrap = activateModalFocusTrap;
+export function CashPaymentResultDialog(props: CashPaymentResultDialogProps) {
+  const onFinishRef = useRef(props.onFinish);
+  const dismissedRef = useRef(false);
+  const interactedWhilePrintingRef = useRef(false);
+  const resultPrintStatus = combinedResultPrintStatus(
+    props.printStatus,
+    props.issuedVoucher ? props.voucherPrintStatus : undefined,
+  );
+
+  useEffect(() => {
+    onFinishRef.current = props.onFinish;
+  }, [props.onFinish]);
+
+  useEffect(() => {
+    dismissedRef.current = false;
+    interactedWhilePrintingRef.current = false;
+  }, [props.ticketNumber]);
+
+  useEffect(() => {
+    function finishOnce() {
+      if (dismissedRef.current) return;
+      dismissedRef.current = true;
+      onFinishRef.current();
+    }
+
+    function handleInteraction(event: Event) {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".cash-payment-print-retry")) return;
+
+      if (resultPrintStatus === "FAILED") return;
+      if (resultPrintStatus === "PRINTING") {
+        interactedWhilePrintingRef.current = true;
+        return;
+      }
+      finishOnce();
+    }
+
+    window.addEventListener("keydown", handleInteraction, true);
+    window.addEventListener("pointerdown", handleInteraction, true);
+    return () => {
+      window.removeEventListener("keydown", handleInteraction, true);
+      window.removeEventListener("pointerdown", handleInteraction, true);
+    };
+  }, [resultPrintStatus, props.ticketNumber]);
+
+  useEffect(() => {
+    if (resultPrintStatus !== "PRINTED" || !interactedWhilePrintingRef.current
+      || dismissedRef.current) return;
+    dismissedRef.current = true;
+    onFinishRef.current();
+  }, [resultPrintStatus]);
+
+  return <CashPaymentResultContent {...props} />;
+}
 
 export function CashPaymentResultContent({
   locale = "es",
@@ -48,18 +98,18 @@ export function CashPaymentResultContent({
   authorization,
   reference,
   printStatus = "SKIPPED",
+  issuedVoucher,
+  voucherPrintStatus = "SKIPPED",
   onRetryPrint,
-  onFinish,
-  dialogRef,
-}: CashPaymentResultContentProps) {
+  onRetryVoucherPrint,
+}: CashPaymentResultDialogProps) {
   const t = createTranslator(locale);
   return (
-    <div className="sale-action-overlay" role="presentation">
+    <div className="cash-payment-result-layer" role="presentation">
       <section
-        ref={dialogRef}
         className="cash-payment-dialog cash-payment-result-dialog"
-        role="dialog"
-        aria-modal="true"
+        role="region"
+        aria-live="polite"
         aria-labelledby="cash-payment-result-title"
       >
         <header className="cash-payment-result-header">
@@ -81,9 +131,21 @@ export function CashPaymentResultContent({
             <button type="button" className="cash-payment-print-retry" onClick={onRetryPrint}>{t("payment.result.retryPrint")}</button>
           </div>
         )}
-        <footer className="cash-payment-actions">
-          <button type="button" autoFocus onClick={onFinish}>Finalizar</button>
-        </footer>
+        {issuedVoucher && (
+          <div className="cash-payment-voucher-result">
+            <p>{t("payment.result.voucherIssued")} <strong>{issuedVoucher.code}</strong></p>
+            <p>{t("payment.result.voucherAmount")} <strong>{money(Math.round(Number(issuedVoucher.amount) * 100))}</strong></p>
+            {voucherPrintStatus === "PRINTING" && <p role="status">{t("payment.result.voucherPrinting")}</p>}
+            {voucherPrintStatus === "PRINTED" && <p role="status">{t("payment.result.voucherPrinted")}</p>}
+            {voucherPrintStatus === "FAILED" && (
+              <div className="cash-payment-print-status cash-payment-print-error" role="alert">
+                <span>{t("payment.result.voucherPrintFailed")}</span>
+                <button type="button" className="cash-payment-print-retry"
+                  onClick={onRetryVoucherPrint}>{t("payment.result.retryVoucherPrint")}</button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

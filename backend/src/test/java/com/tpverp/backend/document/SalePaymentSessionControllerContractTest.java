@@ -28,12 +28,17 @@ import com.tpverp.backend.shared.api.ApiExceptionHandler;
 class SalePaymentSessionControllerContractTest {
  @Test void finalizeResponseCarriesTheConfirmedTicketSnapshot() {
   var viewComponents=SalePaymentSessionController.View.class.getRecordComponents();
-  assertThat(Arrays.stream(viewComponents).map(RecordComponent::getName)).contains("printTicket");
-  assertThat(viewComponents[viewComponents.length-1].getType()).isEqualTo(TicketPrintView.class);
-  var service=mock(SalePaymentSessionService.class);var controller=new SalePaymentSessionController(service);var auth=mock(Authentication.class);var id=UUID.randomUUID();var session=SalePaymentSession.reserve(id,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);var snapshot=new TicketPrintView(UUID.randomUUID(),"T-1",Instant.parse("2026-07-15T10:15:30Z"),List.of(),List.of(),BigDecimal.TEN);
-  when(service.finalizeSession(id,auth)).thenReturn(new SalePaymentSessionService.Finalization(session,snapshot));when(service.get(id,auth)).thenReturn(session);
+  assertThat(Arrays.stream(viewComponents).map(RecordComponent::getName))
+    .contains("printTicket","issuedVoucher");
+  assertThat(Arrays.stream(viewComponents)
+    .filter(component->component.getName().equals("printTicket"))
+    .findFirst().orElseThrow().getType()).isEqualTo(TicketPrintView.class);
+  var service=mock(SalePaymentSessionService.class);var controller=new SalePaymentSessionController(service);var auth=mock(Authentication.class);var id=UUID.randomUUID();var session=SalePaymentSession.reserve(id,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);var snapshot=new TicketPrintView(UUID.randomUUID(),"T-1",Instant.parse("2026-07-15T10:15:30Z"),List.of(),List.of(),BigDecimal.TEN);var issuedVoucher=new SalePaymentSessionService.IssuedVoucher("V123",BigDecimal.TEN,Instant.parse("2026-07-15T10:15:31Z"),"T-1");
+  when(service.finalizeSession(id,auth)).thenReturn(new SalePaymentSessionService.Finalization(session,snapshot,issuedVoucher));when(service.get(id,auth)).thenReturn(session);
   assertThat(controller.finalizeSession(id,auth).printTicket()).isSameAs(snapshot);
+  assertThat(controller.finalizeSession(id,auth).issuedVoucher().code()).isEqualTo("V123");
   assertThat(controller.get(id,auth).printTicket()).isNull();
+  assertThat(controller.get(id,auth).issuedVoucher()).isNull();
  }
  @Test void exposesValidatedSimulatorDiscardContract() throws Exception {var method=SalePaymentSessionController.class.getDeclaredMethod("discardSimulation",UUID.class,SalePaymentSessionController.SimulatorDiscard.class,Authentication.class);assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly("/{id}/simulator-discard");var validator=Validation.buildDefaultValidatorFactory().getValidator();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("application_shutdown"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("sale_entry_cleanup"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("payment_method_change"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard(""))).isNotEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("logout"))).isNotEmpty();}
  @Test void exposesReloadAllocationQueryFinalizeAndCancelBehindSalePermission() throws Exception {assertThat(SalePaymentSessionController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1/pos/payment-sessions");assertThat(SalePaymentSessionController.class.getAnnotation(PreAuthorize.class).value()).contains("TICKETS_CREATE");assertThat(SalePaymentSessionController.class.getDeclaredMethod("get",UUID.class,Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/{id}");assertThat(SalePaymentSessionController.class.getDeclaredMethod("add",UUID.class,SalePaymentSessionController.Allocation.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations");assertThat(SalePaymentSessionController.class.getDeclaredMethod("query",UUID.class,UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations/{allocationId}/query");assertThat(SalePaymentSessionController.class.getDeclaredMethod("finalizeSession",UUID.class,SalePaymentSessionController.FinalizeRequest.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/finalize");}
@@ -60,7 +65,7 @@ class SalePaymentSessionControllerContractTest {
 
  @Test void manualCardAllocationAcceptsAnOmittedReference() throws Exception {
   var fixture=httpFixture();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
-  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.MANUAL_CARD),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
+  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.MANUAL_CARD),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
 
   fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/allocations",sessionId)
       .contentType(MediaType.APPLICATION_JSON)
@@ -77,7 +82,7 @@ class SalePaymentSessionControllerContractTest {
 
  @Test void manualPaymentAllocationCarriesIndependentEphemeralAuthorization() throws Exception {
   var fixture=httpFixture();var sessionId=UUID.randomUUID();var allocationId=UUID.randomUUID();var session=SalePaymentSession.reserve(sessionId,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN);
-  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.TRANSFER),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),eq("TR-1"),isNull(),isNull(),isNull(),eq(new OperationAuthorizationRequest("ENCARGADO","secret")),nullable(Authentication.class))).thenReturn(session);
+  when(fixture.service.add(eq(sessionId),eq(allocationId),eq(allocationId.toString()),eq(SalePaymentAllocationKind.TRANSFER),argThat(amount->amount.compareTo(BigDecimal.TEN)==0),isNull(),isNull(),eq("TR-1"),isNull(),isNull(),isNull(),eq(new OperationAuthorizationRequest("ENCARGADO","secret")),isNull(),isNull(),nullable(Authentication.class))).thenReturn(session);
 
   fixture.mvc.perform(post("/api/v1/pos/payment-sessions/{id}/allocations",sessionId)
       .contentType(MediaType.APPLICATION_JSON)

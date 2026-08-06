@@ -54,6 +54,7 @@ class ProductControllerContractTest {
                 UUID.randomUUID(),
                 imageId,
                 true,
+                ProductType.UNIT,
                 "A001",
                 null,
                 null,
@@ -77,6 +78,7 @@ class ProductControllerContractTest {
                         .with(user("seller").authorities(() -> VENTA)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].imageId").value(imageId.toString()))
+                .andExpect(jsonPath("$[0].productType").value("UNIT"))
                 .andExpect(jsonPath("$[0].taxPercentage").value(21.00))
                 .andExpect(jsonPath("$[0].taxRegime").value("IVA"))
                 .andExpect(jsonPath("$[0].packageQuantity").value(6));

@@ -2,6 +2,7 @@ package com.tpverp.backend.excel;
 
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
+import com.tpverp.backend.catalog.ProductType;
 import com.tpverp.backend.document.DocumentStatus;
 import com.tpverp.backend.inventory.StockSalesHistoryRow;
 import com.tpverp.backend.inventory.StockSalesHistoryService;
@@ -124,7 +125,8 @@ public class StockSalesHistoryExcelExportService {
                 var excelRow = sheet.createRow(rowIndex++);
                 for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
                     var column = columns.get(columnIndex);
-                    writeValue(excelRow.createCell(columnIndex), VALUES.get(column.key()).apply(historyRow), column.key(), styles);
+                    writeValue(excelRow.createCell(columnIndex), VALUES.get(column.key()).apply(historyRow),
+                            column.key(), product.getProductType(), styles);
                 }
             }
 
@@ -132,7 +134,8 @@ public class StockSalesHistoryExcelExportService {
             sheet.setAutoFilter(new CellRangeAddress(headerIndex, lastDataRow, 0, columns.size() - 1));
             sheet.createFreezePane(0, headerIndex + 1);
             rowIndex++;
-            writeTotal(sheet.createRow(rowIndex++), request.labels().totalQuantity(), totals.quantity(), styles.number(), styles);
+            writeTotal(sheet.createRow(rowIndex++), request.labels().totalQuantity(), totals.quantity(),
+                    quantityStyle(product.getProductType(), styles), styles);
             writeTotal(sheet.createRow(rowIndex), request.labels().totalAmount(), totals.amount(), styles.currency(), styles);
 
             for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
@@ -160,7 +163,12 @@ public class StockSalesHistoryExcelExportService {
         valueCell.setCellStyle(valueStyle);
     }
 
-    private static void writeValue(Cell cell, Object value, String key, Styles styles) {
+    private static void writeValue(
+            Cell cell,
+            Object value,
+            String key,
+            ProductType productType,
+            Styles styles) {
         if (value == null) {
             cell.setBlank();
             cell.setCellStyle(styles.body());
@@ -174,10 +182,16 @@ public class StockSalesHistoryExcelExportService {
         if (value instanceof BigDecimal number) {
             cell.setCellValue(number.doubleValue());
             cell.setCellStyle("discount".equals(key) ? styles.percentNumber() :
-                    "quantity".equals(key) ? styles.number() : styles.currency());
+                    "quantity".equals(key) ? quantityStyle(productType, styles) : styles.currency());
             return;
         }
         writeText(cell, value.toString(), styles.body());
+    }
+
+    private static CellStyle quantityStyle(ProductType productType, Styles styles) {
+        return productType == ProductType.UNIT
+                ? styles.integerQuantity()
+                : styles.decimalQuantity();
     }
 
     private static void writeText(Cell cell, String value, CellStyle style) {
@@ -233,7 +247,8 @@ public class StockSalesHistoryExcelExportService {
             CellStyle metaValue,
             CellStyle body,
             CellStyle date,
-            CellStyle number,
+            CellStyle integerQuantity,
+            CellStyle decimalQuantity,
             CellStyle currency,
             CellStyle percentNumber,
             CellStyle totalLabel) {
@@ -265,9 +280,13 @@ public class StockSalesHistoryExcelExportService {
             date.cloneStyleFrom(body);
             date.setDataFormat(workbook.createDataFormat().getFormat("dd/mm/yyyy hh:mm"));
 
-            var number = workbook.createCellStyle();
-            number.cloneStyleFrom(body);
-            number.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            var integerQuantity = workbook.createCellStyle();
+            integerQuantity.cloneStyleFrom(body);
+            integerQuantity.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+
+            var decimalQuantity = workbook.createCellStyle();
+            decimalQuantity.cloneStyleFrom(body);
+            decimalQuantity.setDataFormat(workbook.createDataFormat().getFormat("#,##0.###"));
 
             var currency = workbook.createCellStyle();
             currency.cloneStyleFrom(body);
@@ -282,7 +301,8 @@ public class StockSalesHistoryExcelExportService {
             totalLabel.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             totalLabel.setFont(font(workbook, true, IndexedColors.DARK_BLUE, (short) 11));
 
-            return new Styles(title, header, metaLabel, metaValue, body, date, number, currency, percent, totalLabel);
+            return new Styles(title, header, metaLabel, metaValue, body, date,
+                    integerQuantity, decimalQuantity, currency, percent, totalLabel);
         }
 
         private static Font font(Workbook workbook, boolean bold, IndexedColors color, short size) {

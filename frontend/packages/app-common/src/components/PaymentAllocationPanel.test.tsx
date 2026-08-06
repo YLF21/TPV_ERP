@@ -42,6 +42,91 @@ const session: PaymentSession = {
 afterEach(cleanup);
 
 describe("PaymentAllocationPanel", () => {
+  it("offers cash, card and a new voucher for refunds without sale-only methods", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [
+          { paymentMethod: "EFECTIVO", kind: "CASH", originalAmountCents: 4100, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 4100 },
+          { paymentMethod: "TARJETA", kind: "MANUAL_CARD", originalAmountCents: 4100, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 4100 },
+        ],
+      }}
+      providers={[]}
+      manualCardEnabled
+      vouchers={[]}
+      initialMethod="VOUCHER"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("heading", { name: "DEVOLUCIÓN" })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Efectivo/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Tarjeta/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Vale/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Efectivo.*41,00/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Tarjeta.*41,00/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Vale.*12,00/ })).toBeTruthy();
+    expect(within(container).queryByRole("button", { name: /Pendiente/ })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /Transferencia/ })).toBeNull();
+    expect(container.querySelector("#checkout-voucher-code")).toBeNull();
+
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    fireEvent.keyDown(amountInput, { key: "Enter" });
+    expect(onAdd).toHaveBeenCalledWith(
+      { kind: "VOUCHER", amountCents: 1200 },
+      { finalizeWhenCovered: true },
+    );
+  });
+
+  it("uses the original manual card route when an integrated provider is configured", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [
+          { paymentMethod: "EFECTIVO", kind: "CASH", originalAmountCents: 4100, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 4100 },
+          { paymentMethod: "TARJETA", kind: "MANUAL_CARD", originalAmountCents: 4100, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 4100 },
+        ],
+      }}
+      providers={["PAYCOMET"]}
+      manualCardEnabled
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    const cardButton = within(container).getByRole("button", { name: /Tarjeta.*41,00/ });
+    fireEvent.click(cardButton);
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    fireEvent.keyDown(amountInput, { key: "Enter" });
+
+    expect(onAdd).toHaveBeenCalledWith(
+      { kind: "MANUAL_CARD", amountCents: 1200 },
+      { finalizeWhenCovered: true },
+    );
+  });
+
+  it("renders a zero-total checkout ready to accept without payment methods", () => {
+    const html = renderToStaticMarkup(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, totalCents: 0, direction: "ZERO", status: "COVERED", allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+    expect(html).toContain("COBRO");
+    expect(html).not.toContain("IMPORTE / RECIBIDO");
+    expect(html).not.toContain("<kbd>*</kbd>");
+    expect(html).toMatch(/class="primary"[^>]*>ACEPTAR/);
+  });
+
   it("selects the payment method before accepting the entered amount", () => {
     const onAdd = vi.fn();
     const { container } = render(<PaymentAllocationPanel

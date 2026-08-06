@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
+import { formatQuantityValue } from "../sale/productQuantity";
 import { ErpSelect, type ErpSelectOption } from "./ErpSelect";
 import "./SalesInvoiceRectificationDialog.css";
 
@@ -442,7 +443,7 @@ function Summary({
       <span className="total"><small>{t("rectification.total.total")}</small><strong>{formatAmount(view.document.total, locale)}</strong></span>
     </div>
     <table><thead><tr><th>{t("rectification.line")}</th><th>{t("rectification.differenceQuantity")}</th><th>{t("rectification.unitDifference")}</th><th>{t("rectification.lineTotal")}</th></tr></thead>
-      <tbody>{view.lines.map((line) => <tr key={line.id}><td><strong>{line.code}</strong><span>{line.name}</span></td><td>{line.quantity}</td><td>{formatAmount(line.unitPrice, locale)}</td><td>{formatAmount(line.total, locale)}</td></tr>)}</tbody>
+      <tbody>{view.lines.map((line) => <tr key={line.id}><td><strong>{line.code}</strong><span>{line.name}</span></td><td>{formatQuantityValue(line.quantity, locale)}</td><td>{formatAmount(line.unitPrice, locale)}</td><td>{formatAmount(line.total, locale)}</td></tr>)}</tbody>
     </table>
     <div className="rectification-reason-summary"><strong>{t(`rectification.reason.${view.reason}`)}</strong><p>{view.detail}</p></div>
     {showId && <small className="rectification-draft-id">{t("rectification.documentId")}: {view.document.id}</small>}

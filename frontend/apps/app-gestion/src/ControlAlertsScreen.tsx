@@ -1101,6 +1101,13 @@ function alertSummary(alert: ControlAlert, t: Translator): string {
       count: String(Array.isArray(data.negativeLines) ? data.negativeLines.length : 0)
     });
   }
+  if (alert.type === "REFUND_POLICY_OVERRIDE") {
+    return interpolate(t("gestion.controlAlerts.summaryRefundPolicyOverride"), {
+      amount: alertDataText(alert, "amount") || "—",
+      method: alertDataText(alert, "method") || "—",
+      authorizer: alertDataText(alert, "authorizerName") || "—"
+    });
+  }
   if (alert.type === "CASH_DRAWER_OPENED") {
     return interpolate(t("gestion.controlAlerts.summaryCashDrawer"), {
       authorizer: alertDataText(alert, "authorizerName") || "—"

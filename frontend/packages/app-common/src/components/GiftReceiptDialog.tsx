@@ -2,11 +2,18 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
 import type { LocaleCode, TerminalContext } from "../types";
+import {
+  canonicalProductQuantity,
+  formatProductQuantity,
+  isProductQuantityPrecisionValid,
+  productQuantityStep,
+} from "../sale/productQuantity";
 
 type PreviewLine = {
   lineId: string;
   code: string;
   name: string;
+  productType: "UNIT" | "WEIGHT" | "SERVICE";
   availableQuantity: number | string;
   serialNumbers: string[];
 };
@@ -138,9 +145,13 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
     const selection = selections[line.lineId];
     const quantity = Number(selection?.quantity ?? 0);
     return Number.isFinite(quantity) && quantity > 0
+        && quantity <= Number(line.availableQuantity)
+        && isProductQuantityPrecisionValid(quantity, line.productType)
       ? [{ lineId: line.lineId, quantity, serialNumbers: selection?.serialNumbers ?? [] }]
       : [];
   }) ?? [], [preview, selections]);
+  const selectionIsValid = selectedLines.length > 0
+    && selectedLines.length === Object.keys(selections).length;
 
   async function search() {
     const normalized = ticketNumber.trim();
@@ -170,7 +181,7 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
     setSelections(Object.fromEntries(preview.lines.map((line) => [
       line.lineId,
       {
-        quantity: String(Number(line.availableQuantity)),
+        quantity: canonicalProductQuantity(line.availableQuantity),
         serialNumbers: [...(line.serialNumbers ?? [])],
       },
     ])));
@@ -219,7 +230,7 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
 
   async function issueAndPrint() {
     if (!preview || busy) return;
-    if (selectedLines.length === 0) {
+    if (!selectionIsValid) {
       setError(t.selectionRequired);
       return;
     }
@@ -298,8 +309,8 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
                 return <Fragment key={line.lineId}>
                   <tr>
                     <td><input type="checkbox" checked={Boolean(selection)} onChange={(event) => toggleLine(line, event.currentTarget.checked)} /></td>
-                    <td>{line.code}</td><td>{line.name}</td><td>{String(line.availableQuantity)}</td>
-                    <td><input type="number" min="0.001" max={Number(line.availableQuantity)} step="0.001" disabled={!selection || line.serialNumbers.length > 0} value={selection?.quantity ?? ""} onChange={(event) => updateQuantity(line, event.currentTarget.value)} /></td>
+                    <td>{line.code}</td><td>{line.name}</td><td>{formatProductQuantity(line.availableQuantity, line.productType, locale)}</td>
+                    <td><input type="number" min={productQuantityStep(line.productType)} max={Number(line.availableQuantity)} step={productQuantityStep(line.productType)} disabled={!selection || line.serialNumbers.length > 0} value={selection?.quantity ?? ""} onChange={(event) => updateQuantity(line, event.currentTarget.value)} /></td>
                   </tr>
                   {selection && line.serialNumbers.length > 0 && <tr><td className="gift-receipt-serials" colSpan={5}>
                     <strong>{t.serials}</strong>
@@ -315,7 +326,7 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
         <footer>
           {issuedCode && <strong>{issuedCode}</strong>}
           <button type="button" onClick={onClose}>{t.close}</button>
-          <button type="button" className="primary" disabled={busy || selectedLines.length === 0} onClick={() => void issueAndPrint()}>{t.issue}</button>
+          <button type="button" className="primary" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
         </footer>
       </section>
     </div>

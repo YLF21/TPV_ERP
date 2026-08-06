@@ -174,6 +174,7 @@ public class SaleProductCatalogService {
                 product.getId(),
                 product.getImageId(),
                 product.isActive(),
+                product.getProductType(),
                 product.getCode(),
                 product.getBarcode(),
                 product.getBarcode2(),

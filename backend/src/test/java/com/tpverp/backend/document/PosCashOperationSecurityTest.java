@@ -97,6 +97,58 @@ class PosCashOperationSecurityTest {
     }
 
     @Test
+    void temporaryPriceUsesItsImmediateProofAndDoesNotAskForCredentialsAtCheckout() {
+        var operationSecurity = mock(SaleOperationSecurityService.class);
+        var audit = mock(AuditService.class);
+        var proofService = mock(TemporaryPriceAuthorizationService.class);
+        var service = service(
+                operationSecurity,
+                audit,
+                mock(DiscountAuthorizationService.class));
+        service.setTemporaryPriceAuthorizationService(proofService);
+        var operator = user("operador", BigDecimal.ZERO);
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(
+                operator, null, List.of());
+        var sourceId = UUID.randomUUID();
+        var productId = UUID.randomUUID();
+        var claim = new TemporaryPriceAuthorizationService.ClaimRequest(
+                "linea-1", productId, new BigDecimal("8.50"), "prueba-opaca");
+        var prepared = new PosCashService.PreparedSale(
+                mock(DocumentCommand.class),
+                EnumSet.of(SaleOperationCode.TEMPORARY_PRICE_CHANGE),
+                List.of(claim));
+        var request = sale(
+                BigDecimal.ZERO,
+                Map.of(
+                        SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                        new OperationAuthorizationRequest(
+                                "responsable", "no-debe-usarse")));
+
+        service.authorizeSensitiveOperations(
+                prepared,
+                request,
+                BigDecimal.TEN,
+                authentication,
+                "PAYMENT_SESSION",
+                sourceId);
+
+        verify(proofService).claimAll(
+                List.of(claim), authentication, "PAYMENT_SESSION", sourceId);
+        verify(operationSecurity, never()).authorize(
+                org.mockito.ArgumentMatchers.eq(
+                        SaleOperationCode.TEMPORARY_PRICE_CHANGE),
+                any(),
+                any(),
+                any());
+        verify(operationSecurity, never()).authorizeNamed(
+                org.mockito.ArgumentMatchers.eq(
+                        SaleOperationCode.TEMPORARY_PRICE_CHANGE),
+                any(),
+                any(),
+                any());
+    }
+
+    @Test
     void openPriceUsesPolicyButDoesNotAuditTheDefaultUnprotectedOperation() {
         var operationSecurity = mock(SaleOperationSecurityService.class);
         var audit = mock(AuditService.class);

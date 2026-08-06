@@ -7162,6 +7162,7 @@ export function StockScreen({
                   <StockSalesHistoryPanel
                     productId={detailRow.productId}
                     productName={detailRow.name}
+                    productType={detailRow.productType}
                     locale={locale}
                     app={app}
                     username={session.username}

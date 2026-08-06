@@ -160,6 +160,8 @@ export function PaymentAllocationPanel({
     maximumFractionDigits: 2,
   });
   const remaining = remainingPaymentCents(session);
+  const refund = session.direction === "REFUND";
+  const zero = session.direction === "ZERO";
   const approved = session.totalCents - remaining;
   const [method, setMethod] = useState<CheckoutMethod>(initialMethod);
   const [amount, setAmount] = useState(centsInput(remaining));
@@ -188,6 +190,35 @@ export function PaymentAllocationPanel({
   const integratedPaymentLocked = hasLockedIntegratedPayment(session.allocations);
   const entryLocked = busy || !allowAdd || compensationRequired;
 
+  function refundAvailabilityForMethod(value: CheckoutMethod) {
+    if (!refund) return undefined;
+    if (value === "VOUCHER") return remaining;
+    const kinds: AllocationKind[] = value === "CASH"
+      ? ["CASH"]
+      : value === "CARD"
+        ? ["MANUAL_CARD", "INTEGRATED_CARD"]
+        : [];
+    if (kinds.length === 0) return undefined;
+    return (session.refundPaymentAvailability ?? [])
+      .filter((availability) => availability.kind && kinds.includes(availability.kind))
+      .reduce((sum, availability) => sum + availability.availableAmountCents, 0);
+  }
+
+  function refundAvailabilityForKind(kind: AllocationKind) {
+    if (!refund) return 0;
+    return (session.refundPaymentAvailability ?? [])
+      .filter((availability) => availability.kind === kind)
+      .reduce((sum, availability) => sum + availability.availableAmountCents, 0);
+  }
+
+  const cardAllocationKind: "MANUAL_CARD" | "INTEGRATED_CARD" = refund
+    && refundAvailabilityForKind("MANUAL_CARD") > 0
+    && refundAvailabilityForKind("INTEGRATED_CARD") <= 0
+      ? "MANUAL_CARD"
+      : providers.length > 0
+        ? "INTEGRATED_CARD"
+        : "MANUAL_CARD";
+
   useEffect(() => {
     setAmount(centsInput(remaining));
   }, [remaining]);
@@ -195,9 +226,10 @@ export function PaymentAllocationPanel({
   function methodAvailable(next: CheckoutMethod) {
     if (next === "CASH") return cashEnabled;
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
-    if (next === "VOUCHER") return voucherEnabled && vouchers.length > 0;
-    if (next === "TRANSFER") return transferEnabled;
-    if (next === "PENDING") return pendingEnabled;
+    if (next === "VOUCHER") return voucherEnabled && (refund || vouchers.length > 0);
+    if (next === "TRANSFER") return !refund && transferEnabled;
+    if (next === "PENDING") return !refund && pendingEnabled;
+    if (next === "DISCOUNT") return !refund;
     return effectiveRows.length === 0;
   }
 
@@ -301,7 +333,7 @@ export function PaymentAllocationPanel({
       setValidation("");
       return;
     }
-    if (method === "VOUCHER" && !voucherCode.trim()) {
+    if (method === "VOUCHER" && !refund && !voucherCode.trim()) {
       setValidation(copy.voucherCodeRequired);
       queueMicrotask(() => {
         voucherCodeRef.current?.focus();
@@ -309,7 +341,7 @@ export function PaymentAllocationPanel({
       });
       return;
     }
-    const needsReference = (method === "CARD" && providers.length === 0 && manualCardRequiresReference)
+    const needsReference = (method === "CARD" && cardAllocationKind === "MANUAL_CARD" && manualCardRequiresReference)
       || (method === "TRANSFER" && transferRequiresReference);
     if (needsReference && !reference.trim()) {
       setValidation(copy.referenceRequired);
@@ -328,15 +360,15 @@ export function PaymentAllocationPanel({
       onAdd({
         kind: "CASH",
         ...common,
-        deliveredCents: amountCents,
-        changeCents: cashChangeCents,
+        deliveredCents: refund ? cashAppliedCents : amountCents,
+        changeCents: refund ? 0 : cashChangeCents,
       }, { finalizeWhenCovered });
     } else if (method === "CARD") {
-      onAdd(providers[0]
+      onAdd(cardAllocationKind === "INTEGRATED_CARD" && providers[0]
         ? { kind: "INTEGRATED_CARD", provider: providers[0], ...common }
         : { kind: "MANUAL_CARD", ...common }, { finalizeWhenCovered });
     } else if (method === "VOUCHER") {
-      onAdd({ kind: "VOUCHER", voucherCode: voucherCode.trim(), ...common }, { finalizeWhenCovered });
+      onAdd({ kind: "VOUCHER", ...(refund ? {} : { voucherCode: voucherCode.trim() }), ...common }, { finalizeWhenCovered });
     } else if (method === "TRANSFER") {
       onAdd({ kind: "TRANSFER", ...common }, { finalizeWhenCovered });
     } else {
@@ -413,10 +445,10 @@ export function PaymentAllocationPanel({
   const allMethods: Array<{ value: CheckoutMethod; shortcut: string; visible?: boolean; disabled?: boolean }> = [
     { value: "CASH", shortcut: "*", visible: cashEnabled },
     { value: "CARD", shortcut: "+", visible: cardEnabled, disabled: !manualCardEnabled && providers.length === 0 },
-    { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled, disabled: vouchers.length === 0 },
-    { value: "PENDING", shortcut: "F8", disabled: !pendingEnabled },
-    { value: "TRANSFER", shortcut: "F7", visible: transferEnabled },
-    { value: "DISCOUNT", shortcut: "F11", disabled: effectiveRows.length > 0 },
+    { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled, disabled: !refund && vouchers.length === 0 },
+    { value: "PENDING", shortcut: "F8", visible: !refund, disabled: !pendingEnabled },
+    { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
+    { value: "DISCOUNT", shortcut: "F11", visible: !refund, disabled: effectiveRows.length > 0 },
   ];
   const methods = allMethods.filter((item) => item.visible !== false);
   const buttonLabel = (value: CheckoutMethod) => ({
@@ -428,22 +460,24 @@ export function PaymentAllocationPanel({
     <section className={`sale-checkout-dialog ${interfaceMode === "TOUCH" ? "is-touch" : "is-keyboard"}`}
       role="dialog" aria-modal="true" aria-labelledby="sale-checkout-title" aria-busy={busy}>
       <header className="sale-checkout-header">
-        <h2 id="sale-checkout-title">{copy.title}</h2>
+        <h2 id="sale-checkout-title">{refund ? (locale === "es" ? "DEVOLUCIÓN" : locale === "en" ? "REFUND" : "退款") : copy.title}</h2>
         <button type="button" aria-label={copy.cancel} disabled={busy || integratedPaymentLocked}
           onClick={onClose}>×</button>
       </header>
 
       <div className="sale-checkout-body">
         <div className="sale-checkout-main">
-          <div className="sale-checkout-entry">
+          {!zero && <div className="sale-checkout-entry">
             <label>
-              <span>{copy.amount}</span>
+              <span>{refund
+                ? (locale === "es" ? "IMPORTE A DEVOLVER" : locale === "en" ? "REFUND AMOUNT" : "\u9000\u6b3e\u91d1\u989d")
+                : copy.amount}</span>
               <input ref={amountRef} inputMode="decimal" autoComplete="off" value={amount}
                 disabled={entryLocked}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
             <div className={`sale-checkout-meta ${selectedMethod === "VOUCHER" ? "has-voucher" : ""}`}>
-              {selectedMethod === "VOUCHER" && <label><span>{copy.voucherCode}</span>
+              {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
                   list="checkout-voucher-codes" value={voucherCode}
                   disabled={entryLocked}
@@ -463,21 +497,25 @@ export function PaymentAllocationPanel({
                   onChange={(event) => setComment(event.currentTarget.value)} />
               </label>
             </div>
-          </div>
+          </div>}
 
-          {selectedMethod === "CASH" && !entryLocked && <p className="sale-checkout-change">
+          {selectedMethod === "CASH" && !refund && !entryLocked && <p className="sale-checkout-change">
             {copy.change}: <strong>{money(cashChangeCents)} €</strong>
           </p>}
 
-          <div className="sale-checkout-methods" aria-label={copy.method}>
+          {!zero && <div className="sale-checkout-methods" aria-label={copy.method}>
             {methods.map((item) => <button key={item.value} type="button"
               className={selectedMethod === item.value ? "selected" : ""}
               disabled={item.disabled || entryLocked}
               onClick={() => selectMethod(item.value)}>
-              <span>{buttonLabel(item.value)}</span>
+              <span>{buttonLabel(item.value)}
+                {refund && refundAvailabilityForMethod(item.value) !== undefined && <small>
+                  {t("payment.refund.originalAvailable")}: {money(refundAvailabilityForMethod(item.value) ?? 0)} €
+                </small>}
+              </span>
               {interfaceMode === "KEYBOARD" && <kbd>{item.shortcut}</kbd>}
             </button>)}
-          </div>
+          </div>}
 
           <div className="sale-checkout-table-wrap">
             <table className="sale-checkout-table">
@@ -512,9 +550,9 @@ export function PaymentAllocationPanel({
           </div>
 
           <div className="sale-checkout-totals">
-            <span>{copy.total}<strong>{money(session.totalCents)} €</strong></span>
-            <span>{copy.paid}<strong>{money(approved)} €</strong></span>
-            <span className="remaining">{copy.remaining}<strong>{money(remaining)} €</strong></span>
+            <span>{refund ? (locale === "es" ? "TOTAL A DEVOLVER" : locale === "en" ? "TOTAL REFUND" : "退款总额") : copy.total}<strong>{money(session.totalCents)} €</strong></span>
+            <span>{refund ? (locale === "es" ? "DEVUELTO" : locale === "en" ? "REFUNDED" : "已退款") : copy.paid}<strong>{money(approved)} €</strong></span>
+            <span className="remaining">{refund ? (locale === "es" ? "PENDIENTE" : locale === "en" ? "REMAINING" : "待退款") : copy.remaining}<strong>{money(remaining)} €</strong></span>
           </div>
 
           {(validation || error) && <p className="sale-checkout-error" role="alert">{validation || error}</p>}
@@ -532,7 +570,7 @@ export function PaymentAllocationPanel({
           </footer>
         </div>
 
-        {interfaceMode === "TOUCH" && <aside className="sale-checkout-keypad" aria-label="Teclado numérico">
+        {interfaceMode === "TOUCH" && !zero && <aside className="sale-checkout-keypad" aria-label="Teclado numérico">
           <button type="button" className="exact" disabled={entryLocked}
             onClick={() => setAmount(centsInput(remaining))}>{copy.exact}</button>
           {[500, 1000, 2000, 5000].map((cents) =>

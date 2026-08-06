@@ -21,7 +21,7 @@ type SaleOpenPriceDialogProps = {
 
 export function parseSaleOpenPrice(value: string) {
   const normalized = value.trim().replace(",", ".");
-  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) return null;
   const price = Number(normalized);
   return Number.isFinite(price) && price > 0 ? price : null;
 }
