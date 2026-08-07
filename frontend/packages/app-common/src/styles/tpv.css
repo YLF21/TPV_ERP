@@ -23082,3 +23082,183 @@ textarea:focus,
 .sale-payment-hydration-error button {
   flex: 0 0 auto;
 }
+
+/* Ctrl+P: selector operativo de salida para la venta actual. */
+.sale-action-dialog.sale-print-method-dialog {
+  width: min(680px, calc(100vw - 32px));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #8095ad !important;
+  border-radius: 4px !important;
+  background: #f4f7fa !important;
+  padding: 0;
+  box-shadow: 0 18px 42px rgba(7, 32, 61, 0.28) !important;
+}
+
+.sale-print-method-dialog > header {
+  min-height: 58px;
+  border-bottom: 1px solid #061e3c;
+  background: #0b315d;
+  padding: 10px 16px 10px 20px;
+  color: #fff;
+}
+
+.sale-print-method-dialog > header h2 {
+  color: inherit;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.sale-action-dialog.sale-print-method-dialog > header > button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid #9fb4ca;
+  border-radius: 3px;
+  background: #fff;
+  color: #0b315d;
+  font-size: 16px;
+}
+
+.sale-print-method-form {
+  gap: 0;
+}
+
+.sale-print-method-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.sale-print-method-options .sale-print-method-option {
+  min-width: 0;
+  min-height: 78px;
+  grid-template-columns: 20px minmax(0, 1fr) 26px;
+  gap: 10px;
+  border: 1px solid #aebdcd;
+  border-radius: 3px;
+  background: #fff;
+  padding: 11px 12px;
+  color: #172f4b;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.sale-print-method-options .sale-print-method-option.default {
+  grid-column: 1 / -1;
+}
+
+.sale-print-method-options .sale-print-method-option:hover {
+  border-color: #5681aa;
+  background: #f1f6fb;
+}
+
+.sale-print-method-options .sale-print-method-option.selected {
+  border-color: #1f69a7;
+  background: #e6f0fa;
+  box-shadow: inset 4px 0 #1f69a7;
+}
+
+.sale-print-method-options .sale-print-method-option.no-output:not(.selected) {
+  background: #faf8f2;
+}
+
+.sale-print-method-options .sale-print-method-option.no-output.selected {
+  border-color: #8a6116;
+  background: #fff4d9;
+  box-shadow: inset 4px 0 #8a6116;
+}
+
+.sale-action-dialog.sale-print-method-dialog .sale-print-method-option input {
+  width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  margin: 0;
+  padding: 0;
+  accent-color: #1f69a7;
+}
+
+.sale-print-method-option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.sale-print-method-option-copy strong {
+  color: #102c4b;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.sale-print-method-option-copy small {
+  color: #536a83;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.sale-print-method-option-check {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+  color: transparent;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.sale-print-method-option.selected .sale-print-method-option-check {
+  background: #0b315d;
+  color: #fff;
+}
+
+.sale-print-method-option.no-output.selected .sale-print-method-option-check {
+  background: #8a6116;
+}
+
+.sale-print-method-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid #c3cfdb;
+  background: #e8eef5;
+  padding: 13px 20px;
+}
+
+.sale-print-method-footer .sale-dialog-hint {
+  max-width: 360px;
+  color: #405a75;
+  line-height: 1.4;
+}
+
+.sale-print-method-footer .sale-action-buttons {
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.sale-print-method-footer .sale-action-buttons button {
+  min-width: 104px;
+  border-radius: 3px !important;
+}
+
+@media (max-width: 640px) {
+  .sale-print-method-options {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .sale-print-method-options .sale-print-method-option.default {
+    grid-column: auto;
+  }
+
+  .sale-print-method-footer {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 14px;
+  }
+
+  .sale-print-method-footer .sale-action-buttons {
+    justify-content: flex-end;
+  }
+}

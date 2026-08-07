@@ -2201,10 +2201,11 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     const printDialog = await screen.findByRole("dialog", {
-      name: "Método de impresión para esta venta",
+      name: "Salida de impresión",
     });
+    expect(within(printDialog).getByText("Usa la salida configurada para este terminal.")).toBeVisible();
     fireEvent.click(within(printDialog).getByRole("radio", { name: "Guardar como PDF" }));
-    fireEvent.click(within(printDialog).getByRole("button", { name: "Guardar" }));
+    fireEvent.click(within(printDialog).getByRole("button", { name: "Aplicar" }));
 
     fireEvent.keyDown(window, { key: "A", ctrlKey: true, shiftKey: true });
     const clearLines = await screen.findByRole("dialog", {

@@ -4507,39 +4507,52 @@ export function SaleScreen({
           title={t("sale.printMethod.title")}
           closeLabel={t("sale.dialog.close")}
           onClose={() => setActionDialog(null)}
+          className="sale-print-method-dialog"
         >
           <form
-            className="sale-action-form"
+            className="sale-action-form sale-print-method-form"
             onSubmit={(event) => {
               event.preventDefault();
               savePrintMethod(printModeInput);
             }}
           >
-            <fieldset className="sale-print-method-options">
+            <fieldset className="sale-print-method-options" aria-label={t("sale.printMethod.title")}>
               {([
-                ["DEFAULT", "sale.printMethod.default"],
-                ["TICKET_PRINTER", "sale.printMethod.ticket"],
-                ["A4_PRINTER", "sale.printMethod.a4"],
-                ["PDF", "sale.printMethod.pdf"],
-                ["NONE", "sale.printMethod.none"],
-              ] as const).map(([mode, label]) => (
-                <label key={mode}>
+                ["DEFAULT", "sale.printMethod.default", "sale.printMethod.defaultDescription"],
+                ["TICKET_PRINTER", "sale.printMethod.ticket", "sale.printMethod.ticketDescription"],
+                ["A4_PRINTER", "sale.printMethod.a4", "sale.printMethod.a4Description"],
+                ["PDF", "sale.printMethod.pdf", "sale.printMethod.pdfDescription"],
+                ["NONE", "sale.printMethod.none", "sale.printMethod.noneDescription"],
+              ] as const).map(([mode, label, description]) => (
+                <label
+                  key={mode}
+                  className={`sale-print-method-option${printModeInput === mode ? " selected" : ""}${mode === "DEFAULT" ? " default" : ""}${mode === "NONE" ? " no-output" : ""}`}
+                >
                   <input
                     type="radio"
                     name="sale-print-method"
                     value={mode}
+                    aria-label={t(label)}
                     checked={printModeInput === mode}
                     onChange={() => setPrintModeInput(mode)}
                   />
-                  <span>{t(label)}</span>
+                  <span className="sale-print-method-option-copy">
+                    <strong>{t(label)}</strong>
+                    <small>{t(description)}</small>
+                  </span>
+                  <span className="sale-print-method-option-check" aria-hidden="true">
+                    {printModeInput === mode ? "✓" : ""}
+                  </span>
                 </label>
               ))}
             </fieldset>
-            <small className="sale-dialog-hint">{t("sale.printMethod.hint")}</small>
-            <div className="sale-action-buttons">
-              <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
-              <button type="submit">{t("sale.dialog.save")}</button>
-            </div>
+            <footer className="sale-print-method-footer">
+              <p className="sale-dialog-hint">{t("sale.printMethod.hint")}</p>
+              <div className="sale-action-buttons">
+                <button type="button" onClick={() => setActionDialog(null)}>{t("sale.dialog.cancel")}</button>
+                <button type="submit">{t("sale.dialog.apply")}</button>
+              </div>
+            </footer>
           </form>
         </SaleActionDialog>
       )}
