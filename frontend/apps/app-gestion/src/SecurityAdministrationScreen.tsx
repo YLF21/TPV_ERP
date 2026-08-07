@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import {
   TableLayoutHeaderCell,
+  sortTableRows,
   tableLayoutGridTemplate,
   useTableLayoutPreference,
+  useTableSortPreference,
   visibleTableColumns,
   type TableColumnDefinition,
   type UserSession
@@ -79,6 +81,13 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
     definitions: securityUserColumnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableSort = useTableSortPreference({
+    app: "gestion",
+    username: session.username,
+    tableKey: securityUserTableKey,
+    columns: securityUserColumnDefinitions.map((column) => column.key),
+    defaultSort: null
+  });
   const tableStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) } as CSSProperties;
 
   async function refresh(preferredId = selectedId) {
@@ -111,10 +120,16 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
 
   const filteredUsers = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return users;
-    return users.filter((user) => [user.userId, user.name, user.userName, user.role]
+    const filtered = !normalized ? users : users.filter((user) => [user.userId, user.name, user.userName, user.role]
       .some((value) => value.toLocaleLowerCase().includes(normalized)));
-  }, [query, users]);
+    return sortTableRows(filtered, tableSort.sort, (user, column) => {
+      if (column === "userId") return user.userId;
+      if (column === "name") return user.name;
+      if (column === "userName") return user.userName;
+      if (column === "role") return user.role;
+      return user.active;
+    }, "es");
+  }, [query, tableSort.sort, users]);
   const selected = users.find((user) => user.id === selectedId) ?? null;
 
   function replaceUser(updated: SecurityUser) {
@@ -157,6 +172,9 @@ function UserAdministration({ session, t }: { session: UserSession; t: Translato
                   as="span"
                   column={column}
                   key={column.key}
+                  sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                  sortLabel={`${t("party.sortBy")} ${t(`gestion.users.column.${column.key}`)}`}
+                  onSort={tableSort.toggleSort}
                   resizeLabel={`${t("gestion.security.resize")} ${t(`gestion.users.column.${column.key}`)}`}
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}

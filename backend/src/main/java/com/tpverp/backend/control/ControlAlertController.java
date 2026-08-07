@@ -39,8 +39,10 @@ public class ControlAlertController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "25") int size) {
-        return service.list(status, type, ruleId, priority, assigneeId, overdue, from, to, search, page, size);
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection) {
+        return service.list(status, type, ruleId, priority, assigneeId, overdue, from, to, search, page, size, sortBy, sortDirection);
     }
 
     @GetMapping("/assignees")

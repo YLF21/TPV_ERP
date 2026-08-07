@@ -63,7 +63,7 @@ describe("CashClosuresScreen", () => {
       to: "2026-07-31",
       terminalId: "",
       userId: ""
-    }), null, "token");
+    }), null, "token", null);
   });
 
   it("combines user terminal date range and discrepancy filters", async () => {
@@ -85,7 +85,7 @@ describe("CashClosuresScreen", () => {
       terminalId: "terminal-1",
       userId: "user-1",
       onlyDiscrepancies: true
-    }), null, "token"));
+    }), null, "token", null));
   });
 
   it("loads the next cursor when the table approaches the bottom", async () => {
@@ -103,8 +103,22 @@ describe("CashClosuresScreen", () => {
 
     fireEvent.scroll(table);
 
-    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(expect.any(Object), "page-2", "token"));
+    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(expect.any(Object), "page-2", "token", null));
     await waitFor(() => expect(screen.getAllByText("TPV 1")).toHaveLength(2));
+  });
+
+  it("reloads the first page with the selected backend sort", async () => {
+    render(<CashClosuresScreen session={session(["APP_GESTION_ACCESS", "CASH_READ"])} t={(key) => key} />);
+    await screen.findByText("TPV 1");
+
+    fireEvent.click(screen.getByRole("button", { name: "party.sortBy gestion.cashClosures.column.retainedFund" }));
+
+    await waitFor(() => expect(api.loadCashClosures).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      null,
+      "token",
+      { column: "retainedFund", direction: "asc" }
+    ));
   });
 
   it("matches the confirmed read permissions", () => {

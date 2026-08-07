@@ -17,6 +17,7 @@ import {
 } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import type { UseTableLayoutPreferenceResult } from "./useTableLayoutPreference";
+import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSorting";
 
 export const stockPromotionGroupsMessageKeys = {
   tableLabel: "stock.promotions",
@@ -204,14 +205,39 @@ export function StockPromotionGroups({
     tableKey: "stock.promotions.products",
     definitions: stockPromotionProductColumns
   });
+  const groupTableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey: "stock.promotions.groups",
+    columns: stockPromotionGroupColumns.map((column) => column.key),
+    defaultSort: null,
+    persistent: Boolean(username)
+  });
+  const productTableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey: "stock.promotions.products",
+    columns: stockPromotionProductColumns.map((column) => column.key),
+    defaultSort: null,
+    persistent: Boolean(username)
+  });
   const visibleGroupColumns = visibleTableColumns(groupTableLayout.layout);
   const promotionGridStyle: CSSProperties = {
     gridTemplateColumns: `38px ${tableLayoutGridTemplate(visibleGroupColumns)}`
   };
-  const groups = useMemo(
-    () => buildStockPromotionGroups(promotions, productRows, !hideEmptyGroups),
-    [hideEmptyGroups, productRows, promotions]
-  );
+  const groups = useMemo(() => sortTableRows(
+    buildStockPromotionGroups(promotions, productRows, !hideEmptyGroups),
+    groupTableSort.sort,
+    (group, column) => {
+      if (column === "promotion") return group.promotion.name;
+      if (column === "type") return translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.type, group.promotion.type, t);
+      if (column === "validity") return new Date(group.promotion.startDate);
+      if (column === "scope") return translatedValue(stockPromotionGroupsMessageKeys.dynamicPrefixes.scope, group.promotion.scope, t);
+      if (column === "products") return group.products.length;
+      return t(`promotion.status.${group.promotion.status}`);
+    },
+    locale
+  ), [groupTableSort.sort, hideEmptyGroups, locale, productRows, promotions, t]);
   const groupIdsKey = groups.map((group) => group.promotion.id).join("\u0000");
   const [expandedPromotionIds, setExpandedPromotionIds] = useState<Set<string>>(() => {
     const activeIds = new Set(groups.map((group) => group.promotion.id));
@@ -294,6 +320,9 @@ export function StockPromotionGroups({
               className="stock-header-cell"
               column={column}
               key={column.key}
+              sortDirection={groupTableSort.sort?.column === column.key ? groupTableSort.sort.direction : null}
+              sortLabel={`${t("party.sortBy")} ${label}`}
+              onSort={groupTableSort.toggleSort}
               resizeLabel={`${t("stock.columns.resize")} ${label}`}
               onReorder={groupTableLayout.reorderColumns}
               onMove={groupTableLayout.moveColumn}
@@ -396,6 +425,8 @@ export function StockPromotionGroups({
                       locale={locale}
                       t={t}
                       tableLayout={productTableLayout}
+                      sort={productTableSort.sort}
+                      onSort={productTableSort.toggleSort}
                     />
                     <div style={detailSectionsStyle}>
                       <PromotionDetailSection
@@ -542,18 +573,29 @@ function PromotionProductsTable({
   products,
   locale,
   t,
-  tableLayout
+  tableLayout,
+  sort,
+  onSort
 }: {
   products: readonly StockPromotionProduct[];
   locale: LocaleCode;
   t: (key: string) => string;
   tableLayout: UseTableLayoutPreferenceResult<StockPromotionProductColumnKey>;
+  sort: TableSort<StockPromotionProductColumnKey> | null;
+  onSort: (column: StockPromotionProductColumnKey) => void;
 }) {
   if (products.length === 0) {
     return <p className="promotion-empty">{t(stockPromotionGroupsMessageKeys.noProducts)}</p>;
   }
 
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const sortedProducts = sortTableRows(products, sort, (product, column) => {
+    if (column === "code") return product.code;
+    if (column === "name") return product.name;
+    if (column === "family") return product.familyName || product.familyId;
+    if (column === "subfamily") return product.subfamilyName || product.subfamilyId;
+    return product.stock;
+  }, locale);
 
   return (
     <div className="report-table-scroll">
@@ -570,6 +612,9 @@ function PromotionProductsTable({
                 <TableLayoutHeaderCell
                   column={column}
                   key={column.key}
+                  sortDirection={sort?.column === column.key ? sort.direction : null}
+                  sortLabel={`${t("party.sortBy")} ${label}`}
+                  onSort={onSort}
                   resizeLabel={`${t("stock.columns.resize")} ${label}`}
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}
@@ -582,7 +627,7 @@ function PromotionProductsTable({
           </tr>
         </thead>
         <tbody>
-          {products.map((product) => {
+          {sortedProducts.map((product) => {
             const cellsByKey: Record<StockPromotionProductColumnKey, ReactNode> = {
               code: (
                 <td key="code" data-column-key="code" style={{ textAlign: "left" }}>

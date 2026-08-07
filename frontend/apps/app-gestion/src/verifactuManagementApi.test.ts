@@ -92,7 +92,9 @@ describe("VeriFactu management API", () => {
       operation: "ANULACION",
       documentNumber: " T-100 ",
       page: 2,
-      size: 25
+      size: 25,
+      sortBy: "updatedAt",
+      sortDirection: "asc"
     }, "token");
 
     const url = String(fetchMock.mock.calls[0][0]);
@@ -104,6 +106,8 @@ describe("VeriFactu management API", () => {
     expect(url).toContain("operation=ANULACION");
     expect(url).toContain("documentNumber=T-100");
     expect(url).toContain("page=2");
+    expect(url).toContain("sortBy=updatedAt");
+    expect(url).toContain("sortDirection=asc");
     expect(fetchMock.mock.calls[0][1]?.method).toBe("GET");
   });
 
@@ -121,7 +125,9 @@ describe("VeriFactu management API", () => {
       operation: "ALTA",
       documentNumber: " T-200 ",
       page: 1,
-      size: 25
+      size: 25,
+      sortBy: "sequence",
+      sortDirection: "desc"
     }, "token");
     await loadVerifactuAdminAttempts("record/unsafe", 2, 10, "token");
     await loadVerifactuAdminDiagnostics("token");
@@ -130,6 +136,8 @@ describe("VeriFactu management API", () => {
     expect(defectiveUrl).toContain("/verifactu/admin/defective-records?");
     expect(defectiveUrl).toContain("status=DEFECTUOSO");
     expect(defectiveUrl).toContain("documentNumber=T-200");
+    expect(defectiveUrl).toContain("sortBy=sequence");
+    expect(defectiveUrl).toContain("sortDirection=desc");
     expect(String(fetchMock.mock.calls[1][0]))
       .toContain("/verifactu/admin/submissions/record%2Funsafe/attempts?page=2&size=10");
     expect(String(fetchMock.mock.calls[2][0])).toContain("/verifactu/admin/diagnostics");

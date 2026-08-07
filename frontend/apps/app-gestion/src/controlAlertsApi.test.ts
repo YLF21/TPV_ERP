@@ -27,7 +27,9 @@ describe("control alerts API", () => {
       from: "2026-07-18T00:00:00.000Z",
       to: "2026-07-19T00:00:00.000Z",
       page: 2,
-      size: 25
+      size: 25,
+      sortBy: "occurredAt",
+      sortDirection: "asc"
     }, "token");
 
     const [url] = fetchMock.mock.calls[0];
@@ -39,6 +41,8 @@ describe("control alerts API", () => {
     expect(String(url)).toContain("from=2026-07-18T00%3A00%3A00.000Z");
     expect(String(url)).toContain("to=2026-07-19T00%3A00%3A00.000Z");
     expect(String(url)).toContain("page=2");
+    expect(String(url)).toContain("sortBy=occurredAt");
+    expect(String(url)).toContain("sortDirection=asc");
   });
 
   it("loads date-scoped rule groups and the real system catalog", async () => {

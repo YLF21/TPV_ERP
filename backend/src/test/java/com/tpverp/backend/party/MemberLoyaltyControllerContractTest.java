@@ -32,6 +32,8 @@ class MemberLoyaltyControllerContractTest {
         assertThat(method("createChannel", MemberLoyaltyController.ChannelRequest.class)
                 .getAnnotation(PostMapping.class).value())
                 .containsExactly("/api/v1/commercial-contact-channels");
+        assertThat(method("channels").getAnnotation(PreAuthorize.class).value())
+                .contains("CUSTOMERS_READ", "GESTION_CLIENTE_PROVEEDOR", "VENTA");
         assertThat(method("cardDeliveries", MemberCardDeliveryStatus.class)
                 .getAnnotation(GetMapping.class).value())
                 .containsExactly("/api/v1/member-card-deliveries");

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
+import { TableSortButton } from "./TableSortButton";
+import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 
 export type PurchaseDocument = {
   id: string;
@@ -15,6 +17,7 @@ export type PurchaseDocument = {
 };
 
 export type GoodsCheckDocumentTypeFilter = "all" | "deliveryNotes" | "invoices";
+type GoodsCheckDocumentSortColumn = "type" | "number" | "date" | "supplier" | "warehouse";
 
 type GoodsCheckItem = {
   productId: string;
@@ -126,15 +129,24 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [documentSort, setDocumentSort] = useState<TableSort<GoodsCheckDocumentSortColumn> | null>(null);
   const codeRef = useRef<HTMLInputElement | null>(null);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { maximumFractionDigits: 3 }
   ), [locale]);
-  const visibleDocuments = useMemo(
-    () => filterGoodsCheckDocuments(documents, search, typeFilter),
-    [documents, search, typeFilter]
-  );
+  const visibleDocuments = useMemo(() => sortTableRows(
+    filterGoodsCheckDocuments(documents, search, typeFilter),
+    documentSort,
+    (document, column) => {
+      if (column === "type") return t(document.tipo === "ALBARAN_COMPRA" ? "goodsCheck.deliveryNote" : "goodsCheck.invoice");
+      if (column === "number") return document.numero;
+      if (column === "date") return new Date(document.fecha);
+      if (column === "supplier") return document.proveedorNombre;
+      return document.almacenNombre;
+    },
+    locale
+  ), [documentSort, documents, locale, search, t, typeFilter]);
   const selectedDocument = visibleDocuments.find(
     (document) => document.id === selectedDocumentId
   ) ?? null;
@@ -296,11 +308,23 @@ export function GoodsCheckPanel({ locale, token, t }: GoodsCheckPanelProps) {
             <table className="report-table">
             <thead>
               <tr>
-                <th>{t("goodsCheck.column.type")}</th>
-                <th>{t("goodsCheck.column.number")}</th>
-                <th>{t("salesReport.column.date")}</th>
-                <th>{t("warehouseDocument.supplier")}</th>
-                <th>{t("stock.column.warehouse")}</th>
+                {([
+                  ["type", t("goodsCheck.column.type")],
+                  ["number", t("goodsCheck.column.number")],
+                  ["date", t("salesReport.column.date")],
+                  ["supplier", t("warehouseDocument.supplier")],
+                  ["warehouse", t("stock.column.warehouse")]
+                ] as const).map(([column, label]) => (
+                  <th aria-sort={documentSort?.column === column ? documentSort.direction === "asc" ? "ascending" : "descending" : "none"} key={column}>
+                    <TableSortButton
+                      direction={documentSort?.column === column ? documentSort.direction : null}
+                      label={`${t("party.sortBy")} ${label}`}
+                      onSort={() => setDocumentSort((current) => nextTableSort(current, column))}
+                    >
+                      {label}
+                    </TableSortButton>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>

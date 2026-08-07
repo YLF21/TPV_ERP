@@ -43,6 +43,11 @@ describe("SaleTicketInvoiceDialog", () => {
     );
 
     expect(await screen.findByText("T-001")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Convertir ticket a factura" });
+    expect(dialog).toHaveClass("sale-ticket-invoice-dialog");
+    expect(dialog.querySelector("header kbd")).not.toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Cliente fiscal"), {
       target: { value: "customer-1" },
     });

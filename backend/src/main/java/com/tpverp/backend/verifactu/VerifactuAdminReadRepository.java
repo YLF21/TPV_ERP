@@ -38,6 +38,22 @@ public class VerifactuAdminReadRepository {
             String documentNumber,
             int page,
             int size) {
+        return findSubmissions(companyId, storeId, updatedFrom, updatedToExclusive, status, documentType, operation, documentNumber, page, size, null, null);
+    }
+
+    public VerifactuAdminSubmissionPage findSubmissions(
+            UUID companyId,
+            UUID storeId,
+            Instant updatedFrom,
+            Instant updatedToExclusive,
+            FiscalSubmissionStatus status,
+            FiscalDocumentType documentType,
+            FiscalRecordOperation operation,
+            String documentNumber,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection) {
         var query = filteredQuery(
                 companyId, storeId, updatedFrom, updatedToExclusive,
                 status, documentType, operation, documentNumber);
@@ -54,7 +70,8 @@ public class VerifactuAdminReadRepository {
         var parameters = query.parameters()
                 .addValue("limit", size)
                 .addValue("offset", (long) page * size);
-        var items = jdbc.query("""
+        var orderBy = submissionOrderBy(sortBy, sortDirection);
+        var itemsSql = """
                         select record.id as record_id,
                                record.secuencia,
                                record.serie_numero,
@@ -63,10 +80,10 @@ public class VerifactuAdminReadRepository {
                                state.estado,
                                state.actualizado_en,
                                state.ultimo_error_codigo
-                        """ + query.sql() + """
-                        order by state.actualizado_en desc, record.secuencia desc, record.id desc
-                        limit :limit offset :offset
-                        """,
+                        """ + query.sql()
+                + "\norder by " + orderBy
+                + "\nlimit :limit offset :offset";
+        var items = jdbc.query(itemsSql,
                 parameters,
                 (result, rowNumber) -> new VerifactuAdminSubmissionView(
                         result.getObject("record_id", UUID.class),
@@ -78,6 +95,23 @@ public class VerifactuAdminReadRepository {
                         result.getTimestamp("actualizado_en").toInstant(),
                         result.getString("ultimo_error_codigo")));
         return new VerifactuAdminSubmissionPage(items, page, size, totalElements, totalPages);
+    }
+
+    private static String submissionOrderBy(String sortBy, String sortDirection) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "state.actualizado_en desc, record.secuencia desc, record.id desc";
+        }
+        var expression = switch (sortBy) {
+            case "sequence" -> "record.secuencia";
+            case "document" -> "lower(record.serie_numero)";
+            case "fiscalOperation" -> "record.operacion";
+            case "status" -> "state.estado";
+            case "updatedAt" -> "state.actualizado_en";
+            case "errorCode" -> "lower(coalesce(state.ultimo_error_codigo, ''))";
+            default -> throw new IllegalArgumentException("sortBy no es valido");
+        };
+        var direction = "desc".equalsIgnoreCase(sortDirection) ? "desc" : "asc";
+        return expression + " " + direction + ", record.id " + direction;
     }
 
     public Map<FiscalSubmissionStatus, Long> countByStatus(UUID companyId, UUID storeId) {

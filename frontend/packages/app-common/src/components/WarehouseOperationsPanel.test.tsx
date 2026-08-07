@@ -284,7 +284,7 @@ describe("WarehouseOperationsPanel", () => {
     expect(rowValues().slice(0, 2)).toEqual(["BORRADOR", "GENERAL"]);
 
     const warehouseHeader = container.querySelector('[data-column-key="warehouse"]') as HTMLElement;
-    fireEvent.keyDown(warehouseHeader.querySelector("button") as HTMLButtonElement, { key: "ArrowRight" });
+    fireEvent.keyDown(warehouseHeader.querySelector(".table-layout-column-resizer") as HTMLButtonElement, { key: "ArrowRight" });
 
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("venta", "ana", "warehouse.inputs.documents")

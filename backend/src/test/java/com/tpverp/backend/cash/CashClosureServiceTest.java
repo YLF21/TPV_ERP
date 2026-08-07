@@ -112,6 +112,50 @@ class CashClosureServiceTest {
                 .hasMessageContaining("Cursor");
     }
 
+    @Test
+    void keepsTheSelectedSortInsideTheContinuationCursor() {
+        var fixture = fixture(Instant.parse("2026-07-31T10:00:00Z"));
+        var first = row("TPV 1", "tpv 1", Instant.parse("2026-07-31T09:00:00Z"));
+        var second = row("TPV 2", "tpv 2", Instant.parse("2026-07-31T08:00:00Z"));
+        when(fixture.repository().findClosures(
+                eq(fixture.store().getId()), any(), any(), eq(null), eq(null),
+                eq(false), any(), eq(2), eq("retainedFund"), eq("desc")))
+                .thenReturn(List.of(first, second), List.of());
+
+        var firstPage = fixture.service().list(
+                null, null, null, null, false, 1, null,
+                "retainedFund", "desc", authentication());
+        fixture.service().list(
+                null, null, null, null, false, 1, firstPage.nextCursor(),
+                "retainedFund", "desc", authentication());
+
+        @SuppressWarnings("unchecked")
+        var cursors = ArgumentCaptor.forClass(CashClosureQueryRepository.CashClosureSortCursor.class);
+        verify(fixture.repository(), org.mockito.Mockito.times(2)).findClosures(
+                eq(fixture.store().getId()), any(), any(), eq(null), eq(null),
+                eq(false), cursors.capture(), eq(2), eq("retainedFund"), eq("desc"));
+        assertThat(cursors.getAllValues().get(0)).isNull();
+        assertThat(cursors.getAllValues().get(1).value()).isEqualTo("20.00");
+        assertThat(cursors.getAllValues().get(1).id()).isEqualTo(first.id());
+    }
+
+    @Test
+    void rejectsUnsupportedSortsAndCursorsFromAnotherSort() {
+        var fixture = fixture(Instant.parse("2026-07-31T10:00:00Z"));
+
+        assertThatThrownBy(() -> fixture.service().list(
+                null, null, null, null, false, 50, null,
+                "unknown", "asc", authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Columna");
+        assertThatThrownBy(() -> fixture.service().list(
+                null, null, null, null, false, 50,
+                "v2.terminal.asc.dHB2IDE." + UUID.randomUUID(),
+                "user", "asc", authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Cursor");
+    }
+
     private static CashClosureQueryRepository.CashClosureRow row(
             String terminalName,
             String terminalSortKey,

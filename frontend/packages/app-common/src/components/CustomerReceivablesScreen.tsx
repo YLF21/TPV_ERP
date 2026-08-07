@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { hasPermission } from "../auth/auth";
 import { createTranslator } from "../i18n/LocalizedMessages";
@@ -11,6 +11,8 @@ import type { LocaleCode, TerminalContext, UserSession } from "../types";
 import { CustomerReceivablePaymentDialog, type CustomerReceivable } from "./CustomerReceivablePaymentDialog";
 import { ScreenContextFooter } from "./ScreenContextFooter";
 import { SessionTopControls } from "./SessionTopControls";
+import { TableSortButton } from "./TableSortButton";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
 type ReceivablesView = "OPEN" | "HISTORY" | "ACCOUNT";
@@ -169,8 +171,58 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
 
   const columns = ["document", "customer", "issueDate", "dueDate", "total", "paid", "pending", "status", "actions"];
   const historyColumns = ["document", "customer", "collectedAt", "method", "amount", "reference", "actions"];
+  const openSortColumns = columns.filter((column) => column !== "actions");
+  const historySortColumns = historyColumns.filter((column) => column !== "actions");
+  const accountSortColumns = ["date", "document", "concept", "debit", "credit", "balance"];
+  const openSorting = useTableSortPreference({
+    app: "venta",
+    username: session.username,
+    tableKey: "customerReceivables.open",
+    columns: openSortColumns,
+    defaultSort: null
+  });
+  const historySorting = useTableSortPreference({
+    app: "venta",
+    username: session.username,
+    tableKey: "customerReceivables.history",
+    columns: historySortColumns,
+    defaultSort: null
+  });
+  const accountSorting = useTableSortPreference({
+    app: "venta",
+    username: session.username,
+    tableKey: "customerReceivables.account",
+    columns: accountSortColumns,
+    defaultSort: null
+  });
   const statusKey = (value: CustomerReceivable["status"]) => value === "PENDIENTE"
     ? "receivables.status.pending" : value === "PARCIAL" ? "receivables.status.partial" : "receivables.status.paid";
+  const sortedRows = useMemo(() => sortTableRows(rows, openSorting.sort, (row, column) => {
+    if (column === "document") return row.documentNumber;
+    if (column === "customer") return row.customerName;
+    if (column === "issueDate") return row.issueDate;
+    if (column === "dueDate") return row.dueDate;
+    if (column === "total") return Number(row.total);
+    if (column === "paid") return Number(row.paidTotal);
+    if (column === "pending") return Number(row.pendingTotal);
+    return effectiveReceivableStatus(row);
+  }, locale), [locale, openSorting.sort, rows]);
+  const sortedHistoryRows = useMemo(() => sortTableRows(historyRows, historySorting.sort, (row, column) => {
+    if (column === "document") return row.documentNumber;
+    if (column === "customer") return row.customerName;
+    if (column === "collectedAt") return new Date(row.collectedAt);
+    if (column === "method") return row.paymentMethodName;
+    if (column === "amount") return Number(row.amount);
+    return row.reference;
+  }, locale), [historyRows, historySorting.sort, locale]);
+  const sortedAccountEntries = useMemo(() => sortTableRows(account?.entries ?? [], accountSorting.sort, (entry, column) => {
+    if (column === "date") return new Date(entry.occurredAt);
+    if (column === "document") return entry.documentNumber;
+    if (column === "concept") return entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod;
+    if (column === "debit") return Number(entry.debit);
+    if (column === "credit") return Number(entry.credit);
+    return Number(entry.balance);
+  }, locale), [account?.entries, accountSorting.sort, locale, t]);
 
   return <main className="customer-receivables-screen">
     <header className="entry-topbar"><strong>{t("receivables.title").toLocaleUpperCase(locale)}</strong></header>
@@ -200,17 +252,17 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
       {error && <div className="receivables-error"><p role="alert">{error}</p><button type="button" onClick={() => void load()}>{t("receivables.action.retry")}</button></div>}
       {retryPrint && <div className="receivables-error"><p role="alert">{t("payment.result.printFailed")}</p><button type="button" onClick={() => void retryFailedPrint()}>{t("payment.result.retryPrint")}</button></div>}
       {view === "OPEN" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.title")}>
-        <div role="row" className="receivable-row header">{columns.map((value) => <span role="columnheader" key={value}>{t(`receivables.column.${value}`)}</span>)}</div>
+        <div role="row" className="receivable-row header">{columns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={openSorting.sort?.column === value ? (openSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={openSorting.sort?.column === value ? openSorting.sort.direction : null} onSort={() => openSorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
-        {!loading && rows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId}>
+        {!loading && sortedRows.map((row) => <div role="row" className={`receivable-row${row.overdue ? " overdue" : ""}`} key={row.documentId}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{row.issueDate}</span><span role="cell">{row.dueDate || "-"}</span><span role="cell">{money(row.total, locale)}</span><span role="cell">{money(row.paidTotal, locale)}</span><span role="cell">{money(row.pendingTotal, locale)}</span><span role="cell">{t(statusKey(effectiveReceivableStatus(row)))}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.collect")} ${row.documentNumber}`} disabled={!canPay || effectiveReceivableStatus(row) === "PAGADO"} onClick={() => setSelected(row)}>{t("receivables.action.collect")}</button></span>
         </div>)}
       </div> : view === "HISTORY" ? <div className="customer-receivables-table" role="table" aria-label={t("receivables.history.title")}>
-        <div role="row" className="receivable-history-row header">{historyColumns.map((value) => <span role="columnheader" key={value}>{t(`receivables.column.${value}`)}</span>)}</div>
+        <div role="row" className="receivable-history-row header">{historyColumns.map((value) => { const label = t(`receivables.column.${value}`); return <span role="columnheader" aria-sort={historySorting.sort?.column === value ? (historySorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={value}>{value === "actions" ? label : <TableSortButton label={`${t("party.sortBy")} ${label}`} direction={historySorting.sort?.column === value ? historySorting.sort.direction : null} onSort={() => historySorting.toggleSort(value)}>{label}</TableSortButton>}</span>; })}</div>
         {loading && <p>{t("common.loading")}</p>}
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
-        {!loading && historyRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId}>
+        {!loading && sortedHistoryRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId}>
           <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.reference || "-"}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
         </div>)}
@@ -227,9 +279,9 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
           </section>
           {(account.creditBlocked || !account.creditEnabled || (account.blockOnOverdue && Number(account.overdueDebt) > 0)) && <p className="receivables-account-blocked" role="status">{t("receivables.account.blocked")}</p>}
           <div className="customer-receivables-table" role="table" aria-label={t("receivables.account.statement")}>
-            <div role="row" className="receivable-account-row header"><span role="columnheader">{t("receivables.account.date")}</span><span role="columnheader">{t("receivables.column.document")}</span><span role="columnheader">{t("receivables.account.concept")}</span><span role="columnheader">{t("receivables.account.debit")}</span><span role="columnheader">{t("receivables.account.credit")}</span><span role="columnheader">{t("receivables.account.balance")}</span></div>
+            <div role="row" className="receivable-account-row header">{accountSortColumns.map((column) => { const label = t(column === "document" ? "receivables.column.document" : `receivables.account.${column}`); return <span role="columnheader" aria-sort={accountSorting.sort?.column === column ? (accountSorting.sort.direction === "asc" ? "ascending" : "descending") : undefined} key={column}><TableSortButton label={`${t("party.sortBy")} ${label}`} direction={accountSorting.sort?.column === column ? accountSorting.sort.direction : null} onSort={() => accountSorting.toggleSort(column)}>{label}</TableSortButton></span>; })}</div>
             {account.entries.length === 0 && <p className="receivables-empty">{t("receivables.account.empty")}</p>}
-            {account.entries.map((entry) => <div role="row" className="receivable-account-row" key={`${entry.kind}-${entry.id}`}><span role="cell">{dateTime(entry.occurredAt, locale)}</span><strong role="cell">{entry.documentNumber}</strong><span role="cell">{entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod || t("receivables.account.payment")}</span><span role="cell">{Number(entry.debit) > 0 ? money(entry.debit, locale) : "-"}</span><span role="cell">{Number(entry.credit) > 0 ? money(entry.credit, locale) : "-"}</span><strong role="cell">{money(entry.balance, locale)}</strong></div>)}
+            {sortedAccountEntries.map((entry) => <div role="row" className="receivable-account-row" key={`${entry.kind}-${entry.id}`}><span role="cell">{dateTime(entry.occurredAt, locale)}</span><strong role="cell">{entry.documentNumber}</strong><span role="cell">{entry.kind === "SALE" ? t("receivables.account.sale") : entry.paymentMethod || t("receivables.account.payment")}</span><span role="cell">{Number(entry.debit) > 0 ? money(entry.debit, locale) : "-"}</span><span role="cell">{Number(entry.credit) > 0 ? money(entry.credit, locale) : "-"}</span><strong role="cell">{money(entry.balance, locale)}</strong></div>)}
           </div>
         </>}
       </div>}

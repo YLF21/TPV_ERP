@@ -21,6 +21,7 @@ import {
   stockInventoryStatus,
   stockInventoryStatusClass,
   stockLoadStatus,
+  stockPagePath,
   stockFilterButtonLabelKey,
   loadStockSubfamilies,
   loadStockInventoryRows,
@@ -66,6 +67,30 @@ const terminalContext: TerminalContext = {
 };
 
 describe("StockScreen", () => {
+  it("serializes server sorting and warehouse scope for paged inventory", () => {
+    const path = stockPagePath(
+      "cursor-2",
+      "stock.current",
+      " cafe ",
+      {
+        type: "UNIT",
+        discount: "NORMAL",
+        family: "",
+        tax: "",
+        offerActive: "yes",
+        warehouse: "11111111-1111-4111-8111-111111111111"
+      },
+      { column: "localStock", direction: "desc" },
+      "11111111-1111-4111-8111-111111111111"
+    );
+
+    expect(path).toContain("cursor=cursor-2");
+    expect(path).toContain("search=cafe");
+    expect(path).toContain("sortBy=localStock");
+    expect(path).toContain("sortDirection=desc");
+    expect(path).toContain("warehouseId=11111111-1111-4111-8111-111111111111");
+  });
+
   it("combines backend products, warehouses and stock into inventory rows", () => {
     const rows = buildStockInventoryRows(
       [

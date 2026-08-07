@@ -111,7 +111,7 @@ public class MemberLoyaltyController {
     }
 
     @GetMapping("/api/v1/commercial-contact-channels")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR','VENTA')")
     public List<MemberLoyaltyService.CommercialChannelView> channels() {
         return service.channels();
     }

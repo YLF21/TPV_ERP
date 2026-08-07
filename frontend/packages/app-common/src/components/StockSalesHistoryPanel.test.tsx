@@ -180,7 +180,7 @@ describe("StockSalesHistoryPanel", () => {
     expect(rowValues().slice(0, 2)).toEqual(["GENERAL", "ADMIN"]);
 
     const userHeader = container.querySelector('[data-column-key="user"]') as HTMLElement;
-    fireEvent.keyDown(userHeader.querySelector("button") as HTMLButtonElement, { key: "ArrowRight" });
+    fireEvent.keyDown(userHeader.querySelector(".table-layout-column-resizer") as HTMLButtonElement, { key: "ArrowRight" });
     const stored = JSON.parse(localStorage.getItem(
       tableLayoutStorageKey("venta", "ana", "stock.productSalesHistory")
     ) ?? "[]") as Array<{ key: string; width: number }>;

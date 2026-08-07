@@ -6,6 +6,7 @@ import type { StockBulkDraftView } from "./stockBulkEdit";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 const stockBulkWorkspaceColumns = [
   { key: "code", labelKey: "stock.bulkEdit.workspace.code", defaultWidth: 128 },
@@ -85,6 +86,25 @@ export function StockBulkWorkspaceList({
     definitions: stockBulkWorkspaceColumns
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey: "stock.bulkEdit.workspaces",
+    columns: stockBulkWorkspaceColumns.map((column) => column.key),
+    defaultSort: null,
+    persistent: Boolean(username)
+  });
+  const sortedDrafts = sortTableRows(drafts, tableSort.sort, (draft, column) => {
+    if (column === "code") return draft.code;
+    if (column === "name") return draft.name;
+    if (column === "version") return draft.versionNumber;
+    if (column === "comment") return draft.comments.at(-1)?.text;
+    if (column === "createdBy") return draft.createdBy;
+    if (column === "createdAt") return new Date(draft.createdAt);
+    if (column === "updatedBy") return draft.updatedBy;
+    if (column === "updatedAt") return new Date(draft.updatedAt);
+    return t(`stock.bulkEdit.status.${draft.status}`);
+  }, locale);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const selectedDraft = drafts.find((draft) => draft.id === selectedId) ?? null;
   const canDelete = selectedDraft ? canDeleteStockBulkDraft(selectedDraft, session) : false;
@@ -103,7 +123,7 @@ export function StockBulkWorkspaceList({
     }
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      const nextId = nextStockBulkDraftId(drafts, selectedId, event.key === "ArrowDown" ? 1 : -1);
+      const nextId = nextStockBulkDraftId(sortedDrafts, selectedId, event.key === "ArrowDown" ? 1 : -1);
       if (nextId) onSelect(nextId);
       return;
     }
@@ -201,6 +221,9 @@ export function StockBulkWorkspaceList({
                   <TableLayoutHeaderCell
                     column={column}
                     key={column.key}
+                    sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                    sortLabel={`${t("party.sortBy")} ${label}`}
+                    onSort={tableSort.toggleSort}
                     resizeLabel={`${t("stock.columns.resize")} ${label}`}
                     onReorder={tableLayout.reorderColumns}
                     onMove={tableLayout.moveColumn}
@@ -213,7 +236,7 @@ export function StockBulkWorkspaceList({
             </tr>
           </thead>
           <tbody>
-            {drafts.map((draft) => {
+            {sortedDrafts.map((draft) => {
               const latestComment = draft.comments.at(-1)?.text || t("stock.bulkEdit.draft.noComment");
               return (
                 <tr

@@ -1068,6 +1068,27 @@ class DocumentServiceTest {
     }
 
     @Test
+    void ticketWithPreviousReturnsUsesSpecificCancellationBlock() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findByIdAndTiendaId(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(documentRepository.findByIdAndTiendaIdWithPayments(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.RECTIFICA)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.validateTicketCancellation(ticket.getId()))
+                .isInstanceOf(TicketHasPreviousReturnsException.class)
+                .hasMessage(TicketHasPreviousReturnsException.MESSAGE_KEY);
+
+        verify(documentRepository, never()).save(any());
+        verify(stockGateway, never()).cancel(any());
+    }
+
+    @Test
     void ticketWithVoucherImpactCannotBeCancelled() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);

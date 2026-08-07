@@ -75,6 +75,11 @@ describe("SaleTicketCancellationDialog", () => {
     );
 
     expect(await screen.findByText("T-001")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Anular ticket" });
+    expect(dialog).toHaveClass("sale-ticket-cancellation-dialog");
+    expect(dialog.querySelector("header kbd")).not.toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Usuario autorizador")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Motivo"), {
       target: { value: "Error de cobro" },
@@ -146,5 +151,30 @@ describe("SaleTicketCancellationDialog", () => {
       "/tickets/cancellation-preview?number=T-REPORT-9",
       { token: "token" },
     );
+  });
+
+  it("shows a clear warning when the ticket already has partial returns", async () => {
+    request.mockRejectedValue(Object.assign(new Error("generic conflict"), {
+      problem: { code: "TICKET_HAS_PREVIOUS_RETURNS" },
+    }));
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="BY_NUMBER"
+        initialTicketNumber="T-RETURNED"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const warning = await screen.findByRole("status");
+    expect(warning).toHaveTextContent("Ticket con devoluciones anteriores");
+    expect(warning).toHaveTextContent(
+      "Este ticket ya tiene devoluciones parciales y no puede anularse completo. Utiliza F10 para devolver los artículos restantes.",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

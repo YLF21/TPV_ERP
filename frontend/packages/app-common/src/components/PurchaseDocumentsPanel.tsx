@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import type { LocaleCode } from "../types";
 import { ErpSelect } from "./ErpSelect";
+import { TableSortButton } from "./TableSortButton";
+import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 
 export type PurchaseDocumentQueryMode = "deliveryNote" | "invoice";
 
@@ -49,6 +51,8 @@ type Props = {
   request?: typeof apiRequest;
 };
 
+type PurchaseDocumentSortColumn = "number" | "externalNumber" | "date" | "supplier" | "warehouse" | "status" | "lines" | "total" | "pending";
+
 export function purchaseDocumentsPath(mode: PurchaseDocumentQueryMode) {
   const type = mode === "invoice" ? "FACTURA_COMPRA" : "ALBARAN_COMPRA";
   return `/purchase-documents?type=${type}`;
@@ -90,12 +94,25 @@ export function PurchaseDocumentsPanel({
   const [status, setStatus] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [openDocument, setOpenDocument] = useState<PurchaseDocumentQueryView | null>(null);
+  const [sort, setSort] = useState<TableSort<PurchaseDocumentSortColumn> | null>(null);
   const selectedRowRef = useRef<HTMLTableRowElement>(null);
   const labels = purchaseDocumentLabels(t, mode);
-  const visibleDocuments = useMemo(
-    () => filterPurchaseDocuments(documents, query, status),
-    [documents, query, status]
-  );
+  const visibleDocuments = useMemo(() => sortTableRows(
+    filterPurchaseDocuments(documents, query, status),
+    sort,
+    (document, column) => {
+      if (column === "number") return document.number;
+      if (column === "externalNumber") return document.externalNumber;
+      if (column === "date") return new Date(document.date);
+      if (column === "supplier") return document.supplierName;
+      if (column === "warehouse") return document.warehouseName;
+      if (column === "status") return statusLabel(document.status, t);
+      if (column === "lines") return document.lines.length;
+      if (column === "total") return number(document.total);
+      return number(document.pending);
+    },
+    locale
+  ), [documents, locale, query, sort, status, t]);
   const statuses = useMemo(
     () => Array.from(new Set(documents.map((document) => document.status))).sort(),
     [documents]
@@ -214,15 +231,27 @@ export function PurchaseDocumentsPanel({
         <table className="report-table warehouse-document-table purchase-document-query-table">
           <thead>
             <tr>
-              <th>{labels.number}</th>
-              <th>{labels.externalNumber}</th>
-              <th>{labels.date}</th>
-              <th>{labels.supplier}</th>
-              <th>{labels.warehouse}</th>
-              <th>{labels.status}</th>
-              <th>{labels.lines}</th>
-              <th>{labels.total}</th>
-              <th>{labels.pending}</th>
+              {([
+                ["number", labels.number],
+                ["externalNumber", labels.externalNumber],
+                ["date", labels.date],
+                ["supplier", labels.supplier],
+                ["warehouse", labels.warehouse],
+                ["status", labels.status],
+                ["lines", labels.lines],
+                ["total", labels.total],
+                ["pending", labels.pending]
+              ] as const).map(([column, label]) => (
+                <th aria-sort={sort?.column === column ? sort.direction === "asc" ? "ascending" : "descending" : "none"} key={column}>
+                  <TableSortButton
+                    direction={sort?.column === column ? sort.direction : null}
+                    label={`${t("party.sortBy")} ${label}`}
+                    onSort={() => setSort((current) => nextTableSort(current, column))}
+                  >
+                    {label}
+                  </TableSortButton>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

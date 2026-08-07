@@ -34,7 +34,7 @@ public class VerifactuAdminReadController {
         return service.summary();
     }
 
-    @GetMapping("/submissions")
+    @GetMapping(value = "/submissions", params = "!sortBy")
     public VerifactuAdminSubmissionPage submissions(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
@@ -51,7 +51,26 @@ public class VerifactuAdminReadController {
                 documentNumber, page, size);
     }
 
-    @GetMapping("/defective-records")
+    @GetMapping(value = "/submissions", params = "sortBy")
+    public VerifactuAdminSubmissionPage submissions(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) FiscalSubmissionStatus status,
+            @RequestParam(required = false) FiscalDocumentType documentType,
+            @RequestParam(required = false) FiscalRecordOperation operation,
+            @RequestParam(required = false) String documentNumber,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection) {
+        return service.submissions(
+                dateFrom, dateTo, status, documentType, operation,
+                documentNumber, page, size, sortBy, sortDirection);
+    }
+
+    @GetMapping(value = "/defective-records", params = "!sortBy")
     public VerifactuAdminDefectiveRecordPage defectiveRecords(
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
@@ -66,6 +85,25 @@ public class VerifactuAdminReadController {
         return reviewService.defectiveRecords(
                 dateFrom, dateTo, status, documentType, operation,
                 documentNumber, page, size);
+    }
+
+    @GetMapping(value = "/defective-records", params = "sortBy")
+    public VerifactuAdminDefectiveRecordPage defectiveRecords(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) FiscalSubmissionStatus status,
+            @RequestParam(required = false) FiscalDocumentType documentType,
+            @RequestParam(required = false) FiscalRecordOperation operation,
+            @RequestParam(required = false) String documentNumber,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection) {
+        return reviewService.defectiveRecords(
+                dateFrom, dateTo, status, documentType, operation,
+                documentNumber, page, size, sortBy, sortDirection);
     }
 
     @GetMapping("/submissions/{recordId}/attempts")

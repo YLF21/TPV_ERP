@@ -2,6 +2,7 @@ package com.tpverp.backend.shared.api;
 
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
+import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.tpverp.backend.organization.Company;
@@ -162,6 +163,24 @@ class ApiExceptionHandlerTest {
                 CustomerCreditLimitExceededException.CODE,
                 problem.getProperties().get("code"));
         assertEquals("The operation exceeds the customer credit limit", problem.getDetail());
+    }
+
+    @Test
+    void reportsPreviousReturnsWithStableMachineReadableCode() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es-ES");
+
+        var problem = handler.ticketHasPreviousReturns(
+                new TicketHasPreviousReturnsException(), request);
+
+        assertEquals(409, problem.getStatus());
+        assertEquals(
+                TicketHasPreviousReturnsException.CODE,
+                problem.getProperties().get("code"));
+        assertEquals(
+                "Este ticket ya tiene devoluciones parciales y no puede anularse completo. "
+                        + "Utiliza F10 para devolver los artículos restantes.",
+                problem.getDetail());
     }
 
     @Test

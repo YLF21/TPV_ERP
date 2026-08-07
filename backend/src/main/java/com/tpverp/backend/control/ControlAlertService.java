@@ -69,11 +69,13 @@ public class ControlAlertService {
             Instant to,
             String search,
             int page,
-            int size) {
+            int size,
+            String sortBy,
+            String sortDirection) {
         if (page < 0) throw new IllegalArgumentException("page no puede ser negativo");
         if (size < 1 || size > 100) throw new IllegalArgumentException("size debe estar entre 1 y 100");
         validateRange(from, to);
-        var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+        var pageable = PageRequest.of(page, size, alertSort(sortBy, sortDirection));
         var normalizedSearch = search == null || search.isBlank() ? null : search.trim();
         if (normalizedSearch != null && normalizedSearch.length() > 160) {
             throw new IllegalArgumentException("search no puede superar 160 caracteres");
@@ -82,6 +84,23 @@ public class ControlAlertService {
                         organization.currentStore().getId(), status, type, ruleId, priority,
                         assigneeId, overdue, clock.instant(), from, to, normalizedSearch), pageable)
                 .map(ControlAlertService::summary);
+    }
+
+    private static Sort alertSort(String sortBy, String sortDirection) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return Sort.by(Sort.Direction.DESC, "createdAt", "id");
+        }
+        var property = switch (sortBy) {
+            case "occurredAt" -> "event.occurredAt";
+            case "username" -> "event.userName";
+            case "terminal" -> "event.terminalId";
+            case "document" -> "documentNumber";
+            case "detail" -> "event.type";
+            case "status" -> "status";
+            default -> throw new IllegalArgumentException("sortBy no es valido");
+        };
+        var direction = "desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return Sort.by(direction, property).and(Sort.by(direction, "id"));
     }
 
     @Transactional(readOnly = true)

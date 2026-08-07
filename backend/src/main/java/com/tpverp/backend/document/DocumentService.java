@@ -1850,8 +1850,7 @@ public class DocumentService {
         }
         if (relations.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.RECTIFICA)) {
-            throw new IllegalStateException(
-                    "el ticket tiene devoluciones previas y no puede anularse completo");
+            throw new TicketHasPreviousReturnsException();
         }
     }
 

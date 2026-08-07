@@ -89,6 +89,8 @@ export type ControlAlertFilters = {
   to?: string;
   page: number;
   size: number;
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
 };
 
 export type RelatedDocument = {
@@ -223,6 +225,8 @@ function queryString(filters: ControlAlertFilters): string {
   if (filters.overdue) params.set("overdue", "true");
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
+  if (filters.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters.sortDirection) params.set("sortDirection", filters.sortDirection);
   return params.toString();
 }
 

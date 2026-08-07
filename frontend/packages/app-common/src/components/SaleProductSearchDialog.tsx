@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { apiBaseUrl } from "../api/runtime";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
+import { TableSortButton } from "./TableSortButton";
+import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 
 export type SaleProductSearchOption = {
   id: string;
@@ -45,6 +47,8 @@ type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   onSelect: (product: T) => void;
 };
 
+type SaleProductSearchSortColumn = "code" | "barcode" | "barcode2" | "name" | "price";
+
 function normalizedSearchValue(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
 }
@@ -77,9 +81,20 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
 }: SaleProductSearchDialogProps<T>) {
   const [query, setQuery] = useState(initialQuery);
   const [selectedId, setSelectedId] = useState(initialSelectedId);
+  const [sort, setSort] = useState<TableSort<SaleProductSearchSortColumn> | null>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const results = useMemo(() => filterSaleProductSearch(products, query), [products, query]);
+  const results = useMemo(() => sortTableRows(
+    filterSaleProductSearch(products, query),
+    sort,
+    (product, column) => {
+      if (column === "code") return product.code;
+      if (column === "barcode") return product.barcode;
+      if (column === "barcode2") return product.barcode2;
+      if (column === "name") return product.name;
+      return product.salePrice == null ? null : Number(product.salePrice);
+    }
+  ), [products, query, sort]);
   const activeId = results.some((product) => product.id === selectedId)
     ? selectedId
     : results[0]?.id ?? "";
@@ -201,13 +216,25 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
         </label>
 
         <div className="sale-product-search-table" role="listbox" aria-label={labels.title}>
-          <div className="sale-product-search-head" aria-hidden="true">
-            <span>{labels.image}</span>
-            <span>{labels.code}</span>
-            <span>{labels.barcode}</span>
-            <span>{labels.barcode2}</span>
-            <span>{labels.name}</span>
-            <span>{labels.price}</span>
+          <div className="sale-product-search-head">
+            <span role="columnheader">{labels.image}</span>
+            {([
+              ["code", labels.code],
+              ["barcode", labels.barcode],
+              ["barcode2", labels.barcode2],
+              ["name", labels.name],
+              ["price", labels.price]
+            ] as const).map(([column, label]) => (
+              <span role="columnheader" aria-sort={sort?.column === column ? sort.direction === "asc" ? "ascending" : "descending" : "none"} key={column}>
+                <TableSortButton
+                  direction={sort?.column === column ? sort.direction : null}
+                  label={label}
+                  onSort={() => setSort((current) => nextTableSort(current, column))}
+                >
+                  {label}
+                </TableSortButton>
+              </span>
+            ))}
           </div>
           <div className="sale-product-search-body">
             {results.length === 0 && <p className="sale-product-search-empty">{labels.empty}</p>}

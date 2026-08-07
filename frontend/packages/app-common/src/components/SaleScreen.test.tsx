@@ -1098,7 +1098,7 @@ describe("SaleScreen", () => {
     const closeButtons = within(dialog).getAllByRole("button", { name: "Cerrar" });
     closeButtons[0].focus();
     await user.tab({ shift: true });
-    expect(closeButtons.at(-1)).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "Seleccionar cliente" })).toHaveFocus();
 
     customerSearch.focus();
     await user.keyboard("{Escape}");
@@ -1998,6 +1998,8 @@ describe("SaleScreen", () => {
     renderSaleScreen();
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
+    expect(screen.getByRole("button", { name: /Cliente: Sin cliente/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cobro" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "End" });
     const customerSearch = await screen.findByRole("textbox", { name: "Buscar cliente" });
@@ -2064,7 +2066,11 @@ describe("SaleScreen", () => {
     expect(triggerCash).toHaveBeenCalledTimes(1);
   });
 
-  it("opens parked sales with Ctrl+G and ticket returns with F10", async () => {
+  it("opens the ticket commands and recovers their security configuration on demand", async () => {
+    const securityConfiguration = await loadSalesOperationSecurity();
+    loadSalesOperationSecurity.mockReset()
+      .mockRejectedValueOnce(new Error("backend restarting"))
+      .mockResolvedValue(securityConfiguration);
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -2115,6 +2121,7 @@ describe("SaleScreen", () => {
     );
     const search = await screen.findByRole("combobox", { name: "Buscar producto" });
     await waitFor(() => expect(search).toBeEnabled());
+    await waitFor(() => expect(loadSalesOperationSecurity).toHaveBeenCalledTimes(1));
 
     fireEvent.keyDown(window, { key: "g", ctrlKey: true });
     expect(await screen.findByRole("dialog", { name: "Ventas aparcadas" })).toBeInTheDocument();
@@ -2130,6 +2137,8 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "F11" });
     const cancellationDialog = await screen.findByRole("dialog", { name: "Anular ticket" });
+    expect(loadSalesOperationSecurity).toHaveBeenCalledTimes(2);
+    expect(cancellationDialog.parentElement).toHaveClass("sale-action-overlay");
     const cancelCancellation = within(cancellationDialog).getByRole("button", { name: "Cancelar" });
     await waitFor(() => expect(cancelCancellation).toBeEnabled());
     fireEvent.click(cancelCancellation);
@@ -2137,6 +2146,7 @@ describe("SaleScreen", () => {
 
     fireEvent.keyDown(window, { key: "F12" });
     const invoiceDialog = await screen.findByRole("dialog", { name: "Convertir ticket a factura" });
+    expect(invoiceDialog.parentElement).toHaveClass("sale-action-overlay");
     const cancelInvoice = within(invoiceDialog).getByRole("button", { name: "Cancelar" });
     await waitFor(() => expect(cancelInvoice).toBeEnabled());
     fireEvent.click(cancelInvoice);
@@ -2223,6 +2233,13 @@ describe("SaleScreen", () => {
   });
 
   it("selects the highlighted customer with Insert", async () => {
+    const customerWithFinancials: SaleCustomer = {
+      ...customers[1],
+      activeMember: true,
+      memberBalance: "12.50",
+      outstandingDebt: "34.25",
+      overdueDebt: "5.00",
+    };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) {
@@ -2232,7 +2249,7 @@ describe("SaleScreen", () => {
         });
       }
       if (path.endsWith("/customers/sale-options")) {
-        return new Response(JSON.stringify(customers.slice(0, 2)), {
+        return new Response(JSON.stringify([customers[0], customerWithFinancials]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -2254,6 +2271,15 @@ describe("SaleScreen", () => {
     expect(checkoutProps.current?.sale?.customerId).toBe(customers[1].id);
     expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" }))
       .not.toBeInTheDocument();
+    const customerSummary = screen.getByRole("button", { name: /Cliente: Maria Lopez/ });
+    expect(within(customerSummary).getByText("C-002")).toBeInTheDocument();
+    expect(within(customerSummary).getByText("12345678Z")).toBeInTheDocument();
+    expect(within(customerSummary).getByText("12,50 €")).toBeInTheDocument();
+    expect(within(customerSummary).getByText("34,25 €")).toBeInTheDocument();
+    expect(within(customerSummary).getByText("5,00 €")).toBeInTheDocument();
+
+    fireEvent.click(customerSummary);
+    expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
   });
 
   it("loads the sale catalog from the fiscal sale endpoint", async () => {
@@ -2334,7 +2360,7 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
     act(() => checkoutProps.current?.onLockedChange?.(false));
     act(() => checkoutProps.current?.onPending?.());
-    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+    fireEvent.doubleClick(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
     expect(await screen.findByRole("dialog", { name: /venta pendiente/i })).toBeVisible();
     expect(screen.getByLabelText(/vencimiento/i)).toHaveValue("2026-08-15");
     await waitFor(() => expect(screen.getAllByText("9,50")).not.toHaveLength(0));
@@ -2381,7 +2407,7 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "CAF-001");
     await waitFor(() => expect(screen.getByRole("button", { name: /Efectivo/ })).toBeEnabled());
     act(() => checkoutProps.current?.onPending?.());
-    fireEvent.click(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
+    fireEvent.doubleClick(await screen.findByRole("button", { name: /Cliente Pruebas/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Producto sin configuración de impuestos válida");
     expect(screen.queryByRole("dialog", { name: /venta pendiente/i })).not.toBeInTheDocument();
@@ -3933,7 +3959,7 @@ describe("SaleScreen", () => {
     fireEvent.change(search, { target: { value: "3" } });
     fireEvent.keyDown(search, { key: "/" });
     fireEvent.keyDown(window, { key: "End" });
-    fireEvent.click(await screen.findByRole("button", { name: /Cliente Bronce/ }));
+    fireEvent.doubleClick(await screen.findByRole("button", { name: /Cliente Bronce/ }));
     const cashAction = screen.getByRole("button", { name: /Efectivo/ });
     await waitFor(() => expect(cashAction).toBeEnabled());
     fireEvent.click(cashAction);

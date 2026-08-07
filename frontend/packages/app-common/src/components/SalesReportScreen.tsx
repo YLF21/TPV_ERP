@@ -3142,6 +3142,9 @@ export function SalesReportScreen({
                           column={column}
                           key={column.key}
                           movable={column.key !== "total"}
+                          sortDirection={activeSort?.attribute === column.key ? activeSort.direction : null}
+                          sortLabel={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
+                          onSort={() => toggleSort(column.key)}
                           resizeLabel={`${t("stock.columns.resize")} ${t(reportAttributeLabelKey(selectedReport, column.key))}`}
                           onReorder={(draggedKey, targetKey) => {
                             if (draggedKey !== "total" && targetKey !== "total") {
@@ -3153,22 +3156,7 @@ export function SalesReportScreen({
                           }}
                           onResize={selectedReportTableLayout.resizeColumn}
                         >
-                          <button
-                            type="button"
-                            className="report-sort-button"
-                            aria-label={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleSort(column.key);
-                            }}
-                          >
-                            <span>{t(reportAttributeLabelKey(selectedReport, column.key))}</span>
-                            <i aria-hidden="true">
-                              {activeSort?.attribute === column.key
-                                ? activeSort.direction === "asc" ? "▲" : "▼"
-                                : "↕"}
-                            </i>
-                          </button>
+                          {t(reportAttributeLabelKey(selectedReport, column.key))}
                         </TableLayoutHeaderCell>
                       ))}
                     </tr>

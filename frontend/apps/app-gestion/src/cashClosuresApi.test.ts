@@ -34,7 +34,7 @@ describe("cash closures API", () => {
       terminalId: "terminal-1",
       userId: "user-1",
       onlyDiscrepancies: true
-    }, "next-page", "token");
+    }, "next-page", "token", { column: "retainedFund", direction: "desc" });
 
     const url = String(fetch.mock.calls[0]?.[0]);
     expect(url).toContain("/api/v1/cash/closures?");
@@ -44,5 +44,7 @@ describe("cash closures API", () => {
     expect(url).toContain("userId=user-1");
     expect(url).toContain("onlyDiscrepancies=true");
     expect(url).toContain("cursor=next-page");
+    expect(url).toContain("sortBy=retainedFund");
+    expect(url).toContain("sortDirection=desc");
   });
 });

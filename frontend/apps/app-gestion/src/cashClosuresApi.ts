@@ -1,4 +1,5 @@
 import { apiRequest } from "@tpverp/app-common";
+import type { TableSort } from "@tpverp/app-common";
 
 export type CashClosure = {
   id: string;
@@ -48,7 +49,8 @@ export async function loadCashClosureFilterOptions(token?: string) {
 export async function loadCashClosures(
   filters: CashClosureFilters,
   cursor: string | null,
-  token?: string
+  token?: string,
+  sort?: TableSort | null
 ) {
   const query = new URLSearchParams({
     from: filters.from,
@@ -59,5 +61,9 @@ export async function loadCashClosures(
   if (filters.terminalId) query.set("terminalId", filters.terminalId);
   if (filters.userId) query.set("userId", filters.userId);
   if (cursor) query.set("cursor", cursor);
+  if (sort) {
+    query.set("sortBy", sort.column);
+    query.set("sortDirection", sort.direction);
+  }
   return apiRequest<CashClosurePage>(`/cash/closures?${query.toString()}`, { token });
 }

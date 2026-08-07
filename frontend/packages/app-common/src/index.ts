@@ -14,6 +14,17 @@ export type { StockViewKey } from "./components/stockAccess";
 export { visibleWarehouseSectionsForSession, warehouseSections } from "./components/warehouseAccess";
 export type { WarehouseSection } from "./components/warehouseAccess";
 export { TableLayoutHeaderCell } from "./components/TableLayoutHeaderCell";
+export { TableSortButton } from "./components/TableSortButton";
+export {
+  compareTableSortValues,
+  nextTableSort,
+  readStoredTableSort,
+  sanitizeTableSort,
+  sortTableRows,
+  tableSortStorageKey,
+  useTableSortPreference
+} from "./components/tableSorting";
+export type { TableSort, TableSortDirection, TableSortValue } from "./components/tableSorting";
 export { useTableLayoutPreference } from "./components/useTableLayoutPreference";
 export { tableLayoutGridTemplate, visibleTableColumns } from "./components/tableLayoutPreferences";
 export type { TableColumnDefinition } from "./components/tableLayoutPreferences";

@@ -10,6 +10,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 type PromotionListScreenProps = {
   app: AppKind;
@@ -79,6 +80,25 @@ export function PromotionListScreen({
     definitions: promotionListColumnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableSort = useTableSortPreference({
+    app,
+    username: session.username,
+    tableKey: promotionListTableKey,
+    columns: promotionListColumnDefinitions.map((column) => column.key),
+    defaultSort: null
+  });
+  const sortedPromotions = useMemo(() => sortTableRows(
+    promotions,
+    tableSort.sort,
+    (promotion, column) => {
+      if (column === "name") return promotion.name;
+      if (column === "status") return t(`promotion.status.${promotion.status}`);
+      if (column === "type") return t(`promotion.type.${promotion.type}`);
+      if (column === "date") return new Date(promotion.startDate);
+      return t(`promotion.segment.${promotion.customerSegment ?? "ALL"}`);
+    },
+    locale
+  ), [locale, promotions, tableSort.sort]);
   const gridStyle = {
     gridTemplateColumns: `${tableLayoutGridTemplate(tableLayout.layout)} minmax(330px, auto)`
   };
@@ -182,6 +202,9 @@ export function PromotionListScreen({
                   as="span"
                   column={column}
                   key={column.key}
+                  sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                  sortLabel={`${t("party.sortBy")} ${columnLabel(column.key)}`}
+                  onSort={tableSort.toggleSort}
                   resizeLabel={`${t("stock.columns.resize")} ${columnLabel(column.key)}`}
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}
@@ -192,7 +215,7 @@ export function PromotionListScreen({
               ))}
               <span data-fixed-column="actions">{t("promotion.column.actions")}</span>
             </div>
-            {promotions.map((promotion) => (
+            {sortedPromotions.map((promotion) => (
               <div className={`promotion-row ${selectedId === promotion.id ? "selected" : ""}`} style={gridStyle} key={promotion.id}>
                 {visibleColumns.map((column) => renderCell(column.key, promotion))}
                 <span className="promotion-row-actions" data-fixed-column="actions">

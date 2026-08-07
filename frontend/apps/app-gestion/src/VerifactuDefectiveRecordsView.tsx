@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ErpSelect, type LocaleCode } from "@tpverp/app-common";
+import { ErpSelect, TableSortButton, nextTableSort, useTableSortPreference, type LocaleCode } from "@tpverp/app-common";
 import {
   loadVerifactuAdminDefectiveRecords,
   verifactuDocumentTypes,
@@ -15,6 +15,8 @@ import {
 } from "./verifactuPresentation";
 
 const defectiveStatuses = ["RECHAZADO", "DEFECTUOSO", "ACEPTADO_CON_ERRORES"] as const;
+const defectiveSortColumns = ["sequence", "document", "documentType", "fiscalOperation", "issueDate", "status", "updatedAt", "errorCode"] as const;
+type DefectiveSortColumn = typeof defectiveSortColumns[number];
 
 const emptyFilters: VerifactuAdminDefectiveFilters = {
   dateFrom: "",
@@ -34,6 +36,7 @@ const emptyPage: VerifactuAdminDefectiveRecordPage = {
 export function VerifactuDefectiveRecordsView({
   locale,
   token,
+  username,
   revision,
   t,
   onOpenAttempts,
@@ -41,13 +44,22 @@ export function VerifactuDefectiveRecordsView({
 }: {
   locale: LocaleCode;
   token?: string;
+  username: string;
   revision: number;
   t: VerifactuTranslator;
   onOpenAttempts: (recordId: string, documentNumber: string, returnFocus: HTMLElement) => void;
   onOpenResolution: (recordId: string, documentNumber: string, returnFocus: HTMLElement) => void;
 }) {
-  const [draft, setDraft] = useState(emptyFilters);
-  const [filters, setFilters] = useState(emptyFilters);
+  const sorting = useTableSortPreference({
+    app: "gestion",
+    username,
+    tableKey: "gestion.verifactu.defective",
+    columns: defectiveSortColumns,
+    defaultSort: null
+  });
+  const initialFilters = { ...emptyFilters, sortBy: sorting.sort?.column, sortDirection: sorting.sort?.direction };
+  const [draft, setDraft] = useState<VerifactuAdminDefectiveFilters>(initialFilters);
+  const [filters, setFilters] = useState<VerifactuAdminDefectiveFilters>(initialFilters);
   const [page, setPage] = useState(emptyPage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -98,8 +110,16 @@ export function VerifactuDefectiveRecordsView({
 
   function clear() {
     setFilterError(false);
-    setDraft(emptyFilters);
-    setFilters(emptyFilters);
+    const cleared = { ...emptyFilters, sortBy: sorting.sort?.column, sortDirection: sorting.sort?.direction };
+    setDraft(cleared);
+    setFilters(cleared);
+  }
+
+  function changeSort(column: DefectiveSortColumn) {
+    const next = nextTableSort(sorting.sort, column);
+    sorting.setSort(next);
+    setDraft((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction }));
+    setFilters((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction, page: 0 }));
   }
 
   return (
@@ -167,14 +187,7 @@ export function VerifactuDefectiveRecordsView({
           <div className="gestion-verifactu-table-scroll">
             <table className="gestion-verifactu-table">
               <thead><tr>
-                <th>{t("verifactu.management.sequence")}</th>
-                <th>{t("verifactu.management.document")}</th>
-                <th>{t("verifactu.management.documentType")}</th>
-                <th>{t("verifactu.management.fiscalOperation")}</th>
-                <th>{t("verifactu.management.issueDate")}</th>
-                <th>{t("verifactu.management.status")}</th>
-                <th>{t("verifactu.management.updatedAt")}</th>
-                <th>{t("verifactu.management.errorCode")}</th>
+                {defectiveSortColumns.map((column) => { const label = t(`verifactu.management.${column}`); return <th aria-sort={sorting.sort?.column === column ? (sorting.sort.direction === "asc" ? "ascending" : "descending") : "none"} key={column}><TableSortButton label={label} direction={sorting.sort?.column === column ? sorting.sort.direction : null} onSort={() => changeSort(column)}>{label}</TableSortButton></th>; })}
                 <th>{t("verifactu.management.attempts")}</th>
                 <th>{t("verifactu.resolution.actions")}</th>
               </tr></thead>

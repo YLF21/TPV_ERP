@@ -1,6 +1,8 @@
 import { createElement, useState } from "react";
 import type { DragEvent, KeyboardEvent, PointerEvent, ReactNode } from "react";
 import type { TableColumnLayout, TableColumnMoveDirection } from "./tableLayoutPreferences";
+import type { TableSortDirection } from "./tableSorting";
+import { TableSortButton } from "./TableSortButton";
 
 const tableColumnDragType = "application/x-tpverp-table-column";
 
@@ -12,6 +14,9 @@ type TableLayoutHeaderCellProps<Key extends string> = {
   movable?: boolean;
   resizable?: boolean;
   wrapLabel?: boolean;
+  sortDirection?: TableSortDirection | null;
+  sortLabel?: string;
+  onSort?: (columnKey: Key) => void;
   resizeLabel: string;
   onReorder: (draggedKey: Key, targetKey: Key) => void;
   onMove: (columnKey: Key, direction: TableColumnMoveDirection) => void;
@@ -26,6 +31,9 @@ export function TableLayoutHeaderCell<Key extends string>({
   movable = true,
   resizable = true,
   wrapLabel = true,
+  sortDirection,
+  sortLabel,
+  onSort,
   resizeLabel,
   onReorder,
   onMove,
@@ -81,6 +89,10 @@ export function TableLayoutHeaderCell<Key extends string>({
       draggable: movable,
       tabIndex: movable ? 0 : undefined,
       "data-column-key": column.key,
+      role: as === "th" ? undefined : "columnheader",
+      "aria-sort": onSort
+        ? sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"
+        : undefined,
       "aria-keyshortcuts": movable ? "Control+ArrowLeft Control+ArrowRight" : undefined,
       onKeyDown: handleKeyboardMove,
       onDragStart: (event: DragEvent<HTMLElement>) => {
@@ -116,7 +128,15 @@ export function TableLayoutHeaderCell<Key extends string>({
         }
       }
     },
-    wrapLabel ? <span className="table-layout-header-label">{children}</span> : children,
+    onSort ? (
+      <TableSortButton
+        direction={sortDirection}
+        label={sortLabel ?? String(children)}
+        onSort={() => onSort(column.key)}
+      >
+        {children}
+      </TableSortButton>
+    ) : wrapLabel ? <span className="table-layout-header-label">{children}</span> : children,
     resizable && (
       <button
         type="button"

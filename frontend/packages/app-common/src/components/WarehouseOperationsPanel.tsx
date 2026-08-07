@@ -22,6 +22,7 @@ import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { enterNavigationIntent } from "./keyboardNavigation";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 export type {
   WarehouseCustomerOption,
@@ -351,14 +352,35 @@ export function WarehouseOperationsPanel({
     lines: labels.lines,
     totalUnits: labels.totalUnits
   };
-  const visibleDocuments = useMemo(() => warehouseOperationsFilter(documents, {
-    mode,
-    query,
-    status: statusFilter,
-    warehouses,
-    customers,
-    suppliers
-  }), [customers, documents, mode, query, statusFilter, suppliers, warehouses]);
+  const tableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey: mode === "input" ? "warehouse.inputs.documents" : "warehouse.outputs.documents",
+    columns: warehouseOperationsColumnDefinitions.map((column) => column.key),
+    defaultSort: null,
+    persistent: Boolean(username)
+  });
+  const visibleDocuments = useMemo(() => sortTableRows(
+    warehouseOperationsFilter(documents, {
+      mode,
+      query,
+      status: statusFilter,
+      warehouses,
+      customers,
+      suppliers
+    }),
+    tableSort.sort,
+    (document, column) => {
+      if (column === "number") return document.number;
+      if (column === "date") return new Date(document.date);
+      if (column === "counterparty") return warehouseOperationsCounterparty(document, mode, customers, suppliers);
+      if (column === "warehouse") return warehouseOperationsWarehouseLabel(document, warehouses);
+      if (column === "status") return warehouseOperationsStatusLabel(document.status, t);
+      if (column === "lines") return document.lines.length;
+      return warehouseOperationsTotalUnits(document);
+    },
+    locale
+  ), [customers, documents, locale, mode, query, statusFilter, suppliers, tableSort.sort, warehouses]);
   const statuses = useMemo(
     () => Array.from(new Set(documents.map((document) => document.status).filter(Boolean))).sort(),
     [documents]
@@ -685,6 +707,9 @@ export function WarehouseOperationsPanel({
                 <TableLayoutHeaderCell
                   column={column}
                   key={column.key}
+                  sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                  sortLabel={`${t("party.sortBy")} ${columnLabels[column.key]}`}
+                  onSort={tableSort.toggleSort}
                   resizeLabel={`${t("stock.columns.resize")} ${columnLabels[column.key]}`}
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}

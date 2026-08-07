@@ -11,6 +11,7 @@ import { visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import { formatProductQuantity } from "../sale/productQuantity";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 
 export type StockSalesHistoryRow = {
   documentId: string;
@@ -142,6 +143,14 @@ export function StockSalesHistoryPanel({
     definitions: stockSalesHistoryColumnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey: "stock.productSalesHistory",
+    columns: stockSalesHistoryColumnDefinitions.map((column) => column.key),
+    defaultSort: null,
+    persistent: Boolean(username)
+  });
 
   useEffect(() => {
     function handleKeyDown(event: globalThis.KeyboardEvent) {
@@ -190,7 +199,24 @@ export function StockSalesHistoryPanel({
   }, [appliedFrom, appliedTo, productId, requestToken]);
 
   const statuses = Array.from(new Set(rows.map((row) => row.status).filter(Boolean))).sort();
-  const visibleRows = filterStockSalesHistoryRows(rows, statusFilter);
+  const visibleRows = sortTableRows(
+    filterStockSalesHistoryRows(rows, statusFilter),
+    tableSort.sort,
+    (row, column) => {
+      if (column === "occurredAt") return new Date(row.occurredAt);
+      if (column === "document") return stockSalesDocumentLabel(row);
+      if (column === "status") return row.status;
+      if (column === "customer") return row.customerName || row.customerId;
+      if (column === "quantity") return Number(row.quantity) || 0;
+      if (column === "unitPrice") return Number(row.unitPrice) || 0;
+      if (column === "discount") return Number(row.discountPercent) || 0;
+      if (column === "total") return Number(row.lineTotal) || 0;
+      if (column === "user") return row.userName || row.userId;
+      if (column === "store") return row.storeName || row.storeId;
+      return row.warehouseName || row.warehouseId;
+    },
+    locale
+  );
   const totals = effectiveStockSalesHistoryTotals(visibleRows);
   const numberFormatter = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES", {
     minimumFractionDigits: 2,
@@ -440,6 +466,9 @@ export function StockSalesHistoryPanel({
                 <TableLayoutHeaderCell
                   column={column}
                   key={column.key}
+                  sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                  sortLabel={`${t("party.sortBy")} ${columnLabels[column.key]}`}
+                  onSort={tableSort.toggleSort}
                   resizeLabel={`${t("stock.columns.resize")} ${columnLabels[column.key]}`}
                   onReorder={tableLayout.reorderColumns}
                   onMove={tableLayout.moveColumn}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { formatEuroAmount } from "../money";
 import type { LocaleCode, Permission, TerminalContext } from "../types";
 import {
   saleOperationAuthorizationComplete,
@@ -49,6 +50,8 @@ type StoredCancellationAttempt = {
   manualReferences: Record<string, string>;
 };
 
+const TICKET_HAS_PREVIOUS_RETURNS = "TICKET_HAS_PREVIOUS_RETURNS";
+
 type Props = {
   token?: string;
   locale: LocaleCode;
@@ -86,6 +89,7 @@ export function SaleTicketCancellationDialog({
   const [reprintRestoredVoucher, setReprintRestoredVoucher] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [message, setMessage] = useState("");
   const effectiveAuthorization = authorization ?? (
     permissions.includes("ADMIN")
@@ -102,10 +106,7 @@ export function SaleTicketCancellationDialog({
   ];
 
   const amount = useMemo(
-    () => Number(preview?.ticket.total ?? 0).toLocaleString(
-      locale === "en" ? "en-GB" : locale === "zh" ? "zh-CN" : "es-ES",
-      { style: "currency", currency: "EUR" },
-    ),
+    () => formatEuroAmount(preview?.ticket.total ?? 0, locale),
     [locale, preview],
   );
 
@@ -113,6 +114,7 @@ export function SaleTicketCancellationDialog({
     if (mode === "BY_NUMBER" && !number?.trim()) return;
     setBusy(true);
     setError("");
+    setWarning("");
     setMessage("");
     try {
       const path = mode === "LAST"
@@ -128,7 +130,11 @@ export function SaleTicketCancellationDialog({
       setPassword("");
     } catch (failure) {
       setPreview(null);
-      setError(failure instanceof Error ? failure.message : t("sale.ticketCancel.error.load"));
+      if (apiProblemCode(failure) === TICKET_HAS_PREVIOUS_RETURNS) {
+        setWarning(t("sale.ticketCancel.warning.previousReturns"));
+      } else {
+        setError(failure instanceof Error ? failure.message : t("sale.ticketCancel.error.load"));
+      }
     } finally {
       setBusy(false);
     }
@@ -241,20 +247,22 @@ export function SaleTicketCancellationDialog({
   }
 
   return (
-    <div className="sale-modal-backdrop">
+    <div className="sale-action-overlay" role="presentation">
       <section
         ref={dialogRef}
-        className="sale-action-dialog sale-ticket-operation-dialog"
+        className="sale-action-dialog sale-ticket-operation-dialog sale-ticket-cancellation-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-ticket-cancel-title"
       >
-        <header>
-          <div>
-            <span>{mode === "LAST" ? "F11" : "Ctrl+F11"}</span>
-            <h2 id="sale-ticket-cancel-title">{t("sale.ticketCancel.title")}</h2>
-          </div>
-          <button type="button" onClick={onClose} disabled={busy}>×</button>
+        <header className="sale-ticket-operation-header">
+          <h2 id="sale-ticket-cancel-title">{t("sale.ticketCancel.title")}</h2>
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            onClick={onClose}
+            disabled={busy}
+          >×</button>
         </header>
 
         {mode === "BY_NUMBER" && (
@@ -283,9 +291,22 @@ export function SaleTicketCancellationDialog({
         {preview && (
           <div className="sale-ticket-operation-body">
             <div className="sale-ticket-operation-summary">
-              <strong>{preview.ticket.numero}</strong>
-              <span>{preview.ticket.fecha}</span>
-              <b>{amount}</b>
+              <div>
+                <span>{t("sale.ticketCancel.ticketCode")}</span>
+                <strong>{preview.ticket.numero}</strong>
+              </div>
+              <div>
+                <span>{t("sale.ticketOperation.date")}</span>
+                <strong>{preview.ticket.fecha}</strong>
+              </div>
+              <div>
+                <span>{t("sale.ticketOperation.customer")}</span>
+                <strong>{preview.ticket.customerName || t("sale.ticketOperation.noCustomer")}</strong>
+              </div>
+              <div className="sale-ticket-operation-summary-total">
+                <span>{t("sale.ticketOperation.total")}</span>
+                <b>{amount}</b>
+              </div>
             </div>
 
             <label>
@@ -343,9 +364,15 @@ export function SaleTicketCancellationDialog({
           </div>
         )}
 
+        {warning && (
+          <div className="sale-ticket-operation-warning" role="status">
+            <strong>{t("sale.ticketCancel.warning.previousReturnsTitle")}</strong>
+            <span>{warning}</span>
+          </div>
+        )}
         {error && <p className="sale-error" role="alert">{error}</p>}
         {message && <p className="sale-status" role="status">{message}</p>}
-        <footer>
+        <footer className="sale-ticket-operation-footer">
           <button type="button" onClick={onClose} disabled={busy}>
             {t("sale.dialog.cancel")}
           </button>
@@ -372,6 +399,12 @@ export function SaleTicketCancellationDialog({
       </section>
     </div>
   );
+}
+
+function apiProblemCode(failure: unknown): string {
+  if (!failure || typeof failure !== "object" || !("problem" in failure)) return "";
+  const problem = (failure as { problem?: Record<string, unknown> }).problem;
+  return typeof problem?.code === "string" ? problem.code : "";
 }
 
 function readStoredAttempt(ticketId: string): StoredCancellationAttempt | null {

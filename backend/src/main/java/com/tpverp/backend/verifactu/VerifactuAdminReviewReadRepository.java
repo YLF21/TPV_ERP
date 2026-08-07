@@ -37,6 +37,22 @@ public class VerifactuAdminReviewReadRepository {
             String documentNumber,
             int page,
             int size) {
+        return findDefectiveRecords(companyId, storeId, updatedFrom, updatedToExclusive, status, documentType, operation, documentNumber, page, size, null, null);
+    }
+
+    public VerifactuAdminDefectiveRecordPage findDefectiveRecords(
+            UUID companyId,
+            UUID storeId,
+            Instant updatedFrom,
+            Instant updatedToExclusive,
+            FiscalSubmissionStatus status,
+            FiscalDocumentType documentType,
+            FiscalRecordOperation operation,
+            String documentNumber,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection) {
         var query = defectiveQuery(
                 companyId, storeId, updatedFrom, updatedToExclusive,
                 status, documentType, operation, documentNumber);
@@ -50,7 +66,8 @@ public class VerifactuAdminReviewReadRepository {
         var parameters = query.parameters()
                 .addValue("limit", size)
                 .addValue("offset", (long) page * size);
-        var items = jdbc.query("""
+        var orderBy = defectiveOrderBy(sortBy, sortDirection);
+        var itemsSql = """
                         select record.id as record_id,
                                record.secuencia,
                                record.serie_numero,
@@ -60,10 +77,10 @@ public class VerifactuAdminReviewReadRepository {
                                state.estado,
                                state.actualizado_en,
                                state.ultimo_error_codigo
-                        """ + query.sql() + """
-                        order by state.actualizado_en desc, record.secuencia desc, record.id desc
-                        limit :limit offset :offset
-                        """,
+                        """ + query.sql()
+                + "\norder by " + orderBy
+                + "\nlimit :limit offset :offset";
+        var items = jdbc.query(itemsSql,
                 parameters,
                 (result, rowNumber) -> new VerifactuAdminDefectiveRecordView(
                         result.getObject("record_id", UUID.class),
@@ -77,6 +94,25 @@ public class VerifactuAdminReviewReadRepository {
                         result.getString("ultimo_error_codigo")));
         return new VerifactuAdminDefectiveRecordPage(
                 items, page, size, totalElements, totalPages);
+    }
+
+    private static String defectiveOrderBy(String sortBy, String sortDirection) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "state.actualizado_en desc, record.secuencia desc, record.id desc";
+        }
+        var expression = switch (sortBy) {
+            case "sequence" -> "record.secuencia";
+            case "document" -> "lower(record.serie_numero)";
+            case "documentType" -> "record.tipo_documento_fiscal";
+            case "fiscalOperation" -> "record.operacion";
+            case "issueDate" -> "record.fecha_expedicion";
+            case "status" -> "state.estado";
+            case "updatedAt" -> "state.actualizado_en";
+            case "errorCode" -> "lower(coalesce(state.ultimo_error_codigo, ''))";
+            default -> throw new IllegalArgumentException("sortBy no es valido");
+        };
+        var direction = "desc".equalsIgnoreCase(sortDirection) ? "desc" : "asc";
+        return expression + " " + direction + ", record.id " + direction;
     }
 
     public boolean recordExists(UUID companyId, UUID storeId, UUID recordId) {

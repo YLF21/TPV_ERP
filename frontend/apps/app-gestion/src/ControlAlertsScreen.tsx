@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import {
   TableLayoutHeaderCell,
+  nextTableSort,
   tableLayoutGridTemplate,
+  useTableSortPreference,
   useTableLayoutPreference,
   visibleTableColumns,
   type TableColumnDefinition,
@@ -520,8 +522,17 @@ function AlertsByRuleView({ session, t, tile, range, refreshSeconds, autoRefresh
 }) {
   const token = session.accessToken;
   const instants = useMemo(() => dateRangeToInstants(range), [range]);
+  const sorting = useTableSortPreference({
+    app: "gestion",
+    username: session.username,
+    tableKey: controlAlertsTableKey,
+    columns: controlAlertColumnDefinitions.map((column) => column.key),
+    defaultSort: null
+  });
   const [filters, setFilters] = useState<ControlAlertFilters>({
-    search: "", status: "", ruleId: tile.ruleId ?? tile.group?.ruleId, from: instants.from, to: instants.to, page: 0, size: 25
+    search: "", status: "", ruleId: tile.ruleId ?? tile.group?.ruleId, from: instants.from, to: instants.to, page: 0, size: 25,
+    sortBy: sorting.sort?.column,
+    sortDirection: sorting.sort?.direction
   });
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<ControlAlert[]>([]);
@@ -613,6 +624,12 @@ function AlertsByRuleView({ session, t, tile, range, refreshSeconds, autoRefresh
   function submitSearch(event: FormEvent) {
     event.preventDefault();
     setFilters((current) => ({ ...current, search: query, page: 0 }));
+  }
+
+  function changeSort(column: ControlAlertColumnKey) {
+    const next = nextTableSort(sorting.sort, column);
+    sorting.setSort(next);
+    setFilters((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction, page: 0 }));
   }
 
   async function runTransition(action: ControlAlertTransition) {
@@ -717,6 +734,9 @@ function AlertsByRuleView({ session, t, tile, range, refreshSeconds, autoRefresh
                   as="span" column={column} key={column.key}
                   resizeLabel={`${t("gestion.controlAlerts.resize")} ${t(`gestion.controlAlerts.column.${column.key}`)}`}
                   onReorder={tableLayout.reorderColumns} onMove={tableLayout.moveColumn} onResize={tableLayout.resizeColumn}
+                  sortDirection={sorting.sort?.column === column.key ? sorting.sort.direction : null}
+                  sortLabel={t(`gestion.controlAlerts.column.${column.key}`)}
+                  onSort={changeSort}
                 >
                   {t(`gestion.controlAlerts.column.${column.key}`)}
                 </TableLayoutHeaderCell>

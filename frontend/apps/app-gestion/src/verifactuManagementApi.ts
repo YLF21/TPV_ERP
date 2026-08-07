@@ -110,6 +110,8 @@ export type VerifactuAdminSubmissionFilters = {
   documentNumber: string;
   page: number;
   size: number;
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
 };
 
 export type VerifactuAdminDefectiveRecord = {
@@ -315,6 +317,8 @@ function submissionParams(filters: VerifactuAdminSubmissionFilters | VerifactuAd
   if (filters.documentType) params.set("documentType", filters.documentType);
   if (filters.operation) params.set("operation", filters.operation);
   if (filters.documentNumber.trim()) params.set("documentNumber", filters.documentNumber.trim());
+  if (filters.sortBy) params.set("sortBy", filters.sortBy);
+  if (filters.sortDirection) params.set("sortDirection", filters.sortDirection);
   return params;
 }
 

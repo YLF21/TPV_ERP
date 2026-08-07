@@ -74,6 +74,39 @@ public class VerifactuAdminReviewReadService {
     }
 
     @Transactional(readOnly = true)
+    public VerifactuAdminDefectiveRecordPage defectiveRecords(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            FiscalSubmissionStatus status,
+            FiscalDocumentType documentType,
+            FiscalRecordOperation operation,
+            String documentNumber,
+            int page,
+            int size,
+            String sortBy,
+            String sortDirection) {
+        validatePage(page, size);
+        validateRange(dateFrom, dateTo);
+        validateDefectiveStatus(status);
+        var normalizedNumber = normalizeDocumentNumber(documentNumber);
+        var store = organization.currentStore();
+        var zone = ZoneId.of(store.getTimezone());
+        return reads.findDefectiveRecords(
+                store.getEmpresa().getId(),
+                store.getId(),
+                startOfDay(dateFrom, zone),
+                startOfNextDay(dateTo, zone),
+                status,
+                documentType,
+                operation,
+                normalizedNumber,
+                page,
+                size,
+                sortBy,
+                sortDirection);
+    }
+
+    @Transactional(readOnly = true)
     public VerifactuAdminAttemptPage attempts(UUID recordId, int page, int size) {
         validatePage(page, size);
         var store = organization.currentStore();

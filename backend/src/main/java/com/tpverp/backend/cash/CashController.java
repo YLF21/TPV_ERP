@@ -163,10 +163,17 @@ public class CashController {
             @RequestParam(defaultValue = "false") boolean onlyDiscrepancies,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit,
             @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection,
             Authentication authentication) {
+        if ((sortBy == null || sortBy.isBlank()) && (sortDirection == null || sortDirection.isBlank())) {
+            return closures.list(
+                    from, to, terminalId, userId, onlyDiscrepancies,
+                    limit, cursor, authentication);
+        }
         return closures.list(
                 from, to, terminalId, userId, onlyDiscrepancies,
-                limit, cursor, authentication);
+                limit, cursor, sortBy, sortDirection, authentication);
     }
 
     @GetMapping("/closures/filter-options")

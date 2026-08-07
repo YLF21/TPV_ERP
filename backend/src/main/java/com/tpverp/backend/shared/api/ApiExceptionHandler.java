@@ -4,6 +4,7 @@ import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
+import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -143,6 +144,20 @@ public class ApiExceptionHandler {
                 HttpStatus.CONFLICT,
                 RefundTenderOverrideRequiredException.CODE,
                 detail,
+                language,
+                request);
+    }
+
+    @ExceptionHandler(TicketHasPreviousReturnsException.class)
+    ProblemDetail ticketHasPreviousReturns(
+            TicketHasPreviousReturnsException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        return problem(
+                HttpStatus.CONFLICT,
+                TicketHasPreviousReturnsException.CODE,
+                localizedExceptionDetail(
+                        exception.getMessage(), SystemErrorCode.STATE_CONFLICT, language),
                 language,
                 request);
     }

@@ -65,7 +65,7 @@ public class StockController {
         return service.stock(productId, warehouseId);
     }
 
-    @GetMapping("/page")
+    @GetMapping(value = "/page", params = "!sortBy")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
     public PagedResult<InventoryService.StockPageItem> page(
             @RequestParam(required = false) Integer limit,
@@ -80,6 +80,28 @@ public class StockController {
             Authentication authentication) {
         return service.stockPage(
                 limit, cursor, search, view, type, discount, familyId, taxId, offerActive,
+                PermissionChecks.hasProductManagement(authentication));
+    }
+
+    @GetMapping(value = "/page", params = "sortBy")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('" + STOCK_READ + "','" + GESTION_PRODUCTO + "','" + GESTION_ALMACEN + "','" + GESTION_VENTAS + "','" + VENTA + "')")
+    public PagedResult<InventoryService.StockPageItem> page(
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String view,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String discount,
+            @RequestParam(required = false) UUID familyId,
+            @RequestParam(required = false) UUID taxId,
+            @RequestParam(required = false) Boolean offerActive,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDirection,
+            Authentication authentication) {
+        return service.stockPage(
+                limit, cursor, search, view, type, discount, familyId, taxId, offerActive,
+                warehouseId, sortBy, sortDirection,
                 PermissionChecks.hasProductManagement(authentication));
     }
 

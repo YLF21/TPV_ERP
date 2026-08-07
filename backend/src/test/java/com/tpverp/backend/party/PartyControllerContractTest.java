@@ -56,6 +56,7 @@ class PartyControllerContractTest {
                 .containsExactly(
                         "id", "clientId", "fiscalName", "documentNumber",
                         "activeMember", "memberCategoryName", "memberDiscountPercent",
+                        "memberBalance",
                         "creditEnabled", "creditLimit", "paymentTermDays",
                         "creditBlocked", "blockOnOverdue", "outstandingDebt",
                         "overdueDebt", "availableCredit");

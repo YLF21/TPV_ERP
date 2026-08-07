@@ -79,6 +79,7 @@ import { SaleCalculatorDialog } from "./SaleCalculatorDialog";
 import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
+import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
 import {
@@ -90,6 +91,8 @@ import { SaleCashWithdrawalDialog } from "./SaleCashWithdrawalDialog";
 import { SaleSerialNumberDialog } from "./SaleSerialNumberDialog";
 import { TouchNumericKeypad } from "./TouchNumericKeypad";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { TableSortButton } from "./TableSortButton";
+import { nextTableSort, sortTableRows, type TableSort } from "./tableSorting";
 import { visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
 import {
@@ -201,6 +204,7 @@ export type SaleCustomer = {
   activeMember?: boolean;
   memberCategoryName?: string | null;
   memberDiscountPercent?: number | string | null;
+  memberBalance?: number | string | null;
   creditEnabled?: boolean;
   creditLimit?: number | string | null;
   paymentTermDays?: number | null;
@@ -210,6 +214,10 @@ export type SaleCustomer = {
   overdueDebt?: number | string | null;
   availableCredit?: number | string | null;
 };
+
+type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount";
+
+const noCustomerSelectionId = "__NO_CUSTOMER__";
 
 type PosAuthoritativeQuote = {
   total: number | string;
@@ -1269,8 +1277,10 @@ export function SaleScreen({
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
   const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
+  const [customerSort, setCustomerSort] = useState<TableSort<SaleCustomerSortColumn> | null>(null);
   const [saleComment, setSaleComment] = useState("");
   const [commentInput, setCommentInput] = useState("");
   const [salePrintMode, setSalePrintMode] = useState<SalePrintMode>("DEFAULT");
@@ -1405,7 +1415,26 @@ export function SaleScreen({
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
   );
-  const customerResults = useMemo(() => filterSaleCustomers(customers, customerQuery), [customers, customerQuery]);
+  const customerResults = useMemo(() => sortTableRows(
+    filterSaleCustomers(customers, customerQuery, 200),
+    customerSort,
+    (customer, column) => {
+      if (column === "code") return customer.clientId;
+      if (column === "name") return customer.fiscalName;
+      if (column === "document") return customer.documentNumber;
+      if (column === "member") return customer.memberCategoryName ?? customer.activeMember ?? false;
+      return customer.memberDiscountPercent == null ? null : Number(customer.memberDiscountPercent);
+    },
+    locale
+  ), [customerQuery, customerSort, customers, locale]);
+  const customerSelectionIds = useMemo(
+    () => [
+      ...(!pendingCustomerContinuation ? [noCustomerSelectionId] : []),
+      ...customerResults.map((customer) => customer.id),
+    ],
+    [customerResults, pendingCustomerContinuation],
+  );
+  const saleCustomerCreationAllowed = canCreateSaleCustomer(session.permissions);
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   useEffect(() => {
     if (!selectedLineId) return;
@@ -1938,6 +1967,27 @@ export function SaleScreen({
     setOperationSecurityReload((current) => current + 1);
   }
 
+  async function recoverOperationSecurityAndOpen(
+    operationCode: string,
+    open: () => void,
+  ) {
+    setShortcutStatus(t("sale.operationSecurity.unavailable"));
+    try {
+      const configuration = await loadSalesOperationSecurity(session.accessToken);
+      setOperationSecurity(configuration);
+      const authorization = findSaleOperationAuthorization(
+        configuration,
+        operationCode,
+        session.permissions,
+      );
+      if (!authorization) return;
+      setShortcutStatus("");
+      open();
+    } catch {
+      setShortcutStatus(t("sale.operationSecurity.unavailable"));
+    }
+  }
+
   async function openSalesUtilityWindow(
     kind: "INTERNAL_EAN" | "PRODUCT_LABEL",
   ) {
@@ -2460,6 +2510,7 @@ export function SaleScreen({
 
   function openCustomerDialog(continuePending = false) {
     setPendingCustomerContinuation(continuePending);
+    setCustomerCreateOpen(false);
     setActionDialog("customer");
     setCustomerQuery("");
     setCustomerLoading(true);
@@ -2467,7 +2518,8 @@ export function SaleScreen({
     apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken })
       .then((options) => {
         setCustomers(options);
-        setSelectedCustomerResultId(options[0]?.id ?? "");
+        setSelectedCustomerResultId(options[0]?.id
+          ?? (continuePending ? "" : noCustomerSelectionId));
       })
       .catch(() => setCustomerError(true))
       .finally(() => setCustomerLoading(false));
@@ -2483,39 +2535,68 @@ export function SaleScreen({
     }
   }
 
+  function closeCustomerDialog() {
+    setPendingCustomerContinuation(false);
+    setCustomerCreateOpen(false);
+    setActionDialog(null);
+  }
+
+  function selectedCustomerResult(): SaleCustomer | null | undefined {
+    if (selectedCustomerResultId === noCustomerSelectionId) return null;
+    return customerResults.find((candidate) => candidate.id === selectedCustomerResultId);
+  }
+
+  async function finishCreatedSaleCustomer(customerId: string) {
+    try {
+      const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", {
+        token: session.accessToken,
+      });
+      const created = options.find((customer) => customer.id === customerId);
+      setCustomers(options);
+      setCustomerCreateOpen(false);
+      if (created) {
+        setSelectedCustomerResultId(created.id);
+        chooseSaleCustomer(created);
+        return;
+      }
+      setCustomerError(true);
+    } catch {
+      setCustomerCreateOpen(false);
+      setCustomerError(true);
+    }
+  }
+
   function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.repeat) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       event.stopPropagation();
       setSelectedCustomerResultId((current) => {
-        if (customerResults.length === 0) return "";
-        const currentIndex = customerResults.findIndex((customer) => customer.id === current);
+        if (customerSelectionIds.length === 0) return "";
+        const currentIndex = customerSelectionIds.indexOf(current);
         const nextIndex = currentIndex < 0
-          ? event.key === "ArrowDown" ? 0 : customerResults.length - 1
+          ? event.key === "ArrowDown" ? 0 : customerSelectionIds.length - 1
           : (
             currentIndex
             + (event.key === "ArrowDown" ? 1 : -1)
-            + customerResults.length
-          ) % customerResults.length;
-        return customerResults[nextIndex].id;
+            + customerSelectionIds.length
+          ) % customerSelectionIds.length;
+        return customerSelectionIds[nextIndex];
       });
       return;
     }
     if (event.key !== "Insert") return;
     event.preventDefault();
     event.stopPropagation();
-    const customer = customerResults.find(
-      (candidate) => candidate.id === selectedCustomerResultId,
-    );
-    if (customer) chooseSaleCustomer(customer);
+    const customer = selectedCustomerResult();
+    if (customer !== undefined) chooseSaleCustomer(customer);
   }
 
   useEffect(() => {
     if (actionDialog !== "customer") return;
-    if (customerResults.some((customer) => customer.id === selectedCustomerResultId)) return;
-    setSelectedCustomerResultId(customerResults[0]?.id ?? "");
-  }, [actionDialog, customerResults, selectedCustomerResultId]);
+    if (customerSelectionIds.includes(selectedCustomerResultId)) return;
+    setSelectedCustomerResultId(customerSelectionIds[0] ?? "");
+  }, [actionDialog, customerSelectionIds, selectedCustomerResultId]);
 
   async function beginPendingSale(customer: SaleCustomer) {
     if (pendingOpening || paymentActionsDisabled || paymentLocked
@@ -3385,15 +3466,24 @@ export function SaleScreen({
         break;
       case "cancel-last-ticket":
         if (ticketCancellationAuthorization) setTicketCancellationMode("LAST");
-        else reportOperationSecurityUnavailable();
+        else void recoverOperationSecurityAndOpen(
+          "CANCEL_TICKET",
+          () => setTicketCancellationMode("LAST"),
+        );
         break;
       case "cancel-ticket":
         if (ticketCancellationAuthorization) setTicketCancellationMode("BY_NUMBER");
-        else reportOperationSecurityUnavailable();
+        else void recoverOperationSecurityAndOpen(
+          "CANCEL_TICKET",
+          () => setTicketCancellationMode("BY_NUMBER"),
+        );
         break;
       case "convert-ticket":
         if (ticketInvoiceAuthorization) setTicketInvoiceOpen(true);
-        else reportOperationSecurityUnavailable();
+        else void recoverOperationSecurityAndOpen(
+          "CONVERT_TICKET_TO_INVOICE",
+          () => setTicketInvoiceOpen(true),
+        );
         break;
       case "checkout":
         if (paymentCheckoutRef.current?.openCheckout) {
@@ -3900,6 +3990,49 @@ export function SaleScreen({
               </p>
             )}
           </div>
+          <button
+            type="button"
+            className={`sale-customer-summary${selectedCustomer ? " has-customer" : " no-customer"}`}
+            disabled={saleCommandDisabled("customer")}
+            onClick={() => executeSaleCommand("customer")}
+            aria-label={`${t("sale.customer.card.title")}: ${selectedCustomer?.fiscalName ?? t("sale.customer.none")}. ${t("sale.customer.card.open")}`}
+          >
+            <span className="sale-customer-summary-heading">
+              <strong>{t("sale.customer.card.title")}</strong>
+              <kbd>Fin</kbd>
+            </span>
+            {!selectedCustomer ? (
+              <strong className="sale-customer-summary-empty">{t("sale.customer.none")}</strong>
+            ) : (
+              <>
+                <span className="sale-customer-summary-identity">
+                  <strong>{selectedCustomer.clientId ?? t("sale.customer.noCode")}</strong>
+                  <b title={selectedCustomer.fiscalName ?? undefined}>{selectedCustomer.fiscalName ?? t("sale.customer.unnamed")}</b>
+                  {selectedCustomer.documentNumber && <small>{selectedCustomer.documentNumber}</small>}
+                </span>
+                <span className="sale-customer-summary-values">
+                  {selectedCustomer.activeMember && (
+                    <span>
+                      <small>{t("sale.customer.card.balance")}</small>
+                      <strong>{formatSaleAmount(selectedCustomer.memberBalance)} €</strong>
+                    </span>
+                  )}
+                  {Number(selectedCustomer.outstandingDebt ?? 0) > 0 && (
+                    <span className="debt">
+                      <small>{t("sale.customer.card.debt")}</small>
+                      <strong>{formatSaleAmount(selectedCustomer.outstandingDebt)} €</strong>
+                    </span>
+                  )}
+                  {Number(selectedCustomer.overdueDebt ?? 0) > 0 && (
+                    <span className="overdue">
+                      <small>{t("sale.customer.card.overdue")}</small>
+                      <strong>{formatSaleAmount(selectedCustomer.overdueDebt)} €</strong>
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
+          </button>
           {interfaceMode === "TOUCH" && (
             <TouchSaleActionPanel
               labels={commandLabels}
@@ -3948,7 +4081,7 @@ export function SaleScreen({
             />
           )}
           <section className="sale-payment" aria-label={t("sale.main.payment")}>
-            <h2>{t("sale.main.payment")}</h2>
+            {interfaceMode === "TOUCH" && <h2>{t("sale.main.payment")}</h2>}
             <SalePaymentCheckout
               ref={paymentCheckoutRef}
               locale={locale}
@@ -4572,43 +4705,102 @@ export function SaleScreen({
         />
       )}
 
-      {actionDialog === "customer" && (
+      {actionDialog === "customer" && !customerCreateOpen && (
         <SaleActionDialog
           title={t("sale.customer.title")}
           closeLabel={t("sale.dialog.close")}
           initialFocusRef={customerSearchInputRef}
-          onClose={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}
+          onClose={closeCustomerDialog}
           onKeyDown={handleCustomerDialogKeyDown}
+          className="sale-customer-selection-dialog"
           wide
         >
-          <label>
-            <span>{t("sale.customer.search")}</span>
-            <input ref={customerSearchInputRef} aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
-          </label>
-          {customerLoading && <p className="sale-search-status">{t("sale.customer.loading")}</p>}
-          {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
-          {!customerLoading && !customerError && (
-            <div className="sale-customer-results">
-              {!pendingCustomerContinuation && <button type="button" onClick={() => chooseSaleCustomer(null)}>{t("sale.customer.none")}</button>}
-              {customerResults.map((customer) => (
+          <div className="sale-customer-toolbar">
+            <label>
+              <span>{t("sale.customer.search")}</span>
+              <input ref={customerSearchInputRef} aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
+            </label>
+            {saleCustomerCreationAllowed && <button type="button" onClick={() => setCustomerCreateOpen(true)}>{t("sale.customer.create")}</button>}
+          </div>
+          <div className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
+            <div className="sale-customer-table-header" role="row">
+              {(["code", "name", "document", "member", "discount"] as const).map((column) => (
+                <span
+                  role="columnheader"
+                  aria-sort={customerSort?.column === column
+                    ? customerSort.direction === "asc" ? "ascending" : "descending"
+                    : "none"}
+                  key={column}
+                >
+                  <TableSortButton
+                    direction={customerSort?.column === column ? customerSort.direction : null}
+                    label={`${t("party.sortBy")} ${t(`sale.customer.column.${column}`)}`}
+                    onSort={() => setCustomerSort((current) => nextTableSort(current, column))}
+                  >
+                    {t(`sale.customer.column.${column}`)}
+                  </TableSortButton>
+                </span>
+              ))}
+            </div>
+            <div className="sale-customer-table-body" role="rowgroup">
+              {customerLoading && <p className="sale-search-status">{t("sale.customer.loading")}</p>}
+              {customerError && <p className="sale-action-error">{t("sale.customer.loadError")}</p>}
+              {!customerLoading && !customerError && !pendingCustomerContinuation && <button
+                type="button"
+                aria-label={t("sale.customer.none")}
+                className={`sale-customer-table-row sale-customer-none-row${selectedCustomerResultId === noCustomerSelectionId ? " selected" : ""}`}
+                aria-current={selectedCustomerResultId === noCustomerSelectionId}
+                onClick={() => setSelectedCustomerResultId(noCustomerSelectionId)}
+                onDoubleClick={() => chooseSaleCustomer(null)}
+              >
+                <span role="cell">—</span>
+                <strong role="cell">{t("sale.customer.none")}</strong>
+                <span role="cell"></span><span role="cell"></span><span role="cell"></span>
+              </button>}
+              {!customerLoading && !customerError && customerResults.map((customer) => (
                 <button
                   type="button"
-                  className={customer.id === selectedCustomerResultId ? "selected" : undefined}
+                  aria-label={[customer.clientId, customer.fiscalName, customer.documentNumber].filter(Boolean).join(" · ") || t("sale.customer.unnamed")}
+                  className={`sale-customer-table-row${customer.id === selectedCustomerResultId ? " selected" : ""}`}
                   aria-current={customer.id === selectedCustomerResultId}
                   key={customer.id}
                   onFocus={() => setSelectedCustomerResultId(customer.id)}
-                  onMouseEnter={() => setSelectedCustomerResultId(customer.id)}
-                  onClick={() => chooseSaleCustomer(customer)}
+                  onClick={() => setSelectedCustomerResultId(customer.id)}
+                  onDoubleClick={() => chooseSaleCustomer(customer)}
                 >
-                  <strong>{customer.fiscalName ?? t("sale.customer.unnamed")}</strong>
-                  <span>{customer.clientId ?? customer.documentNumber ?? t("sale.customer.noCode")}</span>
+                  <strong role="cell">{customer.clientId ?? t("sale.customer.noCode")}</strong>
+                  <span role="cell" title={customer.fiscalName ?? undefined}>{customer.fiscalName ?? t("sale.customer.unnamed")}</span>
+                  <span role="cell">{customer.documentNumber ?? ""}</span>
+                  <span role="cell">{customer.activeMember ? customer.memberCategoryName || t("common.yes") : ""}</span>
+                  <span role="cell">{customer.memberDiscountPercent == null ? "" : `${Number(customer.memberDiscountPercent).toLocaleString(locale, { maximumFractionDigits: 2 })} %`}</span>
                 </button>
               ))}
+              {!customerLoading && !customerError && customerResults.length === 0 && pendingCustomerContinuation && <p className="sale-customer-empty">{t("sale.customer.empty")}</p>}
             </div>
-          )}
-          <p className="sale-dialog-hint"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
-          <div className="sale-action-buttons"><button type="button" onClick={() => { setPendingCustomerContinuation(false); setActionDialog(null); }}>{t("sale.dialog.close")}</button></div>
+          </div>
+          <footer className="sale-customer-selection-footer">
+            <p className="sale-dialog-hint"><kbd>Insert</kbd> {t("sale.customer.insertHint")}</p>
+            <div className="sale-action-buttons">
+              <button type="button" onClick={closeCustomerDialog}>{t("sale.dialog.close")}</button>
+              <button type="button" disabled={selectedCustomerResult() === undefined} onClick={() => {
+                const customer = selectedCustomerResult();
+                if (customer !== undefined) chooseSaleCustomer(customer);
+              }}>{t("sale.customer.select")}</button>
+            </div>
+          </footer>
         </SaleActionDialog>
+      )}
+
+      {actionDialog === "customer" && customerCreateOpen && (
+        <SaleCustomerCreateDialog
+          locale={locale}
+          session={session}
+          onCancel={() => {
+            setCustomerCreateOpen(false);
+            queueMicrotask(() => customerSearchInputRef.current?.focus());
+          }}
+          onCreated={(customer) => void finishCreatedSaleCustomer(customer.id)}
+        />
       )}
 
       {actionDialog === "remove" && selectedLine && (

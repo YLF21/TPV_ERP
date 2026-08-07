@@ -3,6 +3,7 @@ import {
   TableLayoutHeaderCell,
   tableLayoutGridTemplate,
   useTableLayoutPreference,
+  useTableSortPreference,
   visibleTableColumns,
   type TableColumnDefinition,
   type UserSession
@@ -59,6 +60,13 @@ export function CashClosuresScreen({ session, t }: Props) {
     tableKey: cashClosuresTableKey,
     definitions: cashClosureColumnDefinitions
   });
+  const tableSorting = useTableSortPreference({
+    app: "gestion",
+    username: session.username,
+    tableKey: cashClosuresTableKey,
+    columns: cashClosureColumnDefinitions.map((column) => column.key),
+    defaultSort: null
+  });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
   const tableStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) } as CSSProperties;
 
@@ -94,7 +102,7 @@ export function CashClosuresScreen({ session, t }: Props) {
     setHasMore(false);
     loadingMoreRef.current = false;
     setLoadingMore(false);
-    void loadCashClosures(filters, null, token)
+    void loadCashClosures(filters, null, token, tableSorting.sort)
       .then((page) => {
         if (requestGeneration.current !== generation) return;
         setRows(page.items);
@@ -108,7 +116,7 @@ export function CashClosuresScreen({ session, t }: Props) {
       .finally(() => {
         if (requestGeneration.current === generation) setLoading(false);
       });
-  }, [filters, token]);
+  }, [filters, tableSorting.sort, token]);
 
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat("es-ES", {
     dateStyle: "short",
@@ -131,7 +139,7 @@ export function CashClosuresScreen({ session, t }: Props) {
     setLoadingMore(true);
     const generation = requestGeneration.current;
     try {
-      const page = await loadCashClosures(filters, nextCursor, token);
+      const page = await loadCashClosures(filters, nextCursor, token, tableSorting.sort);
       if (requestGeneration.current !== generation) return;
       setRows((current) => appendUniqueClosures(current, page.items));
       setNextCursor(page.nextCursor ?? null);
@@ -263,6 +271,9 @@ export function CashClosuresScreen({ session, t }: Props) {
                 as="span"
                 column={column}
                 key={column.key}
+                sortDirection={tableSorting.sort?.column === column.key ? tableSorting.sort.direction : null}
+                sortLabel={`${t("party.sortBy")} ${t(`gestion.cashClosures.column.${column.key}`)}`}
+                onSort={tableSorting.toggleSort}
                 resizeLabel={`${t("gestion.cashClosures.resize")} ${t(`gestion.cashClosures.column.${column.key}`)}`}
                 onReorder={tableLayout.reorderColumns}
                 onMove={tableLayout.moveColumn}

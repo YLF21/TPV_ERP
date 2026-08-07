@@ -39,6 +39,7 @@ class InventoryServiceTest {
 
     @Mock private CurrentOrganization organization;
     @Mock private ProductRepository productRepository;
+    @Mock private StockPageOrderRepository stockPageOrderRepository;
     @Mock private WarehouseRepository warehouseRepository;
     @Mock private StockLevelRepository stockRepository;
     @Mock private StockSettingsRepository settingsRepository;
@@ -67,7 +68,7 @@ class InventoryServiceTest {
         lenient().when(movementRepository.save(any(StockMovement.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         service = new InventoryService(
-                organization, productRepository, warehouseRepository,
+                organization, productRepository, stockPageOrderRepository, warehouseRepository,
                 stockRepository, settingsRepository, movementRepository,
                 new StockMovementSyncPublisher(syncOutbox),
                 Clock.fixed(Instant.parse("2026-06-08T12:00:00Z"), ZoneOffset.UTC));
@@ -89,6 +90,48 @@ class InventoryServiceTest {
 
         assertThat(service.stock(null, null)).isEmpty();
         verify(warehouseRepository).findByStoreIdOrderByNombre(authenticatedStoreId);
+    }
+
+    @Test
+    void sortedStockPagePreservesRepositoryOrderAndBuildsCompatibleCursor() {
+        var first = product();
+        var second = product();
+        var remaining = product();
+        when(stockPageOrderRepository.findProductIds(
+                storeId, null, null, null, null, false,
+                null, null, null, null,
+                "name", "desc", null, 3))
+                .thenReturn(List.of(second.getId(), first.getId(), remaining.getId()));
+        when(productRepository.findAllByStoreIdAndIdIn(
+                storeId, List.of(second.getId(), first.getId())))
+                .thenReturn(List.of(first, second));
+        when(stockRepository.findByProductIdIn(List.of(second.getId(), first.getId())))
+                .thenReturn(List.of());
+
+        var result = service.stockPage(
+                2, null, null, "stock.current", null, null,
+                null, null, null, null,
+                "name", "desc", true);
+
+        assertThat(result.items())
+                .extracting(item -> item.product().id())
+                .containsExactly(second.getId(), first.getId());
+        assertThat(result.hasMore()).isTrue();
+        assertThat(result.nextCursor()).isNotBlank();
+    }
+
+    @Test
+    void sortedStockPageRejectsPurchasePriceWithoutManagementPermission() {
+        assertThatThrownBy(() -> service.stockPage(
+                50, null, null, "stock.current", null, null,
+                null, null, null, null,
+                "purchasePrice", "asc", false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("permiso");
+
+        verify(stockPageOrderRepository, never()).findProductIds(
+                any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean(),
+                any(), any(), any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test

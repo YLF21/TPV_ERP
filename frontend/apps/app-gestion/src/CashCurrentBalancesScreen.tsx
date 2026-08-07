@@ -1,7 +1,9 @@
 import {
   TableLayoutHeaderCell,
+  sortTableRows,
   tableLayoutGridTemplate,
   useTableLayoutPreference,
+  useTableSortPreference,
   visibleTableColumns,
   type TableColumnDefinition,
   type UserSession
@@ -50,6 +52,13 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
     definitions: cashCurrentBalanceColumnDefinitions
   });
   const visibleColumns = visibleTableColumns(tableLayout.layout);
+  const tableSort = useTableSortPreference({
+    app: "gestion",
+    username: session.username,
+    tableKey: cashCurrentBalancesTableKey,
+    columns: cashCurrentBalanceColumnDefinitions.map((column) => column.key),
+    defaultSort: null
+  });
   const tableStyle = { gridTemplateColumns: tableLayoutGridTemplate(tableLayout.layout) } as CSSProperties;
   const moneyFormatter = useMemo(() => new Intl.NumberFormat("es-ES", {
     style: "currency",
@@ -116,7 +125,20 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
     };
   }, [reloadGeneration, token]);
 
-  const rows = snapshot?.terminals ?? [];
+  const sourceRows = snapshot?.terminals ?? [];
+  const rows = useMemo(() => sortTableRows(
+    sourceRows,
+    tableSort.sort,
+    (row, column) => {
+      if (column === "terminal") return row.terminalName;
+      if (column === "status") return row.status;
+      if (column === "user") return row.openingUserName;
+      if (column === "openedAt") return row.openedAt ? new Date(row.openedAt) : null;
+      if (column === "expectedCash") return Number(row.expectedCash || 0);
+      return row.lastActivityAt ? new Date(row.lastActivityAt) : null;
+    },
+    "es"
+  ), [sourceRows, tableSort.sort]);
   const totalCash = rows.reduce((total, terminal) => total + Number(terminal.expectedCash || 0), 0);
   const openCount = rows.filter((terminal) => terminal.status === "ABIERTA").length;
 
@@ -182,6 +204,9 @@ export function CashCurrentBalancesScreen({ session, t }: Props) {
                 as="span"
                 key={column.key}
                 column={column}
+                sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+                sortLabel={`${t("party.sortBy")} ${t(`gestion.cashCurrentBalances.column.${column.key}`)}`}
+                onSort={tableSort.toggleSort}
                 resizeLabel={`${t("gestion.cashCurrentBalances.resize")} ${t(`gestion.cashCurrentBalances.column.${column.key}`)}`}
                 onReorder={tableLayout.reorderColumns}
                 onMove={tableLayout.moveColumn}

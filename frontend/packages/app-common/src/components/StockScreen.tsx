@@ -67,6 +67,7 @@ import { StockProductInformationPanel } from "./StockProductInformationPanel";
 import type { PromotionView } from "./PromotionForm";
 import { ErpSelect } from "./ErpSelect";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
+import { sortTableRows, useTableSortPreference, type TableSort } from "./tableSorting";
 import { tableLayoutGridTemplate, visibleTableColumns } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
 import { excelImportAccept } from "./excelImport";
@@ -485,6 +486,17 @@ const stockPurchaseSensitiveColumnKeys = new Set<string>([
   "purchaseDiscount",
   "benefit"
 ]);
+
+const stockInventorySortableColumnKeys = stockInventoryColumns
+  .map((column) => column.key)
+  .filter((key) => key !== "warehouse");
+
+function isStockInventoryTableView(view: StockViewKey) {
+  return view === "stock.current"
+    || view === "stock.offers"
+    || view === "stock.memberPrice"
+    || view === "stock.noDiscount";
+}
 
 function stockColumnsForPermission(columns: StockColumnDefinition[], canViewPurchaseFields: boolean) {
   if (canViewPurchaseFields) {
@@ -1393,11 +1405,13 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function stockPagePath(
+export function stockPagePath(
   cursor: string | null | undefined,
   view: StockViewKey,
   search: string,
-  filters: StockInventoryFilters
+  filters: StockInventoryFilters,
+  sort: TableSort | null = null,
+  warehouseId = ""
 ) {
   const parameters = new URLSearchParams({ limit: String(STOCK_PAGE_LIMIT) });
   if (cursor) {
@@ -1424,6 +1438,13 @@ function stockPagePath(
   }
   if (filters.offerActive) {
     parameters.set("offerActive", filters.offerActive === "yes" ? "true" : "false");
+  }
+  if (sort) {
+    parameters.set("sortBy", sort.column);
+    parameters.set("sortDirection", sort.direction);
+    if (isUuid(warehouseId)) {
+      parameters.set("warehouseId", warehouseId);
+    }
   }
   return `/stock/page?${parameters.toString()}`;
 }
@@ -2054,6 +2075,21 @@ export function StockScreen({
   const bulkEditSelectedRef = useRef<HTMLDivElement | null>(null);
   const bulkQuickEditRef = useRef<HTMLDivElement | null>(null);
   const canReadStock = userCanReadStock(session);
+  const canManageProducts = userCanManageStockProducts(session);
+  const inventorySortableColumns = canManageProducts
+    ? stockInventorySortableColumnKeys
+    : stockInventorySortableColumnKeys.filter((key) => key !== "purchasePrice" && key !== "supplier");
+  const inventorySorting = useTableSortPreference({
+    app,
+    username: session.username,
+    tableKey: `stock.inventory.${selectedView}`,
+    columns: inventorySortableColumns,
+    defaultSort: null
+  });
+  const inventorySort = isStockInventoryTableView(selectedView) ? inventorySorting.sort : null;
+  const stockSortWarehouseId = inventoryFilters.warehouse === "TOTAL"
+    ? ""
+    : inventoryFilters.warehouse || defaultWarehouseId;
   const bulkPendingImages = useMemo(
     () => Object.fromEntries(stockBulkImagePendingAssignments(bulkImageSnapshot)
       .map((assignment) => [assignment.productId, assignment.file])),
@@ -2084,7 +2120,10 @@ export function StockScreen({
     async function loadStock() {
       try {
         const [page, loadedWarehouses, families, taxes, promotionsResult] = await Promise.all([
-          apiRequest<PagedResult<StockPageItemView>>(stockPagePath(null, selectedView, searchText, inventoryFilters), { token: session.accessToken }),
+          apiRequest<PagedResult<StockPageItemView>>(
+            stockPagePath(null, selectedView, searchText, inventoryFilters, inventorySort, stockSortWarehouseId),
+            { token: session.accessToken }
+          ),
           apiRequest<WarehouseView[]>("/warehouses", { token: session.accessToken }),
           apiRequest<FamilyView[]>("/families", { token: session.accessToken }),
           apiRequest<TaxView[]>("/taxes/selectable", { token: session.accessToken }),
@@ -2108,6 +2147,7 @@ export function StockScreen({
             ?? activeWarehouses[0]
             ?? loadedWarehouses[0];
           setAllStockRows(rows);
+          setSelectedStockIndex(0);
           setStockPage({ nextCursor: page.nextCursor ?? null, hasMore: Boolean(page.hasMore) });
           setWarehouseCatalog(loadedWarehouses);
           setStockPromotions(loadedPromotions);
@@ -2132,7 +2172,17 @@ export function StockScreen({
     return () => {
       cancelled = true;
     };
-  }, [canReadStock, inventoryFilters, searchText, selectedView, session.accessToken, stockRefreshCounter]);
+  }, [
+    canReadStock,
+    inventoryFilters,
+    inventorySort?.column,
+    inventorySort?.direction,
+    searchText,
+    selectedView,
+    session.accessToken,
+    stockRefreshCounter,
+    stockSortWarehouseId
+  ]);
 
   async function loadMoreStockRows() {
     if (!session.accessToken || !canReadStock || stockLoadingMore || !stockPage.hasMore || !stockPage.nextCursor) {
@@ -2141,7 +2191,14 @@ export function StockScreen({
     setStockLoadingMore(true);
     try {
       const page = await apiRequest<PagedResult<StockPageItemView>>(
-        stockPagePath(stockPage.nextCursor, selectedView, searchText, inventoryFilters),
+        stockPagePath(
+          stockPage.nextCursor,
+          selectedView,
+          searchText,
+          inventoryFilters,
+          inventorySort,
+          stockSortWarehouseId
+        ),
         { token: session.accessToken }
       );
       const rows = buildStockInventoryRowsFromPage(
@@ -2202,7 +2259,7 @@ export function StockScreen({
     [allStockRows, bulkProductSupplierLinks, effectiveWarehouseId]
   );
   const visibleRows = filterStockInventoryRows(stockRows, selectedView, searchText, inventoryFilters);
-  const visibleTopSalesRows = filterStockTopSalesRows(topSalesRows, topSalesFilters);
+  const filteredTopSalesRows = filterStockTopSalesRows(topSalesRows, topSalesFilters);
   const familyTree = useMemo(() => buildStockTopSalesFamilyTree(topSalesRows, t("stock.filter.noFamily")), [topSalesRows, t]);
   const inventoryFamilyTree = useMemo(() => buildStockInventoryFamilyTree(stockRows, t("stock.filter.noFamily")), [stockRows, t]);
   const inventoryTaxOptions = useMemo(() => uniqueStockOptions(stockRows, "taxId", "taxName"), [stockRows]);
@@ -2216,7 +2273,6 @@ export function StockScreen({
   const calendarTitle = new Intl.DateTimeFormat(calendarLocale, { month: "long", year: "numeric" }).format(calendarMonth);
   const selectedViewLabel = t(selectedView);
   const selectedViewSubtitle = selectedView === "stock.topSales" ? t("stock.subtitle.topSales") : t("stock.subtitle.inventory");
-  const canManageProducts = userCanManageStockProducts(session);
   const canReadProductSuppliers = canManageProducts;
   const supplierEntryDateFormatter = useMemo(() => new Intl.DateTimeFormat(
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
@@ -2335,6 +2391,20 @@ export function StockScreen({
     tableKey: "stock.productWarehouses",
     definitions: stockWarehouseDetailColumns
   });
+  const topSalesSorting = useTableSortPreference({
+    app,
+    username: session.username,
+    tableKey: "stock.topSales",
+    columns: stockTopSalesColumns.map((column) => column.key),
+    defaultSort: null
+  });
+  const warehouseDetailSorting = useTableSortPreference({
+    app,
+    username: session.username,
+    tableKey: "stock.productWarehouses",
+    columns: stockWarehouseDetailColumns.map((column) => column.key),
+    defaultSort: null
+  });
   const visibleBulkColumns = visibleTableColumns(bulkTableLayout.layout);
   const visibleWarehouseDetailColumns = visibleTableColumns(warehouseDetailTableLayout.layout);
   const bulkGridStyle: CSSProperties = {
@@ -2351,6 +2421,22 @@ export function StockScreen({
   };
   const selectedStockRow = visibleRows[selectedStockIndex] ?? visibleRows[0] ?? null;
   const detailStockRows = detailRow ? allStockRows.filter((row) => row.productId === detailRow.productId) : [];
+  const visibleTopSalesRows = useMemo(() => sortTableRows(filteredTopSalesRows, topSalesSorting.sort, (row, column) => {
+    if (column === "ranking") return topSalesRows.findIndex((candidate) => candidate.productId === row.productId && candidate.warehouseId === row.warehouseId);
+    if (column === "code") return row.code;
+    if (column === "barcode") return row.barcode;
+    if (column === "name") return row.name;
+    if (column === "family") return row.familyName;
+    if (column === "subfamily") return row.subfamilyName;
+    if (column === "supplier") return row.suppliers.map((supplier) => supplier.supplierName).join(", ");
+    if (column === "soldUnits") return row.soldQuantity;
+    if (column === "amount") return row.netAmount;
+    if (column === "currentStock") return row.currentStock;
+    return row.warehouseName;
+  }, locale), [filteredTopSalesRows, locale, topSalesRows, topSalesSorting.sort]);
+  const sortedDetailStockRows = useMemo(() => sortTableRows(detailStockRows, warehouseDetailSorting.sort, (row, column) => (
+    column === "warehouse" ? row.warehouseName : row.quantity
+  ), locale), [detailStockRows, locale, warehouseDetailSorting.sort]);
 
   useEffect(() => {
     if (selectedView === "stock.bulkEdit" && !canManageProducts) {
@@ -4221,6 +4307,7 @@ export function StockScreen({
   }
 
   function renderStockHeader() {
+    const inventoryHeader = isStockInventoryTableView(selectedView);
     return (
       <div className="stock-row stock-row-head" style={selectedGridStyle}>
         {visibleSelectedColumnSettings.map((column) => (
@@ -4233,6 +4320,17 @@ export function StockScreen({
             onReorder={reorderSelectedColumn}
             onMove={moveSelectedColumn}
             onResize={resizeSelectedColumn}
+            sortDirection={selectedView === "stock.topSales" && topSalesSorting.sort?.column === column.key
+              ? topSalesSorting.sort.direction
+              : inventoryHeader && inventorySort?.column === column.key
+                ? inventorySort.direction
+                : null}
+            sortLabel={t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
+            onSort={selectedView === "stock.topSales"
+              ? topSalesSorting.toggleSort
+              : inventoryHeader && inventorySortableColumns.includes(column.key)
+                ? inventorySorting.toggleSort
+                : undefined}
           >
             {t(selectedColumnDefinitionByKey.get(column.key)?.labelKey ?? column.key)}
           </TableLayoutHeaderCell>
@@ -7138,13 +7236,16 @@ export function StockScreen({
                             onReorder={warehouseDetailTableLayout.reorderColumns}
                             onMove={warehouseDetailTableLayout.moveColumn}
                             onResize={warehouseDetailTableLayout.resizeColumn}
+                            sortDirection={warehouseDetailSorting.sort?.column === column.key ? warehouseDetailSorting.sort.direction : null}
+                            sortLabel={t(definition.labelKey)}
+                            onSort={warehouseDetailSorting.toggleSort}
                           >
                             {t(definition.labelKey)}
                           </TableLayoutHeaderCell>
                         );
                       })}
                     </div>
-                    {detailStockRows.map((row) => (
+                    {sortedDetailStockRows.map((row) => (
                       <div className="stock-detail-row" style={warehouseDetailGridStyle} key={`${row.productId}-${row.warehouseId}`}>
                         {visibleWarehouseDetailColumns.map((column) => column.key === "warehouse"
                           ? <span key={column.key}>{row.warehouseName}</span>

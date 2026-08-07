@@ -8,6 +8,8 @@ import {
   type VerifactuSubmissionStatus
 } from "../api/verifactuPos";
 import type { LocaleCode } from "../types";
+import { TableSortButton } from "./TableSortButton";
+import { sortTableRows, useTableSortPreference } from "./tableSorting";
 import { useOutsidePointerDown } from "./useOutsidePointerDown";
 import "./VerifactuPosIndicator.css";
 
@@ -193,6 +195,19 @@ export function VerifactuPosIndicator({
     locale === "zh" ? "zh-CN" : locale === "en" ? "en-GB" : "es-ES",
     { dateStyle: "short", timeStyle: "short" }
   ), [locale]);
+  const queueSorting = useTableSortPreference({
+    app: "venta",
+    username: "session",
+    tableKey: "verifactu.pos.queue",
+    columns: ["document", "updatedAt", "status"],
+    defaultSort: null,
+    persistent: false
+  });
+  const sortedQueue = useMemo(() => sortTableRows(queue, queueSorting.sort, (item, column) => {
+    if (column === "document") return `${item.documentNumber} ${item.documentType}`;
+    if (column === "updatedAt") return new Date(item.updatedAt);
+    return t(queueStatusKeys[item.submissionStatus]);
+  }, locale), [locale, queue, queueSorting.sort, t]);
 
   return (
     <div className="verifactu-pos" ref={containerRef}>
@@ -280,13 +295,11 @@ export function VerifactuPosIndicator({
               <table className="verifactu-pos__table">
                 <thead>
                   <tr>
-                    <th>{t("verifactu.pos.document")}</th>
-                    <th>{t("verifactu.pos.updatedAt")}</th>
-                    <th>{t("verifactu.pos.status")}</th>
+                    {(["document", "updatedAt", "status"] as const).map((column) => { const label = t(`verifactu.pos.${column}`); return <th aria-sort={queueSorting.sort?.column === column ? (queueSorting.sort.direction === "asc" ? "ascending" : "descending") : "none"} key={column}><TableSortButton label={label} direction={queueSorting.sort?.column === column ? queueSorting.sort.direction : null} onSort={() => queueSorting.toggleSort(column)}>{label}</TableSortButton></th>; })}
                   </tr>
                 </thead>
                 <tbody>
-                  {queue.map((item) => (
+                  {sortedQueue.map((item) => (
                     <tr key={`${item.documentType}:${item.documentNumber}:${item.updatedAt}`}>
                       <td>
                         <strong>{item.documentNumber}</strong>

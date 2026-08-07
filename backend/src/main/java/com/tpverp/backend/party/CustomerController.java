@@ -184,6 +184,7 @@ public class CustomerController {
             boolean activeMember,
             String memberCategoryName,
             BigDecimal memberDiscountPercent,
+            BigDecimal memberBalance,
             boolean creditEnabled,
             BigDecimal creditLimit,
             int paymentTermDays,
@@ -197,6 +198,7 @@ public class CustomerController {
             return new SaleCustomerOption(
                     customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber(),
                     customer.isMember(), customer.memberCategoryName(), customer.memberDiscountPercent(),
+                    customer.balance(),
                     customer.creditEnabled(), customer.creditLimit(), customer.paymentTermDays(),
                     customer.creditBlocked(), customer.blockOnOverdue(), customer.outstandingDebt(),
                     customer.overdueDebt(), customer.availableCredit());

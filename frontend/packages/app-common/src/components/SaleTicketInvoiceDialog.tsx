@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
+import { formatEuroAmount } from "../money";
 import type { LocaleCode } from "../types";
 import {
   saleOperationAuthorizationComplete,
@@ -134,20 +135,22 @@ export function SaleTicketInvoiceDialog({
   }
 
   return (
-    <div className="sale-modal-backdrop">
+    <div className="sale-action-overlay" role="presentation">
       <section
         ref={dialogRef}
-        className="sale-action-dialog sale-ticket-operation-dialog"
+        className="sale-action-dialog sale-ticket-operation-dialog sale-ticket-invoice-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="sale-ticket-invoice-title"
       >
-        <header>
-          <div>
-            <span>F12</span>
-            <h2 id="sale-ticket-invoice-title">{t("sale.ticketInvoice.title")}</h2>
-          </div>
-          <button type="button" onClick={onClose} disabled={busy}>×</button>
+        <header className="sale-ticket-operation-header">
+          <h2 id="sale-ticket-invoice-title">{t("sale.ticketInvoice.title")}</h2>
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            onClick={onClose}
+            disabled={busy}
+          >×</button>
         </header>
         <form
           className="sale-ticket-operation-search"
@@ -173,9 +176,22 @@ export function SaleTicketInvoiceDialog({
         {ticket && (
           <div className="sale-ticket-operation-body">
             <div className="sale-ticket-operation-summary">
-              <strong>{ticket.numero}</strong>
-              <span>{ticket.fecha}</span>
-              <b>{Number(ticket.total).toFixed(2)} €</b>
+              <div>
+                <span>{t("sale.ticketInvoice.ticketCode")}</span>
+                <strong>{ticket.numero}</strong>
+              </div>
+              <div>
+                <span>{t("sale.ticketOperation.date")}</span>
+                <strong>{ticket.fecha}</strong>
+              </div>
+              <div>
+                <span>{t("sale.ticketOperation.customer")}</span>
+                <strong>{ticket.customerName || t("sale.ticketOperation.noCustomer")}</strong>
+              </div>
+              <div className="sale-ticket-operation-summary-total">
+                <span>{t("sale.ticketOperation.total")}</span>
+                <b>{formatEuroAmount(ticket.total, locale)}</b>
+              </div>
             </div>
             <label>
               {t("sale.ticketInvoice.customer")}
@@ -205,13 +221,14 @@ export function SaleTicketInvoiceDialog({
         )}
         {error && <p className="sale-error" role="alert">{error}</p>}
         {message && <p className="sale-status" role="status">{message}</p>}
-        <footer>
+        <footer className="sale-ticket-operation-footer">
           <button type="button" onClick={onClose} disabled={busy}>
             {t("sale.dialog.cancel")}
           </button>
           {ticket && (
             <button
               type="button"
+              className="primary"
               disabled={busy
                 || !customerId
                 || !saleOperationAuthorizationComplete(

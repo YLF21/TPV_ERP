@@ -10,6 +10,7 @@ import type {
   TableLayout
 } from "./tableLayoutPreferences";
 import { useTableLayoutPreference } from "./useTableLayoutPreference";
+import { sortTableRows, useTableSortPreference, type TableSortValue } from "./tableSorting";
 
 export type MemberLoyaltyRequest = typeof apiRequest;
 
@@ -103,11 +104,15 @@ type OperationalColumn<Key extends string, Row> = {
   key: Key;
   label: string;
   render: (row: Row) => ReactNode;
+  sortValue?: (row: Row) => TableSortValue;
 };
 
 function MemberOperationalTable<Key extends string, Row extends { id: string }>({
   columns,
   layoutController,
+  app,
+  username,
+  tableKey,
   rows,
   resizeLabel,
   actionLabel,
@@ -116,15 +121,32 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
 }: {
   columns: readonly OperationalColumn<Key, Row>[];
   layoutController: TableLayoutController<Key>;
+  app: AppKind;
+  username: string;
+  tableKey: string;
   rows: readonly Row[];
   resizeLabel: string;
   actionLabel?: string;
   actionWidth?: number;
   renderActions?: (row: Row) => ReactNode;
 }) {
+  const tableSort = useTableSortPreference({
+    app,
+    username,
+    tableKey,
+    columns: columns.map((column) => column.key),
+    defaultSort: null
+  });
   const visibleColumns = visibleTableColumns(layoutController.layout);
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const tableWidth = visibleColumns.reduce((total, column) => total + column.width, actionWidth);
+  const sortedRows = sortTableRows(rows, tableSort.sort, (row, column) => {
+    const definition = columnsByKey.get(column);
+    const value = definition?.sortValue?.(row) ?? definition?.render(row);
+    return typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value instanceof Date
+      ? value
+      : null;
+  });
 
   return <div style={{ overflowX: "auto" }}>
     <table style={{ tableLayout: "fixed", minWidth: tableWidth }}>
@@ -139,6 +161,9 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
           return <TableLayoutHeaderCell
             column={column}
             key={column.key}
+            sortDirection={tableSort.sort?.column === column.key ? tableSort.sort.direction : null}
+            sortLabel={definition.label}
+            onSort={tableSort.toggleSort}
             resizeLabel={`${resizeLabel} ${definition.label}`}
             onReorder={layoutController.reorderColumns}
             onMove={layoutController.moveColumn}
@@ -149,7 +174,7 @@ function MemberOperationalTable<Key extends string, Row extends { id: string }>(
         })}
         {renderActions && <th data-fixed-column="actions">{actionLabel}</th>}
       </tr></thead>
-      <tbody>{rows.map((row) => <tr key={row.id}>
+      <tbody>{sortedRows.map((row) => <tr key={row.id}>
         {visibleColumns.map((column) => {
           const definition = columnsByKey.get(column.key);
           return <td data-column-key={column.key} key={column.key}>{definition?.render(row)}</td>;
@@ -322,16 +347,16 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
   }
 
   const movementColumns: readonly OperationalColumn<MemberMovementColumnKey, MemberMovement>[] = [
-    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString() },
+    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString(), sortValue: (item) => new Date(item.createdAt) },
     { key: "movement", label: t("party.members.movement"), render: (item) => item.type },
-    { key: "amount", label: t("party.members.amount"), render: (item) => item.pointsAmount || String(item.balanceAmount) },
+    { key: "amount", label: t("party.members.amount"), render: (item) => item.pointsAmount || String(item.balanceAmount), sortValue: (item) => item.pointsAmount || Number(item.balanceAmount) },
     { key: "reason", label: t("party.members.reason"), render: (item) => item.reason || "—" }
   ];
   const categoryColumns: readonly OperationalColumn<MemberCategoryColumnKey, MemberCategory>[] = [
     { key: "code", label: t("party.code"), render: (item) => item.code },
     { key: "name", label: t("party.name"), render: (item) => item.name },
     { key: "minPoints", label: t("party.members.minPoints"), render: (item) => item.minPoints },
-    { key: "discount", label: t("party.members.discount"), render: (item) => `${String(item.discountPercent)}%` },
+    { key: "discount", label: t("party.members.discount"), render: (item) => `${String(item.discountPercent)}%`, sortValue: (item) => Number(item.discountPercent) },
     { key: "status", label: t("party.status"), render: (item) => t(item.active ? "party.active" : "party.inactive") }
   ];
   const channelColumns: readonly OperationalColumn<CommercialChannelColumnKey, CommercialChannel>[] = [
@@ -342,7 +367,7 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
   const deliveryColumns: readonly OperationalColumn<MemberCardDeliveryColumnKey, MemberCardDelivery>[] = [
     { key: "email", label: t("party.email"), render: (item) => item.email },
     { key: "status", label: t("party.status"), render: (item) => item.status },
-    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString() }
+    { key: "date", label: t("party.members.date"), render: (item) => new Date(item.createdAt).toLocaleString(), sortValue: (item) => new Date(item.createdAt) }
   ];
   const tabs: Tab[] = ["detail", "categories", "settings", "channels", "deliveries"];
   return <section className="stock-section party-member-loyalty" aria-label={t("party.members.loyaltyTitle")}>
@@ -379,6 +404,9 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
         <button disabled={busy}>{t("party.members.adjust")}</button>
       </form>}
       <MemberOperationalTable
+        app={app}
+        username={session.username}
+        tableKey={memberLoyaltyTableKeys.movements}
         columns={movementColumns}
         layoutController={movementTableLayout}
         rows={movements}
@@ -396,6 +424,9 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
         <button disabled={busy}>{t(categoryDraft.id ? "party.members.updateCategory" : "party.members.createCategory")}</button>
       </form>}
       <MemberOperationalTable
+        app={app}
+        username={session.username}
+        tableKey={memberLoyaltyTableKeys.categories}
         columns={categoryColumns}
         layoutController={categoryTableLayout}
         rows={categories}
@@ -421,6 +452,9 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
     {tab === "channels" && <>
       {permissions.canWrite && <form className="party-member-admin-form" onSubmit={saveChannel}><label>{t("party.code")}<input value={channelDraft.code} onChange={(event) => setChannelDraft({ ...channelDraft, code: event.target.value })} /></label><label>{t("party.name")}<input value={channelDraft.name} onChange={(event) => setChannelDraft({ ...channelDraft, name: event.target.value })} /></label><label className="party-member-check"><input type="checkbox" checked={channelDraft.active} onChange={(event) => setChannelDraft({ ...channelDraft, active: event.target.checked })} />{t("party.active")}</label><button disabled={busy}>{t(channelDraft.id ? "party.members.updateChannel" : "party.members.createChannel")}</button></form>}
       <MemberOperationalTable
+        app={app}
+        username={session.username}
+        tableKey={memberLoyaltyTableKeys.channels}
         columns={channelColumns}
         layoutController={channelTableLayout}
         rows={channels}
@@ -432,6 +466,9 @@ export function MemberLoyaltyPanel({ app = "venta", memberId, session, t = fallb
     </>}
 
     {tab === "deliveries" && <MemberOperationalTable
+      app={app}
+      username={session.username}
+      tableKey={memberLoyaltyTableKeys.deliveries}
       columns={deliveryColumns}
       layoutController={deliveryTableLayout}
       rows={deliveries}

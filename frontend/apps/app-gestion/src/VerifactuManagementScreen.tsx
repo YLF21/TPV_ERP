@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ErpSelect, type LocaleCode, type UserSession } from "@tpverp/app-common";
+import { ErpSelect, TableSortButton, nextTableSort, useTableSortPreference, type LocaleCode, type TableSort, type UserSession } from "@tpverp/app-common";
 import {
   VerifactuAttemptHistoryPanel,
   type VerifactuAttemptTarget
@@ -31,6 +31,8 @@ import {
 } from "./verifactuPresentation";
 
 type ViewKey = "summary" | "queue" | "defective" | "certificate" | "diagnostics";
+const queueSortColumns = ["sequence", "document", "fiscalOperation", "status", "updatedAt", "errorCode"] as const;
+type QueueSortColumn = typeof queueSortColumns[number];
 
 type VerifactuManagementScreenProps = {
   locale: LocaleCode;
@@ -59,13 +61,21 @@ const emptyPage: VerifactuAdminSubmissionPage = {
 
 export function VerifactuManagementScreen({ locale, session, t }: VerifactuManagementScreenProps) {
   const token = session.accessToken;
+  const queueSorting = useTableSortPreference({
+    app: "gestion",
+    username: session.username,
+    tableKey: "gestion.verifactu.queue",
+    columns: queueSortColumns,
+    defaultSort: null
+  });
+  const initialQueueFilters = { ...emptyFilters, sortBy: queueSorting.sort?.column, sortDirection: queueSorting.sort?.direction };
   const [view, setView] = useState<ViewKey>("summary");
   const [summary, setSummary] = useState<VerifactuAdminSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState(false);
   const [summaryRevision, setSummaryRevision] = useState(0);
-  const [draftFilters, setDraftFilters] = useState(emptyFilters);
-  const [filters, setFilters] = useState(emptyFilters);
+  const [draftFilters, setDraftFilters] = useState<VerifactuAdminSubmissionFilters>(initialQueueFilters);
+  const [filters, setFilters] = useState<VerifactuAdminSubmissionFilters>(initialQueueFilters);
   const [filterError, setFilterError] = useState(false);
   const [queue, setQueue] = useState(emptyPage);
   const [queueLoading, setQueueLoading] = useState(false);
@@ -144,9 +154,17 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
 
   function clearFilters() {
     setFilterError(false);
-    setDraftFilters(emptyFilters);
-    setFilters(emptyFilters);
+    const cleared = { ...emptyFilters, sortBy: queueSorting.sort?.column, sortDirection: queueSorting.sort?.direction };
+    setDraftFilters(cleared);
+    setFilters(cleared);
     setQueueRevision((current) => current + 1);
+  }
+
+  function changeQueueSort(column: QueueSortColumn) {
+    const next = nextTableSort(queueSorting.sort, column);
+    queueSorting.setSort(next);
+    setDraftFilters((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction }));
+    setFilters((current) => ({ ...current, sortBy: next.column, sortDirection: next.direction, page: 0 }));
   }
 
   function openPage(page: number) {
@@ -267,6 +285,8 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
               onOpenPage={openPage}
               onOpenAttempts={openAttempts}
               onOpenResolution={openResolution}
+              sort={queueSorting.sort}
+              onSort={changeQueueSort}
               t={t}
             />
           )}
@@ -274,6 +294,7 @@ export function VerifactuManagementScreen({ locale, session, t }: VerifactuManag
             <VerifactuDefectiveRecordsView
               locale={locale}
               token={token}
+              username={session.username}
               revision={reviewRevision}
               t={t}
               onOpenAttempts={openAttempts}
@@ -433,6 +454,8 @@ function QueueView({
   onOpenPage,
   onOpenAttempts,
   onOpenResolution,
+  sort,
+  onSort,
   t
 }: {
   locale: LocaleCode;
@@ -447,6 +470,8 @@ function QueueView({
   onOpenPage: (page: number) => void;
   onOpenAttempts: (recordId: string, documentNumber: string, returnFocus: HTMLElement) => void;
   onOpenResolution: (recordId: string, documentNumber: string, returnFocus: HTMLElement) => void;
+  sort: TableSort<QueueSortColumn> | null;
+  onSort: (column: QueueSortColumn) => void;
   t: Translator;
 }) {
   const statusOptions = useMemo(() => [
@@ -545,12 +570,7 @@ function QueueView({
             <table className="gestion-verifactu-table">
               <thead>
                 <tr>
-                  <th>{t("verifactu.management.sequence")}</th>
-                  <th>{t("verifactu.management.document")}</th>
-                  <th>{t("verifactu.management.fiscalOperation")}</th>
-                  <th>{t("verifactu.management.status")}</th>
-                  <th>{t("verifactu.management.updatedAt")}</th>
-                  <th>{t("verifactu.management.errorCode")}</th>
+                  {queueSortColumns.map((column) => { const label = t(`verifactu.management.${column}`); return <th aria-sort={sort?.column === column ? (sort.direction === "asc" ? "ascending" : "descending") : "none"} key={column}><TableSortButton label={label} direction={sort?.column === column ? sort.direction : null} onSort={() => onSort(column)}>{label}</TableSortButton></th>; })}
                   <th>{t("verifactu.management.attempts")}</th>
                   <th>{t("verifactu.resolution.actions")}</th>
                 </tr>

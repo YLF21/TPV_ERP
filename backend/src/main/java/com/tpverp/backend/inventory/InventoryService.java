@@ -16,6 +16,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -34,6 +36,7 @@ public class InventoryService {
 
     private final CurrentOrganization organization;
     private final ProductRepository productRepository;
+    private final StockPageOrderRepository stockPageOrderRepository;
     private final WarehouseRepository warehouseRepository;
     private final StockLevelRepository stockRepository;
     private final StockSettingsRepository settingsRepository;
@@ -44,6 +47,7 @@ public class InventoryService {
     public InventoryService(
             CurrentOrganization organization,
             ProductRepository productRepository,
+            StockPageOrderRepository stockPageOrderRepository,
             WarehouseRepository warehouseRepository,
             StockLevelRepository stockRepository,
             StockSettingsRepository settingsRepository,
@@ -52,6 +56,7 @@ public class InventoryService {
             Clock clock) {
         this.organization = organization;
         this.productRepository = productRepository;
+        this.stockPageOrderRepository = stockPageOrderRepository;
         this.warehouseRepository = warehouseRepository;
         this.stockRepository = stockRepository;
         this.settingsRepository = settingsRepository;
@@ -226,6 +231,73 @@ public class InventoryService {
         return new PagedResult<>(items, hasMore ? cursorFor(pageProducts.get(pageProducts.size() - 1)) : null, hasMore);
     }
 
+    @Transactional(readOnly = true)
+    public PagedResult<StockPageItem> stockPage(
+            Integer requestedLimit,
+            String cursor,
+            String search,
+            String view,
+            String productType,
+            String priceUseMode,
+            UUID familyId,
+            UUID taxId,
+            Boolean offerActive,
+            UUID warehouseId,
+            String sortBy,
+            String sortDirection,
+            boolean includePurchaseFields) {
+        UUID storeId = currentStore().getId();
+        var limit = normalizedLimit(requestedLimit);
+        var filters = StockPageFilters.from(
+                search, view, productType, priceUseMode, familyId, taxId, offerActive);
+        var normalizedSortBy = normalizedStockSort(sortBy, includePurchaseFields);
+        var normalizedDirection = normalizedSortDirection(sortDirection);
+        var parsedCursor = parseSortCursor(cursor, normalizedSortBy, normalizedDirection);
+        var orderedIds = stockPageOrderRepository.findProductIds(
+                storeId,
+                filters.search(),
+                filters.productType(),
+                filters.priceUseMode(),
+                filters.discountType(),
+                filters.offersOnly(),
+                filters.familyId(),
+                filters.taxId(),
+                filters.offerActive(),
+                warehouseId,
+                normalizedSortBy,
+                normalizedDirection,
+                parsedCursor.productId(),
+                limit + 1);
+        boolean hasMore = orderedIds.size() > limit;
+        var pageIds = hasMore ? orderedIds.subList(0, limit) : orderedIds;
+        var productsById = productRepository.findAllByStoreIdAndIdIn(storeId, pageIds).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Product::getId,
+                        product -> product,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        var pageProducts = pageIds.stream()
+                .map(productsById::get)
+                .filter(Objects::nonNull)
+                .toList();
+        pageProducts.forEach(InventoryService::initializeProductForApi);
+        var stockByProduct = stockRepository.findByProductIdIn(pageIds).stream()
+                .collect(java.util.stream.Collectors.groupingBy(StockLevel::getProductId));
+        var items = pageProducts.stream()
+                .map(product -> new StockPageItem(
+                        includePurchaseFields
+                                ? ProductView.managementView(product)
+                                : ProductView.publicView(product),
+                        stockByProduct.getOrDefault(product.getId(), List.of()).stream()
+                                .map(StockItem::from)
+                                .toList()))
+                .toList();
+        String nextCursor = hasMore && !pageIds.isEmpty()
+                ? sortCursorFor(pageIds.getLast(), normalizedSortBy, normalizedDirection)
+                : null;
+        return new PagedResult<>(items, nextCursor, hasMore);
+    }
+
     private static void initializeProductForApi(Product product) {
         product.getCode();
         product.getBarcode();
@@ -348,7 +420,64 @@ public class InventoryService {
         return product.getName() + "|" + product.getId();
     }
 
+    private static String normalizedStockSort(String sortBy, boolean includePurchaseFields) {
+        if (sortBy == null || sortBy.isBlank()) {
+            throw new IllegalArgumentException("Columna de ordenacion de stock obligatoria");
+        }
+        if ("purchasePrice".equals(sortBy) && !includePurchaseFields) {
+            throw new IllegalArgumentException("No dispone de permiso para ordenar por precio de compra");
+        }
+        StockPageOrderRepository.sortExpression(sortBy);
+        return sortBy;
+    }
+
+    private static String normalizedSortDirection(String direction) {
+        if (direction == null || direction.isBlank() || "asc".equalsIgnoreCase(direction)) {
+            return "asc";
+        }
+        if ("desc".equalsIgnoreCase(direction)) {
+            return "desc";
+        }
+        throw new IllegalArgumentException("Direccion de ordenacion no valida");
+    }
+
+    private static SortCursor parseSortCursor(
+            String cursor,
+            String sortBy,
+            String sortDirection) {
+        if (cursor == null || cursor.isBlank()) {
+            return new SortCursor(null, sortBy, sortDirection);
+        }
+        try {
+            String decoded = new String(
+                    Base64.getUrlDecoder().decode(cursor),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            String[] values = decoded.split("\\|", -1);
+            if (values.length != 4
+                    || !"v1".equals(values[0])
+                    || !sortBy.equals(values[1])
+                    || !sortDirection.equals(values[2])) {
+                throw new IllegalArgumentException("Cursor de stock incompatible con la ordenacion");
+            }
+            return new SortCursor(UUID.fromString(values[3]), sortBy, sortDirection);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Cursor de stock no valido", exception);
+        }
+    }
+
+    private static String sortCursorFor(
+            UUID productId,
+            String sortBy,
+            String sortDirection) {
+        String value = "v1|" + sortBy + "|" + sortDirection + "|" + productId;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     private record Cursor(String name, UUID id) {
+    }
+
+    private record SortCursor(UUID productId, String sortBy, String sortDirection) {
     }
 
     private record StockPageFilters(

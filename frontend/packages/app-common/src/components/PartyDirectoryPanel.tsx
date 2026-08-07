@@ -4,6 +4,7 @@ import type { AppKind, LocaleCode, Permission, UserSession } from "../types";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import { ErpSelect } from "./ErpSelect";
 import { MemberLoyaltyPanel } from "./MemberLoyaltyPanel";
+import { PartyFormFields, type CommercialChannelOption } from "./PartyFormFields";
 import { TableLayoutHeaderCell } from "./TableLayoutHeaderCell";
 import { clampTableColumnWidth, visibleTableColumns } from "./tableLayoutPreferences";
 import type { TableColumnDefinition, TableLayout } from "./tableLayoutPreferences";
@@ -85,8 +86,6 @@ export type MemberDirectoryView = {
 };
 
 export type PartyDirectoryEntry = CustomerView | SupplierView | MemberDirectoryView;
-
-type CommercialChannel = { id: string; code: string; name: string; active: boolean };
 
 export type PartyForm = {
   name: string; tradeName: string; documentType: string; documentNumber: string; phone: string; email: string;
@@ -269,7 +268,7 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
   const [customers, setCustomers] = useState<CustomerView[]>([]);
   const [members, setMembers] = useState<MemberDirectoryView[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierView[]>([]);
-  const [channels, setChannels] = useState<CommercialChannel[]>([]);
+  const [channels, setChannels] = useState<CommercialChannelOption[]>([]);
   const [query, setQuery] = useState(initialPreferences.query);
   const [statusFilter, setStatusFilter] = useState<PartyStatusFilter>(initialPreferences.statusFilter);
   const [sort, setSort] = useState<PartyDirectorySort>(initialPreferences.sort);
@@ -373,7 +372,7 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
       else {
         const [customerRows, channelRows] = await Promise.all([
           apiRequest<CustomerView[]>(endpoint, { token: session.accessToken }),
-          apiRequest<CommercialChannel[]>("/commercial-contact-channels", { token: session.accessToken })
+          apiRequest<CommercialChannelOption[]>("/commercial-contact-channels", { token: session.accessToken })
         ]);
         setCustomers(customerRows); setChannels(channelRows.filter((channel) => channel.active));
       }
@@ -474,10 +473,6 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
     finally { setSaving(false); }
   }
 
-  function fieldError(field: keyof PartyForm) {
-    return formErrors.includes(field) ? <small className="party-field-error" role="alert">{t("party.field.invalid")}</small> : null;
-  }
-
   const selectedMember = isMember ? selected as MemberDirectoryView | null : null;
   const selectedCode = selected
     ? isSupplier ? (selected as SupplierView).supplierId
@@ -572,24 +567,18 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
             as="span"
             column={column}
             key={column.key}
+            sortDirection={sort.column === column.key ? sort.direction : null}
+            sortLabel={`${t("party.sortBy")} ${columnLabel(column.key)}`}
+            onSort={(columnKey) => setSort((current) => ({
+              column: columnKey,
+              direction: current.column === columnKey && current.direction === "asc" ? "desc" : "asc"
+            }))}
             resizeLabel={`${t("stock.columns.resize")} ${columnLabel(column.key)}`}
             onReorder={tableLayout.reorderColumns}
             onMove={tableLayout.moveColumn}
             onResize={tableLayout.resizeColumn}
           >
-            <button
-              type="button"
-              className="party-directory-sort-button"
-              aria-label={`${t("party.sortBy")} ${columnLabel(column.key)}`}
-              aria-pressed={sort.column === column.key}
-              onClick={() => setSort((current) => ({
-                column: column.key,
-                direction: current.column === column.key && current.direction === "asc" ? "desc" : "asc"
-              }))}
-            >
-              <span>{columnLabel(column.key)}</span>
-              <span aria-hidden="true">{sort.column === column.key ? sort.direction === "asc" ? "▲" : "▼" : "↕"}</span>
-            </button>
+            {columnLabel(column.key)}
           </TableLayoutHeaderCell>
         ))}
       </div>
@@ -609,13 +598,15 @@ export function PartyDirectoryPanel({ app = "venta", kind, locale, session, onOp
         <header className="filter-header"><div><h2 id="party-form-title">{selectedId ? t(`party.${kind}.detail`) : t(`party.${kind}.new`)}</h2><span>{selected ? `${selectedCode} · ${selected.active ? t("party.active") : t("party.inactive")}` : isMember ? t("party.members.selectCustomerSubtitle") : t("party.form.subtitle")}</span></div><button type="button" onClick={closeDialog}>{t("common.close")}</button></header>
         {isMember ? memberDialogContent : <form className="product-create-form party-create-form" onSubmit={submit}>
           <fieldset disabled={!canWrite || saving}>
-            <div className="product-create-row product-create-row-two"><label className={formErrors.includes("name") ? "party-field-invalid" : ""}><span>{t(isSupplier ? "party.field.legalName" : "party.field.fiscalName")}</span><input required autoFocus aria-invalid={formErrors.includes("name")} value={form.name} onChange={(e) => update("name", e.target.value)} />{fieldError("name")}</label>{isSupplier ? <label><span>{t("party.field.tradeName")}</span><input value={form.tradeName} onChange={(e) => update("tradeName", e.target.value)} /></label> : <label className={formErrors.includes("discount") ? "party-field-invalid" : ""}><span>{t("party.field.discount")}</span><input type="number" min="0" max="100" step="0.01" aria-invalid={formErrors.includes("discount")} value={form.discount} onChange={(e) => update("discount", e.target.value)} />{fieldError("discount")}</label>}</div>
-            <div className="product-create-row product-create-row-two"><label><span>{t("party.field.documentType")}</span><ErpSelect value={form.documentType} onChange={(value) => update("documentType", value)} options={["NIF", "CIF", "NIE", "PASAPORTE", "OTRO"].map((value) => ({ value, label: value }))} /></label><label className={formErrors.includes("documentNumber") ? "party-field-invalid" : ""}><span>{t("party.field.documentNumber")}</span><input required aria-invalid={formErrors.includes("documentNumber")} value={form.documentNumber} onChange={(e) => update("documentNumber", e.target.value)} />{fieldError("documentNumber")}</label></div>
-            <div className="product-create-row product-create-row-two"><label><span>{t("party.field.phone")}</span><input value={form.phone} onChange={(e) => update("phone", e.target.value)} /></label><label><span>{t("party.field.email")}</span><input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></label></div>
-            <label><span>{t("party.field.address")}</span><input value={form.address} onChange={(e) => update("address", e.target.value)} /></label>
-            <div className="product-create-row product-create-row-three"><label><span>{t("party.field.postalCode")}</span><input value={form.postalCode} onChange={(e) => update("postalCode", e.target.value)} /></label><label><span>{t("party.field.city")}</span><input value={form.city} onChange={(e) => update("city", e.target.value)} /></label><label><span>{t("party.field.province")}</span><input value={form.province} onChange={(e) => update("province", e.target.value)} /></label></div>
-            <div className="product-create-row product-create-row-two"><label className={formErrors.includes("country") ? "party-field-invalid" : ""}><span>{t("party.field.country")}</span><input required maxLength={2} aria-invalid={formErrors.includes("country")} value={form.country} onChange={(e) => update("country", e.target.value.toUpperCase())} />{fieldError("country")}</label><label><span>{t("party.field.notes")}</span><input value={form.notes} onChange={(e) => update("notes", e.target.value)} /></label></div>
-            {!isSupplier && <><div className="product-create-row product-create-row-two"><label><span>{t("party.field.birthday")}</span><input type="date" value={form.birthday} onChange={(e) => update("birthday", e.target.value)} /></label><label><span>{t("party.field.gender")}</span><ErpSelect value={form.gender} onChange={(value) => update("gender", value)} options={["", "MASCULINO", "FEMENINO", "OTRO"].map((value) => ({ value, label: value ? t(`party.gender.${value.toLowerCase()}`) : t("party.gender.unspecified") }))} /></label></div><section className="party-credit-settings" aria-label={t("party.credit.title")}><h3>{t("party.credit.title")}</h3><label className="party-commercial-consent"><input type="checkbox" checked={form.creditEnabled} onChange={(e) => update("creditEnabled", e.target.checked)} /><span>{t("party.field.creditEnabled")}</span></label><div className="product-create-row product-create-row-two"><label><span>{t("party.field.creditLimit")}</span><input type="number" min="0" step="0.01" placeholder={t("party.credit.unlimited")} value={form.creditLimit} onChange={(e) => update("creditLimit", e.target.value)} /></label><label><span>{t("party.field.paymentTermDays")}</span><input required type="number" min="0" max="3650" step="1" value={form.paymentTermDays} onChange={(e) => update("paymentTermDays", e.target.value)} /></label></div><div className="party-credit-checkboxes"><label><input type="checkbox" checked={form.creditBlocked} onChange={(e) => update("creditBlocked", e.target.checked)} /><span>{t("party.field.creditBlocked")}</span></label><label><input type="checkbox" checked={form.blockOnOverdue} onChange={(e) => update("blockOnOverdue", e.target.checked)} /><span>{t("party.field.blockOnOverdue")}</span></label></div></section><label className="party-commercial-consent"><input type="checkbox" checked={form.commercialConsent} onChange={(e) => update("commercialConsent", e.target.checked)} /><span>{t("party.field.commercialConsent")}</span></label>{form.commercialConsent && <label><span>{t("party.field.preferredCommercialChannel")}</span><ErpSelect value={form.preferredCommercialChannelId} onChange={(value) => update("preferredCommercialChannelId", value)} options={[{ value: "", label: t("party.channel.select") }, ...channels.map((channel) => ({ value: channel.id, label: channel.name }))]} /></label>}</>}
+            <PartyFormFields
+              form={form}
+              errors={formErrors}
+              channels={channels}
+              supplier={isSupplier}
+              autoFocusName
+              t={t}
+              onChange={update}
+            />
           </fieldset>
           {status && <p className="product-create-status" role="status">{status}</p>}
           {isMember && selected && (selected as CustomerView).memberUuid && (

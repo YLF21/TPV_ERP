@@ -70,6 +70,24 @@ class StockControllerContractTest {
     }
 
     @Test
+    void exposesServerSortedPagedStockEndpoint() throws NoSuchMethodException {
+        var method = StockController.class.getDeclaredMethod(
+                "page", Integer.class, String.class, String.class, String.class, String.class, String.class,
+                UUID.class, UUID.class, Boolean.class, UUID.class, String.class, String.class,
+                Authentication.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/page");
+        assertThat(method.getAnnotation(GetMapping.class).params())
+                .containsExactly("sortBy");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("STOCK_READ", "GESTION_PRODUCTO", "GESTION_ALMACEN", "GESTION_VENTAS", "VENTA", "hasRole('ADMIN')");
+        assertThat(Arrays.stream(method.getParameters())
+                .filter(parameter -> parameter.isAnnotationPresent(RequestParam.class)))
+                .hasSize(12);
+    }
+
+    @Test
     void exposesProductSalesHistoryWithOptionalDateRange() throws NoSuchMethodException {
         var method = StockController.class.getDeclaredMethod(
                 "salesHistory", UUID.class, LocalDate.class, LocalDate.class);
