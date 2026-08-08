@@ -97,6 +97,66 @@ class PosCashOperationSecurityTest {
     }
 
     @Test
+    void importedTemporaryPriceAndFixedDiscountRequireTheirConfiguredAuthorizations() {
+        var operationSecurity = mock(SaleOperationSecurityService.class);
+        var audit = mock(AuditService.class);
+        var service = service(
+                operationSecurity, audit, mock(DiscountAuthorizationService.class));
+        var operator = user("operador", new BigDecimal("100.00"));
+        var authentication = UsernamePasswordAuthenticationToken.authenticated(
+                operator, null,
+                List.of(new SimpleGrantedAuthority(APLICAR_DESCUENTO)));
+        for (var code : List.of(
+                SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                SaleOperationCode.APPLY_CHECKOUT_DISCOUNT)) {
+            when(operationSecurity.resolve(code)).thenReturn(policy(
+                    code, true, true, List.of(APLICAR_DESCUENTO)));
+            when(operationSecurity.authorize(
+                    code, null, "secreto", authentication))
+                    .thenReturn(new Authorization(operator, operator, false));
+        }
+        var imported = new DocumentLineCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "IMP", "Importado",
+                "TEMPORAL", new BigDecimal("9.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00"),
+                DocumentLineType.PRODUCT, null, null, null, List.of(),
+                false, true);
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-CONFIRMADO", DocumentStatus.CONFIRMADO,
+                PreviousTicketImportPricingMode.CURRENT_REPRICING, null,
+                "fingerprint-current", new BigDecimal("7.44"),
+                new BigDecimal("1.56"), BigDecimal.ZERO, List.of(imported), 1,
+                BigDecimal.ONE, List.of());
+        var prepared = new PosCashService.PreparedSale(
+                mock(DocumentCommand.class),
+                EnumSet.of(
+                        SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                        SaleOperationCode.APPLY_CHECKOUT_DISCOUNT),
+                List.of(), replay);
+        var sale = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO)),
+                null, null, null, null,
+                Map.of(
+                        SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                        new OperationAuthorizationRequest(null, "secreto"),
+                        SaleOperationCode.APPLY_CHECKOUT_DISCOUNT,
+                        new OperationAuthorizationRequest(null, "secreto")));
+
+        service.authorizeSensitiveOperations(
+                prepared, sale, new BigDecimal("9.00"), authentication,
+                "POS_CASH", UUID.randomUUID());
+
+        verify(operationSecurity).authorize(
+                SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                null, "secreto", authentication);
+        verify(operationSecurity).authorize(
+                SaleOperationCode.APPLY_CHECKOUT_DISCOUNT,
+                null, "secreto", authentication);
+    }
+
+    @Test
     void temporaryPriceUsesItsImmediateProofAndDoesNotAskForCredentialsAtCheckout() {
         var operationSecurity = mock(SaleOperationSecurityService.class);
         var audit = mock(AuditService.class);

@@ -81,7 +81,22 @@ vi.mock("../../../packages/app-common/src/components/SaleScreen", () => ({
   ),
 }));
 
-import { App, AppLoadingFallback } from "./main";
+vi.mock("../../../packages/app-common/src/components/SaleProductLabelDialog", () => ({
+  SaleProductLabelDialog: ({
+    onClose,
+    onPrinted,
+  }: {
+    onClose: () => void;
+    onPrinted: (pdf: boolean) => void;
+  }) => (
+    <section aria-label="product label utility">
+      <button type="button" onClick={() => onPrinted(false)}>Print label</button>
+      <button type="button" onClick={onClose}>Close label utility</button>
+    </section>
+  ),
+}));
+
+import { App, AppLoadingFallback, SalesUtilityWindowApp } from "./main";
 
 afterEach(() => {
   cleanup();
@@ -227,5 +242,38 @@ describe("APP VENTA locale wiring", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Terminal no configurado");
     expect(screen.queryByRole("button", { name: "Log in" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Ctrl+I label window open after printing until manual close", async () => {
+    const complete = vi.fn().mockResolvedValue({ ok: true });
+    const close = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    vi.stubGlobal("tpvDesktop", {
+      salesUtilities: {
+        consumeBootstrap: vi.fn().mockResolvedValue({
+          kind: "PRODUCT_LABEL",
+          locale: "es",
+          session: { ...session, accessToken: "token" },
+          terminalContext: { storeName: "TIENDA DEMO", terminalCode: "SERVIDOR" },
+        }),
+        complete,
+        close,
+      },
+    });
+
+    render(<SalesUtilityWindowApp />);
+    const utility = await screen.findByLabelText("product label utility");
+
+    fireEvent.click(screen.getByRole("button", { name: "Print label" }));
+    expect(utility).toBeInTheDocument();
+    expect(complete).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close label utility" }));
+    expect(complete).toHaveBeenCalledWith({ printed: true, pdf: false });
+    expect(close).not.toHaveBeenCalled();
   });
 });

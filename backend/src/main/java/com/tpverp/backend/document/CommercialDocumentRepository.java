@@ -16,6 +16,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CommercialDocumentRepository extends JpaRepository<CommercialDocument, UUID> {
+    @Query(value = """
+            select 1
+              from (select pg_advisory_xact_lock(
+                    hashtextextended(cast(:lockKey as text), 0))) locked
+            """, nativeQuery = true)
+    Integer lockSerialNumber(@Param("lockKey") String lockKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select document
@@ -338,6 +345,50 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
             Pageable pageable);
 
     @Query("""
+            select document.id
+              from CommercialDocument document
+             where document.tiendaId = :storeId
+               and document.terminalOrigenId = :terminalId
+               and document.tipo = com.tpverp.backend.document.CommercialDocumentType.TICKET
+               and document.estado in (
+                   com.tpverp.backend.document.DocumentStatus.CONFIRMADO,
+                   com.tpverp.backend.document.DocumentStatus.ANULADO)
+               and document.total > 0
+               and exists (
+                   select productLine.id
+                     from DocumentLine productLine
+                    where productLine.documento = document
+                      and productLine.lineType = com.tpverp.backend.document.DocumentLineType.PRODUCT)
+               and not exists (
+                   select invalidLine.id
+                     from DocumentLine invalidLine
+                    where invalidLine.documento = document
+                      and (invalidLine.lineType = com.tpverp.backend.document.DocumentLineType.RETURN_ADJUSTMENT
+                           or invalidLine.originalDocumentLineId is not null
+                           or (invalidLine.lineType = com.tpverp.backend.document.DocumentLineType.PRODUCT
+                               and invalidLine.cantidad <= 0)))
+               and not exists (
+                   select relation.id
+                     from DocumentRelation relation
+                    where relation.documento = document
+                      and relation.tipo = com.tpverp.backend.document.DocumentRelationType.COMPENSA)
+             order by coalesce(document.confirmadoEn, document.creadoEn) desc,
+                      document.id desc
+            """)
+    List<UUID> findLatestPositiveConfirmedTicketIds(
+            @Param("storeId") UUID storeId,
+            @Param("terminalId") UUID terminalId,
+            Pageable pageable);
+
+    @Query("""
+            select (count(relation) > 0)
+              from DocumentRelation relation
+             where relation.documento.id = :documentId
+               and relation.tipo = com.tpverp.backend.document.DocumentRelationType.COMPENSA
+            """)
+    boolean isExchangeSale(@Param("documentId") UUID documentId);
+
+    @Query("""
             select serial
               from DocumentLine line
               join line.serialNumbers serial
@@ -347,6 +398,27 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
                    com.tpverp.backend.document.DocumentStatus.ANULADO)
             """)
     List<String> confirmedRefundedSerialNumbers(@Param("lineId") UUID lineId);
+
+    @Query("""
+            select upper(trim(serial))
+              from DocumentLine line
+              join line.serialNumbers serial
+             where line.documento.tiendaId = :storeId
+               and line.documento.tipo in (
+                   com.tpverp.backend.document.CommercialDocumentType.TICKET,
+                   com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
+                   com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA)
+               and line.documento.estado not in (
+                   com.tpverp.backend.document.DocumentStatus.BORRADOR,
+                   com.tpverp.backend.document.DocumentStatus.ANULADO)
+               and line.documento.origenStock = true
+               and line.lineType = com.tpverp.backend.document.DocumentLineType.PRODUCT
+               and line.cantidad > 0
+               and upper(trim(serial)) in :serialNumbers
+            """)
+    List<String> usedSerialNumbers(
+            @Param("storeId") UUID storeId,
+            @Param("serialNumbers") Collection<String> serialNumbers);
 
     @EntityGraph(attributePaths = {"pagos", "pagos.metodoPago"})
     @Query("""

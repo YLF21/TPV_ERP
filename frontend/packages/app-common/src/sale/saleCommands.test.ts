@@ -32,6 +32,11 @@ describe("saleCommandFromKeyboard", () => {
     expect(saleCommandFromKeyboard(key("p", { ctrlKey: true }))).toBe("print-method");
   });
 
+  it("opens product search with Delete without modifying the other shortcuts", () => {
+    expect(saleCommandFromKeyboard(key("Delete"))).toBe("product-search");
+    expect(saleCommandFromKeyboard(key("Backspace"))).toBeNull();
+  });
+
   it("keeps native editing shortcuts outside the sales command registry", () => {
     for (const value of ["c", "v", "x", "z", "y"]) {
       expect(saleCommandFromKeyboard(key(value, { ctrlKey: true }))).toBeNull();

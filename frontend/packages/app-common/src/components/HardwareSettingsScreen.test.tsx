@@ -129,6 +129,58 @@ describe("HardwareSettingsScreen", () => {
     expect(document.querySelector(".hardware-footer")).toBeNull();
   });
 
+  it("never replaces the saved Windows printer during automatic or manual detection", async () => {
+    const listPrinters = vi.fn(async () => ({
+      ok: true as const,
+      printers: [
+        { name: "WPS Print to PDF", displayName: "WPS Print to PDF", isDefault: true },
+        { name: "EPSON TM-T20", displayName: "EPSON TM-T20", isDefault: false }
+      ]
+    }));
+    const saveHardwareConfig = vi.fn(async () => ({ ok: true as const }));
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      value: {
+        hardware: {
+          listPrinters,
+          listCustomerDisplays: vi.fn(async () => ({ ok: true as const, displays: [] })),
+          getHardwareConfig: vi.fn(async () => ({
+            ...defaultHardwareConfig,
+            ticketPrinterName: "EPSON TM-T20"
+          })),
+          saveHardwareConfig
+        }
+      }
+    });
+
+    render(
+      <HardwareSettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onLogout={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Impresora de ticket" }));
+    const printerSelect = screen.getByRole("button", { name: "Impresora Windows" });
+    await waitFor(() => expect(printerSelect.textContent).toContain("EPSON TM-T20"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Detectar impresoras" }));
+    await waitFor(() => expect(listPrinters).toHaveBeenCalledTimes(2));
+    expect(printerSelect.textContent).toContain("EPSON TM-T20");
+
+    fireEvent.click(printerSelect);
+    fireEvent.click(screen.getByRole("option", { name: /WPS Print to PDF/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+    await waitFor(() => expect(saveHardwareConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketPrinterName: "WPS Print to PDF" })
+    ));
+  });
+
   it("verifies a scanner with the fixed automatic timing rule", async () => {
     const testScannerInput = vi.fn(async (code: string) => ({
       ok: true as const,

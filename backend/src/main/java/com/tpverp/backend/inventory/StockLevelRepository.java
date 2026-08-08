@@ -32,6 +32,14 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
 
     List<StockLevel> findByProductIdIn(Collection<UUID> productIds);
 
+    @Query("""
+            select value.productId as productId, sum(value.cantidad) as totalQuantity
+            from StockLevel value
+            where value.productId in :productIds
+            group by value.productId
+            """)
+    List<ProductStockTotal> sumQuantityByProductIds(@Param("productIds") Collection<UUID> productIds);
+
     boolean existsByProductId(UUID productId);
 
     @Query("select coalesce(sum(value.cantidad), 0) from StockLevel value where value.warehouseId = :warehouseId")
@@ -39,4 +47,10 @@ public interface StockLevelRepository extends JpaRepository<StockLevel, UUID> {
 
     @Query("select coalesce(sum(value.cantidad), 0) from StockLevel value where value.productId = :productId")
     BigDecimal sumQuantityByProductId(@Param("productId") UUID productId);
+
+    interface ProductStockTotal {
+        UUID getProductId();
+
+        BigDecimal getTotalQuantity();
+    }
 }

@@ -18,6 +18,7 @@ import com.tpverp.backend.promotion.PromotionTarget;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
 import com.tpverp.backend.promotion.PromotionTargetType;
 import com.tpverp.backend.promotion.PromotionType;
+import com.tpverp.backend.promotion.PromotionalCoupon;
 import com.tpverp.backend.promotion.PromotionalCouponRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -192,6 +193,32 @@ class TicketReturnValuationServiceTest {
         assertThat(finalReturn.cumulativeRefundableAmount())
                 .isEqualByComparingTo("20.00");
         assertThat(finalReturn.remainingBasketValue()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void historicalAmountCouponIsRetainedWhenValuingPartialAndTotalReturns() {
+        var fixture = ticketWithoutPromotion(2, "10.00");
+        var promotionId = UUID.randomUUID();
+        var coupon = PromotionalCoupon.amount(
+                UUID.randomUUID(), storeId, promotionId, UUID.randomUUID(),
+                "hash", "1234", new BigDecimal("5.00"),
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+        fixture.ticket().addLine(DocumentLine.special(
+                fixture.ticket(), 2, "CUPON HISTORICO", new BigDecimal("-5.00"),
+                true, "IVA", new BigDecimal("21.00"), promotionId, null,
+                coupon.id()));
+        when(coupons.findAllById(any())).thenReturn(List.of(coupon));
+
+        var partial = service().value(
+                fixture.ticket(), Map.of(fixture.productLine().getId(), BigDecimal.ONE));
+        var total = service().value(
+                fixture.ticket(),
+                Map.of(fixture.productLine().getId(), new BigDecimal("2.000")));
+
+        assertThat(partial.refundableAmount()).isEqualByComparingTo("10.00");
+        assertThat(partial.remainingBasketValue()).isEqualByComparingTo("5.00");
+        assertThat(total.refundableAmount()).isEqualByComparingTo("15.00");
+        assertThat(total.remainingBasketValue()).isEqualByComparingTo("0.00");
     }
 
     private TicketReturnValuationService service() {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { apiBaseUrl } from "../api/runtime";
+import { formatProductQuantity } from "../sale/productQuantity";
+import type { LocaleCode } from "../types";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import type { SaleInterfaceMode } from "./saleInterfacePreferences";
 import { TableSortButton } from "./TableSortButton";
@@ -12,7 +14,9 @@ export type SaleProductSearchOption = {
   barcode?: string | null;
   barcode2?: string | null;
   name?: string | null;
+  productType?: string | null;
   salePrice?: number | string | null;
+  totalStock?: number | string | null;
 };
 
 type SaleProductSearchLabels = {
@@ -21,13 +25,16 @@ type SaleProductSearchLabels = {
   image: string;
   code: string;
   barcode: string;
-  barcode2: string;
   name: string;
+  stock: string;
   price: string;
+  result: string;
+  results: string;
   empty: string;
   close: string;
   add: string;
   details: string;
+  navigate: string;
   selected: string;
   unnamedProduct: string;
   missingCode: string;
@@ -37,6 +44,7 @@ type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   initialQuery: string;
   initialSelectedId?: string;
   interfaceMode?: SaleInterfaceMode;
+  locale?: LocaleCode;
   labels: SaleProductSearchLabels;
   products: T[];
   token?: string;
@@ -47,7 +55,7 @@ type SaleProductSearchDialogProps<T extends SaleProductSearchOption> = {
   onSelect: (product: T) => void;
 };
 
-type SaleProductSearchSortColumn = "code" | "barcode" | "barcode2" | "name" | "price";
+type SaleProductSearchSortColumn = "code" | "barcode" | "name" | "stock" | "price";
 
 function normalizedSearchValue(value: string | null | undefined) {
   return value?.trim().toLocaleLowerCase() ?? "";
@@ -70,6 +78,7 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
   initialQuery,
   initialSelectedId = "",
   interfaceMode,
+  locale = "es",
   labels,
   products,
   token,
@@ -90,8 +99,8 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
     (product, column) => {
       if (column === "code") return product.code;
       if (column === "barcode") return product.barcode;
-      if (column === "barcode2") return product.barcode2;
       if (column === "name") return product.name;
+      if (column === "stock") return product.totalStock == null ? null : Number(product.totalStock);
       return product.salePrice == null ? null : Number(product.salePrice);
     }
   ), [products, query, sort]);
@@ -140,12 +149,17 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
       onClose();
       return;
     }
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const acceptsSearchShortcuts = event.target === inputRef.current
+      || Boolean(target?.closest(".sale-product-search-row"));
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      if (!acceptsSearchShortcuts) return;
       event.preventDefault();
       moveSelection(event.key === "ArrowUp" ? -1 : 1);
       return;
     }
     if ((event.key === "Enter" || event.key === "Insert") && activeId) {
+      if (!acceptsSearchShortcuts) return;
       event.preventDefault();
       const product = results.find((candidate) => candidate.id === activeId);
       if (!product) return;
@@ -192,9 +206,13 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
         onKeyDown={handleKeyDown}
       >
         <header>
-          <div>
+          <div className="sale-product-search-heading">
             <h2 id="sale-product-search-title">{labels.title}</h2>
-            <span>{results.length}</span>
+            <span className="sale-product-search-count" role="status">
+              <strong>{results.length}</strong>
+              {" "}
+              {results.length === 1 ? labels.result : labels.results}
+            </span>
           </div>
           <button type="button" aria-label={labels.close} onClick={onClose}>×</button>
         </header>
@@ -203,6 +221,13 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
           <span>{labels.query}</span>
           <input
             ref={inputRef}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="sale-product-search-results"
+            aria-expanded="true"
+            aria-activedescendant={activeId
+              ? `sale-product-search-option-${encodeURIComponent(activeId)}`
+              : undefined}
             autoComplete="off"
             value={query}
             onChange={(event) => {
@@ -215,17 +240,17 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
           />
         </label>
 
-        <div className="sale-product-search-table" role="listbox" aria-label={labels.title}>
+        <div className="sale-product-search-table">
           <div className="sale-product-search-head">
-            <span role="columnheader">{labels.image}</span>
+            <span>{labels.image}</span>
             {([
               ["code", labels.code],
               ["barcode", labels.barcode],
-              ["barcode2", labels.barcode2],
               ["name", labels.name],
+              ["stock", labels.stock],
               ["price", labels.price]
             ] as const).map(([column, label]) => (
-              <span role="columnheader" aria-sort={sort?.column === column ? sort.direction === "asc" ? "ascending" : "descending" : "none"} key={column}>
+              <span key={column}>
                 <TableSortButton
                   direction={sort?.column === column ? sort.direction : null}
                   label={label}
@@ -236,30 +261,55 @@ export function SaleProductSearchDialog<T extends SaleProductSearchOption>({
               </span>
             ))}
           </div>
-          <div className="sale-product-search-body">
-            {results.length === 0 && <p className="sale-product-search-empty">{labels.empty}</p>}
+          <div
+            id="sale-product-search-results"
+            className="sale-product-search-body"
+            role="listbox"
+            aria-label={labels.title}
+          >
             {results.map((product) => (
-              <button
+              <div
                 id={`sale-product-search-option-${encodeURIComponent(product.id)}`}
-                type="button"
                 role="option"
+                tabIndex={-1}
                 aria-selected={product.id === activeId}
+                aria-label={productSearchOptionLabel(product, labels, locale)}
                 className={`sale-product-search-row${product.id === activeId ? " selected" : ""}`}
                 key={product.id}
                 onClick={() => handleProductClick(product)}
                 onDoubleClick={() => handleProductDoubleClick(product)}
-                onMouseEnter={() => selectProduct(product.id)}
               >
-                <SaleProductSearchThumbnail product={product} token={token} />
+                <span className="sale-product-search-image-cell">
+                  <SaleProductSearchThumbnail product={product} token={token} />
+                </span>
                 <span>{product.code || labels.missingCode}</span>
                 <span>{product.barcode || "—"}</span>
-                <span>{product.barcode2 || "—"}</span>
                 <strong>{product.name || labels.unnamedProduct}</strong>
+                <span className="sale-product-search-stock">
+                  {formatProductQuantity(product.totalStock, product.productType, locale)}
+                </span>
                 <b>{formatAmount(product.salePrice)}</b>
-              </button>
+              </div>
             ))}
           </div>
+          {results.length === 0 && (
+            <p className="sale-product-search-empty" role="status">{labels.empty}</p>
+          )}
         </div>
+        {interfaceMode === "KEYBOARD" && (
+          <footer className="sale-product-search-keyboard-actions">
+            <p>
+              <span>{labels.selected}</span>
+              <strong>{activeProduct?.name || activeProduct?.code || labels.unnamedProduct}</strong>
+            </p>
+            <div>
+              <span><kbd>↑↓</kbd>{labels.navigate}</span>
+              <span><kbd>Enter</kbd>{labels.details}</span>
+              <span><kbd>Insert</kbd>{labels.add}</span>
+              <span><kbd>Esc</kbd>{labels.close}</span>
+            </div>
+          </footer>
+        )}
         {interfaceMode === "TOUCH" && (
           <footer className="sale-product-search-touch-actions">
             <p aria-live="polite">
@@ -347,4 +397,18 @@ function formatAmount(value: number | string | null | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function productSearchOptionLabel(
+  product: SaleProductSearchOption,
+  labels: SaleProductSearchLabels,
+  locale: LocaleCode,
+) {
+  return [
+    `${labels.name}: ${product.name || labels.unnamedProduct}`,
+    `${labels.code}: ${product.code || labels.missingCode}`,
+    product.barcode ? `${labels.barcode}: ${product.barcode}` : "",
+    `${labels.stock}: ${formatProductQuantity(product.totalStock, product.productType, locale)}`,
+    `${labels.price}: ${formatAmount(product.salePrice)}`,
+  ].filter(Boolean).join("; ");
 }

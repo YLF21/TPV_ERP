@@ -26,7 +26,45 @@ public record DocumentLineCommand(
         String returnSourceCode,
         UUID returnSourceTicketId,
         UUID originalDocumentLineId,
-        UUID giftReceiptLineId) {
+        UUID giftReceiptLineId,
+        BigDecimal frozenBase,
+        BigDecimal frozenTax,
+        BigDecimal frozenTotal) {
+
+    private static final String HISTORICAL_OPEN_PRICE_RATE =
+            "OPEN_PRICE";
+
+    public DocumentLineCommand(
+            UUID productoId,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId,
+            List<String> serialNumbers,
+            boolean temporaryNameOverride,
+            boolean temporaryPriceOverride,
+            TicketReturnService.ReturnSourceType returnSourceType,
+            String returnSourceCode,
+            UUID returnSourceTicketId,
+            UUID originalDocumentLineId,
+            UUID giftReceiptLineId) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
+                descuento, impuestosIncluidos, regimenImpuesto,
+                porcentajeImpuesto, lineType, promotionId, promotionVersionId,
+                promotionalCouponId, serialNumbers, temporaryNameOverride,
+                temporaryPriceOverride, returnSourceType, returnSourceCode,
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                null, null, null);
+    }
 
     public DocumentLineCommand(
             UUID productoId, BigDecimal cantidad, String codigo, String nombre,
@@ -124,7 +162,8 @@ public record DocumentLineCommand(
                 promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
-                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId);
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                null, null, null);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
@@ -134,7 +173,20 @@ public record DocumentLineCommand(
                 promotionId, promotionVersionId, promotionalCouponId, serialNumbers,
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
-                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId);
+                returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
+                null, null, null);
+    }
+
+    static String historicalOpenPriceRate() {
+        return HISTORICAL_OPEN_PRICE_RATE;
+    }
+
+    static boolean isHistoricalOpenPriceRate(String rate) {
+        return HISTORICAL_OPEN_PRICE_RATE.equals(rate);
+    }
+
+    public boolean historicalOpenPriceOverride() {
+        return isHistoricalOpenPriceRate(tarifa);
     }
 
     public void requireClientProductLine() {
@@ -163,6 +215,7 @@ public record DocumentLineCommand(
 
     static DocumentLineCommand from(DocumentLine line) {
         var hasReturnOrigin = line.getOriginalDocumentLineId() != null;
+        var frozenAmounts = line.getLineType() != DocumentLineType.RETURN_ADJUSTMENT;
         return new DocumentLineCommand(
                 line.getProductoId(), line.getCantidad(), line.getCodigo(),
                 line.getNombre(), line.getTarifa(), line.getPrecioUnitario(),
@@ -177,7 +230,10 @@ public record DocumentLineCommand(
                                 : TicketReturnService.ReturnSourceType.GIFT_RECEIPT,
                 null,
                 hasReturnOrigin ? line.getDocumento().getId() : null,
-                line.getOriginalDocumentLineId(), line.getGiftReceiptLineId());
+                line.getOriginalDocumentLineId(), line.getGiftReceiptLineId(),
+                frozenAmounts ? line.getBase() : null,
+                frozenAmounts ? line.getImpuesto() : null,
+                frozenAmounts ? line.getTotal() : null);
     }
 
     // Converts validated input into a line with a fiscal snapshot.
@@ -188,15 +244,36 @@ public record DocumentLineCommand(
                     regimenImpuesto, porcentajeImpuesto);
         }
         if (lineType != null && lineType != DocumentLineType.PRODUCT) {
+            if (frozenBase != null || frozenTax != null || frozenTotal != null) {
+                if (frozenBase == null || frozenTax == null || frozenTotal == null) {
+                    throw new IllegalArgumentException(
+                            "el ajuste historico necesita base, impuesto y total");
+                }
+                return DocumentLine.frozenSpecial(
+                        document, position, lineType, nombre, precioUnitario,
+                        impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                        promotionId, promotionVersionId, promotionalCouponId,
+                        frozenBase, frozenTax, frozenTotal);
+            }
             return DocumentLine.special(
                     document, position, nombre, precioUnitario, impuestosIncluidos,
                     regimenImpuesto, porcentajeImpuesto, promotionId,
-                    promotionVersionId, promotionalCouponId);
+                    promotionVersionId, promotionalCouponId, lineType);
         }
-        var line = new DocumentLine(
-                document, productoId, position, cantidad, codigo, nombre, tarifa,
-                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
-                porcentajeImpuesto);
+        if ((frozenBase == null) != (frozenTax == null)
+                || (frozenBase == null) != (frozenTotal == null)) {
+            throw new IllegalArgumentException(
+                    "la linea historica necesita base, impuesto y total");
+        }
+        var line = frozenBase == null
+                ? new DocumentLine(
+                        document, productoId, position, cantidad, codigo, nombre, tarifa,
+                        precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                        porcentajeImpuesto)
+                : DocumentLine.frozenProduct(
+                        document, productoId, position, cantidad, codigo, nombre, tarifa,
+                        precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                        porcentajeImpuesto, frozenBase, frozenTax, frozenTotal);
         line.assignSerialNumbers(serialNumbers);
         if (originalDocumentLineId != null) {
             line.identifyRefundOf(originalDocumentLineId);

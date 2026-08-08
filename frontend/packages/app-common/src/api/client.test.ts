@@ -56,6 +56,21 @@ describe("apiRequest", () => {
     await expect(apiRequest("/pos/payment-sessions/active")).resolves.toBeUndefined();
   });
 
+  it("forwards an abort signal to fetch", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest("/tickets/previous-current-terminal/import-preview", {
+      signal: controller.signal,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tickets/previous-current-terminal/import-preview",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("keeps structured problem details on API errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       code: "PRODUCT_PRICE_RULE_CONFLICT",

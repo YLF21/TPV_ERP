@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
@@ -22,6 +23,22 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
             UUID companyId, DocumentType documentType, String documentNumber);
 
     Optional<Customer> findByIdAndCompanyId(UUID id, UUID companyId);
+
+    @Query("""
+            select customer
+            from Customer customer
+            where customer.company.id = :companyId
+              and (
+                    lower(customer.clientId) like lower(concat('%', :query, '%'))
+                 or lower(customer.fiscalName) like lower(concat('%', :query, '%'))
+                 or lower(customer.documentNumber) like lower(concat('%', :query, '%'))
+              )
+            order by customer.activo desc, customer.fiscalName asc, customer.clientId asc
+            """)
+    List<Customer> searchSaleOptions(
+            @Param("companyId") UUID companyId,
+            @Param("query") String query,
+            Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select customer from Customer customer where customer.id = :id and customer.company.id = :companyId")

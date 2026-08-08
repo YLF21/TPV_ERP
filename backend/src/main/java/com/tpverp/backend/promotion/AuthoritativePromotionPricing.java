@@ -56,13 +56,17 @@ public class AuthoritativePromotionPricing {
             DocumentLineCommand line) {
         var catalogSalePrice = requiredPrice(product.getSalePrice(), "precio de venta");
         var usesOpenPrice = catalogSalePrice.signum() == 0;
+        var usesHistoricalOpenPrice = line.historicalOpenPriceOverride();
         var price = line.temporaryPriceOverride()
                 ? requiredTemporaryPrice(line.precioUnitario())
+                : usesHistoricalOpenPrice
+                ? requiredOpenPrice(line.precioUnitario())
                 : usesOpenPrice
                 ? requiredOpenPrice(line.precioUnitario())
                 : basePrice(product, documentDate, customer);
         var rate = line.temporaryPriceOverride()
                 ? "TEMPORAL"
+                : usesHistoricalOpenPrice ? line.tarifa()
                 : usesOpenPrice ? "VENTA" : rate(product, documentDate, customer);
         var priced = line.withPrice(price, rate);
         var categoryDiscount = customer.categoryDiscountPercent();

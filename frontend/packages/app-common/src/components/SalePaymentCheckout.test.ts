@@ -53,6 +53,40 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("forwards the authoritative quote fingerprint when reserving an imported ticket", async () => {
+  const collecting:ServerSession={id:"replay-reservation",total:"20.00",documentTotal:"-20.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions")return collecting;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:-2000,
+   sale:{
+    customerId:null,
+    lines:[],
+    previousTicketImport:{ticketId:"ticket-previous",fingerprint:"snapshot-fingerprint",serialNumbersBySourceLineId:{}},
+    quoteFingerprint:"quote-fingerprint",
+   },
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("VOUCHER"));
+
+  await waitFor(()=>expect(apiRequestMock.mock.calls.some(([path])=>path==="/pos/payment-sessions")).toBe(true));
+  expect(apiRequestMock.mock.calls.find(([path])=>path==="/pos/payment-sessions")?.[1].body).toMatchObject({
+   sale:{
+    previousTicketImport:{ticketId:"ticket-previous",fingerprint:"snapshot-fingerprint"},
+    quoteFingerprint:"quote-fingerprint",
+   },
+  });
+ });
+
  it("opens the unified checkout for a negative return total", async () => {
   const collecting:ServerSession={id:"refund-new-empty",total:"100.00",documentTotal:"-100.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string)=>{

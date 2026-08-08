@@ -10,6 +10,7 @@ import {
   SaleScreen,
   SaleDeletionControlSequence,
   addSaleLine,
+  appendPreviousTicketImport,
   applyMemberDiscounts,
   cashPaymentErrorTransition,
   cashPaymentSuccessTransition,
@@ -35,6 +36,9 @@ import {
   saleMainProductCount,
   visibleSaleCartColumns,
   pendingSaleDraftForCustomer,
+  preparePreviousTicketImport,
+  previousTicketImportReconciliationAdjustment,
+  previousTicketImportSerialNumbersReady,
   saleSelectableProducts,
   effectiveSaleLineDiscount,
   effectiveSaleProductPrice,
@@ -65,7 +69,8 @@ import {
   updateSaleLineSerialNumbers,
   type SaleCustomer,
   type SaleLine,
-  type SaleProduct
+  type SaleProduct,
+  type PreviousTicketImportPreview,
 } from "./SaleScreen";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import type { TerminalContext, UserSession } from "../types";
@@ -94,9 +99,16 @@ type CheckoutMockProps = {
       cartLineId?: string;
       temporaryPriceAuthorizationToken?: string;
     }>;
+    previousTicketImport?: {
+      ticketId: string;
+      fingerprint: string;
+      serialNumbersBySourceLineId: Record<string, string[]>;
+    };
+    quoteFingerprint?: string;
   };
   onCash?: () => void;
   onPending?: () => void;
+  onDiscount?: (amountCents: number) => void;
   onHydrationChange?: (hydrated: boolean) => void;
   onLockedChange?: (locked: boolean, reservedTotalCents?: number) => void;
   saleMutationAuthorizations?: Array<{
@@ -513,6 +525,48 @@ function authoritativeQuote(product: SaleProduct, total = "10.00", couponDiscoun
       roundingAdjustment: "0.00",
       finalSubtotal: total,
     }],
+  };
+}
+
+function previousTicketPreview(
+  overrides: Partial<PreviousTicketImportPreview> = {},
+): PreviousTicketImportPreview {
+  return {
+    ticketId: "previous-ticket",
+    ticketNumber: "001-260807-00010",
+    ticketDate: "2026-08-07T10:00:00Z",
+    status: "CONFIRMADO",
+    pricingMode: "CURRENT_REPRICING",
+    preservedManualDiscountAmount: "0.00",
+    manualDiscountAuthorizationRequired: false,
+    fingerprint: "previous-ticket-fingerprint",
+    customerId: null,
+    globalDiscount: "0.00",
+    baseTotal: "16.53",
+    taxTotal: "3.47",
+    total: "20.00",
+    currency: "EUR",
+    lines: [{
+      sourceLineId: "previous-line-coffee",
+      productId: "coffee",
+      code: "CAF-001",
+      name: "Cafe histórico",
+      quantity: "2",
+      productType: "UNIT",
+      unitPrice: "12.50",
+      discount: "20.00",
+      rate: null,
+      taxesIncluded: true,
+      taxRegime: "IVA",
+      taxPercent: "21.00",
+      base: "16.53",
+      tax: "3.47",
+      total: "20.00",
+      serialNumbers: [],
+      temporaryPriceAuthorizationRequired: false,
+    }],
+    adjustments: [],
+    ...overrides,
   };
 }
 
@@ -933,10 +987,17 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(input, { key: "Enter" });
   }
 
+  async function importPreviousTicketFromMenu() {
+    fireEvent.click(screen.getByRole("button", { name: /FACTURA\/TICKET/ }));
+    const action = await screen.findByRole("menuitem", { name: "Importar ticket anterior" });
+    await waitFor(() => expect(action).toBeEnabled());
+    fireEvent.click(action);
+  }
+
   async function confirmProductSearchWithInsert(name: RegExp) {
     await screen.findByRole("option", { name });
     fireEvent.keyDown(
-      screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      screen.getByRole("combobox", { name: "Código, código de barras o nombre" }),
       { key: "Insert" },
     );
   }
@@ -2573,7 +2634,6 @@ describe("SaleScreen", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     search.focus();
-    fireEvent.keyDown(search, { key: "Delete" });
     fireEvent.keyDown(search, { key: "ArrowUp" });
     fireEvent.keyDown(search, { key: "ArrowDown" });
     expect(screen.getByRole("button", { name: /Nombre autoritativo backend.*1 x 10,00/s })).toHaveAttribute("aria-pressed", "true");
@@ -2588,6 +2648,29 @@ describe("SaleScreen", () => {
     fireEvent.keyDown(search, { key: "PageDown" });
     expect(triggerCash).toHaveBeenCalledOnce();
     expect(triggerCard).not.toHaveBeenCalled();
+  });
+
+  it("opens product search with Delete, transfers the quick query and clears it on close", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products.slice(0, 2)), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.endsWith("/customers/sale-options")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    fireEvent.change(search, { target: { value: "Cafe" } });
+    fireEvent.keyDown(search, { key: "Delete" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Buscador de productos" });
+    expect(within(dialog).getByRole("combobox")).toHaveValue("Cafe");
+    fireEvent.keyDown(within(dialog).getByRole("combobox"), { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Buscador de productos" })).not.toBeInTheDocument();
+    expect(search).toHaveValue("");
+    await waitFor(() => expect(search).toHaveFocus());
   });
 
   it("does not start cash payment from PageDown when checkout is disabled for an empty sale", async () => {
@@ -2986,9 +3069,9 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", "Anular ticket por código", "Convertir ticket a factura"]],
-    ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", "Cancel ticket by code", "Convert ticket to invoice"]],
-    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", "按编号取消小票", "小票转发票"]],
+    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", "Anular ticket por código", "Convertir ticket a factura", "Importar ticket anterior"]],
+    ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", "Cancel ticket by code", "Convert ticket to invoice", "Import previous ticket"]],
+    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", "按编号取消小票", "小票转发票", "\u5bfc\u5165\u4e0a\u4e00\u5f20\u5c0f\u7968"]],
   ] as const)("localizes sale management actions in %s", (locale, labels) => {
     const html = renderToStaticMarkup(
       <SaleScreen
@@ -3003,7 +3086,525 @@ describe("SaleScreen", () => {
       />,
     );
 
-    labels.forEach((label) => expect(html).toContain(label));
+    labels.slice(0, -1).forEach((label) => expect(html).toContain(label));
+    expect(createTranslator(locale)("sale.shortcut.importPreviousTicket")).toBe(labels.at(-1));
+  });
+
+  it("imports a confirmed previous ticket as an immutable current-repricing block", async () => {
+    const quoteBodies: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify(previousTicketPreview({
+          preservedManualDiscountAmount: "2.00",
+          manualDiscountAuthorizationRequired: true,
+          lines: [{
+            ...previousTicketPreview().lines[0],
+            manualPricePreserved: true,
+            temporaryPriceAuthorizationRequired: true,
+          }],
+        })), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        quoteBodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSaleScreen(vi.fn(), "es", {
+      session: { ...session, permissions: [] },
+    });
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+
+    await importPreviousTicketFromMenu();
+
+    await waitFor(() => expect(checkoutProps.current?.sale).toMatchObject({
+      customerId: null,
+      lines: [{ productId: "coffee", quantity: 1, discount: 0 }],
+      previousTicketImport: {
+        ticketId: "previous-ticket",
+        fingerprint: "previous-ticket-fingerprint",
+        serialNumbersBySourceLineId: {},
+      },
+      quoteFingerprint: "quote-10.00-0.00",
+    }));
+    expect(quoteBodies.length).toBeGreaterThan(0);
+    expect(quoteBodies.every((body) => body.quoteFingerprint == null)).toBe(true);
+    expect(checkoutProps.current?.onDiscount).toBeTypeOf("function");
+    expect((await screen.findAllByText("Nombre autoritativo backend")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Precio manual del ticket conservado")).toBeInTheDocument();
+    expect(checkoutProps.current?.saleMutationAuthorizations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TEMPORARY_PRICE_CHANGE",
+          authorization: expect.objectContaining({ mode: "DELEGATED" }),
+        }),
+        expect.objectContaining({
+          code: "APPLY_CHECKOUT_DISCOUNT",
+          authorization: expect.objectContaining({ mode: "DELEGATED" }),
+        }),
+      ]),
+    );
+    expect(await screen.findByText(/Los precios y promociones se han recalculado con las condiciones actuales/)).toBeInTheDocument();
+    expect(screen.getAllByText(/condiciones actuales/)).toHaveLength(2);
+    await waitFor(() => expect(search).toHaveFocus());
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/tickets/previous-current-terminal/import-preview"))).toHaveLength(1);
+  });
+
+  it("hides the historical total and stale promotions until CURRENT_REPRICING has a matching quote", async () => {
+    let quoteCalls = 0;
+    let resolveRepricingQuote!: (response: Response) => void;
+    const pendingRepricingQuote = new Promise<Response>((resolve) => {
+      resolveRepricingQuote = resolve;
+    });
+    const staleQuote = {
+      ...authoritativeQuote(products[0]),
+      promotionPreview: {
+        appliedPromotions: [{ id: "stale-promotion", name: "Promoción anterior", discountAmount: "2.00" }],
+        usedCoupon: { code: "CUPON-ANTERIOR", amount: "1.00" },
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([products[0]]), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify(previousTicketPreview({ total: "99.00" })), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        quoteCalls += 1;
+        return quoteCalls === 1
+          ? new Response(JSON.stringify(staleQuote), {
+              status: 200, headers: { "Content-Type": "application/json" },
+            })
+          : pendingRepricingQuote;
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    expect(await screen.findByText("Promoción anterior")).toBeInTheDocument();
+
+    await importPreviousTicketFromMenu();
+
+    await waitFor(() => expect(document.querySelector(".sale-total strong")?.textContent).toBe("—"));
+    expect(screen.getAllByText("Calculando el total y las promociones con las condiciones actuales…").length)
+      .toBeGreaterThan(0);
+    expect(screen.queryByText("Promoción anterior")).not.toBeInTheDocument();
+    expect(screen.queryByText("CUPON-ANTERIOR")).not.toBeInTheDocument();
+    expect(document.querySelector(".sale-total strong")?.textContent).not.toBe("99,00");
+
+    await act(async () => {
+      resolveRepricingQuote(new Response("offline", { status: 503 }));
+      await Promise.resolve();
+    });
+    expect((await screen.findAllByText(
+      "No se pudo completar el recálculo; el total y las promociones no están disponibles.",
+    )).length).toBeGreaterThan(0);
+    expect(document.querySelector(".sale-total strong")?.textContent).toBe("—");
+    expect(screen.queryByText("Promoción anterior")).not.toBeInTheDocument();
+  });
+
+  it("keeps the cart unchanged when the historical snapshot is invalid", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        const invalid = previousTicketPreview({
+          ticketNumber: "001-260807-00011",
+          lines: [{
+            ...previousTicketPreview().lines[0],
+            code: "BAD-QTY",
+            quantity: 0,
+          }],
+        });
+        return new Response(JSON.stringify(invalid), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0])), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+    submitQuickEntry(search, "CAF-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toHaveLength(1));
+
+    await importPreviousTicketFromMenu();
+
+    expect(await screen.findByText(/BAD-QTY: la cantidad del ticket no es válida/)).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines).toMatchObject([
+      { productId: "coffee", quantity: 1 },
+    ]);
+  });
+
+  it("uses the historical price for a zero-price product without opening the price dialog", async () => {
+    const openProduct: SaleProduct = {
+      ...products[0], id: "open-1", code: "OPEN-1", name: "Abierto 1", salePrice: 0,
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify([openProduct]), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        const preview = previousTicketPreview({
+          ticketId: "previous-ticket-open",
+          ticketNumber: "001-260807-00012",
+          fingerprint: "open-price-fingerprint",
+          total: "7.25",
+          lines: [{
+            ...previousTicketPreview().lines[0],
+            sourceLineId: "open-source-line",
+            productId: "open-1",
+            code: "OPEN-1",
+            name: "Abierto histórico",
+            quantity: 1,
+            unitPrice: "7.25",
+            discount: 0,
+            base: "5.99",
+            tax: "1.26",
+            total: "7.25",
+          }],
+        });
+        return new Response(JSON.stringify(preview), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(openProduct, "7.25")), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    await importPreviousTicketFromMenu();
+    expect(screen.queryByRole("dialog", { name: "Introducir precio" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Abierto histórico")).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines).toEqual([]);
+    expect(checkoutProps.current?.sale?.previousTicketImport).toMatchObject({
+      ticketId: "previous-ticket-open",
+      fingerprint: "open-price-fingerprint",
+    });
+    expect(checkoutProps.current?.saleMutationAuthorizations ?? []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "TEMPORARY_PRICE_CHANGE" }),
+      ]),
+    );
+    expect(checkoutProps.current?.onDiscount).toBeUndefined();
+  });
+
+  it("copies and locks the historical customer, allows new positive lines, and clears replay after finalization", async () => {
+    const importedCustomer: SaleCustomer = {
+      ...customers[1],
+      activeMember: true,
+      memberCategoryName: "Socio Oro",
+      memberDiscountPercent: "7.50",
+      memberBalance: "12.50",
+      outstandingDebt: "34.25",
+      overdueDebt: "5.00",
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products.slice(0, 2)), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify(previousTicketPreview({ customerId: importedCustomer.id })), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith(`/customers/sale-options/${importedCustomer.id}`)) {
+        return new Response(JSON.stringify(importedCustomer), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        const request = JSON.parse(String(init?.body ?? "{}")) as CheckoutMockProps["sale"];
+        const hasCurrentLine = Boolean(request?.lines.length);
+        const historicalLine = authoritativeQuote(products[0], "20.00").lineBreakdown[0];
+        const currentLine = authoritativeQuote(products[1], "2.50").lineBreakdown[0];
+        return new Response(JSON.stringify({
+          ...authoritativeQuote(products[0], hasCurrentLine ? "22.50" : "20.00"),
+          productTotal: hasCurrentLine ? "22.50" : "20.00",
+          lineBreakdown: hasCurrentLine ? [historicalLine, currentLine] : [historicalLine],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    await importPreviousTicketFromMenu();
+
+    await waitFor(() => expect(checkoutProps.current?.sale).toMatchObject({
+      customerId: importedCustomer.id,
+      lines: [],
+      previousTicketImport: { ticketId: "previous-ticket" },
+    }));
+    const customerSummary = screen.getByRole("button", { name: /Cliente: Maria Lopez/ });
+    expect(customerSummary).toBeDisabled();
+    expect(within(customerSummary).getByText(/12,50/)).toBeInTheDocument();
+    expect(within(customerSummary).getByText(/34,25/)).toBeInTheDocument();
+    expect(within(customerSummary).getByText(/5,00/)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "End" });
+    expect(screen.queryByRole("dialog", { name: "Seleccionar cliente" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /FACTURA\/TICKET/ }));
+    expect(screen.getByRole("menuitem", { name: /Devoluci.*por ticket/ })).toBeDisabled();
+
+    submitQuickEntry(search, "PAN-001");
+    await waitFor(() => expect(checkoutProps.current?.sale?.lines).toMatchObject([
+      { productId: "bread", quantity: 1 },
+    ]));
+    expect(checkoutProps.current?.sale?.previousTicketImport).toBeDefined();
+
+    act(() => checkoutProps.current?.onFinalized(
+      printSnapshot("REPLAY-COMPLETE"),
+      { kind: "CARD", totalCents: 2250 },
+    ));
+    expect(checkoutProps.current?.sale?.lines).toEqual([]);
+    expect(checkoutProps.current?.sale?.previousTicketImport).toBeUndefined();
+    expect(checkoutProps.current?.sale?.customerId).toBeNull();
+  });
+
+  it("shows historical adjustments and the exact global discount once", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify(previousTicketPreview({
+          status: "ANULADO",
+          pricingMode: "FROZEN_EXACT",
+          globalDiscount: "10.00",
+          total: "85.00",
+          lines: [{ ...previousTicketPreview().lines[0], total: "100.00" }],
+          adjustments: [{
+            lineType: "PROMOTION_BENEFIT",
+            name: "3x2 histÃ³rico",
+            base: "-4.13",
+            tax: "-0.87",
+            total: "-5.00",
+          }],
+        })), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify(authoritativeQuote(products[0], "85.00")), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    await importPreviousTicketFromMenu();
+
+    expect(await screen.findByText(/3x2 hist/)).toBeInTheDocument();
+    expect(screen.getByText(/Descuento global/)).toBeInTheDocument();
+    expect(screen.getAllByText("-5,00")).toHaveLength(1);
+    expect(screen.getAllByText("-10,00")).toHaveLength(1);
+  });
+
+  it("shows only the authoritative current promotions for a confirmed imported ticket", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify(previousTicketPreview({
+          adjustments: [{
+            lineType: "PROMOTION_BENEFIT",
+            name: "Promoción histórica descartada",
+            base: "-4.13",
+            tax: "-0.87",
+            total: "-5.00",
+          }],
+        })), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/pos/sales/quote")) {
+        return new Response(JSON.stringify({
+          ...authoritativeQuote(products[0], "8.00"),
+          promotionPreview: {
+            appliedPromotions: [{
+              id: "promotion-current",
+              name: "Promoción vigente hoy",
+              discountAmount: "-2.00",
+            }],
+            usedCoupon: null,
+            generatedCoupon: null,
+          },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    await importPreviousTicketFromMenu();
+
+    expect(await screen.findByText("Promoción vigente hoy")).toBeInTheDocument();
+    expect(screen.queryByText("Promoción histórica descartada")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ticket anterior ·/)).not.toBeInTheDocument();
+  });
+
+  it("shows the localized backend detail when the previous ticket cannot be loaded", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response(JSON.stringify(products), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/stock/settings")) {
+        return new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        return new Response(JSON.stringify({ detail: "No existe un ticket anterior importable en este terminal." }), {
+          status: 409, headers: { "Content-Type": "application/problem+json" },
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    await importPreviousTicketFromMenu();
+
+    expect(await screen.findByText(/No existe un ticket anterior importable en este terminal/)).toBeInTheDocument();
+    expect(checkoutProps.current?.sale?.lines).toEqual([]);
+  });
+
+  it("aborts an unresponsive previous-ticket request and unlocks the cart", async () => {
+    let importSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return Promise.resolve(new Response(JSON.stringify(products), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        }));
+      }
+      if (path.endsWith("/stock/settings")) {
+        return Promise.resolve(new Response(JSON.stringify({ allowInactiveProductSales: false }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        }));
+      }
+      if (path.endsWith("/tickets/previous-current-terminal/import-preview")) {
+        importSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          importSignal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+    renderSaleScreen();
+    const search = await screen.findByRole("combobox", { name: "Buscar producto" });
+    await waitFor(() => expect(search).toBeEnabled());
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: /FACTURA\/TICKET/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Importar ticket anterior" }));
+    expect(importSignal?.aborted).toBe(false);
+    expect(search).toBeDisabled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(12_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    vi.useRealTimers();
+
+    expect(importSignal?.aborted).toBe(true);
+    expect(screen.getByText("El servidor no respondió a tiempo. El carrito no se ha modificado; vuelve a intentarlo.")).toBeInTheDocument();
+    expect(search).toBeEnabled();
+    expect(search).toHaveFocus();
+    expect(checkoutProps.current?.sale?.lines).toEqual([]);
   });
 
   it("changes the selected line with touch plus and minus controls and the numeric keypad", async () => {
@@ -3182,12 +3783,13 @@ describe("SaleScreen", () => {
     expect(search).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.keyDown(
-      screen.getByRole("textbox", { name: "Código, código de barras o nombre" }),
+      screen.getByRole("combobox", { name: "Código, código de barras o nombre" }),
       { key: "Insert" },
     );
 
     expect(await screen.findByRole("button", { name: /Cafe molido.*1 x 10,00/s })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Pan integral.*1 x 2,50/s })).not.toBeInTheDocument();
+    expect(search).toHaveValue("");
   });
 
   it("moves through modal product results with vertical arrows and confirms the active result with Insert", async () => {
@@ -3204,7 +3806,7 @@ describe("SaleScreen", () => {
     const bread = screen.getByRole("option", { name: /Pan integral/ });
     expect(coffee).toHaveAttribute("aria-selected", "true");
 
-    const modalInput = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    const modalInput = screen.getByRole("combobox", { name: "Código, código de barras o nombre" });
     fireEvent.keyDown(modalInput, { key: "ArrowDown" });
     expect(bread).toHaveAttribute("aria-selected", "true");
 
@@ -3307,7 +3909,7 @@ describe("SaleScreen", () => {
     submitQuickEntry(search, "Cafe");
     expect(await screen.findByRole("option", { name: /Cafe molido/ })).toHaveAttribute("aria-selected", "true");
 
-    const modalInput = screen.getByRole("textbox", { name: "Código, código de barras o nombre" });
+    const modalInput = screen.getByRole("combobox", { name: "Código, código de barras o nombre" });
     fireEvent.change(modalInput, { target: { value: "Pan" } });
 
     const currentOptions = screen.getAllByRole("option");
@@ -3326,6 +3928,134 @@ describe("SaleScreen", () => {
       { product: products[1], quantity: 1, discountPercent: 0 }
     ]);
     expect(saleTotal(completed)).toBe(22.5);
+  });
+
+  it("never merges a normal addition with an F10 return line for the same product", () => {
+    const returnLine: SaleLine = {
+      cartLineId: "return-line",
+      product: products[0],
+      quantity: -1,
+      returnUnitPrice: 10,
+      discountPercent: 0,
+      returnOrigin: {
+        sourceType: "TICKET",
+        sourceCode: "001-260807-00001",
+        sourceTicketId: "ticket-1",
+        sourceTicketNumber: "001-260807-00001",
+        sourceLineId: "source-line-1",
+      },
+    };
+
+    const result = addSaleLine([returnLine], products[0]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual(returnLine);
+    expect(result[1]).toMatchObject({ product: products[0], quantity: 1, discountPercent: 0 });
+    expect(result[1].returnOrigin).toBeUndefined();
+  });
+
+  it("prevalidates a previous-ticket import as one atomic batch", () => {
+    const preview = previousTicketPreview({
+      lines: [{ ...previousTicketPreview().lines[0], quantity: 0 }],
+    });
+    const prepared = preparePreviousTicketImport(preview);
+
+    expect(prepared.lines).toEqual([]);
+    expect(prepared.issues).toEqual([
+      { type: "INVALID_QUANTITY", productLabel: "CAF-001" },
+    ]);
+  });
+
+  it("keeps repeated historical occurrences and a new occurrence as separate lines", () => {
+    const preview = previousTicketPreview({
+      lines: [
+        { ...previousTicketPreview().lines[0], sourceLineId: "history-1", total: "20.00" },
+        { ...previousTicketPreview().lines[0], sourceLineId: "history-2", total: "18.00", discount: "28.00" },
+      ],
+    });
+
+    const prepared = preparePreviousTicketImport(preview);
+    const appended = appendPreviousTicketImport(
+      addSaleLine([], products[0]),
+      prepared.lines,
+    );
+
+    expect(prepared.issues).toEqual([]);
+    expect(prepared.lines).toHaveLength(2);
+    expect(appended.lines).toHaveLength(3);
+    expect(new Set(appended.lines.map(saleCartLineIdentity)).size).toBe(3);
+    expect(appended.lines.filter((line) => line.previousTicketImportOrigin)).toHaveLength(2);
+    expect(appended.lines.filter((line) => !line.previousTicketImportOrigin)).toHaveLength(1);
+  });
+
+  it("locks historical economic fields and only allows new serials for a confirmed source", () => {
+    const preview = previousTicketPreview({
+      lines: [{
+        ...previousTicketPreview().lines[0],
+        quantity: 1,
+        total: "10.00",
+        serialNumbers: ["OLD-SN"],
+      }],
+    });
+    const historical = preparePreviousTicketImport(preview).lines[0].line;
+
+    expect(historical.serialNumbers).toEqual([]);
+    expect(historical.previousTicketImportOrigin?.requiresNewSerialNumbers).toBe(true);
+    expect(previousTicketImportSerialNumbersReady([historical])).toBe(false);
+    expect(() => updateSaleLineQuantity([historical], saleCartLineIdentity(historical), 3)).toThrow("invalid_quantity");
+    expect(() => updateSaleLineDiscount([historical], saleCartLineIdentity(historical), 10)).toThrow("historical_import_locked");
+    expect(() => removeSaleLine([historical], saleCartLineIdentity(historical))).toThrow("historical_import_locked");
+    const withNewSerial = updateSaleLineSerialNumbers(
+      [historical],
+      saleCartLineIdentity(historical),
+      ["NEW-SN"],
+    );
+    expect(withNewSerial[0].serialNumbers).toEqual(["NEW-SN"]);
+    expect(previousTicketImportSerialNumbersReady(withNewSerial)).toBe(true);
+  });
+
+  it("preserves and locks original serials when the source ticket is cancelled", () => {
+    const preview = previousTicketPreview({
+      status: "ANULADO",
+      pricingMode: "FROZEN_EXACT",
+      lines: [{
+        ...previousTicketPreview().lines[0],
+        quantity: 1,
+        serialNumbers: ["ORIGINAL-SN"],
+        requiresNewSerialNumbers: false,
+      }],
+    });
+    const historical = preparePreviousTicketImport(preview).lines[0].line;
+
+    expect(historical.serialNumbers).toEqual(["ORIGINAL-SN"]);
+    expect(historical.previousTicketImportOrigin?.requiresNewSerialNumbers).toBe(false);
+    expect(previousTicketImportSerialNumbersReady([historical])).toBe(true);
+    expect(() => updateSaleLineSerialNumbers(
+      [historical],
+      saleCartLineIdentity(historical),
+      ["REPLACEMENT-SN"],
+    )).toThrow("historical_import_locked");
+  });
+
+  it("derives the exact historical total adjustment without changing product lines", () => {
+    const preview = previousTicketPreview({
+      status: "ANULADO",
+      pricingMode: "FROZEN_EXACT",
+      globalDiscount: "10.00",
+      total: "85.00",
+      lines: [{ ...previousTicketPreview().lines[0], total: "100.00" }],
+      adjustments: [{
+        lineType: "PROMOTION_BENEFIT",
+        name: "Promoción histórica",
+        base: "-4.13",
+        tax: "-0.87",
+        total: "-5.00",
+      }],
+    });
+
+    expect(previousTicketImportReconciliationAdjustment(preview)).toBe(-10);
+    expect(preparePreviousTicketImport(preview).lines[0].line.previousTicketImportOrigin)
+      .toMatchObject({ historicalTotal: 100 });
   });
 
   it("keeps every open-price occurrence as an independent cart line", () => {

@@ -5,6 +5,9 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -43,6 +47,20 @@ public class CustomerController {
         return service.list().stream()
                 .map(SaleCustomerOption::from)
                 .toList();
+    }
+
+    @GetMapping("/sale-options/search")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR','VENTA','GESTION_ALMACEN')")
+    public List<CustomerService.SaleCustomerSearchView> searchSaleOptions(
+            @RequestParam @Size(max = 120) String q,
+            @RequestParam(defaultValue = "25") @Min(1) @Max(50) int limit) {
+        return service.searchSaleOptions(q, limit);
+    }
+
+    @GetMapping("/sale-options/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR','VENTA','GESTION_ALMACEN')")
+    public SaleCustomerOption saleOption(@PathVariable UUID id) {
+        return SaleCustomerOption.from(service.get(id));
     }
 
     @GetMapping("/{id}")

@@ -45,15 +45,8 @@ public class PosCardService {
         if(existing.isPresent())return replay(existing.orElseThrow(),owner,authentication,terminalId);
 
         var prepared=sales.prepareSale(request.sale(),authentication);
-        var command=prepared.command();
-        var hasDiscount=request.sale().checkoutDiscountAmount()!=null
-                && Money.euros(request.sale().checkoutDiscountAmount()).signum()>0;
-        var quotedTicket=hasDiscount
-                ?documents.quoteTicket(command,request.sale().promotionalCouponCode(),
-                        request.sale().checkoutDiscountAmount(),authentication)
-                :request.sale().promotionalCouponCode()==null||request.sale().promotionalCouponCode().isBlank()
-                        ?documents.quoteTicket(command,authentication)
-                        :documents.quoteTicket(command,request.sale().promotionalCouponCode(),authentication);
+        var quotedTicket=sales.quotePreparedSale(prepared,request.sale(),authentication);
+        sales.validateQuoteFingerprint(request.sale(),quotedTicket);
         BigDecimal total=quotedTicket.getTotal();
         if(quoted.compareTo(total)!=0)throw new IllegalStateException("El total de la venta ha cambiado; vuelve a abrir el cobro");
         var configuration=configurations.required(terminalId);
@@ -63,7 +56,7 @@ public class PosCardService {
 
         var cardMethod=paymentMethods.findByEmpresaIdAndNombreAndActivoTrue(organization.currentCompany().getId(),"TARJETA")
                 .orElseThrow(()->new IllegalStateException("El metodo TARJETA no esta activo"));
-        var frozen=ApprovedCardTicketSnapshot.from(quotedTicket,cardMethod.getId()); String snapshot=snapshots.serialize(frozen);
+        var frozen=sales.snapshot(quotedTicket,cardMethod.getId(),prepared); String snapshot=snapshots.serialize(frozen);
         if(!(authentication.getPrincipal() instanceof com.tpverp.backend.security.domain.UserAccount user))
             throw new IllegalStateException("No se puede identificar de forma segura al usuario del cobro");
         var store=organization.currentStore();var company=organization.currentCompany();
@@ -113,16 +106,17 @@ public class PosCardService {
         if(c.mode()!=PaymentCardMode.INTEGRATED)throw new IllegalStateException("El datafono no esta en modo integrado");
         if(c.provider()==PaymentTerminalProvider.NONE)throw new IllegalStateException("No hay proveedor de datafono configurado");
     }
-    private static String hash(PosCashController.SaleRequest sale,BigDecimal total){
+    static String hash(PosCashController.SaleRequest sale,BigDecimal total){
         var coupon=sale.promotionalCouponCode()==null?"":sale.promotionalCouponCode().trim();
         var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();
         var hasOpenPrice=sale.lines().stream().anyMatch(l->l.openUnitPrice()!=null);
         var hasSerialNumbers=sale.lines().stream().anyMatch(l->l.serialNumbers()!=null&&!l.serialNumbers().isEmpty());
         var hasTemporaryNames=sale.lines().stream().anyMatch(l->l.temporaryName()!=null&&!l.temporaryName().isBlank());
-        var c=new StringBuilder(hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|');
+        var c=new StringBuilder(sale.previousTicketImport()!=null?"v8-previous-ticket-import|":hasTemporaryNames?"v7-temporary-name|":!internalComment.isEmpty()?"v6-internal-comment|":hasSerialNumbers?"v5-checkout-serials|":"v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');
         if(!internalComment.isEmpty())c.append(internalComment.length()).append(':').append(internalComment).append('|');
         if(!coupon.isEmpty())c.append(coupon).append('|');
         c.append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|');
+        c.append(sale.quoteFingerprint()==null?"":sale.quoteFingerprint().trim()).append('|');
         c.append(Money.euros(total));
         sale.lines().forEach(l->{c.append('|').append(l.productId()).append(':').append(l.quantity().stripTrailingZeros().toPlainString())
                 .append(':').append(l.discount().stripTrailingZeros().toPlainString())

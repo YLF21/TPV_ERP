@@ -12,7 +12,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import com.tpverp.backend.cash.CashPaymentRecorder;
+import com.tpverp.backend.audit.AuditResult;
+import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.catalog.DiscountType;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductQuantityPolicy;
@@ -120,7 +123,9 @@ public class DocumentService {
     private final DocumentOperationalEventRecorder operationalEvents;
     private final TicketCancellationOperationRepository ticketCancellations;
     private final SaleOperationSecurityService saleOperationSecurity;
+    private final DocumentSerialNumberGuard serialNumberGuard;
     private final Clock clock;
+    private AuditService audit;
 
     public DocumentService(
             CommercialDocumentRepository documents,
@@ -186,7 +191,13 @@ public class DocumentService {
         this.operationalEvents = operationalEvents;
         this.ticketCancellations = ticketCancellations;
         this.saleOperationSecurity = saleOperationSecurity;
+        this.serialNumberGuard = new DocumentSerialNumberGuard(documents);
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAuditService(AuditService audit) {
+        this.audit = audit;
     }
 
     @Transactional
@@ -252,6 +263,7 @@ public class DocumentService {
             }
         }
         boolean appliesStock = requiresStock(document) || document.isOrigenStock();
+        serialNumberGuard.lockAndValidate(document, appliesStock);
         document.confirm(nextNumber(document),
                 organization.currentUser(authentication).getId(), Instant.now(clock), false);
         documents.saveAndFlush(document);
@@ -362,6 +374,7 @@ public class DocumentService {
         if (document.getTerminalOrigenId() == null) {
             document.assignOriginTerminal(terminalId);
         }
+        serialNumberGuard.lockAndValidate(document, requiresStock);
         document.confirm(nextNumber(document), userId, confirmedAt, false);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
         if (recordsPurchase) {
@@ -493,6 +506,7 @@ public class DocumentService {
         }
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.assignOriginTerminal(terminalId);
+        serialNumberGuard.lockAndValidate(ticket, true);
         ticket.confirm(
                 nextNumber(ticket),
                 organization.currentUser(authentication).getId(),
@@ -529,8 +543,7 @@ public class DocumentService {
         Objects.requireNonNull(snapshot, "snapshot");
         // The authorized snapshot has already been priced and can contain member benefits.
         // Do not classify its line discounts as manual without the original client command.
-        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
-                snapshot.globalDiscount());
+        var manualDiscounts = snapshotManualDiscounts(snapshot);
         var store = organization.currentStore();
         if (!store.getId().equals(snapshot.storeId())) {
             throw new IllegalStateException("La instantanea pertenece a otra tienda");
@@ -541,7 +554,7 @@ public class DocumentService {
         ticket.setParties(snapshot.customerId(), null, null);
         ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
-        validateInactiveSaleProducts(ticket);
+        validateInactiveSaleProducts(ticket, snapshot.historicalReplay());
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
                 || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
@@ -553,10 +566,13 @@ public class DocumentService {
         } else if (payments != null && !payments.isEmpty()) {
             throw new IllegalArgumentException("un ticket sin importe a cobrar no admite pagos entrantes");
         }
-        validateAndConsumeSnapshotCoupon(ticket, authentication);
+        validateAndConsumeSnapshotCoupon(
+                ticket, authentication, snapshot.historicalReplay());
         var terminalId = currentTerminal.terminalId(authentication);
         ticket.assignOriginTerminal(terminalId);
-        ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        serialNumberGuard.lockAndValidate(ticket, true);
+        var ticketNumber = nextNumber(ticket);
+        ticket.confirm(ticketNumber, organization.currentUser(authentication).getId(), Instant.now(clock), false);
         if (ticket.getTotal().signum() > 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
         }
@@ -567,10 +583,14 @@ public class DocumentService {
         var saved = documents.save(ticket);
         cashPayments.recordDocumentPayments(terminalId, saved);
         memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
-                saved, loyaltyAccrualPaymentTotal(saved.getPagos())));
+                saved, loyaltyAccrualPaymentTotal(saved.getPagos()),
+                snapshot.historicalReplay()));
+        markHistoricalReplayCurrentPromotions(saved, snapshot.historicalReplay());
+        generateHistoricalReplayCurrentCoupons(saved, snapshot.historicalReplay());
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
+        recordHistoricalReplay(saved, snapshot, terminalId);
         return saved;
     }
 
@@ -642,8 +662,7 @@ public class DocumentService {
         Objects.requireNonNull(snapshot, "snapshot");
         var customer = requireActiveCustomer(Objects.requireNonNull(
                 snapshot.customerId(), "pending ticket customer"));
-        var manualDiscounts = ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
-                snapshot.globalDiscount());
+        var manualDiscounts = snapshotManualDiscounts(snapshot);
         var store = organization.currentStore();
         if (!store.getId().equals(snapshot.storeId())) {
             throw new IllegalStateException("La instantanea pertenece a otra tienda");
@@ -654,7 +673,7 @@ public class DocumentService {
         ticket.setParties(customer.getId(), null, null);
         ticket.setInternalComment(snapshot.internalComment());
         snapshot.lines().forEach(line -> ticket.addLine(line.toEntity(ticket)));
-        validateInactiveSaleProducts(ticket);
+        validateInactiveSaleProducts(ticket, snapshot.historicalReplay());
         if (ticket.getBaseTotal().compareTo(Money.euros(snapshot.baseTotal())) != 0
                 || ticket.getImpuestoTotal().compareTo(Money.euros(snapshot.taxTotal())) != 0
                 || ticket.getTotal().compareTo(Money.euros(snapshot.total())) != 0) {
@@ -663,7 +682,8 @@ public class DocumentService {
         var commands = List.copyOf(payments == null ? List.of() : payments);
         requirePositiveUniquePayments(commands);
         requirePaymentTotalAtMost(commands, ticket.getTotal());
-        validateAndConsumeSnapshotCoupon(ticket, authentication);
+        validateAndConsumeSnapshotCoupon(
+                ticket, authentication, snapshot.historicalReplay());
         var terminalId = currentTerminal.terminalId(authentication);
         var resolved = commands.stream()
                 .map(payment -> resolvePayment(ticket, payment, terminalId))
@@ -678,7 +698,9 @@ public class DocumentService {
         ticket.setDueDate(ticket.getFecha().plusDays(customer.getPaymentTermDays()));
         ticket.markTicketReceivable();
         ticket.assignOriginTerminal(terminalId);
-        ticket.confirm(nextNumber(ticket), organization.currentUser(authentication).getId(),
+        serialNumberGuard.lockAndValidate(ticket, true);
+        var ticketNumber = nextNumber(ticket);
+        ticket.confirm(ticketNumber, organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
         documents.saveAndFlush(ticket);
         recordCreated(ticket);
@@ -689,11 +711,15 @@ public class DocumentService {
         cashPayments.recordDocumentPayments(terminalId, saved);
         if (!resolved.isEmpty()) {
             memberLoyalty.recordPaidSale(saved, loyaltyAccrual(
-                    saved, loyaltyAccrualCommandTotal(resolved)));
+                    saved, loyaltyAccrualCommandTotal(resolved),
+                    snapshot.historicalReplay()));
         }
+        markHistoricalReplayCurrentPromotions(saved, snapshot.historicalReplay());
+        generateHistoricalReplayCurrentCoupons(saved, snapshot.historicalReplay());
         fiscalIntegration.registerAlta(saved, false);
         enqueueConfirmedDocument(saved, terminalId);
         controlAlerts.detectConfirmedDocument(saved, manualDiscounts, terminalId, authentication);
+        recordHistoricalReplay(saved, snapshot, terminalId);
         return saved;
     }
 
@@ -732,11 +758,44 @@ public class DocumentService {
                 result.redeemedAmount());
     }
 
+    private static ControlAlertDetectionService.ManualDiscountSnapshot snapshotManualDiscounts(
+            ApprovedCardTicketSnapshot snapshot) {
+        var replay = snapshot.historicalReplay();
+        if (replay == null || replay.historicalLineCount() == null) {
+            return ControlAlertDetectionService.ManualDiscountSnapshot.globalOnly(
+                    snapshot.globalDiscount());
+        }
+        return new ControlAlertDetectionService.ManualDiscountSnapshot(
+                BigDecimal.ZERO,
+                replay.currentManualLineDiscounts().stream()
+                        .map(line -> new ControlAlertDetectionService.ManualLineDiscount(
+                                line.position(), line.productId(), line.discountPercent()))
+                        .toList());
+    }
+
     private void validateAndConsumeSnapshotCoupon(
             CommercialDocument ticket,
-            Authentication authentication) {
-        var couponLines = ticket.getLineas().stream()
+            Authentication authentication,
+            HistoricalTicketReplayMetadata historicalReplay) {
+        var allCouponLines = ticket.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON)
+                .toList();
+        if (historicalReplay != null && !allCouponLines.isEmpty()
+                && historicalReplay.historicalLineCount() == null) {
+            throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+        }
+        var consumableCouponLines = historicalReplay == null
+                ? allCouponLines
+                : allCouponLines.stream()
+                        .filter(line -> line.getPosicion()
+                                > historicalReplay.historicalLineCount())
+                        .toList();
+        if (consumableCouponLines.stream()
+                .anyMatch(line -> line.getPromotionalCouponId() == null)) {
+            throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+        }
+        var couponLines = consumableCouponLines.stream()
+                .filter(line -> line.getPromotionalCouponId() != null)
                 .toList();
         if (couponLines.isEmpty()) {
             return;
@@ -756,6 +815,31 @@ public class DocumentService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .abs());
         var pendingBeforeCoupon = Money.euros(ticket.getTotal().add(couponDiscount));
+        if (historicalReplay != null) {
+            if (historicalReplay.historicalLineCount() == null
+                    || historicalReplay.historicalTotal() == null
+                    || historicalReplay.currentPendingBeforeCoupon() == null) {
+                throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+            }
+            var currentPendingAfterCheckoutBeforeCoupon = Money.euros(
+                    ticket.getTotal().subtract(historicalReplay.historicalTotal())
+                            .add(couponDiscount));
+            var currentCheckoutDiscount = Money.euros(ticket.getLineas().stream()
+                    .filter(line -> line.getPosicion()
+                            > historicalReplay.historicalLineCount())
+                    .filter(line -> line.getLineType()
+                            == DocumentLineType.MANUAL_DISCOUNT)
+                    .map(DocumentLine::getTotal)
+                    .filter(total -> total.signum() < 0)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .abs());
+            pendingBeforeCoupon = Money.euros(
+                    currentPendingAfterCheckoutBeforeCoupon.add(currentCheckoutDiscount));
+            if (pendingBeforeCoupon.compareTo(
+                    Money.euros(historicalReplay.currentPendingBeforeCoupon())) != 0) {
+                throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
+            }
+        }
         // Persist the draft before redeeming: partial amount coupons generate a replacement
         // coupon with a FK to this document. Any later failure rolls the transaction back.
         documents.saveAndFlush(ticket);
@@ -778,6 +862,23 @@ public class DocumentService {
                 || couponDiscount.compareTo(result.redeemedAmount()) != 0) {
             throw new IllegalStateException("coupon_authorized_snapshot_mismatch");
         }
+    }
+
+    void recordHistoricalReplay(
+            CommercialDocument ticket,
+            ApprovedCardTicketSnapshot snapshot,
+            UUID terminalId) {
+        if (snapshot.historicalReplay() == null || audit == null) {
+            return;
+        }
+        var replay = snapshot.historicalReplay();
+        audit.record("PREVIOUS_TICKET_IMPORTED", AuditResult.EXITO, Map.of(
+                "sourceTicketId", replay.sourceTicketId().toString(),
+                "sourceTicketNumber", replay.sourceTicketNumber(),
+                "sourceFingerprint", replay.sourceFingerprint(),
+                "newTicketId", ticket.getId().toString(),
+                "newTicketNumber", ticket.getNumero(),
+                "terminalId", terminalId.toString()));
     }
 
     private PromotionalCouponService.RedemptionCommand couponRedemptionCommand(
@@ -1427,10 +1528,145 @@ public class DocumentService {
                 .forEach(promotionalCoupons::generateAfterTicketConfirmation);
     }
 
+    /**
+     * Freezes coupon benefits produced by the newly scanned segment of a historical
+     * replay. Historical lines are deliberately excluded so their coupons are never
+     * issued a second time.
+     */
+    List<HistoricalTicketReplayMetadata.GeneratedCoupon>
+            historicalReplayGeneratedCoupons(
+                    CommercialDocument combined,
+                    int historicalLineCount,
+                    List<DocumentLineCommand> requestedCurrentLines) {
+        if (historicalLineCount < 0
+                || historicalLineCount > combined.getLineas().size()) {
+            throw new IllegalArgumentException(
+                    "historicalLineCount fuera de rango");
+        }
+        var current = new CommercialDocument(
+                combined.getTiendaId(),
+                combined.getAlmacenId(),
+                combined.getTipo(),
+                combined.getFecha(),
+                combined.getCreadoPor(),
+                BigDecimal.ZERO);
+        current.setParties(combined.getClienteId(), null, null);
+        combined.getLineas().stream()
+                .filter(line -> line.getPosicion() > historicalLineCount)
+                .map(DocumentLineCommand::from)
+                .forEach(line -> current.addLine(line.toEntity(current)));
+        if (current.getLineas().stream().noneMatch(line ->
+                line.getLineType() == DocumentLineType.PRODUCT
+                        && line.getCantidad().signum() > 0)) {
+            return List.of();
+        }
+        var beforeAutomaticAndCheckoutDiscounts = new CommercialDocument(
+                combined.getTiendaId(),
+                combined.getAlmacenId(),
+                combined.getTipo(),
+                combined.getFecha(),
+                combined.getCreadoPor(),
+                BigDecimal.ZERO);
+        beforeAutomaticAndCheckoutDiscounts.setParties(
+                combined.getClienteId(), null, null);
+        List.copyOf(requestedCurrentLines == null ? List.of() : requestedCurrentLines)
+                .forEach(line -> beforeAutomaticAndCheckoutDiscounts.addLine(
+                        line.toEntity(beforeAutomaticAndCheckoutDiscounts)));
+        var evaluatedContext = promotionContext(beforeAutomaticAndCheckoutDiscounts);
+        return evaluatedContext.promotions().stream()
+                .filter(DocumentService::isCouponPromotion)
+                .filter(promotion -> matchesAnyEligibleLine(
+                        promotion, evaluatedContext.lines(), evaluatedContext.targets()))
+                .map(promotion -> generatedCouponSnapshot(
+                        current, promotion, evaluatedContext))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private void generateHistoricalReplayCurrentCoupons(
+            CommercialDocument document,
+            HistoricalTicketReplayMetadata replay) {
+        if (replay == null || replay.currentGeneratedCoupons().isEmpty()) {
+            return;
+        }
+        for (var coupon : replay.currentGeneratedCoupons()) {
+            promotionalCoupons.generateAfterTicketConfirmation(
+                    new PromotionalCouponService.CreationCommand(
+                            organization.currentCompany().getId(),
+                            document.getTiendaId(),
+                            coupon.promotionId(),
+                            document.getId(),
+                            document.getClienteId(),
+                            coupon.memberId(),
+                            coupon.customerSegment(),
+                            coupon.memberCategoryId(),
+                            coupon.benefitType(),
+                            coupon.amount(),
+                            coupon.percent(),
+                            coupon.maximumDiscount(),
+                            coupon.minimumAmount(),
+                            coupon.validFrom(),
+                            coupon.validUntil()));
+            promotions.findById(coupon.promotionId())
+                    .ifPresent(Promotion::markUsed);
+        }
+    }
+
+    /**
+     * Direct promotions were evaluated while the current segment was quoted. The
+     * immutable replay snapshot must persist their usage at confirmation time, but
+     * must never mark promotions that only belong to the historical segment.
+     */
+    void markHistoricalReplayCurrentPromotions(
+            CommercialDocument document,
+            HistoricalTicketReplayMetadata replay) {
+        if (replay == null || replay.historicalLineCount() == null) {
+            return;
+        }
+        document.getLineas().stream()
+                .filter(line -> line.getPosicion() > replay.historicalLineCount())
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTION)
+                .map(DocumentLine::getPromotionVersionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(promotions::findById)
+                .flatMap(Optional::stream)
+                .forEach(Promotion::markUsed);
+    }
+
     private Optional<PromotionalCouponService.CreationCommand> couponCommand(
             CommercialDocument document,
             Promotion promotion,
             PromotionContext context) {
+        var snapshot = generatedCouponSnapshot(document, promotion, context);
+        if (snapshot.isEmpty()) {
+            return Optional.empty();
+        }
+        var generated = snapshot.orElseThrow();
+        promotion.markUsed();
+        return Optional.of(new PromotionalCouponService.CreationCommand(
+                organization.currentCompany().getId(),
+                document.getTiendaId(),
+                generated.promotionId(),
+                document.getId(),
+                document.getClienteId(),
+                generated.memberId(),
+                generated.customerSegment(),
+                generated.memberCategoryId(),
+                generated.benefitType(),
+                generated.amount(),
+                generated.percent(),
+                generated.maximumDiscount(),
+                generated.minimumAmount(),
+                generated.validFrom(),
+                generated.validUntil()));
+    }
+
+    private Optional<HistoricalTicketReplayMetadata.GeneratedCoupon>
+            generatedCouponSnapshot(
+                    CommercialDocument document,
+                    Promotion promotion,
+                    PromotionContext context) {
         if (!isCouponPromotion(promotion)) {
             return Optional.empty();
         }
@@ -1448,13 +1684,8 @@ public class DocumentService {
         if (validUntil == null || validUntil.isBefore(validFrom)) {
             return Optional.empty();
         }
-        promotion.markUsed();
-        return Optional.of(new PromotionalCouponService.CreationCommand(
-                organization.currentCompany().getId(),
-                document.getTiendaId(),
+        return Optional.of(new HistoricalTicketReplayMetadata.GeneratedCoupon(
                 promotion.id(),
-                document.getId(),
-                document.getClienteId(),
                 context.customer().memberId(),
                 promotion.customerSegment(),
                 promotion.memberCategoryId(),
@@ -1896,7 +2127,7 @@ public class DocumentService {
             throw new IllegalStateException("solo se puede facturar un ticket confirmado");
         }
         if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.FACTURA_DE)) {
-            throw new IllegalStateException("el ticket ya esta facturado");
+            throw new TicketAlreadyInvoicedException();
         }
         if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.RECTIFICA)) {
             throw new IllegalStateException(
@@ -2332,11 +2563,21 @@ public class DocumentService {
     }
 
     private void validateInactiveSaleProducts(CommercialDocument document) {
+        validateInactiveSaleProducts(document, null);
+    }
+
+    private void validateInactiveSaleProducts(
+            CommercialDocument document,
+            HistoricalTicketReplayMetadata historicalReplay) {
         if (!PROMOTION_SALES_DOCUMENTS.contains(document.getTipo())) {
             return;
         }
+        var historicalLineCount = historicalReplay == null
+                ? null : historicalReplay.historicalLineCount();
         var productIds = document.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> historicalLineCount == null
+                        || line.getPosicion() > historicalLineCount)
                 .map(DocumentLine::getProductoId)
                 .filter(Objects::nonNull)
                 .distinct()
@@ -2541,6 +2782,13 @@ public class DocumentService {
     private MemberLoyaltyService.LoyaltyAccrual loyaltyAccrual(
             CommercialDocument document,
             BigDecimal paidAmount) {
+        return loyaltyAccrual(document, paidAmount, null);
+    }
+
+    MemberLoyaltyService.LoyaltyAccrual loyaltyAccrual(
+            CommercialDocument document,
+            BigDecimal paidAmount,
+            HistoricalTicketReplayMetadata historicalReplay) {
         var paid = Money.euros(paidAmount);
         if (document.getTotal().signum() <= 0) {
             return new MemberLoyaltyService.LoyaltyAccrual(
@@ -2549,8 +2797,13 @@ public class DocumentService {
                     BigDecimal.ZERO.setScale(Money.SCALE),
                     Map.of());
         }
+        var historicalLineCount = historicalReplay == null
+                || historicalReplay.historicalLineCount() == null
+                        ? 0 : historicalReplay.historicalLineCount();
         var ids = document.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.PRODUCT)
+                .filter(line -> historicalReplay == null
+                        || line.getPosicion() > historicalLineCount)
                 .map(DocumentLine::getProductoId)
                 .distinct()
                 .toList();
@@ -2561,22 +2814,77 @@ public class DocumentService {
                     "No se puede guardar la elegibilidad historica de fidelizacion");
         }
         var globalFactor = BigDecimal.ONE.subtract(document.getDescuentoGlobal().movePointLeft(2));
+        var historicalEligibility = historicalReplay == null
+                ? Map.<Integer, HistoricalTicketReplayMetadata.HistoricalLoyaltyLine>of()
+                : historicalReplay.historicalLoyaltyLines().stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                HistoricalTicketReplayMetadata.HistoricalLoyaltyLine::position,
+                                Function.identity()));
         var lines = new LinkedHashMap<UUID, MemberLoyaltyService.LoyaltyLineEligibility>();
-        var eligibleTotal = BigDecimal.ZERO;
+        var historicalEligibleTotal = BigDecimal.ZERO;
+        var currentEligibleTotal = BigDecimal.ZERO;
+        var currentEligibleLines = new java.util.ArrayList<DocumentLine>();
         for (var line : document.getLineas()) {
             if (line.getLineType() != DocumentLineType.PRODUCT) {
                 continue;
             }
-            var eligible = catalog.get(line.getProductoId()).getDiscountType()
-                    != DiscountType.NONE;
-            var amount = eligible
-                    ? Money.euros(line.getTotal().multiply(globalFactor))
-                    : BigDecimal.ZERO.setScale(Money.SCALE);
+            var historical = historicalReplay != null
+                    && line.getPosicion() <= historicalLineCount;
+            var frozen = historicalEligibility.get(line.getPosicion());
+            var eligible = historical
+                    ? frozen != null && frozen.eligible()
+                    : catalog.get(line.getProductoId()).getDiscountType()
+                            != DiscountType.NONE;
+            var amount = historical
+                    ? frozen == null ? BigDecimal.ZERO.setScale(Money.SCALE)
+                            : frozen.eligibleAmount()
+                    : eligible
+                            ? Money.euros(line.getTotal().multiply(globalFactor))
+                            : BigDecimal.ZERO.setScale(Money.SCALE);
             lines.put(line.getId(),
                     new MemberLoyaltyService.LoyaltyLineEligibility(eligible, amount));
-            eligibleTotal = eligibleTotal.add(amount);
+            if (historical) {
+                historicalEligibleTotal = historicalEligibleTotal.add(amount);
+            } else {
+                currentEligibleTotal = currentEligibleTotal.add(amount);
+                if (eligible && amount.signum() > 0) {
+                    currentEligibleLines.add(line);
+                }
+            }
         }
-        var eligibleDocumentAmount = Money.euros(eligibleTotal)
+        var currentEligibleTarget = Money.euros(currentEligibleTotal);
+        var currentSegmentTotal = historicalReplay == null
+                ? Money.euros(document.getTotal()).max(BigDecimal.ZERO.setScale(Money.SCALE))
+                : Money.euros(document.getLineas().stream()
+                    .filter(line -> line.getPosicion() > historicalLineCount)
+                    .map(DocumentLine::getTotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add))
+                        .max(BigDecimal.ZERO.setScale(Money.SCALE));
+        currentEligibleTarget = currentEligibleTarget.min(currentSegmentTotal);
+        if (currentEligibleTarget.compareTo(currentEligibleTotal) < 0
+                && currentEligibleTotal.signum() > 0) {
+            var remaining = currentEligibleTarget;
+            for (int index = 0; index < currentEligibleLines.size(); index++) {
+                var line = currentEligibleLines.get(index);
+                var original = lines.get(line.getId()).amount();
+                var allocated = index == currentEligibleLines.size() - 1
+                        ? remaining
+                        : Money.euros(currentEligibleTarget.multiply(original)
+                                .divide(currentEligibleTotal,
+                                        Money.SCALE + 4, Money.ROUNDING))
+                                .min(remaining);
+                lines.put(line.getId(),
+                        new MemberLoyaltyService.LoyaltyLineEligibility(
+                                true, allocated));
+                remaining = Money.euros(remaining.subtract(allocated));
+            }
+            if (remaining.signum() != 0) {
+                throw new IllegalStateException(
+                        "loyalty_allocation_mismatch");
+            }
+        }
+        var eligibleDocumentAmount = Money.euros(
+                        historicalEligibleTotal.add(currentEligibleTarget))
                 .min(Money.euros(document.getTotal()));
         var eligiblePaidAmount = eligibleDocumentAmount.compareTo(document.getTotal()) >= 0
                 ? paid
@@ -2734,9 +3042,13 @@ public class DocumentService {
                     throw new IllegalStateException(
                             "La factura de venta necesita cliente");
                 }
-                var customer = customers.findById(document.getClienteId())
+                var customer = customers.findByIdAndCompanyId(
+                                document.getClienteId(), organization.currentCompany().getId())
                         .orElseThrow(() -> new IllegalStateException(
                                 "Cliente de factura no encontrado"));
+                if (!customer.isActive()) {
+                    throw new IllegalStateException("message.document.customer_inactivo");
+                }
                 if (!customer.hasCompleteFiscalData()) {
                     throw new IllegalStateException(
                             "El cliente no tiene datos fiscales completos");

@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 public class CustomerService {
@@ -47,6 +48,25 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public CustomerView get(UUID id) {
         return view(customer(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<SaleCustomerSearchView> searchSaleOptions(String query, int limit) {
+        String normalized = query == null ? "" : query.trim();
+        if (normalized.isEmpty()) {
+            return List.of();
+        }
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        return customers.searchSaleOptions(
+                        context.currentCompany().getId(), normalized, PageRequest.of(0, safeLimit))
+                .stream()
+                .map(SaleCustomerSearchView::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public SaleCustomerSearchView saleOption(UUID id) {
+        return SaleCustomerSearchView.from(customer(id));
     }
 
     @Transactional
@@ -417,6 +437,20 @@ public class CustomerService {
             BigDecimal outstandingDebt,
             BigDecimal overdueDebt,
             BigDecimal availableCredit) {}
+
+    public record SaleCustomerSearchView(
+            UUID id,
+            String clientId,
+            String fiscalName,
+            String documentNumber,
+            boolean active) {
+
+        static SaleCustomerSearchView from(Customer customer) {
+            return new SaleCustomerSearchView(
+                    customer.getId(), customer.getClientId(), customer.getFiscalName(),
+                    customer.getDocumentNumber(), customer.isActive());
+        }
+    }
 
     public record BalanceView(
             UUID id,

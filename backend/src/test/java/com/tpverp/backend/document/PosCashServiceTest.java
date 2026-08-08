@@ -29,11 +29,358 @@ import java.util.List;
 import java.util.Map;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
 
 class PosCashServiceTest {
+
+    @Test
+    void replayConfirmationRequiresTheAuthoritativeFiscalFingerprint() {
+        var document = new CommercialDocument(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(
+                document, UUID.randomUUID(), 1, BigDecimal.ONE, "A", "A", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00")));
+        var service = new PosCashService(
+                mock(DocumentService.class), mock(ProductRepository.class),
+                mock(StoreTaxRepository.class), mock(WarehouseRepository.class),
+                mock(PaymentMethodRepository.class), mock(CurrentOrganization.class),
+                mock(PosCashCheckoutRepository.class), new PosCashTicketSnapshot(),
+                mock(CurrentTerminal.class));
+        var importRequest = new PosCashController.PreviousTicketImportRequest(
+                UUID.randomUUID(), "source", Map.of());
+        var missing = new PosCashController.SaleRequest(
+                null, List.of(), null, null, null, null, Map.of(), importRequest, null);
+        var stale = new PosCashController.SaleRequest(
+                null, List.of(), null, null, null, null, Map.of(), importRequest,
+                "stale-quote");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.validateQuoteFingerprint(missing, document))
+                .hasMessage("message.document.previous_ticket_quote_required");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.validateQuoteFingerprint(stale, document))
+                .hasMessage("message.document.previous_ticket_quote_changed");
+    }
+
+    @Test
+    void materializesTheCurrentGlobalDiscountWithoutChangingItsFiscalTotals() {
+        var storeId = UUID.randomUUID();
+        var warehouseId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var current = new CommercialDocument(
+                storeId, warehouseId, CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), userId, new BigDecimal("33.33"));
+        current.addLine(new DocumentLine(
+                current, UUID.randomUUID(), 1, BigDecimal.ONE, "A", "A", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00")));
+        current.addLine(new DocumentLine(
+                current, UUID.randomUUID(), 2, BigDecimal.ONE, "B", "B", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("10.00")));
+
+        var combined = new CommercialDocument(
+                storeId, warehouseId, CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), userId, BigDecimal.ZERO);
+        current.getLineas().stream()
+                .map(DocumentLineCommand::from)
+                .forEach(line -> combined.addLine(line.toEntity(combined)));
+
+        PosCashService.materializeCurrentGlobalDiscount(current, combined);
+
+        assertThat(combined.getDescuentoGlobal()).isZero();
+        assertThat(combined.getBaseTotal()).isEqualByComparingTo(current.getBaseTotal());
+        assertThat(combined.getImpuestoTotal())
+                .isEqualByComparingTo(current.getImpuestoTotal());
+        assertThat(combined.getTotal()).isEqualByComparingTo(current.getTotal());
+        assertThat(combined.getLineas())
+                .filteredOn(line -> line.getLineType() == DocumentLineType.MANUAL_DISCOUNT)
+                .hasSize(2);
+    }
+
+    @Test
+    void combinesExactHistoricalPromotionCouponAndGlobalDiscountWithACurrentLine() {
+        var documents = mock(DocumentService.class);
+        var organization = mock(CurrentOrganization.class);
+        var currentTerminal = mock(CurrentTerminal.class);
+        var store = mock(Store.class);
+        var user = mock(UserAccount.class);
+        var authentication = mock(Authentication.class);
+        var storeId = UUID.randomUUID();
+        var warehouseId = UUID.randomUUID();
+        var userId = UUID.randomUUID();
+        var historicalProductId = UUID.randomUUID();
+        var currentProductId = UUID.randomUUID();
+        when(organization.currentStore()).thenReturn(store);
+        when(store.getId()).thenReturn(storeId);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(user.getId()).thenReturn(userId);
+        var historicalProduct = frozenProductCommand(
+                historicalProductId, new BigDecimal("3.000"), "H", "Historico 3x2",
+                new BigDecimal("10.00"), "24.79", "5.21", "30.00");
+        var promotionId = UUID.randomUUID();
+        var historicalPromotion = frozenAdjustmentCommand(
+                DocumentLineType.PROMOTION, "Promocion 3x2", "-8.26", "-1.74", "-10.00",
+                promotionId, UUID.randomUUID(), null);
+        var historicalCoupon = frozenAdjustmentCommand(
+                DocumentLineType.PROMOTIONAL_COUPON, "Cupon historico", "-1.65", "-0.35", "-2.00",
+                promotionId, null, null);
+        var historicalGlobal = frozenAdjustmentCommand(
+                DocumentLineType.MANUAL_DISCOUNT, "Descuento global historico",
+                "-1.49", "-0.31", "-1.80", null, null, null);
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-ORIGEN", DocumentStatus.CONFIRMADO,
+                PreviousTicketImportPricingMode.FROZEN_EXACT, null,
+                "fingerprint", new BigDecimal("13.39"), new BigDecimal("2.81"),
+                new BigDecimal("16.20"),
+                List.of(historicalProduct, historicalPromotion, historicalCoupon,
+                        historicalGlobal),
+                1, BigDecimal.ZERO, List.of());
+        var currentLine = new DocumentLineCommand(
+                currentProductId, BigDecimal.ONE, "N", "Actual", "VENTA",
+                new BigDecimal("5.70"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"));
+        var command = new DocumentCommand(
+                warehouseId, CommercialDocumentType.TICKET, LocalDate.of(2026, 8, 7),
+                null, null, null, BigDecimal.ZERO, true, List.of(currentLine));
+        var currentQuote = new CommercialDocument(
+                storeId, warehouseId, CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), userId, BigDecimal.ZERO);
+        currentQuote.addLine(new DocumentLine(
+                currentQuote, currentProductId, 1, BigDecimal.ONE, "N", "Actual",
+                "VENTA", new BigDecimal("5.70"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00")));
+        when(documents.quoteTicket(command, authentication)).thenReturn(currentQuote);
+        var service = new PosCashService(
+                documents, mock(ProductRepository.class), mock(StoreTaxRepository.class),
+                mock(WarehouseRepository.class), mock(PaymentMethodRepository.class),
+                organization, mock(PosCashCheckoutRepository.class),
+                new PosCashTicketSnapshot(), currentTerminal);
+        var prepared = new PosCashService.PreparedSale(
+                command, Set.of(), List.of(), replay);
+        var importRequest = new PosCashController.PreviousTicketImportRequest(
+                replay.ticketId(), replay.fingerprint(), Map.of());
+        var request = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        currentProductId, BigDecimal.ONE, BigDecimal.ZERO)),
+                null, null, null, null, Map.of(), importRequest, null);
+
+        var combined = service.quotePreparedSale(prepared, request, authentication);
+
+        assertThat(combined.getBaseTotal()).isEqualByComparingTo("18.10");
+        assertThat(combined.getImpuestoTotal()).isEqualByComparingTo("3.80");
+        assertThat(combined.getTotal()).isEqualByComparingTo("21.90");
+        assertThat(combined.getLineas()).hasSize(5);
+        assertThat(combined.getLineas().get(1).getLineType())
+                .isEqualTo(DocumentLineType.PROMOTION);
+        assertThat(combined.getLineas().get(2).getLineType())
+                .isEqualTo(DocumentLineType.PROMOTIONAL_COUPON);
+        assertThat(combined.getLineas().get(2).getPromotionalCouponId()).isNull();
+        assertThat(combined.getLineas().get(2).getTotal()).isEqualByComparingTo("-2.00");
+        assertThat(combined.getLineas().get(3).getLineType())
+                .isEqualTo(DocumentLineType.MANUAL_DISCOUNT);
+        assertThat(combined.getLineas().getLast().getProductoId())
+                .isEqualTo(currentProductId);
+        assertThat(combined.getLineas().getLast().getTotal())
+                .isEqualByComparingTo("5.70");
+    }
+
+    @Test
+    void replaySnapshotFreezesCouponBaseBeforeTheCheckoutDiscount() {
+        var documents = mock(DocumentService.class);
+        var service = new PosCashService(
+                documents, mock(ProductRepository.class), mock(StoreTaxRepository.class),
+                mock(WarehouseRepository.class), mock(PaymentMethodRepository.class),
+                mock(CurrentOrganization.class), mock(PosCashCheckoutRepository.class),
+                new PosCashTicketSnapshot(), mock(CurrentTerminal.class));
+        var storeId = UUID.randomUUID();
+        var warehouseId = UUID.randomUUID();
+        var historicalProduct = frozenProductCommand(
+                UUID.randomUUID(), BigDecimal.ONE, "H", "Historico",
+                new BigDecimal("50.00"), "50.00", "0.00", "50.00");
+        var currentProductId = UUID.randomUUID();
+        var promotionId = UUID.randomUUID();
+        var couponId = UUID.randomUUID();
+        var quoted = new CommercialDocument(
+                storeId, warehouseId, CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), UUID.randomUUID(), BigDecimal.ZERO);
+        quoted.addLine(historicalProduct.toEntity(quoted));
+        quoted.addLine(frozenProductCommand(
+                currentProductId, BigDecimal.ONE, "N", "Actual",
+                new BigDecimal("100.00"), "100.00", "0.00", "100.00")
+                .toEntity(quoted));
+        quoted.addLine(frozenAdjustmentCommand(
+                DocumentLineType.PROMOTIONAL_COUPON, "CUPON ****1234",
+                "-10.00", "0.00", "-10.00", promotionId, null, couponId)
+                .toEntity(quoted));
+        quoted.addLine(frozenAdjustmentCommand(
+                DocumentLineType.MANUAL_DISCOUNT, "Descuento directo",
+                "-5.00", "0.00", "-5.00", null, null, null)
+                .toEntity(quoted));
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-ORIGEN", DocumentStatus.CONFIRMADO,
+                PreviousTicketImportPricingMode.FROZEN_EXACT, null,
+                "fingerprint", new BigDecimal("50.00"), BigDecimal.ZERO,
+                new BigDecimal("50.00"), List.of(historicalProduct), 1,
+                BigDecimal.ZERO, List.of());
+        var currentCommand = new DocumentCommand(
+                warehouseId, CommercialDocumentType.TICKET, LocalDate.of(2026, 8, 7),
+                null, null, null, BigDecimal.ZERO, true,
+                List.of(new DocumentLineCommand(
+                        currentProductId, BigDecimal.ONE, "N", "Actual", "VENTA",
+                        new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA",
+                        BigDecimal.ZERO)));
+        var prepared = new PosCashService.PreparedSale(
+                currentCommand, Set.of(), List.of(), replay);
+        when(documents.historicalReplayGeneratedCoupons(
+                quoted, 1, currentCommand.lineas())).thenReturn(List.of());
+
+        var snapshot = service.snapshot(quoted, UUID.randomUUID(), prepared);
+
+        assertThat(snapshot.historicalReplay().currentPendingBeforeCoupon())
+                .isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void currentRepricingQuotesImportedAndNewProductsTogetherAndPreservesFixedDiscount() {
+        var documents = mock(DocumentService.class);
+        var organization = mock(CurrentOrganization.class);
+        var currentTerminal = mock(CurrentTerminal.class);
+        var store = mock(Store.class);
+        var user = mock(UserAccount.class);
+        var authentication = mock(Authentication.class);
+        var storeId = UUID.randomUUID();
+        var warehouseId = UUID.randomUUID();
+        var importedProductId = UUID.randomUUID();
+        var newProductId = UUID.randomUUID();
+        when(organization.currentStore()).thenReturn(store);
+        when(store.getId()).thenReturn(storeId);
+        when(authentication.getPrincipal()).thenReturn(user);
+        when(user.getId()).thenReturn(UUID.randomUUID());
+        var imported = new DocumentLineCommand(
+                importedProductId, BigDecimal.ONE, "IMP", "Importado", "VENTA",
+                new BigDecimal("10.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"));
+        var current = new DocumentLineCommand(
+                newProductId, BigDecimal.ONE, "NEW", "Nuevo", "VENTA",
+                new BigDecimal("5.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"));
+        var command = new DocumentCommand(
+                warehouseId, CommercialDocumentType.TICKET, LocalDate.of(2026, 8, 7),
+                null, null, null, BigDecimal.ZERO, true,
+                List.of(imported, current));
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-CONFIRMADO", DocumentStatus.CONFIRMADO,
+                PreviousTicketImportPricingMode.CURRENT_REPRICING, null,
+                "fingerprint-current", new BigDecimal("8.26"),
+                new BigDecimal("1.74"), BigDecimal.ZERO, List.of(imported), 1,
+                BigDecimal.ONE, List.of());
+        var quoted = new CommercialDocument(
+                storeId, warehouseId, CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), UUID.randomUUID(), BigDecimal.ZERO);
+        quoted.addLine(imported.toEntity(quoted));
+        quoted.addLine(current.toEntity(quoted));
+        quoted.addLine(frozenAdjustmentCommand(
+                DocumentLineType.PROMOTION, "Promocion actual", "-1.65", "-0.35",
+                "-2.00", UUID.randomUUID(), UUID.randomUUID(), null)
+                .toEntity(quoted));
+        quoted.addLine(frozenAdjustmentCommand(
+                DocumentLineType.MANUAL_DISCOUNT, "Descuento manual importado",
+                "-0.83", "-0.17", "-1.00", null, null, null)
+                .toEntity(quoted));
+        when(documents.quoteTicket(
+                command, null, new BigDecimal("1.00"), authentication))
+                .thenReturn(quoted);
+        when(documents.historicalReplayGeneratedCoupons(
+                quoted, 0, command.lineas())).thenReturn(List.of());
+        var service = new PosCashService(
+                documents, mock(ProductRepository.class), mock(StoreTaxRepository.class),
+                mock(WarehouseRepository.class), mock(PaymentMethodRepository.class),
+                organization, mock(PosCashCheckoutRepository.class),
+                new PosCashTicketSnapshot(), currentTerminal);
+        var prepared = new PosCashService.PreparedSale(
+                command, Set.of(SaleOperationCode.APPLY_CHECKOUT_DISCOUNT),
+                List.of(), replay);
+        var request = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        newProductId, BigDecimal.ONE, BigDecimal.ZERO)),
+                null, null, null, null, Map.of(),
+                new PosCashController.PreviousTicketImportRequest(
+                        replay.ticketId(), replay.fingerprint(), Map.of()),
+                null);
+
+        var result = service.quotePreparedSale(prepared, request, authentication);
+        var snapshot = service.snapshot(result, UUID.randomUUID(), prepared);
+
+        assertThat(result).isSameAs(quoted);
+        assertThat(result.getLineas())
+                .extracting(DocumentLine::getLineType)
+                .containsExactly(
+                        DocumentLineType.PRODUCT, DocumentLineType.PRODUCT,
+                        DocumentLineType.PROMOTION, DocumentLineType.MANUAL_DISCOUNT);
+        assertThat(snapshot.historicalReplay().historicalLineCount()).isZero();
+        assertThat(snapshot.historicalReplay().historicalTotal())
+                .isEqualByComparingTo("0.00");
+        assertThat(snapshot.historicalReplay().currentPendingBeforeCoupon())
+                .isEqualByComparingTo("13.00");
+        assertThat(snapshot.historicalReplay().historicalLoyaltyLines()).isEmpty();
+    }
+
+    @Test
+    void preparedCurrentReplayClassifiesTemporaryPriceAndFixedDiscount() {
+        var documents = mock(DocumentService.class);
+        var products = mock(ProductRepository.class);
+        var taxes = mock(StoreTaxRepository.class);
+        var warehouses = mock(WarehouseRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var currentTerminal = mock(CurrentTerminal.class);
+        var previousImports = mock(PreviousTicketImportService.class);
+        var store = mock(Store.class);
+        var storeId = UUID.randomUUID();
+        var warehouse = Warehouse.general(storeId);
+        var importedProductId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(store.getTimezone()).thenReturn("Atlantic/Canary");
+        when(organization.currentStore()).thenReturn(store);
+        when(warehouses.findByStoreIdAndPredeterminadoTrue(storeId))
+                .thenReturn(Optional.of(warehouse));
+        var imported = new DocumentLineCommand(
+                importedProductId, BigDecimal.ONE, "IMP", "Importado", "TEMPORAL",
+                new BigDecimal("7.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"), DocumentLineType.PRODUCT,
+                null, null, null, List.of(), false, true);
+        var replay = new PreviousTicketImportService.ResolvedImport(
+                UUID.randomUUID(), "T-CONFIRMADO", DocumentStatus.CONFIRMADO,
+                PreviousTicketImportPricingMode.CURRENT_REPRICING, null,
+                "fingerprint-current", new BigDecimal("5.79"),
+                new BigDecimal("1.21"), BigDecimal.ZERO, List.of(imported), 1,
+                BigDecimal.ONE, List.of());
+        when(previousImports.resolve(any(), any(), any())).thenReturn(replay);
+        var service = new PosCashService(
+                documents, products, taxes, warehouses,
+                mock(PaymentMethodRepository.class), organization,
+                mock(PosCashCheckoutRepository.class), new PosCashTicketSnapshot(),
+                currentTerminal);
+        service.setPreviousTicketImportService(previousImports);
+        var importRequest = new PosCashController.PreviousTicketImportRequest(
+                replay.ticketId(), replay.fingerprint(), Map.of());
+        var request = new PosCashController.SaleRequest(
+                null, List.of(), null, null, null, null, Map.of(), importRequest, null);
+
+        var prepared = service.prepareSale(request, null);
+
+        assertThat(prepared.command().lineas()).containsExactly(imported);
+        assertThat(prepared.sensitiveOperations()).containsExactlyInAnyOrder(
+                SaleOperationCode.TEMPORARY_PRICE_CHANGE,
+                SaleOperationCode.APPLY_CHECKOUT_DISCOUNT);
+    }
 
     @Test
     void ticketSnapshotRemainsCompatibleWithStoredPayloadsWithoutFiscalTotals() {
@@ -565,7 +912,7 @@ class PosCashServiceTest {
                 .createTicket(any(), anyList(), any());
     }
 
-    private static ReplayFixture replayFixture(String ignored) {
+    private static ReplayFixture replayFixture(String sourceFingerprint) {
         var documents = mock(DocumentService.class);
         var products = mock(ProductRepository.class);
         var taxes = mock(StoreTaxRepository.class);
@@ -592,10 +939,15 @@ class PosCashServiceTest {
         when(currentTerminal.terminalId(authentication)).thenReturn(terminalId);
         var service = new PosCashService(documents, products, taxes, warehouses, methods,
                 organization, checkouts, snapshots, currentTerminal);
+        var previousTicketImport = new PosCashController.PreviousTicketImportRequest(
+                UUID.randomUUID(), sourceFingerprint, Map.of());
+        var sale = new PosCashController.SaleRequest(
+                null,
+                List.of(new PosCashController.LineRequest(
+                        UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO)),
+                null, null, null, null, Map.of(), previousTicketImport, null);
         var request = new PosCashController.CashRequest(
-                UUID.randomUUID(), new PosCashController.SaleRequest(null, List.of(
-                        new PosCashController.LineRequest(UUID.randomUUID(), BigDecimal.ONE, BigDecimal.ZERO))),
-                new BigDecimal("10.00"), new BigDecimal("7.00"));
+                UUID.randomUUID(), sale, new BigDecimal("10.00"), new BigDecimal("7.00"));
         return new ReplayFixture(service, documents, checkouts, snapshots, authentication,
                 request, companyId, storeId, terminalId, userId);
     }
@@ -605,6 +957,40 @@ class PosCashServiceTest {
             PosCashTicketSnapshot snapshots, Authentication authentication,
             PosCashController.CashRequest request, UUID companyId, UUID storeId,
             UUID terminalId, UUID userId) {}
+
+    private static DocumentLineCommand frozenProductCommand(
+            UUID productId,
+            BigDecimal quantity,
+            String code,
+            String name,
+            BigDecimal unitPrice,
+            String base,
+            String tax,
+            String total) {
+        return new DocumentLineCommand(
+                productId, quantity, code, name, "VENTA", unitPrice,
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"),
+                DocumentLineType.PRODUCT, null, null, null, List.of(), false, false,
+                null, null, null, null, null,
+                new BigDecimal(base), new BigDecimal(tax), new BigDecimal(total));
+    }
+
+    private static DocumentLineCommand frozenAdjustmentCommand(
+            DocumentLineType type,
+            String name,
+            String base,
+            String tax,
+            String total,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID couponId) {
+        return new DocumentLineCommand(
+                null, BigDecimal.ONE, name, name, null, new BigDecimal(total),
+                BigDecimal.ZERO, true, "IVA", new BigDecimal("21.00"),
+                type, promotionId, promotionVersionId, couponId, List.of(), false, false,
+                null, null, null, null, null,
+                new BigDecimal(base), new BigDecimal(tax), new BigDecimal(total));
+    }
 
     private static void configureSaleProduct(
             Product product,

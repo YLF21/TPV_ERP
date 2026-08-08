@@ -220,9 +220,93 @@ public class DocumentLine {
             UUID promotionId,
             UUID promotionVersionId,
             UUID couponId) {
+        return special(
+                documento, posicion, description, amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, promotionId,
+                promotionVersionId, couponId, null);
+    }
+
+    static DocumentLine special(
+            CommercialDocument documento,
+            int posicion,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID couponId,
+            DocumentLineType explicitType) {
         return new DocumentLine(
                 documento, posicion, description, amount, impuestosIncluidos,
-                regimenImpuesto, porcentajeImpuesto, promotionId, promotionVersionId, couponId);
+                regimenImpuesto, porcentajeImpuesto, promotionId, promotionVersionId,
+                couponId, explicitType);
+    }
+
+    static DocumentLine frozenSpecial(
+            CommercialDocument documento,
+            int posicion,
+            DocumentLineType type,
+            String description,
+            BigDecimal amount,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID couponId,
+            BigDecimal frozenBase,
+            BigDecimal frozenTax,
+            BigDecimal frozenTotal) {
+        if (type == null || type == DocumentLineType.PRODUCT
+                || type == DocumentLineType.RETURN_ADJUSTMENT) {
+            throw new IllegalArgumentException("tipo de ajuste historico no valido");
+        }
+        var line = new DocumentLine(
+                documento, posicion, description, amount, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, promotionId,
+                promotionVersionId, couponId, type);
+        line.base = Money.euros(Objects.requireNonNull(frozenBase, "frozenBase"));
+        line.impuesto = Money.euros(Objects.requireNonNull(frozenTax, "frozenTax"));
+        line.total = Money.euros(Objects.requireNonNull(frozenTotal, "frozenTotal"));
+        if (line.base.add(line.impuesto).subtract(line.total).abs()
+                .compareTo(new BigDecimal("0.01")) > 0) {
+            throw new IllegalArgumentException(
+                    "el ajuste historico no cuadra entre base, impuesto y total");
+        }
+        return line;
+    }
+
+    static DocumentLine frozenProduct(
+            CommercialDocument documento,
+            UUID productoId,
+            int posicion,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            BigDecimal frozenBase,
+            BigDecimal frozenTax,
+            BigDecimal frozenTotal) {
+        var line = new DocumentLine(
+                documento, productoId, posicion, cantidad, codigo, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                porcentajeImpuesto);
+        line.base = Money.euros(Objects.requireNonNull(frozenBase, "frozenBase"));
+        line.impuesto = Money.euros(Objects.requireNonNull(frozenTax, "frozenTax"));
+        line.total = Money.euros(Objects.requireNonNull(frozenTotal, "frozenTotal"));
+        if (line.base.add(line.impuesto).subtract(line.total).abs()
+                .compareTo(new BigDecimal("0.01")) > 0) {
+            throw new IllegalArgumentException(
+                    "la linea historica no cuadra entre base, impuesto y total");
+        }
+        return line;
     }
 
     static DocumentLine manualDiscount(

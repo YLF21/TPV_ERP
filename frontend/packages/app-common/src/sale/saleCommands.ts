@@ -1,6 +1,7 @@
 export type SaleCommandId =
   | "sales-document"
   | "price-lookup"
+  | "product-search"
   | "calculator"
   | "ean-generator"
   | "print-product-label"
@@ -16,6 +17,7 @@ export type SaleCommandId =
   | "cancel-last-ticket"
   | "cancel-ticket"
   | "convert-ticket"
+  | "import-previous-ticket"
   | "checkout"
   | "customer"
   | "park-sale"
@@ -76,6 +78,7 @@ export function saleCommandFromKeyboard(
   }
 
   switch (event.key) {
+    case "Delete": return "product-search";
     case "F1": return "price-lookup";
     case "F2": return "calculator";
     case "F3": return "cash-drawer";

@@ -250,6 +250,36 @@ class CustomerServiceTest {
     }
 
     @Test
+    void searchesLimitedSaleOptionsAndKeepsInactiveCustomersVisible() {
+        var active = new Customer(
+                company, "Cliente Activo", DocumentType.NIF, "1", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        active.assignClientCode(store.getId(), "C-001-000001");
+        var inactive = new Customer(
+                company, "Cliente Desactivado", DocumentType.NIF, "2", null,
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        inactive.assignClientCode(store.getId(), "C-001-000002");
+        inactive.deactivate();
+        when(customers.searchSaleOptions(
+                eq(PartyTestData.id(company)), eq("Cliente"),
+                any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(List.of(active, inactive));
+
+        var result = service().searchSaleOptions("  Cliente  ", 500);
+
+        assertThat(result).extracting(
+                CustomerService.SaleCustomerSearchView::fiscalName,
+                CustomerService.SaleCustomerSearchView::active)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("Cliente Activo", true),
+                        org.assertj.core.groups.Tuple.tuple("Cliente Desactivado", false));
+        var pageable = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(customers).searchSaleOptions(
+                eq(PartyTestData.id(company)), eq("Cliente"), pageable.capture());
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+    }
+
+    @Test
     void updateCanExplicitlyRemoveAnExistingCreditLimit() {
         var customer = new Customer(
                 company, "Cliente", DocumentType.NIF, "1", null,

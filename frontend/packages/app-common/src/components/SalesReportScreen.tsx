@@ -3291,6 +3291,7 @@ export function SalesReportScreen({
           <SaleTicketInvoiceDialog
             token={session.accessToken}
             locale={locale}
+            terminalContext={terminalContext}
             currentUsername={session.username}
             initialTicketNumber={ticketInvoiceNumber}
             authorization={ticketInvoiceAuthorization}

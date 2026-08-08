@@ -93,6 +93,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private com.tpverp.backend.audit.AuditService audit;
     @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
             saleOperationSecurity;
     @MockitoBean private SalesInvoiceRectificationService rectificationService;
@@ -198,7 +199,7 @@ class PaymentTerminalRefundDocumentPostgreSqlTest {
         jdbc.update("insert into impuesto_tienda(id,tienda_id,porcentaje) values (?,?,21)", f.taxId(), f.storeId());
         jdbc.update("insert into familia(id,tienda_id,nombre) values (?,?,'GENERAL')", f.familyId(), f.storeId());
         jdbc.update("insert into almacen(id,tienda_id,nombre,predeterminado) values (?,?,'GENERAL',true)", f.warehouseId(), f.storeId());
-        jdbc.update("insert into producto(id,tienda_id,familia_id,impuesto_id,nombre) values (?,?,?,?,'Producto')", f.productId(), f.storeId(), f.familyId(), f.taxId());
+        jdbc.update("insert into producto(id,tienda_id,familia_id,impuesto_id,nombre,product_type) values (?,?,?,?,'Producto','WEIGHT')", f.productId(), f.storeId(), f.familyId(), f.taxId());
         jdbc.update("insert into documento(id,tienda_id,almacen_id,tipo,estado,numero,fecha,creado_en,confirmado_en,creado_por,confirmado_por,descuento_global,base_total,impuesto_total,total,moneda,origen_stock) values (?,?,?,'TICKET','CONFIRMADO','001-260713-000001',?,?,?,?,?,0,10,2.10,12.10,'EUR',false)", f.documentId(), f.storeId(), f.warehouseId(), LocalDate.of(2026,7,13), java.sql.Timestamp.from(NOW.minusSeconds(60)), java.sql.Timestamp.from(NOW.minusSeconds(30)), f.userId(), f.userId());
         jdbc.update("insert into documento_linea(id,documento_id,producto_id,posicion,cantidad,codigo,nombre,tarifa,precio_unitario,descuento,impuestos_incluidos,regimen_impuesto,porcentaje_impuesto,base,impuesto,total,tipo_linea) values (?,?,?,1,1,'P-1','Producto','VENTA',12.10,0,true,'IVA',21,10,2.10,12.10,'PRODUCT')", f.documentLineId(), f.documentId(), f.productId());
         jdbc.update("insert into payment_terminal_operation(id,terminal_id,store_id,provider,mode,operation_type,idempotency_key,request_hash,amount,status,external_reference,authorization_code,configuration_version,document_id,created_at,updated_at,completed_at) values (?,?,?,'PAYTEF','SIMULATED','CHARGE','charge','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',12.10,'APPROVED','CHARGE-REF','AUTH',-1,?,?,?,?)", f.chargeOperationId(), f.terminalId(), f.storeId(), f.documentId(), java.sql.Timestamp.from(NOW.minusSeconds(60)), java.sql.Timestamp.from(NOW.minusSeconds(30)), java.sql.Timestamp.from(NOW.minusSeconds(30)));

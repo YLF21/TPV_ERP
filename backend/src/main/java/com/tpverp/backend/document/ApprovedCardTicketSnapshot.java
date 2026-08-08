@@ -11,20 +11,44 @@ import java.util.stream.Collectors;
 public record ApprovedCardTicketSnapshot(
         UUID storeId, UUID warehouseId, LocalDate date, UUID customerId, UUID paymentMethodId,
         BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
-        BigDecimal total, List<DocumentLineCommand> lines, String internalComment) {
+        BigDecimal total, List<DocumentLineCommand> lines, String internalComment,
+        HistoricalTicketReplayMetadata historicalReplay) {
+    public ApprovedCardTicketSnapshot(
+            UUID storeId, UUID warehouseId, LocalDate date, UUID customerId,
+            UUID paymentMethodId, BigDecimal globalDiscount, BigDecimal baseTotal,
+            BigDecimal taxTotal, BigDecimal total, List<DocumentLineCommand> lines,
+            String internalComment) {
+        this(storeId, warehouseId, date, customerId, paymentMethodId,
+                globalDiscount, baseTotal, taxTotal, total, lines,
+                internalComment, null);
+    }
+
     public ApprovedCardTicketSnapshot(
             UUID storeId, UUID warehouseId, LocalDate date, UUID customerId, UUID paymentMethodId,
             BigDecimal globalDiscount, BigDecimal baseTotal, BigDecimal taxTotal,
             BigDecimal total, List<DocumentLineCommand> lines) {
         this(storeId, warehouseId, date, customerId, paymentMethodId, globalDiscount,
-                baseTotal, taxTotal, total, lines, null);
+                baseTotal, taxTotal, total, lines, null, null);
     }
 
     public static ApprovedCardTicketSnapshot from(CommercialDocument quoted,UUID paymentMethodId) {
         return new ApprovedCardTicketSnapshot(quoted.getTiendaId(),quoted.getAlmacenId(),quoted.getFecha(),
                 quoted.getClienteId(),paymentMethodId,quoted.getDescuentoGlobal(),quoted.getBaseTotal(),quoted.getImpuestoTotal(),
                 quoted.getTotal(),quoted.getLineas().stream().map(DocumentLineCommand::from).toList(),
-                quoted.getComentarioInterno());
+                quoted.getComentarioInterno(), null);
+    }
+
+    public static ApprovedCardTicketSnapshot from(
+            CommercialDocument quoted,
+            UUID paymentMethodId,
+            List<DocumentLineCommand> requestedLines,
+            HistoricalTicketReplayMetadata historicalReplay) {
+        var base = from(quoted, paymentMethodId, requestedLines);
+        return new ApprovedCardTicketSnapshot(
+                base.storeId(), base.warehouseId(), base.date(), base.customerId(),
+                base.paymentMethodId(), base.globalDiscount(), base.baseTotal(),
+                base.taxTotal(), base.total(), base.lines(), base.internalComment(),
+                historicalReplay);
     }
 
     public static ApprovedCardTicketSnapshot from(
@@ -49,7 +73,7 @@ public record ApprovedCardTicketSnapshot(
                 base.lines().stream()
                         .map(line -> withReturnSource(line, returnSources))
                         .toList(),
-                base.internalComment());
+                base.internalComment(), base.historicalReplay());
     }
 
     private static DocumentLineCommand withReturnSource(
@@ -72,6 +96,7 @@ public record ApprovedCardTicketSnapshot(
                 line.serialNumbers(), line.temporaryNameOverride(),
                 line.temporaryPriceOverride(), source.returnSourceType(),
                 source.returnSourceCode(), source.returnSourceTicketId(),
-                line.originalDocumentLineId(), source.giftReceiptLineId());
+                line.originalDocumentLineId(), source.giftReceiptLineId(),
+                line.frozenBase(), line.frozenTax(), line.frozenTotal());
     }
 }

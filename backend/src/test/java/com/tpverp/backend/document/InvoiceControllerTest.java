@@ -27,10 +27,12 @@ class InvoiceControllerTest {
     private DocumentViewAssembler views;
     @Mock
     private GenericSalesApiService genericSales;
+    @Mock
+    private CustomerReceivablePrintService printing;
 
     @Test
     void payPassesRealAuthenticationToDocumentService() {
-        var controller = new InvoiceController(service, genericSales, fiscalQr, views);
+        var controller = new InvoiceController(service, genericSales, fiscalQr, views, printing);
         var invoiceId = UUID.randomUUID();
         var methodId = UUID.randomUUID();
         var authentication = new UsernamePasswordAuthenticationToken("ADMIN", "token");

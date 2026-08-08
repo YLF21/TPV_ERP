@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.installation.InstallationStatusService;
+import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
@@ -56,6 +57,9 @@ class SaleProductCatalogServiceTest {
     private ProductRepository products;
 
     @Mock
+    private StockLevelRepository stockLevels;
+
+    @Mock
     private Clock clock;
 
     @Mock
@@ -71,6 +75,9 @@ class SaleProductCatalogServiceTest {
     private StoreTax tax;
 
     @Mock
+    private StockLevelRepository.ProductStockTotal stockTotal;
+
+    @Mock
     private License license;
 
     @InjectMocks
@@ -79,6 +86,9 @@ class SaleProductCatalogServiceTest {
     @Test
     void exposesAuthoritativeTaxSnapshotForSaleProducts() {
         configuredSaleCatalog();
+        when(stockTotal.getProductId()).thenReturn(productId);
+        when(stockTotal.getTotalQuantity()).thenReturn(new BigDecimal("14.500"));
+        when(stockLevels.sumQuantityByProductIds(List.of(productId))).thenReturn(List.of(stockTotal));
 
         var result = service.products();
 
@@ -86,6 +96,7 @@ class SaleProductCatalogServiceTest {
             assertThat(view.taxPercentage()).isEqualByComparingTo("21.00");
             assertThat(view.taxRegime()).isEqualTo("IVA");
             assertThat(view.taxesIncluded()).isTrue();
+            assertThat(view.totalStock()).isEqualByComparingTo("14.500");
         });
     }
 
@@ -306,6 +317,7 @@ class SaleProductCatalogServiceTest {
 
     private void configuredStoreAndProduct() {
         when(store.getId()).thenReturn(storeId);
+        org.mockito.Mockito.lenient().when(product.getId()).thenReturn(productId);
         when(product.getTaxId()).thenReturn(taxId);
         when(organization.currentStore()).thenReturn(store);
         when(catalog.products()).thenReturn(List.of(product));

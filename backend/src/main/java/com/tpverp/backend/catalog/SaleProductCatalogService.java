@@ -1,11 +1,13 @@
 package com.tpverp.backend.catalog;
 
 import com.tpverp.backend.installation.InstallationStatusService;
+import com.tpverp.backend.inventory.StockLevelRepository;
 import com.tpverp.backend.licensing.License;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.shared.access.OperationalMode;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -28,6 +30,7 @@ public class SaleProductCatalogService {
     private final CurrentOrganization organization;
     private final ProductIdentifierRepository identifiers;
     private final ProductRepository products;
+    private final StockLevelRepository stockLevels;
     private final Clock clock;
 
     public SaleProductCatalogService(
@@ -38,6 +41,7 @@ public class SaleProductCatalogService {
             CurrentOrganization organization,
             ProductIdentifierRepository identifiers,
             ProductRepository products,
+            StockLevelRepository stockLevels,
             Clock clock) {
         this.catalog = catalog;
         this.taxes = taxes;
@@ -46,6 +50,7 @@ public class SaleProductCatalogService {
         this.organization = organization;
         this.identifiers = identifiers;
         this.products = products;
+        this.stockLevels = stockLevels;
         this.clock = clock;
     }
 
@@ -68,8 +73,20 @@ public class SaleProductCatalogService {
             throw new IllegalStateException("Licencia sin regimen fiscal configurado");
         }
 
+        Map<UUID, BigDecimal> totalStockByProduct = products.isEmpty()
+                ? Map.of()
+                : stockLevels.sumQuantityByProductIds(products.stream().map(Product::getId).toList()).stream()
+                        .collect(Collectors.toMap(
+                                StockLevelRepository.ProductStockTotal::getProductId,
+                                StockLevelRepository.ProductStockTotal::getTotalQuantity));
+
         return products.stream()
-                .map(product -> saleView(product, storeId, taxesById, taxRegime.name()))
+                .map(product -> saleView(
+                        product,
+                        storeId,
+                        taxesById,
+                        taxRegime.name(),
+                        totalStockByProduct.getOrDefault(product.getId(), BigDecimal.ZERO)))
                 .toList();
     }
 
@@ -158,7 +175,8 @@ public class SaleProductCatalogService {
             Product product,
             UUID storeId,
             Map<UUID, StoreTax> taxesById,
-            String taxRegime) {
+            String taxRegime,
+            BigDecimal totalStock) {
         if (!storeId.equals(product.getStoreId())) {
             throw new IllegalArgumentException("Producto no pertenece a la tienda actual");
         }
@@ -192,6 +210,7 @@ public class SaleProductCatalogService {
                 product.getTaxId(),
                 tax.getPercentage(),
                 taxRegime,
-                product.getPackageQuantity());
+                product.getPackageQuantity(),
+                totalStock);
     }
 }

@@ -1,10 +1,11 @@
 import { apiBaseUrl } from "./runtime";
 
-type ApiRequestOptions = {
+export type ApiRequestOptions = {
   method?: string;
   token?: string;
   body?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 };
 
 export class ApiError extends Error {
@@ -46,7 +47,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
         ...options.headers,
       },
-      body: serializeRequestBody(options.body)
+      body: serializeRequestBody(options.body),
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   } catch (error) {
     throw new ApiConnectionError(error instanceof Error ? error.message : undefined);

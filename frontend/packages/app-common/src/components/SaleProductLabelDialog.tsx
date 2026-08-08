@@ -35,6 +35,7 @@ const copy = {
     gaps: "Separación entre etiquetas (mm)", horizontal: "Horizontal", vertical: "Vertical", copies: "Copias",
     storeName: "Mostrar nombre de tienda", start: "Primera etiqueta disponible en la hoja", saveDefault: "Guardar como predeterminado",
     print: "Imprimir", pdf: "Guardar PDF", close: "Cerrar", error: "No se pudo imprimir la etiqueta.", saved: "Perfil guardado para este terminal",
+    printed: "Etiqueta enviada a la impresora", pdfSaved: "PDF de etiquetas guardado",
   },
   en: {
     title: "Print product label", product: "Product", search: "Search product", noProducts: "No matching products", barcode: "EAN code",
@@ -45,6 +46,7 @@ const copy = {
     gaps: "Label gaps (mm)", horizontal: "Horizontal", vertical: "Vertical", copies: "Copies", storeName: "Show store name",
     start: "First available label on the sheet", saveDefault: "Save as default", print: "Print", pdf: "Save PDF", close: "Close",
     error: "The label could not be printed.", saved: "Profile saved for this terminal",
+    printed: "Label sent to the printer", pdfSaved: "Label PDF saved",
   },
   zh: {
     title: "打印商品标签", product: "商品", search: "搜索商品", noProducts: "没有匹配的商品", barcode: "EAN 代码",
@@ -54,6 +56,7 @@ const copy = {
     margins: "A4 边距（毫米）", top: "上", right: "右", bottom: "下", left: "左", gaps: "标签间距（毫米）", horizontal: "水平",
     vertical: "垂直", copies: "份数", storeName: "显示门店名称", start: "纸张上的第一个可用标签", saveDefault: "保存为默认",
     print: "打印", pdf: "保存 PDF", close: "关闭", error: "无法打印标签。", saved: "配置已保存到此终端",
+    printed: "标签已发送到打印机", pdfSaved: "标签 PDF 已保存",
   },
 } as const;
 
@@ -115,6 +118,17 @@ export function SaleProductLabelDialog({ open, locale, storeName, products, init
     setBarcode((current) => barcodeOptions.includes(current) ? current : (barcodeOptions[0] ?? ""));
   }, [productId, product?.barcode, product?.barcode2]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      onClose();
+    };
+    globalThis.addEventListener("keydown", closeOnEscape);
+    return () => globalThis.removeEventListener("keydown", closeOnEscape);
+  }, [busy, onClose, open]);
+
   if (!open || !profile) return null;
 
   const pageWidth = profile.orientation === "LANDSCAPE" ? 297 : 210;
@@ -159,10 +173,14 @@ export function SaleProductLabelDialog({ open, locale, storeName, products, init
           `etiqueta-${product?.code || barcode}.pdf`,
         );
         if (!result.ok) throw new Error(result.message);
-        if (!result.canceled) onPrinted(true);
+        if (!result.canceled) {
+          setStatus(t.pdfSaved);
+          onPrinted(true);
+        }
       } else {
         const result = await bridge.printProductLabel(payload, next);
         if (!result.ok) throw new Error(result.message);
+        setStatus(t.printed);
         onPrinted(false);
       }
     } catch (caught) {

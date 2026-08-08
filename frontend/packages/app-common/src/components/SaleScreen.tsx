@@ -124,6 +124,7 @@ import {
 import {
   detectSaleMutationOperations,
   saleMutationAuthorizationRequirements,
+  type DetectedSaleMutationOperation,
   type SaleMutationAuthorizationRequirement,
   type SaleMutationOperationAuthorizations,
 } from "../sale/saleMutationAuthorizations";
@@ -155,6 +156,7 @@ export type SaleProduct = {
   offerActive?: boolean | null;
   offerFrom?: string | null;
   offerUntil?: string | null;
+  totalStock?: number | string | null;
   taxId: string;
   taxesIncluded: boolean;
   taxRegime: "IVA" | "IGIC";
@@ -194,6 +196,20 @@ export type SaleLine = {
     sourceLineId: string;
     giftReceiptLineId?: string | null;
   };
+  previousTicketImportOrigin?: {
+    sourceTicketId: string;
+    sourceTicketNumber: string;
+    sourceLineId: string;
+    sourceStatus: "CONFIRMADO" | "ANULADO";
+    pricingMode: PreviousTicketImportPricingMode;
+    lineType: string;
+    historicalUnitPrice: number;
+    historicalTotal: number;
+    historicalDiscountPercent: number;
+    requiresNewSerialNumbers: boolean;
+    manualPricePreserved: boolean;
+    temporaryPriceAuthorizationRequired: boolean;
+  };
 };
 
 export type SaleCustomer = {
@@ -215,9 +231,86 @@ export type SaleCustomer = {
   availableCredit?: number | string | null;
 };
 
+export type PreviousTicketImportPreview = {
+  ticketId: string;
+  ticketNumber: string;
+  ticketDate: string;
+  status: "CONFIRMADO" | "ANULADO";
+  pricingMode: PreviousTicketImportPricingMode;
+  preservedManualDiscountAmount: number | string;
+  manualDiscountAuthorizationRequired: boolean;
+  fingerprint: string;
+  customerId?: string | null;
+  globalDiscount: number | string;
+  baseTotal: number | string;
+  taxTotal: number | string;
+  total: number | string;
+  currency: string;
+  lines: Array<{
+    sourceLineId: string;
+    productId: string;
+    code: string;
+    name: string;
+    quantity: number | string;
+    productType?: "UNIT" | "WEIGHT" | "SERVICE" | null;
+    unitPrice: number | string;
+    discount: number | string;
+    rate?: string | null;
+    taxesIncluded: boolean;
+    taxRegime: "IVA" | "IGIC";
+    taxPercent: number | string;
+    base: number | string;
+    tax: number | string;
+    total: number | string;
+    serialNumbers: string[];
+    requiresNewSerialNumbers?: boolean;
+    manualPricePreserved?: boolean;
+    temporaryPriceAuthorizationRequired: boolean;
+  }>;
+  adjustments: Array<{
+    lineType: string;
+    name: string;
+    base: number | string;
+    tax: number | string;
+    total: number | string;
+  }>;
+};
+
+export type PreviousTicketImportPricingMode = "FROZEN_EXACT" | "CURRENT_REPRICING";
+
+export type PreviousTicketImportIssue = {
+  type: "EMPTY" | "INVALID_RESPONSE" | "INVALID_QUANTITY";
+  productLabel?: string;
+};
+
+export type PreparedPreviousTicketImportLine = {
+  line: SaleLine;
+};
+
+type PendingPreviousTicketImport = {
+  preview: PreviousTicketImportPreview;
+  lines: SaleLine[];
+  customer: SaleCustomer | null;
+  baseLines: SaleLine[];
+};
+
+type PreviousTicketImportBatch = {
+  ticketId: string;
+  ticketNumber: string;
+  fingerprint: string;
+  sourceStatus: "CONFIRMADO" | "ANULADO";
+  pricingMode: PreviousTicketImportPricingMode;
+  preservedManualDiscountAmount: number;
+  manualDiscountAuthorizationRequired: boolean;
+  total: number;
+  adjustments: PreviousTicketImportPreview["adjustments"];
+  reconciliationAdjustment: number;
+};
+
 type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount";
 
 const noCustomerSelectionId = "__NO_CUSTOMER__";
+const previousTicketImportTimeoutMs = 12_000;
 
 type PosAuthoritativeQuote = {
   total: number | string;
@@ -542,7 +635,10 @@ export function addSaleLine(
   // An explicitly entered price defines a new economic line. Never merge it
   // with an earlier occurrence of the same catalog product.
   const existing = openUnitPrice == null
-    ? lines.find((line) => line.product.id === product.id && line.openUnitPrice == null)
+    ? lines.find((line) => !line.returnOrigin
+      && !line.previousTicketImportOrigin
+      && line.product.id === product.id
+      && line.openUnitPrice == null)
     : undefined;
   if (!existing) {
     return [...lines, {
@@ -556,6 +652,118 @@ export function addSaleLine(
   return lines.map((line) => saleCartLineIdentity(line) === saleCartLineIdentity(existing)
     ? { ...line, quantity: Math.min(9999, normalizeProductQuantity(line.quantity + quantity)) }
     : line);
+}
+
+export function preparePreviousTicketImport(
+  preview: PreviousTicketImportPreview,
+): { lines: PreparedPreviousTicketImportLine[]; issues: PreviousTicketImportIssue[] } {
+  if (!Array.isArray(preview.lines) || preview.lines.length === 0) {
+    return { lines: [], issues: [{ type: "EMPTY" }] };
+  }
+  if (preview.pricingMode !== "FROZEN_EXACT"
+      && preview.pricingMode !== "CURRENT_REPRICING") {
+    return { lines: [], issues: [{ type: "INVALID_RESPONSE" }] };
+  }
+  if (typeof preview.manualDiscountAuthorizationRequired !== "boolean"
+      || !Number.isFinite(Number(preview.preservedManualDiscountAmount))) {
+    return { lines: [], issues: [{ type: "INVALID_RESPONSE" }] };
+  }
+  const issues: PreviousTicketImportIssue[] = [];
+  const prepared: PreparedPreviousTicketImportLine[] = [];
+
+  for (const sourceLine of preview.lines) {
+    const label = sourceLine.code?.trim() || sourceLine.name?.trim() || sourceLine.sourceLineId;
+    const quantity = Number(sourceLine.quantity);
+    const unitPrice = Number(sourceLine.unitPrice);
+    const discountPercent = Number(sourceLine.discount);
+    const historicalTotal = Number(sourceLine.total);
+    const taxPercent = Number(sourceLine.taxPercent);
+    if (!sourceLine.sourceLineId
+        || !Number.isFinite(quantity)
+        || quantity <= 0
+        || Math.abs(quantity) > 9999
+        || !Number.isFinite(unitPrice)
+        || !Number.isFinite(discountPercent)
+        || !Number.isFinite(historicalTotal)
+        || !Number.isFinite(taxPercent)
+        || typeof sourceLine.temporaryPriceAuthorizationRequired !== "boolean") {
+      issues.push({ type: "INVALID_QUANTITY", productLabel: label });
+      continue;
+    }
+    const product: SaleProduct = {
+      id: sourceLine.productId,
+      active: true,
+      productType: sourceLine.productType
+        ?? (Number.isInteger(quantity) ? "UNIT" : "SERVICE"),
+      code: sourceLine.code,
+      name: sourceLine.name,
+      salePrice: unitPrice,
+      taxId: `previous-ticket:${sourceLine.sourceLineId}`,
+      taxesIncluded: sourceLine.taxesIncluded,
+      taxRegime: sourceLine.taxRegime,
+      taxPercentage: taxPercent,
+      rate: sourceLine.rate ?? null,
+    };
+    prepared.push({
+      line: {
+        cartLineId: `previous-ticket:${sourceLine.sourceLineId}`,
+        product,
+        quantity,
+        discountPercent,
+        serialNumbers: preview.pricingMode === "FROZEN_EXACT"
+          ? [...(sourceLine.serialNumbers ?? [])]
+          : [],
+        previousTicketImportOrigin: {
+          sourceTicketId: preview.ticketId,
+          sourceTicketNumber: preview.ticketNumber,
+          sourceLineId: sourceLine.sourceLineId,
+          sourceStatus: preview.status,
+          pricingMode: preview.pricingMode,
+          lineType: "PRODUCT",
+          historicalUnitPrice: unitPrice,
+          historicalTotal,
+          historicalDiscountPercent: discountPercent,
+          manualPricePreserved: Boolean(sourceLine.manualPricePreserved),
+          temporaryPriceAuthorizationRequired:
+            sourceLine.temporaryPriceAuthorizationRequired,
+          requiresNewSerialNumbers: preview.pricingMode === "CURRENT_REPRICING"
+            && (Boolean(sourceLine.requiresNewSerialNumbers)
+              || (sourceLine.serialNumbers?.length ?? 0) > 0),
+        },
+      },
+    });
+  }
+
+  return { lines: issues.length === 0 ? prepared : [], issues };
+}
+
+export function previousTicketImportReconciliationAdjustment(
+  preview: PreviousTicketImportPreview,
+) {
+  if (preview.pricingMode !== "FROZEN_EXACT") return 0;
+  const visibleTotal = preview.lines.reduce(
+    (sum, line) => sum + finiteAmount(line.total),
+    0,
+  ) + (preview.adjustments ?? []).reduce(
+    (sum, adjustment) => sum + finiteAmount(adjustment.total),
+    0,
+  );
+  return Math.round((finiteAmount(preview.total) - visibleTotal) * 100) / 100;
+}
+
+export function appendPreviousTicketImport(
+  currentLines: SaleLine[],
+  importedLines: PreparedPreviousTicketImportLine[],
+) {
+  if (currentLines.some((line) => line.returnOrigin || line.previousTicketImportOrigin)) {
+    throw new Error("previous_ticket_import_conflict");
+  }
+  const imported = importedLines.map(({ line }) => line);
+  const nextLines = [...imported, ...currentLines];
+  return {
+    lines: nextLines,
+    selectedLineId: imported[0] ? saleCartLineIdentity(imported[0]) : null,
+  };
 }
 
 export function createSaleCartLineId(): string {
@@ -572,6 +780,7 @@ export function saleCartLineIdentity(line: SaleLine) {
 export function updateSaleLineQuantity(lines: SaleLine[], lineId: string, quantity: number) {
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === lineId);
   if (!selectedLine
+      || selectedLine.previousTicketImportOrigin
       || !isProductQuantityPrecisionValid(quantity, selectedLine.product.productType)
       || quantity === 0 || quantity < -1 || quantity > 9999) {
     throw new Error("invalid_quantity");
@@ -585,6 +794,7 @@ export function updateSaleLineDiscount(lines: SaleLine[], lineId: string, discou
     throw new Error("invalid_discount");
   }
   const line = lines.find((candidate) => saleCartLineIdentity(candidate) === lineId);
+  if (line?.previousTicketImportOrigin) throw new Error("historical_import_locked");
   if (discountPercent > 0 && line && saleProductBlocksManualDiscount(line.product)) {
     throw new Error("discount_blocked");
   }
@@ -592,6 +802,10 @@ export function updateSaleLineDiscount(lines: SaleLine[], lineId: string, discou
 }
 
 export function removeSaleLine(lines: SaleLine[], lineId: string) {
+  const selectedLine = lines.find((line) => saleCartLineIdentity(line) === lineId);
+  if (selectedLine?.previousTicketImportOrigin) {
+    throw new Error("historical_import_locked");
+  }
   return lines.filter((line) => saleCartLineIdentity(line) !== lineId);
 }
 
@@ -642,6 +856,9 @@ function saleShortcutTargetIsEditable(target: EventTarget | null) {
 }
 
 export function saleLineSubtotal(line: SaleLine, activeMember = false) {
+  if (line.previousTicketImportOrigin) {
+    return line.previousTicketImportOrigin.historicalTotal;
+  }
   return saleLineUnitPrice(line, activeMember) * line.quantity * (1 - effectiveSaleLineDiscount(line) / 100);
 }
 
@@ -650,9 +867,14 @@ export function updateSaleLineSerialNumbers(
   lineId: string,
   serialNumbers: string[],
 ) {
-  return lines.map((line) => saleCartLineIdentity(line) === lineId
-    ? { ...line, serialNumbers: [...serialNumbers] }
-    : line);
+  return lines.map((line) => {
+    if (saleCartLineIdentity(line) !== lineId) return line;
+    if (line.previousTicketImportOrigin
+        && !line.previousTicketImportOrigin.requiresNewSerialNumbers) {
+      throw new Error("historical_import_locked");
+    }
+    return { ...line, serialNumbers: [...serialNumbers] };
+  });
 }
 
 export function updateSaleLineTemporaryName(
@@ -664,6 +886,7 @@ export function updateSaleLineTemporaryName(
   if (normalized.length > 255) throw new Error("invalid_temporary_name");
   return lines.map((line) => {
     if (saleCartLineIdentity(line) !== lineId) return line;
+    if (line.previousTicketImportOrigin) throw new Error("historical_import_locked");
     const catalogName = line.product.name?.trim() ?? "";
     const { temporaryName: _previous, ...withoutTemporaryName } = line;
     return normalized && normalized !== catalogName
@@ -686,6 +909,7 @@ export function updateSaleLineTemporaryPrice(
   }
   return lines.map((line) => {
     if (saleCartLineIdentity(line) !== lineId) return line;
+    if (line.previousTicketImportOrigin) throw new Error("historical_import_locked");
     const {
       openUnitPrice: _previous,
       temporaryPriceAuthorization: _previousAuthorization,
@@ -720,7 +944,10 @@ export function saleLineHasValidTemporaryPriceAuthorization(
 }
 
 export function saleLineUnitPrice(line: SaleLine, activeMember = false) {
-  return line.returnUnitPrice ?? line.openUnitPrice ?? effectiveSaleProductPrice(line.product, activeMember);
+  return line.previousTicketImportOrigin?.historicalUnitPrice
+    ?? line.returnUnitPrice
+    ?? line.openUnitPrice
+    ?? effectiveSaleProductPrice(line.product, activeMember);
 }
 
 export function saleCartDisplayedUnitPrice(
@@ -753,16 +980,33 @@ export function saleDisplayedTotal(localTotal:number, paymentLocked:boolean, lin
 }
 
 export function effectiveSaleLineDiscount(line: SaleLine) {
-  return line.returnOrigin
+  return line.previousTicketImportOrigin
+    ? line.previousTicketImportOrigin.historicalDiscountPercent
+    : line.returnOrigin
     ? line.discountPercent
     : Math.max(line.discountPercent, line.memberDiscountPercent ?? 0);
 }
 
+export function previousTicketImportSerialNumbersReady(lines: SaleLine[]) {
+  const normalizedSerialNumbers: string[] = [];
+  for (const line of lines) {
+    if (!line.previousTicketImportOrigin?.requiresNewSerialNumbers) continue;
+    const quantity = Number(line.quantity);
+    const serialNumbers = (line.serialNumbers ?? []).map((value) => value.trim().toUpperCase());
+    if (!Number.isInteger(quantity)
+        || quantity <= 0
+        || serialNumbers.length !== quantity
+        || serialNumbers.some((value) => !value)) return false;
+    normalizedSerialNumbers.push(...serialNumbers);
+  }
+  return new Set(normalizedSerialNumbers).size === normalizedSerialNumbers.length;
+}
+
 export function applyMemberDiscounts(lines: SaleLine[], customer: SaleCustomer | null) {
   const customerDiscount = customer?.activeMember ? Number(customer.memberDiscountPercent ?? 0) : 0;
-  return lines.map((line) => ({
+  return lines.map((line) => line.previousTicketImportOrigin ? line : ({
     ...line,
-    memberDiscountPercent: customerDiscount
+    memberDiscountPercent: customerDiscount,
   }));
 }
 
@@ -1234,6 +1478,10 @@ export function SaleScreen({
   const [pendingInactiveProduct, setPendingInactiveProduct] = useState<SaleProduct | null>(null);
   const [pendingOpenPriceProduct, setPendingOpenPriceProduct] = useState<SaleProduct | null>(null);
   const [pendingOpenPriceQuantity, setPendingOpenPriceQuantity] = useState(1);
+  const [previousTicketImportBatch, setPreviousTicketImportBatch] =
+    useState<PreviousTicketImportBatch | null>(null);
+  const [previousTicketImportBusy, setPreviousTicketImportBusy] = useState(false);
+  const [previousTicketImportFocusRequest, setPreviousTicketImportFocusRequest] = useState(0);
   const [nextScanQuantity, setNextScanQuantity] = useState(1);
   const [nextScanMode, setNextScanMode] = useState<"UNIT" | "PACKAGE">("UNIT");
   const [shortcutStatus, setShortcutStatus] = useState("");
@@ -1411,6 +1659,11 @@ export function SaleScreen({
   const logoutInProgressRef = useRef(false);
   const shutdownInProgressRef = useRef(false);
   const quoteGenerationRef = useRef(0);
+  const previousTicketImportBusyRef = useRef(false);
+  const linesRef = useRef(lines);
+  const selectedCustomerRef = useRef(selectedCustomer);
+  linesRef.current = lines;
+  selectedCustomerRef.current = selectedCustomer;
   const selectableProducts = useMemo(
     () => saleSelectableProducts(products, allowInactiveProductSales),
     [allowInactiveProductSales, products]
@@ -1437,6 +1690,23 @@ export function SaleScreen({
   const saleCustomerCreationAllowed = canCreateSaleCustomer(session.permissions);
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   useEffect(() => {
+    if (previousTicketImportFocusRequest === 0) return;
+    searchInputRef.current?.focus();
+  }, [previousTicketImportFocusRequest]);
+  useEffect(() => {
+    if (previousTicketImportBatch
+        && !lines.some((line) => line.previousTicketImportOrigin)) {
+      setPreviousTicketImportBatch(null);
+    }
+  }, [lines, previousTicketImportBatch]);
+  useEffect(() => {
+    if (previousTicketImportBatch
+        && checkoutDiscountCents > 0
+        && !lines.some((line) => !line.previousTicketImportOrigin)) {
+      setCheckoutDiscountCents(0);
+    }
+  }, [checkoutDiscountCents, lines, previousTicketImportBatch]);
+  useEffect(() => {
     if (!selectedLineId) return;
     const escaped = globalThis.CSS?.escape
       ? globalThis.CSS.escape(selectedLineId)
@@ -1449,13 +1719,64 @@ export function SaleScreen({
   const cartTableWidth = visibleCartColumns.reduce((totalWidth, column) => totalWidth + column.width, 0);
   const currentSaleRequest = cashSaleRequest();
   const currentSaleRequestKey = JSON.stringify(currentSaleRequest);
-  const total = saleTotal(lines, activeMember);
+  const currentEconomicLines = lines.filter((line) => !line.previousTicketImportOrigin);
+  const previousTicketImportSerialsReady = previousTicketImportSerialNumbersReady(lines);
+  // A CURRENT_REPRICING preview is not a price commitment. Its historical
+  // total must never be presented as the current sale while the authoritative
+  // quote is pending or unavailable.
+  const total = previousTicketImportBatch?.pricingMode === "CURRENT_REPRICING"
+    ? 0
+    : (previousTicketImportBatch?.total ?? 0)
+      + saleTotal(currentEconomicLines, activeMember);
   const authoritativeQuoteReady = authoritativeQuoteRequestKey === currentSaleRequestKey
     && isCompleteAuthoritativeQuote(authoritativeQuote);
   const authoritativeTotal = authoritativeQuoteReady ? Number(authoritativeQuote.total) : total;
   const authoritativeLineBreakdown = authoritativeQuoteReady ? authoritativeQuote.lineBreakdown : null;
+  const currentPromotionPreview = authoritativeQuoteReady
+    ? authoritativeQuote?.promotionPreview ?? null
+    : null;
+  const visiblePromotionPreview: PromotionPreview | null = previousTicketImportBatch?.pricingMode === "FROZEN_EXACT"
+    ? {
+        appliedPromotions: [
+          ...previousTicketImportBatch.adjustments.map((adjustment, index) => ({
+            id: `previous-ticket-adjustment-${index}`,
+            name: saleMainMessage(t, "sale.importPreviousTicket.adjustment", {
+              name: adjustment.name,
+            }),
+            discountAmount: Number(adjustment.total),
+          })),
+          ...(previousTicketImportBatch.reconciliationAdjustment !== 0 ? [{
+            id: "previous-ticket-global-adjustment",
+            name: t("sale.importPreviousTicket.globalDiscount"),
+            discountAmount: previousTicketImportBatch.reconciliationAdjustment,
+          }] : []),
+          ...(currentPromotionPreview?.appliedPromotions ?? []),
+        ],
+        usedCoupon: currentPromotionPreview?.usedCoupon ?? null,
+        generatedCoupon: currentPromotionPreview?.generatedCoupon ?? null,
+      }
+    : currentPromotionPreview;
+  const currentRepricingQuotePending = previousTicketImportBatch?.pricingMode === "CURRENT_REPRICING"
+    && !authoritativeQuoteReady;
+  const currentRepricingQuoteStatus = currentRepricingQuotePending
+    ? authoritativeQuoteError
+      ? {
+          label: t("sale.quote.repricing.unavailableLabel"),
+          detail: t("sale.quote.repricing.unavailable"),
+          kind: "ERROR" as const,
+        }
+      : {
+          label: t("sale.quote.repricing.loadingLabel"),
+          detail: t("sale.quote.repricing.loading"),
+          kind: "LOADING" as const,
+        }
+    : null;
   const displayedTotal = saleDisplayedTotal(authoritativeTotal,paymentLocked,lines.length,reservedPaymentTotalCents);
+  const previousTicketImportQuoteFingerprintReady = !previousTicketImportBatch
+    || Boolean(authoritativeQuoteReady && authoritativeQuote?.quoteFingerprint?.trim());
   const basePaymentActionsDisabled = lines.length === 0 || cashOpening
+    || !previousTicketImportSerialsReady
+    || !previousTicketImportQuoteFingerprintReady
     || authoritativeQuoteLoading || !authoritativeQuoteReady || Boolean(authoritativeQuoteError);
   const canApplyManualDiscount = Boolean(operationSecurity?.operations.some(
     (operation) => operation.code === "APPLY_SALE_DISCOUNT",
@@ -1561,7 +1882,7 @@ export function SaleScreen({
       ) * 10_000) / 100
     : 0;
   const detectedSaleMutationOperations = detectSaleMutationOperations(
-    lines.map((line) => ({
+    currentEconomicLines.map((line) => ({
       quantity: line.quantity,
       discountPercent: line.discountPercent,
       catalogName: line.product.name,
@@ -1571,7 +1892,7 @@ export function SaleScreen({
     })),
     checkoutDiscountPercent,
   );
-  const temporaryPriceLines = lines.filter(
+  const temporaryPriceLines = currentEconomicLines.filter(
     (line) => line.openUnitPrice != null && Number(line.product.salePrice ?? 0) !== 0,
   );
   const temporaryPriceAuthorizationsReady = temporaryPriceLines.every(
@@ -1582,10 +1903,28 @@ export function SaleScreen({
     ),
   );
   // Temporary price changes are authorized when the price is accepted, never
-  // by the checkout dialog. Missing or expired grants fail closed here.
-  const unresolvedSaleMutationOperations = detectedSaleMutationOperations.filter(
+  // by the checkout dialog. Missing or expired grants fail closed here. The
+  // exception is a TEMPORAL price preserved by a CURRENT_REPRICING import:
+  // imported lines have no local cart-line grant, so the backend explicitly
+  // marks the generic operation that checkout must authorize. Open-price
+  // products never set that marker.
+  const importedSaleMutationOperations: DetectedSaleMutationOperation[] = [];
+  if (lines.some((line) => (
+    line.previousTicketImportOrigin?.pricingMode === "CURRENT_REPRICING"
+      && line.previousTicketImportOrigin.temporaryPriceAuthorizationRequired
+  ))) {
+    importedSaleMutationOperations.push({ code: "TEMPORARY_PRICE_CHANGE" });
+  }
+  if (previousTicketImportBatch?.pricingMode === "CURRENT_REPRICING"
+      && previousTicketImportBatch.manualDiscountAuthorizationRequired) {
+    importedSaleMutationOperations.push({ code: "APPLY_CHECKOUT_DISCOUNT" });
+  }
+  const unresolvedSaleMutationOperations: DetectedSaleMutationOperation[] = [
+    ...detectedSaleMutationOperations.filter(
     (operation) => operation.code !== "TEMPORARY_PRICE_CHANGE",
-  );
+    ),
+    ...importedSaleMutationOperations,
+  ];
   const saleMutationAuthorizations: SaleMutationAuthorizationRequirement[] | null =
     saleMutationAuthorizationRequirements(
       operationSecurity,
@@ -1685,7 +2024,9 @@ export function SaleScreen({
     const selectionLabel = `${name} ${quantityText} x ${formatSaleAmount(appliedUnitPrice)} ${discountText} ${formatSaleAmount(totalAmount)}`;
     const cartLineId = saleCartLineIdentity(localLine);
     const selected = selectedLineId === cartLineId;
-    const touchQuantityLocked = paymentLocked || Boolean(localLine.returnOrigin);
+    const touchQuantityLocked = paymentLocked
+      || Boolean(localLine.returnOrigin)
+      || Boolean(localLine.previousTicketImportOrigin);
 
     function adjustTouchQuantity(delta: number) {
       if (touchQuantityLocked) return;
@@ -1729,6 +2070,20 @@ export function SaleScreen({
               }}
             >
               <strong className="product-name-text">{name}</strong>
+              {localLine.previousTicketImportOrigin && (
+                <small className="sale-line-historical-origin">
+                  {saleMainMessage(t, localLine.previousTicketImportOrigin.pricingMode === "FROZEN_EXACT"
+                    ? "sale.importPreviousTicket.lineOrigin.exact"
+                    : "sale.importPreviousTicket.lineOrigin.repriced", {
+                    ticketNumber: localLine.previousTicketImportOrigin.sourceTicketNumber,
+                  })}
+                </small>
+              )}
+              {localLine.previousTicketImportOrigin?.manualPricePreserved && (
+                <small className="sale-line-historical-origin">
+                  {t("sale.importPreviousTicket.manualPricePreserved")}
+                </small>
+              )}
               {(localLine.serialNumbers ?? []).map((serial) => (
                 <small className="sale-line-serial" key={serial}>S/N: {serial}</small>
               ))}
@@ -1805,7 +2160,7 @@ export function SaleScreen({
 
     return (
       <tr
-        className={`sale-cart-row${selected ? " selected" : ""}`}
+        className={`sale-cart-row${selected ? " selected" : ""}${localLine.previousTicketImportOrigin ? ` historical-import ${localLine.previousTicketImportOrigin.pricingMode === "CURRENT_REPRICING" ? "current-repricing-import" : "frozen-exact-import"}` : ""}`}
         key={cartLineId}
         data-cart-line-id={cartLineId}
         onClick={() => setSelectedLineId(cartLineId)}
@@ -2196,7 +2551,10 @@ export function SaleScreen({
   function addProduct(product: SaleProduct, openUnitPrice?: number, quantity = 1) {
     deletionControl.reset("PRODUCT_ADDED");
     const existingLine = openUnitPrice == null
-      ? lines.find((line) => line.product.id === product.id && line.openUnitPrice == null)
+      ? lines.find((line) => !line.returnOrigin
+        && !line.previousTicketImportOrigin
+        && line.product.id === product.id
+        && line.openUnitPrice == null)
       : undefined;
     const cartLineId = existingLine ? saleCartLineIdentity(existingLine) : createSaleCartLineId();
     setLines((current) => applyMemberDiscounts(
@@ -2209,6 +2567,152 @@ export function SaleScreen({
       ? `${t("sale.touch.productAdded")}: ${product.name || product.code || t("sale.main.unnamedProduct")}`
       : "");
     searchInputRef.current?.focus();
+  }
+
+  function previousTicketImportIssueText(issue: PreviousTicketImportIssue) {
+    const product = issue.productLabel ?? t("sale.main.unnamedProduct");
+    switch (issue.type) {
+      case "EMPTY":
+        return t("sale.importPreviousTicket.error.empty");
+      case "INVALID_RESPONSE":
+        return t("sale.importPreviousTicket.error.invalid");
+      case "INVALID_QUANTITY":
+        return saleMainMessage(t, "sale.importPreviousTicket.error.invalidQuantity", { product });
+    }
+  }
+
+  function previousTicketImportLineLockedText(line: SaleLine) {
+    return t(line.previousTicketImportOrigin?.pricingMode === "FROZEN_EXACT"
+      ? "sale.importPreviousTicket.lineLocked.exact"
+      : "sale.importPreviousTicket.lineLocked.repriced");
+  }
+
+  function endPreviousTicketImport(status: string) {
+    previousTicketImportBusyRef.current = false;
+    setPreviousTicketImportBusy(false);
+    setShortcutStatus(status);
+    setPreviousTicketImportFocusRequest((value) => value + 1);
+  }
+
+  function commitPreviousTicketImport(draft: PendingPreviousTicketImport) {
+    if (linesRef.current !== draft.baseLines) {
+      endPreviousTicketImport(t("sale.importPreviousTicket.error.cartChanged"));
+      return;
+    }
+    try {
+      const appended = appendPreviousTicketImport(
+        draft.baseLines,
+        draft.lines.map((line) => ({ line })),
+      );
+      deletionControl.reset("PRODUCT_ADDED");
+      const nextLines = applyMemberDiscounts(appended.lines, draft.customer);
+      linesRef.current = nextLines;
+      setLines(nextLines);
+      setSelectedLineId(appended.selectedLineId);
+      setSelectedCustomer(draft.customer);
+      setPreviousTicketImportBatch({
+        ticketId: draft.preview.ticketId,
+        ticketNumber: draft.preview.ticketNumber,
+        fingerprint: draft.preview.fingerprint,
+        sourceStatus: draft.preview.status,
+        pricingMode: draft.preview.pricingMode,
+        preservedManualDiscountAmount: Number(draft.preview.preservedManualDiscountAmount),
+        manualDiscountAuthorizationRequired:
+          draft.preview.manualDiscountAuthorizationRequired,
+        total: Number(draft.preview.total),
+        adjustments: draft.preview.adjustments ?? [],
+        reconciliationAdjustment: previousTicketImportReconciliationAdjustment(draft.preview),
+      });
+      setQuery("");
+      endPreviousTicketImport(saleMainMessage(
+        t,
+        draft.preview.pricingMode === "FROZEN_EXACT"
+          ? "sale.importPreviousTicket.success.exact"
+          : "sale.importPreviousTicket.success.repriced",
+        { ticketNumber: draft.preview.ticketNumber, count: draft.lines.length },
+      ));
+    } catch {
+      endPreviousTicketImport(t("sale.importPreviousTicket.error.invalid"));
+    }
+  }
+
+  async function importPreviousTicket() {
+    if (previousTicketImportBusyRef.current) return;
+    if (previousTicketImportBatch
+        || lines.some((line) => line.returnOrigin || line.quantity <= 0)) {
+      setShortcutStatus(t("sale.importPreviousTicket.error.conflict"));
+      return;
+    }
+    previousTicketImportBusyRef.current = true;
+    setPreviousTicketImportBusy(true);
+    setShortcutStatus(t("sale.importPreviousTicket.loading"));
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = globalThis.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, previousTicketImportTimeoutMs);
+    try {
+      const preview = await apiRequest<PreviousTicketImportPreview>(
+        "/tickets/previous-current-terminal/import-preview",
+        { token: session.accessToken, signal: controller.signal },
+      );
+      if (!preview
+          || !Array.isArray(preview.lines)
+          || typeof preview.ticketNumber !== "string"
+          || typeof preview.ticketId !== "string"
+          || typeof preview.fingerprint !== "string"
+          || !["CONFIRMADO", "ANULADO"].includes(preview.status)
+          || !["FROZEN_EXACT", "CURRENT_REPRICING"].includes(preview.pricingMode)
+          || typeof preview.manualDiscountAuthorizationRequired !== "boolean"
+          || !Number.isFinite(Number(preview.preservedManualDiscountAmount))
+          || !Number.isFinite(Number(preview.total))
+          || !Array.isArray(preview.adjustments)) {
+        endPreviousTicketImport(t("sale.importPreviousTicket.error.invalid"));
+        return;
+      }
+      const baseLines = linesRef.current;
+      if (baseLines.some((line) => line.returnOrigin
+          || line.previousTicketImportOrigin
+          || line.quantity <= 0)) {
+        endPreviousTicketImport(t("sale.importPreviousTicket.error.conflict"));
+        return;
+      }
+      const prepared = preparePreviousTicketImport(preview);
+      if (prepared.issues.length > 0) {
+        endPreviousTicketImport(prepared.issues.map(previousTicketImportIssueText).join(" · "));
+        return;
+      }
+      let customer: SaleCustomer | null = null;
+      if (preview.customerId) {
+        customer = await apiRequest<SaleCustomer>(
+          `/customers/sale-options/${encodeURIComponent(preview.customerId)}`,
+          { token: session.accessToken, signal: controller.signal },
+        );
+        if (!customer || customer.id !== preview.customerId) {
+          endPreviousTicketImport(t("sale.importPreviousTicket.error.customer"));
+          return;
+        }
+      }
+      const draft: PendingPreviousTicketImport = {
+        preview,
+        lines: prepared.lines.map(({ line }) => line),
+        customer,
+        baseLines,
+      };
+      commitPreviousTicketImport(draft);
+    } catch (error) {
+      if (timedOut) {
+        endPreviousTicketImport(t("sale.importPreviousTicket.error.timeout"));
+        return;
+      }
+      const detail = error instanceof ApiError && typeof error.problem?.detail === "string"
+        ? ` ${error.problem.detail}`
+        : "";
+      endPreviousTicketImport(`${t("sale.importPreviousTicket.error.request")}${detail}`);
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+    }
   }
 
   function addReturnLinesToCart(returnLines: ReturnCartLine[]) {
@@ -2305,6 +2809,7 @@ export function SaleScreen({
   }, [actionDialog]);
 
   function requestAddProduct(product: SaleProduct) {
+    if (previousTicketImportBusyRef.current) return;
     if (product.active === false) {
       if (!allowInactiveProductSales) {
         return;
@@ -2345,28 +2850,30 @@ export function SaleScreen({
   }
 
   function openQuantityDialog() {
-    if (!selectedLine || selectedLine.returnOrigin) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin) return;
     setQuantityInput(String(selectedLine.quantity));
     setActionError("");
     setActionDialog("quantity");
   }
 
   function openDiscountDialog() {
-    if (!selectedLine || selectedLine.returnOrigin || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin
+        || !canApplyManualDiscount || saleProductBlocksManualDiscount(selectedLine.product)) return;
     setDiscountInput(String(selectedLine.discountPercent));
     setActionError("");
     setActionDialog("discount");
   }
 
   function openTemporaryNameDialog() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked) return;
     setTemporaryNameInput(selectedLine.temporaryName ?? selectedLine.product.name ?? "");
     setActionError("");
     setActionDialog("temporaryName");
   }
 
   function openTemporaryPriceDialog() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin
+        || paymentLocked || saleProductRequiresOpenPrice(selectedLine.product)) return;
     setTemporaryPriceInput(
       selectedLine.openUnitPrice == null ? "" : String(selectedLine.openUnitPrice),
     );
@@ -2509,6 +3016,10 @@ export function SaleScreen({
   }
 
   function openCustomerDialog(continuePending = false) {
+    if (previousTicketImportBatch) {
+      setShortcutStatus(t("sale.importPreviousTicket.customerLocked"));
+      return;
+    }
     setPendingCustomerContinuation(continuePending);
     setCustomerCreateOpen(false);
     setActionDialog("customer");
@@ -2632,6 +3143,11 @@ export function SaleScreen({
 
   function confirmRemoveLine() {
     if (!selectedLineId || !selectedLine) return;
+    if (selectedLine.previousTicketImportOrigin) {
+      setActionDialog(null);
+      setShortcutStatus(previousTicketImportLineLockedText(selectedLine));
+      return;
+    }
     const removedLine = selectedLine;
     const fullTicketClear = lines.length === 1;
     setLines((current) => {
@@ -2664,6 +3180,29 @@ export function SaleScreen({
     setProductSearchOpen(true);
   }
 
+  function openProductSearch() {
+    setProductSearchQuery(query);
+    setProductSearchSelectedId("");
+    setProductSearchOpen(true);
+  }
+
+  function clearProductSearch() {
+    setProductSearchOpen(false);
+    setProductSearchQuery("");
+    setProductSearchSelectedId("");
+    setQuery("");
+  }
+
+  function closeProductSearch() {
+    clearProductSearch();
+    queueMicrotask(() => searchInputRef.current?.focus());
+  }
+
+  function selectProductFromSearch(product: SaleProduct) {
+    clearProductSearch();
+    requestAddProduct(product);
+  }
+
   function openProductSalesHistory() {
     if (paymentLocked) return;
     setSalesHistoryProduct(selectedLine?.product ?? lines.at(-1)?.product ?? null);
@@ -2683,8 +3222,7 @@ export function SaleScreen({
 
   function addProductFromInformation(product: SaleProduct) {
     setProductInformationProduct(null);
-    setProductSearchOpen(false);
-    requestAddProduct(product);
+    selectProductFromSearch(product);
   }
 
   function clearQuickEntry(message = "") {
@@ -2709,12 +3247,23 @@ export function SaleScreen({
       setShortcutStatus("Introduce una cantidad y pulsa Pausa");
       return;
     }
+    if (previousTicketImportBatch && quantity < 0) {
+      setShortcutStatus(t("sale.importPreviousTicket.positiveLinesOnly"));
+      clearQuickEntry(t("sale.importPreviousTicket.positiveLinesOnly"));
+      return;
+    }
     if (quantity !== -1
         && !isProductQuantityPrecisionValid(quantity, selectedLine.product.productType)) {
       setShortcutStatus(t("sale.quantity.invalid"));
       return;
     }
     if (quantity === 0) {
+      if (selectedLine.previousTicketImportOrigin) {
+        const lockedText = previousTicketImportLineLockedText(selectedLine);
+        setShortcutStatus(lockedText);
+        clearQuickEntry(lockedText);
+        return;
+      }
       confirmRemoveLine();
       clearQuickEntry();
       return;
@@ -2730,7 +3279,7 @@ export function SaleScreen({
   }
 
   function addToSelectedQuantity() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked) return;
     const operand = quantityOperand();
     if (operand == null
         || operand < productQuantityStep(selectedLine.product.productType)
@@ -2748,7 +3297,7 @@ export function SaleScreen({
   }
 
   function subtractFromSelectedQuantity() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked) return;
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked) return;
     const operand = quantityOperand();
     if (operand == null
         || operand < productQuantityStep(selectedLine.product.productType)
@@ -2791,7 +3340,7 @@ export function SaleScreen({
   }
 
   function applyQuickLineDiscount() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || !canApplyManualDiscount
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked || !canApplyManualDiscount
       || saleProductBlocksManualDiscount(selectedLine.product)) return;
     const discount = quickOperand();
     if (discount == null || discount < 0 || discount > 100) {
@@ -2812,7 +3361,7 @@ export function SaleScreen({
     }
     try {
       setLines((current) => current.reduce(
-        (updated, line) => line.returnOrigin
+        (updated, line) => line.returnOrigin || line.previousTicketImportOrigin
           ? updated
           : updateSaleLineDiscount(updated, saleCartLineIdentity(line), discount),
         current,
@@ -2826,7 +3375,7 @@ export function SaleScreen({
   }
 
   function applyDesiredLinePrice() {
-    if (!selectedLine || selectedLine.returnOrigin || paymentLocked || !canApplyManualDiscount
+    if (!selectedLine || selectedLine.returnOrigin || selectedLine.previousTicketImportOrigin || paymentLocked || !canApplyManualDiscount
       || saleProductBlocksManualDiscount(selectedLine.product)) return;
     const desiredPrice = quickOperand();
     const currentPrice = saleLineUnitPrice(selectedLine, activeMember);
@@ -2840,10 +3389,19 @@ export function SaleScreen({
     setLines((current) => updateSaleLineDiscount(current, saleCartLineIdentity(selectedLine), discount));
   }
 
-  function cashSaleRequest() {
+  function cashSaleRequest(includeQuoteFingerprint = false) {
+    const serialNumbersBySourceLineId = Object.fromEntries(
+      lines.flatMap((line) => {
+        const origin = line.previousTicketImportOrigin;
+        if (!origin
+            || origin.sourceStatus !== "CONFIRMADO"
+            || !origin.requiresNewSerialNumbers) return [];
+        return [[origin.sourceLineId, [...(line.serialNumbers ?? [])]]];
+      }),
+    );
     return {
       customerId: selectedCustomer?.id ?? null,
-      lines: lines.map((line) => ({
+      lines: lines.filter((line) => !line.previousTicketImportOrigin).map((line) => ({
         productId: line.product.id,
         cartLineId: saleCartLineIdentity(line),
         quantity: line.quantity,
@@ -2862,13 +3420,26 @@ export function SaleScreen({
           giftReceiptLineId: line.returnOrigin.giftReceiptLineId ?? null,
         } } : {}),
       })),
-      ...(checkoutDiscountCents > 0 ? { checkoutDiscountAmount: checkoutDiscountCents / 100 } : {}),
+      ...(previousTicketImportBatch ? { previousTicketImport: {
+        ticketId: previousTicketImportBatch.ticketId,
+        fingerprint: previousTicketImportBatch.fingerprint,
+        serialNumbersBySourceLineId,
+      } } : {}),
+      ...(includeQuoteFingerprint
+          && previousTicketImportBatch
+          && authoritativeQuote?.quoteFingerprint?.trim()
+        ? { quoteFingerprint: authoritativeQuote.quoteFingerprint }
+        : {}),
+      ...(checkoutDiscountCents > 0 && lines.some((line) => !line.previousTicketImportOrigin)
+        ? { checkoutDiscountAmount: checkoutDiscountCents / 100 }
+        : {}),
       ...(saleComment ? { internalComment: saleComment } : {}),
     };
   }
 
   function clearCurrentSale() {
     setLines([]);
+    setPreviousTicketImportBatch(null);
     setSelectedLineId(null);
     setSelectedCustomer(null);
     setQuery("");
@@ -2917,6 +3488,7 @@ export function SaleScreen({
   function clearSaleLines() {
     const removedLines = lines;
     setLines([]);
+    setPreviousTicketImportBatch(null);
     setSelectedLineId(null);
     setQuery("");
     setCheckoutDiscountCents(0);
@@ -2938,7 +3510,9 @@ export function SaleScreen({
 
   function clearManualDiscounts() {
     setLines((current) => current.map((line) => (
-      line.returnOrigin || line.discountPercent === 0 ? line : { ...line, discountPercent: 0 }
+      line.returnOrigin || line.previousTicketImportOrigin || line.discountPercent === 0
+        ? line
+        : { ...line, discountPercent: 0 }
     )));
     setCheckoutDiscountCents(0);
     setShortcutStatus(t("sale.clearDiscounts.done"));
@@ -3105,6 +3679,7 @@ export function SaleScreen({
       } satisfies SaleLine];
     });
     setLines(recoveredLines);
+    setPreviousTicketImportBatch(null);
     setSelectedLineId(recoveredLines[0] ? saleCartLineIdentity(recoveredLines[0]) : null);
     setCheckoutDiscountCents(0);
     setNextScanQuantity(1);
@@ -3140,6 +3715,13 @@ export function SaleScreen({
       setCheckoutDiscountCents(0);
       return;
     }
+    if (!previousTicketImportSerialsReady) {
+      setAuthoritativeQuote(null);
+      setAuthoritativeQuoteRequestKey("");
+      setAuthoritativeQuoteLoading(false);
+      setAuthoritativeQuoteError(t("sale.serialNumber.complete"));
+      return;
+    }
     setAuthoritativeQuoteLoading(true);
     setAuthoritativeQuoteError("");
     const timer = window.setTimeout(() => {
@@ -3164,7 +3746,7 @@ export function SaleScreen({
       });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [currentSaleRequestKey, session.accessToken]);
+  }, [currentSaleRequestKey, previousTicketImportSerialsReady, session.accessToken]);
 
   async function openCashDialog() {
     await runGuardedCashOpening(cashOpeningRef.current, async (opening) => {
@@ -3199,7 +3781,7 @@ export function SaleScreen({
         token: session.accessToken,
         body: {
           checkoutId: cashCheckoutId,
-          sale: cashSaleRequest(),
+          sale: cashSaleRequest(true),
           received: (receivedCents / 100).toFixed(2),
           quotedTotal: (cashQuoteCents / 100).toFixed(2)
         }
@@ -3258,11 +3840,11 @@ export function SaleScreen({
     await runGuardedCashSubmission(cardSubmissionRef, async () => {
       setCardSubmitting(true); setCardStatus("PENDING"); setCardMessage("Esperando respuesta del datafono...");
       try {
-        const response = await apiRequest<CardPaymentResponse>("/pos/card/charge", { token: session.accessToken, body: buildCardChargeBody(checkoutId, cashSaleRequest(), quotedCents) });
+        const response = await apiRequest<CardPaymentResponse>("/pos/card/charge", { token: session.accessToken, body: buildCardChargeBody(checkoutId, cashSaleRequest(true), quotedCents) });
         const outcome = resolveCardPaymentOutcome(response, quotedCents);
         setCardStatus(outcome.status); setCardMessage(outcome.message);
         if (outcome.clearSale && outcome.result) {
-          setCardDialogOpen(false); setLines([]); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
+          setCardDialogOpen(false); setLines([]); setPreviousTicketImportBatch(null); setSelectedLineId(null); setSelectedCustomer(null); setQuery(""); setCashResult(outcome.result);
           setNextScanQuantity(1);
           setNextScanMode("UNIT");
           setSaleComment("");
@@ -3345,17 +3927,27 @@ export function SaleScreen({
   }
 
   function saleCommandDisabled(command: SaleCommandId) {
+    if (previousTicketImportBusy && command !== "import-previous-ticket") return true;
     switch (command) {
+      case "product-search":
+        return catalogLoading || catalogError || paymentLocked;
       case "sales-document":
         return paymentLocked || !onOpenSalesDocumentWindow;
-      case "stock":
       case "quantity":
       case "add-quantity":
       case "subtract-quantity":
       case "desired-price":
-      case "serial-number":
       case "line-discount":
-        return !selectedLine || Boolean(selectedLine.returnOrigin) || paymentLocked;
+        return !selectedLine
+          || Boolean(selectedLine.returnOrigin)
+          || Boolean(selectedLine.previousTicketImportOrigin)
+          || paymentLocked;
+      case "stock":
+        return !selectedLine || paymentLocked;
+      case "serial-number":
+        return !selectedLine || Boolean(selectedLine.returnOrigin) || paymentLocked
+          || Boolean(selectedLine.previousTicketImportOrigin
+            && !selectedLine.previousTicketImportOrigin.requiresNewSerialNumbers);
       case "edit-product":
         return !selectedLine || paymentLocked || productEditBusy;
       case "ean-generator":
@@ -3363,15 +3955,22 @@ export function SaleScreen({
       case "print-product-label":
         return paymentLocked || salesUtilityOpening;
       case "ticket-return":
+        return !paymentHydrated || paymentLocked || Boolean(previousTicketImportBatch);
       case "gift-receipt":
       case "cancel-last-ticket":
       case "cancel-ticket":
       case "convert-ticket":
         return !paymentHydrated || paymentLocked;
+      case "import-previous-ticket":
+        return catalogLoading || catalogError || paymentLocked || previousTicketImportBusy
+          || Boolean(previousTicketImportBatch)
+          || lines.some((line) => Boolean(line.returnOrigin) || line.quantity <= 0);
       case "checkout":
         return paymentActionsDisabled || paymentLocked;
       case "customer":
+        return paymentLocked || Boolean(previousTicketImportBatch);
       case "park-sale":
+        return paymentLocked || Boolean(previousTicketImportBatch);
       case "sale-comment":
       case "print-method":
       case "next-units":
@@ -3393,12 +3992,14 @@ export function SaleScreen({
           && lines.every((line) => line.discountPercent === 0)
         );
       case "temporary-name":
-        return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin);
+        return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin)
+          || Boolean(selectedLine.previousTicketImportOrigin);
       case "temporary-price":
         return paymentLocked || !selectedLine || Boolean(selectedLine.returnOrigin)
+          || Boolean(selectedLine.previousTicketImportOrigin)
           || saleProductRequiresOpenPrice(selectedLine.product);
       case "sale-discount":
-        return lines.length === 0 || paymentLocked || !canApplyManualDiscount;
+        return currentEconomicLines.length === 0 || paymentLocked || !canApplyManualDiscount;
       case "close-cash":
         return cashSessionCloseDisabled;
       case "cash-withdrawal":
@@ -3414,6 +4015,7 @@ export function SaleScreen({
     command: SaleCommandId,
     source: "KEYBOARD" | "UI" = "UI",
   ) {
+    if (previousTicketImportBusyRef.current && command !== "import-previous-ticket") return false;
     const keyboardReturnRemoval = command === "quantity"
       && source === "KEYBOARD"
       && saleKeyboardReturnRemovalAllowed(selectedLine, query, paymentLocked);
@@ -3424,6 +4026,9 @@ export function SaleScreen({
         break;
       case "price-lookup":
         setConsultationMode("PRICE");
+        break;
+      case "product-search":
+        openProductSearch();
         break;
       case "calculator":
         setCalculatorOpen(true);
@@ -3485,6 +4090,9 @@ export function SaleScreen({
           () => setTicketInvoiceOpen(true),
         );
         break;
+      case "import-previous-ticket":
+        void importPreviousTicket();
+        break;
       case "checkout":
         if (paymentCheckoutRef.current?.openCheckout) {
           paymentCheckoutRef.current.openCheckout("CASH");
@@ -3543,7 +4151,12 @@ export function SaleScreen({
         openTemporaryPriceDialog();
         break;
       case "serial-number":
-        if (!selectedLine?.returnOrigin) setSerialNumberOpen(true);
+        if (selectedLine
+            && !selectedLine.returnOrigin
+            && (!selectedLine.previousTicketImportOrigin
+              || selectedLine.previousTicketImportOrigin.requiresNewSerialNumbers)) {
+          setSerialNumberOpen(true);
+        }
         break;
       case "line-discount":
         if (source === "KEYBOARD") applyQuickLineDiscount();
@@ -3557,6 +4170,7 @@ export function SaleScreen({
       if (!cashSessionReady) return;
       if (event.repeat || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (pendingRecoveryBlocked) return;
+      if (previousTicketImportBusyRef.current) return;
       const command = saleCommandFromKeyboard(event);
       if (command) {
         if (!event.ctrlKey
@@ -3668,10 +4282,22 @@ export function SaleScreen({
           disabled: !paymentHydrated || paymentLocked,
           onSelect: () => executeSaleCommand("convert-ticket"),
         },
+        {
+          type: "action", id: "import-previous-ticket", label: t("sale.shortcut.importPreviousTicket"),
+          disabled: saleCommandDisabled("import-previous-ticket"),
+          disabledReason: catalogLoading || catalogError
+            ? t("sale.importPreviousTicket.error.catalogUnavailable")
+            : paymentLocked
+              ? t("sale.importPreviousTicket.error.paymentLocked")
+              : previousTicketImportBusy
+                ? t("sale.importPreviousTicket.loading")
+                : undefined,
+          onSelect: () => executeSaleCommand("import-previous-ticket"),
+        },
         { type: "separator", id: "invoice-ticket-separator" },
         {
           type: "action", id: "ticket-return", label: commandLabels.ticketReturn, shortcut: "F10",
-          disabled: !paymentHydrated || paymentLocked,
+          disabled: saleCommandDisabled("ticket-return"),
           onSelect: () => executeSaleCommand("ticket-return"),
         },
         {
@@ -3916,7 +4542,7 @@ export function SaleScreen({
                 </tr>
               </thead>
               <tbody>
-                {authoritativeLineBreakdown
+                {authoritativeLineBreakdown && !previousTicketImportBatch
                   ? (() => {
                       let productIndex = 0;
                       return authoritativeLineBreakdown.map((line) => {
@@ -3927,7 +4553,26 @@ export function SaleScreen({
                         return localLine ? renderCartRow(localLine, line) : null;
                       });
                     })()
-                  : lines.map((line) => renderCartRow(line))}
+                  : previousTicketImportBatch && authoritativeLineBreakdown
+                    ? (() => {
+                        const authoritativeProducts = authoritativeLineBreakdown.filter(
+                          (line) => !line.lineType || line.lineType === "PRODUCT",
+                        );
+                        if (previousTicketImportBatch.pricingMode === "CURRENT_REPRICING") {
+                          return lines.map((line, index) => renderCartRow(
+                            line,
+                            authoritativeProducts[index],
+                          ));
+                        }
+                        const imported = lines.filter((line) => line.previousTicketImportOrigin);
+                        const current = lines.filter((line) => !line.previousTicketImportOrigin);
+                        const currentAuthoritative = authoritativeProducts.slice(imported.length);
+                        return [
+                          ...imported.map((line) => renderCartRow(line)),
+                          ...current.map((line, index) => renderCartRow(line, currentAuthoritative[index])),
+                        ];
+                      })()
+                    : lines.map((line) => renderCartRow(line))}
                 <tr className="sale-cart-grid-filler" aria-hidden="true">
                   {visibleCartColumns.map((column) => (
                     <td data-column-key={column.key} key={column.key} />
@@ -3939,14 +4584,29 @@ export function SaleScreen({
           {paymentLocked && lines.length === 0 && (
             <p className="sale-ticket-recovery-guidance">{t("payment.split.reservedTicketGuidance")}</p>
           )}
-          <PromotionPreviewPanel locale={locale} preview={authoritativeQuote?.promotionPreview ?? null} />
+          <PromotionPreviewPanel
+            locale={locale}
+            preview={visiblePromotionPreview}
+            status={currentRepricingQuoteStatus}
+          />
         </section>
 
         <section className="sale-tools work-panel" aria-label={t("sale.main.searchAndPayment")}>
           <footer className="sale-total">
             <span>{t("sale.main.total")}</span>
-            <strong>{formatSaleAmount(displayedTotal)}</strong>
-            {authoritativeQuoteError && <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>}
+            <strong aria-busy={currentRepricingQuoteStatus?.kind === "LOADING" || undefined}>
+              {currentRepricingQuotePending ? "—" : formatSaleAmount(displayedTotal)}
+            </strong>
+            {currentRepricingQuoteStatus ? (
+              <small
+                className={currentRepricingQuoteStatus.kind === "ERROR" ? "sale-action-error" : undefined}
+                role={currentRepricingQuoteStatus.kind === "ERROR" ? "alert" : "status"}
+              >
+                {currentRepricingQuoteStatus.detail}
+              </small>
+            ) : authoritativeQuoteError ? (
+              <small className="sale-action-error" role="alert">{authoritativeQuoteError}</small>
+            ) : null}
           </footer>
           <label className="work-search">
             <span>{t("sale.main.searchProduct")}</span>
@@ -3956,7 +4616,7 @@ export function SaleScreen({
               aria-expanded={productSearchOpen}
               aria-haspopup="dialog"
               autoComplete="off"
-              disabled={catalogLoading || catalogError || paymentLocked}
+              disabled={catalogLoading || catalogError || paymentLocked || previousTicketImportBusy}
               placeholder={t("sale.main.searchPlaceholder")}
               role="combobox"
               value={query}
@@ -4038,15 +4698,16 @@ export function SaleScreen({
               labels={commandLabels}
               paymentLocked={paymentLocked}
               searchDisabled={catalogLoading || Boolean(catalogError) || paymentLocked}
-              quantityDisabled={!selectedLine || paymentLocked}
+              quantityDisabled={saleCommandDisabled("quantity")}
               temporaryNameDisabled={saleCommandDisabled("temporary-name")}
               temporaryPriceDisabled={saleCommandDisabled("temporary-price")}
               editProductDisabled={!selectedLine || paymentLocked || productEditBusy}
-              serialNumberDisabled={!selectedLine || paymentLocked}
-              ticketReturnDisabled={paymentLocked || !paymentHydrated}
+              serialNumberDisabled={saleCommandDisabled("serial-number")}
+              ticketReturnDisabled={saleCommandDisabled("ticket-return")}
               discountDisabled={
                 !selectedLine
                 || paymentLocked
+                || Boolean(selectedLine.previousTicketImportOrigin)
                 || !canApplyManualDiscount
                 || saleProductBlocksManualDiscount(selectedLine.product)
               }
@@ -4087,7 +4748,7 @@ export function SaleScreen({
               locale={locale}
               currentUsername={session.username}
               totalCents={Math.round(authoritativeTotal * 100)}
-              sale={cashSaleRequest()}
+              sale={cashSaleRequest(true)}
               token={session.accessToken}
               permissions={session.permissions}
               terminal={terminalContext}
@@ -4110,7 +4771,9 @@ export function SaleScreen({
               creditOverrideAuthorization={creditOverrideAuthorization}
               onCash={() => void openCashDialog()}
               onPending={openPendingSale}
-              onDiscount={setCheckoutDiscountCents}
+              onDiscount={currentEconomicLines.length > 0
+                ? setCheckoutDiscountCents
+                : undefined}
               onHydrationChange={setPaymentHydrated}
               onLockedChange={(locked, reservedTotalCents) => {
                 setPaymentLocked(locked);
@@ -4124,6 +4787,7 @@ export function SaleScreen({
                 deletionControl.reset("SALE_FINALIZED");
                 setVerifactuRefreshSignal((current) => current + 1);
                 setLines([]);
+                setPreviousTicketImportBatch(null);
                 setSelectedLineId(null);
                 setSelectedCustomer(null);
                 setQuery("");
@@ -4297,7 +4961,7 @@ export function SaleScreen({
           searchInputRef.current?.focus();
         }}
         onSuccess={(_result, retry) => {
-          setPendingDraft(null); setLines([]); setSelectedLineId(null);
+          setPendingDraft(null); setLines([]); setPreviousTicketImportBatch(null); setSelectedLineId(null);
           setPendingPrintRetry(() => retry ?? null);
           setSelectedCustomer(null); setQuery(""); setNextScanQuantity(1); setNextScanMode("UNIT");
           setSaleComment(""); setCommentInput(""); setSalePrintMode("DEFAULT");
@@ -4321,19 +4985,23 @@ export function SaleScreen({
           initialQuery={productSearchQuery}
           initialSelectedId={productSearchSelectedId}
           interfaceMode={interfaceMode}
+          locale={locale}
           labels={{
             title: t("sale.searchDialog.title"),
             query: t("sale.searchDialog.query"),
             image: t("sale.searchDialog.image"),
             code: t("sale.searchDialog.code"),
             barcode: t("sale.searchDialog.barcode"),
-            barcode2: t("sale.searchDialog.barcode2"),
             name: t("sale.searchDialog.name"),
+            stock: t("sale.searchDialog.stock"),
             price: t("sale.searchDialog.price"),
+            result: t("sale.searchDialog.result"),
+            results: t("sale.searchDialog.results"),
             empty: t("sale.searchDialog.empty"),
             close: t("common.close"),
             add: t("sale.searchDialog.add"),
             details: t("sale.searchDialog.details"),
+            navigate: t("sale.searchDialog.navigate"),
             selected: t("sale.searchDialog.selected"),
             unnamedProduct: t("sale.main.unnamedProduct"),
             missingCode: t("sale.main.missingCode"),
@@ -4343,14 +5011,8 @@ export function SaleScreen({
           onInspect={openProductInformation}
           onQueryChange={setProductSearchQuery}
           onSelectionChange={setProductSearchSelectedId}
-          onClose={() => {
-            setProductSearchOpen(false);
-            queueMicrotask(() => searchInputRef.current?.focus());
-          }}
-          onSelect={(product) => {
-            setProductSearchOpen(false);
-            requestAddProduct(product);
-          }}
+          onClose={closeProductSearch}
+          onSelect={selectProductFromSearch}
         />
       )}
 
@@ -4418,6 +5080,7 @@ export function SaleScreen({
 
       {pendingOpenPriceProduct && (
         <SaleOpenPriceDialog
+          key={`product-${pendingOpenPriceProduct.id}`}
           productName={pendingOpenPriceProduct.name ?? t("sale.main.unnamedProduct")}
           labels={{
             title: t("sale.openPrice.title"),
@@ -4865,6 +5528,7 @@ export function SaleScreen({
         <SaleTicketInvoiceDialog
           token={session.accessToken}
           locale={locale}
+          terminalContext={terminalContext}
           currentUsername={session.username}
           authorization={ticketInvoiceAuthorization ?? {
             mode: "DELEGATED",

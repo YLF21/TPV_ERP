@@ -22,16 +22,19 @@ public class InvoiceController {
     private final GenericSalesApiService genericSales;
     private final DocumentFiscalQrService fiscalQr;
     private final DocumentViewAssembler views;
+    private final CustomerReceivablePrintService printing;
 
     public InvoiceController(
             DocumentService service,
             GenericSalesApiService genericSales,
             DocumentFiscalQrService fiscalQr,
-            DocumentViewAssembler views) {
+            DocumentViewAssembler views,
+            CustomerReceivablePrintService printing) {
         this.service = service;
         this.genericSales = genericSales;
         this.fiscalQr = fiscalQr;
         this.views = views;
+        this.printing = printing;
     }
 
     @GetMapping
@@ -42,6 +45,13 @@ public class InvoiceController {
                         PermissionChecks.hasPurchaseDocumentRead(authentication)).stream()
                 .map(this::view)
                 .toList();
+    }
+
+    @GetMapping("/{id}/print-document")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','INVOICES_READ','VENTA')")
+    public CustomerReceivablePrintService.CommercialDocumentPrint printDocument(
+            @PathVariable UUID id) {
+        return printing.document(id);
     }
 
     @PostMapping

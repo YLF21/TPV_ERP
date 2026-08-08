@@ -1,4 +1,4 @@
-import { Component, lazy, StrictMode, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, lazy, StrictMode, Suspense, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { devTerminalContext } from "../../../packages/app-common/src/api/runtime";
 import { hasPermission } from "../../../packages/app-common/src/auth/auth";
@@ -174,12 +174,13 @@ type SalesUtilityProduct = InternalEanProduct & {
 
 let salesUtilityBootstrapPromise: Promise<SalesUtilityBootstrap | null> | null = null;
 
-function SalesUtilityWindowApp() {
+export function SalesUtilityWindowApp() {
   const [bootstrap, setBootstrap] = useState<SalesUtilityBootstrap | null | undefined>();
   const [products, setProducts] = useState<SalesUtilityProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [productReservation, setProductReservation] = useState<InternalEanReservation | null>(null);
+  const productLabelOutputRef = useRef<{ printed: true; pdf: boolean } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -214,7 +215,10 @@ function SalesUtilityWindowApp() {
   }
 
   function close() {
-    const action = window.tpvDesktop?.salesUtilities?.close();
+    const outputResult = productLabelOutputRef.current;
+    const action = outputResult
+      ? window.tpvDesktop?.salesUtilities?.complete(outputResult)
+      : window.tpvDesktop?.salesUtilities?.close();
     if (action) void action.catch(() => window.close());
     else window.close();
   }
@@ -236,7 +240,9 @@ function SalesUtilityWindowApp() {
       products={products}
       initialProductId={bootstrap.initialProductId}
       onClose={close}
-      onPrinted={(pdf) => finish({ printed: true, pdf })}
+      onPrinted={(pdf) => {
+        productLabelOutputRef.current = { printed: true, pdf };
+      }}
     />;
   }
 

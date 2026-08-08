@@ -35,7 +35,12 @@ import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
 import com.tpverp.backend.promotion.PromotionEngine;
 import com.tpverp.backend.promotion.PromotionRepository;
+import com.tpverp.backend.promotion.Promotion;
+import com.tpverp.backend.promotion.PromotionCustomerSegment;
+import com.tpverp.backend.promotion.PromotionScope;
 import com.tpverp.backend.promotion.PromotionStatus;
+import com.tpverp.backend.promotion.PromotionType;
+import com.tpverp.backend.promotion.PromotionalCouponBenefitType;
 import com.tpverp.backend.promotion.PromotionTargetRepository;
 import com.tpverp.backend.promotion.PromotionalCouponService;
 import com.tpverp.backend.promotion.AuthoritativePromotionPricing;
@@ -309,7 +314,8 @@ class DocumentServiceTest {
                 null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
         invoice.setParties(customer.getId(), null, null);
         when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
-        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
         when(currentOrganization.currentUser(any())).thenReturn(user);
 
         assertThatThrownBy(() -> service.confirm(invoice.getId(), authentication()))
@@ -1115,7 +1121,8 @@ class DocumentServiceTest {
                 .thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
-        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
                 store.getId(), "FV", "2026")).thenReturn(Optional.empty());
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -1166,7 +1173,8 @@ class DocumentServiceTest {
                 .thenReturn(Optional.of(ticket));
         when(relationRepository.existsByOrigen_IdAndTipo(
                 ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
-        when(customerRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
                 store.getId(), "FV", "2026")).thenReturn(Optional.empty());
         when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -1185,6 +1193,332 @@ class DocumentServiceTest {
     }
 
     @Test
+    void historicalReplayGeneratesCouponsOnlyForTheCurrentSegment() {
+        var promotion = org.mockito.Mockito.mock(Promotion.class);
+        var promotionId = UUID.randomUUID();
+        when(promotion.id()).thenReturn(promotionId);
+        when(promotion.type()).thenReturn(PromotionType.PURCHASE_THRESHOLD_COUPON);
+        when(promotion.scope()).thenReturn(PromotionScope.SALE);
+        when(promotion.customerSegment()).thenReturn(PromotionCustomerSegment.ALL);
+        when(promotion.startDate()).thenReturn(LocalDate.of(2026, 1, 1));
+        when(promotion.minimumAmount()).thenReturn(new BigDecimal("5.00"));
+        when(promotion.couponAmount()).thenReturn(new BigDecimal("2.00"));
+        when(promotion.couponValidDays()).thenReturn(30);
+        when(promotionRepository.findByEmpresaIdAndEstado(
+                store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        var combined = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        combined.addLine(new DocumentLine(
+                combined, UUID.randomUUID(), 1, BigDecimal.ONE, "H", "Historico",
+                null, new BigDecimal("100.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        combined.addLine(new DocumentLine(
+                combined, UUID.randomUUID(), 2, BigDecimal.ONE, "N", "Actual",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        var requestedCurrentLines = List.of(
+                DocumentLineCommand.from(combined.getLineas().get(1)));
+
+        var generated = service.historicalReplayGeneratedCoupons(
+                combined, 1, requestedCurrentLines);
+
+        assertThat(generated).singleElement().satisfies(coupon -> {
+            assertThat(coupon.promotionId()).isEqualTo(promotionId);
+            assertThat(coupon.benefitType())
+                    .isEqualTo(PromotionalCouponBenefitType.AMOUNT);
+            assertThat(coupon.amount()).isEqualByComparingTo("2.00");
+        });
+        assertThat(service.historicalReplayGeneratedCoupons(
+                combined, 2, List.of())).isEmpty();
+        verify(promotionalCoupons, never()).generateAfterTicketConfirmation(any());
+
+        combined.addLine(DocumentLine.frozenSpecial(
+                combined, 3, DocumentLineType.MANUAL_DISCOUNT,
+                "Descuento global de esta venta", new BigDecimal("-1.00"),
+                true, "IVA", new BigDecimal("21"), null, null, null,
+                new BigDecimal("-0.83"), new BigDecimal("-0.17"),
+                new BigDecimal("-1.00")));
+        assertThat(service.historicalReplayGeneratedCoupons(
+                combined, 1, requestedCurrentLines)).singleElement();
+    }
+
+    @Test
+    void historicalReplayCouponUsesTheCurrentAmountBeforeCheckoutDiscount() {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        var historicalCouponId = UUID.randomUUID();
+        var historicalPromotionId = UUID.randomUUID();
+        var currentCouponId = UUID.randomUUID();
+        var currentPromotionId = UUID.randomUUID();
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(stockGateway.confirm(any())).thenReturn(false);
+        when(documentRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(promotionalCoupons.redeemAuthorized(any())).thenAnswer(invocation -> {
+            PromotionalCouponService.AuthorizedRedemptionCommand command =
+                    invocation.getArgument(0);
+            return new PromotionalCouponService.RedemptionResult(
+                    command.documentId(), currentCouponId, currentPromotionId, "1234",
+                    new BigDecimal("10.00"), null, Optional.empty());
+        });
+        var historicalProductId = UUID.randomUUID();
+        var currentProductId = UUID.randomUUID();
+        var historicalProduct = new DocumentLineCommand(
+                historicalProductId, BigDecimal.ONE, "H", "Historico", "VENTA",
+                new BigDecimal("50.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.PRODUCT, null, null, null, List.of(), false, false,
+                null, null, null, null, null,
+                new BigDecimal("50.00"), BigDecimal.ZERO, new BigDecimal("50.00"));
+        var historicalCoupon = new DocumentLineCommand(
+                null, BigDecimal.ONE, "CUPON", "CUPON HISTORICO", null,
+                new BigDecimal("-5.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.PROMOTIONAL_COUPON, historicalPromotionId, null,
+                historicalCouponId, List.of(), false, false, null, null, null,
+                null, null, new BigDecimal("-5.00"), BigDecimal.ZERO,
+                new BigDecimal("-5.00"));
+        var currentProduct = new DocumentLineCommand(
+                currentProductId, BigDecimal.ONE, "N", "Actual", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.PRODUCT, null, null, null, List.of(), false, false,
+                null, null, null, null, null,
+                new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"));
+        var currentCoupon = new DocumentLineCommand(
+                null, BigDecimal.ONE, "CUPON", "CUPON ****1234", null,
+                new BigDecimal("-10.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.PROMOTIONAL_COUPON, currentPromotionId, null,
+                currentCouponId,
+                List.of(), false, false, null, null, null, null, null,
+                new BigDecimal("-10.00"), BigDecimal.ZERO, new BigDecimal("-10.00"));
+        var checkoutDiscount = new DocumentLineCommand(
+                null, BigDecimal.ONE, "DESCUENTO", "Descuento directo", null,
+                new BigDecimal("-5.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO,
+                DocumentLineType.MANUAL_DISCOUNT, null, null, null,
+                List.of(), false, false, null, null, null, null, null,
+                new BigDecimal("-5.00"), BigDecimal.ZERO, new BigDecimal("-5.00"));
+        var replay = new HistoricalTicketReplayMetadata(
+                UUID.randomUUID(), "T-ORIGEN", "fingerprint", 2,
+                new BigDecimal("45.00"), new BigDecimal("100.00"),
+                List.of(), List.of(), List.of());
+        var snapshot = new ApprovedCardTicketSnapshot(
+                store.getId(), UUID.randomUUID(), LocalDate.of(2026, 8, 7), null,
+                cash.getId(), BigDecimal.ZERO, new BigDecimal("130.00"),
+                BigDecimal.ZERO, new BigDecimal("130.00"),
+                List.of(historicalProduct, historicalCoupon, currentProduct,
+                        currentCoupon, checkoutDiscount),
+                null, replay);
+
+        var ticket = service.createApprovedCardTicketFromSnapshot(
+                snapshot,
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("130.00"), true,
+                        new BigDecimal("130.00"), BigDecimal.ZERO)),
+                authentication());
+
+        var redemption = org.mockito.ArgumentCaptor.forClass(
+                PromotionalCouponService.AuthorizedRedemptionCommand.class);
+        verify(promotionalCoupons).redeemAuthorized(redemption.capture());
+        assertThat(redemption.getValue().pendingDocumentAmount())
+                .isEqualByComparingTo("100.00");
+        assertThat(ticket.getTotal()).isEqualByComparingTo("130.00");
+        assertThat(ticket.getLineas().stream()
+                .filter(line -> line.getLineType() == DocumentLineType.PROMOTIONAL_COUPON)
+                .map(DocumentLine::getPromotionalCouponId))
+                .containsExactly(historicalCouponId, currentCouponId);
+    }
+
+    @Test
+    void historicalReplayMarksOnlyDirectPromotionsFromTheCurrentSegment() {
+        var historicalVersionId = UUID.randomUUID();
+        var currentVersionId = UUID.randomUUID();
+        var currentPromotion = org.mockito.Mockito.mock(Promotion.class);
+        when(promotionRepository.findById(currentVersionId))
+                .thenReturn(Optional.of(currentPromotion));
+        var combined = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        combined.addLine(DocumentLine.special(
+                combined, 1, "PROMOCION HISTORICA", new BigDecimal("-1.00"),
+                true, "IVA", new BigDecimal("21"), UUID.randomUUID(),
+                historicalVersionId, null));
+        combined.addLine(DocumentLine.special(
+                combined, 2, "PROMOCION ACTUAL", new BigDecimal("-2.00"),
+                true, "IVA", new BigDecimal("21"), UUID.randomUUID(),
+                currentVersionId, null));
+        var replay = new HistoricalTicketReplayMetadata(
+                UUID.randomUUID(), "T-1", "fingerprint", 1,
+                new BigDecimal("1.00"), BigDecimal.ZERO, List.of(), List.of());
+
+        service.markHistoricalReplayCurrentPromotions(combined, replay);
+
+        verify(promotionRepository, never()).findById(historicalVersionId);
+        verify(promotionRepository).findById(currentVersionId);
+        verify(currentPromotion).markUsed();
+    }
+
+    @Test
+    void historicalReplayUsesTheOriginalLoyaltyEligibilitySnapshot() {
+        var historicalProductId = UUID.randomUUID();
+        var currentProductId = UUID.randomUUID();
+        var currentProduct = org.mockito.Mockito.mock(Product.class);
+        when(currentProduct.getId()).thenReturn(currentProductId);
+        when(currentProduct.getDiscountType()).thenReturn(DiscountType.NONE);
+        doReturn(List.of(currentProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(
+                        org.mockito.ArgumentMatchers.eq(store.getId()),
+                        org.mockito.ArgumentMatchers.any());
+        var combined = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        combined.addLine(new DocumentLine(
+                combined, historicalProductId, 1, BigDecimal.ONE, "H", "Historico",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        combined.addLine(new DocumentLine(
+                combined, currentProductId, 2, BigDecimal.ONE, "N", "Actual",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        var replay = new HistoricalTicketReplayMetadata(
+                UUID.randomUUID(), "T-1", "fingerprint", 1,
+                new BigDecimal("10.00"), BigDecimal.ZERO, List.of(), List.of(),
+                List.of(new HistoricalTicketReplayMetadata.HistoricalLoyaltyLine(
+                        1, true, new BigDecimal("5.00"))));
+
+        var accrual = service.loyaltyAccrual(
+                combined, new BigDecimal("20.00"), replay);
+
+        assertThat(accrual.documentAmount()).isEqualByComparingTo("20.00");
+        assertThat(accrual.eligibleDocumentAmount()).isEqualByComparingTo("5.00");
+        assertThat(accrual.eligiblePaidAmount()).isEqualByComparingTo("5.00");
+        assertThat(accrual.lines().get(combined.getLineas().getFirst().getId()))
+                .satisfies(line -> {
+                    assertThat(line.eligible()).isTrue();
+                    assertThat(line.amount()).isEqualByComparingTo("5.00");
+                });
+        assertThat(accrual.lines().get(combined.getLineas().get(1).getId()))
+                .satisfies(line -> {
+                    assertThat(line.eligible()).isFalse();
+                    assertThat(line.amount()).isZero();
+                });
+    }
+
+    @Test
+    void historicalReplayClampsCurrentLoyaltyAgainstTheCurrentSegmentOnly() {
+        var historicalProductId = UUID.randomUUID();
+        var currentProductId = UUID.randomUUID();
+        var currentProduct = org.mockito.Mockito.mock(Product.class);
+        when(currentProduct.getId()).thenReturn(currentProductId);
+        when(currentProduct.getDiscountType()).thenReturn(DiscountType.NORMAL);
+        doReturn(List.of(currentProduct))
+                .when(productRepository).findAllByStoreIdAndIdIn(
+                        org.mockito.ArgumentMatchers.eq(store.getId()),
+                        org.mockito.ArgumentMatchers.any());
+        var combined = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        combined.addLine(new DocumentLine(
+                combined, historicalProductId, 1, BigDecimal.ONE, "H", "Historico",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        combined.addLine(new DocumentLine(
+                combined, currentProductId, 2, BigDecimal.ONE, "N", "Actual",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21")));
+        combined.addLine(DocumentLine.manualDiscount(
+                combined, 3, new BigDecimal("-9.00"),
+                true, "IVA", new BigDecimal("21")));
+        var replay = new HistoricalTicketReplayMetadata(
+                UUID.randomUUID(), "T-1", "fingerprint", 1,
+                new BigDecimal("10.00"), BigDecimal.ZERO, List.of(), List.of(),
+                List.of(new HistoricalTicketReplayMetadata.HistoricalLoyaltyLine(
+                        1, false, BigDecimal.ZERO)));
+
+        var accrual = service.loyaltyAccrual(
+                combined, new BigDecimal("11.00"), replay);
+
+        assertThat(accrual.documentAmount()).isEqualByComparingTo("11.00");
+        assertThat(accrual.eligibleDocumentAmount()).isEqualByComparingTo("1.00");
+        assertThat(accrual.eligiblePaidAmount()).isEqualByComparingTo("1.00");
+        assertThat(accrual.lines().get(combined.getLineas().getFirst().getId()).amount())
+                .isZero();
+        assertThat(accrual.lines().get(combined.getLineas().get(1).getId()).amount())
+                .isEqualByComparingTo("1.00");
+    }
+
+    @Test
+    void normalSaleClampsEligibleLineSnapshotsToTheInvoicedTotal() {
+        var productId = UUID.randomUUID();
+        var eligible = product(productId, DiscountType.NORMAL);
+        doReturn(List.of(eligible)).when(productRepository)
+                .findAllByStoreIdAndIdIn(
+                        org.mockito.ArgumentMatchers.eq(store.getId()), any());
+        var ticket = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        ticket.addLine(new DocumentLine(
+                ticket, productId, 1, BigDecimal.ONE, "P", "Producto socio",
+                "VENTA", new BigDecimal("100.00"), BigDecimal.ZERO,
+                true, "IVA", BigDecimal.ZERO));
+        ticket.addLine(DocumentLine.special(
+                ticket, 2, "CUPON", new BigDecimal("-10.00"),
+                true, "IVA", BigDecimal.ZERO, UUID.randomUUID(), null,
+                UUID.randomUUID(), DocumentLineType.PROMOTIONAL_COUPON));
+
+        var accrual = service.loyaltyAccrual(
+                ticket, new BigDecimal("90.00"), null);
+
+        assertThat(accrual.documentAmount()).isEqualByComparingTo("90.00");
+        assertThat(accrual.eligibleDocumentAmount()).isEqualByComparingTo("90.00");
+        assertThat(accrual.lines().get(ticket.getLineas().getFirst().getId()).amount())
+                .isEqualByComparingTo("90.00");
+    }
+
+    @Test
+    void finalSerialGuardRejectsSerialAlreadyUsedByAnotherStockOutput() {
+        var combined = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 7), user.getId(), BigDecimal.ZERO);
+        var line = new DocumentLine(
+                combined, UUID.randomUUID(), 1, BigDecimal.ONE, "S", "Serializado",
+                null, new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21"));
+        line.assignSerialNumbers(List.of("NEW-SERIAL"));
+        combined.addLine(line);
+        when(documentRepository.usedSerialNumbers(
+                store.getId(), List.of("NEW-SERIAL")))
+                .thenReturn(List.of("NEW-SERIAL"));
+
+        assertThatThrownBy(() -> new DocumentSerialNumberGuard(documentRepository)
+                .lockAndValidate(combined, true))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.document.serial_number_already_used");
+    }
+
+    @Test
+    void inactiveCustomerCannotBeUsedWhenConvertingTicketToInvoice() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
+        var customer = completeCustomer();
+        customer.deactivate();
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(relationRepository.existsByOrigen_IdAndTipo(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(customerRepository.findByIdAndCompanyId(
+                customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
+
+        assertThatThrownBy(() -> service.convertTicketToInvoice(
+                ticket.getId(), customer.getId(), null, null, authentication()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("message.document.customer_inactivo");
+
+        verify(documentRepository, never()).save(any());
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
     void ticketCannotBeConvertedTwice() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
@@ -1196,8 +1530,8 @@ class DocumentServiceTest {
 
         assertThatThrownBy(() -> service.convertTicketToInvoice(
                 ticket.getId(), customer.getId(), null, null, authentication()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("facturado");
+                .isInstanceOf(TicketAlreadyInvoicedException.class)
+                .hasMessage(TicketAlreadyInvoicedException.MESSAGE_KEY);
     }
 
     @Test

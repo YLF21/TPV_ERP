@@ -28,9 +28,14 @@ export type PromotionPreviewGeneratedCoupon = {
 type PromotionPreviewPanelProps = {
   locale: LocaleCode;
   preview?: PromotionPreview | null;
+  status?: {
+    label: string;
+    detail: string;
+    kind: "LOADING" | "ERROR";
+  } | null;
 };
 
-export function PromotionPreviewPanel({ locale, preview }: PromotionPreviewPanelProps) {
+export function PromotionPreviewPanel({ locale, preview, status }: PromotionPreviewPanelProps) {
   const t = createTranslator(locale);
   const appliedPromotions = preview?.appliedPromotions ?? [];
 
@@ -39,13 +44,20 @@ export function PromotionPreviewPanel({ locale, preview }: PromotionPreviewPanel
       <header className="promotion-preview-heading">
         <h3>{t("promotion.preview.title")}</h3>
         <span>
-          {appliedPromotions.length > 0
+          {status?.label ?? (appliedPromotions.length > 0
             ? t("promotion.preview.appliedCount").replace("{count}", String(appliedPromotions.length))
-            : t("promotion.preview.empty")}
+            : t("promotion.preview.empty"))}
         </span>
       </header>
 
-      {appliedPromotions.length > 0 ? (
+      {status ? (
+        <p
+          className={`promotion-preview-empty${status.kind === "ERROR" ? " sale-action-error" : ""}`}
+          role={status.kind === "ERROR" ? "alert" : "status"}
+        >
+          {status.detail}
+        </p>
+      ) : appliedPromotions.length > 0 ? (
         <div className="promotion-preview-list">
           {appliedPromotions.map((promotion, index) => (
             <article className="promotion-preview-row" key={promotion.id ?? `${promotion.name}-${index}`}>
@@ -58,7 +70,7 @@ export function PromotionPreviewPanel({ locale, preview }: PromotionPreviewPanel
         <p className="promotion-preview-empty">{t("promotion.preview.emptyDetail")}</p>
       )}
 
-      {(preview?.usedCoupon || preview?.generatedCoupon) && (
+      {!status && (preview?.usedCoupon || preview?.generatedCoupon) && (
         <div className="promotion-preview-coupons">
           {preview.usedCoupon && (
             <article>

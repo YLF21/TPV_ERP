@@ -91,6 +91,7 @@ class DocumentConfirmationRollbackPostgreSqlTest {
     @MockitoBean private com.tpverp.backend.inventory.StockSettingsService stockSettings;
     @MockitoBean private com.tpverp.backend.control.ControlAlertDetectionService controlAlerts;
     @MockitoBean private DocumentOperationalEventRecorder operationalEvents;
+    @MockitoBean private com.tpverp.backend.audit.AuditService audit;
     @MockitoBean private com.tpverp.backend.security.sales.SaleOperationSecurityService
             saleOperationSecurity;
 

@@ -43,6 +43,17 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void exposesInvoicePrintDocumentToSaleOperators() throws NoSuchMethodException {
+        var method = InvoiceController.class.getDeclaredMethod(
+                "printDocument", UUID.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/{id}/print-document");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("VENTA", "GESTION_VENTAS");
+    }
+
+    @Test
     void exposesTicketReturnPreviewWithoutDirectDatafonoPermission() throws NoSuchMethodException {
         var preview = TicketController.class.getDeclaredMethod(
                 "returnPreview", String.class);

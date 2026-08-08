@@ -58,19 +58,27 @@ public class SalePaymentSessionService {
          UUID id,
          PosCashController.SaleRequest sale,
          Authentication auth) {
-     var prepared = sales.prepareSale(sale, auth);
-     var command = prepared.command();
-     var quoted = sales.quotePreparedSale(prepared, sale, auth);
-     var requestHash = hash(sale, quoted.getTotal());
+     // Resolve an existing idempotency key before rebuilding the quote. A historical
+     // replay changes which ticket is "previous" after completion, but retrying the
+     // same session must still return its original immutable result.
      var existing = sessions.findState(id);
      if (existing.isPresent()) {
          var current = scoped(existing.orElseThrow(), auth);
-         if (!current.getRequestHash().equals(requestHash)) {
+         // The request hash is built from the signed document total. Refund
+         // sessions expose getTotal() as the positive amount still to settle,
+         // while their immutable quote used the negative document total.
+         var existingRequestHash = hash(sale, current.getDocumentTotal());
+         if (!current.getRequestHash().equals(existingRequestHash)) {
              throw new IllegalStateException(
                      "payment_session_idempotency_conflict");
          }
          return current;
      }
+     var prepared = sales.prepareSale(sale, auth);
+     var command = prepared.command();
+     var quoted = sales.quotePreparedSale(prepared, sale, auth);
+     sales.validateQuoteFingerprint(sale, quoted);
+     var requestHash = hash(sale, quoted.getTotal());
      var company = organization.currentCompany();
      var user = requireUser(auth);
      var terminal = currentTerminal.terminalId(auth);
@@ -89,8 +97,7 @@ public class SalePaymentSessionService {
                      .equals(method.getNombre()))
              .findFirst()
              .orElseThrow();
-     var snapshot = ApprovedCardTicketSnapshot.from(
-             quoted, placeholder.getId(), command.lineas());
+     var snapshot = sales.snapshot(quoted, placeholder.getId(), prepared);
      sales.authorizeSensitiveOperations(
              prepared,
              sale,
@@ -872,7 +879,7 @@ public class SalePaymentSessionService {
  }
  private static String normalize(String value){return value==null||value.isBlank()?null:value.trim();}
  private static UserAccount requireUser(Authentication a){if(a.getPrincipal() instanceof UserAccount u)return u;throw new IllegalStateException("user_required");}
- private static String hash(PosCashController.SaleRequest sale,BigDecimal total){var coupon=sale.promotionalCouponCode();var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();var hasOpenPrice=sale.lines().stream().anyMatch(line->line.openUnitPrice()!=null);var hasSerialNumbers=sale.lines().stream().anyMatch(line->line.serialNumbers()!=null&&!line.serialNumbers().isEmpty());var hasTemporaryNames=sale.lines().stream().anyMatch(line->line.temporaryName()!=null&&!line.temporaryName().isBlank());var canonical=new StringBuilder(hasTemporaryNames?"sale-payment-session-v7-temporary-name|":!internalComment.isEmpty()?"sale-payment-session-v6-internal-comment|":hasSerialNumbers?"sale-payment-session-v5-serials|":"sale-payment-session-v4-checkout-discount|").append(sale.customerId()).append('|');if(!internalComment.isEmpty())canonical.append(internalComment.length()).append(':').append(internalComment).append('|');canonical.append(coupon==null?"":coupon.trim()).append('|').append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|').append(Money.euros(total));sale.lines().forEach(line->{canonical.append('|').append(line.productId()).append(':').append(line.quantity().stripTrailingZeros().toPlainString()).append(':').append(line.discount().stripTrailingZeros().toPlainString()).append(':').append(hasOpenPrice?(line.openUnitPrice()==null?"-":Money.euros(line.openUnitPrice()).toPlainString()):"-");if(hasSerialNumbers)canonical.append(':').append(PosCashService.canonicalSerialNumbers(line.serialNumbers()));if(hasTemporaryNames)canonical.append(':').append(PosCashService.canonicalText(line.temporaryName()));});return hashText(canonical.toString());}
+ static String hash(PosCashController.SaleRequest sale,BigDecimal total){var coupon=sale.promotionalCouponCode();var internalComment=sale.internalComment()==null?"":sale.internalComment().trim();var hasOpenPrice=sale.lines().stream().anyMatch(line->line.openUnitPrice()!=null);var hasSerialNumbers=sale.lines().stream().anyMatch(line->line.serialNumbers()!=null&&!line.serialNumbers().isEmpty());var hasTemporaryNames=sale.lines().stream().anyMatch(line->line.temporaryName()!=null&&!line.temporaryName().isBlank());var canonical=new StringBuilder(sale.previousTicketImport()!=null?"sale-payment-session-v8-previous-ticket-import|":hasTemporaryNames?"sale-payment-session-v7-temporary-name|":!internalComment.isEmpty()?"sale-payment-session-v6-internal-comment|":hasSerialNumbers?"sale-payment-session-v5-serials|":"sale-payment-session-v4-checkout-discount|").append(sale.customerId()).append('|').append(PosCashService.canonicalPreviousTicketImport(sale.previousTicketImport())).append('|');if(!internalComment.isEmpty())canonical.append(internalComment.length()).append(':').append(internalComment).append('|');canonical.append(coupon==null?"":coupon.trim()).append('|').append(sale.checkoutDiscountAmount()==null?"0.00":Money.euros(sale.checkoutDiscountAmount())).append('|').append(sale.quoteFingerprint()==null?"":sale.quoteFingerprint().trim()).append('|').append(Money.euros(total));sale.lines().forEach(line->{canonical.append('|').append(line.productId()).append(':').append(line.quantity().stripTrailingZeros().toPlainString()).append(':').append(line.discount().stripTrailingZeros().toPlainString()).append(':').append(hasOpenPrice?(line.openUnitPrice()==null?"-":Money.euros(line.openUnitPrice()).toPlainString()):"-");if(hasSerialNumbers)canonical.append(':').append(PosCashService.canonicalSerialNumbers(line.serialNumbers()));if(hasTemporaryNames)canonical.append(':').append(PosCashService.canonicalText(line.temporaryName()));});return hashText(canonical.toString());}
  private static String hashText(String value){try{var md=MessageDigest.getInstance("SHA-256");return java.util.HexFormat.of().formatHex(md.digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
  public record IssuedVoucher(
          String code,

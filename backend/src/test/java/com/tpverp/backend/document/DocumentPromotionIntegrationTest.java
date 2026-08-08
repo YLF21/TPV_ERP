@@ -173,7 +173,12 @@ class DocumentPromotionIntegrationTest {
                     java.util.Collection<UUID> ids = invocation.getArgument(1);
                     return ids.stream().map(id -> product(id, UUID.randomUUID(), null)).toList();
                 });
-        service = new DocumentService(
+        service = serviceWithPricing(promotionPricing);
+    }
+
+    private DocumentService serviceWithPricing(
+            AuthoritativePromotionPricing authoritativePricing) {
+        return new DocumentService(
                 documentRepository,
                 counterRepository,
                 paymentMethodRepository,
@@ -198,7 +203,7 @@ class DocumentPromotionIntegrationTest {
                 promotionTargetRepository,
                 new PromotionEngine(),
                 promotionalCoupons,
-                promotionPricing,
+                authoritativePricing,
                 promotionCatalog,
                 stockSettings,
                 controlAlerts,
@@ -242,6 +247,91 @@ class DocumentPromotionIntegrationTest {
         assertThat(ticket.getPagos()).singleElement()
                 .satisfies(payment -> assertThat(payment.getImporte()).isEqualByComparingTo("2.00"));
         verify(stockGateway).confirm(ticket);
+    }
+
+    @Test
+    void historicalOpenPriceIsPreservedWhenCurrentCatalogPriceIsPositive() {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        when(product.getSalePrice()).thenReturn(new BigDecimal("12.00"));
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(productRepository.findAllByStoreIdAndIdIn(store.getId(), List.of(productId)))
+                .thenReturn(List.of(product));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var historicalOpenLine = new DocumentLineCommand(
+                productId, BigDecimal.ONE, "P-1", "Producto",
+                DocumentLineCommand.historicalOpenPriceRate(),
+                new BigDecimal("7.00"), BigDecimal.ZERO, true, "IVA",
+                new BigDecimal("21.00"), DocumentLineType.PRODUCT,
+                null, null, null, List.of(), false, false);
+
+        var ticket = serviceWithPricing(new AuthoritativePromotionPricing(
+                customerRepository, memberRepository)).createTicket(
+                command(CommercialDocumentType.TICKET, List.of(historicalOpenLine)),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("7.00"), true, null, null)),
+                authentication());
+
+        assertThat(ticket.getTotal()).isEqualByComparingTo("7.00");
+        assertThat(ticket.getLineas()).singleElement().satisfies(line -> {
+            assertThat(line.getPrecioUnitario()).isEqualByComparingTo("7.00");
+            assertThat(line.getTarifa()).isEqualTo("OPEN_PRICE");
+        });
+    }
+
+    @Test
+    void currentRepricingCombinesImportedAndNewQuantitiesBeforePromotionAndNewCoupon() {
+        var productId = UUID.randomUUID();
+        var product = product(productId, UUID.randomUUID(), null);
+        var promotion = buyXPayY("3x2 combinado", 3, 2);
+        var couponId = UUID.randomUUID();
+        var couponPromotionId = UUID.randomUUID();
+        org.mockito.Mockito.doReturn(Map.of(productId, productSnapshot(product)))
+                .when(promotionCatalog).products(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(
+                store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id())))
+                .thenReturn(List.of(new PromotionTarget(
+                        promotion.id(), PromotionTargetType.PRODUCT, productId)));
+        when(promotionalCoupons.evaluate(any())).thenReturn(
+                new PromotionalCouponService.EvaluationResult(
+                        couponId, couponPromotionId, "7788",
+                        new BigDecimal("0.50"), null));
+
+        var quote = service.quoteTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(productId, "2", "1.00"),
+                        line(productId, "1", "1.00"))),
+                "CUPON-NUEVO-7788",
+                authentication());
+
+        assertThat(quote.getTotal()).isEqualByComparingTo("1.50");
+        assertThat(quote.getLineas()).extracting(DocumentLine::getLineType)
+                .containsExactly(
+                        DocumentLineType.PRODUCT,
+                        DocumentLineType.PRODUCT,
+                        DocumentLineType.PROMOTION,
+                        DocumentLineType.PROMOTIONAL_COUPON,
+                        DocumentLineType.PROMOTIONAL_COUPON);
+        assertThat(quote.getLineas().get(2).getTotal()).isEqualByComparingTo("-1.00");
+        assertThat(quote.getLineas().subList(3, 5))
+                .allSatisfy(line -> assertThat(line.getPromotionalCouponId())
+                        .isEqualTo(couponId));
+        assertThat(quote.getLineas().subList(3, 5).stream()
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add))
+                .isEqualByComparingTo("-0.50");
+        var couponEvaluation = ArgumentCaptor.forClass(
+                PromotionalCouponService.RedemptionCommand.class);
+        verify(promotionalCoupons).evaluate(couponEvaluation.capture());
+        assertThat(couponEvaluation.getValue().pendingDocumentAmount())
+                .isEqualByComparingTo("2.00");
     }
 
     @Test

@@ -10,8 +10,8 @@ import {
 } from "./SaleProductSearchDialog";
 
 const products: SaleProductSearchOption[] = [
-  { id: "coffee", imageId: "image-coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Café molido", salePrice: 10 },
-  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", salePrice: 2.5 },
+  { id: "coffee", imageId: "image-coffee", code: "CAF-001", barcode: "8410000000011", barcode2: "ALT-CAFE", name: "Café molido", productType: "UNIT", salePrice: 10, totalStock: "14.000" },
+  { id: "bread", code: "PAN-001", barcode: "8410000000028", name: "Pan integral", productType: "WEIGHT", salePrice: 2.5, totalStock: "2.750" },
 ];
 
 const labels = {
@@ -20,13 +20,16 @@ const labels = {
   image: "Imagen",
   code: "Código",
   barcode: "Código de barras",
-  barcode2: "Código de barras 2",
   name: "Nombre",
+  stock: "Stock",
   price: "Precio",
+  result: "resultado",
+  results: "resultados",
   empty: "No se encontraron productos",
   close: "Cerrar",
   add: "Añadir al ticket",
   details: "Ver información",
+  navigate: "Navegar",
   selected: "Producto seleccionado",
   unnamedProduct: "Producto sin nombre",
   missingCode: "Sin código",
@@ -46,6 +49,23 @@ describe("SaleProductSearchDialog", () => {
     expect(filterSaleProductSearch(products, "alt-cafe").map((product) => product.id)).toEqual(["coffee"]);
   });
 
+  it("sorts the visible stock while keeping the secondary barcode as a search-only value", () => {
+    render(
+      <SaleProductSearchDialog
+        initialQuery="00"
+        labels={labels}
+        products={products}
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: labels.stock }));
+
+    expect(screen.getAllByRole("option")[0]).toHaveAccessibleName(/Pan integral/);
+    expect(screen.queryByRole("button", { name: /Código de barras 2/i })).not.toBeInTheDocument();
+  });
+
   it("opens with the original query and selects a result from the keyboard", () => {
     const onSelect = vi.fn();
     render(
@@ -59,13 +79,22 @@ describe("SaleProductSearchDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: labels.title });
-    const input = within(dialog).getByRole("textbox", { name: labels.query });
+    const input = within(dialog).getByRole("combobox", { name: labels.query });
     const options = within(dialog).getAllByRole("option");
     expect(input).toHaveValue("00");
+    expect(input).toHaveAttribute("aria-controls", "sale-product-search-results");
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    expect(input).toHaveAttribute("aria-activedescendant", "sale-product-search-option-coffee");
     expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(within(dialog).getByRole("button", { name: labels.stock })).toBeInTheDocument();
+    expect(within(options[0]).getByText("14")).toBeInTheDocument();
+    expect(within(options[1]).getByText("2,75")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Código de barras 2")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("2 resultados");
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(input).toHaveAttribute("aria-activedescendant", "sale-product-search-option-bread");
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onSelect).toHaveBeenCalledWith(products[1]);
@@ -128,7 +157,17 @@ describe("SaleProductSearchDialog", () => {
       />,
     );
 
-    const input = screen.getByRole("textbox", { name: labels.query });
+    const input = screen.getByRole("combobox", { name: labels.query });
+    const option = screen.getByRole("option");
+    expect(option).toHaveAttribute("tabindex", "-1");
+    expect(option).toHaveAccessibleName(/Nombre: Café molido; Código: CAF-001/);
+    expect(screen.getByRole("status")).toHaveTextContent("1 resultado");
+    expect(screen.getByText(labels.navigate)).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: labels.code }), { key: "Enter" });
+    expect(onInspect).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onInspect).toHaveBeenCalledWith(products[0]);
     expect(onSelect).not.toHaveBeenCalled();
@@ -158,6 +197,7 @@ describe("SaleProductSearchDialog", () => {
     );
 
     const product = screen.getByRole("option");
+    expect(screen.queryByText(labels.navigate)).not.toBeInTheDocument();
     fireEvent.click(product);
     expect(product).toHaveAttribute("aria-selected", "true");
     expect(onInspect).not.toHaveBeenCalled();

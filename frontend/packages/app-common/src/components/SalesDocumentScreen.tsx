@@ -518,6 +518,7 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
       {searchOpen && (
         <SaleProductSearchDialog
           initialQuery={query}
+          locale={locale}
           products={products}
           token={session.accessToken}
           labels={{
@@ -526,13 +527,16 @@ export function SalesDocumentScreen({ locale, session, terminalContext }: Props)
             image: t("sale.searchDialog.image"),
             code: t("sale.searchDialog.code"),
             barcode: t("sale.searchDialog.barcode"),
-            barcode2: t("sale.searchDialog.barcode2"),
             name: t("sale.searchDialog.name"),
+            stock: t("sale.searchDialog.stock"),
             price: t("sale.searchDialog.price"),
+            result: t("sale.searchDialog.result"),
+            results: t("sale.searchDialog.results"),
             empty: t("sale.searchDialog.empty"),
             close: t("common.close"),
             add: t("sale.searchDialog.add"),
             details: t("sale.searchDialog.details"),
+            navigate: t("sale.searchDialog.navigate"),
             selected: t("sale.searchDialog.selected"),
             unnamedProduct: t("sale.main.unnamedProduct"),
             missingCode: t("sale.main.missingCode"),

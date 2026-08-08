@@ -183,6 +183,10 @@ public record DocumentRequest(
                     descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
                     resolvedType, promotionId, promotionVersionId, promotionalCouponId,
                     serialNumbers, temporaryNameOverride, temporaryPriceOverride);
+            if (command.historicalOpenPriceOverride()) {
+                throw new IllegalArgumentException(
+                        "La tarifa OPEN_PRICE solo puede generarla el backend");
+            }
             command.requireClientProductLine();
             return command;
         }

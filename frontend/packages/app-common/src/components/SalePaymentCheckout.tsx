@@ -39,6 +39,12 @@ import { SaleMutationAuthorizationDialog } from "./SaleMutationAuthorizationDial
 type Sale = {
   customerId: string | null;
   lines: Array<{ productId: string; quantity: number; discount: number; openUnitPrice?: number; temporaryName?: string; cartLineId?: string; temporaryPriceAuthorizationToken?: string }>;
+  previousTicketImport?: {
+    ticketId: string;
+    fingerprint: string;
+    serialNumbersBySourceLineId: Record<string, string[]>;
+  };
+  quoteFingerprint?: string;
   promotionalCouponCode?: string;
   checkoutDiscountAmount?: number;
 };

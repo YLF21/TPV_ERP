@@ -35,6 +35,7 @@ public class TicketController {
     private final TicketReturnService returns;
     private final TicketCancellationService cancellations;
     private final GenericSalesApiService genericSales;
+    private final PreviousTicketImportService previousTicketImports;
 
     public TicketController(
             DocumentService service,
@@ -42,13 +43,15 @@ public class TicketController {
             DocumentViewAssembler views,
             TicketReturnService returns,
             TicketCancellationService cancellations,
-            GenericSalesApiService genericSales) {
+            GenericSalesApiService genericSales,
+            PreviousTicketImportService previousTicketImports) {
         this.service = service;
         this.fiscalQr = fiscalQr;
         this.views = views;
         this.returns = returns;
         this.cancellations = cancellations;
         this.genericSales = genericSales;
+        this.previousTicketImports = previousTicketImports;
     }
 
     @GetMapping
@@ -169,6 +172,13 @@ public class TicketController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
     public DocumentView lastCurrentTerminal(Authentication authentication) {
         return view(cancellations.latestConvertibleTicket(authentication));
+    }
+
+    @GetMapping("/previous-current-terminal/import-preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('VENTA','TICKETS_CREATE')")
+    public PreviousTicketImportView previousCurrentTerminalImportPreview(
+            Authentication authentication) {
+        return previousTicketImports.preview(authentication);
     }
 
     @GetMapping("/by-number")

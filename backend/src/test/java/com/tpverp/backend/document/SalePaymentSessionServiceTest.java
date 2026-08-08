@@ -35,6 +35,33 @@ class SalePaymentSessionServiceTest {
   verify(fixture.sales,times(1)).authorizeSensitiveOperations(any(),eq(fixture.sale),any(),eq(fixture.auth),eq("PAYMENT_SESSION"),any());
  }
 
+ @Test void reserveRetriesAnExistingSessionBeforeRepricingItsHistoricalSource(){
+  var fixture=reservationFixture();var sessionId=UUID.randomUUID();
+  var first=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+  when(fixture.repo.findState(sessionId)).thenReturn(Optional.of(first));
+  when(fixture.sales.prepareSale(fixture.sale,fixture.auth))
+          .thenThrow(new IllegalStateException("previous_ticket_changed"));
+
+  var retried=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+
+  assertThat(retried).isSameAs(first);
+  verify(fixture.sales,times(1)).prepareSale(fixture.sale,fixture.auth);
+ }
+
+ @Test void reserveRetriesAnExistingRefundWithTheOriginalSignedRequestHash(){
+  var fixture=reservationFixture();var sessionId=UUID.randomUUID();
+  var refundTotal=new BigDecimal("-100.00");
+  var refund=SalePaymentSession.reserve(
+          sessionId,fixture.storeId,fixture.terminalId,fixture.userId,
+          SalePaymentSessionService.hash(fixture.sale,refundTotal),"{}",refundTotal);
+  when(fixture.repo.findState(sessionId)).thenReturn(Optional.of(refund));
+
+  var retried=fixture.service.reserve(sessionId,fixture.sale,fixture.auth);
+
+  assertThat(retried).isSameAs(refund);
+  verify(fixture.sales,never()).prepareSale(fixture.sale,fixture.auth);
+ }
+
  @Test void reserveDoesNotAttachAnActiveSessionFromADifferentSale(){
   var fixture=reservationFixture();
   fixture.service.reserve(UUID.randomUUID(),fixture.sale,fixture.auth);
@@ -53,10 +80,20 @@ class SalePaymentSessionServiceTest {
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var warehouseId=UUID.randomUUID();var productId=UUID.randomUUID();var company=mock(Company.class);var store=mock(Store.class);var user=mock(UserAccount.class);when(company.getId()).thenReturn(companyId);when(store.getId()).thenReturn(storeId);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(org.currentCompany()).thenReturn(company);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
   var sale=new PosCashController.SaleRequest(null,List.of(new PosCashController.LineRequest(productId,BigDecimal.ONE,BigDecimal.ZERO)));var command=mock(DocumentCommand.class);when(command.lineas()).thenReturn(List.of());when(sales.prepareSale(sale,auth)).thenReturn(new PosCashService.PreparedSale(command,Set.of()));var quote=mock(CommercialDocument.class);when(quote.getTiendaId()).thenReturn(storeId);when(quote.getAlmacenId()).thenReturn(warehouseId);when(quote.getFecha()).thenReturn(java.time.LocalDate.of(2026,8,4));when(quote.getDescuentoGlobal()).thenReturn(BigDecimal.ZERO);when(quote.getBaseTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getImpuestoTotal()).thenReturn(BigDecimal.ZERO);when(quote.getTotal()).thenReturn(new BigDecimal("100.00"));when(quote.getLineas()).thenReturn(List.of());when(sales.quotePreparedSale(any(),any(),eq(auth))).thenReturn(quote);
   var method=new PaymentMethod(companyId,"EFECTIVO",true);when(methods.findAllByEmpresaIdOrderByNombre(companyId)).thenReturn(List.of(method));when(snapshots.serialize(any())).thenReturn("{}");var active=new java.util.concurrent.atomic.AtomicReference<SalePaymentSession>();when(repo.findState(any())).thenReturn(Optional.empty());when(repo.findActive(storeId,terminalId,userId)).thenAnswer(invocation->Optional.ofNullable(active.get()));when(repo.save(any(SalePaymentSession.class))).thenAnswer(invocation->{var session=invocation.getArgument(0,SalePaymentSession.class);active.set(session);return session;});var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());
-  return new ReservationFixture(repo,sales,auth,sale,command,service);
+  return new ReservationFixture(
+          repo,sales,auth,sale,command,service,storeId,terminalId,userId);
  }
 
- private record ReservationFixture(SalePaymentSessionRepository repo,PosCashService sales,Authentication auth,PosCashController.SaleRequest sale,DocumentCommand command,SalePaymentSessionService service){}
+ private record ReservationFixture(
+         SalePaymentSessionRepository repo,
+         PosCashService sales,
+         Authentication auth,
+         PosCashController.SaleRequest sale,
+         DocumentCommand command,
+         SalePaymentSessionService service,
+         UUID storeId,
+         UUID terminalId,
+         UUID userId){}
 
  @Test void zeroAndNegativeTotalsKeepTheirDocumentDirectionWithoutNegativePaymentAllocations(){
   var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();

@@ -164,12 +164,6 @@ export function HardwareSettingsScreen({
     const message = t("hardware.status.printersDetected").replace("{count}", String(result.printers.length));
     setStatus(message);
     updateDiagnostic("printers", true, message);
-    if (!config.ticketPrinterName) {
-      const defaultPrinter = result.printers.find((printer) => printer.isDefault) ?? result.printers[0];
-      if (defaultPrinter) {
-        updateConfig({ ticketPrinterName: defaultPrinter.name });
-      }
-    }
   }
 
   async function refreshCustomerDisplays() {
