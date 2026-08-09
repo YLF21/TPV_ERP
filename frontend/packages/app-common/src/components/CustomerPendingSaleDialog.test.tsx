@@ -855,8 +855,13 @@ describe("CustomerPendingSaleDialog", () => {
   });
 
   it("keeps the mobile confirmation footer in DOM and focus order", () => {
-    const mobileCss = tpvCss.slice(tpvCss.lastIndexOf("@media (max-width: 640px)"));
-    expect(mobileCss).toMatch(/\.customer-pending-sale-dialog > \.pending-sale-footer\s*\{[^}]*flex-direction:\s*column;/s);
+    const footerRule = /\.customer-pending-sale-dialog > \.pending-sale-footer\s*\{[^}]*flex-direction:\s*column;/s.exec(tpvCss);
+    expect(footerRule).not.toBeNull();
+
+    const mobileMediaStart = tpvCss.lastIndexOf("@media (max-width: 640px)", footerRule!.index);
+    const nextMediaStart = tpvCss.indexOf("@media", mobileMediaStart + 1);
+    expect(mobileMediaStart).toBeGreaterThanOrEqual(0);
+    expect(nextMediaStart === -1 || footerRule!.index < nextMediaStart).toBe(true);
   });
 
   it("persists the exact draft and pending card operation before the terminal side effect", async () => {
