@@ -202,6 +202,8 @@ describe("SalesReportScreen", () => {
     expect(convertButton).toBeDisabled();
     expect(cancelButton).toBeDisabled();
     await waitFor(() => expect(container.querySelector("tbody tr")).not.toBeNull());
+    expect(container.querySelector('th[data-column-key="total"]')).toHaveClass("report-column-numeric");
+    expect(container.querySelector('td[data-column-key="total"]')).toHaveClass("report-column-numeric");
     fireEvent.click(container.querySelector("tbody tr")!);
     await waitFor(() => expect(convertButton).toBeEnabled());
     expect(cancelButton).toBeEnabled();
@@ -527,10 +529,11 @@ describe("SalesReportScreen", () => {
     const reports = buildDocumentReports(
       [{
         id: "ticket-1",
-        tipo: "TICKET",
-        numero: "T-1",
-        fecha: "2026-07-18",
-        total: "10.00",
+      tipo: "TICKET",
+      numero: "T-1",
+      fecha: "2026-07-18",
+      estado: "ANULADO",
+      total: "10.00",
         usuarioNombre: "CAJERO HISTORICO",
         terminalOrigenNombre: "CAJA 02",
         ocurridoEn: "2026-07-18T10:35:00Z"
@@ -546,7 +549,9 @@ describe("SalesReportScreen", () => {
 
     expect(reports["salesReport.tickets"]?.rows[0]).toEqual(expect.objectContaining({
       __documentId: "ticket-1",
+      __documentStatus: "ANULADO",
       ticket: "T-1",
+      status: "salesReport.status.ticketCancelled",
       user: "CAJERO HISTORICO",
       terminal: "CAJA 02",
       time: expect.stringMatching(/^\d{2}:\d{2}$/)
@@ -624,6 +629,85 @@ describe("SalesReportScreen", () => {
     expect(html).not.toContain("Aceite oliva");
   });
 
+  it.each([
+    "salesReport.deliveryNotes",
+    "salesReport.invoices",
+    "salesReport.warehouseOutputs",
+    "salesReport.inputInvoices",
+    "salesReport.inputDeliveryNotes",
+    "salesReport.inputWarehouse"
+  ])("uses the full-height shared table layout for %s", (reportKey) => {
+    const html = renderToStaticMarkup(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, permissions: ["ADMIN"] }}
+        terminalContext={terminalContext}
+        initialReport={reportKey}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('class="report-data"');
+    expect(html).toContain('class="report-table-region"');
+    expect(html).toContain('class="report-total-row"');
+    expect(html).toContain(`class="report-table" data-report-key="${reportKey}"`);
+    expect(html).toContain('style="width:100%;min-width:');
+    expect(html).toContain("Vistas");
+  });
+
+  it("loads the next report page automatically without a load-more button", async () => {
+    const today = new Date();
+    const todayIso = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/document-reports/invoices")) {
+        if (path.includes("cursor=invoice-page-2")) {
+          return Promise.resolve({
+            items: [{
+              id: "invoice-2",
+              tipo: "FACTURA_VENTA",
+              estado: "CONFIRMADO",
+              numero: "FV-AUTO-2",
+              fecha: todayIso,
+              total: "24.20"
+            }],
+            nextCursor: null,
+            hasMore: false
+          });
+        }
+        return Promise.resolve({ items: [], nextCursor: "invoice-page-2", hasMore: true });
+      }
+      if (path === "/tickets" || path === "/warehouses") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.invoices"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("FV-AUTO-2")).toBeVisible();
+    expect(request).toHaveBeenCalledWith(
+      expect.stringContaining("cursor=invoice-page-2"),
+      { token: "token" }
+    );
+    expect(screen.queryByRole("button", { name: "Cargar más" })).not.toBeInTheDocument();
+  });
+
   it("renders a selected report as embedded APP GESTION content without duplicate navigation", () => {
     const html = renderToStaticMarkup(
       <SalesReportScreen
@@ -657,7 +741,19 @@ describe("SalesReportScreen", () => {
           collectedCurrent: "70.00",
           newPending: "70.00",
           priorDebtCollected: "20.00",
-          cashInflow: "90.00"
+          cashInflow: "90.00",
+          days: [
+            {
+              date: "2026-07-15", invoiced: "40.00", ticketSales: "10.00",
+              collectedCurrent: "30.00", newPending: "10.00",
+              priorDebtCollected: "5.00", cashInflow: "35.00"
+            },
+            {
+              date: "2026-07-16", invoiced: "60.00", ticketSales: "30.00",
+              collectedCurrent: "40.00", newPending: "60.00",
+              priorDebtCollected: "15.00", cashInflow: "55.00"
+            }
+          ]
         });
       }
       if (path === "/tickets") {
@@ -681,15 +777,86 @@ describe("SalesReportScreen", () => {
     );
 
     await waitFor(() => expect(request).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/commercial-reports\/daily\?date=/),
+      expect.stringMatching(/^\/commercial-reports\/daily\?dateFrom=.*&dateTo=.*/),
       { token: "token" }
     ));
-    expect(screen.getByText("100.00€")).toBeVisible();
-    expect(screen.getByText("40.00€")).toBeVisible();
-    expect(screen.getAllByText("70.00€")).toHaveLength(2);
-    expect(screen.getByText("20.00€")).toBeVisible();
-    expect(screen.getByText("90.00€")).toBeVisible();
-    expect(screen.getByText("Ventas de tickets")).toBeVisible();
+    expect(screen.getByText("100.00 €")).toBeVisible();
+    expect(screen.getAllByText("40.00 €")).toHaveLength(3);
+    expect(screen.getAllByText("70.00 €")).toHaveLength(2);
+    expect(screen.getByText("20.00 €")).toBeVisible();
+    expect(screen.getByText("90.00 €")).toBeVisible();
+    expect(screen.getAllByText("Ventas de tickets").length).toBeGreaterThan(0);
+    expect(screen.getByText("Resumen diario")).toBeVisible();
+    expect(screen.getByText("15/7/2026")).toBeVisible();
+    expect(screen.getByText("16/7/2026")).toBeVisible();
+  });
+
+  it("does not repeat the daily breakdown when the selected period contains one day", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/commercial-reports/daily")) {
+        return Promise.resolve({
+          storeId: "store-1",
+          date: "2026-08-09",
+          invoiced: "20.00",
+          ticketSales: "10.00",
+          collectedCurrent: "25.00",
+          newPending: "5.00",
+          priorDebtCollected: "2.00",
+          cashInflow: "27.00",
+          days: [{
+            date: "2026-08-09",
+            invoiced: "20.00",
+            ticketSales: "10.00",
+            collectedCurrent: "25.00",
+            newPending: "5.00",
+            priorDebtCollected: "2.00",
+            cashInflow: "27.00"
+          }]
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Resumen del período")).toBeVisible());
+    expect(screen.queryByRole("region", { name: "Resumen diario" })).not.toBeInTheDocument();
+  });
+
+  it("applies two different dates to the daily sales report", async () => {
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path.startsWith("/commercial-reports/daily")) {
+        return Promise.resolve({
+          storeId: "store-1", date: "2026-07-01", invoiced: "0.00", ticketSales: "0.00",
+          collectedCurrent: "0.00", newPending: "0.00", priorDebtCollected: "0.00", cashInflow: "0.00"
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(<SalesReportScreen app="venta" locale="es" session={{ ...session, accessToken: "token" }} terminalContext={terminalContext} request={request} loadVisualizationPreferences={noSavedVisualizationPreferences} onBack={vi.fn()} onLocaleChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar" }));
+    const rangeInput = screen.getByPlaceholderText("01/07/2026-04/07/2026");
+    fireEvent.change(rangeInput, { target: { value: "01/07/2026-05/07/2026" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtro" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/commercial-reports/daily?dateFrom=2026-07-01&dateTo=2026-07-05",
+      { token: "token" }
+    ));
   });
 
   it("shows translated authoritative loading/error and retries without local totals", async () => {
@@ -713,7 +880,7 @@ describe("SalesReportScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("sin red");
     expect(screen.queryByText("Total facturado")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar informe diario" }));
-    expect((await screen.findAllByText("1.00€")).length).toBeGreaterThanOrEqual(2);
+    expect((await screen.findAllByText("1.00 €")).length).toBeGreaterThanOrEqual(2);
     expect(request.mock.calls.filter(([path]) => String(path).startsWith("/commercial-reports/daily"))).toHaveLength(2);
   });
 
@@ -813,7 +980,7 @@ describe("SalesReportScreen", () => {
     }
   });
 
-  it("does not select the first report row until the user interacts with it", async () => {
+  it("does not select the first warehouse row automatically and opens its lines on double click", async () => {
     const now = new Date();
     const today = [
       now.getFullYear(),
@@ -832,7 +999,14 @@ describe("SalesReportScreen", () => {
             date: today,
             warehouseId: "warehouse-1",
             origin: "PRUEBA",
-            lines: [{ quantity: 1, purchaseUnitPrice: 4.2, purchaseTotal: 4.2 }]
+            lines: [{
+              productId: "P-INPUT",
+              productCode: "CAF-001",
+              productName: "Café de prueba",
+              quantity: 1,
+              purchaseUnitPrice: 4.2,
+              purchaseTotal: 4.2
+            }]
           }],
           nextCursor: null,
           hasMore: false
@@ -865,6 +1039,319 @@ describe("SalesReportScreen", () => {
     expect(row).toHaveAttribute("aria-selected", "false");
     fireEvent.click(row!);
     expect(row).toHaveClass("selected");
+    fireEvent.doubleClick(row!);
+    expect(await screen.findByRole("heading", { name: "ENT-NO-SELECT" })).toBeVisible();
+    expect(screen.getByText("CAF-001")).toBeVisible();
+    expect(screen.getByText("Café de prueba")).toBeVisible();
+    expect(screen.queryByText("P-INPUT")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exportar Excel" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Imprimir copia" })).toBeVisible();
+    expect(request).not.toHaveBeenCalledWith(expect.stringMatching(/^\/documents\//), expect.anything());
+  });
+
+  it("shows readable product data and copy actions for warehouse outputs", async () => {
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/warehouses") {
+        return Promise.resolve([{ id: "warehouse-1", name: "GENERAL" }]);
+      }
+      if (path.startsWith("/warehouse-outputs")) {
+        return Promise.resolve({
+          items: [{
+            id: "output-1",
+            number: "SAL-READABLE",
+            date: today,
+            warehouseId: "warehouse-1",
+            destination: "CONSUMO INTERNO",
+            lines: [{
+              productId: "P-OUTPUT",
+              productCode: "AGUA-001",
+              productName: "Agua mineral",
+              quantity: 2,
+              saleUnitPrice: 5,
+              saleTotal: 10
+            }]
+          }],
+          nextCursor: null,
+          hasMore: false
+        });
+      }
+      if (path === "/tickets") return Promise.resolve([]);
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{
+          username: "warehouse",
+          displayName: "ALMACÉN",
+          permissions: ["GESTION_ALMACEN"],
+          accessToken: "token"
+        }}
+        terminalContext={terminalContext}
+        request={request}
+        initialReport="salesReport.warehouseOutputs"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    const row = (await screen.findByText("SAL-READABLE")).closest("tr");
+    fireEvent.doubleClick(row!);
+
+    expect(await screen.findByRole("heading", { name: "SAL-READABLE" })).toBeVisible();
+    expect(screen.getByText("AGUA-001")).toBeVisible();
+    expect(screen.getByText("Agua mineral")).toBeVisible();
+    expect(screen.queryByText("P-OUTPUT")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exportar Excel" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Imprimir copia" })).toBeVisible();
+  });
+
+  it("opens the document contents by double-clicking a delivery-note row", async () => {
+    const today = new Date();
+    const todayIso = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/tickets" || path === "/warehouses") return Promise.resolve([]);
+      if (path.startsWith("/document-reports/delivery-notes")) {
+        return Promise.resolve({
+          items: [{
+            id: "delivery-1",
+            tipo: "ALBARAN_VENTA",
+            estado: "CONFIRMADO",
+            numero: "AV-001",
+            fecha: todayIso,
+            clienteCodigo: "C-001",
+            total: "60.50"
+          }],
+          nextCursor: null,
+          hasMore: false
+        });
+      }
+      if (path === "/documents/delivery-1/detail") {
+        return Promise.resolve({
+          id: "delivery-1",
+          type: "ALBARAN_VENTA",
+          status: "CONFIRMADO",
+          number: "AV-001",
+          date: todayIso,
+          base: "50.00",
+          tax: "10.50",
+          discount: "0.00",
+          total: "60.50",
+          lines: [{
+            id: "line-1",
+            position: 1,
+            code: "P-001",
+            name: "Producto del albarán",
+            quantity: "2.000",
+            unitPrice: "25.00",
+            discount: "0.00",
+            taxRegime: "IVA",
+            taxPercentage: "21.00",
+            total: "60.50"
+          }]
+        });
+      }
+      if (path === "/documents/delivery-1/print-copy") {
+        return Promise.resolve({
+          documentType: "ALBARAN_VENTA",
+          documentNumber: "AV-001",
+          issueDate: todayIso,
+          lines: [{ name: "Producto del albarán", quantity: 2, unitPrice: 25, total: 60.5 }],
+          baseTotal: 50,
+          taxTotal: 10.5,
+          total: 60.5
+        });
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    const previewWindow = {
+      opener: window,
+      document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
+      setTimeout: vi.fn((callback: () => void) => callback()),
+      focus: vi.fn(),
+      print: vi.fn(),
+      close: vi.fn()
+    };
+    vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
+
+    const { container } = render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.deliveryNotes"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    const row = (await screen.findByText("AV-001")).closest("tr");
+    expect(container.querySelector('th[data-column-key="total"]')).toHaveClass("report-column-numeric");
+    expect(container.querySelector('td[data-column-key="total"]')).toHaveClass("report-column-numeric");
+    fireEvent.doubleClick(row!);
+
+    expect(await screen.findByRole("heading", { name: "AV-001" })).toBeVisible();
+    expect(await screen.findByText("Producto del albarán")).toBeVisible();
+    expect(request).toHaveBeenCalledWith("/documents/delivery-1/detail", { token: "token" });
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/documents/delivery-1/print-copy", { token: "token" }));
+    expect(previewWindow.document.write).toHaveBeenCalledWith(expect.stringContaining("AV-001"));
+    expect(previewWindow.print).toHaveBeenCalledOnce();
+
+    const saveFile = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, "tpvDesktop", {
+      configurable: true,
+      value: { reports: { saveFile } }
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Exportar Excel" }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/excel/documents/delivery-1/export"),
+      { headers: { Authorization: "Bearer token" } }
+    ));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledWith(expect.objectContaining({
+      defaultFileName: "AV-001.xlsx"
+    })));
+    fetchSpy.mockRestore();
+    Reflect.deleteProperty(window, "tpvDesktop");
+  });
+
+  it("opens the original ticket from an invoice converted from that ticket", async () => {
+    const today = new Date();
+    const todayIso = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0")
+    ].join("-");
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === "/tickets" || path === "/warehouses") return Promise.resolve([]);
+      if (path.startsWith("/document-reports/invoices")) {
+        return Promise.resolve({
+          items: [{
+            id: "invoice-1",
+            tipo: "FACTURA_VENTA",
+            estado: "PAGADO",
+            numero: "FV-001",
+            fecha: todayIso,
+            clienteCodigo: "C-001",
+            total: "60.50",
+            pendiente: "0.00"
+          }],
+          nextCursor: null,
+          hasMore: false
+        });
+      }
+      if (path === "/documents/invoice-1/detail") {
+        return Promise.resolve({
+          id: "invoice-1",
+          type: "FACTURA_VENTA",
+          status: "PAGADO",
+          number: "FV-001",
+          date: todayIso,
+          base: "50.00",
+          tax: "10.50",
+          discount: "0.00",
+          total: "60.50",
+          originTicket: { id: "ticket-1", number: "T-001" },
+          lines: []
+        });
+      }
+      if (path === "/documents/ticket-1/detail") {
+        return Promise.resolve({
+          id: "ticket-1",
+          type: "TICKET",
+          status: "PAGADO",
+          number: "T-001",
+          date: todayIso,
+          base: "50.00",
+          tax: "10.50",
+          discount: "0.00",
+          total: "60.50",
+          originTicket: null,
+          lines: [{
+            id: "ticket-line-1",
+            position: 1,
+            code: "P-001",
+            name: "Producto del ticket original",
+            quantity: "1.000",
+            unitPrice: "50.00",
+            discount: "0.00",
+            taxRegime: "IVA",
+            taxPercentage: "21.00",
+            total: "60.50"
+          }]
+        });
+      }
+      if (path === "/tickets/ticket-1/print") {
+        return Promise.resolve({
+          documentId: "ticket-1",
+          documentNumber: "T-001",
+          issuedAt: `${todayIso}T12:00:00Z`,
+          lines: [{ name: "Producto del ticket original", quantity: 1, price: 50, total: 60.5 }],
+          payments: [{ method: "EFECTIVO", amount: 60.5 }],
+          baseTotal: 50,
+          taxTotal: 10.5,
+          total: 60.5
+        });
+      }
+      return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+    });
+    const previewWindow = {
+      opener: window,
+      document: { open: vi.fn(), write: vi.fn(), close: vi.fn() },
+      setTimeout: vi.fn((callback: () => void) => callback()),
+      focus: vi.fn(),
+      print: vi.fn(),
+      close: vi.fn()
+    };
+    vi.spyOn(window, "open").mockReturnValue(previewWindow as unknown as Window);
+
+    render(
+      <SalesReportScreen
+        app="venta"
+        locale="es"
+        session={{ ...session, accessToken: "token" }}
+        terminalContext={terminalContext}
+        request={request}
+        loadVisualizationPreferences={noSavedVisualizationPreferences}
+        initialReport="salesReport.invoices"
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+      />
+    );
+
+    fireEvent.doubleClick((await screen.findByText("FV-001")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: "Ver ticket original" }));
+
+    expect(await screen.findByRole("heading", { name: "T-001" })).toBeVisible();
+    expect(await screen.findByText("Producto del ticket original")).toBeVisible();
+    expect(request).toHaveBeenCalledWith("/documents/ticket-1/detail", { token: "token" });
+    expect(screen.queryByRole("button", { name: "Ver ticket original" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir copia" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/tickets/ticket-1/print",
+      { token: "token" }
+    ));
+    expect(previewWindow.document.write).toHaveBeenCalledWith(expect.stringContaining("T-001"));
+    expect(previewWindow.print).toHaveBeenCalledOnce();
   });
 
   it("builds V67-compatible report table definitions with sensible defaults", () => {
@@ -875,10 +1362,10 @@ describe("SalesReportScreen", () => {
       rows: [],
       totals: {}
     })).toEqual([
-      { key: "date", defaultWidth: 112, defaultVisible: true },
-      { key: "customerName", defaultWidth: 200, defaultVisible: false },
-      { key: "unknown", defaultWidth: 144, defaultVisible: false },
-      { key: "total", defaultWidth: 112, defaultVisible: true }
+      { key: "date", defaultWidth: 112, minWidth: 120, defaultVisible: true },
+      { key: "customerName", defaultWidth: 200, minWidth: 176, defaultVisible: false },
+      { key: "unknown", defaultWidth: 144, minWidth: undefined, defaultVisible: false },
+      { key: "total", defaultWidth: 112, minWidth: 120, defaultVisible: true }
     ]);
   });
 

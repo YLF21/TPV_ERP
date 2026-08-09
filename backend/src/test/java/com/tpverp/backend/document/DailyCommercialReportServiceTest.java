@@ -88,6 +88,36 @@ class DailyCommercialReportServiceTest {
     }
 
     @Test
+    void aggregatesEveryDayInTheSelectedDateRange() {
+        var fixture = fixture();
+        var secondDate = REPORT_DATE.plusDays(1);
+        var firstTicket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "10.00");
+        var secondTicket = confirmed(CommercialDocumentType.TICKET, secondDate, "25.00");
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(firstTicket));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), secondDate))
+                .thenReturn(List.of(secondTicket));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of());
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(secondDate), end(secondDate)))
+                .thenReturn(List.of());
+
+        var report = fixture.service().report(REPORT_DATE, secondDate);
+
+        assertThat(report.date()).isEqualTo(REPORT_DATE);
+        assertThat(report.ticketSales()).isEqualByComparingTo("35.00");
+        assertThat(report.days()).hasSize(2);
+        assertThat(report.days().get(0).date()).isEqualTo(REPORT_DATE);
+        assertThat(report.days().get(0).ticketSales()).isEqualByComparingTo("10.00");
+        assertThat(report.days().get(1).date()).isEqualTo(secondDate);
+        assertThat(report.days().get(1).ticketSales()).isEqualByComparingTo("25.00");
+        verify(fixture.documents()).findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE);
+        verify(fixture.documents()).findAllByTiendaIdAndFecha(fixture.store().getId(), secondDate);
+    }
+
+    @Test
     void limitsDocumentsAndPaymentsToTheSelectedWarehouse() {
         var fixture = fixture();
         var selectedWarehouse = UUID.randomUUID();

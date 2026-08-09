@@ -1119,8 +1119,8 @@ class DocumentServiceTest {
         var customer = completeCustomer();
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
                 .thenReturn(Optional.of(ticket));
-        when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(Optional.empty());
         when(customerRepository.findByIdAndCompanyId(
                 customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
@@ -1171,8 +1171,8 @@ class DocumentServiceTest {
         var customer = completeCustomer();
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
                 .thenReturn(Optional.of(ticket));
-        when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(Optional.empty());
         when(customerRepository.findByIdAndCompanyId(
                 customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
@@ -1504,8 +1504,8 @@ class DocumentServiceTest {
         customer.deactivate();
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
                 .thenReturn(Optional.of(ticket));
-        when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(false);
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(Optional.empty());
         when(customerRepository.findByIdAndCompanyId(
                 customer.getId(), store.getEmpresa().getId())).thenReturn(Optional.of(customer));
 
@@ -1519,17 +1519,43 @@ class DocumentServiceTest {
     }
 
     @Test
-    void ticketCannotBeConvertedTwice() {
+    void repeatedTicketConversionReturnsTheExistingInvoiceForTheSameCustomer() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
         var customer = completeCustomer();
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.setParties(customer.getId(), null, null);
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
                 .thenReturn(Optional.of(ticket));
-        when(relationRepository.existsByOrigen_IdAndTipo(
-                ticket.getId(), DocumentRelationType.FACTURA_DE)).thenReturn(true);
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE))
+                .thenReturn(Optional.of(invoice.getId()));
+        when(documentRepository.findLockedDocument(invoice.getId(), store.getId()))
+                .thenReturn(Optional.of(invoice));
+
+        assertThat(service.convertTicketToInvoice(
+                ticket.getId(), customer.getId(), null, null, authentication()))
+                .isSameAs(invoice);
+        verify(fiscalIntegration, never()).registerInvoiceFromTicket(any(), any());
+        verify(relationRepository, never()).save(any());
+    }
+
+    @Test
+    void repeatedTicketConversionRejectsAnotherCustomer() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.setParties(UUID.randomUUID(), null, null);
+        when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(relationRepository.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE))
+                .thenReturn(Optional.of(invoice.getId()));
+        when(documentRepository.findLockedDocument(invoice.getId(), store.getId()))
+                .thenReturn(Optional.of(invoice));
 
         assertThatThrownBy(() -> service.convertTicketToInvoice(
-                ticket.getId(), customer.getId(), null, null, authentication()))
+                ticket.getId(), UUID.randomUUID(), null, null, authentication()))
                 .isInstanceOf(TicketAlreadyInvoicedException.class)
                 .hasMessage(TicketAlreadyInvoicedException.MESSAGE_KEY);
     }

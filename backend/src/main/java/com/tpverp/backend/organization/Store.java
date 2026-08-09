@@ -103,6 +103,10 @@ public class Store {
         return timezone;
     }
 
+    public String getMoneda() {
+        return moneda;
+    }
+
     public String getNombreEfectivo() {
         return nombre == null ? empresa.getRazonSocial() : nombre;
     }

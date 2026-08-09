@@ -59,7 +59,7 @@ class DocumentExcelExportControllerContractTest {
     }
 
     @Test
-    void salesManagementCanExportButPosSalesCannot() throws Exception {
+    void documentReadersAndPosSalesCanExport() throws Exception {
         var id = UUID.randomUUID();
         when(service.export(id)).thenReturn(new byte[] {1});
 
@@ -69,7 +69,11 @@ class DocumentExcelExportControllerContractTest {
 
         mvc.perform(get("/api/v1/excel/documents/{id}/export", id)
                         .with(user("seller").authorities(() -> "VENTA")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/excel/documents/{id}/export", id)
+                        .with(user("reader").authorities(() -> "INVOICES_READ")))
+                .andExpect(status().isOk());
     }
 
     @EnableMethodSecurity

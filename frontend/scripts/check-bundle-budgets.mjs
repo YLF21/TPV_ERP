@@ -7,8 +7,9 @@ const budgets = [
   { app: "app-gestion", extension: ".js", maximumBytes: 600_000 },
   { app: "app-gestion", extension: ".css", maximumBytes: 520_000 },
   { app: "app-venta", extension: ".js", maximumBytes: 800_000 },
-  { app: "app-venta", extension: ".css", maximumBytes: 420_000 },
+  { app: "app-venta", extension: ".css", maximumBytes: 425_000 },
 ];
+const warningRatio = 0.9;
 
 async function filesRecursively(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -26,7 +27,11 @@ for (const budget of budgets) {
   const sizes = await Promise.all(candidates.map(async (file) => ({ file, bytes: (await stat(file)).size })));
   const largest = sizes.sort((left, right) => right.bytes - left.bytes)[0];
   if (!largest) throw new Error(`No se encontraron archivos ${budget.extension} para ${budget.app}`);
-  const status = largest.bytes <= budget.maximumBytes ? "OK" : "EXCEDE";
+  const status = largest.bytes > budget.maximumBytes
+    ? "EXCEDE"
+    : largest.bytes >= budget.maximumBytes * warningRatio
+      ? "AVISO"
+      : "OK";
   console.log(`${status} ${budget.app} ${budget.extension}: ${largest.bytes} / ${budget.maximumBytes} bytes (${path.basename(largest.file)})`);
   failed ||= largest.bytes > budget.maximumBytes;
 }

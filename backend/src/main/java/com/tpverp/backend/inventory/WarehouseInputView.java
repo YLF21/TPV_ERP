@@ -1,7 +1,9 @@
 package com.tpverp.backend.inventory;
 
+import com.tpverp.backend.catalog.Product;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public record WarehouseInputView(
@@ -17,6 +19,10 @@ public record WarehouseInputView(
         List<WarehouseInputLineView> lines) {
 
     public static WarehouseInputView from(WarehouseInput input) {
+        return from(input, Map.of());
+    }
+
+    public static WarehouseInputView from(WarehouseInput input, Map<UUID, Product> products) {
         return new WarehouseInputView(
                 input.getId(),
                 input.getNumber(),
@@ -27,6 +33,8 @@ public record WarehouseInputView(
                 input.getOrigin(),
                 input.getConcept(),
                 input.getStatus(),
-                input.getLines().stream().map(WarehouseInputLineView::from).toList());
+                input.getLines().stream()
+                        .map(line -> WarehouseInputLineView.from(line, products.get(line.getProductId())))
+                        .toList());
     }
 }

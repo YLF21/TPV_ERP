@@ -18,12 +18,15 @@ import com.tpverp.backend.inventory.WarehouseInputService;
 import com.tpverp.backend.inventory.WarehouseInput;
 import com.tpverp.backend.inventory.WarehouseOutputService;
 import com.tpverp.backend.inventory.WarehouseOutput;
+import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.organization.Store;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -53,7 +56,7 @@ class SalesReportExcelExportServiceTest {
                 inputs,
                 outputs,
                 warehouses,
-                mock(CurrentOrganization.class),
+                currentOrganization(),
                 mock(DocumentAttributionResolver.class),
                 mock(AuditService.class));
         var authentication = new UsernamePasswordAuthenticationToken(
@@ -96,7 +99,9 @@ class SalesReportExcelExportServiceTest {
             byte[] result = service.export(request, authentication);
 
             try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
-                assertThat(workbook.getSheetAt(0).getRow(0).getLastCellNum()).isEqualTo((short) columns.size());
+                int headerRow = storeInformationReport(entry.getKey()) ? 8 : 0;
+                assertThat(workbook.getSheetAt(0).getRow(headerRow).getLastCellNum())
+                        .isEqualTo((short) columns.size());
             }
         }
     }
@@ -119,7 +124,7 @@ class SalesReportExcelExportServiceTest {
                 mock(WarehouseInputService.class),
                 mock(WarehouseOutputService.class),
                 mock(WarehouseRepository.class),
-                mock(CurrentOrganization.class),
+                currentOrganization(),
                 mock(DocumentAttributionResolver.class),
                 mock(AuditService.class));
         var authentication = new UsernamePasswordAuthenticationToken(
@@ -217,7 +222,7 @@ class SalesReportExcelExportServiceTest {
                 inputs,
                 outputs,
                 warehouses,
-                mock(CurrentOrganization.class),
+                currentOrganization(),
                 mock(DocumentAttributionResolver.class),
                 mock(AuditService.class));
         var authentication = new UsernamePasswordAuthenticationToken(
@@ -244,11 +249,41 @@ class SalesReportExcelExportServiceTest {
         byte[] result = service.export(request, authentication);
 
         try (var workbook = new XSSFWorkbook(new ByteArrayInputStream(result))) {
-            var row = workbook.getSheetAt(0).getRow(1);
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Empresa");
+            assertThat(sheet.getRow(0).getCell(1).getStringCellValue()).isEqualTo("EMPRESA PRUEBAS SL");
+            assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("Tienda");
+            assertThat(sheet.getRow(2).getCell(1).getStringCellValue()).isEqualTo("001");
+            assertThat(sheet.getRow(3).getCell(1).getStringCellValue()).isEqualTo("TIENDA PRUEBAS 001");
+            assertThat(sheet.getRow(4).getCell(1).getStringCellValue()).isEqualTo("EUR");
+            var row = sheet.getRow(9);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo(expectedWarehouse);
             assertThat(row.getCell(1).getNumericCellValue()).isEqualTo(expectedTotal);
             assertThat(row.getCell(1).getCellStyle().getDataFormatString()).contains("€");
         }
+    }
+
+    private CurrentOrganization currentOrganization() {
+        var company = mock(Company.class);
+        when(company.getRazonSocial()).thenReturn("EMPRESA PRUEBAS SL");
+        when(company.getTaxId()).thenReturn("B12345678");
+        var store = mock(Store.class);
+        when(store.getCodigoTienda()).thenReturn("001");
+        when(store.getNombreEfectivo()).thenReturn("TIENDA PRUEBAS 001");
+        when(store.getMoneda()).thenReturn("EUR");
+        when(store.getTimezone()).thenReturn("Europe/Madrid");
+        var organization = mock(CurrentOrganization.class);
+        when(organization.currentCompany()).thenReturn(company);
+        when(organization.currentStore()).thenReturn(store);
+        return organization;
+    }
+
+    private boolean storeInformationReport(String reportKey) {
+        return Set.of(
+                "salesReport.warehouseOutputs",
+                "salesReport.inputInvoices",
+                "salesReport.inputDeliveryNotes",
+                "salesReport.inputWarehouse").contains(reportKey);
     }
 
     private CommercialDocument ticket(LocalDate date) {

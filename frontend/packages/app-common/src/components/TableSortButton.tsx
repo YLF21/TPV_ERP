@@ -14,12 +14,16 @@ export function TableSortButton({
   className?: string;
   onSort: () => void;
 }) {
+  const sortIndicator = direction === "asc" ? "\u2191" : direction === "desc" ? "\u2193" : "\u2195";
+
   return (
     <button
       type="button"
-      className={`table-layout-sort-button ${className}`.trim()}
+      className={`table-layout-sort-button${direction ? " is-active" : ""} ${className}`.trim()}
       draggable={false}
+      data-sort-direction={direction ?? "none"}
       aria-label={label}
+      title={label}
       aria-pressed={Boolean(direction)}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -27,8 +31,8 @@ export function TableSortButton({
         onSort();
       }}
     >
-      <span>{children}</span>
-      <i aria-hidden="true">{direction === "asc" ? "▲" : direction === "desc" ? "▼" : "↕"}</i>
+      <span className="table-layout-sort-label">{children}</span>
+      <span className="table-layout-sort-indicator" aria-hidden="true">{sortIndicator}</span>
     </button>
   );
 }
