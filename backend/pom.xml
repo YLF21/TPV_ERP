@@ -29,7 +29,7 @@
 	<properties>
 		<java.version>25</java.version>
 		<springdoc.version>3.0.3</springdoc.version>
-		<jna.version>5.18.1</jna.version>
+		<jna.version>5.19.1</jna.version>
 	</properties>
 	<dependencies>
 		<dependency>
