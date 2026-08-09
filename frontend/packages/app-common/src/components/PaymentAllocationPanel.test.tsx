@@ -82,6 +82,58 @@ describe("PaymentAllocationPanel", () => {
     );
   });
 
+  it("only offers a voucher when the refund comes directly from a gift receipt", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, direction: "REFUND", allocations: [] }}
+      providers={["PAYCOMET"]}
+      manualCardEnabled
+      voucherOnlyRefund
+      vouchers={[]}
+      initialMethod="CASH"
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).queryByRole("button", { name: /Efectivo/ })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /Tarjeta/ })).toBeNull();
+    expect(within(container).getByRole("button", { name: /Vale/ })).toBeTruthy();
+    expect(within(container).getByText("Este ticket regalo solo puede devolverse mediante un vale.")).toBeTruthy();
+
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    await waitFor(() => expect(amountInput.value).toBe("12,00"));
+    fireEvent.keyDown(amountInput, { key: "Enter" });
+    expect(onAdd).toHaveBeenCalledWith(
+      { kind: "VOUCHER", amountCents: 1200 },
+      { finalizeWhenCovered: true },
+    );
+  });
+
+  it("shows that only the amount really paid can be returned as money after a gift exchange", () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{
+        ...session,
+        totalCents: 8200,
+        direction: "REFUND",
+        allocations: [],
+        refundPaymentAvailability: [
+          { paymentMethod: "EFECTIVO", kind: "CASH", originalAmountCents: 1000, refundedAmountCents: 0, reservedAmountCents: 0, availableAmountCents: 1000 },
+        ],
+      }}
+      providers={[]}
+      manualCardEnabled
+      vouchers={[]}
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+
+    expect(within(container).getByRole("button", { name: /Efectivo.*10,00/ })).toBeTruthy();
+    expect(within(container).getByRole("button", { name: /Vale.*82,00/ })).toBeTruthy();
+    expect(within(container).getByText(/La parte que no procede de un pago real solo puede devolverse mediante un vale/)).toBeTruthy();
+  });
+
   it("uses the original manual card route when an integrated provider is configured", () => {
     const onAdd = vi.fn();
     const { container } = render(<PaymentAllocationPanel
@@ -206,8 +258,13 @@ describe("PaymentAllocationPanel", () => {
     }, { finalizeWhenCovered: true });
   });
 
-  it("uses the voucher code without requiring an external document", async () => {
+  it("resolves the voucher and captures its amount without user input", async () => {
     const onAdd = vi.fn();
+    const onResolveVoucher = vi.fn().mockResolvedValue({
+      code: "V-100",
+      balance: "7.00",
+      status: "ACTIVE",
+    });
     const { container } = render(<PaymentAllocationPanel
       locale="es"
       session={{ ...session, allocations: [] }}
@@ -215,21 +272,73 @@ describe("PaymentAllocationPanel", () => {
       manualCardEnabled
       vouchers={[{ code: "V-100", balance: 30 }]}
       initialMethod="VOUCHER"
+      onResolveVoucher={onResolveVoucher}
       onAdd={onAdd}
       onQuery={vi.fn()}
     />);
     const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
     const voucherInput = container.querySelector<HTMLInputElement>("#checkout-voucher-code")!;
+    expect(voucherInput.getAttribute("list")).toBeNull();
+    expect(container.querySelector("#checkout-voucher-codes")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(voucherInput));
     fireEvent.keyDown(amountInput, { key: "Enter" });
     await waitFor(() => expect(document.activeElement).toBe(voucherInput));
     fireEvent.change(voucherInput, { target: { value: "V-100" } });
     fireEvent.keyDown(voucherInput, { key: "Enter" });
 
-    expect(onAdd).toHaveBeenCalledWith({
+    await waitFor(() => expect(onResolveVoucher).toHaveBeenCalledWith("V-100"));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith({
       kind: "VOUCHER",
-      amountCents: 1200,
+      amountCents: 700,
       voucherCode: "V-100",
-    }, { finalizeWhenCovered: true });
+    }, { finalizeWhenCovered: true }));
+    expect((amountInput as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("keeps the voucher code selected when the voucher is not active", async () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      initialMethod="VOUCHER"
+      onResolveVoucher={vi.fn().mockResolvedValue({
+        code: "V-USED",
+        balance: "0.00",
+        status: "CONSUMED",
+      })}
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+    const voucherInput = container.querySelector<HTMLInputElement>("#checkout-voucher-code")!;
+    fireEvent.change(voucherInput, { target: { value: "V-USED" } });
+    fireEvent.keyDown(voucherInput, { key: "Enter" });
+
+    expect((await within(container).findByRole("alert")).textContent).toContain("Este vale ya fue consumido");
+    expect(onAdd).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(voucherInput));
+  });
+
+  it("moves focus directly to the voucher code when F9 selects voucher", async () => {
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      vouchers={[{ code: "V-100", balance: 30 }]}
+      initialMethod="CASH"
+      onAdd={vi.fn()}
+      onQuery={vi.fn()}
+    />);
+    const amountInput = container.querySelector<HTMLInputElement>(".sale-checkout-entry > label input")!;
+    await waitFor(() => expect(document.activeElement).toBe(amountInput));
+
+    fireEvent.keyDown(amountInput, { key: "F9" });
+
+    const voucherInput = container.querySelector<HTMLInputElement>("#checkout-voucher-code")!;
+    await waitFor(() => expect(document.activeElement).toBe(voucherInput));
+    expect(voucherInput.getAttribute("list")).toBeNull();
   });
 
   it("does not offer company-disabled payment methods", () => {

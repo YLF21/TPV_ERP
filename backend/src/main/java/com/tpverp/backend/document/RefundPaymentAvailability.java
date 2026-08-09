@@ -26,6 +26,7 @@ public final class RefundPaymentAvailability {
         var groups = new LinkedHashMap<Key, MutableView>();
         var allocations = List.copyOf(activeAllocations == null ? List.of() : activeAllocations);
         for (var payment : ticket.getPagos().stream()
+                .filter(RefundPaymentAvailability::isMonetaryRefundSource)
                 .sorted(java.util.Comparator.comparingInt(DocumentPayment::getPosicion))
                 .toList()) {
             var kind = allocationKind(payment);
@@ -72,6 +73,16 @@ public final class RefundPaymentAvailability {
             case "VALE" -> SalePaymentAllocationKind.VOUCHER;
             default -> null;
         };
+    }
+
+    /**
+     * The exchange compensation is accounting provenance, not money actually
+     * paid by the customer. It can therefore only be returned as a new voucher.
+     */
+    static boolean isMonetaryRefundSource(DocumentPayment payment) {
+        var method = payment.getMetodoPago().getNombre();
+        return method == null || !PaymentMethodService.EXCHANGE_COMPENSATION_METHOD
+                .equalsIgnoreCase(method.trim());
     }
 
     private static boolean reservesBalance(SalePaymentAllocation allocation) {

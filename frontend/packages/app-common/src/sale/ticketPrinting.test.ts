@@ -7,7 +7,8 @@ import {
   outputConfirmedTicket,
   printPendingCommercialDocument,
   printConfirmedTicketAutomatically,
-  retryConfirmedTicketPrint
+  retryConfirmedTicketPrint,
+  ticketPrintRequest,
 } from "./ticketPrinting";
 import type { ConfirmedTicketPrintSnapshot } from "./ticketPrinting";
 import { createRequire } from "node:module";
@@ -60,7 +61,22 @@ describe("confirmed ticket printing", () => {
       total: 7,
       subtotal: 5.79,
       tax: 1.21,
+      labels: expect.objectContaining({ discount: "Descuento" }),
+      escposLabels: expect.objectContaining({ discount: "Descuento" }),
     }, expect.objectContaining({ documentPrintRoutes: expect.any(Array) }));
+  });
+
+  it("maps the aggregated F11 discount to one printable summary amount", () => {
+    expect(ticketPrintRequest({
+      ...snapshot,
+      checkoutDiscountTotal: "10.00",
+      total: "20.00",
+    }, terminal, "es")).toEqual(expect.objectContaining({
+      discount: 10,
+      total: 20,
+      labels: expect.objectContaining({ discount: "Descuento" }),
+      escposLabels: expect.objectContaining({ discount: "Descuento" }),
+    }));
   });
 
   it("prints confirmed tickets even when a legacy route disabled automatic printing", async () => {

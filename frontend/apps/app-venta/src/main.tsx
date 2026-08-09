@@ -22,6 +22,8 @@ import {
   type InternalEanProduct,
   type InternalEanReservation,
 } from "../../../packages/app-common/src/sale/internalEan";
+import type { ProductLabelIssuer } from "../../../packages/app-common/src/hardware/hardware";
+import type { ProductLabelCommercialContext } from "../../../packages/app-common/src/components/SaleProductLabelDialog";
 import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
@@ -178,6 +180,8 @@ let salesUtilityBootstrapPromise: Promise<SalesUtilityBootstrap | null> | null =
 export function SalesUtilityWindowApp() {
   const [bootstrap, setBootstrap] = useState<SalesUtilityBootstrap | null | undefined>();
   const [products, setProducts] = useState<SalesUtilityProduct[]>([]);
+  const [labelIssuer, setLabelIssuer] = useState<ProductLabelIssuer>();
+  const [labelIssuerError, setLabelIssuerError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [productReservation, setProductReservation] = useState<InternalEanReservation | null>(null);
@@ -196,10 +200,22 @@ export function SalesUtilityWindowApp() {
           setLoading(false);
           return;
         }
-        return apiRequest<SalesUtilityProduct[]>("/products/sale", {
+        const catalogRequest = apiRequest<SalesUtilityProduct[]>("/products/sale", {
           token: value.session.accessToken,
-        }).then((catalog) => {
-          if (active) setProducts(catalog);
+        });
+        const issuerRequest = value.kind === "PRODUCT_LABEL"
+          ? apiRequest<ProductLabelIssuer>("/organization/current/print-identity", {
+              token: value.session.accessToken,
+            }).then((issuer) => ({ issuer, error: "" })).catch((failure) => ({
+              issuer: undefined,
+              error: failure instanceof Error ? failure.message : "No se pudieron cargar los datos de empresa",
+            }))
+          : Promise.resolve({ issuer: undefined, error: "" });
+        return Promise.all([catalogRequest, issuerRequest]).then(([catalog, identity]) => {
+          if (!active) return;
+          setProducts(catalog);
+          setLabelIssuer(identity.issuer);
+          setLabelIssuerError(identity.error);
         }).catch((failure) => {
           if (active) setError(failure instanceof Error ? failure.message : "No se pudo cargar el catálogo");
         }).finally(() => {
@@ -238,7 +254,17 @@ export function SalesUtilityWindowApp() {
       open
       locale={bootstrap.locale}
       storeName={bootstrap.terminalContext.storeName}
+      issuer={labelIssuer}
+      issuerError={labelIssuerError}
       products={products}
+      loadCommercialContexts={(productIds) => apiRequest<ProductLabelCommercialContext[]>(
+        "/products/sale/label-commercial-context",
+        {
+          method: "POST",
+          token: bootstrap.session.accessToken,
+          body: { productIds },
+        },
+      )}
       initialProductId={bootstrap.initialProductId}
       onClose={close}
       onPrinted={(pdf) => {

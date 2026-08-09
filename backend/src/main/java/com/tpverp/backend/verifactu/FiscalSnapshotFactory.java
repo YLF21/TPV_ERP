@@ -6,6 +6,7 @@ import com.tpverp.backend.document.DocumentPayment;
 import com.tpverp.backend.organization.SpanishTaxId;
 import com.tpverp.backend.party.Customer;
 import com.tpverp.backend.party.FiscalAddress;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,6 +14,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class FiscalSnapshotFactory {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     // Congela todos los datos fiscales persistidos con un orden estable para su huella.
     public Map<String, Object> create(
@@ -34,6 +37,10 @@ public class FiscalSnapshotFactory {
         snapshot.put("nifEmisor", SpanishTaxId.validate(issuerTaxId));
         snapshot.put("operacionFiscal", operation.name());
         snapshot.put("tipoFiscal", fiscalType.name());
+        var invoiceFiscalProfile = invoiceFiscalProfile(document);
+        if (invoiceFiscalProfile != null) {
+            snapshot.put("perfilFiscalFactura", invoiceFiscalProfile);
+        }
         snapshot.put("proveedorId", id(document.getProveedorId()));
         snapshot.put("moneda", document.getMoneda());
         snapshot.put("descuentoGlobal", document.getDescuentoGlobal());
@@ -110,6 +117,17 @@ public class FiscalSnapshotFactory {
         value.put("cambio", payment.getCambio());
         value.put("codigoVale", payment.getVoucherCode());
         return value;
+    }
+
+    private static String invoiceFiscalProfile(CommercialDocument document) {
+        String value = document.getInvoicePrintSnapshot();
+        if (value == null || value.isBlank()) return null;
+        try {
+            String profile = JSON.readTree(value).path("fiscalProfile").asText(null);
+            return profile == null || profile.isBlank() ? null : profile;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("invoice_print_snapshot_invalid", error);
+        }
     }
 
     private static String id(Object value) {

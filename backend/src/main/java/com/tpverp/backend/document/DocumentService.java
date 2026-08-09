@@ -126,6 +126,7 @@ public class DocumentService {
     private final DocumentSerialNumberGuard serialNumberGuard;
     private final Clock clock;
     private AuditService audit;
+    private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
 
     public DocumentService(
             CommercialDocumentRepository documents,
@@ -200,6 +201,11 @@ public class DocumentService {
         this.audit = audit;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setInvoicePrintSnapshots(InvoicePresentationSnapshotFactory invoicePrintSnapshots) {
+        this.invoicePrintSnapshots = invoicePrintSnapshots;
+    }
+
     @Transactional
     public CommercialDocument createDeliveryNote(
             DocumentCommand command, Authentication authentication) {
@@ -266,6 +272,7 @@ public class DocumentService {
         serialNumberGuard.lockAndValidate(document, appliesStock);
         document.confirm(nextNumber(document),
                 organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        captureInvoicePrintSnapshot(document);
         documents.saveAndFlush(document);
         document.setStockOrigin(appliesStock && stockGateway.confirm(document));
         document.updatePaymentStatus();
@@ -376,6 +383,7 @@ public class DocumentService {
         }
         serialNumberGuard.lockAndValidate(document, requiresStock);
         document.confirm(nextNumber(document), userId, confirmedAt, false);
+        captureInvoicePrintSnapshot(document);
         document.setStockOrigin(requiresStock && stockGateway.confirm(document));
         if (recordsPurchase) {
             recordPurchase(document, confirmedAt);
@@ -1459,7 +1467,7 @@ public class DocumentService {
                 .max()
                 .orElse(0) + 1;
         for (var benefit : preview.appliedPromotions()) {
-            document.addLine(DocumentLine.special(
+            var promotionLine = DocumentLine.special(
                     document,
                     position++,
                     "PROMOCION " + benefit.name(),
@@ -1469,7 +1477,9 @@ public class DocumentService {
                     benefit.taxPercent(),
                     benefit.promotionId(),
                     benefit.promotionVersionId(),
-                    null));
+                    null);
+            promotionLine.assignPromotionAffectedPositions(benefit.affectedPositions());
+            document.addLine(promotionLine);
             active.stream()
                     .filter(promotion -> promotion.id().equals(benefit.promotionVersionId()))
                     .findFirst()
@@ -2163,6 +2173,7 @@ public class DocumentService {
                 authentication);
         invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
+        captureInvoicePrintSnapshot(invoice);
         var saved = documents.save(invoice);
         recordCreated(saved);
         recordConfirmed(saved, terminalId);
@@ -2180,6 +2191,15 @@ public class DocumentService {
         fiscalIntegration.registerInvoiceFromTicket(saved, ticket);
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
+    }
+
+    private void captureInvoicePrintSnapshot(CommercialDocument document) {
+        if (invoicePrintSnapshots != null
+                && (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                && document.getInvoicePrintSnapshot() == null) {
+            document.captureInvoicePrintSnapshot(invoicePrintSnapshots.create());
+        }
     }
 
     public record ManualCancellationReference(
@@ -3036,8 +3056,7 @@ public class DocumentService {
                         storeId,
                         CommercialDocumentType.TICKET,
                         ticketNumber.trim())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Ticket no encontrado"));
+                .orElseThrow(TicketNotFoundException::new);
         initializeDetailedCollections(ticket, storeId);
         return ticket;
     }

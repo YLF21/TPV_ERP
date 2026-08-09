@@ -73,6 +73,8 @@ public final class LicenseEnvelopeDecoder {
                     payload.maxWindows(),
                     payload.maxPda(),
                     requireTaxRegime(payload.impuestos()),
+                    payload.commercialProfile() == null
+                            ? CommercialProfile.MAYORISTA : payload.commercialProfile(),
                     required(envelope, "issuerKeyId"),
                     hash);
         } catch (LicenseValidationException exception) {

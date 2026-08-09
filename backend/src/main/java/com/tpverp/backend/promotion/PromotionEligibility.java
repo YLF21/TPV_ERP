@@ -1,7 +1,9 @@
 package com.tpverp.backend.promotion;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 final class PromotionEligibility {
 
@@ -37,9 +39,16 @@ final class PromotionEligibility {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private static boolean matches(
+    static boolean appliesOnDate(Promotion promotion, LocalDate date) {
+        return !date.isBefore(promotion.startDate())
+                && (promotion.endDate() == null || !date.isAfter(promotion.endDate()));
+    }
+
+    static boolean matchesProduct(
             Promotion promotion,
-            PromotionEvaluationLine line,
+            UUID productId,
+            UUID familyId,
+            UUID subfamilyId,
             List<PromotionTarget> targets) {
         var promotionTargets = targets.stream()
                 .filter(target -> target.promotionId().equals(promotion.id()))
@@ -48,10 +57,18 @@ final class PromotionEligibility {
             return promotion.scope() == PromotionScope.SALE;
         }
         return promotionTargets.stream().anyMatch(target ->
-                (target.type() == PromotionTargetType.PRODUCT && target.targetId().equals(line.productId()))
+                (target.type() == PromotionTargetType.PRODUCT && target.targetId().equals(productId))
                         || (target.type() == PromotionTargetType.FAMILY
-                        && target.targetId().equals(line.familyId()))
+                        && target.targetId().equals(familyId))
                         || (target.type() == PromotionTargetType.SUBFAMILY
-                        && target.targetId().equals(line.subfamilyId())));
+                        && target.targetId().equals(subfamilyId)));
+    }
+
+    private static boolean matches(
+            Promotion promotion,
+            PromotionEvaluationLine line,
+            List<PromotionTarget> targets) {
+        return matchesProduct(
+                promotion, line.productId(), line.familyId(), line.subfamilyId(), targets);
     }
 }

@@ -1,0 +1,132 @@
+{
+  "printContractVersion": 1,
+  "templateCode": "SALES_INVOICE_F1_A4",
+  "locale": "es-ES",
+  "currency": "EUR",
+  "fiscalProfile": "IGIC",
+  "document": {
+    "invoiceTypeCode": "F1",
+    "series": "FV-001-2026",
+    "number": "000123",
+    "displayNumber": "FV-001-2026-000123",
+    "issueDate": "2026-08-08",
+    "operationDate": "2026-08-08",
+    "issuedAt": "2026-08-08T12:34:56+01:00",
+    "copyLabel": "",
+    "operationDescription": "Venta de artículos"
+  },
+  "issuer": {
+    "legalName": "EMPRESA DEMO CANARIAS, S.L.",
+    "tradeName": "TIENDA DEMO",
+    "taxId": "B00000000",
+    "address": {
+      "line1": "Calle Ejemplo 10",
+      "postalCode": "35001",
+      "city": "Las Palmas de Gran Canaria",
+      "province": "Las Palmas",
+      "countryCode": "ES",
+      "countryName": "España"
+    },
+    "phone": "+34 900 000 000",
+    "email": "facturacion@example.invalid",
+    "logoDataUri": null
+  },
+  "customer": {
+    "legalName": "CLIENTE DEMO, S.L.",
+    "taxId": "B11111111",
+    "address": {
+      "line1": "Avenida de Prueba 25",
+      "postalCode": "38001",
+      "city": "Santa Cruz de Tenerife",
+      "province": "Santa Cruz de Tenerife",
+      "countryCode": "ES",
+      "countryName": "España"
+    },
+    "phone": "+34 922 000 000",
+    "customerCode": "CLI-000123"
+  },
+  "lines": [
+    {
+      "position": 1,
+      "code": "ART-0001",
+      "barcode": "4006381333931",
+      "articleName": "Artículo de demostración con IGIC general",
+      "quantity": 2.000,
+      "unit": "ud",
+      "unitPriceNet": 50.00,
+      "discountPercent": 0.00,
+      "discountAmount": 0.00,
+      "taxRegime": "IGIC",
+      "taxRate": 7.00,
+      "taxableBase": 100.00,
+      "taxAmount": 7.00,
+      "lineTotal": 107.00,
+      "priceIncludesTax": false
+    },
+    {
+      "position": 2,
+      "code": "ART-0002",
+      "barcode": "8435606744034",
+      "articleName": "Artículo de demostración con descuento e IGIC reducido",
+      "quantity": 1.000,
+      "unit": "ud",
+      "unitPriceNet": 40.00,
+      "discountPercent": 10.00,
+      "discountAmount": 4.00,
+      "taxRegime": "IGIC",
+      "taxRate": 3.00,
+      "taxableBase": 36.00,
+      "taxAmount": 1.08,
+      "lineTotal": 37.08,
+      "priceIncludesTax": false
+    }
+  ],
+  "taxBreakdown": [
+    {
+      "taxRegime": "IGIC",
+      "taxRate": 7.00,
+      "taxableBase": 100.00,
+      "taxAmount": 7.00,
+      "totalWithTax": 107.00
+    },
+    {
+      "taxRegime": "IGIC",
+      "taxRate": 3.00,
+      "taxableBase": 36.00,
+      "taxAmount": 1.08,
+      "totalWithTax": 37.08
+    }
+  ],
+  "totals": {
+    "grossAmount": 140.00,
+    "discountTotal": 4.00,
+    "taxableBase": 136.00,
+    "taxTotal": 8.08,
+    "grandTotal": 144.08,
+    "amountPaid": 0.00,
+    "amountDue": 144.08
+  },
+  "payment": {
+    "method": "Transferencia bancaria",
+    "terms": "Pago a 30 días",
+    "dueDate": "2026-09-07",
+    "reference": "FV-001-2026-000123",
+    "bankAccounts": [
+      { "bankName": "Banco Atlántico", "iban": "ES91 2100 0418 4502 0005 1332" },
+      { "bankName": "Caja Insular", "iban": "ES79 1465 0100 7292 7945 5268" }
+    ]
+  },
+  "fiscal": {
+    "mode": "VERIFACTU",
+    "legend": "Factura verificable en la sede electrónica de la AEAT",
+    "qrRequired": true,
+    "verificationUrl": "https://example.invalid/verifactu/factura-f1-demo",
+    "qrImageDataUri": null,
+    "testData": true
+  },
+  "observations": "Gracias por su confianza. Conserva esta factura para cualquier gestión posterior.",
+  "notes": [
+    "Documento ficticio para diseño y previsualización.",
+    "No es una factura real ni acredita un envío a la AEAT."
+  ]
+}

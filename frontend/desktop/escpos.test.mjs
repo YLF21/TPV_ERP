@@ -59,6 +59,30 @@ describe("escpos command builder", () => {
     expect(text).toContain("TOTAL                               121.00");
   });
 
+  it("prints F11 once before the fiscal base, tax and total", () => {
+    const text = buildTicketBuffer({
+      documentNumber: "T-1", storeName: "Tienda", terminalCode: "01",
+      lines: [{ name: "Articulo", quantity: 1, price: 30, total: 30 }],
+      payments: [{ method: "EFECTIVO", amount: 20 }],
+      discount: 10, subtotal: 16.53, tax: 3.47, total: 20,
+      escposLabels: {
+        terminal: "Terminal", item: "Articulo", quantity: "Cant.", price: "Precio",
+        discount: "Descuento", base: "Base imponible", tax: "Impuesto", total: "TOTAL"
+      }
+    }).toString("latin1");
+
+    const discountLine = text.indexOf("Descuento");
+    const baseLine = text.indexOf("Base imponible");
+    const taxLine = text.indexOf("Impuesto");
+    const totalLine = text.lastIndexOf("TOTAL");
+    expect(discountLine).toBeGreaterThan(-1);
+    expect(text.match(/Descuento/g)).toHaveLength(1);
+    expect(text).toContain("-10.00");
+    expect(baseLine).toBeGreaterThan(discountLine);
+    expect(taxLine).toBeGreaterThan(baseLine);
+    expect(totalLine).toBeGreaterThan(taxLine);
+  });
+
   it("builds the standard cash drawer pulse command", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });

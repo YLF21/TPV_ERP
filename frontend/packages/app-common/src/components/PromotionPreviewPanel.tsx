@@ -38,6 +38,11 @@ type PromotionPreviewPanelProps = {
 export function PromotionPreviewPanel({ locale, preview, status }: PromotionPreviewPanelProps) {
   const t = createTranslator(locale);
   const appliedPromotions = preview?.appliedPromotions ?? [];
+  const hasPromotionContent = appliedPromotions.length > 0
+    || Boolean(preview?.usedCoupon)
+    || Boolean(preview?.generatedCoupon);
+
+  if (!hasPromotionContent) return null;
 
   return (
     <section className="promotion-preview-panel" aria-label={t("promotion.preview.title")}>

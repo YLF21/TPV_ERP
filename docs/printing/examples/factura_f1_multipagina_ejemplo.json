@@ -1,0 +1,115 @@
+{
+  "printContractVersion": 1,
+  "templateCode": "SALES_INVOICE_F1_A4",
+  "locale": "es-ES",
+  "currency": "EUR",
+  "fiscalProfile": "IGIC",
+  "document": {
+    "invoiceTypeCode": "F1",
+    "series": "FV-MP-2026",
+    "number": "000001",
+    "displayNumber": "FV-MP-2026-000001",
+    "issueDate": "2026-08-08",
+    "operationDate": "2026-08-08",
+    "issuedAt": "2026-08-08T12:34:56+01:00",
+    "copyLabel": "",
+    "operationDescription": "Prueba multipágina"
+  },
+  "issuer": {
+    "legalName": "EMPRESA DEMO CANARIAS, S.L.",
+    "tradeName": "TIENDA DEMO",
+    "taxId": "B00000000",
+    "address": {
+      "line1": "Calle Ejemplo 10",
+      "postalCode": "35001",
+      "city": "Las Palmas de Gran Canaria",
+      "province": "Las Palmas",
+      "countryCode": "ES",
+      "countryName": "España"
+    },
+    "phone": "+34 900 000 000",
+    "email": "facturacion@example.invalid",
+    "logoDataUri": null
+  },
+  "customer": {
+    "legalName": "CLIENTE DEMO MULTIPÁGINA, S.L.",
+    "taxId": "B11111111",
+    "address": {
+      "line1": "Avenida de Prueba 25",
+      "postalCode": "38001",
+      "city": "Santa Cruz de Tenerife",
+      "province": "Santa Cruz de Tenerife",
+      "countryCode": "ES",
+      "countryName": "España"
+    },
+    "phone": "+34 922 000 000",
+    "customerCode": "CLI-MP-0001"
+  },
+  "lines": [
+    { "position": 1, "code": "ART-0001", "barcode": "8400000000001", "articleName": "Artículo multipágina 01 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 2, "code": "ART-0002", "barcode": "8400000000002", "articleName": "Artículo multipágina 02 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 3, "code": "ART-0003", "barcode": "8400000000003", "articleName": "Artículo multipágina 03 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 4, "code": "ART-0004", "barcode": "8400000000004", "articleName": "Artículo multipágina 04 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 5, "code": "ART-0005", "barcode": "8400000000005", "articleName": "Artículo multipágina 05 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 6, "code": "ART-0006", "barcode": "8400000000006", "articleName": "Artículo multipágina 06 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 7, "code": "ART-0007", "barcode": "8400000000007", "articleName": "Artículo multipágina 07 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 8, "code": "ART-0008", "barcode": "8400000000008", "articleName": "Artículo multipágina 08 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 9, "code": "ART-0009", "barcode": "8400000000009", "articleName": "Artículo multipágina 09 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 10, "code": "ART-0010", "barcode": "8400000000010", "articleName": "Artículo multipágina 10 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 11, "code": "ART-0011", "barcode": "8400000000011", "articleName": "Artículo multipágina 11 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 12, "code": "ART-0012", "barcode": "8400000000012", "articleName": "Artículo multipágina 12 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 13, "code": "ART-0013", "barcode": "8400000000013", "articleName": "Artículo multipágina 13 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 14, "code": "ART-0014", "barcode": "8400000000014", "articleName": "Artículo multipágina 14 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 15, "code": "ART-0015", "barcode": "8400000000015", "articleName": "Artículo multipágina 15 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 16, "code": "ART-0016", "barcode": "8400000000016", "articleName": "Artículo multipágina 16 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 17, "code": "ART-0017", "barcode": "8400000000017", "articleName": "Artículo multipágina 17 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 18, "code": "ART-0018", "barcode": "8400000000018", "articleName": "Artículo multipágina 18 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 19, "code": "ART-0019", "barcode": "8400000000019", "articleName": "Artículo multipágina 19 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 20, "code": "ART-0020", "barcode": "8400000000020", "articleName": "Artículo multipágina 20 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 21, "code": "ART-0021", "barcode": "8400000000021", "articleName": "Artículo multipágina 21 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 22, "code": "ART-0022", "barcode": "8400000000022", "articleName": "Artículo multipágina 22 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 23, "code": "ART-0023", "barcode": "8400000000023", "articleName": "Artículo multipágina 23 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 24, "code": "ART-0024", "barcode": "8400000000024", "articleName": "Artículo multipágina 24 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 25, "code": "ART-0025", "barcode": "8400000000025", "articleName": "Artículo multipágina 25 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 26, "code": "ART-0026", "barcode": "8400000000026", "articleName": "Artículo multipágina 26 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 27, "code": "ART-0027", "barcode": "8400000000027", "articleName": "Artículo multipágina 27 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 28, "code": "ART-0028", "barcode": "8400000000028", "articleName": "Artículo multipágina 28 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false },
+    { "position": 29, "code": "ART-0029", "barcode": "8400000000029", "articleName": "Artículo multipágina 29 con IGIC general", "quantity": 1.000, "unit": "ud", "unitPriceNet": 10.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 10.00, "taxAmount": 0.70, "lineTotal": 10.70, "priceIncludesTax": false },
+    { "position": 30, "code": "ART-0030", "barcode": "8400000000030", "articleName": "Artículo multipágina 30 con IGIC reducido", "quantity": 1.000, "unit": "ud", "unitPriceNet": 20.00, "discountPercent": 0.00, "discountAmount": 0.00, "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 20.00, "taxAmount": 0.60, "lineTotal": 20.60, "priceIncludesTax": false }
+  ],
+  "taxBreakdown": [
+    { "taxRegime": "IGIC", "taxRate": 7.00, "taxableBase": 150.00, "taxAmount": 10.50, "totalWithTax": 160.50 },
+    { "taxRegime": "IGIC", "taxRate": 3.00, "taxableBase": 300.00, "taxAmount": 9.00, "totalWithTax": 309.00 }
+  ],
+  "totals": {
+    "grossAmount": 450.00,
+    "discountTotal": 0.00,
+    "taxableBase": 450.00,
+    "taxTotal": 19.50,
+    "grandTotal": 469.50,
+    "amountPaid": 0.00,
+    "amountDue": 469.50
+  },
+  "payment": {
+    "method": "Transferencia bancaria",
+    "terms": "Pago a 30 días",
+    "dueDate": "2026-09-07",
+    "reference": "FV-MP-2026-000001",
+    "bankAccounts": [
+      { "bankName": "Banco Atlántico", "iban": "ES91 2100 0418 4502 0005 1332" }
+    ]
+  },
+  "fiscal": {
+    "mode": "VERIFACTU",
+    "legend": "Factura verificable en la sede electrónica de la AEAT",
+    "qrRequired": true,
+    "verificationUrl": "https://example.invalid/verifactu/factura-f1-multipagina-demo",
+    "qrImageDataUri": null,
+    "testData": true
+  },
+  "observations": "Gracias por su confianza. Conserva esta factura para cualquier gestión posterior.",
+  "notes": [
+    "Documento ficticio para comprobar el comportamiento multipágina.",
+    "No es una factura real ni acredita un envío a la AEAT."
+  ]
+}

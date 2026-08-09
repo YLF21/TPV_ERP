@@ -259,8 +259,15 @@ export function calculatorReducer(
 type Props = {
   locale: LocaleCode;
   defaultTaxPercent?: number | string | null;
+  terminalKey?: string;
   onClose: () => void;
 };
+
+const calculatorTaxPercentStoragePrefix = "tpverp.sale-calculator.tax-percent";
+
+export function calculatorTaxPercentStorageKey(terminalKey: string) {
+  return `${calculatorTaxPercentStoragePrefix}.${terminalKey}`;
+}
 
 function localizedDisplay(value: string, locale: LocaleCode, errorLabel: string) {
   if (value === "Error") return errorLabel;
@@ -285,11 +292,36 @@ function initialTaxPercentage(value: number | string | null | undefined) {
     : "21";
 }
 
-export function SaleCalculatorDialog({ locale, defaultTaxPercent, onClose }: Props) {
+function rememberedTaxPercentage(terminalKey?: string) {
+  if (!terminalKey) return null;
+  try {
+    return globalThis.localStorage?.getItem(calculatorTaxPercentStorageKey(terminalKey)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberTaxPercentage(terminalKey: string | undefined, value: string) {
+  if (!terminalKey) return;
+  const percentage = Number(value.replace(",", "."));
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) return;
+  try {
+    globalThis.localStorage?.setItem(
+      calculatorTaxPercentStorageKey(terminalKey),
+      String(percentage),
+    );
+  } catch {
+    // The calculator remains usable when local preferences are unavailable.
+  }
+}
+
+export function SaleCalculatorDialog({ locale, defaultTaxPercent, terminalKey, onClose }: Props) {
   const t = copy[locale];
   const dialogRef = useRef<HTMLElement>(null);
   const [state, setState] = useState(initialCalculatorState);
-  const [taxPercent, setTaxPercent] = useState(() => initialTaxPercentage(defaultTaxPercent));
+  const [taxPercent, setTaxPercent] = useState(() => initialTaxPercentage(
+    rememberedTaxPercentage(terminalKey) ?? defaultTaxPercent,
+  ));
 
   const dispatch = (action: CalculatorAction) => setState((current) => calculatorReducer(current, action));
   const currentAmount = parsedDisplay(state.display);
@@ -305,6 +337,11 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, onClose }: Pro
 
   useEffect(() => { dialogRef.current?.focus(); }, []);
 
+  function closeDialog() {
+    if (validTax) rememberTaxPercentage(terminalKey, taxPercent);
+    onClose();
+  }
+
   function applyTax(mode: "ADD" | "REMOVE") {
     const result = mode === "ADD" ? taxPreview.added : taxPreview.removed;
     if (result == null || currentAmount == null) return;
@@ -318,7 +355,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, onClose }: Pro
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") {
-      event.preventDefault(); event.stopPropagation(); onClose(); return;
+      event.preventDefault(); event.stopPropagation(); closeDialog(); return;
     }
     if ((event.target as HTMLElement).hasAttribute("data-calculator-tax-rate")) return;
     let action: CalculatorAction | null = null;
@@ -369,7 +406,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, onClose }: Pro
       >
         <header>
           <h2 id="sale-calculator-title">{t.title}</h2>
-          <button type="button" aria-label={t.close} onClick={onClose}>×</button>
+          <button type="button" aria-label={t.close} onClick={closeDialog}>×</button>
         </header>
 
         <div className="sale-calculator-layout">
@@ -420,7 +457,7 @@ export function SaleCalculatorDialog({ locale, defaultTaxPercent, onClose }: Pro
         </div>
 
         <footer>
-          <button type="button" onClick={onClose}>{t.close}</button>
+          <button type="button" onClick={closeDialog}>{t.close}</button>
         </footer>
       </section>
     </div>

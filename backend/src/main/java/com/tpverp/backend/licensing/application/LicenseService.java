@@ -93,6 +93,7 @@ public class LicenseService {
                 preview.taxId(),
                 preview.taxpayerType(),
                 preview.impuestos(),
+                preview.commercialProfile(),
                 licenseFile,
                 preview.fileHash(),
                 3,
@@ -175,6 +176,7 @@ public class LicenseService {
             String taxId,
             TaxpayerType taxpayerType,
             TaxRegime impuestos,
+            CommercialProfile commercialProfile,
             boolean active) {
 
         static LicenseHistoryItem from(License license) {
@@ -187,6 +189,7 @@ public class LicenseService {
                     license.getTaxId(),
                     license.getTaxpayerType(),
                     license.getRegimenImpuesto(),
+                    license.getCommercialProfile(),
                     license.isActiva());
         }
     }

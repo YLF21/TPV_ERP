@@ -162,6 +162,26 @@ class SalePaymentSessionServiceTest {
   verifyNoInteractions(security,audit);
  }
 
+ @Test void giftReceiptRefundRejectsMoneyAndOnlyAllowsANewVoucher(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(org.currentCompany()).thenReturn(null);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","gift-snapshot",new BigDecimal("-10.00"));when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));when(repo.save(any())).thenAnswer(i->i.getArgument(0));
+  var line=mock(DocumentLineCommand.class);when(line.originalDocumentLineId()).thenReturn(UUID.randomUUID());when(line.cantidad()).thenReturn(BigDecimal.ONE.negate());when(line.returnSourceType()).thenReturn(TicketReturnService.ReturnSourceType.GIFT_RECEIPT);var snapshot=mock(ApprovedCardTicketSnapshot.class);when(snapshot.lines()).thenReturn(List.of(line));when(snapshots.deserialize("gift-snapshot")).thenReturn(snapshot);
+  var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cash);
+
+  assertThat(service.requiresVoucherOnlyRefund(session)).isTrue();
+  assertThatThrownBy(()->service.add(sessionId,UUID.randomUUID(),"gift-cash",SalePaymentAllocationKind.CASH,new BigDecimal("10.00"),null,null,null,new BigDecimal("10.00"),BigDecimal.ZERO,null,null,null,auth))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("gift_receipt_money_refund_not_allowed");
+
+  service.add(sessionId,UUID.randomUUID(),"gift-voucher",SalePaymentAllocationKind.VOUCHER,new BigDecimal("10.00"),null,null,null,null,null,null,null,null,auth);
+
+  assertThat(session.getStatus()).isEqualTo(SalePaymentSessionStatus.COVERED);
+  assertThat(session.getAllocations()).singleElement().satisfies(allocation ->
+          assertThat(allocation.getKind()).isEqualTo(SalePaymentAllocationKind.VOUCHER));
+  verifyNoInteractions(cash);
+ }
+
  @Test void finalizingANegativeCheckoutCreatesAFiscalRectificationInsteadOfAGenericTicket(){
   var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var cash=mock(CashPaymentRecorder.class);var settlements=mock(RefundSettlementRecorder.class);var valuations=mock(TicketReturnValuationService.class);var auth=mock(Authentication.class);
   var companyId=UUID.randomUUID();var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var sourceTicketId=UUID.randomUUID();var sourceLineId=UUID.randomUUID();var productId=UUID.randomUUID();var originalPaymentId=UUID.randomUUID();
@@ -194,6 +214,19 @@ class SalePaymentSessionServiceTest {
 
   assertThat(result.issuedVoucher()).isEqualTo(new SalePaymentSessionService.IssuedVoucher("V-EXACTO",new BigDecimal("10.00"),java.time.Instant.parse("2026-08-04T10:00:01Z"),"R-VALE-1"));
   verify(vouchers).issueOrFindFromNegativeTicket(ticket,new BigDecimal("10.00"));
+ }
+
+ @Test void retryingFinalizedVoucherPaymentReturnsAndPrintsTheReplacementVoucher(){
+  var repo=mock(SalePaymentSessionRepository.class);var sales=mock(PosCashService.class);var docs=mock(DocumentService.class);var snapshots=mock(PosCardDocumentSnapshot.class);var methods=mock(PaymentMethodRepository.class);var org=mock(CurrentOrganization.class);var terminal=mock(CurrentTerminal.class);var configs=mock(CardTerminalConfigurationReader.class);var ops=mock(PaymentTerminalOperationService.class);var vouchers=mock(VoucherService.class);var auth=mock(Authentication.class);
+  var storeId=UUID.randomUUID();var terminalId=UUID.randomUUID();var userId=UUID.randomUUID();var sessionId=UUID.randomUUID();var ticketId=UUID.randomUUID();var store=mock(Store.class);var user=mock(UserAccount.class);when(user.getId()).thenReturn(userId);when(auth.getPrincipal()).thenReturn(user);when(store.getId()).thenReturn(storeId);when(org.currentStore()).thenReturn(store);when(terminal.terminalId(auth)).thenReturn(terminalId);
+  var session=SalePaymentSession.reserve(sessionId,storeId,terminalId,userId,"hash","{}",new BigDecimal("20.00"));session.addAllocation(UUID.randomUUID(),"voucher",SalePaymentAllocationKind.VOUCHER,new BigDecimal("20.00"),null,null).approve(null,null,null);session.finalizeWith(ticketId,"T-REPLACEMENT");when(repo.findLocked(sessionId)).thenReturn(Optional.of(session));
+  var print=new TicketPrintView(ticketId,"T-REPLACEMENT",java.time.Instant.parse("2026-08-09T12:00:00Z"),List.of(),List.of(),new BigDecimal("20.00"));var ticket=mock(CommercialDocument.class);when(ticket.getNumero()).thenReturn("T-REPLACEMENT");when(docs.loadTicketPrintView(ticketId)).thenReturn(print);when(docs.loadForPrint(ticketId)).thenReturn(ticket);
+  var replacement=new Voucher(storeId,"V-REMAINDER",new BigDecimal("80.00"),List.of("SOURCE","T-REPLACEMENT"),java.time.Instant.parse("2026-08-09T12:00:01Z"));when(vouchers.issuedFromTicket(ticket)).thenReturn(Optional.of(replacement));var service=new SalePaymentSessionService(repo,sales,docs,snapshots,methods,org,terminal,configs,ops,cashPayments());service.setVoucherService(vouchers);
+
+  var result=service.finalizeSession(sessionId,auth);
+
+  assertThat(result.issuedVoucher()).isEqualTo(new SalePaymentSessionService.IssuedVoucher("V-REMAINDER",new BigDecimal("80.00"),java.time.Instant.parse("2026-08-09T12:00:01Z"),"T-REPLACEMENT"));
+  verify(vouchers).issuedFromTicket(ticket);
  }
 
  @Test void discardsSimulationOnlyFromPersistedTestConfiguration(){

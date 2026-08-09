@@ -70,6 +70,7 @@ public class LicenseLinkService {
                 company.getTaxId(),
                 company.getTaxpayerType(),
                 company.getTaxRegime(),
+                company.getCommercialProfile(),
                 policy.activationDate(),
                 policy.version(),
                 policy.updatedAt(),

@@ -26,6 +26,12 @@ type AddOptions = {
   finalizeWhenCovered?: boolean;
 };
 
+export type VoucherLookup = {
+  code: string;
+  balance: number | string;
+  status: "ACTIVE" | "CONSUMED" | "INVALIDATED";
+};
+
 type Props = {
   locale: LocaleCode;
   session: PaymentSession;
@@ -43,6 +49,8 @@ type Props = {
   customerSelected?: boolean;
   pendingEnabled?: boolean;
   checkoutDiscountCents?: number;
+  voucherOnlyRefund?: boolean;
+  onResolveVoucher?: (code: string) => Promise<VoucherLookup | null>;
   onAdd: (input: AddInput, options?: AddOptions) => void;
   onQuery: (operationId: string) => void;
   onManage?: (operationId: string) => void;
@@ -68,6 +76,11 @@ const labels = {
     referenceRequired: "Este método requiere Nº Documento", invalid: "Introduce un importe válido",
     scannerIgnored: "Código de barras ignorado durante el cobro",
     voucherCode: "CÓDIGO DE VALE", voucherCodeRequired: "Introduce el código del vale",
+    voucherNotFound: "Vale no encontrado", voucherConsumed: "Este vale ya fue consumido",
+    voucherInvalidated: "Este vale está invalidado", voucherNoBalance: "Este vale no tiene saldo disponible",
+    voucherLookupFailed: "No se pudo consultar el vale. Inténtalo de nuevo",
+    voucherOnlyRefund: "Este ticket regalo solo puede devolverse mediante un vale.",
+    voucherOnlyRemainder: "La parte que no procede de un pago real solo puede devolverse mediante un vale.",
   },
   en: {
     title: "CHECKOUT", amount: "AMOUNT / RECEIVED", document: "DOCUMENT No.", comment: "COMMENT",
@@ -79,6 +92,11 @@ const labels = {
     referenceRequired: "This method requires a document number", invalid: "Enter a valid amount",
     scannerIgnored: "Barcode ignored during checkout",
     voucherCode: "VOUCHER CODE", voucherCodeRequired: "Enter the voucher code",
+    voucherNotFound: "Voucher not found", voucherConsumed: "This voucher has already been used",
+    voucherInvalidated: "This voucher is invalidated", voucherNoBalance: "This voucher has no available balance",
+    voucherLookupFailed: "The voucher could not be checked. Try again",
+    voucherOnlyRefund: "This gift receipt can only be refunded as a voucher.",
+    voucherOnlyRemainder: "The part not backed by a real payment can only be refunded as a voucher.",
   },
   zh: {
     title: "收款", amount: "金额 / 实收", document: "单据号", comment: "备注",
@@ -90,6 +108,11 @@ const labels = {
     referenceRequired: "此方式需要单据号", invalid: "请输入有效金额",
     scannerIgnored: "收款期间已忽略条码",
     voucherCode: "代金券代码", voucherCodeRequired: "请输入代金券代码",
+    voucherNotFound: "未找到代金券", voucherConsumed: "该代金券已使用",
+    voucherInvalidated: "该代金券已作废", voucherNoBalance: "该代金券无可用余额",
+    voucherLookupFailed: "无法查询代金券，请重试",
+    voucherOnlyRefund: "礼品小票退货只能退还为代金券。",
+    voucherOnlyRemainder: "非实际付款的部分只能退还为代金券。",
   },
 } satisfies Record<LocaleCode, Record<string, string>>;
 
@@ -142,6 +165,8 @@ export function PaymentAllocationPanel({
   customerSelected = false,
   pendingEnabled = true,
   checkoutDiscountCents = 0,
+  voucherOnlyRefund = false,
+  onResolveVoucher,
   onAdd,
   onQuery,
   onManage,
@@ -162,6 +187,11 @@ export function PaymentAllocationPanel({
   const remaining = remainingPaymentCents(session);
   const refund = session.direction === "REFUND";
   const zero = session.direction === "ZERO";
+  const monetaryRefundAvailable = (session.refundPaymentAvailability ?? [])
+    .filter((availability) => availability.kind && availability.kind !== "VOUCHER")
+    .reduce((sum, availability) => sum + availability.availableAmountCents, 0);
+  const hasVoucherOnlyRemainder = refund && !voucherOnlyRefund
+    && monetaryRefundAvailable < session.totalCents;
   const approved = session.totalCents - remaining;
   const [method, setMethod] = useState<CheckoutMethod>(initialMethod);
   const [amount, setAmount] = useState(centsInput(remaining));
@@ -169,9 +199,12 @@ export function PaymentAllocationPanel({
   const [reference, setReference] = useState("");
   const [comment, setComment] = useState("");
   const [validation, setValidation] = useState("");
+  const [voucherResolving, setVoucherResolving] = useState(false);
   const [focusAmountAfterSubmit, setFocusAmountAfterSubmit] = useState(false);
+  const [focusVoucherAfterResolve, setFocusVoucherAfterResolve] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
   const voucherCodeRef = useRef<HTMLInputElement>(null);
+  const voucherResolveGuardRef = useRef(false);
   const referenceRef = useRef<HTMLInputElement>(null);
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const amountCents = parseCents(amount);
@@ -188,7 +221,7 @@ export function PaymentAllocationPanel({
     ? recoveryMethod
     : method;
   const integratedPaymentLocked = hasLockedIntegratedPayment(session.allocations);
-  const entryLocked = busy || !allowAdd || compensationRequired;
+  const entryLocked = busy || voucherResolving || !allowAdd || compensationRequired;
 
   function refundAvailabilityForMethod(value: CheckoutMethod) {
     if (!refund) return undefined;
@@ -224,9 +257,12 @@ export function PaymentAllocationPanel({
   }, [remaining]);
 
   function methodAvailable(next: CheckoutMethod) {
+    if (refund && voucherOnlyRefund) {
+      return next === "VOUCHER" && voucherEnabled;
+    }
     if (next === "CASH") return cashEnabled;
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
-    if (next === "VOUCHER") return voucherEnabled && (refund || vouchers.length > 0);
+    if (next === "VOUCHER") return voucherEnabled;
     if (next === "TRANSFER") return !refund && transferEnabled;
     if (next === "PENDING") return !refund && pendingEnabled;
     if (next === "DISCOUNT") return !refund;
@@ -242,14 +278,18 @@ export function PaymentAllocationPanel({
   }
 
   useEffect(() => {
-    setMethod(availableMethod(initialMethod));
+    const nextMethod = availableMethod(initialMethod);
+    setMethod(nextMethod);
     queueMicrotask(() => {
-      amountRef.current?.focus();
-      amountRef.current?.select();
+      const target = nextMethod === "VOUCHER" && !refund
+        ? voucherCodeRef.current
+        : amountRef.current;
+      target?.focus();
+      target?.select();
     });
   }, [
     cardEnabled, cashEnabled, initialMethod, manualCardEnabled, pendingEnabled,
-    providers.length, transferEnabled, voucherEnabled, vouchers.length,
+    providers.length, transferEnabled, voucherEnabled, voucherOnlyRefund,
   ]);
 
   useEffect(() => {
@@ -260,6 +300,15 @@ export function PaymentAllocationPanel({
       amountRef.current?.select();
     });
   }, [allowAdd, busy, compensationRequired, focusAmountAfterSubmit, remaining]);
+
+  useEffect(() => {
+    if (!focusVoucherAfterResolve || voucherResolving || busy || !allowAdd || compensationRequired) return;
+    setFocusVoucherAfterResolve(false);
+    queueMicrotask(() => {
+      voucherCodeRef.current?.focus();
+      voucherCodeRef.current?.select();
+    });
+  }, [allowAdd, busy, compensationRequired, focusVoucherAfterResolve, voucherResolving]);
 
   useEffect(() => {
     const protectCheckoutFromScanner = (event: KeyboardEvent) => {
@@ -305,13 +354,72 @@ export function PaymentAllocationPanel({
     setValidation("");
     setAmount(centsInput(remaining));
     queueMicrotask(() => {
-      amountRef.current?.focus();
-      amountRef.current?.select();
+      const target = next === "VOUCHER" && !refund
+        ? voucherCodeRef.current
+        : amountRef.current;
+      target?.focus();
+      target?.select();
     });
   }
 
+  async function submitVoucher(finalizeWhenCovered: boolean) {
+    if (voucherResolveGuardRef.current) return;
+    voucherResolveGuardRef.current = true;
+    const requestedCode = voucherCode.trim();
+    let completed = false;
+    setVoucherResolving(true);
+    setValidation("");
+    try {
+      const listedVoucher = vouchers.find((voucher) =>
+        voucher.code.toLocaleUpperCase() === requestedCode.toLocaleUpperCase());
+      const resolved = onResolveVoucher
+        ? await onResolveVoucher(requestedCode)
+        : listedVoucher
+          ? { ...listedVoucher, status: "ACTIVE" as const }
+          : null;
+      if (!resolved) {
+        setValidation(copy.voucherNotFound);
+        return;
+      }
+      if (resolved.status === "CONSUMED") {
+        setValidation(copy.voucherConsumed);
+        return;
+      }
+      if (resolved.status === "INVALIDATED") {
+        setValidation(copy.voucherInvalidated);
+        return;
+      }
+      const balanceCents = Math.round(Number(resolved.balance) * 100);
+      const appliedCents = Math.min(remaining, balanceCents);
+      if (!Number.isFinite(balanceCents) || appliedCents <= 0) {
+        setValidation(copy.voucherNoBalance);
+        return;
+      }
+      onAdd({
+        kind: "VOUCHER",
+        amountCents: appliedCents,
+        voucherCode: resolved.code,
+        ...(reference.trim() ? { reference: reference.trim() } : {}),
+        ...(comment.trim() ? { comment: comment.trim() } : {}),
+      }, { finalizeWhenCovered });
+      completed = true;
+      setVoucherCode("");
+      setReference("");
+      setComment("");
+      setFocusAmountAfterSubmit(true);
+    } catch {
+      setValidation(copy.voucherLookupFailed);
+    } finally {
+      voucherResolveGuardRef.current = false;
+      setVoucherResolving(false);
+      if (!completed) {
+        setFocusVoucherAfterResolve(true);
+      }
+    }
+  }
+
   function submit(finalizeWhenCovered = false) {
-    if (!allowAdd || compensationRequired || busy) return;
+    if (!allowAdd || compensationRequired || busy || voucherResolving) return;
     if (!methodAvailable(method)) {
       setMethod(availableMethod(method));
       return;
@@ -320,7 +428,8 @@ export function PaymentAllocationPanel({
       setValidation(copy.customerRequired);
       return;
     }
-    if (amountCents <= 0 || (method !== "CASH" && amountCents > remaining)) {
+    if ((method !== "VOUCHER" || refund)
+        && (amountCents <= 0 || (method !== "CASH" && amountCents > remaining))) {
       setValidation(copy.invalid);
       return;
     }
@@ -339,6 +448,10 @@ export function PaymentAllocationPanel({
         voucherCodeRef.current?.focus();
         voucherCodeRef.current?.select();
       });
+      return;
+    }
+    if (method === "VOUCHER" && !refund) {
+      void submitVoucher(finalizeWhenCovered);
       return;
     }
     const needsReference = (method === "CARD" && cardAllocationKind === "MANUAL_CARD" && manualCardRequiresReference)
@@ -368,7 +481,7 @@ export function PaymentAllocationPanel({
         ? { kind: "INTEGRATED_CARD", provider: providers[0], ...common }
         : { kind: "MANUAL_CARD", ...common }, { finalizeWhenCovered });
     } else if (method === "VOUCHER") {
-      onAdd({ kind: "VOUCHER", ...(refund ? {} : { voucherCode: voucherCode.trim() }), ...common }, { finalizeWhenCovered });
+      onAdd({ kind: "VOUCHER", ...common }, { finalizeWhenCovered });
     } else if (method === "TRANSFER") {
       onAdd({ kind: "TRANSFER", ...common }, { finalizeWhenCovered });
     } else {
@@ -439,13 +552,13 @@ export function PaymentAllocationPanel({
     cardEnabled, cashEnabled, manualCardEnabled, manualCardRequiresReference, method,
     onClear, onClose, onDiscount, pendingEnabled, providers, reference, remaining,
     session.totalCents, transferEnabled, transferRequiresReference, voucherCode,
-    voucherEnabled, vouchers.length,
+    voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher,
   ]);
 
   const allMethods: Array<{ value: CheckoutMethod; shortcut: string; visible?: boolean; disabled?: boolean }> = [
-    { value: "CASH", shortcut: "*", visible: cashEnabled },
-    { value: "CARD", shortcut: "+", visible: cardEnabled, disabled: !manualCardEnabled && providers.length === 0 },
-    { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled, disabled: !refund && vouchers.length === 0 },
+    { value: "CASH", shortcut: "*", visible: cashEnabled && !voucherOnlyRefund },
+    { value: "CARD", shortcut: "+", visible: cardEnabled && !voucherOnlyRefund, disabled: !manualCardEnabled && providers.length === 0 },
+    { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
     { value: "PENDING", shortcut: "F8", visible: !refund, disabled: !pendingEnabled },
     { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
     { value: "DISCOUNT", shortcut: "F11", visible: !refund, disabled: effectiveRows.length > 0 },
@@ -473,18 +586,15 @@ export function PaymentAllocationPanel({
                 ? (locale === "es" ? "IMPORTE A DEVOLVER" : locale === "en" ? "REFUND AMOUNT" : "\u9000\u6b3e\u91d1\u989d")
                 : copy.amount}</span>
               <input ref={amountRef} inputMode="decimal" autoComplete="off" value={amount}
-                disabled={entryLocked}
+                disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
             <div className={`sale-checkout-meta ${selectedMethod === "VOUCHER" ? "has-voucher" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
-                  list="checkout-voucher-codes" value={voucherCode}
+                  value={voucherCode}
                   disabled={entryLocked}
                   onChange={(event) => setVoucherCode(event.currentTarget.value)} />
-                <datalist id="checkout-voucher-codes">
-                  {vouchers.map((voucher) => <option key={voucher.code} value={voucher.code} />)}
-                </datalist>
               </label>}
               <label><span>{copy.document}</span>
                 <input ref={referenceRef} id="checkout-reference" autoComplete="off" value={reference}
@@ -501,6 +611,13 @@ export function PaymentAllocationPanel({
 
           {selectedMethod === "CASH" && !refund && !entryLocked && <p className="sale-checkout-change">
             {copy.change}: <strong>{money(cashChangeCents)} €</strong>
+          </p>}
+
+          {refund && (voucherOnlyRefund || hasVoucherOnlyRemainder) && <p
+            className="sale-checkout-policy-notice"
+            role="note"
+          >
+            {voucherOnlyRefund ? copy.voucherOnlyRefund : copy.voucherOnlyRemainder}
           </p>}
 
           {!zero && <div className="sale-checkout-methods" aria-label={copy.method}>
@@ -560,7 +677,8 @@ export function PaymentAllocationPanel({
 
           <footer className="sale-checkout-footer">
             <button type="button" className="clear"
-              disabled={busy || integratedPaymentLocked || session.allocations.length === 0}
+              disabled={busy || integratedPaymentLocked
+                || (session.allocations.length === 0 && checkoutDiscountCents === 0)}
               onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>
             <span />
             <button type="button" disabled={busy || integratedPaymentLocked}

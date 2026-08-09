@@ -9,6 +9,7 @@ import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
+import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.organization.StoreRepository;
@@ -55,7 +56,8 @@ class LicenseSaasValidationServiceTest {
                         Instant.parse("2027-08-10T00:00:00Z"),
                         java.time.LocalDate.of(2027, 1, 1),
                         4,
-                        Instant.parse("2026-07-22T10:00:00Z")));
+                        Instant.parse("2026-07-22T10:00:00Z"),
+                        CommercialProfile.MINORISTA));
 
         service.validateActiveLicense();
 
@@ -64,6 +66,7 @@ class LicenseSaasValidationServiceTest {
         assertThat(license.getEstadoSaas()).isEqualTo(LicenseSaasStatus.VALIDA);
         assertThat(license.getVerifactuActivationDate()).isEqualTo(java.time.LocalDate.of(2027, 1, 1));
         assertThat(license.getVerifactuPolicyVersion()).isEqualTo(4L);
+        assertThat(license.getCommercialProfile()).isEqualTo(CommercialProfile.MINORISTA);
         verify(licenses).save(license);
     }
 

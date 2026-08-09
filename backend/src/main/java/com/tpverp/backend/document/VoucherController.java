@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import com.tpverp.backend.organization.CurrentOrganization;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +36,16 @@ public class VoucherController {
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
     public List<VoucherView> list() {
         return vouchers.list().stream().map(VoucherView::from).toList();
+    }
+
+    @GetMapping("/{code}")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('GESTION_VENTAS','VENTA')")
+    public ResponseEntity<VoucherView> findByCode(@PathVariable String code) {
+        var voucher = vouchers.findByCode(code);
+        if (voucher.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(VoucherView.from(voucher.orElseThrow()));
     }
 
     @PostMapping("/issue-from-ticket/{ticketId}")

@@ -65,6 +65,7 @@ public class CorePermissionBootstrap {
     public static final String VERIFACTU_READ = "VERIFACTU_READ";
     public static final String VERIFACTU_CORRECT = "VERIFACTU_CORRECT";
     public static final String VERIFACTU_MANAGE = "VERIFACTU_MANAGE";
+    public static final String DOCUMENT_TEMPLATES_MANAGE = "DOCUMENT_TEMPLATES_MANAGE";
     private final PermissionRepository permisoRepository;
 
     public CorePermissionBootstrap(PermissionRepository permisoRepository) {
@@ -131,7 +132,9 @@ public class CorePermissionBootstrap {
                 permission(PAYMENT_TERMINAL_SECRETS, "terminal.permissions.payment.secrets", "TERMINAL"),
                 permission(VERIFACTU_READ, "verifactu.permissions.read", "FISCAL"),
                 permission(VERIFACTU_CORRECT, "verifactu.permissions.correct", "FISCAL"),
-                permission(VERIFACTU_MANAGE, "verifactu.permissions.manage", "FISCAL"))
+                permission(VERIFACTU_MANAGE, "verifactu.permissions.manage", "FISCAL"),
+                permission(DOCUMENT_TEMPLATES_MANAGE,
+                        "document.templates.permissions.manage", "DOCUMENTS"))
                 .forEach(permission -> permisoRepository.findByCodigo(permission.getCodigo())
                         .orElseGet(() -> permisoRepository.save(permission)));
     }

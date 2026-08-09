@@ -40,6 +40,7 @@ public class LicenseValidationService {
                 license.getValidUntil(),
                 policy.activationDate(),
                 policy.version(),
-                policy.updatedAt());
+                policy.updatedAt(),
+                license.getCompany().getCommercialProfile());
     }
 }

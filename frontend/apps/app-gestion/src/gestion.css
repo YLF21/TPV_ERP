@@ -2260,6 +2260,90 @@ button.gestion-warehouse-row.selected { background: #dceaf6; box-shadow: inset 4
   font-weight: 800;
 }
 
+.gestion-invoice-print-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--gestion-border);
+  background: #fff;
+}
+
+.gestion-invoice-print-panel > header h3,
+.gestion-invoice-print-panel > header p {
+  margin: 0;
+}
+
+.gestion-invoice-print-panel > header p,
+.gestion-invoice-observations small,
+.gestion-invoice-bank-list > p {
+  color: var(--gestion-muted);
+}
+
+.gestion-invoice-observations {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 10px;
+}
+
+.gestion-invoice-observations textarea,
+.gestion-invoice-bank-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--gestion-border);
+  background: #fff;
+  color: inherit;
+  padding: 9px 10px;
+  border-radius: 2px;
+}
+
+.gestion-invoice-observations textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.gestion-invoice-bank-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.5fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--gestion-border);
+}
+
+.gestion-invoice-bank-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.gestion-invoice-bank-list {
+  margin-top: 12px;
+  border-top: 1px solid var(--gestion-border);
+}
+
+.gestion-invoice-bank-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--gestion-border);
+}
+
+.gestion-invoice-bank-list article > div {
+  display: grid;
+  gap: 3px;
+}
+
+.gestion-invoice-bank-list article span {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+@media (max-width: 820px) {
+  .gestion-invoice-bank-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   .gestion-payment-methods-header {
     display: grid;

@@ -90,6 +90,9 @@ public class AdminService {
                 request.taxId().toUpperCase(Locale.ROOT),
                 request.taxpayerType(),
                 request.impuestos(),
+                request.commercialProfile() == null
+                        ? com.tpverp.saas.license.CommercialProfile.MAYORISTA
+                        : request.commercialProfile(),
                 now));
         var store = stores.save(new SaasStore(
                 UUID.randomUUID(),
@@ -373,7 +376,8 @@ public class AdminService {
     public LicenseSummaryResponse editCompany(UUID companyId, EditCompanyDataRequest request) {
         SaasCompany company = companies.findById(companyId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Empresa no existe"));
-        company.updateData(request.name(), request.taxpayerType(), request.impuestos());
+        company.updateData(request.name(), request.taxpayerType(), request.impuestos(),
+                request.commercialProfile());
         audit.log("EDIT_COMPANY_DATA", "COMPANY", companyId.toString());
         return licenses.findByCompany_Id(companyId).stream()
                 .findFirst()

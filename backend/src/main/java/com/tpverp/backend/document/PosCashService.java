@@ -36,6 +36,7 @@ import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -1324,8 +1325,9 @@ public class PosCashService {
     }
 
     /**
-     * Stable per-product economic contract for APP VENTA. All monetary components are
-     * mutually exclusive and reconcile exactly to {@link #finalSubtotal()}.
+     * Stable economic contract for APP VENTA. Product rows keep their own benefits;
+     * document-level discounts are emitted as summary rows. All components reconcile
+     * exactly to {@link #finalSubtotal()}.
      */
     public record AuthoritativeLineBreakdown(
             String lineId,
@@ -1391,6 +1393,7 @@ public class PosCashService {
         ticket.getLineas().stream()
                 .filter(line -> line.getLineType() != DocumentLineType.PRODUCT)
                 .filter(line -> line.getLineType() != DocumentLineType.RETURN_ADJUSTMENT)
+                .filter(line -> line.getLineType() != DocumentLineType.MANUAL_DISCOUNT)
                 .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
                 .forEach(adjustment -> allocateAdjustment(
                         builders, adjustment,
@@ -1400,6 +1403,7 @@ public class PosCashService {
         var result = new ArrayList<>(builders.stream()
                 .map(MutableAuthoritativeLine::view)
                 .toList());
+        manualDiscountBreakdown(ticket.getLineas()).ifPresent(result::add);
         ticket.getLineas().stream()
                 .filter(line -> line.getLineType() == DocumentLineType.RETURN_ADJUSTMENT)
                 .map(PosCashService::returnAdjustmentBreakdown)
@@ -1412,6 +1416,54 @@ public class PosCashService {
             throw new IllegalStateException("authoritative_quote_line_total_mismatch");
         }
         return List.copyOf(result);
+    }
+
+    private static Optional<AuthoritativeLineBreakdown> manualDiscountBreakdown(
+            List<DocumentLine> lines) {
+        var discounts = lines.stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MANUAL_DISCOUNT)
+                .sorted(Comparator.comparingInt(DocumentLine::getPosicion))
+                .toList();
+        if (discounts.isEmpty()) {
+            return Optional.empty();
+        }
+        var zero = Money.euros(BigDecimal.ZERO);
+        var base = Money.euros(discounts.stream()
+                .map(DocumentLine::getBase)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        var tax = Money.euros(discounts.stream()
+                .map(DocumentLine::getImpuesto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        var total = Money.euros(discounts.stream()
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        return Optional.of(new AuthoritativeLineBreakdown(
+                "manual-discount",
+                discounts.getFirst().getPosicion(),
+                DocumentLineType.MANUAL_DISCOUNT,
+                null,
+                "DESCUENTO",
+                "DESCUENTO",
+                BigDecimal.ONE,
+                zero,
+                null,
+                zero,
+                null,
+                zero,
+                zero,
+                zero,
+                zero,
+                total.abs(),
+                zero,
+                zero,
+                true,
+                "MIXED",
+                zero,
+                base,
+                tax,
+                zero,
+                zero,
+                total));
     }
 
     private static AuthoritativeLineBreakdown returnAdjustmentBreakdown(
@@ -1450,14 +1502,17 @@ public class PosCashService {
             List<MutableAuthoritativeLine> builders,
             DocumentLine adjustment,
             boolean historical) {
-        var eligible = builders.stream()
+        var affectedPositions = adjustment.getPromotionAffectedPositions();
+        var candidates = builders.stream()
                 .filter(line -> line.historical == historical)
+                .filter(line -> affectedPositions.isEmpty()
+                        || affectedPositions.contains(line.line.getPosicion()))
+                .toList();
+        var eligible = candidates.stream()
                 .filter(line -> line.matchesTax(adjustment))
                 .toList();
         if (eligible.isEmpty()) {
-            eligible = builders.stream()
-                    .filter(line -> line.historical == historical)
-                    .toList();
+            eligible = candidates;
         }
         if (eligible.isEmpty()) {
             throw new IllegalStateException("authoritative_quote_adjustment_without_product");

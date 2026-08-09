@@ -172,6 +172,9 @@ public class LicenseSaasLinkService {
                     || !license.getInstalacionId().equals(installation.getId())) {
                 throw new LicenseValidationException("Esta licencia ya fue importada");
             }
+            if (response.commercialProfile() != null) {
+                license.updateCommercialProfile(response.commercialProfile());
+            }
             markSaasStatus(license, store, response, Instant.now(clock));
             licenses.save(license);
             updateDefaultTax(store.getId(), response.impuestos());
@@ -191,6 +194,9 @@ public class LicenseSaasLinkService {
                 SpanishTaxId.normalize(taxId(response)),
                 response.taxpayerType(),
                 response.impuestos(),
+                response.commercialProfile() == null
+                        ? com.tpverp.backend.licensing.application.CommercialProfile.MAYORISTA
+                        : response.commercialProfile(),
                 "SAAS_LINK:" + response.licenseReference(),
                 hash(response),
                 4,

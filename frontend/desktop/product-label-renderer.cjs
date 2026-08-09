@@ -14,6 +14,9 @@ const EAN13_PARITY = [
   "LLLLLL", "LLGLGG", "LLGGLG", "LLGGGL", "LGLLGG",
   "LGGLLG", "LGGGLL", "LGLGLG", "LGLGGL", "LGGLGL"
 ];
+const MAX_ITEMS = 200;
+const MAX_PLACEMENTS = 1000;
+const MAX_PAGES = 100;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -62,7 +65,7 @@ function barcodeSvg(code) {
       start = -1;
     }
   }
-  return `<svg class="barcode" viewBox="0 0 ${bits.length} 38" preserveAspectRatio="none" aria-label="${escapeHtml(code)}">${bars.join("")}</svg>`;
+  return `<svg class="barcode" viewBox="-9 0 ${bits.length + 18} 38" preserveAspectRatio="none" aria-label="${escapeHtml(code)}">${bars.join("")}</svg>`;
 }
 
 function number(value, fallback, minimum, maximum) {
@@ -91,22 +94,238 @@ function normalizedProfile(profile = {}) {
   };
 }
 
-function labelMarkup(request, profile) {
-  const product = request?.product ?? {};
-  return `<article class="label">
-    ${profile.showStoreName ? `<div class="store">${escapeHtml(request.storeName)}</div>` : ""}
+function printableAddress(issuer) {
+  const address = issuer?.address ?? {};
+  return [
+    address.line1,
+    [address.postalCode, address.city].filter(Boolean).join(" "),
+    address.province,
+    address.country,
+  ].filter((value, index, values) => value && values.indexOf(value) === index).join(", ");
+}
+
+function companyMarkup(request, profile) {
+  if (!profile.showStoreName) return "";
+  if (request.version === 2) {
+    const address = printableAddress(request.issuer);
+    if (!request.issuer?.name || !request.issuer?.taxId || !address) {
+      throw new Error("PRODUCT_LABEL_COMPANY_INVALID");
+    }
+    return `<div class="company"><strong>${escapeHtml(request.issuer.name)}</strong><span>CIF: ${escapeHtml(request.issuer.taxId)}</span><span>${escapeHtml(address)}</span></div>`;
+  }
+  return `<div class="company"><strong>${escapeHtml(request.storeName)}</strong></div>`;
+}
+
+function normalizedCommercial(value) {
+  if (value == null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  const badge = String(value.badge ?? "").trim();
+  const promotionLines = Array.isArray(value.promotionLines)
+    ? value.promotionLines.map((line) => String(line ?? "").trim())
+    : [];
+  if (!badge || badge.length > 32 || promotionLines.length > 12
+      || promotionLines.some((line) => !line || line.length > 160)) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  let offer;
+  if (value.offer != null) {
+    const regularPrice = Number(value.offer.regularPrice);
+    const offerPrice = Number(value.offer.offerPrice);
+    const discountPercent = Number(value.offer.discountPercent);
+    const validUntil = String(value.offer.validUntil ?? "").trim();
+    if (![regularPrice, offerPrice, discountPercent].every(Number.isFinite)
+        || regularPrice <= 0 || offerPrice < 0 || offerPrice >= regularPrice
+        || regularPrice > 9999999 || discountPercent <= 0 || discountPercent > 100
+        || validUntil.length > 48) {
+      throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+    }
+    offer = { regularPrice, offerPrice, discountPercent, ...(validUntil ? { validUntil } : {}) };
+  }
+  if (!offer && promotionLines.length === 0) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  return { badge, offer, promotionLines };
+}
+
+function labelMarkup(request, profile, product, style = "") {
+  const commercial = product.commercial;
+  const priceMarkup = commercial?.offer
+    ? `<div class="price offer-price"><span class="commercial-badge">${escapeHtml(commercial.badge)}</span><del>${commercial.offer.regularPrice.toFixed(2)} &euro;</del><strong>${commercial.offer.offerPrice.toFixed(2)} &euro;</strong><small>-${commercial.offer.discountPercent.toFixed(2)}%${commercial.offer.validUntil ? ` &middot; ${escapeHtml(commercial.offer.validUntil)}` : ""}</small></div>`
+    : `<div class="price">${commercial ? `<span class="commercial-badge">${escapeHtml(commercial.badge)}</span>` : ""}<strong>${Number(product.price || 0).toFixed(2)} &euro;</strong></div>`;
+  const promotionMarkup = commercial?.promotionLines?.length
+    ? `<div class="promotion-summary">${commercial.promotionLines.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}</div>`
+    : "";
+  return `<article class="label${profile.showStoreName ? " with-company" : ""}${commercial?.promotionLines?.length ? " with-promotions" : ""}"${style ? ` style="${style}"` : ""}>
+    ${companyMarkup(request, profile)}
     <div class="name">${escapeHtml(product.name)}</div>
-    <div class="code">${escapeHtml(product.code)}</div>
-    ${barcodeSvg(product.barcode)}
-    <div class="barcode-text">${escapeHtml(product.barcode)}</div>
-    <div class="price">${Number(product.price || 0).toFixed(2)} €</div>
+    <div class="label-content">
+      <div class="code">${escapeHtml(product.code)}</div>
+      <div class="barcode-block">${barcodeSvg(product.barcode)}<div class="barcode-text">${escapeHtml(product.barcode)}</div></div>
+    </div>
+    ${priceMarkup}
+    ${promotionMarkup}
   </article>`;
 }
 
-function renderProductLabelHtml(request) {
+function labelCss() {
+  return `.label { overflow: hidden; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: auto minmax(0,1fr); gap: .35mm 1.2mm; padding: 1.6mm; align-content: stretch; background:#fff; }
+  .label.with-company { grid-template-rows: auto auto minmax(0,1fr); }
+  .label.with-promotions { grid-template-rows: auto minmax(0,1fr) auto; }
+  .label.with-company.with-promotions { grid-template-rows: auto auto minmax(0,1fr) auto; }
+  .label.empty { visibility: hidden; } .company { grid-column: 1 / 3; min-width:0; display:grid; gap:.15mm; font-size:5.5pt; line-height:1.05; overflow:hidden; }
+  .company strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .company span { overflow-wrap:anywhere; }
+  .name { grid-column: 1 / 3; display:-webkit-box; max-height: 6mm; overflow:hidden; font-size:8pt; line-height:1.1; font-weight:800; white-space:normal; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .label-content { grid-column:1; min-width:0; min-height:0; display:grid; grid-template-rows:auto minmax(0,1fr); gap:.35mm; overflow:hidden; }
+  .code { min-width:0; overflow:hidden; font-size:6.5pt; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+  .barcode-block { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(4mm,1fr) auto; gap:.5mm; overflow:hidden; box-sizing:border-box; padding:0 1.2mm .8mm; }
+  .barcode { width:100%; height:100%; min-height:4mm; fill:#000; }
+  .barcode-text { overflow:hidden; padding:0 .5mm; text-align:center; font-size:6.5pt; line-height:1; letter-spacing:.06em; white-space:nowrap; }
+  .price { grid-column:2; align-self:end; display:grid; justify-items:end; gap:.25mm; padding-bottom:.8mm; font-weight:900; white-space:nowrap; }
+  .price strong { font-size:14pt; line-height:1; } .price del { font-size:7pt; font-weight:700; }
+  .price small { max-width:36mm; overflow:hidden; font-size:6pt; text-overflow:ellipsis; }
+  .commercial-badge { border:.25mm solid #000; background:#000; padding:.3mm .8mm; color:#fff; font-size:6pt; font-weight:900; letter-spacing:.04em; }
+  .promotion-summary { grid-column:1 / 3; max-height:5.2mm; overflow:hidden; border-top:.35mm solid #000; padding:.55mm .8mm 0; font-size:6.5pt; font-weight:900; line-height:1.12; }
+  .promotion-summary span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }`;
+}
+
+function normalizedItems(request) {
+  if (!Array.isArray(request.items) || request.items.length < 1 || request.items.length > MAX_ITEMS) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  const ids = new Set();
+  let total = 0;
+  const items = request.items.map((item) => {
+    const id = String(item?.id ?? "").trim();
+    const copies = Math.round(Number(item?.copies));
+    if (!id || ids.has(id) || !Number.isFinite(copies) || copies < 1 || copies > 999) {
+      throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+    }
+    ids.add(id);
+    total += copies;
+    if (total > MAX_PLACEMENTS) throw new Error("PRODUCT_LABEL_LIMIT_EXCEEDED");
+    const product = item?.product ?? {};
+    eanBits(product.barcode);
+    return {
+      id,
+      copies,
+      product: {
+        name: String(product.name ?? ""),
+        code: String(product.code ?? ""),
+        barcode: String(product.barcode),
+        price: Number.isFinite(Number(product.price)) ? Number(product.price) : 0,
+        commercial: normalizedCommercial(product.commercial),
+      },
+    };
+  });
+  return { items, total };
+}
+
+function placementOverlaps(first, second) {
+  return first.xMm < second.xMm + second.widthMm
+    && first.xMm + first.widthMm > second.xMm
+    && first.yMm < second.yMm + second.heightMm
+    && first.yMm + first.heightMm > second.yMm;
+}
+
+function normalizedA4Pages(request, profile, items, total) {
+  if (!Array.isArray(request.pages) || request.pages.length < 1 || request.pages.length > MAX_PAGES) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  const pageWidth = profile.orientation === "LANDSCAPE" ? 297 : 210;
+  const pageHeight = profile.orientation === "LANDSCAPE" ? 210 : 297;
+  const minimumWidth = 35;
+  const minimumHeight = profile.showStoreName ? 30 : 24;
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const expected = new Map(items.map((item) => [item.id, item.copies]));
+  const actual = new Map();
+  const instanceIds = new Set();
+  let placementTotal = 0;
+  const pages = request.pages.map((page) => {
+    if (!Array.isArray(page?.placements)) throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+    const placements = page.placements.map((value) => {
+      const placement = {
+        instanceId: String(value?.instanceId ?? "").trim(),
+        itemId: String(value?.itemId ?? "").trim(),
+        xMm: Number(value?.xMm), yMm: Number(value?.yMm),
+        widthMm: Number(value?.widthMm), heightMm: Number(value?.heightMm),
+      };
+      if (!placement.instanceId || instanceIds.has(placement.instanceId) || !itemsById.has(placement.itemId)
+          || ![placement.xMm, placement.yMm, placement.widthMm, placement.heightMm].every(Number.isFinite)
+          || placement.widthMm < minimumWidth || placement.heightMm < minimumHeight
+          || placement.xMm < profile.marginLeftMm || placement.yMm < profile.marginTopMm
+          || placement.xMm + placement.widthMm > pageWidth - profile.marginRightMm
+          || placement.yMm + placement.heightMm > pageHeight - profile.marginBottomMm) {
+        throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+      }
+      instanceIds.add(placement.instanceId);
+      actual.set(placement.itemId, (actual.get(placement.itemId) ?? 0) + 1);
+      placementTotal += 1;
+      if (placementTotal > MAX_PLACEMENTS) throw new Error("PRODUCT_LABEL_LIMIT_EXCEEDED");
+      return placement;
+    });
+    for (let index = 0; index < placements.length; index += 1) {
+      if (placements.slice(index + 1).some((candidate) => placementOverlaps(placements[index], candidate))) {
+        throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+      }
+    }
+    return { placements };
+  });
+  if (placementTotal !== total || [...expected].some(([itemId, copies]) => actual.get(itemId) !== copies)) {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  return pages;
+}
+
+function renderV2(request) {
+  const profile = normalizedProfile(request.profile);
+  const { items, total } = normalizedItems(request);
+  if (profile.showStoreName) companyMarkup(request, profile);
+  if (request.kind === "SEQUENTIAL") {
+    if (profile.destination === "A4") throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+    const labels = items.flatMap((item) => Array.from(
+      { length: item.copies },
+      () => labelMarkup(request, profile, item.product),
+    )).join("");
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+      @page { size: ${profile.widthMm}mm ${profile.heightMm}mm; margin: 0; }
+      * { box-sizing: border-box; } body { margin: 0; color: #000; font-family: Arial, sans-serif; }
+      .label { width: ${profile.widthMm}mm; height: ${profile.heightMm}mm; page-break-after: always; }
+      .label:last-child { page-break-after: auto; }
+      ${labelCss()}
+    </style></head><body>${labels}</body></html>`;
+  }
+  if (request.kind !== "A4_LAYOUT" || profile.destination !== "A4") {
+    throw new Error("PRODUCT_LABEL_INVALID_REQUEST");
+  }
+  const pages = normalizedA4Pages(request, profile, items, total);
+  const pageWidth = profile.orientation === "LANDSCAPE" ? 297 : 210;
+  const pageHeight = profile.orientation === "LANDSCAPE" ? 210 : 297;
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const sheets = pages.map((page) => `<main class="sheet">${page.placements.map((placement) => {
+    const item = itemsById.get(placement.itemId);
+    return labelMarkup(request, profile, item.product,
+      `left:${placement.xMm}mm;top:${placement.yMm}mm;width:${placement.widthMm}mm;height:${placement.heightMm}mm`);
+  }).join("")}</main>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: A4 ${profile.orientation === "LANDSCAPE" ? "landscape" : "portrait"}; margin: 0; }
+    * { box-sizing: border-box; } body { margin: 0; color: #000; font-family: Arial, sans-serif; }
+    .sheet { position:relative; width:${pageWidth}mm; height:${pageHeight}mm; page-break-after:always; overflow:hidden; }
+    .sheet:last-child { page-break-after:auto; } .sheet > .label { position:absolute; }
+    ${labelCss()}
+  </style></head><body>${sheets}</body></html>`;
+}
+
+function renderLegacy(request) {
   const profile = normalizedProfile(request?.profile);
-  const copies = Math.max(1, Math.round(Number(request?.copies) || profile.copies));
-  const label = labelMarkup(request, profile);
+  const copies = Math.max(1, Math.min(999, Math.round(Number(request?.copies) || profile.copies)));
+  const product = request?.product ?? {};
+  const label = labelMarkup(request, profile, {
+    ...product,
+    commercial: normalizedCommercial(product.commercial),
+  });
   if (profile.destination === "A4") {
     const pageWidth = profile.orientation === "LANDSCAPE" ? 297 : 210;
     const pageHeight = profile.orientation === "LANDSCAPE" ? 210 : 297;
@@ -136,22 +355,17 @@ function renderProductLabelHtml(request) {
       ${labelCss()}
     </style></head><body>${sheets.join("")}</body></html>`;
   }
-  const pages = Array.from({ length: copies }, () => label).join("");
+  const labels = Array.from({ length: copies }, () => label).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     @page { size: ${profile.widthMm}mm ${profile.heightMm}mm; margin: 0; }
     * { box-sizing: border-box; } body { margin: 0; color: #000; font-family: Arial, sans-serif; }
     .label { width: ${profile.widthMm}mm; height: ${profile.heightMm}mm; page-break-after: always; }
     ${labelCss()}
-  </style></head><body>${pages}</body></html>`;
+  </style></head><body>${labels}</body></html>`;
 }
 
-function labelCss() {
-  return `.label { overflow: hidden; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr auto; gap: .5mm 1.5mm; padding: 1.8mm; align-content: stretch; }
-  .label.empty { visibility: hidden; } .store { grid-column: 1 / 3; font-size: 7pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .name { grid-column: 1 / 3; max-height: 9mm; overflow: hidden; font-size: 8.5pt; line-height: 1.15; font-weight: 800; }
-  .code { grid-column: 1; font-size: 7pt; font-weight: 700; } .barcode { grid-column: 1; width: 100%; height: 12mm; fill: #000; }
-  .barcode-text { grid-column: 1; text-align: center; font-size: 7pt; letter-spacing: .08em; }
-  .price { grid-column: 2; grid-row: 3 / 5; align-self: end; font-size: 15pt; font-weight: 900; white-space: nowrap; }`;
+function renderProductLabelHtml(request) {
+  return request?.version === 2 ? renderV2(request) : renderLegacy(request ?? {});
 }
 
 module.exports = { barcodeSvg, eanBits, normalizedProfile, renderProductLabelHtml };

@@ -12,5 +12,6 @@ public record LicensePayload(
         int maxWindows,
         int maxPda,
         TaxRegime impuestos,
-        String issuedAt) {
+        String issuedAt,
+        CommercialProfile commercialProfile) {
 }

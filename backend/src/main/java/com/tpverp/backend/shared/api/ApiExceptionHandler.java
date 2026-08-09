@@ -6,6 +6,7 @@ import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.RefundTenderOverrideRequiredException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
+import com.tpverp.backend.document.TicketNotFoundException;
 import com.tpverp.backend.security.application.AuthenticationFailedException;
 import com.tpverp.backend.security.application.RoleInUseException;
 import com.tpverp.backend.security.domain.UserAccount;
@@ -116,6 +117,20 @@ public class ApiExceptionHandler {
             LicenseValidationException exception,
             HttpServletRequest request) {
         return systemProblem(HttpStatus.UNPROCESSABLE_CONTENT, SystemErrorCode.INVALID_LICENSE, request);
+    }
+
+    @ExceptionHandler(TicketNotFoundException.class)
+    ProblemDetail ticketNotFound(
+            TicketNotFoundException exception,
+            HttpServletRequest request) {
+        var language = language(request);
+        return problem(
+                HttpStatus.NOT_FOUND,
+                TicketNotFoundException.CODE,
+                localizedExceptionDetail(
+                        exception.getMessage(), SystemErrorCode.VALIDATION_ERROR, language),
+                language,
+                request);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

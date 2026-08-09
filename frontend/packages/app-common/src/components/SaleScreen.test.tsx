@@ -3002,6 +3002,9 @@ describe("SaleScreen", () => {
     expect(html).toContain("PRODUCTO");
     expect(html).toContain("VISUALIZACIÓN");
     expect(html).toContain("Cantidad: 1");
+    expect(html.indexOf('class="sale-next-quantity"')).toBeLessThan(
+      html.indexOf('class="sale-search-results"'),
+    );
     expect(html).not.toContain("Sin venta iniciada");
     expect(html).toContain('aria-label="Líneas del ticket"');
     expect(html).toContain('class="sale-cart-grid-filler"');

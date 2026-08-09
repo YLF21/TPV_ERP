@@ -90,6 +90,9 @@ public class CommercialDocument {
     private boolean origenStock;
     @Column(name = "cuenta_cobrar", nullable = false)
     private boolean cuentaCobrar;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "impresion_factura_snapshot", columnDefinition = "jsonb")
+    private String invoicePrintSnapshot;
     @OneToMany(mappedBy = "documento", cascade = CascadeType.ALL, orphanRemoval = true,
             fetch = FetchType.LAZY)
     @OrderBy("posicion")
@@ -458,6 +461,24 @@ public class CommercialDocument {
 
     public boolean isCuentaCobrar() {
         return cuentaCobrar;
+    }
+
+    public String getInvoicePrintSnapshot() {
+        return invoicePrintSnapshot;
+    }
+
+    public void captureInvoicePrintSnapshot(String snapshot) {
+        if (tipo != CommercialDocumentType.FACTURA_VENTA
+                && tipo != CommercialDocumentType.RECTIFICATIVA_VENTA) {
+            return;
+        }
+        if (invoicePrintSnapshot != null) {
+            throw new IllegalStateException("invoice_print_snapshot_is_immutable");
+        }
+        if (snapshot == null || snapshot.isBlank()) {
+            throw new IllegalArgumentException("invoice_print_snapshot_required");
+        }
+        invoicePrintSnapshot = snapshot;
     }
 
     private boolean isEditableConfirmedDocument() {

@@ -57,7 +57,7 @@ public class PromotionService {
         var documentDate = request.saleDate() == null ? LocalDate.now() : request.saleDate();
         var customer = pricing.customerContext(companyId(), request.customerId());
         var activePromotions = promotions.findByEmpresaIdAndEstado(companyId(), PromotionStatus.ACTIVE).stream()
-                .filter(promotion -> appliesOnDate(promotion, documentDate))
+                .filter(promotion -> PromotionEligibility.appliesOnDate(promotion, documentDate))
                 .filter(promotion -> pricing.matchesSegment(promotion, customer))
                 .toList();
         var promotionTargets = activePromotions.isEmpty()
@@ -241,11 +241,6 @@ public class PromotionService {
     private Promotion promotion(UUID id) {
         return promotions.findByIdAndEmpresaId(id, companyId())
                 .orElseThrow(() -> new IllegalArgumentException("message.promotion.not_found"));
-    }
-
-    private static boolean appliesOnDate(Promotion promotion, LocalDate date) {
-        return !date.isBefore(promotion.startDate())
-                && (promotion.endDate() == null || !date.isAfter(promotion.endDate()));
     }
 
     private UUID companyId() {

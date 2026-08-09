@@ -83,6 +83,9 @@ export type HardwareErrorCode =
   | "PRINTER_NOT_CONFIGURED"
   | "PRINTER_NOT_FOUND"
   | "PRINT_FAILED"
+  | "PDF_EXPORT_FAILED"
+  | "WINDOW_UNAVAILABLE"
+  | "INVALID_PRINT_REQUEST"
   | "CASH_DRAWER_UNAVAILABLE"
   | "ESCPOS_NOT_AVAILABLE"
   | "CUSTOMER_DISPLAY_UNAVAILABLE"
@@ -99,11 +102,15 @@ export type ExportedFileResult = {
 
 export type TicketLinePrint = {
   code?: string;
+  barcode?: string;
   name: string;
   quantity: number;
   price: number;
   total: number;
   taxesIncluded?: boolean;
+  taxPercentage?: number;
+  base?: number;
+  tax?: number;
   serialNumbers?: string[];
 };
 
@@ -121,10 +128,11 @@ export type TicketPrintRequest = {
   lines: TicketLinePrint[];
   payments: TicketPaymentPrint[];
   subtotal?: number;
+  discount?: number;
   tax?: number;
   total: number;
-  labels?: { terminal: string; item: string; quantity: string; price: string; total: string };
-  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; base?: string; tax?: string };
+  labels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
+  escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
   escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
   issuer?: { name: string; taxId: string; address: string };
   customer?: { name: string; taxId: string; address: string };
@@ -135,26 +143,84 @@ export type A4DocumentPrintRequest = {
   documentType: Exclude<PrintableDocumentType, "TICKET">;
   locale?: "es" | "en" | "zh";
   title: string;
+  documentNumber?: string;
   storeName: string;
   terminalCode: string;
   issuedAt: string;
   lines: TicketLinePrint[];
   subtotal: number;
+  discount?: number;
   tax: number;
   taxIncluded: boolean | "MIXED";
   total: number;
-  issuer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
-  customer?: { name: string; taxId: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  issuer?: { name: string; taxId: string; phone?: string; logo?: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  customer?: { name: string; taxId: string; phone?: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
+  payments?: Array<{ method: string; amount: number; reference?: string }>;
+  fiscalProfile?: "IVA" | "IGIC" | "IGIC_MINORISTA";
+  bankAccounts?: Array<{ bankName: string; iban: string }>;
+  qrUrl?: string;
+  qrImage?: string;
   metadata?: Array<{ label: string; value: string }>;
   notes?: string[];
   labels: {
     terminal: string; description: string; quantity: string; unitPrice: string;
     base: string; tax: string; taxIncluded: string; yes: string; no: string; mixed: string; total: string;
-    issuer?: string; customer?: string; taxId?: string; notes?: string; print?: string; close?: string;
+    discount?: string;
+    issuer?: string; customer?: string; taxId?: string; phone?: string; notes?: string;
+    paymentMethod?: string; bankDetails?: string; bankName?: string; iban?: string;
+    taxRate?: string; code?: string; print?: string; close?: string;
   };
 };
 
-export type ProductLabelPrintRequest = {
+export type ProductLabelIssuer = {
+  name: string;
+  taxId: string;
+  address: {
+    line1?: string;
+    postalCode?: string;
+    city?: string;
+    province?: string;
+    country?: string;
+  };
+};
+
+export type ProductLabelCommercial = {
+  badge: string;
+  offer?: {
+    regularPrice: number;
+    offerPrice: number;
+    discountPercent: number;
+    validUntil?: string;
+  };
+  promotionLines: string[];
+};
+
+export type ProductLabelItem = {
+  id: string;
+  product: {
+    name: string;
+    code: string;
+    barcode: string;
+    price: number;
+    commercial?: ProductLabelCommercial;
+  };
+  copies: number;
+};
+
+export type ProductLabelPlacement = {
+  instanceId: string;
+  itemId: string;
+  xMm: number;
+  yMm: number;
+  widthMm: number;
+  heightMm: number;
+};
+
+export type ProductLabelPage = {
+  placements: ProductLabelPlacement[];
+};
+
+export type LegacyProductLabelPrintRequest = {
   storeName: string;
   product: {
     name: string;
@@ -165,6 +231,16 @@ export type ProductLabelPrintRequest = {
   profile: ProductLabelProfile;
   copies: number;
   startPosition?: number;
+};
+
+export type ProductLabelPrintRequest = LegacyProductLabelPrintRequest | {
+  version: 2;
+  kind: "SEQUENTIAL" | "A4_LAYOUT";
+  storeName: string;
+  issuer?: ProductLabelIssuer;
+  profile: ProductLabelProfile;
+  items: ProductLabelItem[];
+  pages?: ProductLabelPage[];
 };
 
 export type ScannerTestResult = {

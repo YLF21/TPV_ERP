@@ -561,6 +561,9 @@ public class SalePaymentSessionService {
                  : documents.createApprovedCardTicketFromSnapshot(snapshot, commands, auth);
          printTicket = TicketPrintView.from(ticket);
      }
+     if (issuedVoucher == null) {
+         issuedVoucher = issuedVoucherFor(ticket);
+     }
       sales.completeTemporaryPriceAuthorizations("PAYMENT_SESSION", id);
      if (creditAuthorization != null) {
          pendingSales.recordPendingTicketAuthorization(
@@ -699,6 +702,7 @@ public class SalePaymentSessionService {
         var snapshot = snapshots.deserialize(session.getSnapshot());
         var sourceTicketId = refundSourceTicketId(snapshot);
         return documents.find(sourceTicketId).getPagos().stream()
+                .filter(RefundPaymentAvailability::isMonetaryRefundSource)
                 .filter(payment -> originalPaymentMatches(kind, payment))
                 .filter(payment -> availableRefundAmount(session, payment)
                         .compareTo(amount) >= 0)
@@ -709,6 +713,7 @@ public class SalePaymentSessionService {
          BigDecimal amount) {
      var sourceTicketId = refundSourceTicketId(snapshots.deserialize(session.getSnapshot()));
      return documents.find(sourceTicketId).getPagos().stream()
+             .filter(RefundPaymentAvailability::isMonetaryRefundSource)
              .filter(payment -> availableRefundAmount(session, payment)
                      .compareTo(amount) >= 0)
              .findFirst()
@@ -738,6 +743,16 @@ public class SalePaymentSessionService {
         allActiveAllocations.addAll(activePaymentReservations(ticket, session.getId()));
         return RefundPaymentAvailability.calculate(
                 ticket, refundTenders, allActiveAllocations);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean requiresVoucherOnlyRefund(SalePaymentSession session) {
+        if (session.getDirection() != SalePaymentSessionDirection.REFUND) {
+            return false;
+        }
+        return snapshots.deserialize(session.getSnapshot()).lines().stream()
+                .anyMatch(line -> line.returnSourceType()
+                        == TicketReturnService.ReturnSourceType.GIFT_RECEIPT);
     }
  private BigDecimal availableRefundAmount(
          SalePaymentSession session,
@@ -870,10 +885,10 @@ public class SalePaymentSessionService {
  private PaymentMethod activeMethod(SalePaymentAllocationKind kind){var name=switch(kind){case CASH->"EFECTIVO";case MANUAL_CARD,INTEGRATED_CARD->"TARJETA";case VOUCHER->"VALE";case TRANSFER->"TRANSFERENCIA";default->null;};var company=organization.currentCompany();return name==null||company==null?null:methods.findByEmpresaIdAndNombreAndActivoTrue(company.getId(),name).orElseThrow();}
  private VoucherService requireVoucherService(){if(voucherService==null)throw new IllegalStateException("voucher_service_unavailable");return voucherService;}
  private IssuedVoucher issuedVoucherFor(CommercialDocument ticket) {
-     if (voucherService == null || ticket == null || ticket.getTotal().signum() >= 0) {
+     if (voucherService == null || ticket == null) {
          return null;
      }
-     return voucherService.issuedFromNegativeTicket(ticket)
+     return voucherService.issuedFromTicket(ticket)
              .map(voucher -> IssuedVoucher.from(voucher, ticket.getNumero()))
              .orElse(null);
  }

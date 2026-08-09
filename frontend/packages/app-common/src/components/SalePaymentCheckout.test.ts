@@ -53,6 +53,33 @@ afterEach(() => {
 });
 
 describe("SalePaymentCheckout locking and cancellation",()=>{
+ it("removes the F11 checkout discount when F12 clears the checkout", async () => {
+  apiRequestMock.mockImplementation(async(path:string)=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/vouchers")return [];
+   if(path==="/pos/payment-sessions/active")return null;
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  const onDiscount=vi.fn();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",totalCents:1000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:1,discount:0}]},
+   permissions:[],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,checkoutDiscountCents:200,onDiscount,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+  act(()=>ref.current!.openCheckout("CASH"));
+
+  const clearButton=await screen.findByRole("button",{name:/Eliminar pagos/});
+  expect(clearButton).toBeEnabled();
+  fireEvent.click(clearButton);
+
+  expect(onDiscount).toHaveBeenCalledOnce();
+  expect(onDiscount).toHaveBeenCalledWith(0);
+ });
+
  it("forwards the authoritative quote fingerprint when reserving an imported ticket", async () => {
   const collecting:ServerSession={id:"replay-reservation",total:"20.00",documentTotal:"-20.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
   apiRequestMock.mockImplementation(async(path:string)=>{

@@ -14,6 +14,8 @@ type NumericValue = number | string;
 type FiscalPartySnapshot = {
   name: string;
   taxId: string;
+  phone?: string;
+  logo?: string;
   address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string };
 };
 
@@ -35,6 +37,7 @@ export type ConfirmedTicketPrintSnapshot = {
   total: NumericValue;
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
+  checkoutDiscountTotal?: NumericValue;
 };
 
 export type TicketPrintOutcome = {
@@ -57,10 +60,16 @@ export type PendingCommercialDocumentPrintSnapshot = {
   issueDate?: string;
   issuer?: FiscalPartySnapshot;
   customer?: FiscalPartySnapshot;
-  lines: Array<{ name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean; serialNumbers?: string[] }>;
+  lines: Array<{ code?: string; barcode?: string; name: string; quantity: NumericValue; unitPrice?: NumericValue; price?: NumericValue; total: NumericValue; taxesIncluded?: boolean; taxPercentage?: NumericValue; base?: NumericValue; tax?: NumericValue; serialNumbers?: string[] }>;
+  payments?: Array<{ method: string; amount: NumericValue; reference?: string }>;
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
   total: NumericValue;
+  fiscalProfile?: "IVA" | "IGIC" | "IGIC_MINORISTA";
+  observations?: string;
+  bankAccounts?: Array<{ bankName: string; iban: string }>;
+  qrUrl?: string;
+  qrImage?: string;
 };
 
 function printableAddress(address: FiscalPartySnapshot["address"] | undefined) {
@@ -76,6 +85,12 @@ function partyLabels(locale: LocaleCode) {
   return { issuer: "Emisor", customer: "Cliente", taxId: "NIF" };
 }
 
+function invoiceLabels(locale: LocaleCode) {
+  if (locale === "en") return { phone: "Phone", paymentMethod: "Payment method", code: "Code" };
+  if (locale === "zh") return { phone: "电话", paymentMethod: "付款方式", code: "编码" };
+  return { phone: "Teléfono", paymentMethod: "Forma de pago", code: "Código" };
+}
+
 export type CustomerReceivablePaymentReceiptSnapshot = {
   kind: "PAYMENT_RECEIPT";
   paymentId: string;
@@ -88,8 +103,20 @@ export type CustomerReceivablePaymentReceiptSnapshot = {
 
 export function ticketPrintRequest(
   snapshot: ConfirmedTicketPrintSnapshot,
-  terminal: TerminalContext
+  terminal: TerminalContext,
+  locale: LocaleCode = "es",
 ): TicketPrintRequest {
+  const t = createTranslator(locale);
+  const labels = {
+    terminal: t("print.a4.terminal"),
+    item: t("print.ticket.item"),
+    quantity: t("print.ticket.quantity"),
+    price: t("print.ticket.price"),
+    discount: t("print.ticket.discount"),
+    base: t("print.a4.base"),
+    tax: t("print.a4.tax"),
+    total: t("print.a4.total"),
+  };
   return {
     documentNumber: snapshot.documentNumber,
     storeName: terminal.storeName,
@@ -108,7 +135,12 @@ export function ticketPrintRequest(
     })),
     total: Number(snapshot.total),
     ...(snapshot.baseTotal == null ? {} : { subtotal: Number(snapshot.baseTotal) }),
+    ...(snapshot.checkoutDiscountTotal == null
+      ? {}
+      : { discount: Number(snapshot.checkoutDiscountTotal) }),
     ...(snapshot.taxTotal == null ? {} : { tax: Number(snapshot.taxTotal) }),
+    labels,
+    escposLabels: labels,
   };
 }
 
@@ -158,6 +190,9 @@ export function ticketAsA4Document(
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
     })),
     subtotal: Number(snapshot.baseTotal ?? snapshot.total),
+    ...(snapshot.checkoutDiscountTotal == null
+      ? {}
+      : { discount: Number(snapshot.checkoutDiscountTotal) }),
     tax: Number(snapshot.taxTotal ?? 0),
     taxIncluded: true,
     total: Number(snapshot.total),
@@ -171,6 +206,7 @@ export function ticketAsA4Document(
       quantity: t("print.a4.quantity"),
       unitPrice: t("print.a4.unitPrice"),
       base: t("print.a4.base"),
+      discount: t("print.ticket.discount"),
       tax: t("print.a4.tax"),
       taxIncluded: t("print.a4.taxIncluded"),
       yes: t("common.yes"),
@@ -192,12 +228,12 @@ export async function outputConfirmedTicket(
   try {
     const config = await hardware.getHardwareConfig();
     if (mode === "DEFAULT") {
-      return await sendConfirmedTicket(snapshot, terminal, hardware, config);
+      return await sendConfirmedTicket(snapshot, terminal, hardware, config, locale);
     }
     if (mode === "PDF") {
       const safeNumber = snapshot.documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
       const result = await hardware.exportTicketPdf(
-        ticketPrintRequest(snapshot, terminal),
+        ticketPrintRequest(snapshot, terminal, locale),
         `${safeNumber || "ticket"}.pdf`,
       );
       return result.ok
@@ -233,6 +269,7 @@ export async function outputConfirmedTicket(
       terminal,
       hardware,
       ticketRoute(config, "TICKET_PRINTER"),
+      locale,
     );
   } catch (error) {
     return failedOutcome(error);
@@ -243,9 +280,13 @@ async function sendConfirmedTicket(
   snapshot: ConfirmedTicketPrintSnapshot,
   terminal: TerminalContext,
   hardware: HardwareBridge,
-  config: HardwareConfig
+  config: HardwareConfig,
+  locale: LocaleCode = "es",
 ): Promise<TicketPrintOutcome> {
-  const result = await hardware.printTicket(ticketPrintRequest(snapshot, terminal), config);
+  const result = await hardware.printTicket(
+    ticketPrintRequest(snapshot, terminal, locale),
+    config,
+  );
   return result.ok
     ? { status: "PRINTED" }
     : { status: "FAILED", technicalMessage: result.message };
@@ -306,21 +347,37 @@ export function commercialDocumentAsA4Document(
   locale: LocaleCode,
 ): A4DocumentPrintRequest {
   const t = createTranslator(locale);
+  const invoice = invoiceLabels(locale);
   return {
     documentType: pendingDocumentType(snapshot),
     locale,
     title: pendingDocumentTitle(snapshot, locale),
+    documentNumber: snapshot.documentNumber,
     storeName: terminal.storeName,
     terminalCode: terminal.terminalCode,
     issuedAt: snapshot.issuedAt ?? snapshot.issueDate ?? "",
     issuer: snapshot.issuer,
     customer: snapshot.customer,
+    payments: (snapshot.payments ?? []).map((payment) => ({
+      method: payment.method,
+      amount: Number(payment.amount),
+      reference: payment.reference,
+    })),
+    fiscalProfile: snapshot.fiscalProfile,
+    bankAccounts: snapshot.bankAccounts,
+    qrUrl: snapshot.qrUrl,
+    qrImage: snapshot.qrImage,
     lines: snapshot.lines.map((line) => ({
+      code: line.code,
+      barcode: line.barcode,
       name: line.name,
       quantity: Number(line.quantity),
       price: Number(line.unitPrice ?? line.price),
       total: Number(line.total),
       taxesIncluded: line.taxesIncluded,
+      taxPercentage: line.taxPercentage == null ? undefined : Number(line.taxPercentage),
+      base: line.base == null ? undefined : Number(line.base),
+      tax: line.tax == null ? undefined : Number(line.tax),
       ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {}),
     })),
     subtotal: Number(snapshot.baseTotal ?? snapshot.total),
@@ -328,6 +385,7 @@ export function commercialDocumentAsA4Document(
     taxIncluded: snapshot.lines.every((line) => line.taxesIncluded !== false) ? true
       : snapshot.lines.every((line) => line.taxesIncluded === false) ? false : "MIXED",
     total: Number(snapshot.total),
+    notes: snapshot.observations ? [snapshot.observations] : [],
     labels: {
       terminal: t("print.a4.terminal"),
       description: t("print.a4.description"),
@@ -340,6 +398,13 @@ export function commercialDocumentAsA4Document(
       no: t("common.no"),
       mixed: t("print.a4.mixed"),
       total: t("print.a4.total"),
+      phone: invoice.phone,
+      paymentMethod: invoice.paymentMethod,
+      bankDetails: t("gestion.invoicePrint.title"),
+      bankName: t("gestion.invoicePrint.bankName"),
+      iban: t("gestion.invoicePrint.iban"),
+      taxRate: snapshot.fiscalProfile === "IVA" ? "IVA %" : "IGIC %",
+      code: invoice.code,
       ...partyLabels(locale),
     },
   };

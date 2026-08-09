@@ -423,6 +423,7 @@ function createSalesUtilityWindow(bootstrap) {
   });
   const contentsId = salesUtilityWindow.webContents.id;
   salesUtilityBootstraps.set(contentsId, structuredClone(bootstrap));
+  restrictNavigation(salesUtilityWindow, trustedAppOrigin);
   const target = new URL(appUrl);
   target.searchParams.set("window", "sales-utility");
   salesUtilityWindow.loadURL(target.toString());
@@ -963,8 +964,9 @@ async function printProductLabel(request, config) {
     });
     return { ok: true };
   } catch (error) {
+    const invalidRequest = error instanceof Error && error.message.startsWith("PRODUCT_LABEL_");
     return structuredError(
-      "PRINT_FAILED",
+      invalidRequest ? "INVALID_PRINT_REQUEST" : "PRINT_FAILED",
       error instanceof Error ? error.message : "No se pudo imprimir la etiqueta"
     );
   } finally {
@@ -1003,8 +1005,9 @@ async function exportProductLabelPdf(request, defaultFileName) {
     fs.writeFileSync(result.filePath, contents);
     return { ok: true, canceled: false, filePath: result.filePath };
   } catch (error) {
+    const invalidRequest = error instanceof Error && error.message.startsWith("PRODUCT_LABEL_");
     return structuredError(
-      "PDF_EXPORT_FAILED",
+      invalidRequest ? "INVALID_PRINT_REQUEST" : "PDF_EXPORT_FAILED",
       error instanceof Error ? error.message : "No se pudo generar el PDF de etiquetas"
     );
   } finally {

@@ -10,9 +10,12 @@ import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.cash.CashPaymentRecorder;
 import com.tpverp.backend.catalog.DiscountType;
+import com.tpverp.backend.catalog.IdentifierType;
+import com.tpverp.backend.catalog.PriceTier;
 import com.tpverp.backend.catalog.Product;
 import com.tpverp.backend.catalog.ProductRepository;
 import com.tpverp.backend.catalog.ProductType;
+import com.tpverp.backend.catalog.StoreTax;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
 import com.tpverp.backend.organization.Company;
@@ -244,9 +247,55 @@ class DocumentPromotionIntegrationTest {
         assertThat(ticket.getLineas().get(1).getTotal()).isEqualByComparingTo("-1.00");
         assertThat(ticket.getLineas().get(1).getPromotionId()).isEqualTo(promotion.rootVersionId());
         assertThat(ticket.getLineas().get(1).getPromotionVersionId()).isEqualTo(promotion.id());
+        assertThat(ticket.getLineas().get(1).getPromotionAffectedPositions())
+                .containsExactly(1);
         assertThat(ticket.getPagos()).singleElement()
                 .satisfies(payment -> assertThat(payment.getImporte()).isEqualByComparingTo("2.00"));
         verify(stockGateway).confirm(ticket);
+    }
+
+    @Test
+    void buyXPayYKeepsTaxIncludedCatalogPriceAndDoesNotTaxUnrelatedProductTwice() {
+        var tax = new StoreTax(store.getId(), new BigDecimal("21.00"), true);
+        var promotedProduct = realProduct("2004461", "Producto 3x2", "8.20", tax);
+        var unrelatedProduct = realProduct("3", "Producto no promocionado", "5.00", tax);
+        var promotion = buyXPayY("3x2", 3, 2);
+        var catalog = Map.of(
+                promotedProduct.getId(), new PromotionCatalogGateway.ProductSnapshot(promotedProduct, tax),
+                unrelatedProduct.getId(), new PromotionCatalogGateway.ProductSnapshot(unrelatedProduct, tax));
+        org.mockito.Mockito.doReturn(catalog).when(promotionCatalog).products(any(), any());
+        when(promotionRepository.findByEmpresaIdAndEstado(
+                store.getEmpresa().getId(), PromotionStatus.ACTIVE))
+                .thenReturn(List.of(promotion));
+        when(promotionTargetRepository.findByPromocionIdIn(List.of(promotion.id())))
+                .thenReturn(List.of(new PromotionTarget(
+                        promotion.id(), PromotionTargetType.PRODUCT, promotedProduct.getId())));
+
+        var quote = serviceWithPricing(new AuthoritativePromotionPricing(
+                customerRepository, memberRepository)).quoteTicket(
+                command(CommercialDocumentType.TICKET, List.of(
+                        line(promotedProduct.getId(), "3", "8.20"),
+                        line(unrelatedProduct.getId(), "1", "5.00"))),
+                null,
+                authentication());
+
+        assertThat(quote.getLineas()).satisfiesExactly(
+                line -> {
+                    assertThat(line.isImpuestosIncluidos()).isTrue();
+                    assertThat(line.getTotal()).isEqualByComparingTo("24.60");
+                },
+                line -> {
+                    assertThat(line.isImpuestosIncluidos()).isTrue();
+                    assertThat(line.getBase()).isEqualByComparingTo("4.13");
+                    assertThat(line.getImpuesto()).isEqualByComparingTo("0.87");
+                    assertThat(line.getTotal()).isEqualByComparingTo("5.00");
+                },
+                line -> {
+                    assertThat(line.getLineType()).isEqualTo(DocumentLineType.PROMOTION);
+                    assertThat(line.getTotal()).isEqualByComparingTo("-8.20");
+                    assertThat(line.getPromotionAffectedPositions()).containsExactly(1);
+                });
+        assertThat(quote.getTotal()).isEqualByComparingTo("21.40");
     }
 
     @Test
@@ -569,6 +618,20 @@ class DocumentPromotionIntegrationTest {
         lenient().when(product.getProductType()).thenReturn(ProductType.UNIT);
         lenient().when(product.getDiscountType()).thenReturn(DiscountType.NORMAL);
         lenient().when(product.isActive()).thenReturn(true);
+        return product;
+    }
+
+    private Product realProduct(
+            String code,
+            String name,
+            String salePrice,
+            StoreTax tax) {
+        var product = new Product(
+                store.getId(), UUID.randomUUID(), null, tax.getId(),
+                ProductType.UNIT, DiscountType.NORMAL,
+                name, null, null, BigDecimal.ZERO, true);
+        product.replaceIdentifier(IdentifierType.CODIGO, code);
+        product.setPrice(PriceTier.VENTA, new BigDecimal(salePrice));
         return product;
     }
 

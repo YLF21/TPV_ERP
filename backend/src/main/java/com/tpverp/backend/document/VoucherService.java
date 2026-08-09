@@ -103,7 +103,7 @@ public class VoucherService {
             var remaining = Money.euros(voucher.balance().subtract(requested));
             voucher.closeForReplacement();
             replacement = Optional.of(vouchers.save(new Voucher(
-                    organization.currentStore().getId(), nextCode(), remaining,
+                    purchaseTicket.getTiendaId(), nextCode(), remaining,
                     origins(voucher, purchaseTicket), Instant.now(clock))));
         } else {
             voucher.consume(requested);
@@ -111,12 +111,21 @@ public class VoucherService {
         vouchers.save(voucher);
         return new VoucherConsumptionResult(voucher, consumed, replacement);
     }
-    // Consume un vale y reemite otro codigo cuando queda saldo sobrante.
+    // El consumo parcial cierra el vale original y reemite el sobrante con un codigo nuevo.
 
     @Transactional(readOnly = true)
     public List<Voucher> list() {
         return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(
                 organization.currentStore().getId());
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Voucher> findByCode(String code) {
+        if (code == null || code.isBlank()) {
+            return Optional.empty();
+        }
+        return vouchers.findByTiendaIdAndCodeIgnoreCase(
+                organization.currentStore().getId(), code.trim());
     }
 
     @Transactional(readOnly = true)
@@ -234,13 +243,18 @@ public class VoucherService {
         return issuedFor(ticket);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<Voucher> issuedFromTicket(CommercialDocument ticket) {
+        requireCurrentStore(ticket);
+        return issuedFor(ticket);
+    }
+
     private Optional<Voucher> issuedFor(CommercialDocument ticket) {
         if (ticket == null || ticket.getNumero() == null || ticket.getNumero().isBlank()) {
             return Optional.empty();
         }
-        return vouchers.findAllByTiendaIdOrderByCreatedAtDesc(ticket.getTiendaId()).stream()
-                .filter(voucher -> voucher.originTickets().contains(ticket.getNumero()))
-                .findFirst();
+        return vouchers.findAllByOriginTicket(ticket.getTiendaId(), ticket.getNumero()).stream()
+                .max(java.util.Comparator.comparing(Voucher::createdAt));
     }
 
     private boolean generatedVoucherExists(CommercialDocument ticket) {
@@ -274,10 +288,10 @@ public class VoucherService {
 
     private static List<String> origins(Voucher voucher, CommercialDocument ticket) {
         var origins = new ArrayList<>(voucher.originTickets());
-        if (ticket.getNumero() != null && !origins.contains(ticket.getNumero())) {
+        if (!origins.contains(ticket.getNumero())) {
             origins.add(ticket.getNumero());
         }
-        return origins;
+        return List.copyOf(origins);
     }
 
     private static String nextCode() {

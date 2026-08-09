@@ -486,6 +486,66 @@ class PosCashServiceTest {
     }
 
     @Test
+    void authoritativeQuoteKeepsPromotionOnItsProductsAndF11AsOneSummaryLine() {
+        var storeId = UUID.randomUUID();
+        var firstProductId = UUID.randomUUID();
+        var promotedProductId = UUID.randomUUID();
+        var firstProduct = mock(Product.class);
+        var promotedProduct = mock(Product.class);
+        when(firstProduct.getId()).thenReturn(firstProductId);
+        when(firstProduct.getSalePrice()).thenReturn(new BigDecimal("10.00"));
+        when(promotedProduct.getId()).thenReturn(promotedProductId);
+        when(promotedProduct.getSalePrice()).thenReturn(new BigDecimal("20.00"));
+        var ticket = new CommercialDocument(
+                storeId, UUID.randomUUID(), CommercialDocumentType.TICKET,
+                LocalDate.of(2026, 8, 9), UUID.randomUUID(), BigDecimal.ZERO);
+        ticket.addLine(new DocumentLine(
+                ticket, firstProductId, 1, BigDecimal.ONE, "A", "Sin promocion",
+                "VENTA", new BigDecimal("10.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00")));
+        ticket.addLine(new DocumentLine(
+                ticket, promotedProductId, 2, BigDecimal.ONE, "B", "Promocionado",
+                "VENTA", new BigDecimal("20.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00")));
+        var promotion = DocumentLine.special(
+                ticket, 3, "PROMOCION 2x1", new BigDecimal("-5.00"), true,
+                "IVA", new BigDecimal("21.00"), UUID.randomUUID(),
+                UUID.randomUUID(), null);
+        promotion.assignPromotionAffectedPositions(List.of(2));
+        ticket.addLine(promotion);
+        ticket.addLine(DocumentLine.manualDiscount(
+                ticket, 4, new BigDecimal("-1.00"), true,
+                "IVA", new BigDecimal("21.00")));
+        ticket.addLine(DocumentLine.manualDiscount(
+                ticket, 5, new BigDecimal("-2.00"), true,
+                "IVA", new BigDecimal("21.00")));
+        var request = new PosCashController.SaleRequest(null, List.of(
+                new PosCashController.LineRequest(
+                        firstProductId, BigDecimal.ONE, BigDecimal.ZERO),
+                new PosCashController.LineRequest(
+                        promotedProductId, BigDecimal.ONE, BigDecimal.ZERO)));
+
+        var quote = PosCashService.Quote.from(
+                ticket, request,
+                Map.of(firstProductId, firstProduct, promotedProductId, promotedProduct),
+                AuthoritativePromotionPricing.CustomerContext.anonymous());
+
+        assertThat(quote.total()).isEqualByComparingTo("22.00");
+        assertThat(quote.lineBreakdown()).hasSize(3);
+        assertThat(quote.lineBreakdown().get(0).promotionDiscount()).isZero();
+        assertThat(quote.lineBreakdown().get(0).finalSubtotal())
+                .isEqualByComparingTo("10.00");
+        assertThat(quote.lineBreakdown().get(1).promotionDiscount())
+                .isEqualByComparingTo("5.00");
+        assertThat(quote.lineBreakdown().get(1).finalSubtotal())
+                .isEqualByComparingTo("15.00");
+        assertThat(quote.lineBreakdown().get(2).lineType())
+                .isEqualTo(DocumentLineType.MANUAL_DISCOUNT);
+        assertThat(quote.lineBreakdown().get(2).finalSubtotal())
+                .isEqualByComparingTo("-3.00");
+    }
+
+    @Test
     void cashIdempotencyHashKeepsLegacyCanonicalWhenCouponIsAbsent() throws Exception {
         var productId = UUID.randomUUID();
         var customerId = UUID.randomUUID();

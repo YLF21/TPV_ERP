@@ -7,6 +7,17 @@ import { PromotionPreviewPanel, type PromotionPreview } from "./PromotionPreview
 const tpvCss = readFileSync(resolve(process.cwd(), "packages/app-common/src/styles/tpv.css"), "utf8");
 
 describe("PromotionPreviewPanel", () => {
+  it("does not render the promotions block until a promotion or coupon is applied", () => {
+    const html = renderToStaticMarkup(
+      <PromotionPreviewPanel
+        locale="es"
+        preview={{ appliedPromotions: [], usedCoupon: null, generatedCoupon: null }}
+      />,
+    );
+
+    expect(html).toBe("");
+  });
+
   it("renders an applied promotion and generated coupon code", () => {
     const preview: PromotionPreview = {
       appliedPromotions: [

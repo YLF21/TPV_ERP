@@ -9,6 +9,7 @@ import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -52,6 +53,28 @@ class RefundPaymentAvailabilityTest {
         assertThat(availability.getFirst().reservedAmount()).isEqualByComparingTo("6.00");
         assertThat(availability.getFirst().availableAmount()).isEqualByComparingTo("30.00");
         assertThat(availability.get(1).availableAmount()).isEqualByComparingTo("31.00");
+    }
+
+    @Test
+    void excludesExchangeCompensationBecauseItIsNotMoneyPaidByTheCustomer() {
+        var ticket = ticket();
+        var cash = new PaymentMethod(UUID.randomUUID(), "EFECTIVO", false);
+        var exchangeCompensation = new PaymentMethod(
+                UUID.randomUUID(), PaymentMethodService.EXCHANGE_COMPENSATION_METHOD, false);
+        var cashPayment = payment(ticket, cash, 1, "10.00", null);
+        ticket.addPayment(cashPayment);
+        ticket.addPayment(payment(ticket, exchangeCompensation, 2, "72.00", null));
+
+        var tenders = Mockito.mock(RefundTenderRepository.class);
+        when(tenders.refundedAmountByOriginalPaymentId(cashPayment.getId()))
+                .thenReturn(BigDecimal.ZERO);
+        var availability = RefundPaymentAvailability.calculate(ticket, tenders, List.of());
+
+        assertThat(availability).singleElement().satisfies(view -> {
+            assertThat(view.paymentMethod()).isEqualTo("EFECTIVO");
+            assertThat(view.kind()).isEqualTo(SalePaymentAllocationKind.CASH);
+            assertThat(view.availableAmount()).isEqualByComparingTo("10.00");
+        });
     }
 
     private static CommercialDocument ticket() {

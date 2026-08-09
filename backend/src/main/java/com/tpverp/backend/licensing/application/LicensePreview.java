@@ -13,6 +13,16 @@ public record LicensePreview(
         int maxWindows,
         int maxPda,
         TaxRegime impuestos,
+        CommercialProfile commercialProfile,
         String issuerKeyId,
         String fileHash) {
+
+    public LicensePreview(String reference, String taxId, TaxpayerType taxpayerType,
+            String company, String store, Instant validFrom, Instant validUntil,
+            int maxWindows, int maxPda, TaxRegime impuestos, String issuerKeyId,
+            String fileHash) {
+        this(reference, taxId, taxpayerType, company, store, validFrom, validUntil,
+                maxWindows, maxPda, impuestos, CommercialProfile.MAYORISTA,
+                issuerKeyId, fileHash);
+    }
 }

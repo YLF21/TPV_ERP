@@ -3,6 +3,7 @@ package com.tpverp.backend.licensing;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
+import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.organization.Store;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -64,6 +65,10 @@ public class License {
     @Enumerated(EnumType.STRING)
     @Column(name = "regimen_impuesto", length = 8)
     private TaxRegime regimenImpuesto;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "perfil_comercial", nullable = false, length = 16)
+    private CommercialProfile commercialProfile = CommercialProfile.MAYORISTA;
 
     @Column(name = "blob_original", nullable = false, columnDefinition = "text")
     private String blobOriginal;
@@ -132,6 +137,32 @@ public class License {
             ImportResult resultadoImportacion,
             String motivoImportacion,
             boolean activa) {
+        this(tienda, instalacion, referencia, validaDesde, validaHasta, maxWindows, maxPda,
+                taxId, taxpayerType, regimenImpuesto, CommercialProfile.MAYORISTA,
+                blobOriginal, hash, formatVersion, importadaEn, metadataImportacion,
+                resultadoImportacion, motivoImportacion, activa);
+    }
+
+    public License(
+            Store tienda,
+            Installation instalacion,
+            String referencia,
+            Instant validaDesde,
+            Instant validaHasta,
+            int maxWindows,
+            int maxPda,
+            String taxId,
+            TaxpayerType taxpayerType,
+            TaxRegime regimenImpuesto,
+            CommercialProfile commercialProfile,
+            String blobOriginal,
+            String hash,
+            int formatVersion,
+            Instant importadaEn,
+            Map<String, Object> metadataImportacion,
+            ImportResult resultadoImportacion,
+            String motivoImportacion,
+            boolean activa) {
         if (maxWindows < 1 || maxPda < 0 || formatVersion < 1) {
             throw new IllegalArgumentException("Limites o version de formato invalidos");
         }
@@ -154,6 +185,7 @@ public class License {
         this.taxId = required(taxId, "taxId");
         this.taxpayerType = Objects.requireNonNull(taxpayerType, "taxpayerType");
         this.regimenImpuesto = Objects.requireNonNull(regimenImpuesto, "regimenImpuesto");
+        this.commercialProfile = Objects.requireNonNull(commercialProfile, "commercialProfile");
         this.blobOriginal = required(blobOriginal, "blobOriginal");
         this.hash = required(hash, "hash");
         this.formatVersion = formatVersion;
@@ -212,6 +244,14 @@ public class License {
 
     public TaxpayerType getTaxpayerType() {
         return taxpayerType;
+    }
+
+    public CommercialProfile getCommercialProfile() {
+        return commercialProfile;
+    }
+
+    public void updateCommercialProfile(CommercialProfile commercialProfile) {
+        this.commercialProfile = Objects.requireNonNull(commercialProfile, "commercialProfile");
     }
 
     public int getFormatVersion() {

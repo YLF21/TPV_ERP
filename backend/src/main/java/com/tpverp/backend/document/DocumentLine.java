@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -81,6 +83,8 @@ public class DocumentLine {
     private BigDecimal impuesto;
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal total;
+    @Transient
+    private Set<Integer> promotionAffectedPositions = Set.of();
     @Version
     private long version;
 
@@ -400,6 +404,27 @@ public class DocumentLine {
 
     public UUID getPromotionVersionId() {
         return promotionVersionId;
+    }
+
+    public Set<Integer> getPromotionAffectedPositions() {
+        return Set.copyOf(promotionAffectedPositions);
+    }
+
+    void assignPromotionAffectedPositions(Collection<Integer> positions) {
+        if (lineType != DocumentLineType.PROMOTION) {
+            throw new IllegalStateException(
+                    "Solo una linea de promocion puede identificar productos afectados");
+        }
+        Objects.requireNonNull(positions, "positions");
+        var normalized = positions.stream()
+                .map(position -> Objects.requireNonNull(position, "position"))
+                .filter(position -> position > 0)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        if (normalized.size() != positions.size()) {
+            throw new IllegalArgumentException(
+                    "Las posiciones afectadas por la promocion deben ser positivas y unicas");
+        }
+        promotionAffectedPositions = normalized;
     }
 
     public UUID getPromotionalCouponId() {

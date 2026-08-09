@@ -53,8 +53,13 @@ type Props = {
 const copy = {
   es: {
     title: "Imprimir ticket regalo",
-    description: "Busca el ticket, selecciona los artículos y genera un justificante sin precios.",
     ticket: "N.º de ticket",
+    date: "Fecha",
+    selection: "Selección",
+    selectedProducts: "productos",
+    selectedUnits: "unidades",
+    selectLine: "Seleccionar producto",
+    receiptCode: "Código generado",
     search: "Buscar ticket",
     selectAll: "Seleccionar todo el ticket",
     clear: "Quitar selección",
@@ -68,6 +73,7 @@ const copy = {
     loading: "Consultando ticket…",
     empty: "El ticket no tiene artículos disponibles.",
     selectionRequired: "Selecciona al menos un artículo.",
+    ticketNotFound: "Ticket no encontrado",
     searchError: "No se pudo consultar el ticket.",
     issueError: "No se pudo generar el ticket regalo.",
     printError: "El ticket regalo se generó, pero no pudo imprimirse.",
@@ -75,8 +81,13 @@ const copy = {
   },
   en: {
     title: "Print gift receipt",
-    description: "Find the ticket, select the items and create a receipt without prices.",
     ticket: "Ticket number",
+    date: "Date",
+    selection: "Selection",
+    selectedProducts: "products",
+    selectedUnits: "units",
+    selectLine: "Select product",
+    receiptCode: "Generated code",
     search: "Find ticket",
     selectAll: "Select entire ticket",
     clear: "Clear selection",
@@ -90,6 +101,7 @@ const copy = {
     loading: "Loading ticket…",
     empty: "The ticket has no available items.",
     selectionRequired: "Select at least one item.",
+    ticketNotFound: "Ticket not found",
     searchError: "The ticket could not be loaded.",
     issueError: "The gift receipt could not be created.",
     printError: "The gift receipt was created but could not be printed.",
@@ -97,8 +109,13 @@ const copy = {
   },
   zh: {
     title: "打印礼品小票",
-    description: "查找小票，选择商品并生成不含价格的凭证。",
     ticket: "小票编号",
+    date: "日期",
+    selection: "已选",
+    selectedProducts: "件商品",
+    selectedUnits: "个单位",
+    selectLine: "选择商品",
+    receiptCode: "已生成编码",
     search: "查找小票",
     selectAll: "选择整张小票",
     clear: "清除选择",
@@ -112,6 +129,7 @@ const copy = {
     loading: "正在读取小票…",
     empty: "该小票没有可用商品。",
     selectionRequired: "请至少选择一个商品。",
+    ticketNotFound: "未找到小票",
     searchError: "无法读取小票。",
     issueError: "无法生成礼品小票。",
     printError: "礼品小票已生成，但打印失败。",
@@ -124,13 +142,35 @@ function requestId() {
 }
 
 function apiMessage(error: unknown, fallback: string) {
-  return error instanceof ApiError && error.message ? error.message : fallback;
+  if (!(error instanceof ApiError)) return fallback;
+  const detail = error.problem?.detail;
+  return typeof detail === "string" && detail.trim() ? detail.trim() : fallback;
+}
+
+function isMissingTicketError(error: unknown) {
+  if (!(error instanceof ApiError)) return false;
+  const code = typeof error.problem?.code === "string" ? error.problem.code : "";
+  return code === "TICKET_NOT_FOUND"
+    || (error.status === 400 && code === "VALIDATION_ERROR");
+}
+
+function formatIssuedAt(value: string, locale: LocaleCode) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
 }
 
 export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: Props) {
   const t = copy[locale];
   const inputRef = useRef<HTMLInputElement>(null);
   const issueRequestRef = useRef("");
+  const ticketEditedRef = useRef(false);
   const [ticketNumber, setTicketNumber] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selections, setSelections] = useState<Record<string, Selection>>({});
@@ -139,7 +179,36 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
   const [message, setMessage] = useState("");
   const [issuedCode, setIssuedCode] = useState("");
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    let active = true;
+    const focusAndSelectTicket = () => globalThis.setTimeout(() => {
+      if (!active) return;
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
+
+    void apiRequest<{ numero?: string | null }>("/tickets/last-current-terminal", { token })
+      .then((ticket) => {
+        if (!active || ticketEditedRef.current || !ticket.numero?.trim()) return;
+        setTicketNumber(ticket.numero.trim());
+      })
+      .catch(() => undefined)
+      .finally(focusAndSelectTicket);
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [busy, onClose]);
 
   const selectedLines = useMemo(() => preview?.lines.flatMap((line) => {
     const selection = selections[line.lineId];
@@ -152,6 +221,7 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
   }) ?? [], [preview, selections]);
   const selectionIsValid = selectedLines.length > 0
     && selectedLines.length === Object.keys(selections).length;
+  const selectedQuantity = selectedLines.reduce((total, line) => total + line.quantity, 0);
 
   async function search() {
     const normalized = ticketNumber.trim();
@@ -169,7 +239,9 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
     } catch (nextError) {
       setPreview(null);
       setSelections({});
-      setError(apiMessage(nextError, t.searchError));
+      setError(isMissingTicketError(nextError)
+        ? t.ticketNotFound
+        : apiMessage(nextError, t.searchError));
     } finally {
       setBusy(false);
     }
@@ -284,21 +356,29 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
 
   return (
     <div className="sale-action-overlay" role="presentation">
-      <section className="gift-receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="gift-receipt-title">
+      <section className="gift-receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="gift-receipt-title" aria-busy={busy}>
         <header>
-          <div><h2 id="gift-receipt-title">{t.title}</h2><p>{t.description}</p></div>
-          <button type="button" className="sale-dialog-close" aria-label={t.close} onClick={onClose}>×</button>
+          <h2 id="gift-receipt-title">{t.title}</h2>
+          <button type="button" className="sale-dialog-close" aria-label={t.close} disabled={busy} onClick={onClose}>×</button>
         </header>
         <form className="gift-receipt-search" onSubmit={(event) => { event.preventDefault(); void search(); }}>
-          <label><span>{t.ticket}</span><input ref={inputRef} value={ticketNumber} onChange={(event) => setTicketNumber(event.currentTarget.value)} /></label>
-          <button type="submit" disabled={busy || !ticketNumber.trim()}>{busy ? t.loading : t.search}</button>
+          <label><span>{t.ticket}</span><input ref={inputRef} disabled={busy} value={ticketNumber} onChange={(event) => {
+            ticketEditedRef.current = true;
+            setTicketNumber(event.currentTarget.value);
+          }} /></label>
+          <button type="submit" className="gift-receipt-action gift-receipt-action-primary" disabled={busy || !ticketNumber.trim()}>{busy ? t.loading : t.search}</button>
         </form>
         {preview && <>
+          <div className="gift-receipt-summary">
+            <div><span>{t.ticket}</span><strong>{preview.ticketNumber}</strong></div>
+            <div><span>{t.date}</span><strong>{formatIssuedAt(preview.issuedAt, locale)}</strong></div>
+            <div className="selected"><span>{t.selection}</span><strong>{selectedLines.length} {t.selectedProducts} · {formatProductQuantity(selectedQuantity, "SERVICE", locale)} {t.selectedUnits}</strong></div>
+          </div>
           <div className="gift-receipt-toolbar">
-            <strong>{preview.ticketNumber}</strong>
+            <strong>{preview.lines.length} {t.selectedProducts}</strong>
             <div>
-              <button type="button" onClick={selectAll}>{t.selectAll}</button>
-              <button type="button" onClick={() => { issueRequestRef.current = ""; setSelections({}); }}>{t.clear}</button>
+              <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy || preview.lines.length === 0} onClick={selectAll}>{t.selectAll}</button>
+              <button type="button" className="gift-receipt-action gift-receipt-action-neutral" disabled={busy || selectedLines.length === 0} onClick={() => { issueRequestRef.current = ""; setSelections({}); }}>{t.clear}</button>
             </div>
           </div>
           {preview.lines.length === 0 ? <p>{t.empty}</p> : <div className="gift-receipt-lines">
@@ -307,26 +387,28 @@ export function GiftReceiptDialog({ token, locale, terminalContext, onClose }: P
               <tbody>{preview.lines.map((line) => {
                 const selection = selections[line.lineId];
                 return <Fragment key={line.lineId}>
-                  <tr>
-                    <td><input type="checkbox" checked={Boolean(selection)} onChange={(event) => toggleLine(line, event.currentTarget.checked)} /></td>
+                  <tr className={selection ? "selected" : ""}>
+                    <td><input type="checkbox" aria-label={`${t.selectLine}: ${line.name}`} disabled={busy} checked={Boolean(selection)} onChange={(event) => toggleLine(line, event.currentTarget.checked)} /></td>
                     <td>{line.code}</td><td>{line.name}</td><td>{formatProductQuantity(line.availableQuantity, line.productType, locale)}</td>
-                    <td><input type="number" min={productQuantityStep(line.productType)} max={Number(line.availableQuantity)} step={productQuantityStep(line.productType)} disabled={!selection || line.serialNumbers.length > 0} value={selection?.quantity ?? ""} onChange={(event) => updateQuantity(line, event.currentTarget.value)} /></td>
+                    <td><input type="number" min={productQuantityStep(line.productType)} max={Number(line.availableQuantity)} step={productQuantityStep(line.productType)} disabled={busy || !selection || line.serialNumbers.length > 0} value={selection?.quantity ?? ""} onChange={(event) => updateQuantity(line, event.currentTarget.value)} /></td>
                   </tr>
-                  {selection && line.serialNumbers.length > 0 && <tr><td className="gift-receipt-serials" colSpan={5}>
+                  {selection && line.serialNumbers.length > 0 && <tr className="gift-receipt-serial-row"><td className="gift-receipt-serials" colSpan={5}>
                     <strong>{t.serials}</strong>
-                    {line.serialNumbers.map((serial) => <label key={serial}><input type="checkbox" checked={selection.serialNumbers.includes(serial)} onChange={(event) => toggleSerial(line, serial, event.currentTarget.checked)} />{serial}</label>)}
+                    {line.serialNumbers.map((serial) => <label key={serial}><input type="checkbox" disabled={busy} checked={selection.serialNumbers.includes(serial)} onChange={(event) => toggleSerial(line, serial, event.currentTarget.checked)} />{serial}</label>)}
                   </td></tr>}
                 </Fragment>;
               })}</tbody>
             </table>
           </div>}
         </>}
-        {error && <p className="sale-action-error" role="alert">{error}</p>}
-        {message && <p className="sale-action-success" role="status">{message}</p>}
+        {(error || message) && <div className="gift-receipt-feedback">
+          {error && <p className="sale-action-error" role="alert">{error}</p>}
+          {message && <p className="sale-action-success" role="status">{message}</p>}
+        </div>}
         <footer>
-          {issuedCode && <strong>{issuedCode}</strong>}
-          <button type="button" onClick={onClose}>{t.close}</button>
-          <button type="button" className="primary" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
+          {issuedCode && <div className="gift-receipt-issued"><span>{t.receiptCode}</span><strong>{issuedCode}</strong></div>}
+          <button type="button" className="gift-receipt-action gift-receipt-action-secondary" disabled={busy} onClick={onClose}>{t.close}</button>
+          <button type="button" className="gift-receipt-action gift-receipt-action-primary gift-receipt-action-issue" disabled={busy || !selectionIsValid} onClick={() => void issueAndPrint()}>{t.issue}</button>
         </footer>
       </section>
     </div>

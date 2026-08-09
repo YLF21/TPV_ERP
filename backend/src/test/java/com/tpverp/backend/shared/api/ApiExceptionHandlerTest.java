@@ -4,6 +4,7 @@ import com.tpverp.backend.document.CustomerCreditLimitExceededException;
 import com.tpverp.backend.document.GenericSaleConfirmationBlockedException;
 import com.tpverp.backend.document.TicketHasPreviousReturnsException;
 import com.tpverp.backend.document.TicketAlreadyInvoicedException;
+import com.tpverp.backend.document.TicketNotFoundException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.tpverp.backend.organization.Company;
@@ -91,6 +92,18 @@ class ApiExceptionHandlerTest {
 
         assertEquals(400, problem.getStatus());
         assertEquals("La retirada supera el efectivo disponible en caja", problem.getDetail());
+    }
+
+    @Test
+    void reportsMissingTicketsWithAStableNotFoundCodeAndClearMessage() {
+        var request = new MockHttpServletRequest();
+        request.addHeader(HttpHeaders.ACCEPT_LANGUAGE, "es");
+
+        var problem = handler.ticketNotFound(new TicketNotFoundException(), request);
+
+        assertEquals(404, problem.getStatus());
+        assertEquals("TICKET_NOT_FOUND", problem.getProperties().get("code"));
+        assertEquals("Ticket no encontrado", problem.getDetail());
     }
 
     @Test

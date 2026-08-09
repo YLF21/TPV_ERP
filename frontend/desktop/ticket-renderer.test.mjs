@@ -14,4 +14,21 @@ describe("ticket desktop renderer", () => {
     expect(html).toContain("Shop &lt;x&gt;"); expect(html).toContain("Coffee &lt;b&gt;");
     expect(html).not.toContain("Articulo"); expect(html).not.toContain("<b>");
   });
+
+  it("renders one F11 summary row before taxes and fiscal total", () => {
+    const html = renderTicketHtml({
+      storeName: "Shop", documentNumber: "R-2", terminalCode: "01",
+      lines: [{ name: "Articulo", quantity: 1, price: 30, total: 30 }],
+      payments: [], discount: 10, subtotal: 16.53, tax: 3.47, total: 20,
+      labels: {
+        item: "Articulo", quantity: "Cant.", price: "Precio", discount: "Descuento",
+        base: "Base", tax: "Impuesto", total: "Total", terminal: "Terminal"
+      }
+    });
+
+    expect(html.match(/Descuento/g)).toHaveLength(1);
+    expect(html).toContain("-10.00");
+    expect(html.indexOf("Descuento")).toBeLessThan(html.indexOf("Impuesto"));
+    expect(html.indexOf("Impuesto")).toBeLessThan(html.lastIndexOf("Total"));
+  });
 });

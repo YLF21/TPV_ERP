@@ -132,4 +132,51 @@ describe("PaymentMethodSettingsScreen", () => {
     ));
     expect((policy as HTMLSelectElement).value).toBe("EXCHANGE_OR_VOUCHER_ONLY");
   });
+
+  it("adds multiple invoice bank accounts with only bank name and IBAN", async () => {
+    const request = vi.fn(async (path: string, options?: { method?: string; body?: unknown }) => {
+      if (path === "/return-policy") return { policy: "REFUND_ALLOWED" };
+      if (path === "/invoice-print-configuration") {
+        return { observations: "", bankAccounts: [] };
+      }
+      if (path === "/invoice-print-configuration/bank-accounts"
+        && options?.method === "POST") {
+        return {
+          id: "bank-1",
+          bankName: "Banco Atlántico",
+          iban: "ES9121000418450200051332",
+          displayIban: "ES91 2100 0418 4502 0005 1332",
+          active: true,
+          order: 0,
+        };
+      }
+      return [method("EFECTIVO"), method("TARJETA"), method("TRANSFERENCIA"), method("VALE")];
+    });
+    render(<PaymentMethodSettingsScreen
+      session={session}
+      t={createTranslator("es")}
+      request={request as unknown as typeof apiRequest}
+    />);
+
+    fireEvent.change(await screen.findByRole("textbox", { name: "Entidad bancaria" }), {
+      target: { value: "Banco Atlántico" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "IBAN" }), {
+      target: { value: "ES91 2100 0418 4502 0005 1332" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Añadir cuenta" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/invoice-print-configuration/bank-accounts",
+      {
+        token: "token",
+        method: "POST",
+        body: {
+          bankName: "Banco Atlántico",
+          iban: "ES91 2100 0418 4502 0005 1332",
+        },
+      },
+    ));
+    expect(await screen.findByText("ES91 2100 0418 4502 0005 1332")).toBeTruthy();
+  });
 });

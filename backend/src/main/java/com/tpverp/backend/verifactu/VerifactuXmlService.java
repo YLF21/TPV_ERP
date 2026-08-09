@@ -115,13 +115,30 @@ public class VerifactuXmlService {
         fiscalBreakdowns(record).forEach(value -> {
             var detail = child(document, container, "DetalleDesglose");
             text(document, detail, "Impuesto", taxCode(value.regime()));
-            text(document, detail, "CalificacionOperacion", "S1");
-            if (value.rate() != null) {
-                text(document, detail, "TipoImpositivo", amount(value.rate()));
+            boolean retailIgicExemption = isRetailIgicExemption(record, value);
+            if (retailIgicExemption) {
+                text(document, detail, "ClaveRegimen", "17");
+                text(document, detail, "OperacionExenta", "E1");
+            } else {
+                text(document, detail, "CalificacionOperacion", "S1");
+                if (value.rate() != null) {
+                    text(document, detail, "TipoImpositivo", amount(value.rate()));
+                }
             }
             text(document, detail, "BaseImponibleOimporteNoSujeto", amount(value.base()));
-            text(document, detail, "CuotaRepercutida", amount(value.tax()));
+            if (!retailIgicExemption) {
+                text(document, detail, "CuotaRepercutida", amount(value.tax()));
+            }
         });
+    }
+
+    private static boolean isRetailIgicExemption(
+            FiscalRecord record, FiscalBreakdown value) {
+        return "IGIC_MINORISTA".equals(record.getSnapshot().get("perfilFiscalFactura"))
+                && "IGIC".equalsIgnoreCase(value.regime())
+                && value.rate() != null
+                && value.rate().signum() == 0
+                && value.tax().signum() == 0;
     }
 
     private static void correctionIndicators(

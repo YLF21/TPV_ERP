@@ -13,6 +13,8 @@ public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
 
     Optional<Voucher> findByTiendaIdAndCode(UUID tiendaId, String code);
 
+    Optional<Voucher> findByTiendaIdAndCodeIgnoreCase(UUID tiendaId, String code);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select voucher from Voucher voucher where voucher.tiendaId = :storeId and voucher.code = :code")
     Optional<Voucher> findLockedByTiendaIdAndCode(

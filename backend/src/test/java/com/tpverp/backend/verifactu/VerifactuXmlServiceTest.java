@@ -70,6 +70,30 @@ class VerifactuXmlServiceTest {
     }
 
     @Test
+    void declaraElIgicMinoristaComoExentoYNoComoTipoCeroOrdinario() {
+        var line = Map.<String, Object>of(
+                "regimenImpuesto", "IGIC",
+                "porcentajeImpuesto", BigDecimal.ZERO,
+                "base", new BigDecimal("10.00"),
+                "impuesto", BigDecimal.ZERO);
+        var snapshot = new LinkedHashMap<>(snapshot(List.of(line)));
+        snapshot.put("perfilFiscalFactura", "IGIC_MINORISTA");
+        var fiscalRecord = fiscalRecord(FiscalDocumentType.F1, "FV-001", snapshot);
+
+        var document = parse(service().batchXml(request(fiscalRecord, "Company SL")));
+
+        assertThat(text(document, "Impuesto", 0)).isEqualTo("03");
+        assertThat(text(document, "ClaveRegimen", 0)).isEqualTo("17");
+        assertThat(text(document, "OperacionExenta", 0)).isEqualTo("E1");
+        assertThat(document.getElementsByTagNameNS("*", "CalificacionOperacion").getLength())
+                .isZero();
+        assertThat(document.getElementsByTagNameNS("*", "TipoImpositivo").getLength())
+                .isZero();
+        assertThat(document.getElementsByTagNameNS("*", "CuotaRepercutida").getLength())
+                .isZero();
+    }
+
+    @Test
     void generaUnDetallePorCadaCombinacionFiscal() {
         var first = Map.<String, Object>of(
                 "regimenImpuesto", "IVA",

@@ -53,6 +53,9 @@ class AdminPageController {
                             <label>Impuestos
                                 <select name="impuestos"><option>IVA</option><option>IGIC</option></select>
                             </label>
+                            <label>Perfil comercial
+                                <select name="commercialProfile"><option>MAYORISTA</option><option>MINORISTA</option></select>
+                            </label>
                             <label>Codigo tienda
                                 <input name="storeCode" value="TIENDA01" required>
                             </label>
@@ -91,6 +94,7 @@ class AdminPageController {
                                 taxId: values.taxId,
                                 taxpayerType: values.taxpayerType,
                                 impuestos: values.impuestos,
+                                commercialProfile: values.commercialProfile,
                                 storeCode: values.storeCode,
                                 storeName: values.storeName,
                                 validUntil: new Date(values.validUntil).toISOString(),

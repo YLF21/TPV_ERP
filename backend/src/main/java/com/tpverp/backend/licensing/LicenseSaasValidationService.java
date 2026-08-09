@@ -54,6 +54,9 @@ public class LicenseSaasValidationService {
                     response.verifactuPolicyVersion(),
                     response.verifactuPolicyUpdatedAt());
         }
+        if (response.commercialProfile() != null) {
+            license.updateCommercialProfile(response.commercialProfile());
+        }
         if (response.status() == LicenseSaasStatus.VALIDA) {
             license.markSaasValidated(now, response.validUntil());
         } else {

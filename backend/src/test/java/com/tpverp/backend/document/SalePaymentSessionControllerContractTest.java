@@ -29,7 +29,7 @@ class SalePaymentSessionControllerContractTest {
  @Test void finalizeResponseCarriesTheConfirmedTicketSnapshot() {
   var viewComponents=SalePaymentSessionController.View.class.getRecordComponents();
   assertThat(Arrays.stream(viewComponents).map(RecordComponent::getName))
-    .contains("printTicket","issuedVoucher");
+    .contains("printTicket","issuedVoucher","voucherOnlyRefund");
   assertThat(Arrays.stream(viewComponents)
     .filter(component->component.getName().equals("printTicket"))
     .findFirst().orElseThrow().getType()).isEqualTo(TicketPrintView.class);
@@ -39,6 +39,17 @@ class SalePaymentSessionControllerContractTest {
   assertThat(controller.finalizeSession(id,auth).issuedVoucher().code()).isEqualTo("V123");
   assertThat(controller.get(id,auth).printTicket()).isNull();
   assertThat(controller.get(id,auth).issuedVoucher()).isNull();
+ }
+
+ @Test void exposesTheVoucherOnlyRestrictionForGiftReceiptRefunds() {
+  var service=mock(SalePaymentSessionService.class);var controller=new SalePaymentSessionController(service);var auth=mock(Authentication.class);var id=UUID.randomUUID();var session=SalePaymentSession.reserve(id,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"hash","{}",BigDecimal.TEN.negate());
+  when(service.get(id,auth)).thenReturn(session);
+  when(service.refundPaymentAvailability(session)).thenReturn(List.of());
+  when(service.requiresVoucherOnlyRefund(session)).thenReturn(true);
+
+  var view=controller.get(id,auth);
+
+  assertThat(view.voucherOnlyRefund()).isTrue();
  }
  @Test void exposesValidatedSimulatorDiscardContract() throws Exception {var method=SalePaymentSessionController.class.getDeclaredMethod("discardSimulation",UUID.class,SalePaymentSessionController.SimulatorDiscard.class,Authentication.class);assertThat(method.getAnnotation(PostMapping.class).value()).containsExactly("/{id}/simulator-discard");var validator=Validation.buildDefaultValidatorFactory().getValidator();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("application_shutdown"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("sale_entry_cleanup"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("payment_method_change"))).isEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard(""))).isNotEmpty();assertThat(validator.validate(new SalePaymentSessionController.SimulatorDiscard("logout"))).isNotEmpty();}
  @Test void exposesReloadAllocationQueryFinalizeAndCancelBehindSalePermission() throws Exception {assertThat(SalePaymentSessionController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1/pos/payment-sessions");assertThat(SalePaymentSessionController.class.getAnnotation(PreAuthorize.class).value()).contains("TICKETS_CREATE");assertThat(SalePaymentSessionController.class.getDeclaredMethod("get",UUID.class,Authentication.class).getAnnotation(GetMapping.class).value()).containsExactly("/{id}");assertThat(SalePaymentSessionController.class.getDeclaredMethod("add",UUID.class,SalePaymentSessionController.Allocation.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations");assertThat(SalePaymentSessionController.class.getDeclaredMethod("query",UUID.class,UUID.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/allocations/{allocationId}/query");assertThat(SalePaymentSessionController.class.getDeclaredMethod("finalizeSession",UUID.class,SalePaymentSessionController.FinalizeRequest.class,Authentication.class).getAnnotation(PostMapping.class).value()).containsExactly("/{id}/finalize");}

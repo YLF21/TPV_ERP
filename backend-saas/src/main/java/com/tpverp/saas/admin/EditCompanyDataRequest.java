@@ -2,11 +2,16 @@ package com.tpverp.saas.admin;
 
 import com.tpverp.saas.license.TaxRegime;
 import com.tpverp.saas.license.TaxpayerType;
+import com.tpverp.saas.license.CommercialProfile;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record EditCompanyDataRequest(
         @NotBlank String name,
         @NotNull TaxpayerType taxpayerType,
-        @NotNull TaxRegime impuestos) {
+        @NotNull TaxRegime impuestos,
+        CommercialProfile commercialProfile) {
+    public EditCompanyDataRequest(String name, TaxpayerType taxpayerType, TaxRegime impuestos) {
+        this(name, taxpayerType, impuestos, CommercialProfile.MAYORISTA);
+    }
 }

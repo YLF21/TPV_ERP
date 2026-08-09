@@ -8,5 +8,16 @@ public record LicenseSaasValidationResponse(
         Instant validUntil,
         LocalDate verifactuActivationDate,
         long verifactuPolicyVersion,
-        Instant verifactuPolicyUpdatedAt) {
+        Instant verifactuPolicyUpdatedAt,
+        CommercialProfile commercialProfile) {
+
+    public LicenseSaasValidationResponse(
+            LicenseSaasStatus status,
+            Instant validUntil,
+            LocalDate verifactuActivationDate,
+            long verifactuPolicyVersion,
+            Instant verifactuPolicyUpdatedAt) {
+        this(status, validUntil, verifactuActivationDate, verifactuPolicyVersion,
+                verifactuPolicyUpdatedAt, null);
+    }
 }

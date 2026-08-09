@@ -102,10 +102,13 @@ public class Voucher {
     // Consume saldo sin permitir importes negativos ni dejar saldos por debajo de cero.
 
     public void closeForReplacement() {
+        if (status != VoucherStatus.ACTIVE) {
+            throw new IllegalStateException("vale no activo");
+        }
         balance = Money.euros(BigDecimal.ZERO);
         status = VoucherStatus.CONSUMED;
     }
-    // Cierra el vale original cuando el sobrante se reemite con un codigo nuevo.
+    // Cierra el vale original cuando el saldo sobrante se reemite con un codigo nuevo.
 
     public void restoreAfterTicketCancellation() {
         if (status == VoucherStatus.INVALIDATED) {

@@ -54,6 +54,16 @@ class DocumentControllerContractTest {
     }
 
     @Test
+    void exposesVoucherLookupToSaleOperators() throws NoSuchMethodException {
+        var method = VoucherController.class.getDeclaredMethod("findByCode", String.class);
+
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/{code}");
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("VENTA", "GESTION_VENTAS");
+    }
+
+    @Test
     void exposesTicketReturnPreviewWithoutDirectDatafonoPermission() throws NoSuchMethodException {
         var preview = TicketController.class.getDeclaredMethod(
                 "returnPreview", String.class);

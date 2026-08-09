@@ -8,7 +8,10 @@ import {
   type CalculatorAction,
 } from "./SaleCalculatorDialog";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 function calculate(actions: CalculatorAction[]) {
   return actions.reduce(calculatorReducer, initialCalculatorState);
@@ -131,6 +134,26 @@ describe("SaleCalculatorDialog interaction", () => {
   it("keeps the previous 21 percent default when there is no selected product", () => {
     render(<SaleCalculatorDialog locale="es" onClose={vi.fn()} />);
 
+    expect(screen.getByDisplayValue("21")).toBeTruthy();
+  });
+
+  it("remembers the last valid tax percentage independently for each terminal", () => {
+    const first = render(
+      <SaleCalculatorDialog locale="es" defaultTaxPercent={21} terminalKey="terminal-01" onClose={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByDisplayValue("21"), { target: { value: "7,5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Cerrar" }).at(-1)!);
+    first.unmount();
+
+    const reopened = render(
+      <SaleCalculatorDialog locale="es" defaultTaxPercent={21} terminalKey="terminal-01" onClose={vi.fn()} />,
+    );
+    expect(screen.getByDisplayValue("7.5")).toBeTruthy();
+    reopened.unmount();
+
+    render(
+      <SaleCalculatorDialog locale="es" defaultTaxPercent={21} terminalKey="terminal-02" onClose={vi.fn()} />,
+    );
     expect(screen.getByDisplayValue("21")).toBeTruthy();
   });
 });

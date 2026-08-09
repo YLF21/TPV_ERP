@@ -4549,6 +4549,9 @@ export function SaleScreen({
                         if (line.lineType === "RETURN_ADJUSTMENT") {
                           return renderReturnPromotionAdjustmentRow(line);
                         }
+                        if (line.lineType === "MANUAL_DISCOUNT") {
+                          return null;
+                        }
                         const localLine = lines[productIndex++];
                         return localLine ? renderCartRow(localLine, line) : null;
                       });
@@ -4629,27 +4632,30 @@ export function SaleScreen({
               }}
             />
           </label>
-          <div aria-live="polite" className="sale-search-results">
-            {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
-            {catalogError && (
-              <div className="sale-search-status sale-search-error">
-                <span>{t("sale.main.catalogError")}</span>
-                <button type="button" onClick={() => setCatalogReload((value) => value + 1)}>{t("sale.main.retry")}</button>
-              </div>
-            )}
-            <p className="sale-next-quantity">
-              {t("sale.main.quantity")}: {nextScanQuantity}
-              {nextScanMode === "PACKAGE"
-                ? ` ${t(nextScanQuantity === 1 ? "sale.quantity.package" : "sale.quantity.packages")}`
-                : ""}
-            </p>
-            {shortcutStatus && <p className="sale-search-status" role="status">{shortcutStatus}</p>}
-            {temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady && (
-              <p className="sale-search-status sale-search-error" role="alert">
-                {t("sale.temporaryPrice.authorizationRequired")}
-              </p>
-            )}
-          </div>
+          <p className="sale-next-quantity">
+            {t("sale.main.quantity")}: {nextScanQuantity}
+            {nextScanMode === "PACKAGE"
+              ? ` ${t(nextScanQuantity === 1 ? "sale.quantity.package" : "sale.quantity.packages")}`
+              : ""}
+          </p>
+          {(catalogLoading || catalogError || shortcutStatus
+            || (temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady)) && (
+            <div aria-live="polite" className="sale-search-results">
+              {catalogLoading && <p className="sale-search-status">{t("sale.main.loadingProducts")}</p>}
+              {catalogError && (
+                <div className="sale-search-status sale-search-error">
+                  <span>{t("sale.main.catalogError")}</span>
+                  <button type="button" onClick={() => setCatalogReload((value) => value + 1)}>{t("sale.main.retry")}</button>
+                </div>
+              )}
+              {shortcutStatus && <p className="sale-search-status" role="status">{shortcutStatus}</p>}
+              {temporaryPriceLines.length > 0 && !temporaryPriceAuthorizationsReady && (
+                <p className="sale-search-status sale-search-error" role="alert">
+                  {t("sale.temporaryPrice.authorizationRequired")}
+                </p>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className={`sale-customer-summary${selectedCustomer ? " has-customer" : " no-customer"}`}
@@ -4757,6 +4763,8 @@ export function SaleScreen({
               unifiedCheckout
               interfaceMode={interfaceMode}
               customerSelected={Boolean(selectedCustomer)}
+              voucherOnlyRefund={authoritativeTotal < 0 && lines.some((line) =>
+                line.returnOrigin?.sourceType === "GIFT_RECEIPT")}
               checkoutDiscountCents={checkoutDiscountCents}
               testCashEnabled={import.meta.env.DEV && app === "venta"}
               manualCardPaymentAuthorization={manualCardPaymentAuthorization}
@@ -5055,6 +5063,7 @@ export function SaleScreen({
         <SaleCalculatorDialog
           locale={locale}
           defaultTaxPercent={selectedLine?.product.taxPercentage ?? products[0]?.taxPercentage}
+          terminalKey={terminalContext.terminalId ?? terminalContext.terminalCode}
           onClose={() => {
             setCalculatorOpen(false);
             queueMicrotask(() => searchInputRef.current?.focus());

@@ -30,6 +30,10 @@ public class SaasCompany {
     @Column(name = "tax_regime", nullable = false)
     private TaxRegime taxRegime;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "commercial_profile", nullable = false)
+    private CommercialProfile commercialProfile = CommercialProfile.MAYORISTA;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -37,11 +41,18 @@ public class SaasCompany {
     }
 
     public SaasCompany(UUID id, String name, String taxId, TaxpayerType taxpayerType, TaxRegime taxRegime, Instant createdAt) {
+        this(id, name, taxId, taxpayerType, taxRegime, CommercialProfile.MAYORISTA, createdAt);
+    }
+
+    public SaasCompany(UUID id, String name, String taxId, TaxpayerType taxpayerType,
+            TaxRegime taxRegime, CommercialProfile commercialProfile, Instant createdAt) {
         this.id = id;
         this.name = name;
         this.taxId = taxId;
         this.taxpayerType = taxpayerType;
         this.taxRegime = taxRegime;
+        this.commercialProfile = commercialProfile == null
+                ? CommercialProfile.MAYORISTA : commercialProfile;
         this.createdAt = createdAt;
     }
 
@@ -65,9 +76,20 @@ public class SaasCompany {
         return taxRegime;
     }
 
+    public CommercialProfile getCommercialProfile() {
+        return commercialProfile;
+    }
+
     public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime) {
+        updateData(name, taxpayerType, taxRegime, CommercialProfile.MAYORISTA);
+    }
+
+    public void updateData(String name, TaxpayerType taxpayerType, TaxRegime taxRegime,
+            CommercialProfile commercialProfile) {
         this.name = name;
         this.taxpayerType = taxpayerType;
         this.taxRegime = taxRegime;
+        this.commercialProfile = commercialProfile == null
+                ? CommercialProfile.MAYORISTA : commercialProfile;
     }
 }

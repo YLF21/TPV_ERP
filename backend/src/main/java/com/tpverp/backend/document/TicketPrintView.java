@@ -14,7 +14,8 @@ public record TicketPrintView(
         List<Payment> payments,
         BigDecimal total,
         BigDecimal baseTotal,
-        BigDecimal taxTotal) {
+        BigDecimal taxTotal,
+        BigDecimal checkoutDiscountTotal) {
 
     public TicketPrintView(
             UUID documentId,
@@ -23,7 +24,21 @@ public record TicketPrintView(
             List<Line> lines,
             List<Payment> payments,
             BigDecimal total) {
-        this(documentId, documentNumber, issuedAt, lines, payments, total, null, null);
+        this(documentId, documentNumber, issuedAt, lines, payments, total,
+                null, null, BigDecimal.ZERO);
+    }
+
+    public TicketPrintView(
+            UUID documentId,
+            String documentNumber,
+            Instant issuedAt,
+            List<Line> lines,
+            List<Payment> payments,
+            BigDecimal total,
+            BigDecimal baseTotal,
+            BigDecimal taxTotal) {
+        this(documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, BigDecimal.ZERO);
     }
 
     public static TicketPrintView from(CommercialDocument document) {
@@ -39,6 +54,8 @@ public record TicketPrintView(
         return new TicketPrintView(
                 document.getId(), document.getNumero(), document.getConfirmadoEn(),
                 document.getLineas().stream()
+                        .filter(line -> line.getLineType()
+                                != DocumentLineType.MANUAL_DISCOUNT)
                         .map(line -> new Line(line.getNombre(), line.getCantidad(),
                                 line.getPrecioUnitario(), line.getTotal(),
                                 line.getSerialNumbers()))
@@ -59,7 +76,8 @@ public record TicketPrintView(
                                 .toList(),
                 document.getTotal(),
                 document.getBaseTotal(),
-                document.getImpuestoTotal());
+                document.getImpuestoTotal(),
+                checkoutDiscountTotal(document.getLineas()));
     }
 
     /**
@@ -72,6 +90,7 @@ public record TicketPrintView(
         requireConfirmed(sale);
         requireConfirmed(refund);
         var lines = Stream.concat(refund.getLineas().stream(), sale.getLineas().stream())
+                .filter(line -> line.getLineType() != DocumentLineType.MANUAL_DISCOUNT)
                 .map(line -> new Line(line.getNombre(), line.getCantidad(),
                         line.getPrecioUnitario(), line.getTotal(), line.getSerialNumbers()))
                 .toList();
@@ -85,7 +104,17 @@ public record TicketPrintView(
                 sale.getId(), sale.getNumero(), sale.getConfirmadoEn(), lines, payments,
                 Money.euros(sale.getTotal().add(refund.getTotal())),
                 Money.euros(sale.getBaseTotal().add(refund.getBaseTotal())),
-                Money.euros(sale.getImpuestoTotal().add(refund.getImpuestoTotal())));
+                Money.euros(sale.getImpuestoTotal().add(refund.getImpuestoTotal())),
+                Money.euros(checkoutDiscountTotal(sale.getLineas())
+                        .add(checkoutDiscountTotal(refund.getLineas()))));
+    }
+
+    private static BigDecimal checkoutDiscountTotal(List<DocumentLine> lines) {
+        return Money.euros(lines.stream()
+                .filter(line -> line.getLineType() == DocumentLineType.MANUAL_DISCOUNT)
+                .map(DocumentLine::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .negate());
     }
 
     private static void requireConfirmed(CommercialDocument document) {

@@ -60,6 +60,16 @@ export type {
   PaymentMethodView,
 } from "./sale/paymentMethods";
 export {
+  addInvoiceBankAccount,
+  loadInvoicePrintConfiguration,
+  saveInvoiceObservations,
+  setInvoiceBankAccountActive,
+} from "./sale/invoicePrintConfiguration";
+export type {
+  InvoiceBankAccountView,
+  InvoicePrintConfigurationView,
+} from "./sale/invoicePrintConfiguration";
+export {
   findSaleOperationAuthorization,
   loadSalesOperationSecurity,
   resetSalesOperationSecurity,
