@@ -5263,6 +5263,81 @@ textarea {
   overflow: auto;
 }
 
+.app-venta-home-confirm-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 29, 53, 0.42);
+}
+
+.app-venta-home-confirm-dialog {
+  box-sizing: border-box;
+  width: min(460px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #8295aa;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(4, 18, 35, 0.32);
+}
+
+.app-venta-home-confirm-dialog > header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: #0b2e59;
+  color: #ffffff;
+}
+
+.app-venta-home-confirm-dialog h2,
+.app-venta-home-confirm-dialog p {
+  margin: 0;
+}
+
+.app-venta-home-confirm-dialog h2 { font-size: 19px; }
+
+.app-venta-home-confirm-dialog > p {
+  padding: 18px 16px 6px;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.app-venta-home-confirm-dialog > .app-venta-home-confirm-shortcuts {
+  padding: 4px 16px 18px;
+  color: #52657e;
+  font-size: 13px;
+}
+
+.app-venta-home-confirm-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #c7d2df;
+  background: #edf2f7;
+}
+
+.app-venta-home-confirm-dialog button {
+  min-width: 110px;
+  min-height: 38px;
+  border: 1px solid #8295aa;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #173250;
+  font-weight: 800;
+}
+
+.app-venta-home-confirm-dialog button.primary {
+  border-color: #0b2e59;
+  background: #0b2e59;
+  color: #ffffff;
+}
+
+
 .sale-product-label-body {
   display: grid;
   grid-template-columns: minmax(280px, .8fr) minmax(440px, 1.2fr);

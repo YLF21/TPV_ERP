@@ -163,6 +163,24 @@ describe("APP VENTA locale wiring", () => {
     expect(await screen.findByLabelText("sale")).toBeVisible();
   });
 
+  it("asks for confirmation before Escape returns from a main screen to Home", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open sales" }));
+    expect(await screen.findByLabelText("sale")).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(/volver al inicio/i);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("sale")).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(await screen.findByLabelText("home")).toBeVisible();
+  });
+
   it("shows an accessible notice when the sales document window cannot open", async () => {
     const openSalesDocuments = vi.fn().mockResolvedValue({ ok: false, message: "private technical detail" });
     vi.stubGlobal("tpvDesktop", {

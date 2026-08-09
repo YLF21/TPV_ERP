@@ -22,6 +22,7 @@ import {
   type InternalEanProduct,
   type InternalEanReservation,
 } from "../../../packages/app-common/src/sale/internalEan";
+import { AppVentaHomeEscapeNavigation } from "../../../packages/app-common/src/components/AppVentaHomeEscapeNavigation";
 
 type CompatibilityGate = { status: "ready" | "checking" | "blocked"; reason?: string };
 
@@ -369,6 +370,16 @@ export function App() {
     setSaleInterfaceMode(defaultSaleInterfaceMode);
     resetLocale();
   };
+  const handleReturnHome = () => {
+    setReceivablesCustomerId(undefined);
+    setReceivablesReturnScreen("home");
+    setScreen("home");
+  };
+  const withHomeEscapeConfirmation = (content: ReactNode) => (
+    <AppVentaHomeEscapeNavigation locale={locale} onConfirmHome={handleReturnHome}>
+      {content}
+    </AppVentaHomeEscapeNavigation>
+  );
 
   if (terminalContext === undefined) {
     return <AppLoadingFallback locale={locale} />;
@@ -439,11 +450,13 @@ export function App() {
   const canOpenWarehouse = hasPermission(session, "GESTION_ALMACEN");
 
   if (screen === "customerReceivables" && canOpenCustomerReceivables) {
-    return <CustomerReceivablesScreen locale={locale} session={session} terminalContext={terminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />;
+    return withHomeEscapeConfirmation(
+      <CustomerReceivablesScreen locale={locale} session={session} terminalContext={terminalContext} initialCustomerId={receivablesCustomerId} onBack={() => { setReceivablesCustomerId(undefined); setScreen(receivablesReturnScreen); }} onLogout={handleLogout} onLocaleChange={handleLocaleChange} />,
+    );
   }
 
   if (screen === "salesReport" && canOpenSalesReport) {
-    return (
+    return withHomeEscapeConfirmation(
       <SalesReportScreen
         app="venta"
         locale={locale}
@@ -452,12 +465,12 @@ export function App() {
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
-      />
+      />,
     );
   }
 
   if (screen === "sale") {
-    return (
+    return withHomeEscapeConfirmation(
       <>
         <SaleScreen
           app="venta"
@@ -506,12 +519,12 @@ export function App() {
             </button>
           </aside>
         )}
-      </>
+      </>,
     );
   }
 
   if (screen === "stock") {
-    return (
+    return withHomeEscapeConfirmation(
       <StockScreen
         app="venta"
         locale={locale}
@@ -521,12 +534,12 @@ export function App() {
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
         onOpenCustomerReceivables={(customerId: string) => { setReceivablesCustomerId(customerId); setReceivablesReturnScreen("stock"); setScreen("customerReceivables"); }}
-      />
+      />,
     );
   }
 
   if (screen === "warehouse" && canOpenWarehouse) {
-    return (
+    return withHomeEscapeConfirmation(
       <WarehouseScreen
         app="venta"
         locale={locale}
@@ -535,12 +548,12 @@ export function App() {
         onBack={() => setScreen("home")}
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
-      />
+      />,
     );
   }
 
   if (screen === "hardwareSettings") {
-    return (
+    return withHomeEscapeConfirmation(
       <HardwareSettingsScreen
         app="venta"
         locale={locale}
@@ -549,12 +562,12 @@ export function App() {
         onBack={() => setScreen("home")}
         onLocaleChange={handleLocaleChange}
         onLogout={handleLogout}
-      />
+      />,
     );
   }
 
   if (screen === "settings") {
-    return (
+    return withHomeEscapeConfirmation(
       <SettingsScreen
         app="venta"
         locale={locale}
@@ -566,7 +579,7 @@ export function App() {
         onOpenHardware={() => setScreen("hardwareSettings")}
         onOpenReports={() => setScreen("salesReport")}
         onSaleInterfaceModeChange={setSaleInterfaceMode}
-      />
+      />,
     );
   }
 
