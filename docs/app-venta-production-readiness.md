@@ -77,3 +77,7 @@ Entre los eventos están creación/anulación/devolución de tickets, reservas y
 5. Tras recuperar, ejecutar la batería de readiness y comprobar que los backlogs vuelven a valores esperados.
 
 La homologación final con tarjeta continúa necesitando el SDK oficial, credenciales de prueba y un datáfono físico. El resto de la preparación es ejecutable con simulador.
+
+La matriz completa del ciclo venta, conversión, devolución y anulación, junto
+con las pruebas manuales de caja, está en
+[`ticket-lifecycle-homologation.md`](ticket-lifecycle-homologation.md).

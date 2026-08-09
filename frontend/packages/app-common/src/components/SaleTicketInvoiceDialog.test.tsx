@@ -248,4 +248,68 @@ describe("SaleTicketInvoiceDialog", () => {
     expect(alert).toHaveTextContent("Este ticket ya está facturado.");
     expect(alert).not.toHaveTextContent("Ref:");
   });
+
+  it("blocks duplicate conversion while the invoice is being created", async () => {
+    let finishConversion!: (value: { id: string }) => void;
+    const pendingConversion = new Promise<{ id: string }>((resolve) => {
+      finishConversion = resolve;
+    });
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/last-current-terminal") {
+        return {
+          id: "ticket-1",
+          numero: "T-001",
+          fecha: "2026-07-30",
+          total: "15.00",
+        } as never;
+      }
+      if (path === "/customers/sale-options/search?q=Cliente&limit=25") {
+        return [{
+          id: "customer-1",
+          clientId: "C1",
+          fiscalName: "Cliente Uno",
+          documentNumber: "B12345678",
+          active: true,
+        }] as never;
+      }
+      if (path === "/tickets/ticket-1/invoice") {
+        return await pendingConversion as never;
+      }
+      if (path === "/invoices/invoice-1/print-document") {
+        return {
+          documentId: "invoice-1",
+          documentType: "FACTURA_VENTA",
+          documentNumber: "FV-001",
+          lines: [],
+          total: "15.00",
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketInvoiceDialog
+        token="token"
+        locale="es"
+        terminalContext={terminalContext}
+        printInvoice={printInvoice}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByText("T-001");
+    const customerSearch = screen.getByLabelText("Buscar cliente fiscal");
+    fireEvent.change(customerSearch, { target: { value: "Cliente" } });
+    fireEvent.click(await screen.findByText("Cliente Uno"));
+    fireEvent.click(screen.getByRole("button", { name: "Crear factura" }));
+
+    const progress = await screen.findByRole("button", { name: "Creando factura…" });
+    expect(progress).toBeDisabled();
+    expect(screen.getByRole("dialog", { name: "Convertir ticket a factura" }))
+      .toHaveAttribute("aria-busy", "true");
+    expect(request.mock.calls.filter(([path]) => path === "/tickets/ticket-1/invoice"))
+      .toHaveLength(1);
+
+    finishConversion({ id: "invoice-1" });
+    await screen.findByText("Factura creada e impresa correctamente.");
+  });
 });

@@ -25,7 +25,8 @@ describe("TableLayoutHeaderCell sorting", () => {
 
     const button = screen.getByRole("button", { name: "Ordenar por nombre" });
     expect(screen.getByRole("columnheader")).toHaveAttribute("aria-sort", "none");
-    expect(button).toHaveTextContent("↕");
+    expect(button).toHaveTextContent("\u2195");
+    expect(button).toHaveAttribute("data-sort-direction", "none");
     fireEvent.click(button);
     expect(onSort).toHaveBeenCalledWith("name");
   });
@@ -47,8 +48,11 @@ describe("TableLayoutHeaderCell sorting", () => {
     );
 
     const header = screen.getByRole("columnheader");
+    const sortButton = screen.getByRole("button", { name: "Ordenar por total" });
     expect(header).toHaveAttribute("aria-sort", "ascending");
-    expect(screen.getByRole("button", { name: "Ordenar por total" })).toHaveTextContent("▲");
+    expect(sortButton).toHaveTextContent("\u2191");
+    expect(sortButton).toHaveClass("is-active");
+    expect(sortButton).toHaveAttribute("data-sort-direction", "asc");
     fireEvent.keyDown(header, { key: "ArrowLeft", ctrlKey: true });
     expect(onMove).toHaveBeenCalledWith("total", -1);
   });

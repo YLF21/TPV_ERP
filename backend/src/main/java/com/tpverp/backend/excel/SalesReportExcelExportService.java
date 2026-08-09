@@ -48,6 +48,11 @@ public class SalesReportExcelExportService {
             "salesReport.dailySales", "salesReport.tickets", "salesReport.deliveryNotes",
             "salesReport.invoices", "salesReport.warehouseOutputs", "salesReport.inputDeliveryNotes",
             "salesReport.inputInvoices", "salesReport.inputWarehouse");
+    private static final Set<String> STORE_INFORMATION_REPORT_KEYS = Set.of(
+            "salesReport.warehouseOutputs",
+            "salesReport.inputInvoices",
+            "salesReport.inputDeliveryNotes",
+            "salesReport.inputWarehouse");
 
     private final DocumentService documents;
     private final DocumentReportService documentReports;
@@ -279,14 +284,15 @@ public class SalesReportExcelExportService {
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             var currencyStyle = workbook.createCellStyle();
             currencyStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00 [$€-es-ES]"));
-            var header = sheet.createRow(0);
+            int headerRowIndex = writeStoreInformation(sheet, workbook, request);
+            var header = sheet.createRow(headerRowIndex);
             for (int column = 0; column < request.columns().size(); column++) {
                 var cell = header.createCell(column);
                 cell.setCellValue(request.columns().get(column).label());
                 cell.setCellStyle(headerStyle);
             }
             for (int index = 0; index < rows.size(); index++) {
-                var excelRow = sheet.createRow(index + 1);
+                var excelRow = sheet.createRow(headerRowIndex + index + 1);
                 var source = rows.get(index);
                 for (int column = 0; column < request.columns().size(); column++) {
                     Object value = source.get(request.columns().get(column).key());
@@ -302,8 +308,12 @@ public class SalesReportExcelExportService {
                     }
                 }
             }
-            sheet.createFreezePane(0, 1);
-            sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(0, Math.max(0, rows.size()), 0, request.columns().size() - 1));
+            sheet.createFreezePane(0, headerRowIndex + 1);
+            sheet.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(
+                    headerRowIndex,
+                    headerRowIndex + Math.max(0, rows.size()),
+                    0,
+                    request.columns().size() - 1));
             for (int column = 0; column < request.columns().size(); column++) {
                 sheet.autoSizeColumn(column);
                 sheet.setColumnWidth(column, Math.min(sheet.getColumnWidth(column) + 512, 12_000));
@@ -313,6 +323,60 @@ public class SalesReportExcelExportService {
         } catch (Exception exception) {
             throw new IllegalStateException("message.sales_report.excel_generation_failed", exception);
         }
+    }
+
+    private int writeStoreInformation(
+            org.apache.poi.ss.usermodel.Sheet sheet,
+            org.apache.poi.ss.usermodel.Workbook workbook,
+            SalesReportExportRequest request) {
+        if (!STORE_INFORMATION_REPORT_KEYS.contains(request.reportKey())) {
+            return 0;
+        }
+        var labelStyle = workbook.createCellStyle();
+        var labelFont = workbook.createFont();
+        labelFont.setBold(true);
+        labelStyle.setFont(labelFont);
+        var company = organization.currentCompany();
+        var store = organization.currentStore();
+        var filters = request.filters();
+        String period = filters == null
+                ? "Todos"
+                : period(filters.dateFrom(), filters.dateTo());
+        List<List<String>> information = List.of(
+                List.of("Empresa", company.getRazonSocial()),
+                List.of("NIF", company.getTaxId()),
+                List.of("Tienda", store.getCodigoTienda()),
+                List.of("Nombre de la tienda", store.getNombreEfectivo()),
+                List.of("Moneda", store.getMoneda()),
+                List.of("Informe", reportName(request.reportKey())),
+                List.of("Periodo", period));
+        for (int index = 0; index < information.size(); index++) {
+            var row = sheet.createRow(index);
+            var label = row.createCell(0);
+            label.setCellValue(information.get(index).get(0));
+            label.setCellStyle(labelStyle);
+            row.createCell(1).setCellValue(information.get(index).get(1));
+        }
+        return information.size() + 1;
+    }
+
+    private static String period(String from, String to) {
+        String formattedFrom = displayDate(date(from));
+        String formattedTo = displayDate(date(to));
+        if (formattedFrom.isBlank() && formattedTo.isBlank()) return "Todos";
+        if (formattedFrom.isBlank()) return "Hasta " + formattedTo;
+        if (formattedTo.isBlank()) return "Desde " + formattedFrom;
+        return formattedFrom + " - " + formattedTo;
+    }
+
+    private static String reportName(String reportKey) {
+        return switch (reportKey) {
+            case "salesReport.warehouseOutputs" -> "Salida de almacén";
+            case "salesReport.inputInvoices" -> "Entrada de factura";
+            case "salesReport.inputDeliveryNotes" -> "Entrada de albarán";
+            case "salesReport.inputWarehouse" -> "Entrada de almacén";
+            default -> reportKey;
+        };
     }
 
     private void validateRequest(SalesReportExportRequest request) {

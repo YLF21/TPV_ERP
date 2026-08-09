@@ -179,6 +179,7 @@ public interface CommercialDocumentRepository extends JpaRepository<CommercialDo
               and document.tipo in (
                 com.tpverp.backend.document.CommercialDocumentType.ALBARAN_VENTA,
                 com.tpverp.backend.document.CommercialDocumentType.FACTURA_VENTA,
+                com.tpverp.backend.document.CommercialDocumentType.RECTIFICATIVA_VENTA,
                 com.tpverp.backend.document.CommercialDocumentType.TICKET)
               and (document.tipo <> com.tpverp.backend.document.CommercialDocumentType.TICKET
                   or document.cuentaCobrar = true)

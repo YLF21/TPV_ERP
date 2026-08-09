@@ -34,3 +34,117 @@
 - Focused `GestionDashboard` test: passed.
 
 final result: passed
+
+## Informe de tickets - cabeceras ordenables - 2026-08-09
+
+### Referencia de comparacion
+
+- Captura original: `C:\Users\xy656\AppData\Local\Temp\codex-clipboard-1f1c1604-4267-438a-b7cf-cc8bb416b6ab.png`
+- Implementacion comprobada en navegador: `http://127.0.0.1:5173/`
+
+### Comprobaciones
+
+- [x] El titulo y el indicador de ordenacion forman un control compacto y no quedan separados por el ancho de la columna.
+- [x] Los estados sin orden, ascendente y descendente usan indicadores legibles (`↕`, `↑` y `↓`).
+- [x] La ordenacion activa dispone de un estado visual diferenciado y de atributos accesibles.
+- [x] Las cabeceras monetarias, incluida `Total`, quedan alineadas a la derecha como sus importes.
+- [x] Las cabeceras de texto conservan la alineacion izquierda y el estilo visual existente.
+
+### Validacion
+
+- Pruebas focalizadas de componentes e informe: 32 de 32 casos superados.
+- Revision visual en la aplicacion local: superada.
+
+final result: passed
+
+## Ventas diarias - desglose diario del periodo - 2026-08-09
+
+### Evidencia visual
+
+- Referencia: `E:\workspace\gitwork\TPV_ERP\artifacts\daily-sales-comparison.png` (parte superior).
+- Implementacion: `E:\workspace\gitwork\TPV_ERP\artifacts\daily-sales-summary.png`.
+- Comparacion conjunta: `E:\workspace\gitwork\TPV_ERP\artifacts\daily-sales-comparison.png`.
+- Estado comprobado: periodo `1/7/2026-31/7/2026`, sesion ADMIN y datos reales del backend de desarrollo.
+
+### Comprobaciones
+
+- [x] El resumen general del periodo conserva los seis importes originales.
+- [x] Se indica de forma visible que el periodo contiene 31 dias.
+- [x] Debajo aparece un resumen diario con una fila por fecha.
+- [x] Cada dia muestra ventas facturadas, ventas de tickets, cobrado, nuevo pendiente, cobros anteriores y entrada real de caja.
+- [x] Los importes diarios se muestran en euros y alineados a la derecha.
+- [x] La tabla permite desplazamiento manteniendo visibles la fecha y la cabecera.
+- [x] La respuesta del backend contiene 31 elementos diarios y sus totales coinciden con el resumen del periodo.
+
+### Validacion
+
+- Prueba focalizada del backend: 7 de 7 casos superados.
+- Prueba focalizada de `SalesReportScreen`: 30 de 30 casos superados.
+- Compilacion de produccion de `app-gestion` y `app-venta`: superada.
+- Validacion navegador-backend: desglose diario cargado correctamente para todo julio.
+
+final result: passed
+
+## Informe de albaranes - alineacion de la columna Total - 2026-08-09
+
+### Evidencia visual
+
+- Referencia: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\delivery-note-total-alignment-reference.png`
+- Implementacion: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\delivery-note-total-alignment-after.png`
+- Comparacion: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\delivery-note-total-alignment-comparison.png`
+
+### Comprobaciones
+
+- [x] El encabezado `Total` queda alineado a la derecha.
+- [x] Todos los importes de la columna comparten la misma alineacion.
+- [x] El control de ordenacion permanece alineado con el encabezado.
+- [x] Las cifras usan numeracion tabular para mantener una columna estable.
+- [x] Validacion en navegador con 8 albaranes: `text-align: right` y `justify-content: flex-end`.
+- [x] Prueba focalizada de `SalesReportScreen`: 30 de 30 casos superados.
+
+final result: passed
+
+## Informe de tickets - alineación de la columna Total - 2026-08-09
+
+### Evidencia visual
+
+- Referencia: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-total-alignment-reference.png`
+- Implementación: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-total-alignment-after.png`
+- Comparación: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-total-alignment-comparison.png`
+
+### Comprobaciones
+
+- [x] El encabezado `Total` queda alineado a la derecha, igual que sus importes.
+- [x] El control de ordenación permanece dentro de la misma alineación.
+- [x] Los importes usan cifras tabulares para conservar una columna visual estable.
+- [x] La regla se aplica a todas las columnas monetarias del informe sin alterar las columnas de texto.
+- [x] Estilos calculados en navegador: `text-align: right` y `justify-content: flex-end`.
+
+final result: passed
+
+## Informe de tickets - 2026-08-09
+
+### Referencia de comparacion
+
+- Captura original: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-report-reference.png`
+- Implementacion renderizada en navegador: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-report-after.png`
+- Comparacion conjunta: `E:\workspace\gitwork\TPV_ERP\artifacts\design-qa\ticket-report-comparison.png`
+- Estado comprobado: interfaz en espanol, periodo 1/7/2026-31/7/2026 y 65 tickets visibles.
+
+### Lista de comprobacion visual
+
+- [x] La cabecera permanece por encima de las filas durante el desplazamiento.
+- [x] Ninguna fila aparece entre la barra de acciones y la cabecera.
+- [x] Fecha, Hora, Facturado, Terminal, Productos, Cliente, Pago y Ticket son legibles sin abreviaturas ambiguas.
+- [x] Las columnas economicas mantienen alineacion y formato monetario.
+- [x] El desplazamiento horizontal conserva toda la informacion en pantallas estrechas.
+- [x] Las preferencias antiguas de anchura se normalizan con los nuevos minimos legibles.
+- [x] Los textos largos usan elipsis y conservan el texto completo como ayuda emergente.
+
+### Validacion
+
+- Prueba focalizada de `SalesReportScreen`: 30 de 30 casos superados.
+- Compilacion de produccion de `app-gestion` y `app-venta`: superada.
+- Errores de consola en la comprobacion del navegador: ninguno.
+
+final result: passed

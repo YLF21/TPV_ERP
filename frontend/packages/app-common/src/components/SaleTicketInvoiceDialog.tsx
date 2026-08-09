@@ -315,6 +315,7 @@ export function SaleTicketInvoiceDialog({
         className="sale-action-dialog sale-ticket-operation-dialog sale-ticket-invoice-dialog"
         role="dialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-labelledby="sale-ticket-invoice-title"
       >
         <header className="sale-ticket-operation-header">
@@ -502,7 +503,7 @@ export function SaleTicketInvoiceDialog({
                 || !canConvert}
               onClick={() => void convert()}
             >
-              {t("sale.ticketInvoice.confirm")}
+              {t(busy ? "sale.ticketInvoice.processing" : "sale.ticketInvoice.confirm")}
             </button>
           )}
           {pendingPrintInvoiceId && (

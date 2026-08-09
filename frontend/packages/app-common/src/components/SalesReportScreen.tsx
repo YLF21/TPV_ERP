@@ -1,10 +1,25 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { lazy, Suspense } from "react";
+import type { UIEvent } from "react";
 import { flushSync } from "react-dom";
 import { apiBaseUrl } from "../api/runtime";
 import type { AppKind, LocaleCode, TerminalContext, UserSession } from "../types";
 import { formatEuroAmount, localeTag, parseMoneyValue } from "../money";
+import {
+  commercialDocumentAsA4Document,
+  outputConfirmedTicket,
+  printPendingCommercialDocument,
+  ticketAsA4Document,
+  type ConfirmedTicketPrintSnapshot,
+  type PendingCommercialDocumentPrintSnapshot
+} from "../sale/ticketPrinting";
+import {
+  buildWarehouseA4Document,
+  hasDesktopHardwareBridge,
+  printWarehouseA4Document,
+  writeWarehouseDocumentPreview
+} from "../warehouse/warehouseDocumentPrinting";
 import { createTranslator } from "../i18n/LocalizedMessages";
 import {
   applySavedVisualizationPreferences,
@@ -63,12 +78,12 @@ type SalesReportScreenProps = {
   initialReport?: string;
   request?: <T>(path: string, options?: { token?: string }) => Promise<T>;
   loadVisualizationPreferences?: typeof loadReportVisualizationPreferences;
+  printCommercialDocument?: typeof printPendingCommercialDocument;
 };
 
 type SalesReportRequest = NonNullable<SalesReportScreenProps["request"]>;
 
-type DailyCommercialReport = {
-  storeId: string;
+type DailyCommercialReportDay = {
   date: string;
   invoiced: number | string;
   ticketSales?: number | string;
@@ -76,6 +91,11 @@ type DailyCommercialReport = {
   newPending: number | string;
   priorDebtCollected: number | string;
   cashInflow: number | string;
+};
+
+type DailyCommercialReport = DailyCommercialReportDay & {
+  storeId: string;
+  days?: DailyCommercialReportDay[];
 };
 
 const languageOptions: Array<{ code: LocaleCode; label: string }> = [
@@ -184,6 +204,24 @@ const attributeDefaultWidth: Record<string, number> = {
   tickets: 88
 };
 
+const attributeMinimumWidth: Record<string, number> = {
+  date: 120,
+  time: 104,
+  ticket: 152,
+  invoiced: 128,
+  terminal: 156,
+  user: 148,
+  productCount: 112,
+  customer: 136,
+  customerName: 176,
+  payment: 120,
+  comment: 192,
+  base: 120,
+  tax: 120,
+  discount: 120,
+  total: 120
+};
+
 type ReportSample = {
   availableAttributes: string[];
   defaultVisibleAttributes: string[];
@@ -204,6 +242,7 @@ export function buildReportColumnDefinitions(report: ReportSample): TableColumnD
   return report.availableAttributes.map((attribute) => ({
     key: attribute,
     defaultWidth: attributeDefaultWidth[attribute] ?? 144,
+    minWidth: attributeMinimumWidth[attribute],
     defaultVisible: defaultVisible.has(attribute)
   }));
 }
@@ -312,6 +351,78 @@ type DocumentView = {
   terminalOrigenNombre?: string | null;
   ocurridoEn?: string | null;
 };
+
+type SalesDocumentDetail = {
+  id: string;
+  type: string;
+  status: string;
+  number?: string | null;
+  date: string;
+  base: number | string;
+  tax: number | string;
+  discount: number | string;
+  total: number | string;
+  originTicket?: {
+    id: string;
+    number?: string | null;
+  } | null;
+  lines: Array<{
+    id: string;
+    position: number;
+    code: string;
+    name: string;
+    quantity: number | string;
+    unitPrice: number | string;
+    discount: number | string;
+    taxRegime: string;
+    taxPercentage: number | string;
+    total: number | string;
+  }>;
+};
+
+type SalesDocumentPrintCopy = Omit<PendingCommercialDocumentPrintSnapshot, "kind">;
+
+function canOpenDocumentPreview(row: Record<string, string> | undefined) {
+  return Boolean(row?.__documentId || row?.__warehouseDocumentPayload);
+}
+
+function warehouseDocumentDetail(row: Record<string, string>): SalesDocumentDetail {
+  const payload = JSON.parse(row.__warehouseDocumentPayload || "{}") as WarehouseInputView | WarehouseOutputView;
+  const input = row.__warehouseDocumentKind === "INPUT";
+  const lines = payload.lines ?? [];
+  return {
+    id: payload.id || row.__warehouseDocumentId || "",
+    type: input ? "WAREHOUSE_INPUT" : "WAREHOUSE_OUTPUT",
+    status: payload.status || payload.estado || "",
+    number: input ? row.input : row.output,
+    date: payload.date || payload.fecha || row.date || "",
+    base: row.total || "0",
+    tax: 0,
+    discount: 0,
+    total: row.total || "0",
+    lines: lines.map((line, index) => {
+      const inputLine = line as NonNullable<WarehouseInputView["lines"]>[number];
+      const outputLine = line as NonNullable<WarehouseOutputView["lines"]>[number];
+      const productId = line.productId || line.productoId || "-";
+      const productCode = line.productCode || line.codigoProducto || productId;
+      const productName = line.productName || line.nombreProducto || productCode;
+      const unitPrice = input ? inputLine.purchaseUnitPrice : outputLine.saleUnitPrice;
+      const total = input ? inputLine.purchaseTotal : outputLine.saleTotal;
+      return {
+        id: `${productId}-${index}`,
+        position: index + 1,
+        code: productCode,
+        name: productName,
+        quantity: line.quantity ?? line.cantidad ?? 0,
+        unitPrice: unitPrice ?? 0,
+        discount: 0,
+        taxRegime: "",
+        taxPercentage: 0,
+        total: total ?? 0
+      };
+    })
+  };
+}
 
 type PagedResult<T> = {
   items: T[];
@@ -443,6 +554,10 @@ type WarehouseOutputView = {
   lines?: Array<{
     productId?: string;
     productoId?: string;
+    productCode?: string;
+    codigoProducto?: string;
+    productName?: string;
+    nombreProducto?: string;
     quantity?: number | string;
     cantidad?: number | string;
     saleUnitPrice?: number | string;
@@ -469,6 +584,10 @@ type WarehouseInputView = {
   lines?: Array<{
     productId?: string;
     productoId?: string;
+    productCode?: string;
+    codigoProducto?: string;
+    productName?: string;
+    nombreProducto?: string;
     quantity?: number | string;
     cantidad?: number | string;
     purchaseUnitPrice?: number | string;
@@ -607,14 +726,16 @@ function writeSavedReportViews(app: AppKind, username: string, views: SavedRepor
 
 const reportSamples: Record<string, ReportSample> = {
   "salesReport.dailySales": {
-    availableAttributes: ["date", "user", "terminal", "tickets", "invoice", "comment", "total"],
+    // Daily sales is an aggregated accounting summary. There is no single
+    // document comment that can be represented truthfully in this report.
+    availableAttributes: ["date", "user", "terminal", "tickets", "invoice", "total"],
     defaultVisibleAttributes: ["date", "user", "terminal", "tickets", "invoice", "total"],
     rows: [],
     totals: { date: "salesReport.total", tickets: "0", invoice: "0", invoicedTicketTotal: "0.00", total: "0.00" }
   },
   "salesReport.tickets": {
-    availableAttributes: ["date", "time", "ticket", "invoiced", "terminal", "user", "productCount", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
-    defaultVisibleAttributes: ["date", "time", "terminal", "productCount", "customer", "payment", "invoiced", "total"],
+    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "productCount", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
+    defaultVisibleAttributes: ["date", "time", "status", "terminal", "productCount", "customer", "payment", "invoiced", "total"],
     rows: [],
     totals: { date: "salesReport.total", productCount: "0", invoiced: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
@@ -702,14 +823,6 @@ function formatDateRange(filters: ReportFilters, locale: LocaleCode) {
     return from;
   }
   return `${from}-${to}`;
-}
-
-function formatSingleFilterDate(filters: ReportFilters, locale: LocaleCode) {
-  return formatFilterDate(filters.dateFrom || filters.dateTo, locale);
-}
-
-function formatDateFilterText(filters: ReportFilters, locale: LocaleCode, singleDay: boolean) {
-  return singleDay ? formatSingleFilterDate(filters, locale) : formatDateRange(filters, locale);
 }
 
 function dateRangeDayCount(from: string, to: string) {
@@ -1249,6 +1362,9 @@ export function buildDocumentReports(
     date: formatBackendDate(document.fecha),
     time: formatBackendTime(document.ocurridoEn ?? undefined),
     ticket: document.numTicket || document.numero || "",
+    status: String(document.estado ?? "").toUpperCase() === "ANULADO"
+      ? "salesReport.status.ticketCancelled"
+      : documentStatus(document),
     invoiced: "",
     terminal: documentTerminal(document, terminal),
     user: documentUser(document, user),
@@ -1337,6 +1453,9 @@ export function buildDocumentReports(
     total: formatAmount(Number(document.total ?? 0))
   }));
   const warehouseOutputRows = warehouseOutputs.map((output) => ({
+    __warehouseDocumentId: output.id || "",
+    __warehouseDocumentKind: "OUTPUT",
+    __warehouseDocumentPayload: JSON.stringify(output),
     date: formatBackendDate(output.date ?? output.fecha),
     time: "",
     output: output.number || output.numero || output.id || "",
@@ -1349,6 +1468,9 @@ export function buildDocumentReports(
     total: formatAmount(sumOutputSaleTotal(output))
   }));
   const inputWarehouseRows = warehouseInputs.map((input) => ({
+    __warehouseDocumentId: input.id || "",
+    __warehouseDocumentKind: "INPUT",
+    __warehouseDocumentPayload: JSON.stringify(input),
     date: formatBackendDate(input.date ?? input.fecha),
     time: "",
     input: input.number || input.numero || input.id || "",
@@ -1445,7 +1567,7 @@ function buildDailySalesRows(
     if (existing) {
       return existing;
     }
-    const next = { date, user, terminal, tickets: "0", invoice: "0", comment: "", invoicedTicketTotal: "0.00", total: "0.00" };
+    const next = { date, user, terminal, tickets: "0", invoice: "0", invoicedTicketTotal: "0.00", total: "0.00" };
     grouped.set(date, next);
     return next;
   };
@@ -1608,7 +1730,8 @@ export function SalesReportScreen({
   embedded = false,
   initialReport: requestedInitialReport,
   request = apiRequest,
-  loadVisualizationPreferences = loadReportVisualizationPreferences
+  loadVisualizationPreferences = loadReportVisualizationPreferences,
+  printCommercialDocument = printPendingCommercialDocument
 }: SalesReportScreenProps) {
   const t = createTranslator(locale);
   const reportOutputPreferences = readSalesReportOutputPreferences(app, session.username, terminalContext);
@@ -1636,6 +1759,7 @@ export function SalesReportScreen({
   const printMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const languagePickerRef = useRef<HTMLDivElement | null>(null);
+  const reportTableScrollRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [draftFilters, setDraftFilters] = useState<ReportFilters>(() => createDefaultFilters());
   const [dateRangeText, setDateRangeText] = useState(() => formatDateRange(createDefaultFilters(), locale));
@@ -1660,6 +1784,12 @@ export function SalesReportScreen({
   const [ticketCancellationNumber, setTicketCancellationNumber] = useState<string | null>(null);
   const [activityDocumentId, setActivityDocumentId] = useState<string | null>(null);
   const [documentPreviewRow, setDocumentPreviewRow] = useState<Record<string, string> | null>(null);
+  const [documentPreview, setDocumentPreview] = useState<SalesDocumentDetail | null>(null);
+  const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
+  const [documentPreviewError, setDocumentPreviewError] = useState("");
+  const [documentPreviewPrinting, setDocumentPreviewPrinting] = useState(false);
+  const [documentPreviewExporting, setDocumentPreviewExporting] = useState(false);
+  const [documentPreviewPrintMessage, setDocumentPreviewPrintMessage] = useState("");
   const [rectificationTarget, setRectificationTarget] = useState<{
     documentId: string;
     continueDraft: boolean;
@@ -1760,7 +1890,7 @@ export function SalesReportScreen({
   const hasCustomerFilter = !isDailySalesReport && (sample.availableAttributes.includes("customer") || sample.availableAttributes.includes("customerName"));
   const hasSupplierFilter = !isDailySalesReport && (sample.availableAttributes.includes("supplier") || sample.availableAttributes.includes("supplierName"));
   const hasPaymentFilter = !isDailySalesReport && sample.availableAttributes.includes("payment");
-  const hasStatusFilter = !isDailySalesReport && selectedReport !== "salesReport.tickets" && sample.availableAttributes.includes("status");
+  const hasStatusFilter = !isDailySalesReport && sample.availableAttributes.includes("status");
   const hasWarehouseFilter = !isDailySalesReport && sample.availableAttributes.includes("warehouse");
   const selectedReportPage = reportPages[reportPageKey(selectedReport)];
   const selectedReportLoadError = reportLoadErrors[selectedReport] ?? "";
@@ -1921,7 +2051,7 @@ export function SalesReportScreen({
     }
     setDailyCommercialReport(null); setDailyReportLoading(true); setDailyReportError("");
     void request<DailyCommercialReport>(
-      `/commercial-reports/daily?date=${encodeURIComponent(filters.dateFrom)}`,
+      `/commercial-reports/daily?dateFrom=${encodeURIComponent(filters.dateFrom)}&dateTo=${encodeURIComponent(filters.dateTo || filters.dateFrom)}`,
       { token: session.accessToken }
     ).then((report) => {
       if (generation === dailyReportGeneration.current) setDailyCommercialReport(report);
@@ -1931,7 +2061,7 @@ export function SalesReportScreen({
       if (generation === dailyReportGeneration.current) setDailyReportLoading(false);
     });
     return () => { if (generation === dailyReportGeneration.current) dailyReportGeneration.current += 1; };
-  }, [dailyReportReload, filters.dateFrom, request, selectedReport, session.accessToken]);
+  }, [dailyReportReload, filters.dateFrom, filters.dateTo, request, selectedReport, session.accessToken]);
 
   useEffect(() => {
     function updateConnectionStatus() {
@@ -1945,6 +2075,210 @@ export function SalesReportScreen({
       window.removeEventListener("offline", updateConnectionStatus);
     };
   }, []);
+
+  useEffect(() => {
+    if (!documentPreviewRow) return;
+    function closePreviewOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") closeDocumentPreview();
+    }
+    window.addEventListener("keydown", closePreviewOnEscape);
+    return () => window.removeEventListener("keydown", closePreviewOnEscape);
+  }, [documentPreviewRow]);
+
+  function closeDocumentPreview() {
+    setDocumentPreviewRow(null);
+    setDocumentPreview(null);
+    setDocumentPreviewLoading(false);
+    setDocumentPreviewError("");
+    setDocumentPreviewPrinting(false);
+    setDocumentPreviewExporting(false);
+    setDocumentPreviewPrintMessage("");
+  }
+
+  async function openDocumentPreview(row: Record<string, string>) {
+    if (!canOpenDocumentPreview(row)) return;
+    setDocumentPreviewRow(row);
+    setDocumentPreview(null);
+    setDocumentPreviewError("");
+    setDocumentPreviewPrintMessage("");
+    setDocumentPreviewLoading(true);
+    try {
+      if (row.__warehouseDocumentPayload) {
+        setDocumentPreview(warehouseDocumentDetail(row));
+        return;
+      }
+      const detail = await request<SalesDocumentDetail>(
+        `/documents/${encodeURIComponent(row.__documentId)}/detail`,
+        { token: session.accessToken }
+      );
+      setDocumentPreview(detail);
+    } catch {
+      setDocumentPreviewError(t("salesReport.documentLoadError"));
+    } finally {
+      setDocumentPreviewLoading(false);
+    }
+  }
+
+  function openOriginTicket() {
+    const ticket = documentPreview?.originTicket;
+    if (!ticket?.id) return;
+    void openDocumentPreview({
+      __documentId: ticket.id,
+      ticket: ticket.number || ticket.id
+    });
+  }
+
+  async function printDocumentCopy() {
+    if (!documentPreviewRow || !documentPreview || documentPreviewPrinting) return;
+    const useDesktopPrinting = hasDesktopHardwareBridge();
+    const browserPreview = useDesktopPrinting
+      ? null
+      : window.open("", "_blank", "popup=yes,width=1040,height=820");
+    if (!useDesktopPrinting && !browserPreview) {
+      setDocumentPreviewPrintMessage(t("salesReport.documentPrintError"));
+      return;
+    }
+    setDocumentPreviewPrinting(true);
+    setDocumentPreviewPrintMessage("");
+    try {
+      if (documentPreviewRow.__warehouseDocumentPayload) {
+        const printRequest = buildWarehouseA4Document({
+          title: t(selectedReport),
+          locale,
+          storeName: terminalContext.storeName,
+          terminalCode: terminalContext.terminalCode,
+          documentNumber: documentPreview.number ?? undefined,
+          issuedAt: documentPreview.date,
+          warehouse: documentPreviewRow.warehouse,
+          partner: documentPreviewRow.origin || documentPreviewRow.reason || "",
+          lines: documentPreview.lines.map((line) => ({
+            code: line.code,
+            name: line.name,
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+            total: Number(line.total)
+          })),
+          subtotal: Number(documentPreview.base),
+          total: Number(documentPreview.total),
+          labels: {
+            documentNumber: t("warehouseDocument.print.documentNumber"),
+            warehouse: t("warehouseDocument.print.warehouse"),
+            discount: t("warehouseDocument.print.discount"),
+            partner: t("warehouseDocument.print.partner"),
+            terminal: t("warehouseDocument.print.terminal"),
+            description: t("warehouseDocument.print.description"),
+            quantity: t("warehouseDocument.print.quantity"),
+            unitPrice: t("warehouseDocument.print.unitPrice"),
+            base: t("warehouseDocument.print.base"),
+            tax: t("warehouseDocument.print.tax"),
+            taxIncluded: t("warehouseDocument.print.taxIncluded"),
+            yes: t("warehouseDocument.print.yes"),
+            no: t("warehouseDocument.print.no"),
+            mixed: t("warehouseDocument.print.mixed"),
+            total: t("warehouseDocument.print.total"),
+            print: t("warehouseDocument.print.print"),
+            close: t("warehouseDocument.print.close")
+          }
+        });
+        if (browserPreview) {
+          writeWarehouseDocumentPreview(browserPreview, printRequest, { autoPrint: true });
+          setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+          return;
+        }
+        const outcome = await printWarehouseA4Document(printRequest);
+        setDocumentPreviewPrintMessage(outcome.ok
+          ? t("salesReport.documentPrintSuccess")
+          : t("salesReport.documentPrintError"));
+        return;
+      }
+      if (documentPreview.type === "TICKET") {
+        const snapshot = await request<ConfirmedTicketPrintSnapshot>(
+          `/tickets/${encodeURIComponent(documentPreviewRow.__documentId)}/print`,
+          { token: session.accessToken }
+        );
+        if (browserPreview) {
+          writeWarehouseDocumentPreview(
+            browserPreview,
+            ticketAsA4Document(snapshot, terminalContext, locale),
+            { autoPrint: true }
+          );
+          setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+          return;
+        }
+        const outcome = await outputConfirmedTicket(
+          snapshot,
+          terminalContext,
+          "DEFAULT",
+          locale
+        );
+        setDocumentPreviewPrintMessage(outcome.status === "FAILED"
+          ? t("salesReport.documentPrintError")
+          : outcome.status === "PRINTED" ? t("salesReport.documentPrintSuccess") : "");
+        return;
+      }
+      const snapshot = await request<SalesDocumentPrintCopy>(
+        `/documents/${encodeURIComponent(documentPreviewRow.__documentId)}/print-copy`,
+        { token: session.accessToken }
+      );
+      const commercialDocument = { ...snapshot, kind: "COMMERCIAL_DOCUMENT" } as const;
+      if (browserPreview) {
+        writeWarehouseDocumentPreview(
+          browserPreview,
+          commercialDocumentAsA4Document(commercialDocument, terminalContext, locale),
+          { autoPrint: true }
+        );
+        setDocumentPreviewPrintMessage(t("salesReport.documentPrintSuccess"));
+        return;
+      }
+      const outcome = await printCommercialDocument(commercialDocument, terminalContext, undefined, locale);
+      setDocumentPreviewPrintMessage(outcome.status === "FAILED"
+        ? t("salesReport.documentPrintError")
+        : outcome.status === "PRINTED" ? t("salesReport.documentPrintSuccess") : "");
+    } catch {
+      browserPreview?.close();
+      setDocumentPreviewPrintMessage(t("salesReport.documentPrintError"));
+    } finally {
+      setDocumentPreviewPrinting(false);
+    }
+  }
+
+  async function exportDocumentCopyExcel() {
+    if (!documentPreviewRow || !session.accessToken || documentPreviewExporting) return;
+    setDocumentPreviewExporting(true);
+    setDocumentPreviewPrintMessage("");
+    try {
+      const warehouseKind = documentPreviewRow.__warehouseDocumentKind === "INPUT"
+        ? "warehouse-inputs"
+        : "warehouse-outputs";
+      const exportPath = documentPreviewRow.__documentId
+        ? `documents/${encodeURIComponent(documentPreviewRow.__documentId)}`
+        : `${warehouseKind}/${encodeURIComponent(documentPreviewRow.__warehouseDocumentId)}`;
+      const response = await fetch(
+        `${apiBaseUrl}/excel/${exportPath}/export`,
+        { headers: { Authorization: `Bearer ${session.accessToken}` } }
+      );
+      if (!response.ok) throw new Error(await salesReportResponseError(response));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const documentNumber = documentPreview?.number
+        || documentPreviewRow.invoice
+        || documentPreviewRow.deliveryNote
+        || documentPreviewRow.input
+        || documentPreviewRow.output
+        || "documento";
+      const safeNumber = documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
+      await saveExportBytes(
+        bytes,
+        `${safeNumber || "documento"}.xlsx`,
+        "xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      setDocumentPreviewPrintMessage(t("salesReport.documentExcelSuccess"));
+    } catch {
+      setDocumentPreviewPrintMessage(t("salesReport.documentExcelError"));
+    } finally {
+      setDocumentPreviewExporting(false);
+    }
+  }
 
   function closeApplication() {
     if (window.tpvDesktop) {
@@ -2119,11 +2453,10 @@ export function SalesReportScreen({
 
   function selectReport(reportKey: string) {
     const defaultFilters = createDefaultFilters();
-    const singleDay = reportKey === "salesReport.dailySales";
     setSelectedReport(reportKey);
     setFilters(defaultFilters);
     setDraftFilters(defaultFilters);
-    setDateRangeText(formatDateFilterText(defaultFilters, locale, singleDay));
+    setDateRangeText(formatDateRange(defaultFilters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setSelectedRowByReport((current) => ({ ...current, [reportKey]: current[reportKey] ?? -1 }));
@@ -2132,7 +2465,7 @@ export function SalesReportScreen({
   function openFilters() {
     setPrintMenuOpen(false);
     setDraftFilters(filters);
-    setDateRangeText(formatDateFilterText(filters, locale, isDailySalesReport));
+    setDateRangeText(formatDateRange(filters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setFilterOpen(true);
@@ -2211,23 +2544,44 @@ export function SalesReportScreen({
     }
   }
 
+  useEffect(() => {
+    const container = reportTableScrollRef.current;
+    if (!container || reportLoading || reportLoadingMore || !selectedReportPage?.hasMore) {
+      return;
+    }
+    if (container.scrollHeight <= container.clientHeight + 80) {
+      void loadMoreReportRows();
+    }
+  }, [
+    reportLoading,
+    reportLoadingMore,
+    selectedReport,
+    selectedReportPage?.hasMore,
+    selectedReportPage?.nextCursor
+  ]);
+
+  function handleReportTableScroll(event: UIEvent<HTMLDivElement>) {
+    const container = event.currentTarget;
+    const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (remaining <= 80) {
+      void loadMoreReportRows();
+    }
+  }
+
   function clearFilters() {
     const defaultFilters = createDefaultFilters();
     setDraftFilters(defaultFilters);
     setFilters(defaultFilters);
-    setDateRangeText(formatDateFilterText(defaultFilters, locale, isDailySalesReport));
+    setDateRangeText(formatDateRange(defaultFilters, locale));
     setDateRangeStart(null);
     setOpenFilterControl(null);
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
   }
 
   function applyFilters() {
-    const selectedDate = draftFilters.dateFrom || draftFilters.dateTo;
-    const nextFilters = isDailySalesReport
-      ? { ...draftFilters, dateFrom: selectedDate, dateTo: selectedDate }
-      : draftFilters;
+    const nextFilters = draftFilters;
     setFilters(nextFilters);
-    setDateRangeText(formatDateFilterText(nextFilters, locale, isDailySalesReport));
+    setDateRangeText(formatDateRange(nextFilters, locale));
     setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
     setDateRangeStart(null);
     setOpenFilterControl(null);
@@ -2248,14 +2602,6 @@ export function SalesReportScreen({
 
   function selectFilterDate(value: Date) {
     const selected = toIsoDate(value);
-    if (isDailySalesReport) {
-      const nextFilters = { ...draftFilters, dateFrom: selected, dateTo: selected };
-      setDraftFilters(nextFilters);
-      setDateRangeText(formatDateFilterText(nextFilters, locale, true));
-      setDateRangeStart(null);
-      setOpenFilterControl(null);
-      return;
-    }
     if (!dateRangeStart) {
       setDateRangeStart(selected);
       updateDraftFilter("dateFrom", selected);
@@ -2273,14 +2619,6 @@ export function SalesReportScreen({
 
   function updateDateRangeText(value: string) {
     setDateRangeText(value);
-    if (isDailySalesReport) {
-      const date = parseManualDate(value);
-      if (date) {
-        setDraftFilters((current) => ({ ...current, dateFrom: date, dateTo: date }));
-        setDateRangeStart(null);
-      }
-      return;
-    }
     const range = parseDateRangeInput(value);
     if (range) {
       setDraftFilters((current) => ({ ...current, ...range }));
@@ -2289,18 +2627,6 @@ export function SalesReportScreen({
   }
 
   function applyDateRangeText() {
-    if (isDailySalesReport) {
-      const date = parseManualDate(dateRangeText);
-      const nextFilters = date ? { ...draftFilters, dateFrom: date, dateTo: date } : draftFilters;
-      setDraftFilters(nextFilters);
-      setFilters(nextFilters);
-      setDateRangeText(formatDateFilterText(nextFilters, locale, true));
-      setSelectedRowByReport((current) => ({ ...current, [selectedReport]: -1 }));
-      setDateRangeStart(null);
-      setOpenFilterControl(null);
-      setFilterOpen(false);
-      return;
-    }
     const range = parseDateRangeInput(dateRangeText);
     const nextFilters = range ? { ...draftFilters, ...range } : draftFilters;
     setDraftFilters(nextFilters);
@@ -2325,7 +2651,7 @@ export function SalesReportScreen({
     };
 
     if (hasDateFilter && (filters.dateFrom || filters.dateTo)) {
-      addFilter(t("salesReport.column.date"), formatDateFilterText(filters, locale, isDailySalesReport));
+      addFilter(t("salesReport.column.date"), formatDateRange(filters, locale));
     }
     if (hasUserFilter) {
       addFilter(t("salesReport.filter.user"), filters.user);
@@ -2363,7 +2689,7 @@ export function SalesReportScreen({
           <input
             type="text"
             value={dateRangeText}
-            placeholder={t(isDailySalesReport ? "salesReport.filter.datePlaceholder" : "salesReport.filter.dateRangePlaceholder")}
+            placeholder={t("salesReport.filter.dateRangePlaceholder")}
             onChange={(event) => updateDateRangeText(event.target.value)}
             onFocus={(event) => event.currentTarget.select()}
             onClick={(event) => event.currentTarget.select()}
@@ -2426,7 +2752,7 @@ export function SalesReportScreen({
               )}
             </div>
             <footer className="date-range-footer">
-              <span>{selectedStart ? selectedDaysText(dateRangeDayCount(selectedStart, selectedEnd), locale) : t(isDailySalesReport ? "salesReport.filter.pickDate" : "salesReport.filter.pickDateFrom")}</span>
+              <span>{selectedStart ? selectedDaysText(dateRangeDayCount(selectedStart, selectedEnd), locale) : t("salesReport.filter.pickDateFrom")}</span>
               <div className="date-range-actions">
                 <button type="button" onClick={() => {
                   setDateRangeStart(null);
@@ -2490,7 +2816,7 @@ export function SalesReportScreen({
       : { ...filters, ...quickDateRange(kind) };
     setFilters(next);
     setDraftFilters(next);
-    setDateRangeText(formatDateFilterText(next, locale, isDailySalesReport));
+    setDateRangeText(formatDateRange(next, locale));
     selectRow(-1);
   }
 
@@ -2524,7 +2850,7 @@ export function SalesReportScreen({
     setReportSearch(view.search);
     setSortByReport((current) => ({ ...current, [selectedReport]: view.sort }));
     selectedReportTableLayout.replaceLayout(view.layout);
-    setDateRangeText(formatDateFilterText(view.filters, locale, isDailySalesReport));
+    setDateRangeText(formatDateRange(view.filters, locale));
     setViewsOpen(false);
     selectRow(-1);
   }
@@ -2713,17 +3039,65 @@ export function SalesReportScreen({
         ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
         ["salesReport.daily.cashInflow", dailyCommercialReport.cashInflow]
       ];
+      const days = dailyCommercialReport.days ?? [];
       return (
         <div className="daily-summary-scroll">
-          <section className="daily-summary-card daily-authoritative-summary" aria-label={t("salesReport.daily.authoritativeSummary")}>
-            <h2>{t("salesReport.daily.totalAmount")}</h2>
-            {rows.map(([key, value]) => (
-              <div className={key === "salesReport.daily.cashInflow" ? "daily-final-total-line" : "daily-payment-line"} key={key}>
-                <span>{t(key)}</span>
-                <strong>{`${formatAmount(Number(value))}€`}</strong>
+          <div className="daily-authoritative-report">
+            <section className="daily-summary-card daily-authoritative-summary" aria-label={t("salesReport.daily.authoritativeSummary")}>
+              <div className="daily-period-summary-heading">
+                <div>
+                  <span>{t("salesReport.daily.periodSummary")}</span>
+                  <h2>{t("salesReport.daily.totalAmount")}</h2>
+                </div>
+                {days.length > 0 && <strong>{`${days.length} ${t("salesReport.daily.daysIncluded")}`}</strong>}
               </div>
-            ))}
-          </section>
+              {rows.map(([key, value]) => (
+                <div className={key === "salesReport.daily.cashInflow" ? "daily-final-total-line" : "daily-payment-line"} key={key}>
+                  <span>{t(key)}</span>
+                  <strong>{`${formatAmount(Number(value))} €`}</strong>
+                </div>
+              ))}
+            </section>
+            {days.length > 1 && (
+              <section className="daily-breakdown-card" aria-label={t("salesReport.daily.dailyBreakdown")}>
+                <header className="daily-breakdown-heading">
+                  <div>
+                    <span>{t("salesReport.daily.breakdownEyebrow")}</span>
+                    <h2>{t("salesReport.daily.dailyBreakdown")}</h2>
+                  </div>
+                  <p>{formatDateRange(filters, locale)}</p>
+                </header>
+                <div className="daily-breakdown-scroll">
+                  <table className="daily-breakdown-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{t("salesReport.daily.date")}</th>
+                        <th scope="col">{t("salesReport.daily.invoiced")}</th>
+                        <th scope="col">{t("salesReport.daily.ticketSales")}</th>
+                        <th scope="col">{t("salesReport.daily.collectedCurrent")}</th>
+                        <th scope="col">{t("salesReport.daily.newPending")}</th>
+                        <th scope="col">{t("salesReport.daily.priorDebtCollected")}</th>
+                        <th scope="col">{t("salesReport.daily.cashInflow")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {days.map((day) => (
+                        <tr key={day.date}>
+                          <th scope="row">{formatFilterDate(day.date, locale)}</th>
+                          <td>{`${formatAmount(Number(day.invoiced))} €`}</td>
+                          <td>{`${formatAmount(Number(day.ticketSales ?? 0))} €`}</td>
+                          <td>{`${formatAmount(Number(day.collectedCurrent))} €`}</td>
+                          <td>{`${formatAmount(Number(day.newPending))} €`}</td>
+                          <td>{`${formatAmount(Number(day.priorDebtCollected))} €`}</td>
+                          <td>{`${formatAmount(Number(day.cashInflow))} €`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </div>
         </div>
       );
     }
@@ -2780,7 +3154,7 @@ export function SalesReportScreen({
           <button type="button" onClick={() => applyQuickFilter("today")}>{t("salesReport.quick.today")}</button>
           <button type="button" onClick={() => applyQuickFilter("week")}>{t("salesReport.quick.week")}</button>
           <button type="button" onClick={() => applyQuickFilter("month")}>{t("salesReport.quick.month")}</button>
-          {hasStatusFilter && (
+              {hasStatusFilter && selectedReport !== "salesReport.tickets" && (
             <button
               type="button"
               className={filters.status === "salesReport.status.pending" ? "active" : ""}
@@ -2813,8 +3187,8 @@ export function SalesReportScreen({
             {t("salesReport.activity.open")}
           </button>
         )}
-        {!isDailySalesReport && selectedReportRow?.__documentId && (
-          <button type="button" onClick={() => setDocumentPreviewRow(selectedReportRow)}>
+        {!isDailySalesReport && canOpenDocumentPreview(selectedReportRow) && (
+          <button type="button" onClick={() => void openDocumentPreview(selectedReportRow)}>
             {t("salesReport.openDocument")}
           </button>
         )}
@@ -2865,17 +3239,6 @@ export function SalesReportScreen({
             }}
           >
             {t("sale.ticketCancel.title")}
-          </button>
-        )}
-        {selectedReportPage?.hasMore && (
-          <button
-            type="button"
-            disabled={reportLoadingMore}
-            onClick={() => {
-              void loadMoreReportRows();
-            }}
-          >
-            {reportLoadingMore ? t("salesReport.loadingMore") : t("salesReport.loadMore")}
           </button>
         )}
         <button
@@ -3075,22 +3438,28 @@ export function SalesReportScreen({
               {renderReportToolbar()}
               {viewsOpen && (
                 <section className="report-saved-views" aria-label={t("salesReport.views")}>
-                  <label>
-                    <span>{t("salesReport.views.available")}</span>
-                    <select value={selectedSavedViewId} onChange={(event) => setSelectedSavedViewId(event.target.value)}>
-                      <option value="">{t("salesReport.views.select")}</option>
-                      {savedViews.filter((view) => view.reportKey === selectedReport).map((view) => (
-                        <option key={view.id} value={view.id}>{view.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button type="button" disabled={!selectedSavedViewId} onClick={applySavedView}>{t("common.apply")}</button>
-                  <button type="button" disabled={!selectedSavedViewId} onClick={deleteSavedView}>{t("common.delete")}</button>
-                  <label>
-                    <span>{t("salesReport.views.name")}</span>
-                    <input value={savedViewName} onChange={(event) => setSavedViewName(event.target.value)} />
-                  </label>
-                  <button type="button" disabled={!savedViewName.trim()} onClick={saveCurrentView}>{t("salesReport.views.save")}</button>
+                  <div className="report-saved-views__group">
+                    <label className="report-saved-views__field report-saved-views__field--select">
+                      <span>{t("salesReport.views.available")}</span>
+                      <select value={selectedSavedViewId} onChange={(event) => setSelectedSavedViewId(event.target.value)}>
+                        <option value="">{t("salesReport.views.select")}</option>
+                        {savedViews.filter((view) => view.reportKey === selectedReport).map((view) => (
+                          <option key={view.id} value={view.id}>{view.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="report-saved-views__actions">
+                      <button type="button" disabled={!selectedSavedViewId} onClick={applySavedView}>{t("common.apply")}</button>
+                      <button className="report-saved-views__delete" type="button" disabled={!selectedSavedViewId} onClick={deleteSavedView}>{t("common.delete")}</button>
+                    </div>
+                  </div>
+                  <div className="report-saved-views__group report-saved-views__group--create">
+                    <label className="report-saved-views__field report-saved-views__field--name">
+                      <span>{t("salesReport.views.name")}</span>
+                      <input value={savedViewName} onChange={(event) => setSavedViewName(event.target.value)} />
+                    </label>
+                    <button className="report-saved-views__save" type="button" disabled={!savedViewName.trim()} onClick={saveCurrentView}>{t("salesReport.views.save")}</button>
+                  </div>
                 </section>
               )}
               <div className="report-table-region">
@@ -3107,7 +3476,11 @@ export function SalesReportScreen({
                     <div><span>{t("salesReport.column.saleTotal")}</span><strong>{formatEuroAmount(warehouseReconciliation.saleValue, locale)}</strong></div>
                   </section>
                 )}
-                <div className="report-table-scroll">
+                <div
+                  className="report-table-scroll"
+                  ref={reportTableScrollRef}
+                  onScroll={handleReportTableScroll}
+                >
                 {reportLoading && (
                   <p className="report-load-state" aria-live="polite">
                     {t("salesReport.loading")}
@@ -3124,7 +3497,7 @@ export function SalesReportScreen({
               <table
                 className="report-table"
                 data-report-key={selectedReport}
-                style={{ width: `${reportTableWidth}px`, minWidth: "100%" }}
+                style={{ width: "100%", minWidth: `${reportTableWidth}px` }}
               >
                 <colgroup>
                   {visibleColumnLayout.map((column) => (
@@ -3141,6 +3514,7 @@ export function SalesReportScreen({
                         <TableLayoutHeaderCell
                           column={column}
                           key={column.key}
+                          className={REPORT_MONETARY_ATTRIBUTES.has(column.key) ? "report-column-numeric" : ""}
                           movable={column.key !== "total"}
                           sortDirection={activeSort?.attribute === column.key ? activeSort.direction : null}
                           sortLabel={`${t(reportAttributeLabelKey(selectedReport, column.key))} ${t("salesReport.sort")}`}
@@ -3162,45 +3536,64 @@ export function SalesReportScreen({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row, rowIndex) => (
-                      <tr
-                        key={`${selectedReport}-${rowIndex}`}
-                        className={selectedRowIndex === rowIndex ? "selected" : ""}
-                        tabIndex={0}
-                        aria-selected={selectedRowIndex === rowIndex}
-                        onClick={() => selectRow(rowIndex)}
-                        onFocus={() => selectRow(rowIndex)}
-                        onDoubleClick={() => {
-                          if (canOpenOperationalTimeline(app, session, selectedReport, row)) {
-                            setActivityDocumentId(row.__documentId);
-                          }
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "ArrowUp") {
-                            event.preventDefault();
-                            moveSelectedRow(rowIndex, -1);
-                          }
-                          if (event.key === "ArrowDown") {
-                            event.preventDefault();
-                            moveSelectedRow(rowIndex, 1);
-                          }
-                          if (event.key === "Enter" && canOpenOperationalTimeline(app, session, selectedReport, row)) {
-                            event.preventDefault();
-                            setActivityDocumentId(row.__documentId);
-                          }
-                        }}
-                      >
-                    {visibleColumnLayout.map((column) => (
-                      <td key={column.key} data-column-key={column.key}>
-                        {REPORT_MONETARY_ATTRIBUTES.has(column.key)
-                          ? formatReportDisplayValue(column.key, row[column.key] ?? "", locale)
-                          : t(row[column.key] ?? "")}
-                      </td>
-                    ))}
-                      </tr>
-                    ))}
+                      {filteredRows.map((row, rowIndex) => {
+                        const isCancelledTicket = selectedReport === "salesReport.tickets"
+                          && String(row.__documentStatus ?? "").toUpperCase() === "ANULADO";
+                        return (
+                          <tr
+                            key={`${selectedReport}-${rowIndex}`}
+                            className={[
+                              selectedRowIndex === rowIndex ? "selected" : "",
+                              isCancelledTicket ? "report-table-row--cancelled" : ""
+                            ].filter(Boolean).join(" ")}
+                            title={isCancelledTicket ? t("salesReport.status.ticketCancelled") : undefined}
+                            tabIndex={0}
+                            aria-selected={selectedRowIndex === rowIndex}
+                            onClick={() => selectRow(rowIndex)}
+                            onFocus={() => selectRow(rowIndex)}
+                            onDoubleClick={() => {
+                              if (canOpenDocumentPreview(row)) void openDocumentPreview(row);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                moveSelectedRow(rowIndex, -1);
+                              }
+                              if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                moveSelectedRow(rowIndex, 1);
+                              }
+                              if (event.key === "Enter" && canOpenDocumentPreview(row)) {
+                                event.preventDefault();
+                                void openDocumentPreview(row);
+                              }
+                            }}
+                          >
+                            {visibleColumnLayout.map((column) => (
+                              <td
+                                key={column.key}
+                                data-column-key={column.key}
+                                className={REPORT_MONETARY_ATTRIBUTES.has(column.key) ? "report-column-numeric" : undefined}
+                              >
+                                {column.key === "status" && isCancelledTicket ? (
+                                  <span className="report-status-badge report-status-badge--cancelled">
+                                    {t(row[column.key] ?? "")}
+                                  </span>
+                                ) : REPORT_MONETARY_ATTRIBUTES.has(column.key)
+                                  ? formatReportDisplayValue(column.key, row[column.key] ?? "", locale)
+                                  : t(row[column.key] ?? "")}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
                   </tbody>
                   </table>
+                  {reportLoadingMore && (
+                    <div className="report-auto-load-state" role="status" aria-live="polite">
+                      {t("salesReport.loadingMore")}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="report-total-row">
@@ -3243,17 +3636,19 @@ export function SalesReportScreen({
           role="dialog"
           aria-modal="true"
           aria-labelledby="report-document-preview-title"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) setDocumentPreviewRow(null); }}
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeDocumentPreview(); }}
         >
           <section className="document-activity-dialog report-document-preview">
             <header>
               <div>
                 <span>{t("salesReport.openDocument")}</span>
                 <h2 id="report-document-preview-title">
-                  {documentPreviewRow.invoice || documentPreviewRow.deliveryNote || documentPreviewRow.ticket || documentPreviewRow.__documentId}
+                  {documentPreviewRow.invoice || documentPreviewRow.deliveryNote || documentPreviewRow.ticket
+                    || documentPreviewRow.input || documentPreviewRow.output
+                    || documentPreviewRow.__documentId || documentPreviewRow.__warehouseDocumentId}
                 </h2>
               </div>
-              <button type="button" aria-label={t("common.close")} onClick={() => setDocumentPreviewRow(null)}>×</button>
+              <button type="button" aria-label={t("common.close")} onClick={closeDocumentPreview}>×</button>
             </header>
             <dl className="document-activity-summary">
               {visibleColumnLayout.map((column) => (
@@ -3265,9 +3660,84 @@ export function SalesReportScreen({
                 </div>
               ))}
             </dl>
+            <section className="report-document-lines" aria-labelledby="report-document-lines-title">
+              <h3 id="report-document-lines-title">{t("salesDocument.lines")}</h3>
+              {documentPreviewLoading && <p role="status">{t("common.loading")}</p>}
+              {documentPreviewError && <p role="alert" className="sale-action-error">{documentPreviewError}</p>}
+              {!documentPreviewLoading && !documentPreviewError && documentPreview?.lines.length === 0 && (
+                <p>{t("salesReport.documentLinesEmpty")}</p>
+              )}
+              {documentPreview && documentPreview.lines.length > 0 && (
+                <div className="report-document-lines-scroll">
+                  <table>
+                    <thead><tr>
+                      <th>{t("sale.searchDialog.code")}</th>
+                      <th>{t("sale.searchDialog.name")}</th>
+                      <th>{t("sale.main.quantity")}</th>
+                      <th>{t("sale.searchDialog.price")}</th>
+                      <th>{t("stock.column.discount")}</th>
+                      <th>{t("stock.column.tax")}</th>
+                      <th>{t("sale.main.total")}</th>
+                    </tr></thead>
+                    <tbody>
+                      {documentPreview.lines.map((line) => (
+                        <tr key={line.id}>
+                          <td>{line.code}</td>
+                          <td>{line.name}</td>
+                          <td>{new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 3 }).format(Number(line.quantity))}</td>
+                          <td>{formatEuroAmount(line.unitPrice, locale)}</td>
+                          <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.discount))} %`}</td>
+                          <td>{`${new Intl.NumberFormat(localeTag(locale), { maximumFractionDigits: 2 }).format(Number(line.taxPercentage))} %`}</td>
+                          <td>{formatEuroAmount(line.total, locale)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
             <footer>
-              <small>{documentPreviewRow.__documentId}</small>
-              <button type="button" onClick={() => setDocumentPreviewRow(null)}>{t("common.close")}</button>
+              <small>{documentPreviewRow.__documentId || documentPreviewRow.__warehouseDocumentId}</small>
+              {documentPreviewPrintMessage && (
+                <span className="report-document-print-message" role="status">{documentPreviewPrintMessage}</span>
+              )}
+              <div className="report-document-preview-actions">
+                {documentPreview?.originTicket && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={documentPreviewLoading}
+                    onClick={openOriginTicket}
+                  >
+                    {t("salesReport.viewOriginTicket")}
+                  </button>
+                )}
+                {canOpenDocumentPreview(documentPreviewRow) && (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={documentPreviewLoading || Boolean(documentPreviewError) || !documentPreview || documentPreviewExporting}
+                      onClick={() => void exportDocumentCopyExcel()}
+                    >
+                      {documentPreviewExporting
+                        ? t("salesReport.documentExportingExcel")
+                        : t("salesReport.exportDocumentExcel")}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={documentPreviewLoading || Boolean(documentPreviewError) || !documentPreview || documentPreviewPrinting}
+                      onClick={() => void printDocumentCopy()}
+                    >
+                      {documentPreviewPrinting
+                        ? t("salesReport.documentPrinting")
+                        : t("salesReport.printDocumentCopy")}
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={closeDocumentPreview}>{t("common.close")}</button>
+              </div>
             </footer>
           </section>
         </div>

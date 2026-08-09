@@ -121,12 +121,20 @@ export function renderWarehouseA4PreviewHtml(document: A4DocumentPrintRequest): 
 export function openWarehouseDocumentPreview(request: A4DocumentPrintRequest, options: { autoPrint?: boolean } = {}): boolean {
   const preview = window.open("", "_blank", "popup=yes,width=1040,height=820");
   if (!preview) return false;
+  writeWarehouseDocumentPreview(preview, request, options);
+  return true;
+}
+
+export function writeWarehouseDocumentPreview(
+  preview: Window,
+  request: A4DocumentPrintRequest,
+  options: { autoPrint?: boolean } = {}
+): void {
   preview.opener = null;
   preview.document.open();
   preview.document.write(renderWarehouseA4PreviewHtml(request));
   preview.document.close();
   if (options.autoPrint) preview.setTimeout(() => { preview.focus(); preview.print(); }, 250);
-  return true;
 }
 
 export function hasDesktopHardwareBridge(): boolean {

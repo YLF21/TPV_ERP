@@ -24,7 +24,12 @@ public class CommercialReportController {
     @GetMapping("/daily")
     @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('"
             + GESTION_VENTAS + "','" + GESTION_CUENTAS + "','" + CASH_READ + "')")
-    public DailyCommercialReportView daily(@RequestParam LocalDate date) {
-        return reports.report(date);
+    public DailyCommercialReportView daily(
+            @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) LocalDate dateFrom,
+            @RequestParam(required = false) LocalDate dateTo) {
+        var from = dateFrom != null ? dateFrom : date;
+        var to = dateTo != null ? dateTo : from;
+        return reports.report(from, to);
     }
 }

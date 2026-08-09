@@ -1086,6 +1086,16 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<CommercialDocument> findOriginTicket(UUID documentId) {
+        var storeId = organization.currentStore().getId();
+        return relations.findOriginId(
+                        Objects.requireNonNull(documentId, "documentId"),
+                        DocumentRelationType.FACTURA_DE)
+                .flatMap(originId -> documents.findByIdAndTiendaId(originId, storeId))
+                .filter(origin -> origin.getTipo() == CommercialDocumentType.TICKET);
+    }
+
+    @Transactional(readOnly = true)
     public void validateApprovedCardRefund(UUID originalDocumentId, BigDecimal approvedAmount,
             List<PaymentTerminalRefundLineSelection> selections) {
         var original = find(Objects.requireNonNull(originalDocumentId, "originalDocumentId"));
@@ -2126,8 +2136,17 @@ public class DocumentService {
                 || ticket.getEstado() != DocumentStatus.CONFIRMADO) {
             throw new IllegalStateException("solo se puede facturar un ticket confirmado");
         }
-        if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.FACTURA_DE)) {
-            throw new TicketAlreadyInvoicedException();
+        var existingInvoiceId = relations.findDocumentIdByOriginIdAndType(
+                ticket.getId(), DocumentRelationType.FACTURA_DE);
+        if (existingInvoiceId.isPresent()) {
+            var existingInvoice = documents.findLockedDocument(
+                            existingInvoiceId.orElseThrow(), organization.currentStore().getId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "la factura vinculada al ticket no esta disponible"));
+            if (!Objects.equals(existingInvoice.getClienteId(), customerId)) {
+                throw new TicketAlreadyInvoicedException();
+            }
+            return existingInvoice;
         }
         if (relations.existsByOrigen_IdAndTipo(ticket.getId(), DocumentRelationType.RECTIFICA)) {
             throw new IllegalStateException(

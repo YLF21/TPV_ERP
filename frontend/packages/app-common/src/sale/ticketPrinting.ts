@@ -51,7 +51,7 @@ export type SalePrintMode =
 
 export type PendingCommercialDocumentPrintSnapshot = {
   kind: "COMMERCIAL_DOCUMENT";
-  documentType: "ALBARAN_VENTA" | "FACTURA_VENTA";
+  documentType: "ALBARAN_VENTA" | "FACTURA_VENTA" | "RECTIFICATIVA_VENTA";
   documentNumber: string;
   issuedAt?: string;
   issueDate?: string;
@@ -137,7 +137,7 @@ function ticketRoute(
   };
 }
 
-function ticketAsA4Document(
+export function ticketAsA4Document(
   snapshot: ConfirmedTicketPrintSnapshot,
   terminal: TerminalContext,
   locale: LocaleCode,
@@ -289,7 +289,7 @@ export async function retryConfirmedTicketPrint(
 }
 
 function pendingDocumentType(snapshot: PendingCommercialDocumentPrintSnapshot) {
-  return snapshot.documentType === "FACTURA_VENTA" ? "INVOICE" as const : "DELIVERY_NOTE" as const;
+  return snapshot.documentType === "ALBARAN_VENTA" ? "DELIVERY_NOTE" as const : "INVOICE" as const;
 }
 
 function pendingDocumentTitle(
@@ -297,10 +297,10 @@ function pendingDocumentTitle(
   locale: LocaleCode,
 ) {
   const t = createTranslator(locale);
-  return `${t(snapshot.documentType === "FACTURA_VENTA" ? "receivables.type.invoice" : "receivables.type.deliveryNote")} ${snapshot.documentNumber}`;
+  return `${t(snapshot.documentType === "ALBARAN_VENTA" ? "receivables.type.deliveryNote" : "receivables.type.invoice")} ${snapshot.documentNumber}`;
 }
 
-function pendingAsA4Document(
+export function commercialDocumentAsA4Document(
   snapshot: PendingCommercialDocumentPrintSnapshot,
   terminal: TerminalContext,
   locale: LocaleCode,
@@ -392,7 +392,7 @@ export async function printPendingCommercialDocument(
     if (mode === "PDF") {
       const safeNumber = snapshot.documentNumber.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
       const result = await hardware.exportA4DocumentPdf(
-        pendingAsA4Document(snapshot, terminal, locale),
+        commercialDocumentAsA4Document(snapshot, terminal, locale),
         `${safeNumber || "documento"}.pdf`,
       );
       return result.ok
@@ -425,7 +425,7 @@ export async function printPendingCommercialDocument(
       return result.ok ? { status: "PRINTED" } : { status: "FAILED", technicalMessage: result.message };
     }
     const result = await hardware.printA4Document(
-      pendingAsA4Document(snapshot, terminal, locale),
+      commercialDocumentAsA4Document(snapshot, terminal, locale),
       config,
     );
     return result.ok

@@ -18,6 +18,15 @@ public interface DocumentRelationRepository
             UUID documentId, UUID originId, DocumentRelationType type);
 
     @Query("""
+            select relation.documento.id from DocumentRelation relation
+            where relation.origen.id = :originId
+              and relation.tipo = :type
+            """)
+    Optional<UUID> findDocumentIdByOriginIdAndType(
+            @Param("originId") UUID originId,
+            @Param("type") DocumentRelationType type);
+
+    @Query("""
             select relation.origen.id from DocumentRelation relation
             where relation.documento.id = :documentId
               and relation.tipo = :type

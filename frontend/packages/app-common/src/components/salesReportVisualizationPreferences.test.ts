@@ -15,6 +15,10 @@ vi.mock("../api/client", () => ({
 const apiRequestMock = vi.mocked(apiRequest);
 
 const reports = {
+  "salesReport.dailySales": {
+    availableAttributes: ["date", "user", "terminal", "tickets", "invoice", "total"],
+    defaultVisibleAttributes: ["date", "user", "terminal", "tickets", "invoice", "total"]
+  },
   "salesReport.tickets": {
     availableAttributes: ["date", "ticket", "user", "total"],
     defaultVisibleAttributes: ["date", "ticket", "total"]
@@ -42,6 +46,13 @@ describe("sales report visualization preferences", () => {
       ["missing"],
       reports["salesReport.invoices"]
     )).toEqual(["date", "invoice", "total"]);
+  });
+
+  it("removes the obsolete comment from saved daily sales preferences", () => {
+    expect(sanitizeVisibleAttributes(
+      ["date", "comment", "tickets", "total"],
+      reports["salesReport.dailySales"]
+    )).toEqual(["date", "tickets", "total"]);
   });
 
   it("applies saved preferences per known report only", () => {

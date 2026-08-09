@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { apiGet, loginApi } from "./support/testApi";
+import { apiGet, apiUrl, authorization, loginApi } from "./support/testApi";
 import { loginUi } from "./support/ui";
 
 type SaleProduct = {
@@ -103,6 +103,48 @@ for (const viewport of viewports) {
     });
   }
 }
+
+test("touch mode exposes large controls and remains usable on a physical-tablet viewport", async ({ page, request }) => {
+  const viewport = { width: 1280, height: 800 };
+  await page.setViewportSize(viewport);
+  const session = await loginApi(request);
+  const original = await apiGet<{ saleMode: "KEYBOARD" | "TOUCH" }>(
+    request,
+    session.accessToken,
+    "/terminal-configuration/interface",
+  );
+  const updateMode = async (saleMode: "KEYBOARD" | "TOUCH") => {
+    const response = await request.patch(`${apiUrl}/terminal-configuration/interface`, {
+      headers: authorization(session.accessToken),
+      data: { saleMode },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+  };
+
+  await updateMode("TOUCH");
+  try {
+    await loginUi(page, "venta");
+    await page.locator(".home-action-sale").click();
+    await expect(page.locator(".sale-screen.touch-mode")).toBeVisible();
+    await expectNoHorizontalOverflow(page, viewport);
+
+    const touchTargets = page.locator([
+      ".sale-quick-grid button:visible",
+      ".sale-payment-actions button:visible",
+      ".sale-command-menu-trigger:visible",
+    ].join(", "));
+    expect(await touchTargets.count()).toBeGreaterThan(0);
+    for (let index = 0; index < await touchTargets.count(); index += 1) {
+      const bounds = await touchTargets.nth(index).boundingBox();
+      expect(bounds, "Cada acción táctil debe tener límites visibles").not.toBeNull();
+      expect(bounds!.height, "Cada acción táctil debe medir al menos 44 px de alto")
+        .toBeGreaterThanOrEqual(44);
+    }
+    await expectInteractiveControlsToHaveAccessibleNames(page);
+  } finally {
+    await updateMode(original.saleMode);
+  }
+});
 
 async function chooseLocale(page: Page, locale: typeof locales[number]) {
   await page.locator(".language-button").click();

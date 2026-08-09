@@ -48,6 +48,15 @@ type CreditAccount = {
 };
 
 type ParkedSale = { id: string; comment?: string | null };
+type TicketDocument = {
+  id: string;
+  numero?: string | null;
+  estado: string;
+  customerId?: string | null;
+};
+type OperationalTimeline = {
+  events: Array<{ type: string; data: Record<string, unknown> }>;
+};
 type PaymentSession = {
   id: string;
   status: string;
@@ -188,6 +197,33 @@ async function firstProductAndSession(request: APIRequestContext) {
   return { session, product: products[0] };
 }
 
+async function completeCashTicket(page: Page, request: APIRequestContext) {
+  const { session, product } = await firstProductAndSession(request);
+  await ensureCashSession(request, session.accessToken);
+  const before = new Set((await apiGet<TicketDocument[]>(
+    request,
+    session.accessToken,
+    "/tickets",
+  )).map((ticket) => ticket.id));
+  await openSale(page);
+  await addProductWithKeyboard(page, product);
+  await page.keyboard.press("PageDown");
+  const cash = page.getByRole("dialog", { name: "Cobro en efectivo" });
+  await cash.getByRole("button", { name: "Exacto" }).click();
+  await cash.getByRole("button", { name: "Confirmar cobro" }).click();
+  const result = page.getByRole("dialog", { name: "Pago completado" });
+  await expect(result).toBeVisible();
+  await result.getByRole("button", { name: "Finalizar" }).click();
+
+  let created: TicketDocument | undefined;
+  await expect.poll(async () => {
+    const tickets = await apiGet<TicketDocument[]>(request, session.accessToken, "/tickets");
+    created = tickets.find((ticket) => !before.has(ticket.id));
+    return created?.id;
+  }).not.toBeUndefined();
+  return { session, ticket: created! };
+}
+
 test.describe("APP VENTA operational flows", () => {
   test("busca con teclado, selecciona un socio y usa la cotización autoritativa", async ({ page, request }) => {
     const session = await loginApi(request);
@@ -267,6 +303,39 @@ test.describe("APP VENTA operational flows", () => {
     await expect(result.getByText("Cambio")).toBeVisible();
     await result.getByRole("button", { name: "Finalizar" }).click();
     await expect(page.locator(".sale-ticket-lines.sale-empty-state")).toHaveText("Sin venta iniciada");
+  });
+
+  test("convierte un ticket cobrado una sola vez y deja trazabilidad operativa", async ({ page, request }) => {
+    const { session, ticket } = await completeCashTicket(page, request);
+    const customers = await apiGet<SaleCustomer[]>(
+      request,
+      session.accessToken,
+      "/customers/sale-options",
+    );
+    test.skip(customers.length === 0, "La prueba necesita un cliente fiscal");
+    const body = { customerId: customers[0].id };
+
+    const first = await apiPost<TicketDocument>(
+      request,
+      session.accessToken,
+      `/tickets/${encodeURIComponent(ticket.id)}/invoice`,
+      body,
+    );
+    const replay = await apiPost<TicketDocument>(
+      request,
+      session.accessToken,
+      `/tickets/${encodeURIComponent(ticket.id)}/invoice`,
+      body,
+    );
+
+    expect(replay.id).toBe(first.id);
+    const timeline = await apiGet<OperationalTimeline>(
+      request,
+      session.accessToken,
+      `/documents/${encodeURIComponent(ticket.id)}/operational-events`,
+    );
+    expect(timeline.events.filter((event) => event.type === "CONVERTIDO"))
+      .toHaveLength(1);
   });
 
   for (const scenario of [

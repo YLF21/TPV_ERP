@@ -18,6 +18,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
@@ -85,7 +87,15 @@ public class WarehouseInputService {
                 PageRequest.of(0, limit + 1));
         var hasMore = values.size() > limit;
         var pageValues = hasMore ? new ArrayList<>(values.subList(0, limit)) : values;
-        var items = pageValues.stream().map(WarehouseInputView::from).toList();
+        var productIds = pageValues.stream()
+                .flatMap(input -> input.getLines().stream())
+                .map(WarehouseInputLine::getProductId)
+                .distinct()
+                .toList();
+        var productsById = products.findAllByStoreIdAndIdIn(organization.currentStore().getId(), productIds)
+                .stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        var items = pageValues.stream().map(input -> WarehouseInputView.from(input, productsById)).toList();
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
     }
 

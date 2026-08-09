@@ -253,6 +253,7 @@ export function SaleTicketCancellationDialog({
         className="sale-action-dialog sale-ticket-operation-dialog sale-ticket-cancellation-dialog"
         role="dialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-labelledby="sale-ticket-cancel-title"
       >
         <header className="sale-ticket-operation-header">
@@ -392,7 +393,7 @@ export function SaleTicketCancellationDialog({
                 )}
               onClick={() => void cancelTicket()}
             >
-              {t("sale.ticketCancel.confirm")}
+              {t(busy ? "sale.ticketCancel.processing" : "sale.ticketCancel.confirm")}
             </button>
           )}
         </footer>
