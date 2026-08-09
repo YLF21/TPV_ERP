@@ -422,7 +422,8 @@ public class TicketController {
             List<TicketCancellationService.RestoredVoucher> restoredVouchers,
             List<String> invalidatedVoucherCodes,
             boolean openCashDrawer,
-            List<TicketCancellationService.CardAdjustment> cardAdjustments) {
+            List<TicketCancellationService.CardAdjustment> cardAdjustments,
+            TicketCancellationService.CancellationReceipt receipt) {
 
         static CancellationView from(
                 TicketCancellationService.CancellationResult result,
@@ -432,7 +433,8 @@ public class TicketController {
                     result.restoredVouchers(),
                     result.invalidatedVoucherCodes(),
                     result.openCashDrawer(),
-                    result.cardAdjustments());
+                    result.cardAdjustments(),
+                    result.receipt());
         }
     }
 }

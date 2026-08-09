@@ -117,10 +117,14 @@ export type TicketLinePrint = {
 export type TicketPaymentPrint = {
   method: string;
   amount: number;
+  reference?: string;
 };
 
 export type TicketPrintRequest = {
-  layout?: "STANDARD" | "GIFT_RECEIPT";
+  layout?: "STANDARD" | "GIFT_RECEIPT" | "CANCELLATION_RECEIPT";
+  title?: string;
+  notice?: string;
+  details?: Array<{ label: string; value: string }>;
   documentNumber: string;
   storeName: string;
   terminalCode: string;

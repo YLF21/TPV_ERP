@@ -2107,10 +2107,11 @@ public class DocumentService {
 
     private static boolean requiresManualCancellationReference(
             DocumentPayment payment) {
-        return payment.getCardMode()
-                        == com.tpverp.backend.terminal.PaymentCardMode.MANUAL
-                || "TRANSFERENCIA".equalsIgnoreCase(
-                        payment.getMetodoPago().getNombre());
+        return payment.getMetodoPago().isRequiereReferencia()
+                && (payment.getCardMode()
+                                == com.tpverp.backend.terminal.PaymentCardMode.MANUAL
+                        || "TRANSFERENCIA".equalsIgnoreCase(
+                                payment.getMetodoPago().getNombre()));
     }
 
     private static void requireManualCancellationReferences(

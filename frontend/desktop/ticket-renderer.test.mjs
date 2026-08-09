@@ -31,4 +31,28 @@ describe("ticket desktop renderer", () => {
     expect(html.indexOf("Descuento")).toBeLessThan(html.indexOf("Impuesto"));
     expect(html.indexOf("Impuesto")).toBeLessThan(html.lastIndexOf("Total"));
   });
+
+  it("renders a non-fiscal cancellation receipt without an item table", () => {
+    const html = renderTicketHtml({
+      layout: "CANCELLATION_RECEIPT",
+      title: "COMPROBANTE DE ANULACIÓN",
+      notice: "DOCUMENTO NO FISCAL",
+      documentNumber: "AN-T-1",
+      storeName: "Tienda",
+      terminalCode: "01",
+      issuedAt: "09/08/2026 21:00",
+      details: [{ label: "Ticket original", value: "T-1" }],
+      lines: [],
+      payments: [{ method: "Tarjeta", amount: 25, reference: "AUTH-1" }],
+      total: 25,
+      labels: { terminal: "Terminal", item: "", quantity: "", price: "", total: "Total anulado" }
+    });
+
+    expect(html).toContain("COMPROBANTE DE ANULACIÓN");
+    expect(html).toContain("Ticket original");
+    expect(html).toContain("AUTH-1");
+    expect(html).toContain("Total anulado");
+    expect(html).toContain("DOCUMENTO NO FISCAL");
+    expect(html).not.toContain("<table>");
+  });
 });

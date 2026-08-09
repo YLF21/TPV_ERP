@@ -87,6 +87,29 @@ describe("escpos command builder", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
   });
 
+  it("builds a non-fiscal cancellation receipt with compensation details", () => {
+    const text = buildTicketBuffer({
+      layout: "CANCELLATION_RECEIPT",
+      title: "COMPROBANTE DE ANULACION",
+      notice: "DOCUMENTO NO FISCAL",
+      documentNumber: "AN-T-1",
+      storeName: "Tienda",
+      terminalCode: "01",
+      issuedAt: "09/08/2026 21:00",
+      details: [{ label: "Ticket original", value: "T-1" }],
+      lines: [],
+      payments: [{ method: "Tarjeta", amount: 25, reference: "AUTH-1" }],
+      total: 25,
+      escposLabels: { terminal: "Terminal", item: "", quantity: "", price: "", total: "Total anulado" }
+    }).toString("latin1");
+
+    expect(text).toContain("COMPROBANTE DE ANULACION");
+    expect(text).toContain("Ticket original: T-1");
+    expect(text).toContain("AUTH-1");
+    expect(text).toContain("Total anulado");
+    expect(text).toContain("DOCUMENTO NO FISCAL");
+  });
+
   it("preserves the exact legacy layout when labels are absent", () => {
     const text = buildTicketBuffer({ storeName: "Shop", terminalCode: "01", lines: [], payments: [], total: 0 }).toString("latin1");
     expect(text).toContain("Terminal 01");
@@ -136,5 +159,18 @@ describe("escpos command builder", () => {
         { payments: [{ method: "Efectivo", amount: 12 }] }
       )
     ).toBe(true);
+
+    expect(
+      shouldOpenCashDrawerForTicket(
+        {
+          openCashDrawerWithTicket: true,
+          cashDrawerOpeningPaymentMethods: ["EFECTIVO"]
+        },
+        {
+          layout: "CANCELLATION_RECEIPT",
+          payments: [{ method: "EFECTIVO", amount: 12 }]
+        }
+      )
+    ).toBe(false);
   });
 });

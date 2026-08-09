@@ -39,11 +39,12 @@ function buildTicketBuffer(ticket) {
   const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
   const raw = ticket.escposContent;
   const giftReceipt = ticket.layout === "GIFT_RECEIPT";
+  const cancellationReceipt = ticket.layout === "CANCELLATION_RECEIPT";
   const chunks = [
     Buffer.from([ESC, 0x40]),
     Buffer.from([ESC, 0x61, 0x01]),
-    line(giftReceipt ? "TICKET REGALO" : raw?.storeName || ticket.storeName || "APP VENTA"),
-    ...(giftReceipt ? [line(raw?.storeName || ticket.storeName || "APP VENTA")] : []),
+    line(ticket.title || (giftReceipt ? "TICKET REGALO" : raw?.storeName || ticket.storeName || "APP VENTA")),
+    ...(giftReceipt || cancellationReceipt ? [line(raw?.storeName || ticket.storeName || "APP VENTA")] : []),
     line(raw?.documentNumber || ticket.documentNumber || ""),
     line(`${labels.terminal} ${raw?.terminalCode || ticket.terminalCode || ""}`),
     line(ticket.issuedAt || ""),
@@ -58,6 +59,10 @@ function buildTicketBuffer(ticket) {
     if (party.address) chunks.push(line(party.address));
   }
   if (ticket.issuer || ticket.customer) chunks.push(line("------------------------------------------"));
+  for (const detail of ticket.details || []) {
+    chunks.push(line(`${detail.label}: ${detail.value}`));
+  }
+  if ((ticket.details || []).length > 0) chunks.push(line("------------------------------------------"));
   if (suppliedLabels) chunks.push(line(giftReceipt
     ? `${labels.item} / ${labels.quantity}`
     : padColumns(`${labels.item} / ${labels.quantity} / ${labels.price}`, labels.total)));
@@ -77,6 +82,7 @@ function buildTicketBuffer(ticket) {
     chunks.push(line("------------------------------------------"));
     for (const [index, payment] of (ticket.payments || []).entries()) {
       chunks.push(line(padColumns(raw?.paymentMethods?.[index] || payment.method || "", money(payment.amount))));
+      if (payment.reference) chunks.push(line(`  ${String(payment.reference).slice(0, 40)}`));
     }
     if (Number(ticket.discount || 0) !== 0) {
       chunks.push(line(padColumns(labels.discount, `-${money(Math.abs(ticket.discount))}`)));
@@ -88,6 +94,12 @@ function buildTicketBuffer(ticket) {
     chunks.push(line("------------------------------------------"));
     chunks.push(Buffer.from([ESC, 0x45, 0x01]));
     chunks.push(line(padColumns(labels.total, money(ticket.total))));
+    chunks.push(Buffer.from([ESC, 0x45, 0x00]));
+  }
+  if (ticket.notice) {
+    chunks.push(Buffer.from([ESC, 0x61, 0x01]));
+    chunks.push(Buffer.from([ESC, 0x45, 0x01]));
+    chunks.push(line(ticket.notice));
     chunks.push(Buffer.from([ESC, 0x45, 0x00]));
   }
   chunks.push(Buffer.from([0x0a, 0x0a, 0x0a]));
@@ -119,6 +131,9 @@ function normalizePaymentMethod(value) {
 }
 
 function shouldOpenCashDrawerForTicket(config, ticket) {
+  if (ticket?.layout === "CANCELLATION_RECEIPT") {
+    return false;
+  }
   if (!config?.openCashDrawerWithTicket) {
     return false;
   }

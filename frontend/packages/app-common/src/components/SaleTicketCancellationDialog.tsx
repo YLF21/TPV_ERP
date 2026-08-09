@@ -41,6 +41,24 @@ type CancellationResult = {
   restoredVouchers: Array<{ code: string; balance: number | string }>;
   invalidatedVoucherCodes: string[];
   openCashDrawer: boolean;
+  receipt: CancellationReceipt;
+};
+
+type CancellationReceipt = {
+  operationId: string;
+  originalTicketNumber: string;
+  originalIssuedAt?: string | null;
+  cancelledAt: string;
+  total: number | string;
+  reason: string;
+  operatorUsername: string;
+  authorizerUsername: string;
+  delegated: boolean;
+  payments: Array<{
+    method: string;
+    amount: number | string;
+    reference?: string | null;
+  }>;
 };
 
 type StoredCancellationAttempt = {
@@ -80,6 +98,7 @@ export function SaleTicketCancellationDialog({
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const [ticketNumber, setTicketNumber] = useState(initialTicketNumber);
   const [preview, setPreview] = useState<CancellationPreview | null>(null);
   const [reason, setReason] = useState("");
@@ -91,6 +110,7 @@ export function SaleTicketCancellationDialog({
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [message, setMessage] = useState("");
+  const [receiptToRetry, setReceiptToRetry] = useState<CancellationReceipt | null>(null);
   const effectiveAuthorization = authorization ?? (
     permissions.includes("ADMIN")
       || permissions.includes("GESTION_VENTAS")
@@ -109,6 +129,16 @@ export function SaleTicketCancellationDialog({
     () => formatEuroAmount(preview?.ticket.total ?? 0, locale),
     [locale, preview],
   );
+  const confirmationReady = Boolean(preview
+    && reason.trim()
+    && saleOperationAuthorizationComplete(
+      effectiveAuthorization,
+      authorizerUsername,
+      password,
+    )
+    && !preview.manualReferences.some(
+      (item) => !manualReferences[item.paymentId]?.trim(),
+    ));
 
   async function loadPreview(number?: string) {
     if (mode === "BY_NUMBER" && !number?.trim()) return;
@@ -182,6 +212,84 @@ export function SaleTicketCancellationDialog({
     }
   }
 
+  function formatReceiptDate(value?: string | null) {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime())
+      ? value
+      : new Intl.DateTimeFormat(locale, {
+          dateStyle: "short",
+          timeStyle: "medium",
+        }).format(parsed);
+  }
+
+  async function printCancellationReceipt(receipt: CancellationReceipt) {
+    const result = await getHardwareBridge().printTicket({
+      layout: "CANCELLATION_RECEIPT",
+      title: t("sale.ticketCancel.receipt.title"),
+      notice: t("sale.ticketCancel.receipt.nonFiscal"),
+      documentNumber: `AN-${receipt.originalTicketNumber}`,
+      storeName: terminalContext.storeName,
+      terminalCode: terminalContext.terminalCode,
+      issuedAt: formatReceiptDate(receipt.cancelledAt),
+      details: [
+        {
+          label: t("sale.ticketCancel.receipt.originalTicket"),
+          value: receipt.originalTicketNumber,
+        },
+        {
+          label: t("sale.ticketCancel.receipt.originalIssuedAt"),
+          value: formatReceiptDate(receipt.originalIssuedAt),
+        },
+        {
+          label: t("sale.ticketCancel.receipt.reason"),
+          value: receipt.reason,
+        },
+        {
+          label: t("sale.ticketCancel.receipt.operator"),
+          value: receipt.operatorUsername,
+        },
+        {
+          label: t("sale.ticketCancel.receipt.authorizer"),
+          value: receipt.authorizerUsername,
+        },
+      ],
+      lines: [],
+      payments: receipt.payments.map((payment) => ({
+        method: payment.method,
+        amount: Number(payment.amount),
+        reference: payment.reference ?? undefined,
+      })),
+      total: Number(receipt.total),
+      labels: {
+        terminal: t("sale.ticketCancel.receipt.terminal"),
+        item: "",
+        quantity: "",
+        price: "",
+        total: t("sale.ticketCancel.receipt.total"),
+      },
+    });
+    if (!result.ok) {
+      throw new Error(result.message || t("sale.ticketCancel.receipt.printFailed"));
+    }
+  }
+
+  async function retryCancellationReceipt() {
+    if (!receiptToRetry) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await printCancellationReceipt(receiptToRetry);
+      setReceiptToRetry(null);
+      setMessage(t("sale.ticketCancel.receipt.printed"));
+    } catch {
+      setError(t("sale.ticketCancel.receipt.printFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function cancelTicket() {
     if (!preview || !reason.trim() || !saleOperationAuthorizationComplete(
       effectiveAuthorization,
@@ -231,6 +339,13 @@ export function SaleTicketCancellationDialog({
             ? failure.message
             : t("sale.ticketCancel.error.voucherPrint"));
         }
+      }
+      try {
+        await printCancellationReceipt(result.receipt);
+        setReceiptToRetry(null);
+      } catch {
+        setReceiptToRetry(result.receipt);
+        warnings.push(t("sale.ticketCancel.receipt.printFailed"));
       }
       onFiscalMutation?.();
       setPreview(null);
@@ -341,16 +456,29 @@ export function SaleTicketCancellationDialog({
               </label>
             ))}
 
-            <SaleOperationAuthorizationFields
-              locale={locale}
-              currentUsername={currentUsername}
-              authorization={effectiveAuthorization}
-              username={authorizerUsername}
-              password={password}
-              disabled={busy}
-              onUsernameChange={setAuthorizerUsername}
-              onPasswordChange={setPassword}
-            />
+            <div
+              onKeyDown={(event) => {
+                if (event.key !== "Enter"
+                  || !(event.target instanceof HTMLInputElement)
+                  || event.target.type !== "password"
+                  || busy
+                  || !confirmationReady) return;
+                event.preventDefault();
+                event.stopPropagation();
+                confirmButtonRef.current?.focus();
+              }}
+            >
+              <SaleOperationAuthorizationFields
+                locale={locale}
+                currentUsername={currentUsername}
+                authorization={effectiveAuthorization}
+                username={authorizerUsername}
+                password={password}
+                disabled={busy}
+                onUsernameChange={setAuthorizerUsername}
+                onPasswordChange={setPassword}
+              />
+            </div>
 
             {preview.consumedVoucherCodes.length > 0 && (
               <label className="sale-ticket-operation-checkbox">
@@ -379,21 +507,22 @@ export function SaleTicketCancellationDialog({
           </button>
           {preview && (
             <button
+              ref={confirmButtonRef}
               type="button"
               className="danger"
-              disabled={busy
-                || !reason.trim()
-                || !saleOperationAuthorizationComplete(
-                  effectiveAuthorization,
-                  authorizerUsername,
-                  password,
-                )
-                || preview.manualReferences.some(
-                  (item) => !manualReferences[item.paymentId]?.trim(),
-                )}
+              disabled={busy || !confirmationReady}
               onClick={() => void cancelTicket()}
             >
               {t(busy ? "sale.ticketCancel.processing" : "sale.ticketCancel.confirm")}
+            </button>
+          )}
+          {!preview && receiptToRetry && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void retryCancellationReceipt()}
+            >
+              {t("sale.ticketCancel.receipt.retry")}
             </button>
           )}
         </footer>

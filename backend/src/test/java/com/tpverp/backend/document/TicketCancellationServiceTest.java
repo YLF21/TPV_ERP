@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
 import com.tpverp.backend.security.domain.UserAccount;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.terminal.CurrentTerminal;
@@ -39,6 +40,10 @@ class TicketCancellationServiceTest {
 
         var operation = mock(TicketCancellationOperation.class);
         when(operation.getTicketId()).thenReturn(ticketId);
+        when(operation.getId()).thenReturn(requestId);
+        when(operation.getReason()).thenReturn("Error de cobro");
+        when(operation.getOperatorUserId()).thenReturn(authorizerId);
+        when(operation.getAuthorizerUserId()).thenReturn(authorizerId);
         when(operation.getStatus()).thenReturn(TicketCancellationStatus.COMPLETED);
         doNothing().when(operation).requireCompatible(any(), any());
 
@@ -56,6 +61,7 @@ class TicketCancellationServiceTest {
 
         var documents = mock(DocumentService.class);
         when(documents.find(ticketId)).thenReturn(ticket);
+        when(documents.findDetailed(ticketId)).thenReturn(ticket);
         var operations = mock(TicketCancellationOperationRepository.class);
         when(operations.findById(requestId)).thenReturn(Optional.of(operation));
 
@@ -73,6 +79,9 @@ class TicketCancellationServiceTest {
         var voucherEvents = mock(VoucherEventRepository.class);
         when(voucherEvents.findAllByDocumentIdOrderByOccurredAtAsc(ticketId))
                 .thenReturn(List.of(restoredEvent, invalidatedEvent));
+        var users = mock(UserAccountRepository.class);
+        when(authorizer.getUserName()).thenReturn("ADMIN");
+        when(users.findById(authorizerId)).thenReturn(Optional.of(authorizer));
 
         var transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any()))
@@ -83,6 +92,7 @@ class TicketCancellationServiceTest {
                 operations,
                 voucherEvents,
                 operationSecurity,
+                users,
                 mock(PaymentTerminalOperationsService.class),
                 mock(CurrentOrganization.class),
                 mock(CurrentTerminal.class),
@@ -103,6 +113,12 @@ class TicketCancellationServiceTest {
                         "VALE-REST", new BigDecimal("12.50")));
         assertThat(result.invalidatedVoucherCodes()).containsExactly("VALE-INVALID");
         assertThat(result.openCashDrawer()).isFalse();
+        assertThat(result.receipt().operationId()).isEqualTo(requestId);
+        assertThat(result.receipt().originalTicketNumber()).isNull();
+        assertThat(result.receipt().reason()).isEqualTo("Error de cobro");
+        assertThat(result.receipt().operatorUsername()).isEqualTo("ADMIN");
+        assertThat(result.receipt().authorizerUsername()).isEqualTo("ADMIN");
+        assertThat(result.receipt().delegated()).isFalse();
         verify(operationSecurity).authorize(
                 org.mockito.ArgumentMatchers.eq(SaleOperationCode.CANCEL_TICKET),
                 org.mockito.ArgumentMatchers.isNull(),

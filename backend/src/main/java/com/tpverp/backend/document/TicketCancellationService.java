@@ -3,6 +3,7 @@ package com.tpverp.backend.document;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.security.application.OperationalPermissionAuthorizationService;
+import com.tpverp.backend.security.domain.UserAccountRepository;
 import com.tpverp.backend.security.sales.SaleOperationCode;
 import com.tpverp.backend.security.sales.SaleOperationSecurityService;
 import com.tpverp.backend.terminal.CurrentTerminal;
@@ -34,6 +35,7 @@ public class TicketCancellationService {
     private final TicketCancellationOperationRepository operations;
     private final VoucherEventRepository voucherEvents;
     private final SaleOperationSecurityService operationSecurity;
+    private final UserAccountRepository users;
     private final PaymentTerminalOperationsService cardTerminals;
     private final CurrentOrganization organization;
     private final CurrentTerminal currentTerminal;
@@ -46,6 +48,7 @@ public class TicketCancellationService {
             TicketCancellationOperationRepository operations,
             VoucherEventRepository voucherEvents,
             SaleOperationSecurityService operationSecurity,
+            UserAccountRepository users,
             PaymentTerminalOperationsService cardTerminals,
             CurrentOrganization organization,
             CurrentTerminal currentTerminal,
@@ -56,6 +59,7 @@ public class TicketCancellationService {
         this.operations = operations;
         this.voucherEvents = voucherEvents;
         this.operationSecurity = operationSecurity;
+        this.users = users;
         this.cardTerminals = cardTerminals;
         this.organization = organization;
         this.currentTerminal = currentTerminal;
@@ -161,6 +165,8 @@ public class TicketCancellationService {
                     prepared.operation().getManualCompensations());
             updateOperation(command.requestId(), operation ->
                     operation.complete(clock.instant()));
+            var completedOperation = operations.findById(command.requestId())
+                    .orElse(prepared.operation());
             return new CancellationResult(
                     applied.ticket(),
                     applied.vouchers().restored().stream()
@@ -171,7 +177,8 @@ public class TicketCancellationService {
                             .map(Voucher::code)
                             .toList(),
                     applied.openCashDrawer(),
-                    List.copyOf(cardAdjustments));
+                    List.copyOf(cardAdjustments),
+                    cancellationReceipt(applied.ticket(), completedOperation));
         } catch (RuntimeException failure) {
             updateOperation(command.requestId(), operation ->
                     operation.failed(safeMessage(failure), clock.instant()));
@@ -278,6 +285,7 @@ public class TicketCancellationService {
      * did not receive it. Drawer opening is deliberately not repeated.
      */
     private CancellationResult completedResult(TicketCancellationOperation operation) {
+        var ticket = documents.findDetailed(operation.getTicketId());
         var events = voucherEvents.findAllByDocumentIdOrderByOccurredAtAsc(
                 operation.getTicketId());
         var restored = events.stream()
@@ -290,11 +298,57 @@ public class TicketCancellationService {
                 .map(event -> event.getVoucher().code())
                 .toList();
         return new CancellationResult(
-                documents.find(operation.getTicketId()),
+                ticket,
                 restored,
                 invalidated,
                 false,
-                List.of());
+                List.of(),
+                cancellationReceipt(ticket, operation));
+    }
+
+    private CancellationReceipt cancellationReceipt(
+            CommercialDocument ticket,
+            TicketCancellationOperation operation) {
+        var references = operation.getManualCompensations();
+        var payments = ticket.getPagos().stream()
+                .sorted(java.util.Comparator.comparingInt(DocumentPayment::getPosicion))
+                .map(payment -> new CancellationReceiptPayment(
+                        payment.getMetodoPago().getNombre(),
+                        payment.getImporte(),
+                        firstText(
+                                references.get(payment.getId().toString()),
+                                payment.getReferencia(),
+                                payment.getCardAuthorizationCode(),
+                                payment.getVoucherCode())))
+                .toList();
+        return new CancellationReceipt(
+                operation.getId(),
+                ticket.getNumero(),
+                ticket.getConfirmadoEn() == null
+                        ? ticket.getCreadoEn() : ticket.getConfirmadoEn(),
+                ticket.getAnuladoEn(),
+                ticket.getTotal(),
+                operation.getReason(),
+                username(operation.getOperatorUserId()),
+                username(operation.getAuthorizerUserId()),
+                !operation.getOperatorUserId().equals(operation.getAuthorizerUserId()),
+                payments);
+    }
+
+    private String username(UUID userId) {
+        return users.findById(userId)
+                .map(user -> user.getUserName() == null || user.getUserName().isBlank()
+                        ? user.getNombre() : user.getUserName())
+                .orElse(userId.toString());
+    }
+
+    private static String firstText(String... values) {
+        for (var value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     private void updateOperation(
@@ -432,7 +486,27 @@ public class TicketCancellationService {
             List<RestoredVoucher> restoredVouchers,
             List<String> invalidatedVoucherCodes,
             boolean openCashDrawer,
-            List<CardAdjustment> cardAdjustments) {
+            List<CardAdjustment> cardAdjustments,
+            CancellationReceipt receipt) {
+    }
+
+    public record CancellationReceipt(
+            UUID operationId,
+            String originalTicketNumber,
+            java.time.Instant originalIssuedAt,
+            java.time.Instant cancelledAt,
+            BigDecimal total,
+            String reason,
+            String operatorUsername,
+            String authorizerUsername,
+            boolean delegated,
+            List<CancellationReceiptPayment> payments) {
+    }
+
+    public record CancellationReceiptPayment(
+            String method,
+            BigDecimal amount,
+            String reference) {
     }
 
     public record RestoredVoucher(String code, BigDecimal balance) {

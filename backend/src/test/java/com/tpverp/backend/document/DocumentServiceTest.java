@@ -1095,6 +1095,52 @@ class DocumentServiceTest {
     }
 
     @Test
+    void manualCardCancellationDoesNotRequestReferenceWhenMethodDoesNotRequireIt() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        var card = new PaymentMethod(
+                store.getEmpresa().getId(), "TARJETA", true, false, false);
+        ticket.addPayment(new DocumentPayment(
+                ticket, card, 1, ticket.getTotal(), true,
+                null, null, null, null, NOW,
+                PaymentCardMode.MANUAL, null, null, null, null));
+        when(documentRepository.findByIdAndTiendaId(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(documentRepository.findByIdAndTiendaIdWithPayments(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+
+        var validation = service.validateTicketCancellation(ticket.getId());
+
+        assertThat(validation.manualReferences()).isEmpty();
+    }
+
+    @Test
+    void manualCardCancellationRequestsReferenceWhenMethodRequiresIt() {
+        var ticket = draft(CommercialDocumentType.TICKET);
+        ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);
+        var card = new PaymentMethod(
+                store.getEmpresa().getId(), "TARJETA", true, true, false);
+        ticket.addPayment(new DocumentPayment(
+                ticket, card, 1, ticket.getTotal(), true,
+                null, null, null, null, NOW,
+                PaymentCardMode.MANUAL, null, null, null, null));
+        when(documentRepository.findByIdAndTiendaId(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+        when(documentRepository.findByIdAndTiendaIdWithPayments(ticket.getId(), store.getId()))
+                .thenReturn(Optional.of(ticket));
+
+        var validation = service.validateTicketCancellation(ticket.getId());
+
+        assertThat(validation.manualReferences())
+                .singleElement()
+                .satisfies(reference -> {
+                    assertThat(reference.paymentId()).isEqualTo(
+                            ticket.getPagos().getFirst().getId());
+                    assertThat(reference.paymentMethod()).isEqualTo("TARJETA");
+                });
+    }
+
+    @Test
     void ticketWithVoucherImpactCannotBeCancelled() {
         var ticket = draft(CommercialDocumentType.TICKET);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, false);

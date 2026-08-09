@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "../api/client";
 import { getHardwareBridge } from "../hardware/hardware";
@@ -32,6 +33,23 @@ const preview = {
   generatedVoucherCodes: [],
 };
 
+const cancellationReceipt = {
+  operationId: "operation-1",
+  originalTicketNumber: "T-001",
+  originalIssuedAt: "2026-07-30T10:00:00Z",
+  cancelledAt: "2026-07-30T12:00:00Z",
+  total: "25.00",
+  reason: "Error de cobro",
+  operatorUsername: "CAJERO",
+  authorizerUsername: "ADMIN",
+  delegated: true,
+  payments: [{
+    method: "TRANSFERENCIA",
+    amount: "25.00",
+    reference: "DEV-123",
+  }],
+};
+
 describe("SaleTicketCancellationDialog", () => {
   beforeEach(() => {
     request.mockReset();
@@ -49,6 +67,11 @@ describe("SaleTicketCancellationDialog", () => {
   });
 
   it("loads the latest ticket and requires the privileged user's password", async () => {
+    const printTicket = vi.fn().mockResolvedValue({ ok: true });
+    hardware.mockReturnValue({
+      openCashDrawer: vi.fn().mockResolvedValue({ ok: true }),
+      printTicket,
+    } as never);
     request.mockImplementation(async (path) => {
       if (path === "/tickets/cancellation-preview/last") return preview as never;
       if (path === "/tickets/ticket-1/cancel") {
@@ -57,6 +80,7 @@ describe("SaleTicketCancellationDialog", () => {
           restoredVouchers: [],
           invalidatedVoucherCodes: [],
           openCashDrawer: false,
+          receipt: cancellationReceipt,
         } as never;
       }
       throw new Error(`Unexpected request: ${path}`);
@@ -104,6 +128,123 @@ describe("SaleTicketCancellationDialog", () => {
       }),
     ));
     expect(onFiscalMutation).toHaveBeenCalledOnce();
+    expect(printTicket).toHaveBeenCalledWith(expect.objectContaining({
+      layout: "CANCELLATION_RECEIPT",
+      documentNumber: "AN-T-001",
+      title: "COMPROBANTE DE ANULACIÓN",
+      notice: "DOCUMENTO NO FISCAL",
+      total: 25,
+      payments: [{
+        method: "TRANSFERENCIA",
+        amount: 25,
+        reference: "DEV-123",
+      }],
+    }));
+  });
+
+  it("moves from the password to the cancellation button before confirming with Enter", async () => {
+    const user = userEvent.setup();
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview/last") {
+        return { ...preview, manualReferences: [] } as never;
+      }
+      if (path === "/tickets/ticket-1/cancel") {
+        return {
+          ticket: preview.ticket,
+          restoredVouchers: [],
+          invalidatedVoucherCodes: [],
+          openCashDrawer: false,
+          receipt: cancellationReceipt,
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="LAST"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-001")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Motivo"), "Error de cobro");
+    const passwordInput = screen.getByLabelText(/contrase/i);
+    const confirmButton = screen.getByRole("button", { name: "Anular y compensar" });
+
+    await user.type(passwordInput, "secret{Enter}");
+
+    expect(confirmButton).toHaveFocus();
+    expect(request).not.toHaveBeenCalledWith(
+      "/tickets/ticket-1/cancel",
+      expect.anything(),
+    );
+
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      "/tickets/ticket-1/cancel",
+      expect.objectContaining({
+        body: expect.objectContaining({ authorizerPassword: "secret" }),
+      }),
+    ));
+  });
+
+  it("allows retrying only the receipt when printing fails after cancellation", async () => {
+    const printTicket = vi.fn()
+      .mockResolvedValueOnce({ ok: false, message: "Printer offline" })
+      .mockResolvedValueOnce({ ok: true });
+    hardware.mockReturnValue({
+      openCashDrawer: vi.fn().mockResolvedValue({ ok: true }),
+      printTicket,
+    } as never);
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview/last") {
+        return { ...preview, manualReferences: [] } as never;
+      }
+      if (path === "/tickets/ticket-1/cancel") {
+        return {
+          ticket: preview.ticket,
+          restoredVouchers: [],
+          invalidatedVoucherCodes: [],
+          openCashDrawer: false,
+          receipt: cancellationReceipt,
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="LAST"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("T-001")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Motivo"), {
+      target: { value: "Error de cobro" },
+    });
+    fireEvent.change(screen.getByLabelText(/contrase/i), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Anular y compensar" }));
+
+    const retry = await screen.findByRole("button", { name: "Reintentar impresión" });
+    expect(request).toHaveBeenCalledTimes(2);
+    fireEvent.click(retry);
+    await waitFor(() => expect(printTicket).toHaveBeenCalledTimes(2));
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Comprobante de anulación impreso correctamente."))
+      .toBeInTheDocument();
   });
 
   it("requests delegated credentials from a seller", async () => {
