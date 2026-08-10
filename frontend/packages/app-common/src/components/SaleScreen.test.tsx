@@ -697,6 +697,26 @@ describe("SaleScreen", () => {
     expect(saleCartDisplayedUnitPrice(line)).toBe(100);
   });
 
+  it("shows the Ctrl+PageUp unit price and multiplies it by the line quantity", () => {
+    const line: SaleLine = {
+      product: { ...products[0], salePrice: "15.18" },
+      quantity: 3,
+      discountPercent: 0,
+      openUnitPrice: 10,
+    };
+    const authoritativeLine = {
+      ...authoritativeQuote(line.product, "30.00").lineBreakdown[0],
+      quantity: "3.000",
+      normalUnitPrice: "15.18",
+      baseUnitPrice: "10.00",
+      baseSubtotal: "30.00",
+      finalSubtotal: "30.00",
+    };
+
+    expect(saleCartDisplayedUnitPrice(line, false, authoritativeLine)).toBe(10);
+    expect(saleLineSubtotal(line)).toBe(30);
+  });
+
   it("keeps every requested cart column visible by default", () => {
     expect(saleCartColumnDefinitions.map((column) => column.key)).toEqual([
       "image",

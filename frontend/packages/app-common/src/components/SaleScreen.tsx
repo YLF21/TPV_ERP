@@ -958,13 +958,11 @@ export function saleCartDisplayedUnitPrice(
   const appliedUnitPrice = finiteAmount(
     authoritativeLine?.baseUnitPrice ?? saleLineUnitPrice(line, activeMember),
   );
-  if (line.returnOrigin) return appliedUnitPrice;
+  if (line.returnOrigin || line.openUnitPrice != null) return appliedUnitPrice;
   const catalogSalePrice = authoritativeLine
     ? finiteAmount(authoritativeLine.normalUnitPrice)
     : finiteAmount(line.product.salePrice);
-  return catalogSalePrice === 0 && line.openUnitPrice != null
-    ? appliedUnitPrice
-    : catalogSalePrice;
+  return catalogSalePrice;
 }
 
 export function saleProductRequiresOpenPrice(product: SaleProduct) {
