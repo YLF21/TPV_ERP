@@ -1891,6 +1891,7 @@ export class MessagesEs {
     "salesReport.daily.ticketSales": "Ventas de tickets",
     "salesReport.daily.collectedCurrent": "Cobrado en ventas actuales",
     "salesReport.daily.priorDebtCollected": "Cobros de deudas anteriores",
+    "salesReport.daily.refunds": "Devoluciones monetarias",
     "salesReport.daily.cashInflow": "Entrada real de caja",
     "salesReport.daily.loading": "Cargando informe diario...",
     "salesReport.daily.loadError": "No se pudo cargar el informe diario",

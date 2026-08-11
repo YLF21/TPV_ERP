@@ -13,6 +13,7 @@ public record DailyCommercialReportView(
         BigDecimal collectedCurrent,
         BigDecimal newPending,
         BigDecimal priorDebtCollected,
+        BigDecimal refunds,
         BigDecimal cashInflow,
         List<DailyCommercialReportDayView> days) {
 }

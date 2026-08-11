@@ -741,17 +741,18 @@ describe("SalesReportScreen", () => {
           collectedCurrent: "70.00",
           newPending: "70.00",
           priorDebtCollected: "20.00",
+          refunds: "15.00",
           cashInflow: "90.00",
           days: [
             {
               date: "2026-07-15", invoiced: "40.00", ticketSales: "10.00",
               collectedCurrent: "30.00", newPending: "10.00",
-              priorDebtCollected: "5.00", cashInflow: "35.00"
+              priorDebtCollected: "5.00", refunds: "5.00", cashInflow: "35.00"
             },
             {
               date: "2026-07-16", invoiced: "60.00", ticketSales: "30.00",
               collectedCurrent: "40.00", newPending: "60.00",
-              priorDebtCollected: "15.00", cashInflow: "55.00"
+              priorDebtCollected: "15.00", refunds: "10.00", cashInflow: "55.00"
             }
           ]
         });
@@ -784,6 +785,8 @@ describe("SalesReportScreen", () => {
     expect(screen.getAllByText("40.00 €")).toHaveLength(3);
     expect(screen.getAllByText("70.00 €")).toHaveLength(2);
     expect(screen.getByText("20.00 €")).toBeVisible();
+    expect(screen.getAllByText("Devoluciones monetarias").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("15.00 €").length).toBeGreaterThan(0);
     expect(screen.getByText("90.00 €")).toBeVisible();
     expect(screen.getAllByText("Ventas de tickets").length).toBeGreaterThan(0);
     expect(screen.getByText("Resumen diario")).toBeVisible();

@@ -15,16 +15,19 @@ public class DailyCommercialReportService {
 
     private final CommercialDocumentRepository documents;
     private final DocumentPaymentRepository payments;
+    private final RefundTenderRepository refunds;
     private final DocumentRelationRepository relations;
     private final CurrentOrganization organization;
 
     public DailyCommercialReportService(
             CommercialDocumentRepository documents,
             DocumentPaymentRepository payments,
+            RefundTenderRepository refunds,
             DocumentRelationRepository relations,
             CurrentOrganization organization) {
         this.documents = documents;
         this.payments = payments;
+        this.refunds = refunds;
         this.relations = relations;
         this.organization = organization;
     }
@@ -52,6 +55,7 @@ public class DailyCommercialReportService {
         var collectedCurrent = BigDecimal.ZERO;
         var newPending = BigDecimal.ZERO;
         var priorDebtCollected = BigDecimal.ZERO;
+        var refunded = BigDecimal.ZERO;
         var cashInflow = BigDecimal.ZERO;
         var days = new ArrayList<DailyCommercialReportDayView>();
         for (var date = dateFrom; !date.isAfter(dateTo); date = date.plusDays(1)) {
@@ -61,15 +65,17 @@ public class DailyCommercialReportService {
             collectedCurrent = collectedCurrent.add(daily.collectedCurrent());
             newPending = newPending.add(daily.newPending());
             priorDebtCollected = priorDebtCollected.add(daily.priorDebtCollected());
+            refunded = refunded.add(daily.refunds());
             cashInflow = cashInflow.add(daily.cashInflow());
             days.add(new DailyCommercialReportDayView(
                     daily.date(), daily.invoiced(), daily.ticketSales(), daily.collectedCurrent(),
-                    daily.newPending(), daily.priorDebtCollected(), daily.cashInflow()));
+                    daily.newPending(), daily.priorDebtCollected(), daily.refunds(), daily.cashInflow()));
         }
         return new DailyCommercialReportView(
                 storeId, dateFrom, Money.euros(invoiced), Money.euros(ticketSales),
                 Money.euros(collectedCurrent), Money.euros(newPending),
-                Money.euros(priorDebtCollected), Money.euros(cashInflow), List.copyOf(days));
+                Money.euros(priorDebtCollected), Money.euros(refunded),
+                Money.euros(cashInflow), List.copyOf(days));
     }
 
     @Transactional(readOnly = true)
@@ -88,9 +94,16 @@ public class DailyCommercialReportService {
                 .filter(payment -> warehouseId == null
                         || warehouseId.equals(payment.getDocumento().getAlmacenId()))
                 .toList();
+        var refunded = refunds.findAllByStoreAndCreatedBetween(store.getId(), from, to).stream()
+                .filter(tender -> warehouseId == null
+                        || warehouseId.equals(tender.getRefundDocument().getAlmacenId()))
+                .filter(DailyCommercialReportService::isMonetaryRefund)
+                .map(RefundTender::getAmount)
+                .map(Money::euros)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         var invoicedOrigins = relations.findInvoicedOriginIds(store.getId(), date);
         var invoiced = issued.stream()
-                .filter(DailyCommercialReportService::isCustomerReceivableSale)
+                .filter(DailyCommercialReportService::isInvoicedActivity)
                 .filter(document -> !invoicedOrigins.contains(document.getId()))
                 .map(CommercialDocument::getTotal)
                 .map(Money::euros)
@@ -121,7 +134,7 @@ public class DailyCommercialReportService {
                 .map(Money::euros)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         var newPending = invoiced.subtract(receivableCollectedCurrent).max(BigDecimal.ZERO);
-        var cashInflow = collectedCurrent.add(priorDebtCollected);
+        var cashInflow = collectedCurrent.add(priorDebtCollected).subtract(refunded);
         return new DailyCommercialReportView(
                 store.getId(),
                 date,
@@ -130,6 +143,7 @@ public class DailyCommercialReportService {
                 Money.euros(collectedCurrent),
                 Money.euros(newPending),
                 Money.euros(priorDebtCollected),
+                Money.euros(refunded),
                 Money.euros(cashInflow),
                 List.of());
     }
@@ -139,6 +153,18 @@ public class DailyCommercialReportService {
                 && document.getEstado() != DocumentStatus.ANULADO
                 && (document.getTipo() == CommercialDocumentType.ALBARAN_VENTA
                 || document.getTipo() == CommercialDocumentType.FACTURA_VENTA);
+    }
+
+    private static boolean isInvoicedActivity(CommercialDocument document) {
+        return isCustomerReceivableSale(document)
+                || (document.getEstado() != DocumentStatus.BORRADOR
+                && document.getEstado() != DocumentStatus.ANULADO
+                && document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA);
+    }
+
+    private static boolean isMonetaryRefund(RefundTender tender) {
+        return tender.getType() == RefundTenderType.CASH
+                || tender.getType() == RefundTenderType.CARD;
     }
 
     private static boolean isTicketSale(CommercialDocument document) {

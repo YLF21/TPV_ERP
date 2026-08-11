@@ -1888,6 +1888,7 @@ export class MessagesEn {
     "salesReport.daily.ticketSales": "Ticket sales",
     "salesReport.daily.collectedCurrent": "Collected from current sales",
     "salesReport.daily.priorDebtCollected": "Prior debt collected",
+    "salesReport.daily.refunds": "Monetary refunds",
     "salesReport.daily.cashInflow": "Actual cash inflow",
     "salesReport.daily.loading": "Loading daily report...",
     "salesReport.daily.loadError": "Could not load the daily report",

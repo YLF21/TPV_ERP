@@ -90,6 +90,7 @@ type DailyCommercialReportDay = {
   collectedCurrent: number | string;
   newPending: number | string;
   priorDebtCollected: number | string;
+  refunds?: number | string;
   cashInflow: number | string;
 };
 
@@ -3037,6 +3038,7 @@ export function SalesReportScreen({
         ["salesReport.daily.collectedCurrent", dailyCommercialReport.collectedCurrent],
         ["salesReport.daily.newPending", dailyCommercialReport.newPending],
         ["salesReport.daily.priorDebtCollected", dailyCommercialReport.priorDebtCollected],
+        ["salesReport.daily.refunds", dailyCommercialReport.refunds ?? 0],
         ["salesReport.daily.cashInflow", dailyCommercialReport.cashInflow]
       ];
       const days = dailyCommercialReport.days ?? [];
@@ -3077,6 +3079,7 @@ export function SalesReportScreen({
                         <th scope="col">{t("salesReport.daily.collectedCurrent")}</th>
                         <th scope="col">{t("salesReport.daily.newPending")}</th>
                         <th scope="col">{t("salesReport.daily.priorDebtCollected")}</th>
+                        <th scope="col">{t("salesReport.daily.refunds")}</th>
                         <th scope="col">{t("salesReport.daily.cashInflow")}</th>
                       </tr>
                     </thead>
@@ -3089,6 +3092,7 @@ export function SalesReportScreen({
                           <td>{`${formatAmount(Number(day.collectedCurrent))} €`}</td>
                           <td>{`${formatAmount(Number(day.newPending))} €`}</td>
                           <td>{`${formatAmount(Number(day.priorDebtCollected))} €`}</td>
+                          <td>{`${formatAmount(Number(day.refunds ?? 0))} €`}</td>
                           <td>{`${formatAmount(Number(day.cashInflow))} €`}</td>
                         </tr>
                       ))}

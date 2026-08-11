@@ -98,6 +98,7 @@ const visibleKeys = [
   "salesReport.daily.collectedCurrent",
   "salesReport.daily.newPending",
   "salesReport.daily.priorDebtCollected",
+  "salesReport.daily.refunds",
   "salesReport.daily.cashInflow",
   "salesReport.daily.loading",
   "salesReport.daily.loadError",

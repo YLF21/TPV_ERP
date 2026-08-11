@@ -41,6 +41,7 @@ class DailyCommercialReportServiceTest {
         assertThat(report.collectedCurrent()).isEqualByComparingTo("30.00");
         assertThat(report.newPending()).isEqualByComparingTo("70.00");
         assertThat(report.priorDebtCollected()).isEqualByComparingTo("20.00");
+        assertThat(report.refunds()).isZero();
         assertThat(report.cashInflow()).isEqualByComparingTo("50.00");
     }
 
@@ -49,7 +50,7 @@ class DailyCommercialReportServiceTest {
         var fixture = fixture();
         var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "100.00");
         var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "40.00");
-        var creditNote = confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "10.00");
+        var creditNote = confirmed(CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "-10.00");
         var purchase = confirmed(CommercialDocumentType.FACTURA_COMPRA, REPORT_DATE, "90.00");
         var invoicePayment = payment(fixture, invoice, "30.00", start(REPORT_DATE).plusSeconds(1));
         var ticketPayment = payment(fixture, ticket, "40.00", start(REPORT_DATE).plusSeconds(2));
@@ -63,12 +64,104 @@ class DailyCommercialReportServiceTest {
 
         var report = fixture.service().report(REPORT_DATE);
 
-        assertThat(report.invoiced()).isEqualByComparingTo("100.00");
+        assertThat(report.invoiced()).isEqualByComparingTo("90.00");
         assertThat(report.ticketSales()).isEqualByComparingTo("40.00");
         assertThat(report.collectedCurrent()).isEqualByComparingTo("70.00");
-        assertThat(report.newPending()).isEqualByComparingTo("70.00");
+        assertThat(report.newPending()).isEqualByComparingTo("60.00");
         assertThat(report.priorDebtCollected()).isZero();
+        assertThat(report.refunds()).isZero();
         assertThat(report.cashInflow()).isEqualByComparingTo("70.00");
+    }
+
+    @Test
+    void netsAnInvoicedTicketRectificationAndItsCashRefundWithoutVoidingTheTicket() {
+        var fixture = fixture();
+        var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "1000000.00");
+        var invoice = receivable(CommercialDocumentType.FACTURA_VENTA, REPORT_DATE, "1000000.00");
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "-1000000.00");
+        var ticketPayment = payment(
+                fixture, ticket, "1000000.00", start(REPORT_DATE).plusSeconds(1));
+        var cashRefund = new RefundTender(
+                rectification, RefundTenderType.CASH, new BigDecimal("1000000.00"),
+                ticketPayment.getId(), null, null, start(REPORT_DATE).plusSeconds(2));
+        when(fixture.relations().findInvoicedOriginIds(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(java.util.Set.of(ticket.getId()));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(ticket, invoice, rectification));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(ticketPayment));
+        when(fixture.refunds().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(cashRefund));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(ticket.getEstado()).isEqualTo(DocumentStatus.CONFIRMADO);
+        assertThat(report.invoiced()).isZero();
+        assertThat(report.ticketSales()).isZero();
+        assertThat(report.collectedCurrent()).isEqualByComparingTo("1000000.00");
+        assertThat(report.newPending()).isZero();
+        assertThat(report.refunds()).isEqualByComparingTo("1000000.00");
+        assertThat(report.cashInflow()).isZero();
+    }
+
+    @Test
+    void doesNotTreatVoucherRefundAsCashLeavingTheBusiness() {
+        var fixture = fixture();
+        var ticket = confirmed(CommercialDocumentType.TICKET, REPORT_DATE, "25.00");
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "-25.00");
+        var ticketPayment = payment(
+                fixture, ticket, "25.00", start(REPORT_DATE).plusSeconds(1));
+        var voucherRefund = new RefundTender(
+                rectification, RefundTenderType.VOUCHER, new BigDecimal("25.00"),
+                ticketPayment.getId(), null, null, start(REPORT_DATE).plusSeconds(2));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(ticket, rectification));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(ticketPayment));
+        when(fixture.refunds().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(voucherRefund));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.refunds()).isZero();
+        assertThat(report.cashInflow()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void recordsALaterRectificationAndCashRefundOnTheDayTheyActuallyOccur() {
+        var fixture = fixture();
+        var original = receivable(
+                CommercialDocumentType.FACTURA_VENTA,
+                REPORT_DATE.minusDays(1), "100.00");
+        var rectification = confirmed(
+                CommercialDocumentType.RECTIFICATIVA_VENTA, REPORT_DATE, "-100.00");
+        var originalPayment = payment(
+                fixture, original, "100.00", start(REPORT_DATE.minusDays(1)).plusSeconds(1));
+        var cashRefund = new RefundTender(
+                rectification, RefundTenderType.CASH, new BigDecimal("100.00"),
+                originalPayment.getId(), null, null, start(REPORT_DATE).plusSeconds(2));
+        when(fixture.documents().findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE))
+                .thenReturn(List.of(rectification));
+        when(fixture.payments().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of());
+        when(fixture.refunds().findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE)))
+                .thenReturn(List.of(cashRefund));
+
+        var report = fixture.service().report(REPORT_DATE);
+
+        assertThat(report.invoiced()).isEqualByComparingTo("-100.00");
+        assertThat(report.collectedCurrent()).isZero();
+        assertThat(report.newPending()).isZero();
+        assertThat(report.refunds()).isEqualByComparingTo("100.00");
+        assertThat(report.cashInflow()).isEqualByComparingTo("-100.00");
     }
 
     @Test
@@ -84,6 +177,8 @@ class DailyCommercialReportServiceTest {
 
         verify(fixture.documents()).findAllByTiendaIdAndFecha(fixture.store().getId(), REPORT_DATE);
         verify(fixture.payments()).findAllByStoreAndCreatedBetween(
+                fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE));
+        verify(fixture.refunds()).findAllByStoreAndCreatedBetween(
                 fixture.store().getId(), start(REPORT_DATE), end(REPORT_DATE));
     }
 
@@ -214,12 +309,15 @@ class DailyCommercialReportServiceTest {
 
     private static CommercialDocument confirmed(
             CommercialDocumentType type, LocalDate date, String amount, UUID warehouseId) {
+        var signedAmount = new BigDecimal(amount);
         var document = new CommercialDocument(
                 UUID.randomUUID(), warehouseId, type,
                 date, UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
-                document, UUID.randomUUID(), 1, 1, "P1", "Producto", "VENTA",
-                new BigDecimal(amount), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+                document, UUID.randomUUID(), 1,
+                signedAmount.signum() < 0 ? BigDecimal.ONE.negate() : BigDecimal.ONE,
+                "P1", "Producto", "VENTA", signedAmount.abs(), BigDecimal.ZERO,
+                true, "IVA", BigDecimal.ZERO));
         document.confirm("DOC-001", UUID.randomUUID(), start(date), false);
         return document;
     }
@@ -236,12 +334,14 @@ class DailyCommercialReportServiceTest {
         var store = store();
         var documents = mock(CommercialDocumentRepository.class);
         var payments = mock(DocumentPaymentRepository.class);
+        var refunds = mock(RefundTenderRepository.class);
         var relations = mock(DocumentRelationRepository.class);
         var organization = mock(CurrentOrganization.class);
         when(organization.currentStore()).thenReturn(store);
         return new Fixture(
-                new DailyCommercialReportService(documents, payments, relations, organization),
-                documents, payments, relations, store);
+                new DailyCommercialReportService(
+                        documents, payments, refunds, relations, organization),
+                documents, payments, refunds, relations, store);
     }
 
     private static Store store() {
@@ -258,6 +358,7 @@ class DailyCommercialReportServiceTest {
             DailyCommercialReportService service,
             CommercialDocumentRepository documents,
             DocumentPaymentRepository payments,
+            RefundTenderRepository refunds,
             DocumentRelationRepository relations,
             Store store) {
     }

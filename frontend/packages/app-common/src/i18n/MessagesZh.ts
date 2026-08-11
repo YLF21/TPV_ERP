@@ -1886,6 +1886,7 @@ export class MessagesZh {
     "salesReport.daily.ticketSales": "小票销售",
     "salesReport.daily.collectedCurrent": "本日销售已收款",
     "salesReport.daily.priorDebtCollected": "以前欠款收款",
+    "salesReport.daily.refunds": "货币退款",
     "salesReport.daily.cashInflow": "实际资金流入",
     "salesReport.daily.loading": "正在加载每日报告...",
     "salesReport.daily.loadError": "无法加载每日报告",
