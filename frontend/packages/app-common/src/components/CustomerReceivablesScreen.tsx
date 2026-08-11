@@ -30,6 +30,7 @@ export type CustomerReceivablePaymentHistory = {
   paymentMethodId: string;
   paymentMethodName: string;
   amount: number | string;
+  transferDate?: string | null;
   reference?: string | null;
 };
 type CustomerCreditAccountEntry = {
@@ -170,7 +171,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
   };
 
   const columns = ["document", "customer", "issueDate", "dueDate", "total", "paid", "pending", "status", "actions"];
-  const historyColumns = ["document", "customer", "collectedAt", "method", "amount", "reference", "actions"];
+  const historyColumns = ["document", "customer", "collectedAt", "method", "amount", "transferDate", "reference", "actions"];
   const openSortColumns = columns.filter((column) => column !== "actions");
   const historySortColumns = historyColumns.filter((column) => column !== "actions");
   const accountSortColumns = ["date", "document", "concept", "debit", "credit", "balance"];
@@ -213,6 +214,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
     if (column === "collectedAt") return new Date(row.collectedAt);
     if (column === "method") return row.paymentMethodName;
     if (column === "amount") return Number(row.amount);
+    if (column === "transferDate") return row.transferDate;
     return row.reference;
   }, locale), [historyRows, historySorting.sort, locale]);
   const sortedAccountEntries = useMemo(() => sortTableRows(account?.entries ?? [], accountSorting.sort, (entry, column) => {
@@ -263,7 +265,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
         {loading && <p>{t("common.loading")}</p>}
         {!loading && historyRows.length === 0 && <p className="receivables-empty">{t("receivables.history.empty")}</p>}
         {!loading && sortedHistoryRows.map((row) => <div role="row" className="receivable-history-row" key={row.paymentId}>
-          <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.reference || "-"}</span>
+          <strong role="cell">{row.documentNumber}</strong><span role="cell">{row.customerName}</span><span role="cell">{dateTime(row.collectedAt, locale)}</span><span role="cell">{row.paymentMethodName}</span><span role="cell">{money(row.amount, locale)}</span><span role="cell">{row.transferDate || "-"}</span><span role="cell">{row.reference || "-"}</span>
           <span role="cell"><button type="button" aria-label={`${t("receivables.action.consult")} ${row.documentNumber}`} onClick={() => void consultHistory(row)}>{t("receivables.action.consult")}</button></span>
         </div>)}
       </div> : <div className="receivables-account" aria-label={t("receivables.account.title")}>
@@ -291,7 +293,7 @@ export function CustomerReceivablesScreen({ locale, session, terminalContext, in
     {selectedHistory && <div className="sale-action-overlay" role="presentation">
       <section className="customer-receivable-payment-dialog receivable-history-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-history-title">
         <header><h2 id="receivable-history-title">{t("receivables.history.detailTitle")}</h2><button type="button" aria-label={t("common.close")} disabled={printing} onClick={closeHistory}>×</button></header>
-        <dl><div><dt>{t("receivables.column.document")}</dt><dd>{selectedHistory.documentNumber}</dd></div><div><dt>{t("receivables.column.customer")}</dt><dd>{selectedHistory.customerName}</dd></div><div><dt>{t("receivables.column.collectedAt")}</dt><dd>{dateTime(selectedHistory.collectedAt, locale)}</dd></div><div><dt>{t("receivables.column.method")}</dt><dd>{selectedHistory.paymentMethodName}</dd></div><div><dt>{t("receivables.column.amount")}</dt><dd>{money(selectedHistory.amount, locale)}</dd></div><div><dt>{t("receivables.column.reference")}</dt><dd>{selectedHistory.reference || "-"}</dd></div>{receipt && <div><dt>{t("receivables.column.pending")}</dt><dd>{money(receipt.remaining, locale)}</dd></div>}</dl>
+        <dl><div><dt>{t("receivables.column.document")}</dt><dd>{selectedHistory.documentNumber}</dd></div><div><dt>{t("receivables.column.customer")}</dt><dd>{selectedHistory.customerName}</dd></div><div><dt>{t("receivables.column.collectedAt")}</dt><dd>{dateTime(selectedHistory.collectedAt, locale)}</dd></div><div><dt>{t("receivables.column.method")}</dt><dd>{selectedHistory.paymentMethodName}</dd></div><div><dt>{t("receivables.column.amount")}</dt><dd>{money(selectedHistory.amount, locale)}</dd></div><div><dt>{t("receivables.column.transferDate")}</dt><dd>{selectedHistory.transferDate || "-"}</dd></div><div><dt>{t("receivables.column.reference")}</dt><dd>{selectedHistory.reference || "-"}</dd></div>{receipt && <div><dt>{t("receivables.column.pending")}</dt><dd>{money(receipt.remaining, locale)}</dd></div>}</dl>
         {detailLoading && <p>{t("common.loading")}</p>}
         {detailError && <p className="sale-action-error" role="alert">{detailError}</p>}
         <footer><button type="button" disabled={printing} onClick={closeHistory}>{t("common.close")}</button><button type="button" disabled={!receipt || detailLoading || printing} onClick={() => void reprintReceipt()}>{printing ? t("receivables.history.printing") : t("receivables.action.reprint")}</button></footer>

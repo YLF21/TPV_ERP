@@ -1802,6 +1802,7 @@ export class MessagesEn {
     "receivables.column.method": "Payment method",
     "receivables.column.amount": "Amount",
     "receivables.column.reference": "Reference",
+    "receivables.column.transferDate": "Transfer date",
     "receivables.column.actions": "Actions",
     "receivables.action.collect": "Collect",
     "receivables.action.consult": "View",

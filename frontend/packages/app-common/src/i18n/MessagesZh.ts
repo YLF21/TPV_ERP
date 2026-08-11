@@ -1800,6 +1800,7 @@ export class MessagesZh {
     "receivables.column.method": "付款方式",
     "receivables.column.amount": "金额",
     "receivables.column.reference": "参考号",
+    "receivables.column.transferDate": "转账日期",
     "receivables.column.actions": "操作",
     "receivables.action.collect": "收款",
     "receivables.action.consult": "查看",

@@ -11,7 +11,7 @@ import type { LocaleCode } from "../types";
 
 export type CheckoutMethod = "CASH" | "CARD" | "VOUCHER" | "PENDING" | "TRANSFER" | "DISCOUNT";
 
-type AddInput = {
+export type PaymentAllocationInput = {
   kind: AllocationKind;
   amountCents: number;
   provider?: string;
@@ -20,6 +20,7 @@ type AddInput = {
   deliveredCents?: number;
   changeCents?: number;
   comment?: string;
+  transferDate?: string;
 };
 
 type AddOptions = {
@@ -43,15 +44,22 @@ type Props = {
   transferEnabled?: boolean;
   manualCardRequiresReference?: boolean;
   transferRequiresReference?: boolean;
+  transferDateEnabled?: boolean;
   vouchers?: Array<{ code: string; balance: number | string }>;
   interfaceMode?: "KEYBOARD" | "TOUCH";
   initialMethod?: CheckoutMethod;
   customerSelected?: boolean;
   pendingEnabled?: boolean;
+  pendingVisible?: boolean;
+  discountVisible?: boolean;
+  clearVisible?: boolean;
+  acceptVisible?: boolean;
+  acceptSubmitsCurrent?: boolean;
+  commentEnabled?: boolean;
   checkoutDiscountCents?: number;
   voucherOnlyRefund?: boolean;
   onResolveVoucher?: (code: string) => Promise<VoucherLookup | null>;
-  onAdd: (input: AddInput, options?: AddOptions) => void;
+  onAdd: (input: PaymentAllocationInput, options?: AddOptions) => void;
   onQuery: (operationId: string) => void;
   onManage?: (operationId: string) => void;
   onClear?: () => void;
@@ -64,6 +72,13 @@ type Props = {
 };
 
 const localeName: Record<LocaleCode, string> = { es: "es-ES", en: "en-US", zh: "zh-CN" };
+
+function localDateInput(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 const labels = {
   es: {
@@ -159,11 +174,18 @@ export function PaymentAllocationPanel({
   transferEnabled = true,
   manualCardRequiresReference = false,
   transferRequiresReference = false,
+  transferDateEnabled = false,
   vouchers = [],
   interfaceMode = "KEYBOARD",
   initialMethod = "CASH",
   customerSelected = false,
   pendingEnabled = true,
+  pendingVisible = true,
+  discountVisible = true,
+  clearVisible = true,
+  acceptVisible = true,
+  acceptSubmitsCurrent = false,
+  commentEnabled = true,
   checkoutDiscountCents = 0,
   voucherOnlyRefund = false,
   onResolveVoucher,
@@ -197,6 +219,7 @@ export function PaymentAllocationPanel({
   const [amount, setAmount] = useState(centsInput(remaining));
   const [voucherCode, setVoucherCode] = useState("");
   const [reference, setReference] = useState("");
+  const [transferDate, setTransferDate] = useState("");
   const [comment, setComment] = useState("");
   const [validation, setValidation] = useState("");
   const [voucherResolving, setVoucherResolving] = useState(false);
@@ -206,6 +229,7 @@ export function PaymentAllocationPanel({
   const voucherCodeRef = useRef<HTMLInputElement>(null);
   const voucherResolveGuardRef = useRef(false);
   const referenceRef = useRef<HTMLInputElement>(null);
+  const transferDateRef = useRef<HTMLInputElement>(null);
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const amountCents = parseCents(amount);
   const cashAppliedCents = Math.min(amountCents, remaining);
@@ -264,8 +288,8 @@ export function PaymentAllocationPanel({
     if (next === "CARD") return cardEnabled && (manualCardEnabled || providers.length > 0);
     if (next === "VOUCHER") return voucherEnabled;
     if (next === "TRANSFER") return !refund && transferEnabled;
-    if (next === "PENDING") return !refund && pendingEnabled;
-    if (next === "DISCOUNT") return !refund;
+    if (next === "PENDING") return !refund && pendingVisible && pendingEnabled;
+    if (next === "DISCOUNT") return !refund && discountVisible;
     return effectiveRows.length === 0;
   }
 
@@ -288,8 +312,8 @@ export function PaymentAllocationPanel({
       target?.select();
     });
   }, [
-    cardEnabled, cashEnabled, initialMethod, manualCardEnabled, pendingEnabled,
-    providers.length, transferEnabled, voucherEnabled, voucherOnlyRefund,
+    cardEnabled, cashEnabled, discountVisible, initialMethod, manualCardEnabled, pendingEnabled,
+    pendingVisible, providers.length, transferEnabled, voucherEnabled, voucherOnlyRefund,
   ]);
 
   useEffect(() => {
@@ -467,7 +491,7 @@ export function PaymentAllocationPanel({
     const common = {
       amountCents: method === "CASH" ? cashAppliedCents : amountCents,
       ...(reference.trim() ? { reference: reference.trim() } : {}),
-      ...(comment.trim() ? { comment: comment.trim() } : {}),
+      ...(commentEnabled && comment.trim() ? { comment: comment.trim() } : {}),
     };
     if (method === "CASH") {
       onAdd({
@@ -483,12 +507,17 @@ export function PaymentAllocationPanel({
     } else if (method === "VOUCHER") {
       onAdd({ kind: "VOUCHER", ...common }, { finalizeWhenCovered });
     } else if (method === "TRANSFER") {
-      onAdd({ kind: "TRANSFER", ...common }, { finalizeWhenCovered });
+      onAdd({
+        kind: "TRANSFER",
+        ...common,
+        ...(transferDateEnabled && transferDate ? { transferDate } : {}),
+      }, { finalizeWhenCovered });
     } else {
       onAdd({ kind: "PENDING", ...common }, { finalizeWhenCovered });
     }
     setVoucherCode("");
     setReference("");
+    setTransferDate("");
     setComment("");
     setValidation("");
     setFocusAmountAfterSubmit(true);
@@ -539,6 +568,7 @@ export function PaymentAllocationPanel({
           && (event.target === amountRef.current
             || event.target === voucherCodeRef.current
             || event.target === referenceRef.current
+            || event.target === transferDateRef.current
             || event.target instanceof HTMLBodyElement)) {
         event.preventDefault();
         submit(true);
@@ -549,9 +579,9 @@ export function PaymentAllocationPanel({
   }, [
     allowAdd, amountCents, busy, cashAppliedCents, cashChangeCents, checkoutDiscountCents,
     comment, compensationRequired, customerSelected, effectiveRows.length, integratedPaymentLocked, interfaceMode,
-    cardEnabled, cashEnabled, manualCardEnabled, manualCardRequiresReference, method,
+    cardEnabled, cashEnabled, commentEnabled, manualCardEnabled, manualCardRequiresReference, method,
     onClear, onClose, onDiscount, pendingEnabled, providers, reference, remaining,
-    session.totalCents, transferEnabled, transferRequiresReference, voucherCode,
+    session.totalCents, transferDate, transferDateEnabled, transferEnabled, transferRequiresReference, voucherCode,
     voucherEnabled, voucherOnlyRefund, voucherResolving, onResolveVoucher,
   ]);
 
@@ -559,9 +589,9 @@ export function PaymentAllocationPanel({
     { value: "CASH", shortcut: "*", visible: cashEnabled && !voucherOnlyRefund },
     { value: "CARD", shortcut: "+", visible: cardEnabled && !voucherOnlyRefund, disabled: !manualCardEnabled && providers.length === 0 },
     { value: "VOUCHER", shortcut: "F9", visible: voucherEnabled || voucherOnlyRefund, disabled: !voucherEnabled },
-    { value: "PENDING", shortcut: "F8", visible: !refund, disabled: !pendingEnabled },
+    { value: "PENDING", shortcut: "F8", visible: !refund && pendingVisible, disabled: !pendingEnabled },
     { value: "TRANSFER", shortcut: "F7", visible: !refund && transferEnabled },
-    { value: "DISCOUNT", shortcut: "F11", visible: !refund, disabled: effectiveRows.length > 0 },
+    { value: "DISCOUNT", shortcut: "F11", visible: !refund && discountVisible, disabled: effectiveRows.length > 0 },
   ];
   const methods = allMethods.filter((item) => item.visible !== false);
   const buttonLabel = (value: CheckoutMethod) => ({
@@ -589,7 +619,7 @@ export function PaymentAllocationPanel({
                 disabled={entryLocked || (selectedMethod === "VOUCHER" && !refund)}
                 onChange={(event) => setAmount(event.currentTarget.value)} />
             </label>
-            <div className={`sale-checkout-meta ${selectedMethod === "VOUCHER" ? "has-voucher" : ""}`}>
+            <div className={`sale-checkout-meta${selectedMethod === "VOUCHER" ? " has-voucher" : ""}${selectedMethod === "TRANSFER" && transferDateEnabled ? " has-transfer-date" : ""}${!commentEnabled ? " no-comment" : ""}`}>
               {selectedMethod === "VOUCHER" && !refund && <label><span>{copy.voucherCode}</span>
                 <input ref={voucherCodeRef} id="checkout-voucher-code" autoComplete="off"
                   value={voucherCode}
@@ -601,11 +631,17 @@ export function PaymentAllocationPanel({
                   disabled={entryLocked}
                   onChange={(event) => setReference(event.currentTarget.value)} />
               </label>
-              <label><span>{copy.comment}</span>
+              {selectedMethod === "TRANSFER" && transferDateEnabled && <label>
+                <span>{locale === "es" ? "FECHA DE TRANSFERENCIA" : locale === "en" ? "TRANSFER DATE" : "转账日期"}</span>
+                <input ref={transferDateRef} id="checkout-transfer-date" type="date"
+                  max={localDateInput()} value={transferDate} disabled={entryLocked}
+                  onChange={(event) => setTransferDate(event.currentTarget.value)} />
+              </label>}
+              {commentEnabled && <label><span>{copy.comment}</span>
                 <input id="checkout-comment" autoComplete="off" maxLength={512} value={comment}
                   disabled={entryLocked}
                   onChange={(event) => setComment(event.currentTarget.value)} />
-              </label>
+              </label>}
             </div>
           </div>}
 
@@ -630,7 +666,7 @@ export function PaymentAllocationPanel({
                   {t("payment.refund.originalAvailable")}: {money(refundAvailabilityForMethod(item.value) ?? 0)} €
                 </small>}
               </span>
-              {interfaceMode === "KEYBOARD" && <kbd>{item.shortcut}</kbd>}
+              {interfaceMode === "KEYBOARD" && <kbd aria-hidden="true">{item.shortcut}</kbd>}
             </button>)}
           </div>}
 
@@ -651,7 +687,11 @@ export function PaymentAllocationPanel({
                     </small>}
                   </td>
                   <td>{money(allocation.amountCents)} €</td>
-                  <td>{allocation.reference || "—"}</td>
+                  <td>{allocation.reference || "—"}
+                    {allocation.transferDate && <small>
+                      {locale === "es" ? "Fecha" : locale === "en" ? "Date" : "日期"}: {allocation.transferDate}
+                    </small>}
+                  </td>
                   <td>{allocation.comment || "—"}
                     {(allocation.status === "TIMEOUT" || allocation.status === "PENDING") && allocation.operationId &&
                       <button type="button" onClick={() => onQuery(allocation.operationId!)}>{t("payment.split.query")}</button>}
@@ -676,15 +716,18 @@ export function PaymentAllocationPanel({
           {compensationRequired && <p className="sale-checkout-error" role="alert">{t("payment.split.compensationRequired")}</p>}
 
           <footer className="sale-checkout-footer">
-            <button type="button" className="clear"
+            {clearVisible && <button type="button" className="clear"
               disabled={busy || integratedPaymentLocked
                 || (session.allocations.length === 0 && checkoutDiscountCents === 0)}
-              onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>
+              onClick={onClear}>{interfaceMode === "KEYBOARD" && <kbd>F12</kbd>}{copy.clear}</button>}
             <span />
             <button type="button" disabled={busy || integratedPaymentLocked}
               onClick={onClose}>{copy.cancel}</button>
-            <button type="button" className="primary" disabled={busy || session.status !== "COVERED"}
-              onClick={onAccept}>{copy.accept}</button>
+            {acceptVisible && <button type="button" className="primary"
+              disabled={busy || integratedPaymentLocked || (acceptSubmitsCurrent
+                ? !allowAdd || compensationRequired || remaining <= 0
+                : session.status !== "COVERED")}
+              onClick={acceptSubmitsCurrent ? () => submit(true) : onAccept}>{copy.accept}</button>}
           </footer>
         </div>
 
@@ -750,7 +793,7 @@ type LegacyPaymentAllocationPanelProps = {
   providers: string[];
   manualCardEnabled: boolean;
   vouchers?: Array<{ code: string; balance: number | string }>;
-  onAdd: (input: AddInput) => void;
+  onAdd: (input: PaymentAllocationInput) => void;
   onQuery: (operationId: string) => void;
   onManage?: (operationId: string) => void;
   allowAdd?: boolean;

@@ -1,26 +1,78 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { createTranslator } from "../i18n/LocalizedMessages";
-import type { LocaleCode } from "../types";
-import type { TerminalContext } from "../types";
+import type { LocaleCode, TerminalContext } from "../types";
+import type { PaymentAllocation, PaymentSession } from "../sale/paymentOrchestration";
 import { printCustomerReceivablePaymentReceipt, type CustomerReceivablePaymentReceiptSnapshot } from "../sale/ticketPrinting";
-import { CashPaymentDialog } from "./CashPaymentDialog";
 import { CashPaymentResultDialog, type TicketPrintUiStatus } from "./CashPaymentResultDialog";
-import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
+import { PaymentAllocationPanel, type PaymentAllocationInput } from "./PaymentAllocationPanel";
 
 export type CustomerReceivable = {
-  documentId: string; documentType: "ALBARAN_VENTA" | "FACTURA_VENTA"; documentNumber: string;
-  customerId: string; customerName: string; issueDate: string; dueDate?: string | null;
-  total: number | string; paidTotal: number | string; pendingTotal: number | string;
-  status: "PENDIENTE" | "PARCIAL" | "PAGADO"; overdue: boolean;
+  documentId: string;
+  documentType: "ALBARAN_VENTA" | "FACTURA_VENTA";
+  documentNumber: string;
+  customerId: string;
+  customerName: string;
+  issueDate: string;
+  dueDate?: string | null;
+  total: number | string;
+  paidTotal: number | string;
+  pendingTotal: number | string;
+  status: "PENDIENTE" | "PARCIAL" | "PAGADO";
+  overdue: boolean;
 };
 
-type Request = <T>(path: string, options?: { method?: string; token?: string; body?: unknown }) => Promise<T>;
-type Props = { locale?: LocaleCode; receivable: CustomerReceivable; token?: string; terminalCode: string; terminalContext?: TerminalContext; printReceipt?: typeof printCustomerReceivablePaymentReceipt; request?: Request; onCancel: () => void; onPaid: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void };
-type Method = { id: string; name?: string; nombre?: string; active?: boolean };
-type Attempt = { paymentId: string; amount: string; methodId: string; status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED"; finalOutcome?: boolean };
-type StandardAttempt = { requestId: string; kind: "cash" | "transfer"; item: Record<string, unknown> };
-type PaymentMutationResult = { receivable: CustomerReceivable; paymentReceipt: CustomerReceivablePaymentReceiptSnapshot };
+type Request = <T>(path: string, options?: {
+  method?: string;
+  token?: string;
+  body?: unknown;
+}) => Promise<T>;
+
+type Props = {
+  locale?: LocaleCode;
+  interfaceMode?: "KEYBOARD" | "TOUCH";
+  receivable: CustomerReceivable;
+  token?: string;
+  terminalCode: string;
+  terminalContext?: TerminalContext;
+  printReceipt?: typeof printCustomerReceivablePaymentReceipt;
+  request?: Request;
+  onCancel: () => void;
+  onPaid: (value: CustomerReceivable, retryPrint?: () => Promise<unknown>) => void;
+};
+
+type Method = {
+  id: string;
+  name?: string;
+  nombre?: string;
+  active?: boolean;
+  requiresReference?: boolean;
+};
+
+type TerminalPaymentConfiguration = {
+  rules?: { cardManualEnabled?: boolean; integratedCardEnabled?: boolean };
+  configuration?: { provider?: string; enabled?: boolean };
+};
+
+type Attempt = {
+  paymentId: string;
+  amount: string;
+  methodId: string;
+  status: "CREATED" | "PENDING" | "SENT" | "TIMEOUT" | "APPROVED" | "DECLINED" | "ERROR" | "CANCELLED";
+  finalOutcome?: boolean;
+};
+
+type StandardAttempt = {
+  requestId: string;
+  kind: "cash" | "card" | "transfer";
+  item: Record<string, unknown>;
+};
+
+type PaymentMutationResult = {
+  receivable: CustomerReceivable;
+  paymentReceipt: CustomerReceivablePaymentReceiptSnapshot;
+};
+
 type CashCompletion = {
   receivable: CustomerReceivable;
   receipt: CustomerReceivablePaymentReceiptSnapshot;
@@ -31,56 +83,116 @@ type CashCompletion = {
 };
 
 const uuid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-export const receivablePaymentAttemptKey = (terminalCode: string, documentId: string) => `tpverp.receivable.${terminalCode}.${documentId}.card-attempt`;
-const decimal = (value: number | string) => Number(value).toFixed(2);
-const cents = (value: string) => Math.round(Number(value.replace(",", ".")) * 100);
+export const receivablePaymentAttemptKey = (terminalCode: string, documentId: string) =>
+  `tpverp.receivable.${terminalCode}.${documentId}.card-attempt`;
 
-export function CustomerReceivablePaymentDialog({ locale = "es", receivable, token, terminalCode, terminalContext, printReceipt = printCustomerReceivablePaymentReceipt, request = apiRequest, onCancel, onPaid }: Props) {
+const decimal = (cents: number) => (cents / 100).toFixed(2);
+const finalCardFailure = (attempt: Attempt) => ["DECLINED", "CANCELLED"].includes(attempt.status)
+  || (attempt.status === "ERROR" && attempt.finalOutcome === true);
+
+function cardAllocationStatus(status: Attempt["status"]): PaymentAllocation["status"] {
+  if (status === "CREATED" || status === "SENT") return "PENDING";
+  return status;
+}
+
+export function CustomerReceivablePaymentDialog({
+  locale = "es",
+  interfaceMode = "KEYBOARD",
+  receivable,
+  token,
+  terminalCode,
+  terminalContext,
+  printReceipt = printCustomerReceivablePaymentReceipt,
+  request = apiRequest,
+  onCancel,
+  onPaid,
+}: Props) {
   const t = createTranslator(locale);
   const pendingCents = Math.round(Number(receivable.pendingTotal) * 100);
-  const [amount, setAmount] = useState(decimal(receivable.pendingTotal));
-  const [methods, setMethods] = useState<{ cash?: string; card?: string; transfer?: string }>({});
-  const [cashOpen, setCashOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [reference, setReference] = useState("");
+  const [methods, setMethods] = useState<{
+    cash?: Method;
+    card?: Method;
+    transfer?: Method;
+  }>({});
+  const [providers, setProviders] = useState<string[]>([]);
+  const [manualCardEnabled, setManualCardEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [cashCompletion, setCashCompletion] = useState<CashCompletion | null>(null);
   const mounted = useRef(true);
-  const dialogRef = useRef<HTMLElement>(null);
   const storageKey = receivablePaymentAttemptKey(terminalCode, receivable.documentId);
   const standardKey = `${storageKey}.standard`;
-  const [standardAttempt, setStandardAttempt] = useState<StandardAttempt | null>(() => { try { const value = localStorage.getItem(standardKey); return value ? JSON.parse(value) : null; } catch { return null; } });
-  const [cardAttempt, setCardAttempt] = useState<Attempt | null>(() => {
-    try { const stored = globalThis.localStorage?.getItem(storageKey); return stored ? JSON.parse(stored) as Attempt : null; }
-    catch { return null; }
+  const [standardAttempt, setStandardAttempt] = useState<StandardAttempt | null>(() => {
+    try {
+      const stored = globalThis.localStorage?.getItem(standardKey);
+      return stored ? JSON.parse(stored) as StandardAttempt : null;
+    } catch {
+      return null;
+    }
   });
-  const amountCents = useMemo(() => cents(amount), [amount]);
+  const [cardAttempt, setCardAttempt] = useState<Attempt | null>(() => {
+    try {
+      const stored = globalThis.localStorage?.getItem(storageKey);
+      return stored ? JSON.parse(stored) as Attempt : null;
+    } catch {
+      return null;
+    }
+  });
   const collectable = receivable.status !== "PAGADO" && pendingCents > 0;
-  const unsafeCard = cardAttempt != null && (["CREATED", "PENDING", "SENT", "TIMEOUT", "APPROVED"].includes(cardAttempt.status)
-    || (cardAttempt.status === "ERROR" && cardAttempt.finalOutcome !== true));
+  const unsafeCard = cardAttempt != null && !finalCardFailure(cardAttempt);
 
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => dialogRef.current ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document) : undefined, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   useEffect(() => {
     let current = true;
-    request<Method[]>("/payment-methods", { token }).then((rows) => {
+    Promise.all([
+      request<Method[]>("/payment-methods", { token }),
+      request<TerminalPaymentConfiguration>("/terminal-configuration/payment", { token })
+        .catch(() => ({} as TerminalPaymentConfiguration)),
+    ]).then(([rows, configuration]) => {
+      if (!current || !mounted.current) return;
       const active = rows.filter((row) => row.active !== false);
-      const find = (name: string) => active.find((row) => (row.name ?? row.nombre)?.toUpperCase() === name)?.id;
-      if (current && mounted.current) setMethods({ cash: find("EFECTIVO"), card: find("TARJETA"), transfer: find("TRANSFERENCIA") });
-    }).catch((failure) => { if (current && mounted.current) setError(failure instanceof Error ? failure.message : t("receivables.payment.methodsLoadError")); });
+      const find = (name: string) => active.find((row) =>
+        (row.name ?? row.nombre)?.trim().toUpperCase() === name);
+      setMethods({
+        cash: find("EFECTIVO"),
+        card: find("TARJETA"),
+        transfer: find("TRANSFERENCIA"),
+      });
+      setManualCardEnabled(configuration.rules?.cardManualEnabled === true);
+      const provider = configuration.configuration?.provider?.trim();
+      setProviders(configuration.rules?.integratedCardEnabled
+        && configuration.configuration?.enabled
+        && provider ? [provider] : []);
+    }).catch((failure) => {
+      if (current && mounted.current) {
+        setError(failure instanceof Error ? failure.message : t("receivables.payment.methodsLoadError"));
+      }
+    });
     return () => { current = false; };
-  }, [request, token]);
-
-  function validate(): boolean {
-    if (!collectable) { setError(t("receivables.payment.alreadyPaid")); return false; }
-    if (!Number.isFinite(amountCents) || amountCents <= 0) { setError(t("receivables.payment.invalidAmount")); return false; }
-    if (amountCents > pendingCents) { setError(t("receivables.payment.overpayment")); return false; }
-    setError(""); return true;
-  }
+  }, [locale, request, token]);
 
   async function postPayment(item: Record<string, unknown>) {
-    return request<PaymentMutationResult>(`/customer-receivables/${receivable.documentId}/payments`, { token, body: { pagos: [item] } });
+    return request<PaymentMutationResult>(
+      `/customer-receivables/${receivable.documentId}/payments`,
+      { token, body: { pagos: [item] } },
+    );
+  }
+
+  async function printResult(result: PaymentMutationResult) {
+    let retryPrint: (() => Promise<unknown>) | undefined;
+    if (terminalContext) {
+      const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
+      try {
+        if ((await retry()).status === "FAILED") retryPrint = retry;
+      } catch {
+        retryPrint = retry;
+      }
+    }
+    if (mounted.current) onPaid(result.receivable, retryPrint);
   }
 
   async function printCashCompletion(completion: CashCompletion) {
@@ -100,101 +212,222 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
     }
   }
 
-  async function payStandard(kind: "cash" | "transfer", receivedCents?: number) {
-    if (!standardAttempt && !validate()) return;
-    const methodId = standardAttempt ? String(standardAttempt.item.metodoPagoId) : methods[kind]; if (!methodId) { setError(t("receivables.payment.methodMissing")); return; }
-    if (!standardAttempt && kind === "transfer" && !reference.trim()) { setError(t("receivables.payment.referenceRequired")); return; }
+  async function payStandard(input?: PaymentAllocationInput) {
+    const attempt = standardAttempt;
+    const kind = attempt?.kind ?? (input?.kind === "TRANSFER"
+      ? "transfer"
+      : input?.kind === "MANUAL_CARD" ? "card" : "cash");
+    const method = kind === "cash" ? methods.cash : kind === "card" ? methods.card : methods.transfer;
+    if (!attempt && (!collectable || !input || input.amountCents <= 0 || input.amountCents > pendingCents)) {
+      setError(t("receivables.payment.invalidAmount"));
+      return;
+    }
+    if (!attempt && !method?.id) {
+      setError(t("receivables.payment.methodMissing"));
+      return;
+    }
     setBusy(true);
+    setError("");
     try {
-      const requestId = standardAttempt?.requestId ?? uuid();
-      const item = standardAttempt?.item ?? { metodoPagoId: methodId, importe: (amountCents / 100).toFixed(2), principal: true,
-        entregado: kind === "cash" ? ((receivedCents ?? amountCents) / 100).toFixed(2) : null,
-        cambio: kind === "cash" ? (((receivedCents ?? amountCents) - amountCents) / 100).toFixed(2) : null,
-        reference: kind === "transfer" ? reference.trim() : null, requestId };
-      const attempt = standardAttempt ?? { requestId, kind, item }; localStorage.setItem(standardKey, JSON.stringify(attempt)); setStandardAttempt(attempt);
+      const requestId = attempt?.requestId ?? uuid();
+      const amountCents = input?.amountCents ?? Math.round(Number(attempt?.item.importe) * 100);
+      const item = attempt?.item ?? {
+        metodoPagoId: method!.id,
+        importe: decimal(amountCents),
+        principal: true,
+        entregado: kind === "cash" ? decimal(input?.deliveredCents ?? amountCents) : null,
+        cambio: kind === "cash" ? decimal(input?.changeCents ?? 0) : null,
+        reference: input?.reference?.trim() || null,
+        cardMode: kind === "card" ? "MANUAL" : null,
+        transferDate: kind === "transfer" && input?.transferDate ? input.transferDate : null,
+        requestId,
+      };
+      const nextAttempt = attempt ?? { requestId, kind, item };
+      globalThis.localStorage?.setItem(standardKey, JSON.stringify(nextAttempt));
+      setStandardAttempt(nextAttempt);
       const result = await postPayment(item);
+      globalThis.localStorage?.removeItem(standardKey);
+      setStandardAttempt(null);
+      setBusy(false);
       if (kind === "cash") {
-        const confirmedAmount = Number(result.paymentReceipt.amount);
-        const totalCents = Number.isFinite(confirmedAmount)
-          ? Math.round(confirmedAmount * 100)
-          : amountCents;
-        const confirmedReceivedCents = receivedCents ?? amountCents;
+        const confirmedCents = Math.round(Number(result.paymentReceipt.amount) * 100);
+        const receivedCents = input?.deliveredCents ?? confirmedCents;
         const completion: CashCompletion = {
           receivable: result.receivable,
           receipt: result.paymentReceipt,
-          totalCents,
-          receivedCents: confirmedReceivedCents,
-          changeCents: Math.max(0, confirmedReceivedCents - totalCents),
-          printStatus: terminalContext ? "PRINTING" : "SKIPPED"
+          totalCents: confirmedCents,
+          receivedCents,
+          changeCents: Math.max(0, receivedCents - confirmedCents),
+          printStatus: terminalContext ? "PRINTING" : "SKIPPED",
         };
-        localStorage.removeItem(standardKey); setStandardAttempt(null);
-        setCashOpen(false); setTransferOpen(false); setBusy(false); setError("");
         if (mounted.current) setCashCompletion(completion);
         if (terminalContext) await printCashCompletion(completion);
         return;
       }
-      let retryPrint: (() => Promise<unknown>) | undefined;
-      if (terminalContext) { const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
-        try { if ((await retry()).status === "FAILED") retryPrint = retry; } catch { retryPrint = retry; } }
-      localStorage.removeItem(standardKey); setStandardAttempt(null);
-      setCashOpen(false); setTransferOpen(false);
-      setBusy(false);
-      if (mounted.current) { if (retryPrint) onPaid(result.receivable, retryPrint); else onPaid(result.receivable); }
-      return;
-    } catch (failure) { if (mounted.current) { setError(failure instanceof Error ? failure.message : t("receivables.payment.saveError")); setBusy(false); } }
+      await printResult(result);
+    } catch (failure) {
+      if (mounted.current) {
+        setError(failure instanceof Error ? failure.message : t("receivables.payment.saveError"));
+        setBusy(false);
+      }
+    }
   }
 
   async function finishApprovedCard(attempt: Attempt) {
-    const result = await postPayment({ metodoPagoId: attempt.methodId, importe: attempt.amount, principal: true,
-      cardMode: "INTEGRATED", paymentTerminalStatus: "APPROVED", requestId: attempt.paymentId,
-      paymentTerminalOperationId: attempt.paymentId });
-    let retryPrint: (() => Promise<unknown>) | undefined;
-    if (terminalContext) { const retry = () => printReceipt(result.paymentReceipt, terminalContext, undefined, locale);
-      try { if ((await retry()).status === "FAILED") retryPrint = retry; } catch { retryPrint = retry; } }
+    const result = await postPayment({
+      metodoPagoId: attempt.methodId,
+      importe: attempt.amount,
+      principal: true,
+      cardMode: "INTEGRATED",
+      paymentTerminalStatus: "APPROVED",
+      requestId: attempt.paymentId,
+      paymentTerminalOperationId: attempt.paymentId,
+    });
     globalThis.localStorage?.removeItem(storageKey);
     setCardAttempt(null);
     setBusy(false);
-    if (mounted.current) { if (retryPrint) onPaid(result.receivable, retryPrint); else onPaid(result.receivable); }
+    await printResult(result);
   }
 
-  async function payCard() {
-    if (!validate()) return;
-    if (!methods.card) { setError(t("receivables.payment.methodMissing")); return; }
-    setBusy(true); setError("");
+  async function payCard(amountCents: number) {
+    if (!collectable || amountCents <= 0 || amountCents > pendingCents) {
+      setError(t("receivables.payment.invalidAmount"));
+      return;
+    }
+    if (!methods.card?.id || providers.length === 0) {
+      setError(t("receivables.payment.methodMissing"));
+      return;
+    }
+    setBusy(true);
+    setError("");
     let attempt: Attempt;
     try {
       const stored = globalThis.localStorage?.getItem(storageKey);
-      attempt = stored ? JSON.parse(stored) as Attempt : { paymentId: uuid(), amount: (amountCents / 100).toFixed(2), methodId: methods.card, status: "CREATED" };
-      if (attempt.amount !== (amountCents / 100).toFixed(2) || attempt.methodId !== methods.card) {
-        setError(t("receivables.payment.cardAmountConflict")); setBusy(false); return;
+      attempt = stored ? JSON.parse(stored) as Attempt : {
+        paymentId: uuid(),
+        amount: decimal(amountCents),
+        methodId: methods.card.id,
+        status: "CREATED",
+      };
+      if (attempt.amount !== decimal(amountCents) || attempt.methodId !== methods.card.id) {
+        setError(t("receivables.payment.cardAmountConflict"));
+        setBusy(false);
+        return;
       }
       globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
       setCardAttempt(attempt);
       if (attempt.status !== "APPROVED") {
-        const terminal = await request<{ status: string; finalOutcome?: boolean }>(`/customer-receivables/${receivable.documentId}/card-charges`, { token, body: { paymentId: attempt.paymentId, amount: attempt.amount } });
-        attempt = { ...attempt, status: terminal.status as Attempt["status"], finalOutcome: terminal.finalOutcome };
-        globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
-        setCardAttempt(attempt);
-        if (terminal.status !== "APPROVED") { setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${terminal.status}`)}. ${t("receivables.payment.queryBeforeRetry")}`); setBusy(false); return; }
+        const terminal = await request<{ status: string; finalOutcome?: boolean }>(
+          `/customer-receivables/${receivable.documentId}/card-charges`,
+          { token, body: { paymentId: attempt.paymentId, amount: attempt.amount } },
+        );
+        attempt = {
+          ...attempt,
+          status: terminal.status as Attempt["status"],
+          finalOutcome: terminal.finalOutcome,
+        };
+        if (finalCardFailure(attempt)) {
+          globalThis.localStorage?.removeItem(storageKey);
+          setCardAttempt(null);
+        } else {
+          globalThis.localStorage?.setItem(storageKey, JSON.stringify(attempt));
+          setCardAttempt(attempt);
+        }
+        if (attempt.status !== "APPROVED") {
+          setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${attempt.status}`)}. ${t("receivables.payment.queryBeforeRetry")}`);
+          setBusy(false);
+          return;
+        }
       }
-      await finishApprovedCard(attempt); return;
-    } catch (failure) { if (mounted.current) { setError(failure instanceof Error ? `${failure.message}. ${t("receivables.payment.retrySameId")}` : t("pendingSale.cardUncertain")); setBusy(false); } }
+      await finishApprovedCard(attempt);
+    } catch (failure) {
+      if (mounted.current) {
+        setError(failure instanceof Error
+          ? `${failure.message}. ${t("receivables.payment.retrySameId")}`
+          : t("pendingSale.cardUncertain"));
+        setBusy(false);
+      }
+    }
   }
 
-  async function queryCard() {
-    if (!cardAttempt) return;
-    setBusy(true); setError("");
+  async function queryAttempt(operationId: string) {
+    if (standardAttempt?.requestId === operationId) {
+      await payStandard();
+      return;
+    }
+    if (!cardAttempt || cardAttempt.paymentId !== operationId) return;
+    setBusy(true);
+    setError("");
     try {
-      const terminal = await request<{ status: string; finalOutcome?: boolean }>(`/customer-receivables/${receivable.documentId}/card-charges/${cardAttempt.paymentId}/query`, { method: "POST", token });
-      const next = { ...cardAttempt, status: terminal.status as Attempt["status"], finalOutcome: terminal.finalOutcome };
-      globalThis.localStorage?.setItem(storageKey, JSON.stringify(next)); setCardAttempt(next);
-      if (next.status === "APPROVED") { await finishApprovedCard(next); return; }
-      else setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${next.status}`)}. ${t("receivables.payment.cardNotFinal")}`);
-    } catch (failure) { if (mounted.current) setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError")); }
+      const terminal = await request<{ status: string; finalOutcome?: boolean }>(
+        `/customer-receivables/${receivable.documentId}/card-charges/${cardAttempt.paymentId}/query`,
+        { method: "POST", token },
+      );
+      const next = {
+        ...cardAttempt,
+        status: terminal.status as Attempt["status"],
+        finalOutcome: terminal.finalOutcome,
+      };
+      if (finalCardFailure(next)) {
+        globalThis.localStorage?.removeItem(storageKey);
+        setCardAttempt(null);
+      } else {
+        globalThis.localStorage?.setItem(storageKey, JSON.stringify(next));
+        setCardAttempt(next);
+      }
+      if (next.status === "APPROVED") {
+        await finishApprovedCard(next);
+        return;
+      }
+      setError(`${t("receivables.payment.cardState")}: ${t(`paymentTerminal.status.${next.status}`)}. ${t("receivables.payment.cardNotFinal")}`);
+    } catch (failure) {
+      if (mounted.current) {
+        setError(failure instanceof Error ? failure.message : t("pendingSale.cardQueryError"));
+      }
+    }
     if (mounted.current) setBusy(false);
   }
 
-  useEffect(() => { const handler = (event: KeyboardEvent) => { if (event.key !== "Escape" || busy) return; if (cashOpen) return; if (transferOpen) { event.preventDefault(); event.stopImmediatePropagation(); setTransferOpen(false); return; } if (!unsafeCard) { event.preventDefault(); onCancel(); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, [busy, cashOpen, onCancel, transferOpen, unsafeCard]);
+  const allocations = useMemo<PaymentAllocation[]>(() => {
+    if (standardAttempt) {
+      return [{
+        kind: standardAttempt.kind === "cash"
+          ? "CASH"
+          : standardAttempt.kind === "card" ? "MANUAL_CARD" : "TRANSFER",
+        amountCents: Math.round(Number(standardAttempt.item.importe) * 100),
+        deliveredCents: standardAttempt.item.entregado == null
+          ? undefined : Math.round(Number(standardAttempt.item.entregado) * 100),
+        changeCents: standardAttempt.item.cambio == null
+          ? undefined : Math.round(Number(standardAttempt.item.cambio) * 100),
+        reference: standardAttempt.item.reference ? String(standardAttempt.item.reference) : undefined,
+        transferDate: standardAttempt.item.transferDate ? String(standardAttempt.item.transferDate) : undefined,
+        idempotencyKey: standardAttempt.requestId,
+        operationId: standardAttempt.requestId,
+        status: "PENDING",
+        message: t("receivables.payment.unknownResult"),
+      }];
+    }
+    if (cardAttempt) {
+      return [{
+        kind: "INTEGRATED_CARD",
+        amountCents: Math.round(Number(cardAttempt.amount) * 100),
+        provider: providers[0],
+        idempotencyKey: cardAttempt.paymentId,
+        operationId: cardAttempt.paymentId,
+        status: cardAllocationStatus(cardAttempt.status),
+      }];
+    }
+    return [];
+  }, [cardAttempt, providers, standardAttempt, t]);
+
+  const session = useMemo<PaymentSession>(() => ({
+    id: `receivable-${receivable.documentId}`,
+    totalCents: pendingCents,
+    direction: "SALE",
+    status: allocations.some((allocation) => allocation.status === "APPROVED"
+      && allocation.amountCents >= pendingCents) ? "COVERED" : "COLLECTING",
+    allocations,
+  }), [allocations, pendingCents, receivable.documentId]);
 
   if (cashCompletion) return <CashPaymentResultDialog
     locale={locale}
@@ -203,29 +436,44 @@ export function CustomerReceivablePaymentDialog({ locale = "es", receivable, tok
     receivedCents={cashCompletion.receivedCents}
     changeCents={cashCompletion.changeCents}
     printStatus={cashCompletion.printStatus}
-    onRetryPrint={cashCompletion.printStatus === "FAILED" ? () => void printCashCompletion(cashCompletion) : undefined}
+    onRetryPrint={cashCompletion.printStatus === "FAILED"
+      ? () => void printCashCompletion(cashCompletion)
+      : undefined}
     onFinish={() => onPaid(cashCompletion.receivable)}
   />;
 
-  return <div className="sale-action-overlay" role="presentation">
-    <section ref={dialogRef} className="customer-receivable-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="receivable-payment-title">
-      <header><h2 id="receivable-payment-title">{t("receivables.payment.title")}</h2><button type="button" aria-label={t("common.close")} disabled={busy || unsafeCard} onClick={onCancel}>×</button></header>
-      <p><strong>{receivable.documentNumber}</strong> · {receivable.customerName}</p>
-      <div className="receivable-payment-summary"><span>{t("receivables.payment.pendingBalance")}</span><strong>{decimal(receivable.pendingTotal)}</strong></div>
-      <label>{t("receivables.payment.amount")}<input aria-label={t("receivables.payment.amount")} inputMode="decimal" value={amount} disabled={!collectable || busy || standardAttempt != null || unsafeCard} onChange={(event) => setAmount(event.target.value)} /></label>
-      {!collectable && <p>{t("receivables.payment.alreadyPaid")}</p>}
-      <div className="receivable-payment-actions">
-        <button type="button" disabled={!collectable || busy || unsafeCard || standardAttempt != null || !methods.cash} onClick={() => { if (validate()) setCashOpen(true); }}>{t("receivables.payment.cash")}</button>
-        <button type="button" disabled={!collectable || busy || unsafeCard || standardAttempt != null || !methods.card} onClick={() => void payCard()}>{t("receivables.payment.card")}</button>
-        <button type="button" disabled={!collectable || busy || unsafeCard || standardAttempt != null || !methods.transfer} onClick={() => { if (validate()) setTransferOpen(true); }}>{t("receivables.payment.transfer")}</button>
-      </div>
-      {transferOpen && <fieldset><legend>{t("receivables.payment.transfer")}</legend><label>{t("receivables.payment.transferReference")}<input aria-label={t("receivables.payment.transferReference")} autoFocus value={reference} onChange={(event) => setReference(event.target.value)} /></label><button type="button" disabled={busy} onClick={() => void payStandard("transfer")}>{t("receivables.payment.confirmTransfer")}</button><button type="button" disabled={busy} onClick={() => setTransferOpen(false)}>{t("receivables.payment.cancelTransfer")}</button></fieldset>}
-      {cardAttempt && <div className="receivable-card-recovery" aria-live="polite"><span>{t("receivables.payment.cardState")}: {t(`paymentTerminal.status.${cardAttempt.status}`)}</span><button type="button" disabled={busy} onClick={() => void queryCard()}>{t("receivables.payment.queryCard")}</button>{cardAttempt.status === "APPROVED" && <button type="button" disabled={busy} onClick={() => void payCard()}>{t("receivables.payment.retryCard")}</button>}</div>}
-      {cardAttempt && (["DECLINED", "CANCELLED"].includes(cardAttempt.status) || (cardAttempt.status === "ERROR" && cardAttempt.finalOutcome === true)) && <button type="button" onClick={() => { localStorage.removeItem(storageKey); setCardAttempt(null); }}>{t("receivables.payment.discardCard")}</button>}
-      {standardAttempt && <div aria-live="polite"><p>{t(standardAttempt.kind === "cash" ? "receivables.payment.cash" : "receivables.payment.transfer")} · {String(standardAttempt.item.importe)}{standardAttempt.item.reference ? ` · ${String(standardAttempt.item.reference)}` : ""}. {t("receivables.payment.unknownResult")}</p><button type="button" disabled={busy} onClick={() => void payStandard(standardAttempt.kind)}>{t("receivables.payment.retry")}</button></div>}
-      {error && <p className="sale-action-error" role="alert">{error}</p>}
-      <footer><button type="button" disabled={busy || unsafeCard} onClick={onCancel}>{t("common.close")}</button></footer>
-    </section>
-    {cashOpen && <CashPaymentDialog totalCents={amountCents} submitting={busy} error={error} initialMode="touch" onCancel={() => setCashOpen(false)} onConfirm={(received) => void payStandard("cash", received)} />}
-  </div>;
+  return <PaymentAllocationPanel
+    locale={locale}
+    session={session}
+    providers={providers}
+    manualCardEnabled={manualCardEnabled}
+    cashEnabled={Boolean(methods.cash)}
+    cardEnabled={Boolean(methods.card)}
+    manualCardRequiresReference={Boolean(methods.card?.requiresReference)}
+    voucherEnabled={false}
+    transferEnabled={Boolean(methods.transfer)}
+    transferRequiresReference={Boolean(methods.transfer?.requiresReference)}
+    transferDateEnabled
+    interfaceMode={interfaceMode}
+    customerSelected
+    pendingEnabled={false}
+    pendingVisible={false}
+    discountVisible={false}
+    acceptVisible
+    acceptSubmitsCurrent
+    clearVisible={false}
+    commentEnabled={false}
+    allowAdd={collectable && !busy && !standardAttempt && !unsafeCard}
+    busy={busy}
+    error={!collectable ? t("receivables.payment.alreadyPaid") : error}
+    onAdd={(input) => {
+      if (input.kind === "CASH" || input.kind === "MANUAL_CARD" || input.kind === "TRANSFER") {
+        void payStandard(input);
+      } else if (input.kind === "INTEGRATED_CARD") {
+        void payCard(input.amountCents);
+      }
+    }}
+    onQuery={(operationId) => void queryAttempt(operationId)}
+    onClose={onCancel}
+  />;
 }

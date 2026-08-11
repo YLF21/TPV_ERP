@@ -18,7 +18,8 @@ public record CustomerReceivablePaymentHistoryView(
         UUID paymentMethodId,
         String paymentMethodName,
         BigDecimal amount,
-        String reference) {
+        String reference,
+        LocalDate transferDate) {
 
     public static CustomerReceivablePaymentHistoryView from(
             DocumentPayment payment, String customerName) {
@@ -28,6 +29,7 @@ public record CustomerReceivablePaymentHistoryView(
                 payment.getId(), payment.getRequestId(), document.getId(),
                 document.getTipo(), document.getNumero(), document.getClienteId(),
                 customerName, document.getFecha(), payment.getCreadoEn(), method.getId(),
-                method.getNombre(), payment.getImporte(), payment.getReferencia());
+                method.getNombre(), payment.getImporte(), payment.getReferencia(),
+                payment.getTransferDate());
     }
 }

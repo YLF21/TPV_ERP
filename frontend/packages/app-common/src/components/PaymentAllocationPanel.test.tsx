@@ -42,6 +42,28 @@ const session: PaymentSession = {
 afterEach(cleanup);
 
 describe("PaymentAllocationPanel", () => {
+  it("uses Aceptar to submit the current entry in immediate-payment mode", () => {
+    const onAdd = vi.fn();
+    const { container } = render(<PaymentAllocationPanel
+      locale="es"
+      session={{ ...session, allocations: [] }}
+      providers={[]}
+      manualCardEnabled
+      acceptSubmitsCurrent
+      onAdd={onAdd}
+      onQuery={vi.fn()}
+    />);
+
+    fireEvent.click(within(container).getByRole("button", { name: "ACEPTAR" }));
+
+    expect(onAdd).toHaveBeenCalledWith({
+      kind: "CASH",
+      amountCents: 1200,
+      deliveredCents: 1200,
+      changeCents: 0,
+    }, { finalizeWhenCovered: true });
+  });
+
   it("offers cash, card and a new voucher for refunds without sale-only methods", () => {
     const onAdd = vi.fn();
     const { container } = render(<PaymentAllocationPanel
@@ -432,8 +454,8 @@ describe("PaymentAllocationPanel", () => {
     expect(html).toContain("TOTAL A COBRAR");
     expect(html).toContain("COBRADO");
     expect(html).toContain("FALTA");
-    expect(html).toContain("<kbd>*</kbd>");
-    expect(html).toContain("<kbd>F11</kbd>");
+    expect(html).toContain('<kbd aria-hidden="true">*</kbd>');
+    expect(html).toContain('<kbd aria-hidden="true">F11</kbd>');
   });
 
   it("shows query for an uncertain integrated operation", () => {

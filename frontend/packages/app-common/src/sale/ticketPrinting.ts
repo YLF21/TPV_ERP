@@ -104,6 +104,7 @@ export type CustomerReceivablePaymentReceiptSnapshot = {
   method: string;
   amount: NumericValue;
   remaining: NumericValue;
+  transferDate?: string | null;
 };
 
 export function ticketPrintRequest(
@@ -537,6 +538,9 @@ export async function printCustomerReceivablePaymentReceipt(
         total: amount
       }],
       payments: [{ method: snapshot.method, amount }],
+      details: snapshot.transferDate
+        ? [{ label: t("receivables.column.transferDate"), value: snapshot.transferDate }]
+        : undefined,
       total: amount,
       labels: { terminal: t("print.a4.terminal"), item: t("print.ticket.item"),
         quantity: t("print.ticket.quantity"), price: t("print.ticket.price"), total: t("print.a4.total") },

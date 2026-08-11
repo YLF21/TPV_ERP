@@ -64,7 +64,8 @@ describe("SaleCustomerReceivablesDialog", () => {
   it("shows only pending documents, overdue debt in red and opens one document at a time", async () => {
     const request = vi.fn(async (path: string) => {
       if (path === "/customer-receivables?customerId=customer-1") return rows;
-      if (path === "/payment-methods") return [];
+      if (path === "/payment-methods") return [{ id: "cash", name: "EFECTIVO", active: true }];
+      if (path === "/terminal-configuration/payment") return {};
       throw new Error(`Unexpected request: ${path}`);
     });
 
@@ -87,15 +88,18 @@ describe("SaleCustomerReceivablesDialog", () => {
     expect(within(documentRows[0]).getAllByText("40,00 €").some((node) => node.classList.contains("overdue-debt"))).toBe(true);
 
     fireEvent.keyDown(dialog.querySelector("section")!, { key: "Enter" });
-    const payment = await screen.findByRole("dialog", { name: "Cobrar deuda" });
-    expect(payment).toHaveTextContent("AV-1");
-    expect(payment).not.toHaveTextContent("FV-2");
+    const payment = await screen.findByRole("dialog", { name: "COBRO" });
+    expect(within(payment).getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("40,00");
     expect(request).toHaveBeenCalledWith("/payment-methods", expect.anything());
   });
 
   it("navigates with arrows, opens by double click and closes with Escape", async () => {
     const onClose = vi.fn();
-    const request = vi.fn(async (path: string) => path === "/payment-methods" ? [] : rows);
+    const request = vi.fn(async (path: string) => {
+      if (path === "/payment-methods") return [{ id: "cash", name: "EFECTIVO", active: true }];
+      if (path === "/terminal-configuration/payment") return {};
+      return rows;
+    });
     render(<SaleCustomerReceivablesDialog
       locale="es"
       session={session}
@@ -110,17 +114,17 @@ describe("SaleCustomerReceivablesDialog", () => {
     fireEvent.keyDown(section, { key: "ArrowDown" });
     await waitFor(() => expect(within(dialog).getByRole("row", { name: /FV-2/ })).toHaveAttribute("aria-current", "true"));
     fireEvent.keyDown(section, { key: "Enter" });
-    const firstPayment = await screen.findByRole("dialog", { name: "Cobrar deuda" });
-    expect(firstPayment).toHaveTextContent("FV-2");
+    const firstPayment = await screen.findByRole("dialog", { name: "COBRO" });
+    expect(within(firstPayment).getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("20,00");
 
-    fireEvent.click(within(firstPayment).getAllByRole("button", { name: "Cerrar" })[0]);
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cobrar deuda" })).not.toBeInTheDocument());
+    fireEvent.click(within(firstPayment).getAllByRole("button", { name: "CANCELAR" })[0]);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "COBRO" })).not.toBeInTheDocument());
     const overdueRow = within(dialog).getByRole("row", { name: /AV-1/ });
     fireEvent.doubleClick(overdueRow);
-    const secondPayment = await screen.findByRole("dialog", { name: "Cobrar deuda" });
-    expect(secondPayment).toHaveTextContent("AV-1");
+    const secondPayment = await screen.findByRole("dialog", { name: "COBRO" });
+    expect(within(secondPayment).getByLabelText("IMPORTE / RECIBIDO")).toHaveValue("40,00");
 
-    fireEvent.click(within(secondPayment).getAllByRole("button", { name: "Cerrar" })[0]);
+    fireEvent.click(within(secondPayment).getAllByRole("button", { name: "CANCELAR" })[0]);
     fireEvent.keyDown(section, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });

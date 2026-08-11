@@ -1805,6 +1805,7 @@ export class MessagesEs {
     "receivables.column.method": "Forma de pago",
     "receivables.column.amount": "Importe",
     "receivables.column.reference": "Referencia",
+    "receivables.column.transferDate": "Fecha de transferencia",
     "receivables.column.actions": "Acciones",
     "receivables.action.collect": "Cobrar",
     "receivables.action.consult": "Consultar",

@@ -5588,6 +5588,7 @@ export function SaleScreen({
       {actionDialog === "customer" && customerReceivablesOpen && (
         <SaleCustomerReceivablesDialog
           locale={locale}
+          interfaceMode={interfaceMode}
           session={session}
           terminalContext={terminalContext}
           customer={customerReceivablesOpen}

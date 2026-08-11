@@ -105,6 +105,10 @@ public class PaymentMethod {
         return "EFECTIVO".equals(nombre);
     }
 
+    public boolean isTransfer() {
+        return "TRANSFERENCIA".equals(nombre);
+    }
+
     private static String required(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("nombre es obligatorio");

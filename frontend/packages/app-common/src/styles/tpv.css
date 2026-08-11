@@ -19334,8 +19334,8 @@ textarea:focus,
 .receivable-row.overdue { background: #fff2f0; }
 .receivable-history-row {
   display: grid;
-  grid-template-columns: 1.1fr 1.5fr 1.2fr 1fr .75fr 1fr .75fr;
-  min-width: 64rem;
+  grid-template-columns: 1.1fr 1.5fr 1.2fr 1fr .75fr 1fr 1fr .75fr;
+  min-width: 72rem;
   border-bottom: 1px solid #dbe3eb;
 }
 .receivable-history-row > * { padding: .7rem; }
@@ -21946,6 +21946,25 @@ textarea:focus,
 
 .sale-checkout-meta.has-voucher {
   grid-template-columns: minmax(150px, 0.9fr) minmax(140px, 0.7fr) minmax(180px, 1.2fr);
+}
+
+.sale-checkout-meta.has-transfer-date {
+  grid-template-columns: minmax(140px, .75fr) minmax(160px, .9fr) minmax(190px, 1.2fr);
+}
+
+.sale-checkout-meta.no-comment:not(.has-transfer-date):not(.has-voucher) {
+  grid-template-columns: minmax(140px, 1fr);
+}
+
+.sale-checkout-meta.no-comment.has-transfer-date {
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+}
+
+.sale-checkout-table small {
+  display: block;
+  margin-top: 2px;
+  color: #52677f;
+  font-size: .72rem;
 }
 
 .sale-checkout-change {

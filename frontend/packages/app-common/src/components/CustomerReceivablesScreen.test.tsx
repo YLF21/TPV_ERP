@@ -111,6 +111,7 @@ describe("CustomerReceivablesScreen", () => {
     const request = vi.fn(async (path: string) => {
       if (request.mock.calls.length === 1) throw new Error("sin red");
       if (path === "/payment-methods") return [{ id: "transfer", name: "TRANSFERENCIA", active: true }];
+      if (path === "/terminal-configuration/payment") return {};
       if (path.endsWith("/payments")) return { receivable: { ...row, paidTotal: "50.00", pendingTotal: "50.00" }, paymentReceipt: {
         paymentId: "payment-1", documentNumber: "FV-1", collectedAt: "2026-07-16T10:00:00Z",
         method: "TRANSFERENCIA", amount: "25.00", remaining: "50.00"
@@ -123,10 +124,10 @@ describe("CustomerReceivablesScreen", () => {
     expect(await screen.findByText("FV-1")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Cobrar FV-1" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Transferencia" })).toBeEnabled());
-    fireEvent.change(screen.getByLabelText("Importe a cobrar"), { target: { value: "25" } });
     fireEvent.click(screen.getByRole("button", { name: "Transferencia" }));
-    fireEvent.change(screen.getByLabelText("Referencia"), { target: { value: "TR-1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar transferencia" }));
+    const amount = screen.getByLabelText("IMPORTE / RECIBIDO");
+    fireEvent.change(amount, { target: { value: "25" } });
+    fireEvent.keyDown(amount, { key: "Enter" });
     await waitFor(() => expect(screen.getAllByText("50,00")).toHaveLength(2));
   });
 

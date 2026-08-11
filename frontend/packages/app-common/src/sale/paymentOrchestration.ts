@@ -14,6 +14,7 @@ export type PaymentAllocation = {
   provider?: string;
   voucherCode?: string;
   reference?: string;
+  transferDate?: string;
   authorization?: string;
   operationId?: string;
   message?: string;

@@ -16,6 +16,7 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -49,6 +50,8 @@ public class DocumentPayment {
     private String referencia;
     @Column(length = 512)
     private String comentario;
+    @Column(name = "fecha_transferencia")
+    private LocalDate transferDate;
     @Enumerated(EnumType.STRING)
     @Column(name = "terminal_pago_modo", length = 16)
     private PaymentCardMode cardMode;
@@ -133,6 +136,31 @@ public class DocumentPayment {
             UUID paymentTerminalId,
             UUID requestId,
             String comentario) {
+        this(documento, metodoPago, posicion, importe, principal, entregado, cambio,
+                voucherCode, referencia, creadoEn, cardMode, paymentTerminalProvider,
+                paymentTerminalStatus, cardAuthorizationCode, paymentTerminalId,
+                requestId, comentario, null);
+    }
+
+    public DocumentPayment(
+            CommercialDocument documento,
+            PaymentMethod metodoPago,
+            int posicion,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String referencia,
+            Instant creadoEn,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId,
+            UUID requestId,
+            String comentario,
+            LocalDate transferDate) {
         if (posicion < 1) {
             throw new IllegalArgumentException("message.document.position_must_be_positive");
         }
@@ -147,6 +175,7 @@ public class DocumentPayment {
         this.voucherCode = optionalCode(voucherCode);
         this.referencia = optionalReference(referencia);
         this.comentario = optionalComment(comentario);
+        this.transferDate = transferDate;
         this.cardMode = cardMode;
         this.paymentTerminalProvider = paymentTerminalProvider;
         this.paymentTerminalStatus = paymentTerminalStatus;
@@ -156,6 +185,7 @@ public class DocumentPayment {
         this.creadoEn = Objects.requireNonNull(creadoEn, "creadoEn");
         validateCashAmounts();
         validatePaymentTerminalMetadata();
+        validateTransferDate();
     }
 
     public DocumentPayment(
@@ -246,6 +276,10 @@ public class DocumentPayment {
         return comentario;
     }
 
+    public LocalDate getTransferDate() {
+        return transferDate;
+    }
+
     public PaymentCardMode getCardMode() {
         return cardMode;
     }
@@ -334,6 +368,13 @@ public class DocumentPayment {
                 && paymentTerminalProvider != null
                 && paymentTerminalProvider != PaymentTerminalProvider.NONE) {
             throw new IllegalArgumentException("message.payment_terminal.manual_provider_must_be_none");
+        }
+    }
+
+    private void validateTransferDate() {
+        if (transferDate != null && !metodoPago.isTransfer()) {
+            throw new IllegalArgumentException(
+                    "message.payment.transfer_date_only_for_transfer");
         }
     }
 

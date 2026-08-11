@@ -156,7 +156,7 @@ public class CustomerReceivablePrintService {
                 ? payment.getId() : payment.getRequestId();
         return new PaymentReceipt(printablePaymentId, document.getId(), document.getNumero(),
                 document.getClienteId(), payment.getCreadoEn(), payment.getMetodoPago().getNombre(),
-                payment.getImporte(), payment.getReferencia(),
+                payment.getImporte(), payment.getReferencia(), payment.getTransferDate(),
                 Money.euros(document.getTotal()).subtract(paidThroughReceipt).max(BigDecimal.ZERO));
     }
 
@@ -261,10 +261,11 @@ public class CustomerReceivablePrintService {
             }
         }
     }
-    public record Payment(String method, BigDecimal amount, String reference) {
+    public record Payment(String method, BigDecimal amount, String reference,
+            LocalDate transferDate) {
         static Payment from(DocumentPayment payment) {
             return new Payment(payment.getMetodoPago().getNombre(), payment.getImporte(),
-                    payment.getReferencia());
+                    payment.getReferencia(), payment.getTransferDate());
         }
     }
     public record FiscalParty(String name, String taxId, PartyAddress address,
@@ -292,5 +293,5 @@ public class CustomerReceivablePrintService {
     }
     public record PaymentReceipt(UUID paymentId, UUID documentId, String documentNumber,
             UUID customerId, Instant collectedAt, String method, BigDecimal amount,
-            String reference, BigDecimal remaining) {}
+            String reference, LocalDate transferDate, BigDecimal remaining) {}
 }

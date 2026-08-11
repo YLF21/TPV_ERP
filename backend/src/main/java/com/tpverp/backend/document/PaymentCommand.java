@@ -4,6 +4,7 @@ import com.tpverp.backend.terminal.PaymentCardMode;
 import com.tpverp.backend.terminal.PaymentTerminalOperationStatus;
 import com.tpverp.backend.terminal.PaymentTerminalProvider;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record PaymentCommand(
@@ -20,7 +21,28 @@ public record PaymentCommand(
         String cardAuthorizationCode,
         UUID paymentTerminalId,
         UUID requestId,
-        String comment) {
+        String comment,
+        LocalDate transferDate) {
+
+    public PaymentCommand(
+            UUID metodoPagoId,
+            BigDecimal importe,
+            boolean principal,
+            BigDecimal entregado,
+            BigDecimal cambio,
+            String voucherCode,
+            String reference,
+            PaymentCardMode cardMode,
+            PaymentTerminalProvider paymentTerminalProvider,
+            PaymentTerminalOperationStatus paymentTerminalStatus,
+            String cardAuthorizationCode,
+            UUID paymentTerminalId,
+            UUID requestId,
+            String comment) {
+        this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
+                cardMode, paymentTerminalProvider, paymentTerminalStatus,
+                cardAuthorizationCode, paymentTerminalId, requestId, comment, null);
+    }
 
     public PaymentCommand(
             UUID metodoPagoId,
@@ -38,7 +60,7 @@ public record PaymentCommand(
             UUID requestId) {
         this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
                 cardMode, paymentTerminalProvider, paymentTerminalStatus,
-                cardAuthorizationCode, paymentTerminalId, requestId, null);
+                cardAuthorizationCode, paymentTerminalId, requestId, null, null);
     }
 
     public PaymentCommand(
@@ -56,7 +78,7 @@ public record PaymentCommand(
             UUID paymentTerminalId) {
         this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
                 cardMode, paymentTerminalProvider, paymentTerminalStatus,
-                cardAuthorizationCode, paymentTerminalId, null, null);
+                cardAuthorizationCode, paymentTerminalId, null, null, null);
     }
 
     public PaymentCommand(
@@ -87,6 +109,6 @@ public record PaymentCommand(
             String voucherCode,
             String reference) {
         this(metodoPagoId, importe, principal, entregado, cambio, voucherCode, reference,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 }

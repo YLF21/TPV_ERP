@@ -102,7 +102,8 @@ class CustomerReceivablePrintServiceTest {
                 new PaymentMethod(UUID.randomUUID(), "TRANSFERENCIA", true), 1,
                 new BigDecimal("20.00"), true, null, null, null, "TR-1",
                 Instant.parse("2026-07-20T09:00:00Z"), null,
-                null, null, null, null, UUID.randomUUID());
+                null, null, null, null, UUID.randomUUID(), null,
+                LocalDate.of(2026, 7, 19));
         document.addPayment(payment); document.updatePaymentStatus();
         when(documents.findCustomerDocumentForPrint(document.getId(), storeId)).thenReturn(Optional.of(document));
         when(payments.findByRequestId(payment.getRequestId())).thenReturn(Optional.of(payment));
@@ -121,6 +122,7 @@ class CustomerReceivablePrintServiceTest {
         assertThat(receipt.amount()).isEqualByComparingTo("20.00");
         assertThat(receipt.remaining()).isEqualByComparingTo("80.00");
         assertThat(receipt.reference()).isEqualTo("TR-1");
+        assertThat(receipt.transferDate()).isEqualTo(LocalDate.of(2026, 7, 19));
     }
 
     @Test

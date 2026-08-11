@@ -160,7 +160,7 @@ class CustomerReceivableServiceTest {
         var payment = new DocumentPayment(document, method, 1, new BigDecimal("20.00"),
                 true, null, null, null, "TR-1",
                 Instant.parse("2026-07-16T22:15:00Z"), null, null, null,
-                null, null, UUID.randomUUID());
+                null, null, UUID.randomUUID(), null, LocalDate.of(2026, 7, 16));
         var view = CustomerReceivablePaymentHistoryView.from(payment, "CLIENTE ORO");
         when(payments.findCustomerReceivablePaymentHistory(
                 store.getId(), Instant.parse("2026-07-15T22:00:00Z"),
@@ -176,6 +176,7 @@ class CustomerReceivableServiceTest {
         assertThat(result).containsExactly(view);
         assertThat(result.getFirst().paymentId()).isEqualTo(payment.getId());
         assertThat(result.getFirst().requestId()).isEqualTo(payment.getRequestId());
+        assertThat(result.getFirst().transferDate()).isEqualTo(LocalDate.of(2026, 7, 16));
         verify(payments).findCustomerReceivablePaymentHistory(
                 store.getId(), Instant.parse("2026-07-15T22:00:00Z"),
                 Instant.parse("2026-07-17T22:00:00Z"), true, method.getId(),

@@ -310,7 +310,7 @@ public class CustomerReceivableService {
                 item.cambio(), item.voucherCode(), operation.getExternalReference(),
                 PaymentCardMode.INTEGRATED, operation.getProvider(),
                 PaymentTerminalOperationStatus.APPROVED, operation.getAuthorizationCode(),
-                terminalId, paymentId);
+                terminalId, paymentId, null, item.transferDate());
     }
 
     private static void requireCardIdentity(
@@ -343,7 +343,8 @@ public class CustomerReceivableService {
                 && existing.getImporte().compareTo(Money.euros(item.importe())) == 0
                 && Objects.equals(existing.getEntregado(), nullableMoney(item.entregado()))
                 && Objects.equals(existing.getCambio(), nullableMoney(item.cambio()))
-                && Objects.equals(existing.getVoucherCode(), normalized(item.voucherCode()));
+                && Objects.equals(existing.getVoucherCode(), normalized(item.voucherCode()))
+                && Objects.equals(existing.getTransferDate(), item.transferDate());
         var integrated = existing.getCardMode() == PaymentCardMode.INTEGRATED;
         var sameReference = integrated
                 ? true

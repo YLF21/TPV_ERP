@@ -1882,6 +1882,59 @@ class DocumentServiceTest {
     }
 
     @Test
+    void transferPaymentStoresItsOptionalDateAndRejectsFutureOrNonTransferDates() {
+        var transferDate = LocalDate.of(2026, 6, 8);
+        var transfer = new PaymentMethod(
+                store.getEmpresa().getId(), "TRANSFERENCIA", false);
+        var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(invoice.getId())).thenReturn(Optional.of(invoice));
+        when(paymentMethodRepository.findById(transfer.getId())).thenReturn(Optional.of(transfer));
+        when(documentRepository.save(invoice)).thenReturn(invoice);
+
+        var paid = service.payInvoice(
+                invoice.getId(),
+                List.of(new PaymentCommand(
+                        transfer.getId(), new BigDecimal("10.00"), true,
+                        null, null, null, "TR-1", null, null, null,
+                        null, null, UUID.randomUUID(), null, transferDate)),
+                authentication());
+
+        assertThat(paid.getPagos().getFirst().getTransferDate()).isEqualTo(transferDate);
+
+        var futureInvoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        futureInvoice.confirm("FV-001-26-000002", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(futureInvoice.getId()))
+                .thenReturn(Optional.of(futureInvoice));
+        assertThatThrownBy(() -> service.payInvoice(
+                futureInvoice.getId(),
+                List.of(new PaymentCommand(
+                        transfer.getId(), new BigDecimal("10.00"), true,
+                        null, null, null, "TR-2", null, null, null,
+                        null, null, UUID.randomUUID(), null,
+                        transferDate.plusDays(1))),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.payment.transfer_date_cannot_be_future");
+
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", false);
+        var cashInvoice = draft(CommercialDocumentType.FACTURA_VENTA);
+        cashInvoice.confirm("FV-001-26-000003", UUID.randomUUID(), NOW, false);
+        when(documentRepository.findById(cashInvoice.getId()))
+                .thenReturn(Optional.of(cashInvoice));
+        when(paymentMethodRepository.findById(cash.getId())).thenReturn(Optional.of(cash));
+        assertThatThrownBy(() -> service.payInvoice(
+                cashInvoice.getId(),
+                List.of(new PaymentCommand(
+                        cash.getId(), new BigDecimal("10.00"), true,
+                        null, null, null, null, null, null, null,
+                        null, null, UUID.randomUUID(), null, transferDate)),
+                authentication()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("message.payment.transfer_date_only_for_transfer");
+    }
+
+    @Test
     void receivablePaymentRejectsZeroAndDuplicateRequestIds() {
         var invoice = draft(CommercialDocumentType.FACTURA_VENTA);
         invoice.confirm("FV-001-26-000001", UUID.randomUUID(), NOW, false);

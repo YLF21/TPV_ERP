@@ -19,6 +19,7 @@ type Request = <T>(path: string, options?: {
 
 type Props = {
   locale: LocaleCode;
+  interfaceMode?: "KEYBOARD" | "TOUCH";
   session: UserSession;
   terminalContext: TerminalContext;
   customer: SaleCustomerSummary;
@@ -44,6 +45,7 @@ const sortOpenReceivables = (left: CustomerReceivable, right: CustomerReceivable
 
 export function SaleCustomerReceivablesDialog({
   locale,
+  interfaceMode = "KEYBOARD",
   session,
   terminalContext,
   customer,
@@ -170,6 +172,7 @@ export function SaleCustomerReceivablesDialog({
     </section>
     {payment && <CustomerReceivablePaymentDialog
       locale={locale}
+      interfaceMode={interfaceMode}
       receivable={payment}
       token={session.accessToken}
       terminalCode={terminalContext.terminalCode}

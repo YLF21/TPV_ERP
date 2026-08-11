@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -2850,7 +2851,7 @@ public class DocumentService {
                     command.reference(), Instant.now(clock), command.cardMode(),
                     command.paymentTerminalProvider(), command.paymentTerminalStatus(),
                     command.cardAuthorizationCode(), command.paymentTerminalId(),
-                    command.requestId(), command.comment()));
+                    command.requestId(), command.comment(), command.transferDate()));
             hasPrincipal = hasPrincipal || principal;
         }
     }
@@ -2904,6 +2905,7 @@ public class DocumentService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "metodo de pago activo no encontrado"));
         requireReferenceIfNeeded(method, command);
+        requireValidTransferDate(method, command);
         requireCashAmountsOnlyForCashMethods(method, command);
         command = validateCardTerminalPayment(method, command, terminalId);
         if (MEMBER_BALANCE_METHOD.equals(method.getNombre())) {
@@ -2912,7 +2914,8 @@ public class DocumentService {
             return new PaymentCommand(
                     command.metodoPagoId(), consumed, command.principal(),
                     command.entregado(), command.cambio(), null, command.reference(),
-                    null, null, null, null, null, command.requestId(), command.comment());
+                    null, null, null, null, null, command.requestId(), command.comment(),
+                    command.transferDate());
         }
         if (!VOUCHER_METHOD.equals(method.getNombre())) {
             if (command.voucherCode() != null && !command.voucherCode().isBlank()) {
@@ -2929,7 +2932,7 @@ public class DocumentService {
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
                 command.cardAuthorizationCode(), command.paymentTerminalId(), command.requestId(),
-                command.comment());
+                command.comment(), command.transferDate());
     }
     // Consumes vouchers before storing payments so the applied amount is exact.
 
@@ -3146,7 +3149,8 @@ public class DocumentService {
                 command.metodoPagoId(), command.importe(), command.principal(),
                 command.entregado(), command.cambio(), command.voucherCode(), command.reference(),
                 command.cardMode(), command.paymentTerminalProvider(), command.paymentTerminalStatus(),
-                command.cardAuthorizationCode(), currentTerminalId, command.requestId());
+                command.cardAuthorizationCode(), currentTerminalId, command.requestId(),
+                command.comment(), command.transferDate());
     }
 
     private String nextNumber(CommercialDocument document) {
@@ -3199,6 +3203,22 @@ public class DocumentService {
                 .orElseThrow(TicketNotFoundException::new);
         initializeDetailedCollections(ticket, storeId);
         return ticket;
+    }
+
+    private void requireValidTransferDate(PaymentMethod method, PaymentCommand command) {
+        if (command.transferDate() == null) {
+            return;
+        }
+        if (!method.isTransfer()) {
+            throw new IllegalArgumentException(
+                    "message.payment.transfer_date_only_for_transfer");
+        }
+        var businessDate = LocalDate.now(clock.withZone(
+                ZoneId.of(organization.currentStore().getTimezone())));
+        if (command.transferDate().isAfter(businessDate)) {
+            throw new IllegalArgumentException(
+                    "message.payment.transfer_date_cannot_be_future");
+        }
     }
 
     private CommercialDocument loadDetailedSalesInvoiceByNumber(String invoiceNumber) {
