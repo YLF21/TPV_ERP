@@ -139,6 +139,47 @@ describe("SaleTicketInvoiceDialog", () => {
     );
   });
 
+  it("keeps an active customer selectable when the ticket already references it", async () => {
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/by-number?number=T-CUSTOMER") {
+        return {
+          id: "ticket-customer",
+          numero: "T-CUSTOMER",
+          fecha: "2026-08-11",
+          total: "16.40",
+          customerId: "customer-1",
+          customerName: "Cliente Uno",
+        } as never;
+      }
+      if (path === "/customers/sale-options/customer-1") {
+        return {
+          id: "customer-1",
+          clientId: "C1",
+          fiscalName: "Cliente Uno",
+          documentNumber: "B12345678",
+          active: true,
+          activeMember: false,
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <SaleTicketInvoiceDialog
+        token="token"
+        locale="es"
+        terminalContext={terminalContext}
+        printInvoice={printInvoice}
+        initialTicketNumber="T-CUSTOMER"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findAllByText("Cliente Uno")).toHaveLength(2);
+    expect(screen.getByText("Activo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear factura" })).toBeEnabled();
+  });
+
   it("retries only printing when the invoice was already created", async () => {
     printInvoice
       .mockResolvedValueOnce({ status: "FAILED", technicalMessage: "offline" })

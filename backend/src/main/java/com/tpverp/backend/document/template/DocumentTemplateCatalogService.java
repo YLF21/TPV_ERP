@@ -77,25 +77,6 @@ public class DocumentTemplateCatalogService {
     }
 
     /**
-     * Internal boundary for the future compiler/validator. This method is intentionally not
-     * exposed through the HTTP controller.
-     */
-    @Transactional
-    public TemplateView recordValidatedArtifact(
-            UUID templateId,
-            int schemaVersion,
-            String artifactReference,
-            String sha256) {
-        var template = currentStoreTemplateForUpdate(templateId);
-        template.validateArtifact(
-                schemaVersion, artifactReference, sha256, clock.instant());
-        var saved = templates.saveAndFlush(template);
-        audit.record("DOCUMENT_TEMPLATE_VALIDATED", AuditResult.EXITO,
-                auditDetails(saved));
-        return TemplateView.from(saved);
-    }
-
-    /**
      * Internal boundary for a trusted validator. Activating a new version retires only the
      * previous template for the same store and document type.
      */

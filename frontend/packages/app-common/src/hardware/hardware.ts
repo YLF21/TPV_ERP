@@ -124,6 +124,8 @@ export type TicketPrintRequest = {
   layout?: "STANDARD" | "GIFT_RECEIPT" | "CANCELLATION_RECEIPT";
   title?: string;
   notice?: string;
+  logo?: string;
+  notes?: string[];
   details?: Array<{ label: string; value: string }>;
   documentNumber: string;
   storeName: string;
@@ -138,7 +140,7 @@ export type TicketPrintRequest = {
   labels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
   escposLabels?: { terminal: string; item: string; quantity: string; price: string; total: string; discount?: string; base?: string; tax?: string };
   escposContent?: { storeName: string; terminalCode: string; documentNumber: string; lineNames: string[]; paymentMethods: string[] };
-  issuer?: { name: string; taxId: string; address: string };
+  issuer?: { name: string; taxId: string; address: string; logo?: string };
   customer?: { name: string; taxId: string; address: string };
   partyLabels?: { issuer: string; customer: string; taxId: string };
 };
@@ -157,6 +159,7 @@ export type A4DocumentPrintRequest = {
   tax: number;
   taxIncluded: boolean | "MIXED";
   total: number;
+  logo?: string;
   issuer?: { name: string; taxId: string; phone?: string; logo?: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
   customer?: { name: string; taxId: string; phone?: string; address: { line1?: string; postalCode?: string; city?: string; province?: string; country?: string } };
   payments?: Array<{ method: string; amount: number; reference?: string }>;
@@ -164,6 +167,7 @@ export type A4DocumentPrintRequest = {
   bankAccounts?: Array<{ bankName: string; iban: string }>;
   qrUrl?: string;
   qrImage?: string;
+  renderedPdf?: { contentType: "application/pdf"; base64: string };
   metadata?: Array<{ label: string; value: string }>;
   notes?: string[];
   labels: {

@@ -1,8 +1,14 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, screen } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { renderA4DocumentHtml } = require("./a4-renderer.cjs");
+const {
+  isMicrosoftPrintToPdf,
+  renderedPdfBuffer,
+  renderedPdfDataUrl,
+  renderedPdfDefaultFileName
+} = require("./pdf-document.cjs");
 const { renderTicketHtml } = require("./ticket-renderer.cjs");
 const { renderProductLabelHtml, normalizedProfile } = require("./product-label-renderer.cjs");
 const { renderTableReportHtml } = require("./table-report-renderer.cjs");
@@ -748,10 +754,23 @@ async function printTicket(ticket, config) {
   const routedConfig = withTicketPrinterRoute(nextConfig, route);
 
   if (nextConfig.ticketPrinterDriver === "ESCPOS_RAW") {
+    let logoRaster;
+    if (typeof ticket?.logo === "string" && ticket.logo.startsWith("data:image/")) {
+      const source = nativeImage.createFromDataURL(ticket.logo);
+      if (!source.isEmpty()) {
+        const sourceSize = source.getSize();
+        const scale = Math.min(1, 384 / sourceSize.width, 192 / sourceSize.height);
+        const width = Math.max(1, Math.round(sourceSize.width * scale));
+        const height = Math.max(1, Math.round(sourceSize.height * scale));
+        const resized = source.resize({ width, height, quality: "best" });
+        const size = resized.getSize();
+        logoRaster = { width: size.width, height: size.height, bgra: resized.toBitmap() };
+      }
+    }
     const shouldOpenDrawer = shouldOpenCashDrawerForTicket(nextConfig, ticket);
     return executeEscposTicketPrint({
       sendBuffer: (buffer) => sendTicketPrinterRawBuffer(routedConfig, buffer),
-      ticketBuffer: buildTicketBuffer(ticket),
+      ticketBuffer: buildTicketBuffer({ ...ticket, logoRaster }),
       drawerBuffer: shouldOpenDrawer && nextConfig.cashDrawerConnection === "PRINTER"
         ? buildCashDrawerBuffer()
         : undefined,
@@ -848,6 +867,19 @@ async function exportA4DocumentPdf(document, defaultFileName) {
   if (result.canceled || !result.filePath) {
     return { ok: true, canceled: true };
   }
+  let jasperPdf;
+  try {
+    jasperPdf = renderedPdfBuffer(document);
+    if (jasperPdf) {
+      fs.writeFileSync(result.filePath, jasperPdf);
+      return { ok: true, canceled: false, filePath: result.filePath };
+    }
+  } catch (error) {
+    return structuredError(
+      "PDF_EXPORT_FAILED",
+      error instanceof Error ? error.message : "El PDF Jasper no es valido"
+    );
+  }
   const printWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -887,6 +919,38 @@ async function printA4Document(document, config) {
     return structuredError("PRINTER_NOT_CONFIGURED", "Impresora A4 no configurada");
   }
 
+  let jasperPdf;
+  try {
+    jasperPdf = renderedPdfBuffer(document);
+  } catch (error) {
+    return structuredError(
+      "PRINT_FAILED",
+      error instanceof Error ? error.message : "El PDF Jasper no es valido"
+    );
+  }
+
+  if (jasperPdf && isMicrosoftPrintToPdf(printerName)) {
+    if (!mainWindow) {
+      return structuredError("WINDOW_UNAVAILABLE", "Ventana principal no disponible");
+    }
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: renderedPdfDefaultFileName(document),
+      filters: [{ name: "PDF", extensions: ["pdf"] }]
+    });
+    if (result.canceled || !result.filePath) {
+      return { ok: true, canceled: true };
+    }
+    try {
+      fs.writeFileSync(result.filePath, jasperPdf);
+      return { ok: true, canceled: false, filePath: result.filePath };
+    } catch (error) {
+      return structuredError(
+        "PDF_EXPORT_FAILED",
+        error instanceof Error ? error.message : "No se pudo guardar el PDF del documento"
+      );
+    }
+  }
+
   const printWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -897,7 +961,9 @@ async function printA4Document(document, config) {
   });
 
   try {
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderA4DocumentHtml(document))}`);
+    const jasperPdfUrl = jasperPdf ? renderedPdfDataUrl(document) : null;
+    await printWindow.loadURL(jasperPdfUrl
+      || `data:text/html;charset=utf-8,${encodeURIComponent(renderA4DocumentHtml(document))}`);
     await new Promise((resolve, reject) => {
       const printOptions = {
         silent: !showPrintDialog,

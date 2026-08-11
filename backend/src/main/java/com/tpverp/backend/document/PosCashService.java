@@ -410,7 +410,7 @@ public class PosCashService {
                 : documents.createApprovedCardTicketFromSnapshot(
                         snapshot(quote, cash.getId(), prepared), payment, authentication);
         completeTemporaryPriceAuthorizations("POS_CASH", request.checkoutId());
-        var printTicket = TicketPrintView.from(ticket);
+        var printTicket = documents.ticketPrintView(ticket);
         reserved.complete(ticket.getId(), ticket.getNumero(), total, received, change,
                 snapshots.serialize(printTicket), Instant.now());
         checkouts.save(reserved);
@@ -463,6 +463,11 @@ public class PosCashService {
                     throw new IllegalArgumentException(
                             "Una linea de origen solo puede aparecer una vez en el carrito");
                 }
+                sensitiveOperations.add(
+                        line.returnOrigin().sourceType()
+                                == TicketReturnService.ReturnSourceType.SALES_INVOICE
+                                ? SaleOperationCode.RETURN_SALES_INVOICE
+                                : SaleOperationCode.RETURN_TICKET);
                 return authoritativeReturnLine(line, store.getId());
             }
             var product = products.findById(line.productId())
@@ -584,7 +589,11 @@ public class PosCashService {
             availableSerials = option.serialNumbers();
             giftReceiptLineId = option.giftReceiptLineId();
         } else {
-            ticket = documents.ticketForReturnByNumber(origin.sourceCode());
+            var invoiceOrigin = origin.sourceType()
+                    == TicketReturnService.ReturnSourceType.SALES_INVOICE;
+            ticket = invoiceOrigin
+                    ? documents.invoiceForReturnByNumber(origin.sourceCode())
+                    : documents.ticketForReturnByNumber(origin.sourceCode());
             var option = documents.cardRefundLineOptions(ticket.getId()).stream()
                     .filter(line -> line.lineId().equals(origin.sourceLineId())
                             && line.lineType() == DocumentLineType.PRODUCT)
@@ -597,7 +606,8 @@ public class PosCashService {
         }
         if (!ticket.getTiendaId().equals(storeId)
                 || !ticket.getId().equals(origin.sourceTicketId())) {
-            throw new IllegalArgumentException("El origen de devolucion no pertenece al ticket indicado");
+            throw new IllegalArgumentException(
+                    "El origen de devolucion no pertenece al documento indicado");
         }
         var requestedQuantity = request.quantity().abs();
         ProductQuantityPolicy.requireValid(productType, requestedQuantity);
@@ -611,7 +621,7 @@ public class PosCashService {
                         && line.getLineType() == DocumentLineType.PRODUCT)
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "La linea no pertenece al ticket original"));
+                        "La linea no pertenece al documento original"));
         if (!source.getProductoId().equals(request.productId())) {
             throw new IllegalArgumentException("El producto no coincide con la linea original");
         }
@@ -631,7 +641,8 @@ public class PosCashService {
                 source.getRegimenImpuesto(), source.getPorcentajeImpuesto(),
                 DocumentLineType.PRODUCT, null, null, null, serials,
                 false, false, origin.sourceType(), origin.sourceCode(),
-                ticket.getId(), source.getId(), giftReceiptLineId);
+                ticket.getId(), source.getId(), giftReceiptLineId)
+                .withBarcode(source.getCodigoBarras());
     }
 
     private static void validateReturnSerials(

@@ -56,21 +56,6 @@ class DocumentTemplateCatalogServiceTest {
     }
 
     @Test
-    void rejectsArtifactValidationOutsideCurrentStore() {
-        var store = DocumentTemplateTest.store();
-        var templateId = UUID.randomUUID();
-        when(organization.currentStore()).thenReturn(store);
-        when(templates.findStoreTemplateForUpdate(
-                templateId, store.getEmpresa().getId(), store.getId()))
-                .thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.recordValidatedArtifact(
-                templateId, 1, "signed:test", "a".repeat(64)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("document_template_not_found");
-    }
-
-    @Test
     void activationRetiresOnlyPreviousTemplateForSameStoreAndType() {
         var store = DocumentTemplateTest.store();
         var previous = validated(DocumentTemplate.storeDraft(

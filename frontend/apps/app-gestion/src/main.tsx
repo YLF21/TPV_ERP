@@ -78,7 +78,19 @@ const CashCurrentBalancesScreen = lazy(() =>
   }))
 );
 
-type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "internalEan";
+const DocumentTemplateSettingsScreen = lazy(() =>
+  import("./DocumentTemplateSettingsScreen").then(({ DocumentTemplateSettingsScreen }) => ({
+    default: DocumentTemplateSettingsScreen
+  }))
+);
+
+const StoreDocumentPrintSettingsScreen = lazy(() =>
+  import("./StoreDocumentPrintSettingsScreen").then(({ StoreDocumentPrintSettingsScreen }) => ({
+    default: StoreDocumentPrintSettingsScreen
+  }))
+);
+
+type GestionModule = "dashboard" | "verifactu" | "controlAlerts" | "cashClosures" | "cashCurrentBalances" | "promotions" | "sales" | "stock" | "users" | "roles" | "paymentMethods" | "salesOperationSecurity" | "internalEan" | "documentTemplates" | "documentPrintSettings";
 type StockSelection = {
   key: string;
   view?: StockViewKey;
@@ -160,6 +172,8 @@ function App() {
         onOpenPaymentMethods={() => setModule("paymentMethods")}
         onOpenSalesOperationSecurity={() => setModule("salesOperationSecurity")}
         onOpenInternalEan={() => setModule("internalEan")}
+        onOpenDocumentTemplates={() => setModule("documentTemplates")}
+        onOpenDocumentPrintSettings={() => setModule("documentPrintSettings")}
         onOpenStock={(selection) => {
           setStockSelection(selection);
           setModule("stock");
@@ -190,6 +204,8 @@ function GestionScreen({
   onOpenPaymentMethods,
   onOpenSalesOperationSecurity,
   onOpenInternalEan,
+  onOpenDocumentTemplates,
+  onOpenDocumentPrintSettings,
   onOpenStock,
   onLocaleChange,
   onLogout
@@ -212,6 +228,8 @@ function GestionScreen({
   onOpenPaymentMethods: () => void;
   onOpenSalesOperationSecurity: () => void;
   onOpenInternalEan: () => void;
+  onOpenDocumentTemplates: () => void;
+  onOpenDocumentPrintSettings: () => void;
   onOpenStock: (selection: StockSelection) => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout: () => void;
@@ -220,9 +238,11 @@ function GestionScreen({
   const modules = visibleGestionModules(session);
   const verifactuAllowed = modules.includes("gestion.verifactu");
   const canConfigurePaymentMethods = session.permissions.includes("ADMIN");
+  const canManageDocumentTemplates = modules.includes("gestion.documentTemplates");
   const effectiveModule = (module === "verifactu" && !verifactuAllowed)
-    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "internalEan")
+    || ((module === "paymentMethods" || module === "salesOperationSecurity" || module === "internalEan" || module === "documentPrintSettings")
       && !canConfigurePaymentMethods)
+    || (module === "documentTemplates" && !canManageDocumentTemplates)
     ? "dashboard"
     : module;
   const canManageProducts = session.permissions.includes("ADMIN")
@@ -374,11 +394,19 @@ function GestionScreen({
     ...(securityChildren.length > 0
       ? [{ key: "security", label: t("gestion.security.navigation"), children: securityChildren }]
       : []),
-    ...(canConfigurePaymentMethods
+    ...(canConfigurePaymentMethods || canManageDocumentTemplates
       ? [{
           key: "configuration",
           label: t("gestion.configuration.navigation"),
-          children: [{
+          children: [...(canManageDocumentTemplates ? [{
+            key: "documentTemplates",
+            label: t("gestion.documentTemplates.navigation"),
+            onOpen: onOpenDocumentTemplates
+          }] : []), ...(canConfigurePaymentMethods ? [{
+            key: "documentPrintSettings",
+            label: t("gestion.documentPrint.navigation"),
+            onOpen: onOpenDocumentPrintSettings
+          }, {
             key: "paymentMethods",
             label: t("gestion.paymentMethods.navigation"),
             onOpen: onOpenPaymentMethods
@@ -390,7 +418,7 @@ function GestionScreen({
             key: "internalEan",
             label: t("gestion.internalEan.navigation"),
             onOpen: onOpenInternalEan
-          }]
+          }] : [])]
         }]
       : [])
   ];
@@ -486,6 +514,10 @@ function GestionScreen({
     content = <SalesOperationSecurityScreen session={session} t={t} />;
   } else if (effectiveModule === "internalEan" && canConfigurePaymentMethods) {
     content = <InternalEanSettingsScreen session={session} t={t} />;
+  } else if (effectiveModule === "documentTemplates" && canManageDocumentTemplates) {
+    content = <DocumentTemplateSettingsScreen session={session} t={t} />;
+  } else if (effectiveModule === "documentPrintSettings" && canConfigurePaymentMethods) {
+    content = <StoreDocumentPrintSettingsScreen session={session} storeName={terminalContext.storeName} t={t} />;
   } else {
     content = (
       <GestionDashboard

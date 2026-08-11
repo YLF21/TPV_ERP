@@ -11,6 +11,7 @@ import {
 } from "../sale/operationSecurity";
 import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 import { SaleOperationAuthorizationFields } from "./SaleOperationAuthorizationFields";
+import { TicketReturnDialog, type ReturnCartLine } from "./TicketReturnDialog";
 
 type Ticket = {
   id: string;
@@ -69,6 +70,7 @@ type StoredCancellationAttempt = {
 };
 
 const TICKET_HAS_PREVIOUS_RETURNS = "TICKET_HAS_PREVIOUS_RETURNS";
+const TICKET_NOT_FOUND = "TICKET_NOT_FOUND";
 
 type Props = {
   token?: string;
@@ -79,8 +81,10 @@ type Props = {
   terminalContext: TerminalContext;
   mode: "LAST" | "BY_NUMBER";
   initialTicketNumber?: string;
+  canStartInvoiceCancellation?: boolean;
   onClose: () => void;
   onFiscalMutation?: () => void;
+  onInvoiceAddToCart?: (lines: ReturnCartLine[]) => void;
 };
 
 export function SaleTicketCancellationDialog({
@@ -92,8 +96,10 @@ export function SaleTicketCancellationDialog({
   terminalContext,
   mode,
   initialTicketNumber = "",
+  canStartInvoiceCancellation = true,
   onClose,
   onFiscalMutation,
+  onInvoiceAddToCart,
 }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
@@ -111,6 +117,7 @@ export function SaleTicketCancellationDialog({
   const [warning, setWarning] = useState("");
   const [message, setMessage] = useState("");
   const [receiptToRetry, setReceiptToRetry] = useState<CancellationReceipt | null>(null);
+  const [invoiceNumberToRectify, setInvoiceNumberToRectify] = useState("");
   const effectiveAuthorization = authorization ?? (
     permissions.includes("ADMIN")
       || permissions.includes("GESTION_VENTAS")
@@ -160,7 +167,14 @@ export function SaleTicketCancellationDialog({
       setPassword("");
     } catch (failure) {
       setPreview(null);
-      if (apiProblemCode(failure) === TICKET_HAS_PREVIOUS_RETURNS) {
+      const problemCode = apiProblemCode(failure);
+      if (mode === "BY_NUMBER" && problemCode === TICKET_NOT_FOUND && onInvoiceAddToCart) {
+        if (canStartInvoiceCancellation) {
+          setInvoiceNumberToRectify(number!.trim());
+        } else {
+          setError(t("invoiceCancellation.emptyCart"));
+        }
+      } else if (problemCode === TICKET_HAS_PREVIOUS_RETURNS) {
         setWarning(t("sale.ticketCancel.warning.previousReturns"));
       } else {
         setError(failure instanceof Error ? failure.message : t("sale.ticketCancel.error.load"));
@@ -176,17 +190,21 @@ export function SaleTicketCancellationDialog({
     else searchRef.current?.focus();
   }, [initialTicketNumber, mode, token]);
 
-  useEffect(() => dialogRef.current
-    ? activateModalFocusTrap(dialogRef.current as unknown as ModalFocusRoot, document)
-    : undefined, []);
+  useEffect(() => invoiceNumberToRectify || !dialogRef.current
+    ? undefined
+    : activateModalFocusTrap(
+      dialogRef.current as unknown as ModalFocusRoot,
+      document,
+    ), [invoiceNumberToRectify]);
 
   useEffect(() => {
+    if (invoiceNumberToRectify) return undefined;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busy) onClose();
     };
     globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
-  }, [busy, onClose]);
+  }, [busy, invoiceNumberToRectify, onClose]);
 
   async function printRestoredVouchers(
     vouchers: Array<{ code: string; balance: number | string }>,
@@ -361,6 +379,19 @@ export function SaleTicketCancellationDialog({
     }
   }
 
+  if (invoiceNumberToRectify) {
+    return (
+      <TicketReturnDialog
+        token={token}
+        locale={locale}
+        mode="INVOICE_CANCELLATION"
+        initialSourceCode={invoiceNumberToRectify}
+        onClose={onClose}
+        onAddToCart={onInvoiceAddToCart!}
+      />
+    );
+  }
+
   return (
     <div className="sale-action-overlay" role="presentation">
       <section
@@ -372,7 +403,9 @@ export function SaleTicketCancellationDialog({
         aria-labelledby="sale-ticket-cancel-title"
       >
         <header className="sale-ticket-operation-header">
-          <h2 id="sale-ticket-cancel-title">{t("sale.ticketCancel.title")}</h2>
+          <h2 id="sale-ticket-cancel-title">{t(mode === "BY_NUMBER"
+            ? "sale.documentCancel.title"
+            : "sale.ticketCancel.title")}</h2>
           <button
             type="button"
             aria-label={t("common.close")}
@@ -390,7 +423,7 @@ export function SaleTicketCancellationDialog({
             }}
           >
             <label>
-              {t("sale.ticketCancel.ticketCode")}
+              {t("sale.documentCancel.documentCode")}
               <input
                 ref={searchRef}
                 value={ticketNumber}
@@ -399,7 +432,7 @@ export function SaleTicketCancellationDialog({
               />
             </label>
             <button type="submit" disabled={busy || !ticketNumber.trim()}>
-              {t("sale.ticketCancel.search")}
+              {t("sale.documentCancel.search")}
             </button>
           </form>
         )}

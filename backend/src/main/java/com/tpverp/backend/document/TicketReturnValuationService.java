@@ -73,9 +73,10 @@ public class TicketReturnValuationService {
             CommercialDocument original,
             Map<UUID, BigDecimal> selectedQuantities) {
         Objects.requireNonNull(original, "original");
-        if (original.getTipo() != CommercialDocumentType.TICKET) {
+        if (original.getTipo() != CommercialDocumentType.TICKET
+                && original.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
             throw new IllegalArgumentException(
-                    "Solo se pueden valorar devoluciones de tickets");
+                    "Solo se pueden valorar devoluciones de tickets o facturas de venta");
         }
         var selected = canonicalSelection(selectedQuantities);
         if (selected.isEmpty()) {
@@ -87,7 +88,7 @@ public class TicketReturnValuationService {
                 .collect(Collectors.toMap(DocumentLine::getId, Function.identity()));
         if (!sourceLines.keySet().containsAll(selected.keySet())) {
             throw new IllegalArgumentException(
-                    "La seleccion contiene lineas ajenas al ticket original");
+                    "La seleccion contiene lineas ajenas al documento original");
         }
 
         var remaining = new LinkedHashMap<DocumentLine, BigDecimal>();

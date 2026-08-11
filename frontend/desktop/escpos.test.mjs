@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { buildCashDrawerBuffer, buildTicketBuffer, normalizeSerialPath, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
+const { buildCashDrawerBuffer, buildRasterImageBuffer, buildTicketBuffer, normalizeSerialPath, shouldOpenCashDrawerForTicket } = require("./escpos.cjs");
 
 describe("escpos command builder", () => {
   it("builds a ticket with init, text, line feed and cut command", () => {
@@ -85,6 +85,23 @@ describe("escpos command builder", () => {
 
   it("builds the standard cash drawer pulse command", () => {
     expect([...buildCashDrawerBuffer()]).toEqual([0x1b, 0x70, 0x00, 0x19, 0xfa]);
+  });
+
+  it("encodes a monochrome store logo and prints configured notes", () => {
+    const raster = buildRasterImageBuffer({
+      width: 8,
+      height: 1,
+      bgra: Buffer.from(Array.from({ length: 8 }, (_, index) =>
+        index < 4 ? [0, 0, 0, 255] : [255, 255, 255, 255]).flat()),
+    });
+    expect([...raster.subarray(0, 8)]).toEqual([0x1d, 0x76, 0x30, 0x00, 1, 0, 1, 0]);
+    expect(raster[8]).toBe(0xf0);
+
+    const text = buildTicketBuffer({
+      storeName: "Tienda", terminalCode: "01", lines: [], payments: [], total: 0,
+      notes: ["Gracias por su compra"],
+    }).toString("latin1");
+    expect(text).toContain("Gracias por su compra");
   });
 
   it("builds a non-fiscal cancellation receipt with compensation details", () => {

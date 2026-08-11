@@ -62,6 +62,8 @@ describe("SettingsScreen", () => {
     expect(html).toContain("AJUSTES");
     expect(html).toContain("Terminal");
     expect(html).toContain("Hardware");
+    expect(html).toContain("Impresión de documentos");
+    expect(html).toContain("Configurar impresión");
     expect(html).toContain("Entrada de cobro");
     expect(html).toContain('<label for="cash-input-mode">Entrada de cobro</label>');
     expect(html).toContain('<select id="cash-input-mode"');

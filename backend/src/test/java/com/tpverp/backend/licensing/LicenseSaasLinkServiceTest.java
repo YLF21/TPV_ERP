@@ -2,6 +2,8 @@ package com.tpverp.backend.licensing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -10,6 +12,7 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.installation.CommercialBootstrapService;
+import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.licensing.application.TaxpayerType;
 import com.tpverp.backend.organization.Company;
@@ -175,6 +178,25 @@ class LicenseSaasLinkServiceTest {
         verify(credentials).writeToken("token-instalacion");
     }
 
+    @Test
+    void igicMinoristaConfiguraCeroComoImpuestoPredeterminado() {
+        var installation = installation();
+        var store = store();
+        var server = new Terminal(store, "SERVIDOR", TerminalType.SERVIDOR, "hash");
+        when(installations.findAll()).thenReturn(List.of(installation));
+        when(stores.findAll()).thenReturn(List.of(store));
+        when(terminals.findByTiendaIdAndTipo(store.getId(), TerminalType.SERVIDOR))
+                .thenReturn(Optional.of(server));
+        when(client.link(any())).thenReturn(saasResponse(
+                UUID.randomUUID(), UUID.randomUUID(), CommercialProfile.MINORISTA));
+
+        service.link("ABC123");
+
+        verify(jdbc).update(
+                contains("where tienda_id = ? and porcentaje = ?"),
+                eq(store.getId()), eq(new java.math.BigDecimal("0.00")));
+    }
+
     private static Installation installation() {
         return new Installation("INST-1", "public-key", Instant.parse("2026-06-08T00:00:00Z"));
     }
@@ -216,6 +238,11 @@ class LicenseSaasLinkServiceTest {
     }
 
     private static LicenseSaasLinkResponse saasResponse(UUID companyId, UUID storeId) {
+        return saasResponse(companyId, storeId, CommercialProfile.MAYORISTA);
+    }
+
+    private static LicenseSaasLinkResponse saasResponse(
+            UUID companyId, UUID storeId, CommercialProfile commercialProfile) {
         return new LicenseSaasLinkResponse(
                 "LIC-SAAS-1",
                 companyId,
@@ -233,6 +260,7 @@ class LicenseSaasLinkServiceTest {
                 "B12345678",
                 TaxpayerType.SOCIEDAD,
                 TaxRegime.IGIC,
+                commercialProfile,
                 java.time.LocalDate.of(2027, 1, 1),
                 3,
                 Instant.parse("2026-07-22T10:00:00Z"),

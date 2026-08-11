@@ -141,6 +141,64 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   expect(screen.queryByRole("button",{name:/Pendiente/})).toBeNull();
  });
 
+ it("authorizes an invoice return before reserving it and then exposes the original cash payment", async () => {
+  const collecting:ServerSession={
+   id:"invoice-refund-authorized",
+   total:"1000000.00",
+   documentTotal:"-1000000.00",
+   direction:"REFUND",
+   status:"COLLECTING",
+   allocations:[],
+   refundPaymentAvailability:[{
+    paymentMethod:"EFECTIVO",
+    kind:"CASH",
+    originalAmount:"1000000.00",
+    refundedAmount:"0.00",
+    reservedAmount:"0.00",
+    availableAmount:"1000000.00",
+   }],
+  };
+  apiRequestMock.mockImplementation(async(path:string,options?:{body?:unknown})=>{
+   if(path==="/terminal-configuration/payment")return {rules:{cardManualEnabled:true,integratedCardEnabled:false},providerDescriptors:[],configuration:{provider:"",enabled:false}};
+   if(path==="/return-policy")return {policy:"REFUND_ALLOWED"};
+   if(path==="/pos/payment-sessions/active")return null;
+   if(path==="/pos/payment-sessions"){
+    expect(options?.body).toMatchObject({sale:{operationAuthorizations:{
+     RETURN_SALES_INVOICE:{authorizerPassword:"secret"},
+    }}});
+    return collecting;
+   }
+   throw new Error(`unexpected request ${path}`);
+  });
+  const ref=createRef<SalePaymentCheckoutHandle>();
+  render(createElement(SalePaymentCheckout,{
+   ref,locale:"es",currentUsername:"ADMIN",totalCents:-100000000,
+   sale:{customerId:null,lines:[{productId:"p-1",quantity:-1,discount:0}]},
+   saleMutationAuthorizations:[{
+    code:"RETURN_SALES_INVOICE",
+    label:"Devolución o anulación operativa de factura",
+    authorization:{mode:"CURRENT_PASSWORD",requireUsername:false,requirePassword:true},
+   }],
+   permissions:["ADMIN"],terminal:{storeName:"Tienda",terminalCode:"01"},
+   unifiedCheckout:true,onFinalized:vi.fn(),
+  }));
+  await waitFor(()=>expect(ref.current).not.toBeNull());
+
+  act(()=>ref.current!.openCheckout("CASH"));
+
+  const dialog=await screen.findByRole("dialog",{name:/Autorizaci.n de la venta/i});
+  expect(apiRequestMock.mock.calls.filter(([path])=>path==="/pos/payment-sessions")).toHaveLength(0);
+  fireEvent.change(within(dialog).getByLabelText(/Tu contrase/i),{target:{value:"secret"}});
+  fireEvent.click(within(dialog).getByRole("button",{name:/Confirmar y continuar/i}));
+
+  await waitFor(()=>expect(apiRequestMock.mock.calls.filter(
+   ([path])=>path==="/pos/payment-sessions",
+  )).toHaveLength(1));
+  expect(await screen.findByRole("button",{name:/Efectivo.*Disponible: 1\.000\.000,00 €/i}))
+   .toBeEnabled();
+  expect(screen.queryByText(/solo puede devolverse mediante un vale/i)).toBeNull();
+ });
+
  it("keeps a cash refund retryable after a server failure and reuses the same attempt", async () => {
   const collecting:ServerSession={id:"refund-cash-retry",total:"10.00",documentTotal:"-10.00",direction:"REFUND",status:"COLLECTING",allocations:[]};
   const allocationIds:string[]=[];
@@ -171,6 +229,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   await waitFor(()=>expect(ref.current).not.toBeNull());
   act(()=>ref.current!.openCheckout("CASH"));
   const amount=await screen.findByRole("textbox",{name:"IMPORTE A DEVOLVER"});
+  await waitFor(()=>expect(amount).toBeEnabled());
 
   fireEvent.keyDown(amount,{key:"Enter"});
   await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("No se pudo registrar la devolución"));
@@ -213,7 +272,9 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   }));
   await waitFor(()=>expect(ref.current).not.toBeNull());
   act(()=>ref.current!.openCheckout("CASH"));
-  fireEvent.keyDown(await screen.findByLabelText(/importe a devolver/i),{key:"Enter"});
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+  await waitFor(()=>expect(amount).toBeEnabled());
+  fireEvent.keyDown(amount,{key:"Enter"});
 
   const dialog=await screen.findByRole("dialog",{name:/Autorización de la venta/i});
   expect(dialog.parentElement).toHaveClass("sale-mutation-authorization-overlay");
@@ -249,7 +310,9 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
   }));
   await waitFor(()=>expect(ref.current).not.toBeNull());
   act(()=>ref.current!.openCheckout("VOUCHER"));
-  fireEvent.keyDown(await screen.findByLabelText(/importe a devolver/i),{key:"Enter"});
+  const amount=await screen.findByLabelText(/importe a devolver/i);
+  await waitFor(()=>expect(amount).toBeEnabled());
+  fireEvent.keyDown(amount,{key:"Enter"});
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalledWith(
    printTicket("R-1"),
@@ -293,6 +356,7 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   act(()=>ref.current!.openCheckout("CASH"));
   const amount=await screen.findByLabelText(/importe a devolver/i);
+  await waitFor(()=>expect(amount).toBeEnabled());
   fireEvent.keyDown(amount,{key:"Enter"});
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalled());

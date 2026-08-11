@@ -20,6 +20,7 @@ class SaleOperationSecurityRegistryTest {
                 .containsExactly(
                         SaleOperationCategory.CASH,
                         SaleOperationCategory.TICKET,
+                        SaleOperationCategory.INVOICE,
                         SaleOperationCategory.PRODUCT,
                         SaleOperationCategory.DISCOUNT,
                         SaleOperationCategory.CREDIT,
@@ -49,6 +50,11 @@ class SaleOperationSecurityRegistryTest {
                 SaleOperationCategory.TICKET,
                 false,
                 false);
+        assertDefinition(
+                SaleOperationCode.RETURN_SALES_INVOICE,
+                SaleOperationCategory.INVOICE,
+                true,
+                true);
         assertDefinition(
                 SaleOperationCode.MANUAL_RETURN_WITHOUT_TICKET,
                 SaleOperationCategory.TICKET,

@@ -90,6 +90,9 @@ public class CommercialDocument {
     private boolean origenStock;
     @Column(name = "cuenta_cobrar", nullable = false)
     private boolean cuentaCobrar;
+
+    @Column(name = "liquidado_por_origen", nullable = false)
+    private boolean settledByOrigin;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "impresion_factura_snapshot", columnDefinition = "jsonb")
     private String invoicePrintSnapshot;
@@ -297,11 +300,14 @@ public class CommercialDocument {
     }
 
     public BigDecimal getPaidTotal() {
+        if (settledByOrigin) {
+            return Money.euros(total);
+        }
         return Money.euros(pagos.stream()
                 .map(DocumentPayment::getImporte)
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
-    // Sums actual payments recorded on the document.
+    // Returns the effective settlement, including a paid source document.
 
     public BigDecimal getPendingTotal() {
         return Money.euros(total.subtract(getPaidTotal()));
@@ -321,6 +327,10 @@ public class CommercialDocument {
     public void addPayment(DocumentPayment payment) {
         if (payment == null || payment.getDocumento() != this) {
             throw new IllegalArgumentException("el pago no pertenece al documento");
+        }
+        if (settledByOrigin) {
+            throw new IllegalStateException(
+                    "el documento ya esta liquidado por su documento de origen");
         }
         if (payment.isPrincipal() && pagos.stream().anyMatch(DocumentPayment::isPrincipal)) {
             throw new IllegalStateException("el documento ya tiene un pago principal");
@@ -348,6 +358,25 @@ public class CommercialDocument {
             throw new IllegalStateException("customer_receivable_customer_required");
         }
         cuentaCobrar = true;
+    }
+
+    public void settleFromPaidTicket(CommercialDocument ticket) {
+        if (tipo != CommercialDocumentType.FACTURA_VENTA
+                || estado != DocumentStatus.PENDIENTE
+                || ticket == null
+                || ticket.tipo != CommercialDocumentType.TICKET
+                || ticket.estado != DocumentStatus.CONFIRMADO
+                || !Objects.equals(tiendaId, ticket.tiendaId)
+                || !Objects.equals(moneda, ticket.moneda)
+                || !Objects.equals(numTicket, ticket.numero)
+                || total.compareTo(ticket.total) != 0
+                || ticket.getPaidTotal().compareTo(ticket.total) != 0
+                || !pagos.isEmpty()) {
+            throw new IllegalStateException(
+                    "la factura solo puede heredar la liquidacion de su ticket pagado");
+        }
+        settledByOrigin = true;
+        estado = DocumentStatus.PAGADO;
     }
 
     // Cancels a confirmed ticket without removing its number or content.
@@ -463,13 +492,18 @@ public class CommercialDocument {
         return cuentaCobrar;
     }
 
+    public boolean isSettledByOrigin() {
+        return settledByOrigin;
+    }
+
     public String getInvoicePrintSnapshot() {
         return invoicePrintSnapshot;
     }
 
     public void captureInvoicePrintSnapshot(String snapshot) {
         if (tipo != CommercialDocumentType.FACTURA_VENTA
-                && tipo != CommercialDocumentType.RECTIFICATIVA_VENTA) {
+                && tipo != CommercialDocumentType.RECTIFICATIVA_VENTA
+                && tipo != CommercialDocumentType.ALBARAN_VENTA) {
             return;
         }
         if (invoicePrintSnapshot != null) {

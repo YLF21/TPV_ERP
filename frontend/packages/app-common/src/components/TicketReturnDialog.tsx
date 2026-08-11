@@ -31,7 +31,7 @@ type ReturnLineOption = {
 };
 
 type ReturnPreview = {
-  sourceType: "TICKET" | "GIFT_RECEIPT";
+  sourceType: "TICKET" | "GIFT_RECEIPT" | "SALES_INVOICE";
   sourceCode: string;
   ticketId: string;
   ticketNumber: string;
@@ -94,14 +94,16 @@ type Props = {
   token?: string;
   locale: LocaleCode;
   existingCartLines?: readonly ReturnCartReservation[];
+  initialSourceCode?: string;
+  mode?: "RETURN" | "INVOICE_CANCELLATION";
   onClose: () => void;
   onAddToCart: (lines: ReturnCartLine[]) => void;
 };
 
-export function TicketReturnDialog({ token, locale, existingCartLines = [], onClose, onAddToCart }: Props) {
+export function TicketReturnDialog({ token, locale, existingCartLines = [], initialSourceCode = "", mode = "RETURN", onClose, onAddToCart }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
-  const lockedSourceCode = existingCartLines[0]?.sourceCode ?? "";
+  const lockedSourceCode = existingCartLines[0]?.sourceCode ?? initialSourceCode.trim();
   const [identifier, setIdentifier] = useState(lockedSourceCode);
   const [productIdentifier, setProductIdentifier] = useState("");
   const [preview, setPreview] = useState<ReturnPreview | null>(null);
@@ -180,10 +182,19 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
         `/tickets/return-preview?ticketNumber=${encodeURIComponent(normalized)}`,
         { token },
       );
+      if (mode === "INVOICE_CANCELLATION" && result.sourceType !== "SALES_INVOICE") {
+        throw new Error(t("invoiceCancellation.onlyInvoice"));
+      }
       setPreview(result);
       setIdentifier(result.sourceCode);
       setProductIdentifier("");
-      setSelections([]);
+      setSelections(mode === "INVOICE_CANCELLATION"
+        ? result.lines.map((line) => ({
+            lineId: line.lineId,
+            quantity: canonicalProductQuantity(Number(line.refundableQuantity)),
+            serialNumbers: line.refundableSerialNumbers ?? [],
+          }))
+        : []);
       setValuation(null);
       setValuationError("");
       if (result.lines.length === 0) setMessage(t("ticketReturn.noAvailableLines"));
@@ -387,8 +398,8 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
       <section ref={dialogRef} className="sale-action-dialog wide ticket-return-dialog" role="dialog" aria-modal="true" aria-labelledby="ticket-return-title" aria-busy={busy}>
         <header className="ticket-return-header">
           <div>
-            <h2 id="ticket-return-title">{t("ticketReturn.title")}</h2>
-            <p>{t("ticketReturn.cartDescription")}</p>
+            <h2 id="ticket-return-title">{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.title" : "ticketReturn.title")}</h2>
+            <p>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.description" : "ticketReturn.cartDescription")}</p>
           </div>
           <button type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose}>×</button>
         </header>
@@ -396,7 +407,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
         <div className="ticket-return-body">
           <div className="ticket-return-search">
             <label>
-              <span>{t("ticketReturn.ticketOrGiftCode")}</span>
+              <span>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.invoiceNumber" : "ticketReturn.ticketOrGiftCode")}</span>
               <input autoFocus={!lockedSourceCode} readOnly={Boolean(lockedSourceCode)} autoComplete="off" value={identifier} onChange={(event) => setIdentifier(event.currentTarget.value)} onKeyDown={(event) => {
                 if (event.key === "Enter") { event.preventDefault(); void search(); }
               }} />
@@ -405,7 +416,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
           </div>
 
           {preview && <>
-            <div className="ticket-return-product-search">
+            {mode === "RETURN" && <div className="ticket-return-product-search">
               <label>
                 <span>{t("ticketReturn.productSearch")}</span>
                 <input
@@ -423,9 +434,13 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
                 />
               </label>
               <button type="button" className="primary" disabled={!productIdentifier.trim() || busy} onClick={selectProduct}>{t("ticketReturn.selectProduct")}</button>
-            </div>
+            </div>}
             <div className="ticket-return-summary">
-              <span><small>{preview.sourceType === "GIFT_RECEIPT" ? t("ticketReturn.giftReceipt") : t("ticketReturn.ticket")}</small><strong>{preview.sourceCode}</strong></span>
+              <span><small>{preview.sourceType === "GIFT_RECEIPT"
+                ? t("ticketReturn.giftReceipt")
+                : preview.sourceType === "SALES_INVOICE"
+                  ? t("ticketReturn.invoice")
+                  : t("ticketReturn.ticket")}</small><strong>{preview.sourceCode}</strong></span>
               <span><small>{t("ticketReturn.date")}</small><strong>{new Date(`${preview.date}T00:00:00`).toLocaleDateString(locale)}</strong><em>{t("ticketReturn.daysElapsed")}: {calendarDaysElapsed(preview.date)}</em></span>
               <span className="ticket-return-summary-total"><small>{t("ticketReturn.selectedTotal")}</small><strong>{valuationBusy
                 ? "..."
@@ -445,10 +460,10 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
                 <b>{t("ticketReturn.maximumByMethod")}: {money(payment.availableAmount, locale)}</b>
               </article>)}
             </div>
-            <div className="ticket-return-selection-tools">
+            {mode === "RETURN" && <div className="ticket-return-selection-tools">
               <button type="button" className="primary" disabled={preview.lines.every((line) => availableQuantity(line) <= 0) || busy} onClick={selectAll}>{t("ticketReturn.selectAll")}</button>
               <button type="button" disabled={selections.length === 0 || busy} onClick={() => setSelections([])}>{t("ticketReturn.clearSelection")}</button>
-            </div>
+            </div>}
             <div className="ticket-return-lines">
               <table aria-label={t("ticketReturn.productList")}>
                 <colgroup>
@@ -479,6 +494,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
                             type="checkbox"
                             aria-label={option.name}
                             checked={Boolean(selection)}
+                            disabled={mode === "INVOICE_CANCELLATION"}
                             onChange={(event) => toggleLine(option, event.currentTarget.checked)}
                           />
                         </td>
@@ -502,6 +518,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
                             max={availableQuantity(option)}
                             step={productQuantityStep(option.productType)}
                             value={selection.quantity}
+                            disabled={mode === "INVOICE_CANCELLATION"}
                             onChange={(event) => updateQuantity(option, event.currentTarget.value)}
                           /> : selection ? <strong>{selection.serialNumbers.length}</strong> : null}
                         </td>
@@ -510,7 +527,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
                         <td colSpan={5}>
                           <div className="ticket-return-serials">
                             {serials.map((serial) => <label key={serial}>
-                              <input type="checkbox" checked={selection.serialNumbers.includes(serial)} onChange={(event) => toggleSerial(option, serial, event.currentTarget.checked)} />
+                              <input type="checkbox" disabled={mode === "INVOICE_CANCELLATION"} checked={selection.serialNumbers.includes(serial)} onChange={(event) => toggleSerial(option, serial, event.currentTarget.checked)} />
                               <span>S/N: {serial}</span>
                             </label>)}
                           </div>
@@ -531,7 +548,7 @@ export function TicketReturnDialog({ token, locale, existingCartLines = [], onCl
         </div>
         <footer className="sale-action-buttons ticket-return-footer">
           <button type="button" disabled={busy} onClick={onClose}>{t("common.cancel")}</button>
-          {preview && <button type="button" className="primary" disabled={!validSelection() || !valuation || valuationBusy || busy} onClick={addSelectedToCart}>{t("ticketReturn.addToCart")}</button>}
+          {preview && <button type="button" className="primary" disabled={!validSelection() || !valuation || valuationBusy || busy} onClick={addSelectedToCart}>{t(mode === "INVOICE_CANCELLATION" ? "invoiceCancellation.continue" : "ticketReturn.addToCart")}</button>}
         </footer>
       </section>
     </div>

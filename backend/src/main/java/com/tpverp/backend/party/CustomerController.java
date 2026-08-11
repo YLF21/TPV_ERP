@@ -199,6 +199,7 @@ public class CustomerController {
             String clientId,
             String fiscalName,
             String documentNumber,
+            boolean active,
             boolean activeMember,
             String memberCategoryName,
             BigDecimal memberDiscountPercent,
@@ -215,6 +216,7 @@ public class CustomerController {
         static SaleCustomerOption from(CustomerService.CustomerView customer) {
             return new SaleCustomerOption(
                     customer.id(), customer.clientId(), customer.fiscalName(), customer.documentNumber(),
+                    customer.active(),
                     customer.isMember(), customer.memberCategoryName(), customer.memberDiscountPercent(),
                     customer.balance(),
                     customer.creditEnabled(), customer.creditLimit(), customer.paymentTermDays(),

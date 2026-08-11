@@ -9,7 +9,6 @@ import {
   managedCheckoutPaymentMethodNames,
   setPaymentMethodActive,
   setPaymentMethodReferenceRequirement,
-  saveInvoiceObservations,
   setInvoiceBankAccountActive,
   type InvoiceBankAccountView,
   type PaymentMethodView,
@@ -39,7 +38,6 @@ export function PaymentMethodSettingsScreen({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [returnPolicy, setReturnPolicy] = useState<"REFUND_ALLOWED" | "EXCHANGE_OR_VOUCHER_ONLY">("REFUND_ALLOWED");
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const [observations, setObservations] = useState("");
   const [bankAccounts, setBankAccounts] = useState<InvoiceBankAccountView[]>([]);
   const [bankName, setBankName] = useState("");
   const [iban, setIban] = useState("");
@@ -88,7 +86,6 @@ export function PaymentMethodSettingsScreen({
     void loadInvoicePrintConfiguration(session.accessToken, request)
       .then((configuration) => {
         if (!active || !configuration || Array.isArray(configuration)) return;
-        setObservations(configuration.observations ?? "");
         setBankAccounts(Array.isArray(configuration.bankAccounts)
           ? configuration.bankAccounts : []);
       })
@@ -152,24 +149,6 @@ export function PaymentMethodSettingsScreen({
         kind: "error",
         text: failureMessage(error, t("gestion.paymentMethods.saveError")),
       });
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function updateObservations() {
-    if (!canManage || busyId) return;
-    setBusyId("invoice-observations");
-    setMessage(null);
-    try {
-      const saved = await saveInvoiceObservations(
-        observations, session.accessToken, request,
-      );
-      setObservations(saved.observations ?? "");
-      setBankAccounts(saved.bankAccounts);
-      setMessage({ kind: "success", text: t("gestion.invoicePrint.saved") });
-    } catch (error) {
-      setMessage({ kind: "error", text: failureMessage(error, t("gestion.invoicePrint.saveError")) });
     } finally {
       setBusyId(null);
     }
@@ -350,26 +329,6 @@ export function PaymentMethodSettingsScreen({
             <p>{t("gestion.invoicePrint.description")}</p>
           </div>
         </header>
-
-        <label className="gestion-invoice-observations">
-          <span>{t("gestion.invoicePrint.observations")}</span>
-          <textarea
-            value={observations}
-            maxLength={2000}
-            rows={4}
-            disabled={!canManage || busyId !== null}
-            onChange={(event) => setObservations(event.currentTarget.value)}
-          />
-          <small>{t("gestion.invoicePrint.observationsHelp")}</small>
-        </label>
-        <button
-          type="button"
-          className="gestion-primary-button"
-          disabled={!canManage || busyId !== null}
-          onClick={() => void updateObservations()}
-        >
-          {t("gestion.invoicePrint.saveObservations")}
-        </button>
 
         <div className="gestion-invoice-bank-form">
           <label>

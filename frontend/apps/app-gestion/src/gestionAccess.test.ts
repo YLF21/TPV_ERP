@@ -46,7 +46,18 @@ describe("APP GESTION module access", () => {
   });
 
   it("allows ADMIN into every module", () => {
-    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(11);
+    expect(visibleGestionModules(session(["ADMIN"]))).toHaveLength(12);
+  });
+
+  it("opens document templates only with APP GESTION access and template management", () => {
+    expect(canOpenGestionModule(
+      session(["APP_GESTION_ACCESS", "DOCUMENT_TEMPLATES_MANAGE"]),
+      "gestion.documentTemplates"
+    )).toBe(true);
+    expect(canOpenGestionModule(
+      session(["DOCUMENT_TEMPLATES_MANAGE"]),
+      "gestion.documentTemplates"
+    )).toBe(false);
   });
 
   it("opens cash closures only to accounting or cash readers through APP GESTION", () => {

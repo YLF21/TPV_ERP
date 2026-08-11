@@ -693,7 +693,8 @@ public class PreviousTicketImportService {
                     line.getRegimenImpuesto(), line.getPorcentajeImpuesto(),
                     DocumentLineType.PRODUCT, null, null, null, serials,
                     false, false, null, null, null, null, null,
-                    line.getBase(), line.getImpuesto(), line.getTotal());
+                    line.getBase(), line.getImpuesto(), line.getTotal(),
+                    line.getCodigoBarras());
         }
         return new DocumentLineCommand(
                 null, BigDecimal.ONE, line.getCodigo(), line.getNombre(), null,

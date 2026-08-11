@@ -158,7 +158,8 @@ public class ParkedSale {
                 clean((String) value.get("returnSourceCode")),
                 uuid(value.get("returnSourceTicketId")),
                 uuid(value.get("originalDocumentLineId")),
-                uuid(value.get("giftReceiptLineId")));
+                uuid(value.get("giftReceiptLineId")))
+                .withBarcode(clean((String) value.get("codigoBarras")));
     }
 
     private static Map<String, Object> snapshot(DocumentCommand command) {
@@ -184,6 +185,7 @@ public class ParkedSale {
         value.put("cuponPromocionalId", string(line.promotionalCouponId()));
         value.put("cantidad", line.cantidad());
         value.put("codigo", line.codigo());
+        value.put("codigoBarras", clean(line.barcode()));
         value.put("nombre", line.nombre());
         value.put("tarifa", line.tarifa());
         value.put("precioUnitario", line.precioUnitario().toPlainString());

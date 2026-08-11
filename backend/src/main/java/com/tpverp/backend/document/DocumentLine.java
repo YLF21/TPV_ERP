@@ -63,6 +63,8 @@ public class DocumentLine {
     private BigDecimal cantidad;
     @Column(nullable = false, length = 128)
     private String codigo;
+    @Column(name = "codigo_barras", length = 128)
+    private String codigoBarras;
     @Column(nullable = false)
     private String nombre;
     @Column(length = 16)
@@ -121,6 +123,25 @@ public class DocumentLine {
             boolean impuestosIncluidos,
             String regimenImpuesto,
             BigDecimal porcentajeImpuesto) {
+        this(documento, productoId, posicion, cantidad, codigo, null, nombre, tarifa,
+                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
+                porcentajeImpuesto);
+    }
+
+    public DocumentLine(
+            CommercialDocument documento,
+            UUID productoId,
+            int posicion,
+            BigDecimal cantidad,
+            String codigo,
+            String codigoBarras,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto) {
         if (quantity(cantidad).signum() == 0) {
             throw new IllegalArgumentException("cantidad no puede ser cero");
         }
@@ -134,6 +155,7 @@ public class DocumentLine {
         this.posicion = posicion;
         this.cantidad = quantity(cantidad);
         this.codigo = required(codigo, "codigo");
+        this.codigoBarras = barcode(codigoBarras);
         this.nombre = required(nombre, "nombre");
         this.tarifa = optional(tarifa);
         this.precioUnitario = nonNegative(precioUnitario, "precioUnitario");
@@ -298,10 +320,32 @@ public class DocumentLine {
             BigDecimal frozenBase,
             BigDecimal frozenTax,
             BigDecimal frozenTotal) {
+        return frozenProduct(documento, productoId, posicion, cantidad, codigo, null,
+                nombre, tarifa, precioUnitario, descuento, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto, frozenBase, frozenTax, frozenTotal);
+    }
+
+    static DocumentLine frozenProduct(
+            CommercialDocument documento,
+            UUID productoId,
+            int posicion,
+            BigDecimal cantidad,
+            String codigo,
+            String codigoBarras,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            BigDecimal frozenBase,
+            BigDecimal frozenTax,
+            BigDecimal frozenTotal) {
         var line = new DocumentLine(
-                documento, productoId, posicion, cantidad, codigo, nombre, tarifa,
-                precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
-                porcentajeImpuesto);
+                documento, productoId, posicion, cantidad, codigo, codigoBarras,
+                nombre, tarifa, precioUnitario, descuento, impuestosIncluidos,
+                regimenImpuesto, porcentajeImpuesto);
         line.base = Money.euros(Objects.requireNonNull(frozenBase, "frozenBase"));
         line.impuesto = Money.euros(Objects.requireNonNull(frozenTax, "frozenTax"));
         line.total = Money.euros(Objects.requireNonNull(frozenTotal, "frozenTotal"));
@@ -443,6 +487,10 @@ public class DocumentLine {
         return codigo;
     }
 
+    public String getCodigoBarras() {
+        return codigoBarras;
+    }
+
     public String getNombre() {
         return nombre;
     }
@@ -531,6 +579,15 @@ public class DocumentLine {
 
     private static String optional(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String barcode(String value) {
+        var normalized = optional(value);
+        if (normalized != null && normalized.length() > 128) {
+            throw new IllegalArgumentException(
+                    "codigoBarras no puede superar 128 caracteres");
+        }
+        return normalized;
     }
 
     private static List<String> normalizeSerialNumbers(Collection<String> values) {

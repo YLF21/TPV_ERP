@@ -34,6 +34,37 @@ function buildCashDrawerBuffer() {
   return Buffer.from([ESC, 0x70, 0x00, 0x19, 0xfa]);
 }
 
+function buildRasterImageBuffer(raster) {
+  if (!raster || !Number.isInteger(raster.width) || !Number.isInteger(raster.height)
+      || raster.width <= 0 || raster.height <= 0 || raster.width > 576
+      || raster.height > 512 || !Buffer.isBuffer(raster.bgra)
+      || raster.bgra.length !== raster.width * raster.height * 4) {
+    return Buffer.alloc(0);
+  }
+  const bytesPerRow = Math.ceil(raster.width / 8);
+  const pixels = Buffer.alloc(bytesPerRow * raster.height);
+  for (let y = 0; y < raster.height; y += 1) {
+    for (let x = 0; x < raster.width; x += 1) {
+      const offset = (y * raster.width + x) * 4;
+      const blue = raster.bgra[offset];
+      const green = raster.bgra[offset + 1];
+      const red = raster.bgra[offset + 2];
+      const alpha = raster.bgra[offset + 3];
+      const luminance = alpha < 64 ? 255 : (red * 299 + green * 587 + blue * 114) / 1000;
+      if (luminance < 160) {
+        pixels[y * bytesPerRow + Math.floor(x / 8)] |= 0x80 >> (x % 8);
+      }
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([GS, 0x76, 0x30, 0x00,
+      bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff,
+      raster.height & 0xff, (raster.height >> 8) & 0xff]),
+    pixels,
+    Buffer.from([0x0a])
+  ]);
+}
+
 function buildTicketBuffer(ticket) {
   const suppliedLabels = ticket.escposLabels || ticket.labels;
   const labels = { terminal: "Terminal", item: "Item", quantity: "Qty.", price: "Price", discount: "Descuento", base: "Base", tax: "IVA", total: "TOTAL", ...(suppliedLabels || {}) };
@@ -43,6 +74,7 @@ function buildTicketBuffer(ticket) {
   const chunks = [
     Buffer.from([ESC, 0x40]),
     Buffer.from([ESC, 0x61, 0x01]),
+    ...(ticket.logoRaster ? [buildRasterImageBuffer(ticket.logoRaster)] : []),
     line(ticket.title || (giftReceipt ? "TICKET REGALO" : raw?.storeName || ticket.storeName || "APP VENTA")),
     ...(giftReceipt || cancellationReceipt ? [line(raw?.storeName || ticket.storeName || "APP VENTA")] : []),
     line(raw?.documentNumber || ticket.documentNumber || ""),
@@ -101,6 +133,12 @@ function buildTicketBuffer(ticket) {
     chunks.push(Buffer.from([ESC, 0x45, 0x01]));
     chunks.push(line(ticket.notice));
     chunks.push(Buffer.from([ESC, 0x45, 0x00]));
+  }
+  const notes = (ticket.notes || []).filter(Boolean);
+  if (notes.length > 0) {
+    chunks.push(Buffer.from([ESC, 0x61, 0x00]));
+    chunks.push(line("------------------------------------------"));
+    for (const note of notes) chunks.push(line(String(note).slice(0, 500)));
   }
   chunks.push(Buffer.from([0x0a, 0x0a, 0x0a]));
   chunks.push(Buffer.from([GS, 0x56, 0x00]));
@@ -193,6 +231,7 @@ async function sendEscposBuffer(config, buffer) {
 
 module.exports = {
   buildCashDrawerBuffer,
+  buildRasterImageBuffer,
   buildTicketBuffer,
   normalizeSerialPath,
   shouldOpenCashDrawerForTicket,

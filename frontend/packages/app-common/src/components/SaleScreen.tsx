@@ -189,7 +189,7 @@ export type SaleLine = {
   discountPercent: number;
   memberDiscountPercent?: number;
   returnOrigin?: {
-    sourceType: "TICKET" | "GIFT_RECEIPT";
+    sourceType: "TICKET" | "GIFT_RECEIPT" | "SALES_INVOICE";
     sourceCode: string;
     sourceTicketId: string;
     sourceTicketNumber: string;
@@ -217,6 +217,7 @@ export type SaleCustomer = {
   clientId?: string | null;
   fiscalName?: string | null;
   documentNumber?: string | null;
+  active?: boolean;
   activeMember?: boolean;
   memberCategoryName?: string | null;
   memberDiscountPercent?: number | string | null;
@@ -1890,6 +1891,11 @@ export function SaleScreen({
     })),
     checkoutDiscountPercent,
   );
+  if (currentEconomicLines.some((line) => line.returnOrigin?.sourceType === "SALES_INVOICE")) {
+    detectedSaleMutationOperations.push({ code: "RETURN_SALES_INVOICE" });
+  } else if (currentEconomicLines.some((line) => Boolean(line.returnOrigin))) {
+    detectedSaleMutationOperations.push({ code: "RETURN_TICKET" });
+  }
   const temporaryPriceLines = currentEconomicLines.filter(
     (line) => line.openUnitPrice != null && Number(line.product.salePrice ?? 0) !== 0,
   );
@@ -4075,11 +4081,10 @@ export function SaleScreen({
         );
         break;
       case "cancel-ticket":
-        if (ticketCancellationAuthorization) setTicketCancellationMode("BY_NUMBER");
-        else void recoverOperationSecurityAndOpen(
-          "CANCEL_TICKET",
-          () => setTicketCancellationMode("BY_NUMBER"),
-        );
+        // Ctrl+F11 resolves the document type after the number is entered.
+        // Ticket authorization remains enforced by its backend operation,
+        // while invoice returns use their own RETURN_SALES_INVOICE policy.
+        setTicketCancellationMode("BY_NUMBER");
         break;
       case "convert-ticket":
         if (ticketInvoiceAuthorization) setTicketInvoiceOpen(true);
@@ -5526,8 +5531,10 @@ export function SaleScreen({
           }}
           terminalContext={terminalContext}
           mode={ticketCancellationMode}
+          canStartInvoiceCancellation={lines.length === 0 && !previousTicketImportBatch}
           onClose={() => setTicketCancellationMode(null)}
           onFiscalMutation={() => setVerifactuRefreshSignal((current) => current + 1)}
+          onInvoiceAddToCart={addReturnLinesToCart}
         />
       )}
 

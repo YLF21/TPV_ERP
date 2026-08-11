@@ -40,6 +40,7 @@ class PromotionCatalogGatewayTest {
         when(product.getId()).thenReturn(productId);
         when(product.getTaxId()).thenReturn(taxId);
         when(product.getCode()).thenReturn("CAT-1");
+        when(product.getBarcode()).thenReturn("8430000000010");
         when(product.getName()).thenReturn("Nombre catalogo");
         when(product.isTaxesIncluded()).thenReturn(true);
         when(tax.getId()).thenReturn(taxId);
@@ -55,6 +56,7 @@ class PromotionCatalogGatewayTest {
                         new BigDecimal("21.00")));
 
         assertThat(snapshot.codigo()).isEqualTo("CAT-1");
+        assertThat(snapshot.barcode()).isEqualTo("8430000000010");
         assertThat(snapshot.nombre()).isEqualTo("Nombre catalogo");
         assertThat(snapshot.porcentajeImpuesto()).isEqualByComparingTo("21.00");
         verify(products).findAllByStoreIdAndIdIn(storeId, Set.of(productId));

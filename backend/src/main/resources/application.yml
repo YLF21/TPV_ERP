@@ -66,6 +66,8 @@ tpv:
     pg-restore-command: ${TPV_PG_RESTORE_COMMAND:pg_restore}
   product-images:
     directory: ${TPV_PRODUCT_IMAGE_DIRECTORY:${user.home}/.tpv-erp/product-images}
+  document-templates:
+    directory: ${TPV_DOCUMENT_TEMPLATE_DIRECTORY:${user.home}/.tpv-erp/document-templates}
   verifactu:
     endpoint-mode: ${TPV_VERIFACTU_ENDPOINT_MODE:TEST}
     secret-directory: ${TPV_VERIFACTU_SECRET_DIRECTORY:${user.home}/.tpv-erp/verifactu-secrets}

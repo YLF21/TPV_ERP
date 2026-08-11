@@ -73,6 +73,7 @@ type HardwareSettingsScreenProps = {
   onBack: () => void;
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
+  documentRoutingOnly?: boolean;
 };
 
 export function HardwareSettingsScreen({
@@ -82,7 +83,8 @@ export function HardwareSettingsScreen({
   terminalContext,
   onBack,
   onLocaleChange,
-  onLogout
+  onLogout,
+  documentRoutingOnly = false
 }: HardwareSettingsScreenProps) {
   const t = createTranslator(locale);
   const hardware = useMemo(() => getHardwareBridge(), []);
@@ -110,7 +112,7 @@ export function HardwareSettingsScreen({
   const scannerCaptureRef = useRef(idleScannerTimingCapture);
   const [lastScan, setLastScan] = useState("");
   const [diagnostics, setDiagnostics] = useState<Partial<Record<HardwareDiagnosticKey, HardwareDiagnosticResult>>>({});
-  const [selectedSection, setSelectedSection] = useState<HardwareSectionKey>("cashDrawer");
+  const [selectedSection, setSelectedSection] = useState<HardwareSectionKey>(documentRoutingOnly ? "a4" : "cashDrawer");
 
   const diagnosticItems: Array<{ key: HardwareDiagnosticKey; label: string }> = [
     { key: "electron", label: t("hardware.diagnostics.electron") },
@@ -120,7 +122,7 @@ export function HardwareSettingsScreen({
     { key: "drawer", label: t("hardware.diagnostics.drawer") },
     { key: "customerDisplay", label: t("hardware.diagnostics.customerDisplay") }
   ];
-  const hardwareSections: Array<{ key: HardwareSectionKey; label: string }> = [
+  const allHardwareSections: Array<{ key: HardwareSectionKey; label: string }> = [
     { key: "printer", label: t("hardware.printer") },
     { key: "cashDrawer", label: t("hardware.cashDrawer") },
     { key: "scanner", label: t("hardware.scanner") },
@@ -129,6 +131,9 @@ export function HardwareSettingsScreen({
     { key: "customerDisplay", label: t("hardware.customerDisplay") },
     { key: "diagnostics", label: t("hardware.diagnostics.title") }
   ];
+  const hardwareSections = documentRoutingOnly
+    ? allHardwareSections.filter((section) => section.key === "a4")
+    : allHardwareSections;
   const selectedSectionLabel = hardwareSections.find((section) => section.key === selectedSection)?.label ?? t("hardware.title");
 
   useEffect(() => {
@@ -478,14 +483,14 @@ export function HardwareSettingsScreen({
           {t(app === "venta" ? "venta.title" : "gestion.title")}
         </button>
         <div>
-          <h1>{t("hardware.title")}</h1>
+          <h1>{t(documentRoutingOnly ? "hardware.documentPrinting.title" : "hardware.title")}</h1>
           <span>{session.displayName} · {terminalContext.storeName} · {t("login.terminalPrefix")} {terminalContext.terminalCode}</span>
         </div>
       </header>
 
       <section className="hardware-layout">
         <aside className="hardware-nav">
-          <strong>{t("settings.sections")}</strong>
+          <strong>{t(documentRoutingOnly ? "hardware.documentPrinting.routes" : "settings.sections")}</strong>
           {hardwareSections.map((section) => (
             <button
               type="button"

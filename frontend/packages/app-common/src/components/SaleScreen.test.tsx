@@ -3063,7 +3063,7 @@ describe("SaleScreen", () => {
     expect(html).toContain("Factura / albarán");
     expect(html).toContain("Ventas aparcadas");
     expect(html).toContain("Anular último ticket");
-    expect(html).toContain("Anular ticket por código");
+    expect(html).toContain(createTranslator("es")("sale.shortcut.cancelOtherTicket"));
     expect(html).toContain("Convertir ticket a factura");
     expect(html).toContain("Efectivo");
     expect(checkoutProps.current?.showIndividualActions).toBe(true);
@@ -3092,9 +3092,9 @@ describe("SaleScreen", () => {
   });
 
   it.each([
-    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", "Anular ticket por código", "Convertir ticket a factura", "Importar ticket anterior"]],
-    ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", "Cancel ticket by code", "Convert ticket to invoice", "Import previous ticket"]],
-    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", "按编号取消小票", "小票转发票", "\u5bfc\u5165\u4e0a\u4e00\u5f20\u5c0f\u7968"]],
+    ["es", ["Gesti\u00f3n", "Ventas aparcadas", "Guardar o recuperar", "Anular último ticket", createTranslator("es")("sale.shortcut.cancelOtherTicket"), "Convertir ticket a factura", "Importar ticket anterior"]],
+    ["en", ["Management", "Parked sales", "Save or recover", "Cancel last ticket", createTranslator("en")("sale.shortcut.cancelOtherTicket"), "Convert ticket to invoice", "Import previous ticket"]],
+    ["zh", ["\u7ba1\u7406", "\u6682\u5b58\u9500\u552e", "\u4fdd\u5b58\u6216\u6062\u590d", "取消上一张小票", createTranslator("zh")("sale.shortcut.cancelOtherTicket"), "小票转发票", "\u5bfc\u5165\u4e0a\u4e00\u5f20\u5c0f\u7968"]],
   ] as const)("localizes sale management actions in %s", (locale, labels) => {
     const html = renderToStaticMarkup(
       <SaleScreen

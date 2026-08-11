@@ -97,6 +97,7 @@ public record ApprovedCardTicketSnapshot(
                 line.temporaryPriceOverride(), source.returnSourceType(),
                 source.returnSourceCode(), source.returnSourceTicketId(),
                 line.originalDocumentLineId(), source.giftReceiptLineId(),
-                line.frozenBase(), line.frozenTax(), line.frozenTotal());
+                line.frozenBase(), line.frozenTax(), line.frozenTotal(),
+                line.barcode());
     }
 }

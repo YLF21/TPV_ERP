@@ -168,7 +168,8 @@ public class PromotionCatalogGateway {
                     null,
                     pricedLine.serialNumbers(),
                     pricedLine.temporaryNameOverride(),
-                    pricedLine.temporaryPriceOverride());
+                    pricedLine.temporaryPriceOverride())
+                    .withBarcode(product.getBarcode());
         }
 
         public void validateTaxSnapshot(

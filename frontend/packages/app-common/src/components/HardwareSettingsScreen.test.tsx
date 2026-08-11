@@ -79,6 +79,26 @@ describe("HardwareSettingsScreen", () => {
     expect(html).toContain("Abrir cajón");
   });
 
+  it("offers a focused document routing mode without duplicating hardware configuration", () => {
+    const html = renderToStaticMarkup(
+      <HardwareSettingsScreen
+        app="venta"
+        locale="es"
+        session={session}
+        terminalContext={terminalContext}
+        onBack={vi.fn()}
+        onLocaleChange={vi.fn()}
+        documentRoutingOnly
+      />
+    );
+
+    expect(html).toContain("Impresión de documentos");
+    expect(html).toContain("Factura");
+    expect(html).toContain("Albaran");
+    expect(html).toContain("Ticket");
+    expect(html).not.toContain("Cajón de dinero");
+  });
+
   it("uses the shared ERP select instead of native selects", () => {
     const html = renderToStaticMarkup(
       <HardwareSettingsScreen

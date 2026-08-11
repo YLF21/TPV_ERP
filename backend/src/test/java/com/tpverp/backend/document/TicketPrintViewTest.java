@@ -29,8 +29,8 @@ class TicketPrintViewTest {
                 UUID.randomUUID(), UUID.randomUUID(), CommercialDocumentType.TICKET,
                 LocalDate.of(2026, 7, 15), UUID.randomUUID(), BigDecimal.ZERO);
         document.addLine(new DocumentLine(
-                document, UUID.randomUUID(), 1, BigDecimal.valueOf(2), "A-1", "Cafe",
-                null, BigDecimal.valueOf(3.50), BigDecimal.ZERO, true,
+                document, UUID.randomUUID(), 1, BigDecimal.valueOf(2), "A-1",
+                "8430000000010", "Cafe", null, BigDecimal.valueOf(3.50), BigDecimal.ZERO, true,
                 "IVA", BigDecimal.valueOf(21)));
         document.confirm("001-260715-000001", UUID.randomUUID(),
                 Instant.parse("2026-07-15T10:15:30Z"), false);
@@ -46,6 +46,8 @@ class TicketPrintViewTest {
         assertThat(view.issuedAt()).isEqualTo(Instant.parse("2026-07-15T10:15:30Z"));
         assertThat(view.lines()).singleElement().satisfies(line -> {
             assertThat(line.name()).isEqualTo("Cafe");
+            assertThat(line.code()).isEqualTo("A-1");
+            assertThat(line.barcode()).isEqualTo("8430000000010");
             assertThat(line.quantity()).isEqualByComparingTo("2");
             assertThat(line.price()).isEqualByComparingTo("3.50");
             assertThat(line.total()).isEqualByComparingTo("7.00");
@@ -56,6 +58,10 @@ class TicketPrintViewTest {
         });
         assertThat(view.total()).isEqualByComparingTo("7.00");
         assertThat(view.checkoutDiscountTotal()).isZero();
+
+        var branded = view.withPresentation("Gracias por su compra", "data:image/png;base64,AA==");
+        assertThat(branded.observations()).isEqualTo("Gracias por su compra");
+        assertThat(branded.logo()).isEqualTo("data:image/png;base64,AA==");
     }
 
     @Test

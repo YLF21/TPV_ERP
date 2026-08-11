@@ -26,6 +26,12 @@ class RefundTenderAuthorizationMigrationContractTest {
                     .contains("'refund_policy_override'")
                     .contains("'refund_tender_override'");
 
+        }
+        try (var stream = getClass().getResourceAsStream(
+                "/db/migration/V139__devolucion_factura_venta.sql")) {
+            assertThat(stream).isNotNull();
+            var sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
+                    .toLowerCase();
             for (var operationCode : SaleOperationCode.values()) {
                 assertThat(sql).contains("'" + operationCode.name().toLowerCase() + "'");
             }

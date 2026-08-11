@@ -29,10 +29,46 @@ public record DocumentLineCommand(
         UUID giftReceiptLineId,
         BigDecimal frozenBase,
         BigDecimal frozenTax,
-        BigDecimal frozenTotal) {
+        BigDecimal frozenTotal,
+        String barcode) {
 
     private static final String HISTORICAL_OPEN_PRICE_RATE =
             "OPEN_PRICE";
+
+    public DocumentLineCommand(
+            UUID productoId,
+            BigDecimal cantidad,
+            String codigo,
+            String nombre,
+            String tarifa,
+            BigDecimal precioUnitario,
+            BigDecimal descuento,
+            boolean impuestosIncluidos,
+            String regimenImpuesto,
+            BigDecimal porcentajeImpuesto,
+            DocumentLineType lineType,
+            UUID promotionId,
+            UUID promotionVersionId,
+            UUID promotionalCouponId,
+            List<String> serialNumbers,
+            boolean temporaryNameOverride,
+            boolean temporaryPriceOverride,
+            TicketReturnService.ReturnSourceType returnSourceType,
+            String returnSourceCode,
+            UUID returnSourceTicketId,
+            UUID originalDocumentLineId,
+            UUID giftReceiptLineId,
+            BigDecimal frozenBase,
+            BigDecimal frozenTax,
+            BigDecimal frozenTotal) {
+        this(productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
+                descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                lineType, promotionId, promotionVersionId, promotionalCouponId,
+                serialNumbers, temporaryNameOverride, temporaryPriceOverride,
+                returnSourceType, returnSourceCode, returnSourceTicketId,
+                originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
+                frozenTotal, null);
+    }
 
     public DocumentLineCommand(
             UUID productoId,
@@ -163,7 +199,7 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null);
+                null, null, null, barcode);
     }
 
     public DocumentLineCommand withDiscount(BigDecimal discount, String rate) {
@@ -174,7 +210,18 @@ public record DocumentLineCommand(
                 temporaryNameOverride, temporaryPriceOverride,
                 returnSourceType, returnSourceCode,
                 returnSourceTicketId, originalDocumentLineId, giftReceiptLineId,
-                null, null, null);
+                null, null, null, barcode);
+    }
+
+    public DocumentLineCommand withBarcode(String value) {
+        return new DocumentLineCommand(
+                productoId, cantidad, codigo, nombre, tarifa, precioUnitario,
+                descuento, impuestosIncluidos, regimenImpuesto, porcentajeImpuesto,
+                lineType, promotionId, promotionVersionId, promotionalCouponId,
+                serialNumbers, temporaryNameOverride, temporaryPriceOverride,
+                returnSourceType, returnSourceCode, returnSourceTicketId,
+                originalDocumentLineId, giftReceiptLineId, frozenBase, frozenTax,
+                frozenTotal, value);
     }
 
     static String historicalOpenPriceRate() {
@@ -233,7 +280,8 @@ public record DocumentLineCommand(
                 line.getOriginalDocumentLineId(), line.getGiftReceiptLineId(),
                 frozenAmounts ? line.getBase() : null,
                 frozenAmounts ? line.getImpuesto() : null,
-                frozenAmounts ? line.getTotal() : null);
+                frozenAmounts ? line.getTotal() : null,
+                line.getCodigoBarras());
     }
 
     // Converts validated input into a line with a fiscal snapshot.
@@ -267,13 +315,14 @@ public record DocumentLineCommand(
         }
         var line = frozenBase == null
                 ? new DocumentLine(
-                        document, productoId, position, cantidad, codigo, nombre, tarifa,
-                        precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
-                        porcentajeImpuesto)
+                        document, productoId, position, cantidad, codigo, barcode,
+                        nombre, tarifa, precioUnitario, descuento, impuestosIncluidos,
+                        regimenImpuesto, porcentajeImpuesto)
                 : DocumentLine.frozenProduct(
-                        document, productoId, position, cantidad, codigo, nombre, tarifa,
-                        precioUnitario, descuento, impuestosIncluidos, regimenImpuesto,
-                        porcentajeImpuesto, frozenBase, frozenTax, frozenTotal);
+                        document, productoId, position, cantidad, codigo, barcode,
+                        nombre, tarifa, precioUnitario, descuento, impuestosIncluidos,
+                        regimenImpuesto, porcentajeImpuesto, frozenBase, frozenTax,
+                        frozenTotal);
         line.assignSerialNumbers(serialNumbers);
         if (originalDocumentLineId != null) {
             line.identifyRefundOf(originalDocumentLineId);

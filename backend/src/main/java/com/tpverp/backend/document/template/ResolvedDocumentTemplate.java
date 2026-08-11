@@ -41,6 +41,26 @@ public record ResolvedDocumentTemplate(
                     "builtin:factura_venta_a4_v1",
                     null,
                     true);
+            case ALBARAN_VENTA -> new ResolvedDocumentTemplate(
+                    null,
+                    type,
+                    DocumentTemplateScope.SYSTEM,
+                    "ALBARAN_A4",
+                    1,
+                    1,
+                    "builtin:albaran_venta_a4_v1",
+                    null,
+                    true);
+            case TICKET -> new ResolvedDocumentTemplate(
+                    null,
+                    type,
+                    DocumentTemplateScope.SYSTEM,
+                    "TICKET_80",
+                    1,
+                    1,
+                    "builtin:ticket_80_v1",
+                    null,
+                    true);
         };
     }
 }

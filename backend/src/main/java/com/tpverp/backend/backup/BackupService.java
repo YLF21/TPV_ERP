@@ -44,6 +44,7 @@ public class BackupService {
     private final Clock clock;
     private final Path defaultDirectory;
     private final Path productImagesDirectory;
+    private final Path documentTemplatesDirectory;
 
     public BackupService(
             BackupSettingsRepository configurationRepository,
@@ -59,7 +60,8 @@ public class BackupService {
             AuditService auditService,
             Clock clock,
             Path defaultDirectory,
-            Path productImagesDirectory) {
+            Path productImagesDirectory,
+            Path documentTemplatesDirectory) {
         this.configurationRepository = configurationRepository;
         this.executionRepository = executionRepository;
         this.installationRepository = installationRepository;
@@ -74,6 +76,7 @@ public class BackupService {
         this.clock = clock;
         this.defaultDirectory = defaultDirectory;
         this.productImagesDirectory = productImagesDirectory;
+        this.documentTemplatesDirectory = documentTemplatesDirectory;
     }
 
     @Transactional
@@ -138,7 +141,8 @@ public class BackupService {
             dump = Files.createTempFile(destination, ".tpv-dump-", ".backup");
             archive = Files.createTempFile(destination, ".tpv-archive-", ".zip");
             commands.dump(dump);
-            var archiveInfo = archives.create(dump, productImagesDirectory, archive);
+            var archiveInfo = archives.create(
+                    dump, productImagesDirectory, documentTemplatesDirectory, archive);
             String date = LocalDate.now(clock).toString();
             Path encrypted = daily.resolve("tpv-erp-" + date + ".tpvb");
             brk = keyStore.loadForScheduledBackup();
@@ -154,7 +158,8 @@ public class BackupService {
                             "plaintextBytes", info.plaintextLength(),
                             "chunks", info.chunkCount(),
                             "databaseBytes", archiveInfo.databaseBytes(),
-                            "imageFiles", archiveInfo.imageFiles()),
+                            "imageFiles", archiveInfo.imageFiles(),
+                            "templateFiles", archiveInfo.templateFiles()),
                     null);
             auditService.record(
                     "BACKUP_COMPLETED", AuditResult.EXITO, Map.of("path", encrypted.toString()));
@@ -198,7 +203,8 @@ public class BackupService {
             dump = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".backup");
             archive = Files.createTempFile(defaultDirectory.toAbsolutePath(), ".tpv-restore-", ".zip");
             fileCrypto.decrypt(encryptedBackup, archive, brk);
-            archives.restore(archive, dump, productImagesDirectory);
+            archives.restore(
+                    archive, dump, productImagesDirectory, documentTemplatesDirectory);
             commands.restore(dump);
             auditService.record(
                     "BACKUP_RESTORED",

@@ -59,7 +59,8 @@ export type Permission =
   | "PAYMENT_TERMINAL_SECRETS"
   | "VERIFACTU_READ"
   | "VERIFACTU_CORRECT"
-  | "VERIFACTU_MANAGE";
+  | "VERIFACTU_MANAGE"
+  | "DOCUMENT_TEMPLATES_MANAGE";
 
 export type UserSession = {
   userId?: string;

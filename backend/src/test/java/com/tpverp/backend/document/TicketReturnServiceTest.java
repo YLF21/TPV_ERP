@@ -47,6 +47,7 @@ class TicketReturnServiceTest {
     @Mock SaleOperationSecurityService operationSecurity;
     @Mock AuditService audit;
     @Mock Authentication authentication;
+    @Mock TicketCancellationOperationRepository cancellations;
 
     private TicketReturnService service;
     private UUID ticketId;
@@ -58,7 +59,7 @@ class TicketReturnServiceTest {
     void setUp() {
         service = new TicketReturnService(
                 documents, terminalPayments, settlements, tenders, cash,
-                currentTerminal, vouchers, mock(TicketCancellationOperationRepository.class),
+                currentTerminal, vouchers, cancellations,
                 operationSecurity, audit);
         ticketId = UUID.randomUUID();
         requestId = UUID.randomUUID();
@@ -94,6 +95,53 @@ class TicketReturnServiceTest {
             assertThat(payout.amount()).isEqualByComparingTo("12.10");
         });
         assertThat(result.document()).isSameAs(refundDocument);
+    }
+
+    @Test
+    void salesInvoiceReturnUsesInvoiceSecurityAndItsOriginPaymentSource() {
+        var invoice = mock(CommercialDocument.class);
+        var originTicket = mock(CommercialDocument.class);
+        var originTicketId = UUID.randomUUID();
+        var operator = mock(UserAccount.class);
+        when(invoice.getTipo()).thenReturn(CommercialDocumentType.FACTURA_VENTA);
+        when(originTicket.getId()).thenReturn(originTicketId);
+        when(documents.find(ticketId)).thenReturn(invoice);
+        when(documents.returnPaymentSource(ticketId)).thenReturn(originTicket);
+        when(operationSecurity.authorize(
+                eq(SaleOperationCode.RETURN_SALES_INVOICE), any(), any(), eq(authentication)))
+                .thenReturn(new Authorization(operator, operator, false));
+        when(operator.getId()).thenReturn(UUID.randomUUID());
+        when(operator.getUserName()).thenReturn("SUPERVISOR");
+
+        service.create(ticketId, requestId, new BigDecimal("25.00"),
+                BigDecimal.ZERO, List.of(), List.of(), authentication);
+
+        verify(operationSecurity).authorize(
+                eq(SaleOperationCode.RETURN_SALES_INVOICE), any(), any(), eq(authentication));
+        verify(documents).validateApprovedCardRefund(
+                ticketId, new BigDecimal("25.00"), List.of());
+        verify(cash).requireOpenSession(terminalId);
+    }
+
+    @Test
+    void invoicePreviewResolvesWithoutThrowingAProbeExceptionInsideTheTransaction() {
+        var invoiceNumber = "FV-001-26-000019";
+        var invoiceId = UUID.randomUUID();
+        var invoice = mock(CommercialDocument.class);
+        var originTicket = mock(CommercialDocument.class);
+        when(invoice.getId()).thenReturn(invoiceId);
+        when(invoice.getNumero()).thenReturn(invoiceNumber);
+        when(originTicket.getPagos()).thenReturn(List.of());
+        when(documents.findTicketForReturnByNumber(invoiceNumber)).thenReturn(Optional.empty());
+        when(documents.invoiceForReturnByNumber(invoiceNumber)).thenReturn(invoice);
+        when(documents.returnPaymentSource(invoiceId)).thenReturn(originTicket);
+        when(documents.cardRefundLineOptions(invoiceId)).thenReturn(List.of());
+
+        var preview = service.preview(invoiceNumber);
+
+        assertThat(preview.sourceType()).isEqualTo(TicketReturnService.ReturnSourceType.SALES_INVOICE);
+        assertThat(preview.sourceCode()).isEqualTo(invoiceNumber);
+        verify(documents, never()).ticketForReturnByNumber(any());
     }
 
     @Test

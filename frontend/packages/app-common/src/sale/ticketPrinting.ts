@@ -24,6 +24,8 @@ export type ConfirmedTicketPrintSnapshot = {
   documentNumber: string;
   issuedAt: string;
   lines: Array<{
+    code?: string;
+    barcode?: string;
     name: string;
     quantity: NumericValue;
     price: NumericValue;
@@ -38,6 +40,8 @@ export type ConfirmedTicketPrintSnapshot = {
   baseTotal?: NumericValue;
   taxTotal?: NumericValue;
   checkoutDiscountTotal?: NumericValue;
+  observations?: string;
+  logo?: string;
 };
 
 export type TicketPrintOutcome = {
@@ -70,6 +74,7 @@ export type PendingCommercialDocumentPrintSnapshot = {
   bankAccounts?: Array<{ bankName: string; iban: string }>;
   qrUrl?: string;
   qrImage?: string;
+  renderedPdf?: { contentType: "application/pdf"; base64: string };
 };
 
 function printableAddress(address: FiscalPartySnapshot["address"] | undefined) {
@@ -123,6 +128,8 @@ export function ticketPrintRequest(
     terminalCode: terminal.terminalCode,
     issuedAt: snapshot.issuedAt,
     lines: snapshot.lines.map((line) => ({
+      code: line.code,
+      barcode: line.barcode,
       name: line.name,
       quantity: Number(line.quantity),
       price: Number(line.price),
@@ -141,6 +148,8 @@ export function ticketPrintRequest(
     ...(snapshot.taxTotal == null ? {} : { tax: Number(snapshot.taxTotal) }),
     labels,
     escposLabels: labels,
+    ...(snapshot.logo ? { logo: snapshot.logo } : {}),
+    ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
   };
 }
 
@@ -196,6 +205,8 @@ export function ticketAsA4Document(
     tax: Number(snapshot.taxTotal ?? 0),
     taxIncluded: true,
     total: Number(snapshot.total),
+    ...(snapshot.logo ? { logo: snapshot.logo } : {}),
+    ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
     metadata: snapshot.payments.map((payment) => ({
       label: payment.method,
       value: Number(payment.amount).toFixed(2),
@@ -367,6 +378,7 @@ export function commercialDocumentAsA4Document(
     bankAccounts: snapshot.bankAccounts,
     qrUrl: snapshot.qrUrl,
     qrImage: snapshot.qrImage,
+    renderedPdf: snapshot.renderedPdf,
     lines: snapshot.lines.map((line) => ({
       code: line.code,
       barcode: line.barcode,
@@ -485,7 +497,9 @@ export async function printPendingCommercialDocument(
           total: Number(line.total), taxesIncluded: line.taxesIncluded,
           ...(line.serialNumbers?.length ? { serialNumbers: line.serialNumbers } : {})
         })),
-        payments: [], total: Number(snapshot.total)
+        payments: [], total: Number(snapshot.total),
+        ...(snapshot.issuer?.logo ? { logo: snapshot.issuer.logo } : {}),
+        ...(snapshot.observations ? { notes: [snapshot.observations] } : {}),
       }, config);
       return result.ok ? { status: "PRINTED" } : { status: "FAILED", technicalMessage: result.message };
     }

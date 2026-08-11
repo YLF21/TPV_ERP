@@ -38,7 +38,7 @@ export type OpenedParkedSale = {
       temporaryNameOverride?: boolean | null;
       temporaryPriceOverride?: boolean | null;
       serialNumbers?: string[];
-      returnSourceType?: "TICKET" | "GIFT_RECEIPT" | null;
+      returnSourceType?: "TICKET" | "GIFT_RECEIPT" | "SALES_INVOICE" | null;
       returnSourceCode?: string | null;
       returnSourceTicketId?: string | null;
       originalDocumentLineId?: string | null;

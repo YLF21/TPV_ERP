@@ -294,6 +294,111 @@ describe("SaleTicketCancellationDialog", () => {
     );
   });
 
+  it("continues with a full corrective invoice when Ctrl+F11 receives an invoice number", async () => {
+    const invoicePreview = {
+      sourceType: "SALES_INVOICE",
+      sourceCode: "FV-001-26-000019",
+      ticketId: "invoice-19",
+      ticketNumber: "FV-001-26-000019",
+      date: "2026-08-10",
+      total: "1000000.00",
+      lines: [{
+        lineId: "invoice-line-1",
+        productId: "product-1",
+        code: "ART-1",
+        name: "ARTICULO",
+        lineType: "PRODUCT",
+        productType: "UNIT",
+        refundableQuantity: "1.000",
+        unitPrice: "1000000.00",
+        refundableTotal: "1000000.00",
+        refundableSerialNumbers: [],
+        discount: "0.00",
+        taxesIncluded: true,
+        taxRegime: "IGIC",
+        taxPercentage: "7.00",
+      }],
+      paymentAvailability: [],
+    };
+    request.mockImplementation(async (path) => {
+      if (path === "/tickets/cancellation-preview?number=FV-001-26-000019") {
+        throw Object.assign(new Error("Ticket no encontrado"), {
+          problem: { code: "TICKET_NOT_FOUND" },
+        });
+      }
+      if (path === "/tickets/return-preview?ticketNumber=FV-001-26-000019") {
+        return invoicePreview as never;
+      }
+      if (path === "/tickets/return-valuation") {
+        return {
+          selectedGross: "1000000.00",
+          lostBenefits: "0.00",
+          refundableAmount: "1000000.00",
+          eligibleRefundableAmount: "1000000.00",
+          cumulativeEligibleRefundableAmount: "1000000.00",
+          cumulativeRefundableAmount: "1000000.00",
+          previouslyRefundedAmount: "0.00",
+          remainingBasketValue: "0.00",
+        } as never;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const onInvoiceAddToCart = vi.fn();
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="BY_NUMBER"
+        initialTicketNumber="FV-001-26-000019"
+        onClose={vi.fn()}
+        onInvoiceAddToCart={onInvoiceAddToCart}
+      />,
+    );
+
+    expect(await screen.findByRole("dialog", { name: "Anular operación facturada" }))
+      .toBeInTheDocument();
+    expect(await screen.findByText("ARTICULO")).toBeInTheDocument();
+    const continueButton = screen.getByRole("button", { name: "Preparar rectificativa completa" });
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    fireEvent.click(continueButton);
+
+    expect(onInvoiceAddToCart).toHaveBeenCalledWith([
+      expect.objectContaining({
+        sourceType: "SALES_INVOICE",
+        sourceCode: "FV-001-26-000019",
+        lineId: "invoice-line-1",
+        returnQuantity: 1,
+      }),
+    ]);
+  });
+
+  it("keeps ticket cancellation available but blocks invoice rectification when the cart is not empty", async () => {
+    request.mockRejectedValue(Object.assign(new Error("Ticket no encontrado"), {
+      problem: { code: "TICKET_NOT_FOUND" },
+    }));
+
+    render(
+      <SaleTicketCancellationDialog
+        token="token"
+        locale="es"
+        permissions={["GESTION_VENTAS"]}
+        terminalContext={{ storeName: "Tienda", terminalCode: "01" }}
+        mode="BY_NUMBER"
+        initialTicketNumber="FV-001-26-000019"
+        canStartInvoiceCancellation={false}
+        onClose={vi.fn()}
+        onInvoiceAddToCart={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("alert"))
+      .toHaveTextContent("El carrito debe estar vacío para anular una operación facturada");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a clear warning when the ticket already has partial returns", async () => {
     request.mockRejectedValue(Object.assign(new Error("generic conflict"), {
       problem: { code: "TICKET_HAS_PREVIOUS_RETURNS" },

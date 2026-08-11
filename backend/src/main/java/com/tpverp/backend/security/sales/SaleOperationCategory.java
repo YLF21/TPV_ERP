@@ -3,6 +3,7 @@ package com.tpverp.backend.security.sales;
 public enum SaleOperationCategory {
     CASH,
     TICKET,
+    INVOICE,
     PRODUCT,
     DISCOUNT,
     CREDIT,

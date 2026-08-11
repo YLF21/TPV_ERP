@@ -147,6 +147,8 @@ class DocumentServiceTest {
     private TicketCancellationOperationRepository ticketCancellations;
     @Mock
     private SaleOperationSecurityService saleOperationSecurity;
+    @Mock
+    private SalesInvoiceRectificationRepository salesInvoiceRectificationRepository;
 
     private DocumentService service;
     private Store store;
@@ -241,6 +243,58 @@ class DocumentServiceTest {
                 ticketCancellations,
                 saleOperationSecurity,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        service.setSalesInvoiceRectifications(salesInvoiceRectificationRepository);
+    }
+
+    @Test
+    void fullSalesInvoiceReturnCreatesOperationalCancellationRectification() {
+        var original = new CommercialDocument(
+                store.getId(), UUID.randomUUID(), CommercialDocumentType.FACTURA_VENTA,
+                LocalDate.now(), user.getId(), BigDecimal.ZERO);
+        original.setParties(UUID.randomUUID(), null, null);
+        var sourceLine = new DocumentLine(
+                original, UUID.randomUUID(), 1, BigDecimal.ONE,
+                "P-FV", "Producto facturado", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO,
+                true, "IVA", new BigDecimal("21.00"));
+        original.addLine(sourceLine);
+        original.confirm("FV-001-26-000001", user.getId(), NOW, false);
+        addFullCashPayment(original);
+        original.updatePaymentStatus();
+        var valuation = new TicketReturnValuationService.Valuation(
+                new BigDecimal("100.00"), BigDecimal.ZERO,
+                new BigDecimal("100.00"), new BigDecimal("100.00"),
+                new BigDecimal("100.00"), new BigDecimal("100.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, List.of());
+        when(documentRepository.findLockedRefundSource(original.getId(), store.getId()))
+                .thenReturn(Optional.of(original));
+        when(documentRepository.confirmedRefundedQuantity(sourceLine.getId()))
+                .thenReturn(BigDecimal.ZERO);
+        when(documentRepository.confirmedReturnAmount(original.getId()))
+                .thenReturn(BigDecimal.ZERO);
+        when(counterRepository.findByTiendaIdAndTipoAndPeriodo(any(), any(), any()))
+                .thenReturn(Optional.empty());
+        when(documentRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(stockGateway.confirm(any())).thenReturn(false);
+
+        var rectification = service.createApprovedReturn(
+                UUID.randomUUID(), original.getId(), new BigDecimal("100.00"),
+                List.of(new PaymentTerminalRefundLineSelection(
+                        sourceLine.getId(), BigDecimal.ONE)),
+                null, valuation, authentication());
+
+        assertThat(rectification.getTipo())
+                .isEqualTo(CommercialDocumentType.RECTIFICATIVA_VENTA);
+        assertThat(rectification.getTotal()).isEqualByComparingTo("-100.00");
+        verify(relationRepository).save(any(DocumentRelation.class));
+        verify(salesInvoiceRectificationRepository).save(argThat(metadata ->
+                metadata.getDocumentId().equals(rectification.getId())
+                        && metadata.getOriginalDocumentId().equals(original.getId())
+                        && metadata.getReason()
+                                == SalesInvoiceRectificationReason.OPERATION_CANCELLATION
+                        && metadata.isAffectsStock()));
+        verify(fiscalIntegration).registerAlta(rectification, false);
+        verify(fiscalIntegration, never()).registerTicketRectification(any(), any());
     }
 
     @Test
@@ -326,6 +380,12 @@ class DocumentServiceTest {
     @Test
     void confirmsDeliveryNoteWithAnnualNumber() {
         var document = draft(CommercialDocumentType.ALBARAN_VENTA);
+        var printSnapshots = org.mockito.Mockito.mock(
+                InvoicePresentationSnapshotFactory.class);
+        service.setInvoicePrintSnapshots(printSnapshots);
+        when(printSnapshots.create(
+                com.tpverp.backend.document.template.DocumentTemplateType.ALBARAN_VENTA))
+                .thenReturn("{\"template\":\"ALBARAN_A4\"}");
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(documentRepository.save(document)).thenReturn(document);
         when(counterRepository.findByTiendaIdAndTipoAndPeriodo(
@@ -339,6 +399,8 @@ class DocumentServiceTest {
         assertThat(confirmed.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
         assertThat(confirmed.isOrigenStock()).isTrue();
         assertThat(confirmed.getTerminalOrigenId()).isEqualTo(terminalId);
+        assertThat(confirmed.getInvoicePrintSnapshot())
+                .isEqualTo("{\"template\":\"ALBARAN_A4\"}");
         verify(operationalEvents).record(
                 confirmed,
                 DocumentOperationalEventType.CONFIRMADO,
@@ -1159,8 +1221,9 @@ class DocumentServiceTest {
     }
 
     @Test
-    void convertsConfirmedTicketToInvoiceOnceWithoutStockOrPayments() {
+    void convertsConfirmedPaidTicketToSettledInvoiceWithoutDuplicatingPayments() {
         var ticket = draft(CommercialDocumentType.TICKET);
+        addFullCashPayment(ticket);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         var customer = completeCustomer();
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
@@ -1182,7 +1245,11 @@ class DocumentServiceTest {
                 authentication());
 
         assertThat(invoice.getTipo()).isEqualTo(CommercialDocumentType.FACTURA_VENTA);
-        assertThat(invoice.getEstado()).isEqualTo(DocumentStatus.PENDIENTE);
+        assertThat(invoice.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        assertThat(invoice.getPaidTotal()).isEqualByComparingTo(invoice.getTotal());
+        assertThat(invoice.getPendingTotal()).isZero();
+        assertThat(invoice.getPagos()).isEmpty();
+        assertThat(invoice.isSettledByOrigin()).isTrue();
         assertThat(invoice.getNumero()).isEqualTo("FV-001-26-000001");
         assertThat(invoice.getNumTicket()).isEqualTo("001-260608-00001");
         assertThat(invoice.getLineas()).hasSize(ticket.getLineas().size());
@@ -1213,6 +1280,7 @@ class DocumentServiceTest {
     @Test
     void invoiceFromTicketEnqueuesSyncEvent() {
         var ticket = draft(CommercialDocumentType.TICKET);
+        addFullCashPayment(ticket);
         ticket.confirm("001-260608-00001", UUID.randomUUID(), NOW, true);
         var customer = completeCustomer();
         when(documentRepository.findLockedDocument(ticket.getId(), store.getId()))
@@ -2533,6 +2601,13 @@ class DocumentServiceTest {
                 user.getId(), command.descuentoGlobal());
         command.lineas().forEach(line -> document.addLine(line.toEntity(document)));
         return document;
+    }
+
+    private void addFullCashPayment(CommercialDocument document) {
+        var cash = new PaymentMethod(store.getEmpresa().getId(), "EFECTIVO", true);
+        document.addPayment(new DocumentPayment(
+                document, cash, 1, document.getTotal(), true,
+                document.getTotal(), BigDecimal.ZERO, null, null, NOW));
     }
 
     private CommercialDocument confirmedSales(

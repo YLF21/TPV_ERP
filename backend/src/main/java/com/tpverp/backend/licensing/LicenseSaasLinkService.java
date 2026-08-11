@@ -5,6 +5,7 @@ import com.tpverp.backend.audit.AuditService;
 import com.tpverp.backend.installation.Installation;
 import com.tpverp.backend.installation.InstallationRepository;
 import com.tpverp.backend.installation.CommercialBootstrapService;
+import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.LicenseValidationException;
 import com.tpverp.backend.licensing.application.TaxRegime;
 import com.tpverp.backend.organization.Company;
@@ -177,7 +178,8 @@ public class LicenseSaasLinkService {
             }
             markSaasStatus(license, store, response, Instant.now(clock));
             licenses.save(license);
-            updateDefaultTax(store.getId(), response.impuestos());
+            updateDefaultTax(
+                    store.getId(), response.impuestos(), commercialProfile(response));
             return;
         }
         licenses.findByTiendaIdAndInstalacionIdAndActivaTrue(store.getId(), installation.getId())
@@ -194,9 +196,7 @@ public class LicenseSaasLinkService {
                 SpanishTaxId.normalize(taxId(response)),
                 response.taxpayerType(),
                 response.impuestos(),
-                response.commercialProfile() == null
-                        ? com.tpverp.backend.licensing.application.CommercialProfile.MAYORISTA
-                        : response.commercialProfile(),
+                commercialProfile(response),
                 "SAAS_LINK:" + response.licenseReference(),
                 hash(response),
                 4,
@@ -207,7 +207,8 @@ public class LicenseSaasLinkService {
                 true);
         markSaasStatus(license, store, response, now);
         licenses.save(license);
-        updateDefaultTax(store.getId(), response.impuestos());
+        updateDefaultTax(
+                store.getId(), response.impuestos(), commercialProfile(response));
     }
 
     private void markSaasStatus(
@@ -310,10 +311,14 @@ public class LicenseSaasLinkService {
         }
     }
 
-    private void updateDefaultTax(UUID storeId, TaxRegime regime) {
+    private void updateDefaultTax(
+            UUID storeId, TaxRegime regime, CommercialProfile commercialProfile) {
         BigDecimal percentage = regime == TaxRegime.IGIC
-                ? new BigDecimal("7.00")
-                : new BigDecimal("21.00");
+                        && commercialProfile == CommercialProfile.MINORISTA
+                ? new BigDecimal("0.00")
+                : regime == TaxRegime.IGIC
+                        ? new BigDecimal("7.00")
+                        : new BigDecimal("21.00");
         jdbc.update("update impuesto_tienda set predeterminado = false where tienda_id = ?", storeId);
         int updated = jdbc.update(
                 "update impuesto_tienda set activo = true, predeterminado = true "
@@ -329,6 +334,13 @@ public class LicenseSaasLinkService {
                     storeId,
                     percentage);
         }
+    }
+
+    private static CommercialProfile commercialProfile(
+            LicenseSaasLinkResponse response) {
+        return response.commercialProfile() == null
+                ? CommercialProfile.MAYORISTA
+                : response.commercialProfile();
     }
 
     private Installation currentInstallation() {

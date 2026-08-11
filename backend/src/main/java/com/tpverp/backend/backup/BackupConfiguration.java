@@ -71,7 +71,8 @@ class BackupConfiguration {
             AuditService auditService,
             Clock clock,
             @Value("${tpv.backup.default-directory}") Path defaultDirectory,
-            @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory) {
+            @Value("${tpv.product-images.directory:${tpv.backup.default-directory}/product-images}") Path productImagesDirectory,
+            @Value("${tpv.document-templates.directory:${tpv.backup.default-directory}/document-templates}") Path documentTemplatesDirectory) {
         return new BackupService(
                 configurationRepository,
                 executionRepository,
@@ -86,7 +87,8 @@ class BackupConfiguration {
                 auditService,
                 clock,
                 defaultDirectory,
-                productImagesDirectory);
+                productImagesDirectory,
+                documentTemplatesDirectory);
     }
 
     @Bean

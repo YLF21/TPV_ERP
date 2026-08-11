@@ -25,6 +25,7 @@ import com.tpverp.backend.control.ControlAlertDetectionService;
 import com.tpverp.backend.excel.ProductImportLineMetadata;
 import com.tpverp.backend.excel.ProductImportLineMetadataRepository;
 import com.tpverp.backend.inventory.StockSettingsService;
+import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.MemberLoyaltyService;
@@ -127,6 +128,7 @@ public class DocumentService {
     private final Clock clock;
     private AuditService audit;
     private InvoicePresentationSnapshotFactory invoicePrintSnapshots;
+    private SalesInvoiceRectificationRepository salesInvoiceRectifications;
 
     public DocumentService(
             CommercialDocumentRepository documents,
@@ -204,6 +206,12 @@ public class DocumentService {
     @org.springframework.beans.factory.annotation.Autowired
     void setInvoicePrintSnapshots(InvoicePresentationSnapshotFactory invoicePrintSnapshots) {
         this.invoicePrintSnapshots = invoicePrintSnapshots;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setSalesInvoiceRectifications(
+            SalesInvoiceRectificationRepository salesInvoiceRectifications) {
+        this.salesInvoiceRectifications = salesInvoiceRectifications;
     }
 
     @Transactional
@@ -520,6 +528,7 @@ public class DocumentService {
                 organization.currentUser(authentication).getId(),
                 Instant.now(clock),
                 false);
+        captureInvoicePrintSnapshot(ticket);
         if (ticket.getTotal().signum() > 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total del ticket", terminalId);
         }
@@ -581,6 +590,7 @@ public class DocumentService {
         serialNumberGuard.lockAndValidate(ticket, true);
         var ticketNumber = nextNumber(ticket);
         ticket.confirm(ticketNumber, organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        captureInvoicePrintSnapshot(ticket);
         if (ticket.getTotal().signum() > 0) {
             addPayments(ticket, payments, "los pagos deben cuadrar con el total autorizado", terminalId);
         }
@@ -710,6 +720,7 @@ public class DocumentService {
         var ticketNumber = nextNumber(ticket);
         ticket.confirm(ticketNumber, organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
+        captureInvoicePrintSnapshot(ticket);
         documents.saveAndFlush(ticket);
         recordCreated(ticket);
         recordConfirmed(ticket, terminalId);
@@ -1078,6 +1089,44 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<CommercialDocument> findTicketForReturnByNumber(String ticketNumber) {
+        if (ticketNumber == null || ticketNumber.isBlank()) {
+            throw new IllegalArgumentException("El codigo de ticket es obligatorio");
+        }
+        var storeId = organization.currentStore().getId();
+        return documents.findByTiendaIdAndTipoAndNumeroIgnoreCase(
+                        storeId,
+                        CommercialDocumentType.TICKET,
+                        ticketNumber.trim())
+                .map(ticket -> {
+                    initializeDetailedCollections(ticket, storeId);
+                    requireRefundableDocument(ticket);
+                    return ticket;
+                });
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument invoiceForReturnByNumber(String invoiceNumber) {
+        var invoice = loadDetailedSalesInvoiceByNumber(invoiceNumber);
+        requireRefundableDocument(invoice);
+        return invoice;
+    }
+
+    @Transactional(readOnly = true)
+    public CommercialDocument returnPaymentSource(UUID sourceDocumentId) {
+        var source = findDetailed(sourceDocumentId);
+        if (source.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                && source.isSettledByOrigin()) {
+            var origin = findOriginTicket(source.getId())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "La factura no conserva el ticket origen de sus pagos"));
+            initializeDetailedCollections(origin, source.getTiendaId());
+            return origin;
+        }
+        return source;
+    }
+
+    @Transactional(readOnly = true)
     public CommercialDocument detailedTicketByNumber(String ticketNumber) {
         return loadDetailedTicketByNumber(ticketNumber);
     }
@@ -1165,8 +1214,12 @@ public class DocumentService {
                 selections,
                 valuation == null ? List.of() : valuation.taxAdjustments(),
                 valuation != null);
+        var invoiceReturn = original.getTipo() == CommercialDocumentType.FACTURA_VENTA;
         var refund = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
-                CommercialDocumentType.TICKET, LocalDate.now(clock),
+                invoiceReturn
+                        ? CommercialDocumentType.RECTIFICATIVA_VENTA
+                        : CommercialDocumentType.TICKET,
+                LocalDate.now(clock),
                 organization.currentUser(authentication).getId(), original.getDescuentoGlobal());
         var terminalId = currentTerminal.terminalId(authentication);
         refund.assignOriginTerminal(terminalId);
@@ -1183,25 +1236,80 @@ public class DocumentService {
             throw new IllegalStateException("La instantanea fiscal de devolucion no cuadra");
         }
         refund.confirm(nextNumber(refund), organization.currentUser(authentication).getId(), Instant.now(clock), false);
+        captureInvoicePrintSnapshot(refund);
         documents.saveAndFlush(refund);
         recordCreated(refund);
         recordConfirmed(refund, terminalId);
         refund.setStockOrigin(stockGateway.confirm(refund));
         var saved = documents.save(refund);
         relations.save(new DocumentRelation(saved, original, DocumentRelationType.RECTIFICA));
+        if (invoiceReturn) {
+            if (salesInvoiceRectifications == null) {
+                throw new IllegalStateException(
+                        "El registro de facturas rectificativas no esta disponible");
+            }
+            var fullResolution = resolvesEntireOperation(original, plan);
+            salesInvoiceRectifications.save(new SalesInvoiceRectification(
+                    saved.getId(),
+                    original.getId(),
+                    fullResolution
+                            ? SalesInvoiceRectificationReason.OPERATION_CANCELLATION
+                            : SalesInvoiceRectificationReason.GOODS_RETURN,
+                    fullResolution
+                            ? "Resolucion completa de la operacion registrada desde APP VENTA"
+                            : "Devolucion de mercancia registrada desde APP VENTA",
+                    Instant.now(clock)));
+        }
         operationalEvents.record(original, DocumentOperationalEventType.RECTIFICADO,
                 organization.currentUser(authentication).getId(), terminalId, Instant.now(clock),
                 Map.of("documentoRelacionadoId", saved.getId().toString()));
-        fiscalIntegration.registerTicketRectification(saved, original);
+        if (invoiceReturn) {
+            fiscalIntegration.registerAlta(saved, false);
+        } else {
+            fiscalIntegration.registerTicketRectification(saved, original);
+        }
         if (valuation != null) {
+            var loyaltyOriginal = invoiceReturn && original.isSettledByOrigin()
+                    ? findOriginTicket(original.getId()).orElse(original)
+                    : original;
             memberLoyalty.reverseConfirmedReturn(
-                    original,
+                    loyaltyOriginal,
                     saved,
                     valuation.cumulativeRefundableAmount(),
                     valuation.cumulativeEligibleRefundableAmount());
         }
         enqueueConfirmedDocument(saved, terminalId);
         return saved;
+    }
+
+    private boolean resolvesEntireOperation(
+            CommercialDocument original, RefundPlan plan) {
+        var selectedByLine = plan.lines().stream().collect(
+                java.util.stream.Collectors.toMap(
+                        selected -> selected.source().getId(),
+                        SelectedRefundLine::quantity,
+                        BigDecimal::add));
+        for (var source : original.getLineas()) {
+            if (source.getLineType() != DocumentLineType.PRODUCT) {
+                continue;
+            }
+            var alreadyRefunded = Optional.ofNullable(
+                    documents.confirmedRefundedQuantity(source.getId()))
+                    .orElse(BigDecimal.ZERO);
+            var available = source.getCantidad().abs()
+                    .subtract(alreadyRefunded)
+                    .max(BigDecimal.ZERO);
+            if (selectedByLine.getOrDefault(source.getId(), BigDecimal.ZERO)
+                    .compareTo(available) != 0) {
+                return false;
+            }
+        }
+        var alreadyReturned = Optional.ofNullable(
+                documents.confirmedReturnAmount(original.getId()))
+                .orElse(BigDecimal.ZERO);
+        var remainingAmount = Money.euros(
+                original.getTotal().subtract(alreadyReturned));
+        return plan.amount().compareTo(remainingAmount) == 0;
     }
 
     private RefundPlan refundPlan(CommercialDocument original, BigDecimal approvedAmount,
@@ -1284,12 +1392,18 @@ public class DocumentService {
     }
 
     private void requireRefundableDocument(CommercialDocument original) {
-        if (original.getTipo() != CommercialDocumentType.TICKET) {
+        if (original.getTipo() != CommercialDocumentType.TICKET
+                && original.getTipo() != CommercialDocumentType.FACTURA_VENTA) {
             throw new IllegalStateException(
-                    "Las facturas deben corregirse mediante factura rectificativa");
+                    "El documento no admite devoluciones de venta");
         }
         if (original.getEstado() == DocumentStatus.BORRADOR || original.getEstado() == DocumentStatus.ANULADO) {
             throw new IllegalStateException("El documento original no admite devolucion");
+        }
+        if (original.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                && original.getEstado() != DocumentStatus.PAGADO) {
+            throw new IllegalStateException(
+                    "La factura pendiente debe compensar primero su cuenta a cobrar");
         }
         if (relations.existsByOrigen_IdAndTipo(
                 original.getId(), DocumentRelationType.FACTURA_DE)) {
@@ -1300,7 +1414,10 @@ public class DocumentService {
 
     private void buildRefundPreview(CommercialDocument original, RefundPlan plan) {
         var preview = new CommercialDocument(original.getTiendaId(), original.getAlmacenId(),
-                CommercialDocumentType.TICKET, LocalDate.now(clock), UUID.randomUUID(), original.getDescuentoGlobal());
+                original.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                        ? CommercialDocumentType.RECTIFICATIVA_VENTA
+                        : CommercialDocumentType.TICKET,
+                LocalDate.now(clock), UUID.randomUUID(), original.getDescuentoGlobal());
         for (var selected : plan.lines()) preview.addLine(refundLine(preview, selected));
         for (var adjustment : plan.adjustments()) {
             preview.addLine(returnAdjustmentLine(preview, adjustment));
@@ -1320,6 +1437,7 @@ public class DocumentService {
                     command.impuestosIncluidos(), command.regimenImpuesto(), command.porcentajeImpuesto(),
                     command.lineType(), command.promotionId(), command.promotionVersionId(),
                     command.promotionalCouponId(), selected.serialNumbers())
+                    .withBarcode(command.barcode())
                     .toEntity(refund);
         } else {
             line = DocumentLine.special(refund, refund.getLineas().size() + 1, source.getNombre(),
@@ -1933,8 +2051,22 @@ public class DocumentService {
         var sale = loadForPrint(id);
         return relations.findOriginId(sale.getId(), DocumentRelationType.COMPENSA)
                 .map(this::loadForPrint)
-                .map(refund -> TicketPrintView.fromExchange(sale, refund))
-                .orElseGet(() -> TicketPrintView.from(sale));
+                .map(refund -> ticketPrintViewFromExchange(sale, refund))
+                .orElseGet(() -> ticketPrintView(sale));
+    }
+
+    public TicketPrintView ticketPrintView(CommercialDocument document) {
+        return TicketPrintView.from(document);
+    }
+
+    public TicketPrintView ticketPrintView(
+            CommercialDocument document, List<RefundTender> refundPayouts) {
+        return TicketPrintView.from(document, refundPayouts);
+    }
+
+    public TicketPrintView ticketPrintViewFromExchange(
+            CommercialDocument sale, CommercialDocument refund) {
+        return TicketPrintView.fromExchange(sale, refund);
     }
 
     @Transactional(readOnly = true)
@@ -2128,7 +2260,7 @@ public class DocumentService {
         }
     }
 
-    // Converts a confirmed ticket into an F3 invoice without duplicating stock or payments.
+    // Converts a confirmed ticket into an F3 invoice without duplicating stock or cash movements.
     @Transactional
     public CommercialDocument convertTicketToInvoice(
             UUID ticketId,
@@ -2174,6 +2306,7 @@ public class DocumentService {
                 authentication);
         invoice.confirm(nextNumber(invoice), organization.currentUser(authentication).getId(),
                 Instant.now(clock), false);
+        invoice.settleFromPaidTicket(ticket);
         captureInvoicePrintSnapshot(invoice);
         var saved = documents.save(invoice);
         recordCreated(saved);
@@ -2197,9 +2330,15 @@ public class DocumentService {
     private void captureInvoicePrintSnapshot(CommercialDocument document) {
         if (invoicePrintSnapshots != null
                 && (document.getTipo() == CommercialDocumentType.FACTURA_VENTA
-                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                || document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA
+                || document.getTipo() == CommercialDocumentType.ALBARAN_VENTA)
                 && document.getInvoicePrintSnapshot() == null) {
-            document.captureInvoicePrintSnapshot(invoicePrintSnapshots.create());
+            var templateType = switch (document.getTipo()) {
+                case ALBARAN_VENTA -> DocumentTemplateType.ALBARAN_VENTA;
+                default -> DocumentTemplateType.FACTURA_VENTA;
+            };
+            document.captureInvoicePrintSnapshot(
+                    invoicePrintSnapshots.create(templateType));
         }
     }
 
@@ -3060,6 +3199,21 @@ public class DocumentService {
                 .orElseThrow(TicketNotFoundException::new);
         initializeDetailedCollections(ticket, storeId);
         return ticket;
+    }
+
+    private CommercialDocument loadDetailedSalesInvoiceByNumber(String invoiceNumber) {
+        if (invoiceNumber == null || invoiceNumber.isBlank()) {
+            throw new IllegalArgumentException("El numero de factura es obligatorio");
+        }
+        var storeId = organization.currentStore().getId();
+        var invoice = documents.findByTiendaIdAndTipoAndNumeroIgnoreCase(
+                        storeId,
+                        CommercialDocumentType.FACTURA_VENTA,
+                        invoiceNumber.trim())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Factura de venta no encontrada"));
+        initializeDetailedCollections(invoice, storeId);
+        return invoice;
     }
 
     private void initializeDetailedCollections(

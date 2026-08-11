@@ -64,6 +64,13 @@ public class SaleOperationSecurityRegistry {
                     false,
                     false),
             definition(
+                    SaleOperationCode.RETURN_SALES_INVOICE,
+                    SaleOperationCategory.INVOICE,
+                    List.of("F10"),
+                    List.of(GESTION_VENTAS),
+                    true,
+                    true),
+            definition(
                     SaleOperationCode.REFUND_POLICY_OVERRIDE,
                     SaleOperationCategory.TICKET,
                     List.of(),

@@ -115,6 +115,14 @@ public class RefundSettlementRecorder {
             CommercialDocument refund,
             List<TenderCommand> payouts,
             Authentication authentication) {
+        return recordExistingNegativeDocument(refund, payouts, authentication);
+    }
+
+    @Transactional
+    public CommercialDocument recordExistingNegativeDocument(
+            CommercialDocument refund,
+            List<TenderCommand> payouts,
+            Authentication authentication) {
         if (refund == null || refund.getTotal().signum() >= 0) {
             throw new IllegalArgumentException("refund_document_must_be_negative");
         }

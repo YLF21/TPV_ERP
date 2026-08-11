@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.tpverp.backend.organization.CurrentOrganization;
+import com.tpverp.backend.document.template.InvoiceJasperRenderer;
+import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.Company;
 import com.tpverp.backend.organization.Store;
 import com.tpverp.backend.party.Customer;
@@ -112,12 +114,104 @@ class CustomerReceivablePrintServiceTest {
         assertThat(printable.total()).isEqualByComparingTo("100.00");
         assertThat(printable.lines()).singleElement().satisfies(line -> {
             assertThat(line.name()).isEqualTo("Producto");
+            assertThat(line.barcode()).isEqualTo("8430000000010");
             assertThat(line.total()).isEqualByComparingTo("100.00");
         });
         assertThat(receipt.paymentId()).isEqualTo(payment.getRequestId());
         assertThat(receipt.amount()).isEqualByComparingTo("20.00");
         assertThat(receipt.remaining()).isEqualByComparingTo("80.00");
         assertThat(receipt.reference()).isEqualTo("TR-1");
+    }
+
+    @Test
+    void attachesJasperPdfWhenTheFrozenTemplateRendersIt() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var presentations = mock(InvoicePresentationSnapshotFactory.class);
+        var fiscalQr = mock(DocumentFiscalQrService.class);
+        var qrImages = mock(com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        var renderer = mock(InvoiceJasperRenderer.class);
+        var address = java.util.Map.of(
+                "linea1", "Calle 1", "codigoPostal", "35001",
+                "ciudad", "Las Palmas", "provincia", "Las Palmas", "pais", "ES");
+        var company = new Company("B12345678", "TPV ERP SL", address);
+        var store = new Store(company, "001", "Tienda", address,
+                UUID.randomUUID().toString(), "Atlantic/Canary", "EUR", "es-ES");
+        var customer = new Customer(company, "Cliente", DocumentType.CIF,
+                "B87654321", new FiscalAddress(
+                        "Calle 2", "35002", "Las Palmas", "Las Palmas", "ES"),
+                null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        customer.assignClientCode(store.getId(), "C-1");
+        var document = document(store.getId(), customer.getId());
+        var presentation = new InvoicePresentationSnapshot(
+                2, InvoiceFiscalProfile.IVA, null, List.of());
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(documents.findCustomerDocumentForPrint(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(customers.findByIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(customer));
+        when(presentations.create(DocumentTemplateType.FACTURA_VENTA))
+                .thenReturn("snapshot");
+        when(presentations.read("snapshot")).thenReturn(presentation);
+        when(renderer.render(document, store, company, customer, presentation, null))
+                .thenReturn(Optional.of("%PDF-1.7".getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers, presentations,
+                fiscalQr, qrImages, renderer);
+
+        var printable = service.document(document.getId());
+
+        assertThat(printable.renderedPdf().contentType()).isEqualTo("application/pdf");
+        assertThat(java.util.Base64.getDecoder().decode(printable.renderedPdf().base64()))
+                .startsWith((byte) '%', (byte) 'P', (byte) 'D', (byte) 'F');
+    }
+
+    @Test
+    void deliveryNoteWithoutCustomerRendersWithoutFiscalQrOrPaymentData() {
+        var documents = mock(CommercialDocumentRepository.class);
+        var payments = mock(DocumentPaymentRepository.class);
+        var organization = mock(CurrentOrganization.class);
+        var customers = mock(CustomerRepository.class);
+        var presentations = mock(InvoicePresentationSnapshotFactory.class);
+        var fiscalQr = mock(DocumentFiscalQrService.class);
+        var qrImages = mock(com.tpverp.backend.verifactu.FiscalQrImageService.class);
+        var renderer = mock(InvoiceJasperRenderer.class);
+        var address = java.util.Map.of(
+                "linea1", "Calle 1", "codigoPostal", "35001",
+                "ciudad", "Las Palmas", "provincia", "Las Palmas", "pais", "ES");
+        var company = new Company("B12345678", "TPV ERP SL", address);
+        var store = new Store(company, "001", "Tienda", address,
+                UUID.randomUUID().toString(), "Atlantic/Canary", "EUR", "es-ES");
+        var document = deliveryNote(store.getId());
+        var presentation = new InvoicePresentationSnapshot(
+                2, InvoiceFiscalProfile.IGIC, "Entregar por la manana", List.of());
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(documents.findCustomerDocumentForPrint(document.getId(), store.getId()))
+                .thenReturn(Optional.of(document));
+        when(presentations.create(DocumentTemplateType.ALBARAN_VENTA))
+                .thenReturn("delivery-note-snapshot");
+        when(presentations.read("delivery-note-snapshot")).thenReturn(presentation);
+        when(renderer.render(document, store, company, null, presentation, null))
+                .thenReturn(Optional.of(
+                        "%PDF-1.7".getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+        var service = new CustomerReceivablePrintService(
+                documents, payments, organization, customers, presentations,
+                fiscalQr, qrImages, renderer);
+
+        var printable = service.document(document.getId());
+
+        assertThat(printable.documentType()).isEqualTo(CommercialDocumentType.ALBARAN_VENTA);
+        assertThat(printable.customerId()).isNull();
+        assertThat(printable.customer()).isNull();
+        assertThat(printable.qrUrl()).isNull();
+        assertThat(printable.qrImage()).isNull();
+        assertThat(printable.renderedPdf()).isNotNull();
+        verify(fiscalQr, never()).qrUrl(any());
+        verify(customers, never()).findByIdAndCompanyId(any(), any());
     }
 
     @Test
@@ -220,11 +314,25 @@ class CustomerReceivablePrintServiceTest {
         var document = new CommercialDocument(storeId, UUID.randomUUID(),
                 CommercialDocumentType.FACTURA_VENTA, LocalDate.of(2026, 7, 16),
                 UUID.randomUUID(), BigDecimal.ZERO);
-        document.addLine(new DocumentLine(document, UUID.randomUUID(), 1, 1,
-                "P1", "Producto", "VENTA", new BigDecimal("100.00"),
+        document.addLine(new DocumentLine(document, UUID.randomUUID(), 1,
+                BigDecimal.ONE, "P1", "8430000000010", "Producto", "VENTA",
+                new BigDecimal("100.00"),
                 BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
         document.setParties(customerId, null, null);
         document.confirm("FV-1", UUID.randomUUID(), Instant.parse("2026-07-16T10:00:00Z"), false);
+        return document;
+    }
+
+    private static CommercialDocument deliveryNote(UUID storeId) {
+        var document = new CommercialDocument(storeId, UUID.randomUUID(),
+                CommercialDocumentType.ALBARAN_VENTA, LocalDate.of(2026, 8, 10),
+                UUID.randomUUID(), BigDecimal.ZERO);
+        document.addLine(new DocumentLine(document, UUID.randomUUID(), 1,
+                BigDecimal.ONE, "P1", "8430000000010", "Producto", "VENTA",
+                new BigDecimal("100.00"), BigDecimal.ZERO, true,
+                "IGIC", new BigDecimal("7.00")));
+        document.confirm("AV-1", UUID.randomUUID(),
+                Instant.parse("2026-08-10T10:00:00Z"), false);
         return document;
     }
 }

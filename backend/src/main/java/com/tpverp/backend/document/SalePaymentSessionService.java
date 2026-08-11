@@ -508,7 +508,7 @@ public class SalePaymentSessionService {
                       .issueOrFindFromNegativeTicket(ticket, voucherAmount);
               issuedVoucher = IssuedVoucher.from(generatedVoucher, ticket.getNumero());
          }
-         printTicket = TicketPrintView.from(ticket);
+         printTicket = documents.ticketPrintView(ticket);
      } else if (hasReturnLines(snapshot)) {
          var sourceTicketId = refundSourceTicketId(snapshot);
          var selections = refundSelections(snapshot);
@@ -550,16 +550,16 @@ public class SalePaymentSessionService {
                                          null, null, ticket.getNumero())),
                                  auth);
              }
-             printTicket = TicketPrintView.fromExchange(ticket, refund);
+             printTicket = documents.ticketPrintViewFromExchange(ticket, refund);
          } else {
              ticket = refund;
-             printTicket = TicketPrintView.from(refund);
+             printTicket = documents.ticketPrintView(refund);
          }
      } else {
          ticket = pendingAmount.signum() > 0
                  ? documents.createPendingTicketFromSnapshot(snapshot, commands, auth)
                  : documents.createApprovedCardTicketFromSnapshot(snapshot, commands, auth);
-         printTicket = TicketPrintView.from(ticket);
+         printTicket = documents.ticketPrintView(ticket);
      }
      if (issuedVoucher == null) {
          issuedVoucher = issuedVoucherFor(ticket);
@@ -701,7 +701,7 @@ public class SalePaymentSessionService {
             BigDecimal amount) {
         var snapshot = snapshots.deserialize(session.getSnapshot());
         var sourceTicketId = refundSourceTicketId(snapshot);
-        return documents.find(sourceTicketId).getPagos().stream()
+        return refundPaymentSource(sourceTicketId).getPagos().stream()
                 .filter(RefundPaymentAvailability::isMonetaryRefundSource)
                 .filter(payment -> originalPaymentMatches(kind, payment))
                 .filter(payment -> availableRefundAmount(session, payment)
@@ -712,7 +712,7 @@ public class SalePaymentSessionService {
          SalePaymentSession session,
          BigDecimal amount) {
      var sourceTicketId = refundSourceTicketId(snapshots.deserialize(session.getSnapshot()));
-     return documents.find(sourceTicketId).getPagos().stream()
+     return refundPaymentSource(sourceTicketId).getPagos().stream()
              .filter(RefundPaymentAvailability::isMonetaryRefundSource)
              .filter(payment -> availableRefundAmount(session, payment)
                      .compareTo(amount) >= 0)
@@ -734,7 +734,7 @@ public class SalePaymentSessionService {
         }
         var sourceTicketId = refundSourceTicketId(
                 snapshots.deserialize(session.getSnapshot()));
-        var ticket = documents.find(sourceTicketId);
+        var ticket = refundPaymentSource(sourceTicketId);
         var activeAllocations = session.getStatus() == SalePaymentSessionStatus.FINALIZED
                 || session.getStatus() == SalePaymentSessionStatus.CANCELLED
                 ? List.<SalePaymentAllocation>of()
@@ -779,6 +779,11 @@ public class SalePaymentSessionService {
              .subtract(alreadySettled)
              .subtract(reservedInSession)
              .subtract(reservedInOtherSessions));
+ }
+
+ private CommercialDocument refundPaymentSource(UUID sourceDocumentId) {
+     var source = documents.returnPaymentSource(sourceDocumentId);
+     return source == null ? documents.find(sourceDocumentId) : source;
  }
 
  private List<SalePaymentAllocation> activePaymentReservations(

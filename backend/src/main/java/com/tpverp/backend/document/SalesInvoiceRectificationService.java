@@ -224,7 +224,8 @@ public class SalesInvoiceRectificationService {
         if (source.getLineType() == DocumentLineType.PRODUCT) {
             return new DocumentLine(
                     draft, source.getProductoId(), position,
-                    request.quantity(), source.getCodigo(), source.getNombre(), source.getTarifa(),
+                    request.quantity(), source.getCodigo(), source.getCodigoBarras(),
+                    source.getNombre(), source.getTarifa(),
                     source.getPrecioUnitario(), source.getDescuento(), source.isImpuestosIncluidos(),
                     source.getRegimenImpuesto(), source.getPorcentajeImpuesto());
         }
@@ -249,7 +250,8 @@ public class SalesInvoiceRectificationService {
         if (source.getLineType() == DocumentLineType.PRODUCT) {
             return new DocumentLine(
                     draft, source.getProductoId(), position,
-                    request.quantity(), source.getCodigo(), source.getNombre(), "DIFERENCIA",
+                    request.quantity(), source.getCodigo(), source.getCodigoBarras(),
+                    source.getNombre(), "DIFERENCIA",
                     request.unitPrice(), BigDecimal.ZERO, source.isImpuestosIncluidos(),
                     source.getRegimenImpuesto(), source.getPorcentajeImpuesto());
         }
@@ -276,6 +278,9 @@ public class SalesInvoiceRectificationService {
         var sourceLines = original.getLineas().stream()
                 .collect(Collectors.toMap(DocumentLine::getId, Function.identity()));
         for (var line : rectification.getLineas()) {
+            if (line.getLineType() == DocumentLineType.RETURN_ADJUSTMENT) {
+                continue;
+            }
             var source = sourceLines.get(line.getOriginalDocumentLineId());
             if (source == null) {
                 throw new IllegalStateException(
@@ -297,10 +302,16 @@ public class SalesInvoiceRectificationService {
 
     private void requireFullCancellation(
             CommercialDocument original, List<DocumentLine> selectedLines) {
-        var quantities = selectedLines.stream().collect(Collectors.toMap(
+        var quantities = selectedLines.stream()
+                .filter(line -> line.getOriginalDocumentLineId() != null)
+                .collect(Collectors.toMap(
                 DocumentLine::getOriginalDocumentLineId,
-                line -> line.getCantidad().abs()));
+                line -> line.getCantidad().abs(),
+                BigDecimal::add));
         for (var source : original.getLineas()) {
+            if (source.getLineType() != DocumentLineType.PRODUCT) {
+                continue;
+            }
             var available = availableStockQuantity(source);
             if (available.signum() > 0
                     && quantities.getOrDefault(source.getId(), BigDecimal.ZERO)

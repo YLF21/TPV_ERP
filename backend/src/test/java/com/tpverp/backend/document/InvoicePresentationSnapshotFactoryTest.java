@@ -2,6 +2,8 @@ package com.tpverp.backend.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +18,11 @@ import com.tpverp.backend.organization.InvoiceBankAccountRepository;
 import com.tpverp.backend.organization.InvoicePrintSettings;
 import com.tpverp.backend.organization.InvoicePrintSettingsRepository;
 import com.tpverp.backend.organization.Store;
+import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
+import com.tpverp.backend.document.template.DocumentTemplateResolver;
+import com.tpverp.backend.document.template.DocumentTemplateScope;
+import com.tpverp.backend.document.template.DocumentTemplateType;
+import com.tpverp.backend.document.template.ResolvedDocumentTemplate;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -51,15 +58,115 @@ class InvoicePresentationSnapshotFactoryTest {
                 companyId, "Banco", "ES91 2100 0418 4502 0005 1332", 0);
         when(accounts.findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(companyId))
                 .thenReturn(List.of(account));
+        var templateId = UUID.randomUUID();
+        var templates = mock(DocumentTemplateResolver.class);
+        when(templates.resolve(DocumentTemplateType.FACTURA_VENTA)).thenReturn(
+                new ResolvedDocumentTemplate(
+                        templateId,
+                        DocumentTemplateType.FACTURA_VENTA,
+                        DocumentTemplateScope.STORE,
+                        "FACTURA_TIENDA",
+                        3,
+                        1,
+                        templateId.toString(),
+                        "a".repeat(64),
+                        false));
 
         var factory = new InvoicePresentationSnapshotFactory(
                 organization, licenses, settings, accounts, new ObjectMapper());
+        factory.setTemplateResolver(templates);
         var snapshot = factory.read(factory.create());
 
+        assertThat(snapshot.schemaVersion()).isEqualTo(3);
         assertThat(snapshot.fiscalProfile()).isEqualTo(InvoiceFiscalProfile.IGIC_MINORISTA);
         assertThat(snapshot.observations()).isEqualTo("Gracias por su confianza");
         assertThat(snapshot.bankAccounts()).containsExactly(
                 new InvoicePresentationSnapshot.BankAccount(
                         "Banco", "ES91 2100 0418 4502 0005 1332"));
+        assertThat(snapshot.template()).isEqualTo(
+                new InvoicePresentationSnapshot.TemplateReference(
+                        templateId, "FACTURA_TIENDA", 3, 1, "a".repeat(64), false));
+    }
+
+    @Test
+    void deliveryNoteFreezesItsOwnTemplateAndNeverIncludesBankAccounts() {
+        var organization = mock(CurrentOrganization.class);
+        var licenses = mock(LicenseRepository.class);
+        var settings = mock(InvoicePrintSettingsRepository.class);
+        var accounts = mock(InvoiceBankAccountRepository.class);
+        var store = mock(Store.class);
+        var company = mock(Company.class);
+        var companyId = UUID.randomUUID();
+        var storeId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(company.getId()).thenReturn(companyId);
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(settings.findById(companyId)).thenReturn(Optional.empty());
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
+        var templateId = UUID.randomUUID();
+        var templates = mock(DocumentTemplateResolver.class);
+        when(templates.resolve(DocumentTemplateType.ALBARAN_VENTA)).thenReturn(
+                new ResolvedDocumentTemplate(
+                        templateId,
+                        DocumentTemplateType.ALBARAN_VENTA,
+                        DocumentTemplateScope.STORE,
+                        "ALBARAN_A4",
+                        2,
+                        1,
+                        templateId.toString(),
+                        "b".repeat(64),
+                        false));
+        var factory = new InvoicePresentationSnapshotFactory(
+                organization, licenses, settings, accounts, new ObjectMapper());
+        factory.setTemplateResolver(templates);
+
+        var snapshot = factory.read(
+                factory.create(DocumentTemplateType.ALBARAN_VENTA));
+
+        assertThat(snapshot.bankAccounts()).isEmpty();
+        assertThat(snapshot.template()).isEqualTo(
+                new InvoicePresentationSnapshot.TemplateReference(
+                        templateId, "ALBARAN_A4", 2, 1, "b".repeat(64), false));
+        verify(accounts, never())
+                .findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(companyId);
+    }
+
+    @Test
+    void freezesCurrentStoreLogoAndTypeSpecificObservations() {
+        var organization = mock(CurrentOrganization.class);
+        var licenses = mock(LicenseRepository.class);
+        var settings = mock(InvoicePrintSettingsRepository.class);
+        var accounts = mock(InvoiceBankAccountRepository.class);
+        var storeConfiguration = mock(StoreDocumentPrintConfigurationService.class);
+        var store = mock(Store.class);
+        var company = mock(Company.class);
+        var storeId = UUID.randomUUID();
+        var companyId = UUID.randomUUID();
+        var logoId = UUID.randomUUID();
+        when(store.getId()).thenReturn(storeId);
+        when(company.getId()).thenReturn(companyId);
+        when(organization.currentStore()).thenReturn(store);
+        when(organization.currentCompany()).thenReturn(company);
+        when(licenses.findByTiendaIdOrderByValidaDesdeDesc(storeId)).thenReturn(List.of());
+        when(storeConfiguration.presentation(DocumentTemplateType.TICKET)).thenReturn(
+                new StoreDocumentPrintConfigurationService.Presentation(
+                        "Gracias por su compra",
+                        new StoreDocumentPrintConfigurationService.LogoReference(
+                                logoId, "image/png", "c".repeat(64))));
+        var factory = new InvoicePresentationSnapshotFactory(
+                organization, licenses, settings, accounts, new ObjectMapper());
+        factory.setStorePrintConfiguration(storeConfiguration);
+
+        var snapshot = factory.read(factory.create(DocumentTemplateType.TICKET));
+
+        assertThat(snapshot.observations()).isEqualTo("Gracias por su compra");
+        assertThat(snapshot.logo()).isEqualTo(
+                new InvoicePresentationSnapshot.LogoReference(
+                        logoId, "image/png", "c".repeat(64)));
+        assertThat(snapshot.template().code()).isEqualTo("TICKET_80");
+        verify(settings, never()).findById(companyId);
+        verify(accounts, never())
+                .findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(companyId);
     }
 }

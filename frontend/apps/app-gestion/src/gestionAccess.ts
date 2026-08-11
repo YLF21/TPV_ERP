@@ -11,7 +11,8 @@ export type GestionModuleKey =
   | "gestion.cashClosures"
   | "gestion.cashCurrentBalances"
   | "gestion.verifactu"
-  | "gestion.controlAlerts";
+  | "gestion.controlAlerts"
+  | "gestion.documentTemplates";
 
 const modulePermissions: Record<GestionModuleKey, Permission[]> = {
   "gestion.sales": ["GESTION_VENTAS"],
@@ -24,7 +25,8 @@ const modulePermissions: Record<GestionModuleKey, Permission[]> = {
   "gestion.cashClosures": ["GESTION_CUENTAS", "CASH_READ"],
   "gestion.cashCurrentBalances": ["GESTION_CUENTAS", "CASH_READ"],
   "gestion.verifactu": ["VERIFACTU_READ"],
-  "gestion.controlAlerts": ["CONTROL_ALERTS_READ", "CONTROL_ALERTS_MANAGE"]
+  "gestion.controlAlerts": ["CONTROL_ALERTS_READ", "CONTROL_ALERTS_MANAGE"],
+  "gestion.documentTemplates": ["DOCUMENT_TEMPLATES_MANAGE"]
 };
 
 export function canOpenGestionModule(session: UserSession, module: GestionModuleKey): boolean {

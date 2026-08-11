@@ -129,7 +129,8 @@ public class MemberLoyaltyService {
             return;
         }
         var now = Instant.now(clock);
-        var settlement = loyaltySettlements.findById(document.getId())
+        var storedSettlement = loyaltySettlements.findById(document.getId());
+        var settlement = storedSettlement
                 .orElseGet(() -> new MemberDocumentLoyaltySettlement(
                         document.getId(), member, accrual.documentAmount(),
                         accrual.eligibleDocumentAmount(), now));
@@ -139,6 +140,11 @@ public class MemberLoyaltyService {
         }
         settlement.verifyAndUpdateEligibility(
                 accrual.documentAmount(), accrual.eligibleDocumentAmount(), now);
+        if (storedSettlement.isEmpty()) {
+            // The line snapshot has a strict FK to this aggregate root. Flush the
+            // new parent first so Hibernate cannot queue child inserts ahead of it.
+            loyaltySettlements.saveAndFlush(settlement);
+        }
         saveEligibilitySnapshot(document, accrual);
         var balanceUsed = movements.findByDocumentIdOrderByCreatedAtAsc(document.getId())
                 .stream()

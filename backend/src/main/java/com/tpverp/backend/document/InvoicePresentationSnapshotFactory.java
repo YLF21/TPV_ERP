@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tpverp.backend.licensing.LicenseRepository;
 import com.tpverp.backend.licensing.application.CommercialProfile;
 import com.tpverp.backend.licensing.application.TaxRegime;
+import com.tpverp.backend.document.template.DocumentTemplateResolver;
+import com.tpverp.backend.document.template.DocumentTemplateType;
 import com.tpverp.backend.organization.CurrentOrganization;
 import com.tpverp.backend.organization.InvoiceBankAccountRepository;
 import com.tpverp.backend.organization.InvoicePrintSettingsRepository;
+import com.tpverp.backend.organization.StoreDocumentPrintConfigurationService;
 import java.util.Comparator;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +22,8 @@ public class InvoicePresentationSnapshotFactory {
     private final InvoicePrintSettingsRepository settings;
     private final InvoiceBankAccountRepository bankAccounts;
     private final ObjectMapper mapper;
+    private DocumentTemplateResolver templates;
+    private StoreDocumentPrintConfigurationService storePrintConfiguration;
 
     public InvoicePresentationSnapshotFactory(CurrentOrganization organization,
             LicenseRepository licenses, InvoicePrintSettingsRepository settings,
@@ -30,7 +35,22 @@ public class InvoicePresentationSnapshotFactory {
         this.mapper = mapper;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplateResolver(DocumentTemplateResolver templates) {
+        this.templates = templates;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setStorePrintConfiguration(
+            StoreDocumentPrintConfigurationService storePrintConfiguration) {
+        this.storePrintConfiguration = storePrintConfiguration;
+    }
+
     public String create() {
+        return create(DocumentTemplateType.FACTURA_VENTA);
+    }
+
+    public String create(DocumentTemplateType templateType) {
         var store = organization.currentStore();
         var company = organization.currentCompany();
         var license = licenses.findByTiendaIdOrderByValidaDesdeDesc(store.getId()).stream()
@@ -40,17 +60,30 @@ public class InvoicePresentationSnapshotFactory {
         InvoiceFiscalProfile profile = license == null
                 ? InvoiceFiscalProfile.IVA
                 : profile(license.getRegimenImpuesto(), license.getCommercialProfile());
-        String observations = settings.findById(company.getId())
-                .map(com.tpverp.backend.organization.InvoicePrintSettings::getObservaciones)
-                .orElse(null);
-        var accounts = bankAccounts
-                .findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(company.getId()).stream()
-                .map(account -> new InvoicePresentationSnapshot.BankAccount(
-                        account.getBankName(), formatIban(account.getIban())))
-                .toList();
+        var storePresentation = storePrintConfiguration == null ? null
+                : storePrintConfiguration.presentation(templateType);
+        String observations = storePresentation == null
+                ? settings.findById(company.getId())
+                        .map(com.tpverp.backend.organization.InvoicePrintSettings::getObservaciones)
+                        .orElse(null)
+                : storePresentation.observations();
+        var accounts = templateType == DocumentTemplateType.FACTURA_VENTA
+                ? bankAccounts
+                        .findAllByCompanyIdAndActivaTrueOrderByOrdenAscIdAsc(company.getId()).stream()
+                        .map(account -> new InvoicePresentationSnapshot.BankAccount(
+                                account.getBankName(), formatIban(account.getIban())))
+                        .toList()
+                : java.util.List.<InvoicePresentationSnapshot.BankAccount>of();
+        var template = templateReference(templateType);
+        var logo = storePresentation == null || storePresentation.logo() == null ? null
+                : new InvoicePresentationSnapshot.LogoReference(
+                        storePresentation.logo().id(),
+                        storePresentation.logo().contentType(),
+                        storePresentation.logo().sha256());
         try {
             return mapper.writeValueAsString(
-                    new InvoicePresentationSnapshot(1, profile, observations, accounts));
+                    new InvoicePresentationSnapshot(
+                            3, profile, observations, accounts, template, logo));
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("invoice_print_snapshot_serialization_failed", error);
         }
@@ -59,7 +92,7 @@ public class InvoicePresentationSnapshotFactory {
     public InvoicePresentationSnapshot read(String value) {
         try {
             var snapshot = mapper.readValue(value, InvoicePresentationSnapshot.class);
-            if (snapshot.schemaVersion() != 1) {
+            if (snapshot.schemaVersion() < 1 || snapshot.schemaVersion() > 3) {
                 throw new IllegalStateException("invoice_print_snapshot_version_invalid");
             }
             return snapshot;
@@ -78,5 +111,38 @@ public class InvoicePresentationSnapshotFactory {
 
     private static String formatIban(String iban) {
         return iban.replaceAll("(.{4})(?!$)", "$1 ");
+    }
+
+    public String logoDataUri(InvoicePresentationSnapshot snapshot, java.util.UUID storeId) {
+        if (snapshot == null || snapshot.logo() == null || storePrintConfiguration == null) {
+            return null;
+        }
+        var logo = snapshot.logo();
+        return storePrintConfiguration.logoDataUri(storeId,
+                new StoreDocumentPrintConfigurationService.LogoReference(
+                        logo.id(), logo.contentType(), logo.sha256()));
+    }
+
+    private InvoicePresentationSnapshot.TemplateReference templateReference(
+            DocumentTemplateType templateType) {
+        if (templates == null) {
+            var builtInCode = switch (templateType) {
+                case FACTURA_VENTA -> "FACTURA_A4";
+                case ALBARAN_VENTA -> "ALBARAN_A4";
+                case TICKET -> "TICKET_80";
+            };
+            return new InvoicePresentationSnapshot.TemplateReference(
+                    null,
+                    builtInCode,
+                    1, 1, null, true);
+        }
+        var resolved = templates.resolve(templateType);
+        return new InvoicePresentationSnapshot.TemplateReference(
+                resolved.id(),
+                resolved.code(),
+                resolved.version(),
+                resolved.schemaVersion(),
+                resolved.sha256(),
+                resolved.builtIn());
     }
 }

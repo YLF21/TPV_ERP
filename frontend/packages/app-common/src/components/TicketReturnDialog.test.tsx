@@ -177,6 +177,57 @@ describe("TicketReturnDialog", () => {
     expect(calendarDaysElapsed("2026-08-06", new Date(2026, 7, 6, 0, 1))).toBe(0);
   });
 
+  it("prepares a full sales-invoice rectification without allowing partial selection", async () => {
+    request.mockImplementation(async (path) => path === "/tickets/return-valuation"
+      ? {
+          selectedGross: "100.00", lostBenefits: "0.00", refundableAmount: "100.00",
+          eligibleRefundableAmount: "100.00", cumulativeEligibleRefundableAmount: "100.00",
+          cumulativeRefundableAmount: "100.00", previouslyRefundedAmount: "0.00",
+          remainingBasketValue: "0.00",
+        } as never
+      : {
+          sourceType: "SALES_INVOICE", sourceCode: "FV-001-26-000001",
+          ticketId: "invoice-1", ticketNumber: "FV-001-26-000001",
+          date: "2026-08-10", total: "100.00", paymentAvailability: [],
+          lines: [{
+            lineId: "invoice-line-1", productId: "product-1", code: "P-1",
+            name: "Producto facturado", lineType: "PRODUCT", productType: "UNIT",
+            refundableQuantity: "2.000", unitPrice: "50.00", refundableTotal: "100.00",
+            refundableSerialNumbers: [], discount: "0.00", taxesIncluded: true,
+            taxRegime: "IVA", taxPercentage: "21.00",
+          }],
+        } as never);
+    const onAddToCart = vi.fn();
+    render(<TicketReturnDialog
+      token="token"
+      locale="es"
+      mode="INVOICE_CANCELLATION"
+      onClose={vi.fn()}
+      onAddToCart={onAddToCart}
+    />);
+
+    fireEvent.change(screen.getByLabelText(/número de factura/i), {
+      target: { value: "FV-001-26-000001" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Buscar ticket/i }));
+
+    expect(await screen.findByText("Producto facturado")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Seleccionar todo/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Producto facturado" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton")).toBeDisabled();
+    const continueButton = screen.getByRole("button", { name: /rectificativa completa/i });
+    await waitFor(() => expect(continueButton).toBeEnabled());
+    fireEvent.click(continueButton);
+
+    expect(onAddToCart).toHaveBeenCalledWith([
+      expect.objectContaining({
+        sourceType: "SALES_INVOICE",
+        sourceTicketId: "invoice-1",
+        returnQuantity: 2,
+      }),
+    ]);
+  });
+
   it("selects one unit manually but keeps select-all as the full remaining quantity", async () => {
     request.mockImplementation(async (path) => path === "/tickets/return-valuation"
       ? {

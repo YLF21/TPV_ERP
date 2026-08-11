@@ -39,6 +39,7 @@ type SettingsScreenProps = {
   onLocaleChange: (locale: LocaleCode) => void;
   onLogout?: () => void;
   onOpenHardware?: () => void;
+  onOpenDocumentPrinting?: () => void;
   onOpenReports?: () => void;
   onSaleInterfaceModeChange?: (mode: SaleInterfaceMode) => void;
   request?: typeof apiRequest;
@@ -61,6 +62,7 @@ export function SettingsScreen({
   onLocaleChange,
   onLogout,
   onOpenHardware,
+  onOpenDocumentPrinting,
   onOpenReports,
   onSaleInterfaceModeChange,
   request = apiRequest
@@ -267,6 +269,20 @@ export function SettingsScreen({
                 <button type="button" onClick={onOpenHardware}>
                   {t("settings.openHardware")}
                 </button>
+              </article>
+              <article className="settings-card">
+                <h3>{t("settings.documentPrinting")}</h3>
+                <p>{t("settings.documentPrinting.description")}</p>
+                <button
+                  type="button"
+                  disabled={!hasPermission(session, "CONFIGURACION_TERMINAL")}
+                  onClick={onOpenDocumentPrinting}
+                >
+                  {t("settings.documentPrinting.open")}
+                </button>
+                {!hasPermission(session, "CONFIGURACION_TERMINAL") && (
+                  <small>{t("settings.documentPrinting.permission")}</small>
+                )}
               </article>
               <article className="settings-card">
                 <h3>{t("settings.terminalContext")}</h3>

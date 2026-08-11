@@ -55,4 +55,17 @@ describe("ticket desktop renderer", () => {
     expect(html).toContain("DOCUMENTO NO FISCAL");
     expect(html).not.toContain("<table>");
   });
+
+  it("renders the store logo and the ticket observations", () => {
+    const html = renderTicketHtml({
+      logo: "data:image/png;base64,AA==",
+      notes: ["Gracias <cliente>"],
+      storeName: "Tienda", documentNumber: "T-1", terminalCode: "01",
+      lines: [], payments: [], total: 0,
+    });
+
+    expect(html).toContain('class="logo"');
+    expect(html).toContain("data:image/png;base64,AA==");
+    expect(html).toContain("Gracias &lt;cliente&gt;");
+  });
 });

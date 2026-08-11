@@ -4,6 +4,7 @@ import { messages } from "./LocalizedMessages";
 const categories = [
   "CASH",
   "TICKET",
+  "INVOICE",
   "PRODUCT",
   "DISCOUNT",
   "CREDIT",
@@ -17,6 +18,7 @@ const operations = [
   "CLOSE_CASH_SESSION",
   "CASH_MOVEMENT",
   "RETURN_TICKET",
+  "RETURN_SALES_INVOICE",
   "CANCEL_TICKET",
   "CONVERT_TICKET_TO_INVOICE",
   "MANUAL_RETURN_WITHOUT_TICKET",

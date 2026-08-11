@@ -161,6 +161,14 @@ public class TicketReturnService {
             total = total.add(value);
         }
         total = Money.euros(total);
+        var sourceDocument = documents.find(ticketId);
+        var paymentSource = documents.returnPaymentSource(ticketId);
+        if (paymentSource == null) {
+            paymentSource = sourceDocument;
+        }
+        var paymentSourceId = paymentSource == null
+                ? ticketId
+                : paymentSource.getId();
         TicketReturnValuationService.Valuation valuation = null;
         if (valuations != null && !selectedLines.isEmpty()) {
             var selectedQuantities = selectedLines.stream()
@@ -169,7 +177,7 @@ public class TicketReturnService {
                             PaymentTerminalRefundLineSelection::quantity,
                             BigDecimal::add,
                             LinkedHashMap::new));
-            valuation = valuations.value(documents.find(ticketId), selectedQuantities);
+            valuation = valuations.value(sourceDocument, selectedQuantities);
             if (total.compareTo(valuation.refundableAmount()) != 0) {
                 throw new IllegalArgumentException(
                         "El importe de devolucion no coincide con la valoracion historica");
@@ -192,22 +200,26 @@ public class TicketReturnService {
             var original = terminalPayments.findByDocumentPaymentId(card.originalPaymentId())
                     .orElseThrow(() -> new IllegalArgumentException(
                             "El pago no tiene una operacion de datafono"));
-            if (!ticketId.equals(original.getDocumentId())) {
+            if (!paymentSourceId.equals(original.getDocumentId())) {
                 throw new IllegalArgumentException(
-                        "La operacion de tarjeta no pertenece al ticket seleccionado");
+                        "La operacion de tarjeta no pertenece al documento seleccionado");
             }
             return new PreparedCardPayout(card, original.getId());
         }).toList();
 
+        var operation = sourceDocument != null
+                && sourceDocument.getTipo() == CommercialDocumentType.FACTURA_VENTA
+                ? SaleOperationCode.RETURN_SALES_INVOICE
+                : SaleOperationCode.RETURN_TICKET;
         var authorization = operationSecurity.authorize(
-                SaleOperationCode.RETURN_TICKET,
+                operation,
                 authorizerUsername,
                 authorizerPassword,
                 authentication);
         audit.record(
                 "TICKET_RETURN_AUTHORIZED",
                 AuditResult.EXITO,
-                authorizationDetails(ticketId, requestId, authorization));
+                authorizationDetails(ticketId, requestId, operation, authorization));
 
         var recorded = new ArrayList<RefundSettlementRecorder.TenderCommand>();
         if (cashValue.signum() > 0) {
@@ -269,10 +281,11 @@ public class TicketReturnService {
     private static java.util.Map<String, Object> authorizationDetails(
             UUID ticketId,
             UUID requestId,
+            SaleOperationCode operation,
             Authorization authorization) {
         var details = new LinkedHashMap<String, Object>();
-        details.put("operation", SaleOperationCode.RETURN_TICKET.name());
-        details.put("ticketId", ticketId.toString());
+        details.put("operation", operation.name());
+        details.put("sourceDocumentId", ticketId.toString());
         details.put("requestId", requestId.toString());
         details.put("operatorId", authorization.operator().getId().toString());
         details.put("operatorUsername", authorization.operator().getUserName());
@@ -311,10 +324,20 @@ public class TicketReturnService {
                                 activePaymentReservations(context.ticket())));
             }
         }
-        var ticket = documents.ticketForReturnByNumber(ticketNumber);
-        requireNoCancellationInProgress(ticket.getId());
+        var ticketMatch = documents.findTicketForReturnByNumber(ticketNumber);
+        CommercialDocument ticket;
+        ReturnSourceType sourceType;
+        if (ticketMatch.isPresent()) {
+            ticket = ticketMatch.orElseThrow();
+            sourceType = ReturnSourceType.TICKET;
+            requireNoCancellationInProgress(ticket.getId());
+        } else {
+            ticket = documents.invoiceForReturnByNumber(ticketNumber);
+            sourceType = ReturnSourceType.SALES_INVOICE;
+        }
+        var paymentSource = documents.returnPaymentSource(ticket.getId());
         return new ReturnPreview(
-                ReturnSourceType.TICKET,
+                sourceType,
                 ticket.getNumero(),
                 ticket,
                 documents.cardRefundLineOptions(ticket.getId()).stream()
@@ -328,7 +351,7 @@ public class TicketReturnService {
                                 line.taxPercentage(), line.productType()))
                         .toList(),
                 RefundPaymentAvailability.calculate(
-                        ticket, tenders, activePaymentReservations(ticket)));
+                        paymentSource, tenders, activePaymentReservations(paymentSource)));
     }
 
     private List<SalePaymentAllocation> activePaymentReservations(
@@ -367,7 +390,8 @@ public class TicketReturnService {
 
     public enum ReturnSourceType {
         TICKET,
-        GIFT_RECEIPT
+        GIFT_RECEIPT,
+        SALES_INVOICE
     }
 
     public record ReturnLineOption(

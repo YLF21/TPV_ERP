@@ -17,7 +17,7 @@ const labels: SaleCommandLabels = {
   editProduct: "Modificar producto",
   ticketReturn: "Devolución por ticket",
   cancelTicket: "Anular último ticket",
-  cancelOtherTicket: "Anular ticket por código",
+  cancelOtherTicket: "Anular ticket o factura",
   convertInvoice: "Convertir a factura",
   checkout: "Cobro",
   setQuantity: "Cambiar cantidad",

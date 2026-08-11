@@ -111,6 +111,44 @@ class MemberLoyaltyServiceTest {
     }
 
     @Test
+    void persistsNewSettlementBeforeItsEligibilityLines() {
+        var company = PartyTestData.company();
+        var customer = new Customer(company, "Cliente", DocumentType.NIF, "1",
+                null, null, null, null, CustomerRate.VENTA, BigDecimal.ZERO);
+        var member = new Member(customer, "M-001-000001", LocalDate.of(2026, 7, 2));
+        var document = org.mockito.Mockito.mock(CommercialDocument.class);
+        var line = org.mockito.Mockito.mock(
+                com.tpverp.backend.document.DocumentLine.class);
+        var documentId = UUID.randomUUID();
+        var lineId = UUID.randomUUID();
+        when(document.getTipo()).thenReturn(CommercialDocumentType.TICKET);
+        when(document.getClienteId()).thenReturn(customer.getId());
+        when(document.getId()).thenReturn(documentId);
+        when(document.getLineas()).thenReturn(java.util.List.of(line));
+        when(line.getId()).thenReturn(lineId);
+        when(line.getLineType()).thenReturn(
+                com.tpverp.backend.document.DocumentLineType.PRODUCT);
+        when(context.currentCompany()).thenReturn(company);
+        when(members.findByCustomerIdAndCompanyId(customer.getId(), company.getId()))
+                .thenReturn(Optional.of(member));
+        when(loyaltySettlements.findById(documentId)).thenReturn(Optional.empty());
+        when(loyaltyLines.findAllById(any())).thenReturn(java.util.List.of());
+
+        service().recordPaidSale(document, new MemberLoyaltyService.LoyaltyAccrual(
+                new BigDecimal("10.00"),
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                java.util.Map.of(lineId,
+                        new MemberLoyaltyService.LoyaltyLineEligibility(
+                                true, new BigDecimal("10.00")))));
+
+        var persistenceOrder = org.mockito.Mockito.inOrder(
+                loyaltySettlements, loyaltyLines);
+        persistenceOrder.verify(loyaltySettlements).saveAndFlush(any());
+        persistenceOrder.verify(loyaltyLines).saveAll(any());
+    }
+
+    @Test
     void paidSaleRepaysLoyaltyDebtBeforeMakingRewardsSpendable() {
         var company = PartyTestData.company();
         var store = PartyTestData.store(company);

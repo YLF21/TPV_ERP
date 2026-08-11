@@ -3,6 +3,7 @@ import { defaultHardwareConfig } from "../hardware/hardware";
 import type { HardwareBridge } from "../hardware/hardware";
 import type { TerminalContext } from "../types";
 import {
+  commercialDocumentAsA4Document,
   printCustomerReceivablePaymentReceipt,
   outputConfirmedTicket,
   printPendingCommercialDocument,
@@ -41,6 +42,22 @@ function hardwareConfig(printAutomatically: boolean) {
 }
 
 describe("confirmed ticket printing", () => {
+  it("passes a backend-rendered Jasper PDF through to the desktop bridge", () => {
+    const renderedPdf = { contentType: "application/pdf" as const, base64: "JVBERi0xLjc=" };
+
+    expect(commercialDocumentAsA4Document({
+      kind: "COMMERCIAL_DOCUMENT",
+      documentType: "FACTURA_VENTA",
+      documentNumber: "FV-JASPER",
+      lines: [{ code: "P-1", barcode: "8430000000010", name: "Cafe", quantity: 1, unitPrice: 2, total: 2 }],
+      total: 2,
+      renderedPdf,
+    }, terminal, "es")).toEqual(expect.objectContaining({
+      renderedPdf,
+      lines: [expect.objectContaining({ barcode: "8430000000010" })],
+    }));
+  });
+
   it("prints the authoritative snapshot when automatic ticket printing is enabled", async () => {
     const printTicket = vi.fn().mockResolvedValue({ ok: true });
     const hardware = {

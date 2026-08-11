@@ -131,7 +131,8 @@ public class TicketController {
                 request.authorizerUsername(),
                 request.authorizerPassword(),
                 authentication);
-        return ReturnView.from(result);
+        return ReturnView.from(result, service.ticketPrintView(
+                result.document(), result.payouts()));
     }
 
     @PostMapping("/{id}/cancel")
@@ -383,14 +384,15 @@ public class TicketController {
             List<ReturnPayoutView> payouts,
             String voucherCode,
             TicketPrintView receipt) {
-        static ReturnView from(TicketReturnService.ReturnResult result) {
+        static ReturnView from(
+                TicketReturnService.ReturnResult result, TicketPrintView receipt) {
             return new ReturnView(
                     result.document().getId(),
                     result.document().getNumero(),
                     result.document().getTotal(),
                     result.payouts().stream().map(ReturnPayoutView::from).toList(),
                     result.voucher().map(Voucher::code).orElse(null),
-                    TicketPrintView.from(result.document(), result.payouts()));
+                    receipt);
         }
     }
 

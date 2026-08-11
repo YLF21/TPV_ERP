@@ -8,6 +8,30 @@ Backend local modular construido con Java 25, Spring Boot 4.0.6 y PostgreSQL 18.
 2. Definir las variables del perfil deseado tomando `.env.example` como referencia.
 3. No guardar contrasenas reales en archivos versionados.
 
+### Reparacion de permisos de una base existente
+
+Las migraciones deben ejecutarse normalmente con el propietario configurado en
+`scripts/create-databases.sql`. Si alguna migracion se aplico manualmente con
+otro usuario (por ejemplo, `postgres`), sus tablas pueden quedar inaccesibles
+para el backend aunque Flyway las marque como instaladas.
+
+Primero debe comprobarse que el destino es la base local correcta. Despues, un
+administrador de PostgreSQL puede reconciliar los permisos actuales y los
+predeterminados del usuario que creo esos objetos:
+
+```powershell
+psql -U postgres -d tpv_erp_dev `
+  -v runtime_role=tpv_erp `
+  -v migration_role=postgres `
+  -v schema_name=public `
+  -f scripts/repair-runtime-privileges.sql
+```
+
+`psql` solicita la contrasena de forma interactiva. No debe pasarse mediante
+`-v`, guardarse en el script ni incluirse en el historial de comandos. El
+script es transaccional, no modifica datos ni propietarios y finaliza
+verificando los permisos efectivos sobre tablas y secuencias.
+
 Para desarrollo:
 
 ```powershell

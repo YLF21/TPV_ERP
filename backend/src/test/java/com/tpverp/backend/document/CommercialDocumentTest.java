@@ -50,6 +50,34 @@ class CommercialDocumentTest {
     }
 
     @Test
+    void invoiceConvertedFromPaidTicketInheritsSettlementWithoutDuplicatingPayment() {
+        var method = new PaymentMethod(UUID.randomUUID(), "EFECTIVO", true);
+        var ticket = documentWithTotal(CommercialDocumentType.TICKET,
+                new BigDecimal("100.00"));
+        ticket.addPayment(new DocumentPayment(
+                ticket, method, 1, new BigDecimal("100.00"), true,
+                new BigDecimal("100.00"), BigDecimal.ZERO, null, null, NOW));
+        ticket.confirm("T-1", USER_ID, NOW, true);
+        var invoice = new CommercialDocument(
+                ticket.getTiendaId(), ticket.getAlmacenId(),
+                CommercialDocumentType.FACTURA_VENTA,
+                ticket.getFecha(), USER_ID, BigDecimal.ZERO);
+        invoice.addLine(new DocumentLine(
+                invoice, UUID.randomUUID(), 1, BigDecimal.ONE, "P-1", "Product", null,
+                new BigDecimal("100.00"), BigDecimal.ZERO, true, "IVA", BigDecimal.ZERO));
+        invoice.setNumTicket(ticket.getNumero());
+        invoice.confirm("FV-1", USER_ID, NOW, false);
+
+        invoice.settleFromPaidTicket(ticket);
+
+        assertThat(invoice.getEstado()).isEqualTo(DocumentStatus.PAGADO);
+        assertThat(invoice.getPaidTotal()).isEqualByComparingTo("100.00");
+        assertThat(invoice.getPendingTotal()).isZero();
+        assertThat(invoice.getPagos()).isEmpty();
+        assertThat(invoice.isSettledByOrigin()).isTrue();
+    }
+
+    @Test
     void internalCommentIsNormalizedAndCannotChangeAfterConfirmation() {
         var document = saleInvoice(new BigDecimal("100.00"));
 

@@ -15,7 +15,9 @@ public record TicketPrintView(
         BigDecimal total,
         BigDecimal baseTotal,
         BigDecimal taxTotal,
-        BigDecimal checkoutDiscountTotal) {
+        BigDecimal checkoutDiscountTotal,
+        String observations,
+        String logo) {
 
     public TicketPrintView(
             UUID documentId,
@@ -25,7 +27,7 @@ public record TicketPrintView(
             List<Payment> payments,
             BigDecimal total) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                null, null, BigDecimal.ZERO);
+                null, null, BigDecimal.ZERO, null, null);
     }
 
     public TicketPrintView(
@@ -38,7 +40,7 @@ public record TicketPrintView(
             BigDecimal baseTotal,
             BigDecimal taxTotal) {
         this(documentId, documentNumber, issuedAt, lines, payments, total,
-                baseTotal, taxTotal, BigDecimal.ZERO);
+                baseTotal, taxTotal, BigDecimal.ZERO, null, null);
     }
 
     public static TicketPrintView from(CommercialDocument document) {
@@ -58,7 +60,8 @@ public record TicketPrintView(
                                 != DocumentLineType.MANUAL_DISCOUNT)
                         .map(line -> new Line(line.getNombre(), line.getCantidad(),
                                 line.getPrecioUnitario(), line.getTotal(),
-                                line.getSerialNumbers()))
+                                line.getSerialNumbers(), line.getCodigo(),
+                                line.getCodigoBarras()))
                         .toList(),
                 refundPayouts == null || refundPayouts.isEmpty()
                         ? document.getPagos().stream()
@@ -77,7 +80,9 @@ public record TicketPrintView(
                 document.getTotal(),
                 document.getBaseTotal(),
                 document.getImpuestoTotal(),
-                checkoutDiscountTotal(document.getLineas()));
+                checkoutDiscountTotal(document.getLineas()),
+                null,
+                null);
     }
 
     /**
@@ -92,7 +97,8 @@ public record TicketPrintView(
         var lines = Stream.concat(refund.getLineas().stream(), sale.getLineas().stream())
                 .filter(line -> line.getLineType() != DocumentLineType.MANUAL_DISCOUNT)
                 .map(line -> new Line(line.getNombre(), line.getCantidad(),
-                        line.getPrecioUnitario(), line.getTotal(), line.getSerialNumbers()))
+                        line.getPrecioUnitario(), line.getTotal(), line.getSerialNumbers(),
+                        line.getCodigo(), line.getCodigoBarras()))
                 .toList();
         var payments = sale.getPagos().stream()
                 .filter(payment -> !PaymentMethodService.EXCHANGE_COMPENSATION_METHOD
@@ -106,7 +112,15 @@ public record TicketPrintView(
                 Money.euros(sale.getBaseTotal().add(refund.getBaseTotal())),
                 Money.euros(sale.getImpuestoTotal().add(refund.getImpuestoTotal())),
                 Money.euros(checkoutDiscountTotal(sale.getLineas())
-                        .add(checkoutDiscountTotal(refund.getLineas()))));
+                        .add(checkoutDiscountTotal(refund.getLineas()))),
+                null,
+                null);
+    }
+
+    public TicketPrintView withPresentation(String observations, String logo) {
+        return new TicketPrintView(
+                documentId, documentNumber, issuedAt, lines, payments, total,
+                baseTotal, taxTotal, checkoutDiscountTotal, observations, logo);
     }
 
     private static BigDecimal checkoutDiscountTotal(List<DocumentLine> lines) {
@@ -130,9 +144,16 @@ public record TicketPrintView(
             BigDecimal quantity,
             BigDecimal price,
             BigDecimal total,
-            List<String> serialNumbers) {
+            List<String> serialNumbers,
+            String code,
+            String barcode) {
+        public Line(String name, BigDecimal quantity, BigDecimal price,
+                BigDecimal total, List<String> serialNumbers) {
+            this(name, quantity, price, total, serialNumbers, null, null);
+        }
+
         public Line(String name, BigDecimal quantity, BigDecimal price, BigDecimal total) {
-            this(name, quantity, price, total, List.of());
+            this(name, quantity, price, total, List.of(), null, null);
         }
     }
 

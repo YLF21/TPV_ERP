@@ -1,0 +1,106 @@
+import { ApiError, apiBaseUrl, apiRequest } from "@tpverp/app-common";
+
+export type DocumentTemplateType = "FACTURA_VENTA" | "ALBARAN_VENTA" | "TICKET";
+export type DocumentTemplateStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
+
+export type ResolvedDocumentTemplate = {
+  id: string | null;
+  type: DocumentTemplateType;
+  scope: "STORE" | "COMPANY" | "SYSTEM";
+  code: string;
+  version: number;
+  schemaVersion: number;
+  artifactReference: string;
+  sha256: string | null;
+  builtIn: boolean;
+};
+
+export type DocumentTemplateView = {
+  id: string;
+  type: DocumentTemplateType;
+  scope: "STORE" | "COMPANY" | "SYSTEM";
+  code: string;
+  version: number;
+  name: string;
+  status: DocumentTemplateStatus;
+  schemaVersion: number | null;
+  sha256: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  validatedAt: string | null;
+  activatedAt: string | null;
+  retiredAt: string | null;
+};
+
+export type DocumentTemplateCatalog = {
+  effective: ResolvedDocumentTemplate;
+  storeTemplates: DocumentTemplateView[];
+};
+
+export function loadDocumentTemplateCatalog(
+  type: DocumentTemplateType,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateCatalog>(
+    `/document-templates?type=${encodeURIComponent(type)}`,
+    { token },
+  );
+}
+
+export function createDocumentTemplateDraft(
+  value: { type: DocumentTemplateType; code: string; name: string },
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateView>("/document-templates/store-drafts", {
+    method: "POST",
+    token,
+    body: value,
+  });
+}
+
+export function uploadDocumentTemplateArtifact(
+  templateId: string,
+  file: File,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  const body = new FormData();
+  body.append("file", file);
+  return request<DocumentTemplateView>(
+    `/document-templates/${encodeURIComponent(templateId)}/artifact`,
+    { method: "POST", token, body },
+  );
+}
+
+export function activateDocumentTemplate(
+  templateId: string,
+  token?: string,
+  request: typeof apiRequest = apiRequest,
+) {
+  return request<DocumentTemplateView>(
+    `/document-templates/${encodeURIComponent(templateId)}/activate`,
+    { method: "POST", token },
+  );
+}
+
+export async function downloadDocumentTemplateSource(
+  template: Pick<DocumentTemplateView, "id" | "code" | "version">,
+  token?: string,
+) {
+  const response = await fetch(
+    `${apiBaseUrl}/document-templates/${encodeURIComponent(template.id)}/source`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : undefined },
+  );
+  if (!response.ok) {
+    throw new ApiError(response.statusText || "document_template_download_failed", response.status);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${template.code.toLowerCase()}_v${template.version}.jrxml`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}

@@ -322,7 +322,7 @@ export function SalesUtilityWindowApp() {
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [terminalContext, setTerminalContext] = useState<TerminalContext | null | undefined>(undefined);
-  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings">("home");
+  const [screen, setScreen] = useState<"home" | "sale" | "stock" | "warehouse" | "salesReport" | "customerReceivables" | "settings" | "hardwareSettings" | "documentPrintingSettings">("home");
   const [receivablesCustomerId, setReceivablesCustomerId] = useState<string | undefined>();
   const [receivablesReturnScreen, setReceivablesReturnScreen] = useState<"home" | "sale" | "stock">("home");
   const { locale, applyUserLocale, changeLocale, resetLocale } = useSaleUserLocalePreference();
@@ -592,6 +592,21 @@ export function App() {
     );
   }
 
+  if (screen === "documentPrintingSettings") {
+    return withHomeEscapeConfirmation(
+      <HardwareSettingsScreen
+        app="venta"
+        locale={locale}
+        session={session}
+        terminalContext={terminalContext}
+        onBack={() => setScreen("settings")}
+        onLocaleChange={handleLocaleChange}
+        onLogout={handleLogout}
+        documentRoutingOnly
+      />,
+    );
+  }
+
   if (screen === "settings") {
     return withHomeEscapeConfirmation(
       <SettingsScreen
@@ -603,6 +618,7 @@ export function App() {
         onLogout={handleLogout}
         onLocaleChange={handleLocaleChange}
         onOpenHardware={() => setScreen("hardwareSettings")}
+        onOpenDocumentPrinting={() => setScreen("documentPrintingSettings")}
         onOpenReports={() => setScreen("salesReport")}
         onSaleInterfaceModeChange={setSaleInterfaceMode}
       />,

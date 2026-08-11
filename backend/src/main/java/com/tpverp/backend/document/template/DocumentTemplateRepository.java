@@ -71,6 +71,33 @@ public interface DocumentTemplateRepository extends JpaRepository<DocumentTempla
     Optional<DocumentTemplate> findStoreTemplateForUpdate(
             UUID id, UUID companyId, UUID storeId);
 
+    @Query("""
+            select template
+            from DocumentTemplate template
+            where template.id = :id
+              and template.company.id = :companyId
+              and template.store.id = :storeId
+              and template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.STORE
+            """)
+    Optional<DocumentTemplate> findStoreTemplate(
+            UUID id, UUID companyId, UUID storeId);
+
+    @Query("""
+            select template
+            from DocumentTemplate template
+            where template.id = :id
+              and (
+                    (template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.STORE
+                      and template.company.id = :companyId and template.store.id = :storeId)
+                 or (template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.COMPANY
+                      and template.company.id = :companyId and template.store is null)
+                 or (template.scope = com.tpverp.backend.document.template.DocumentTemplateScope.SYSTEM
+                      and template.company is null and template.store is null)
+              )
+            """)
+    Optional<DocumentTemplate> findPrintableTemplate(
+            UUID id, UUID companyId, UUID storeId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select template

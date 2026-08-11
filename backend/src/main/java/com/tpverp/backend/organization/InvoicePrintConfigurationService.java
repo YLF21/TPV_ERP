@@ -11,6 +11,7 @@ public class InvoicePrintConfigurationService {
     private final CurrentOrganization organization;
     private final InvoicePrintSettingsRepository settings;
     private final InvoiceBankAccountRepository accounts;
+    private StoreDocumentPrintConfigurationService storeDocumentPrintConfiguration;
 
     public InvoicePrintConfigurationService(CurrentOrganization organization,
             InvoicePrintSettingsRepository settings, InvoiceBankAccountRepository accounts) {
@@ -19,17 +20,32 @@ public class InvoicePrintConfigurationService {
         this.accounts = accounts;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    void setStoreDocumentPrintConfiguration(
+            StoreDocumentPrintConfigurationService storeDocumentPrintConfiguration) {
+        this.storeDocumentPrintConfiguration = storeDocumentPrintConfiguration;
+    }
+
     @Transactional(readOnly = true)
     public Configuration configuration() {
         UUID companyId = organization.currentCompany().getId();
-        String observations = settings.findById(companyId)
-                .map(InvoicePrintSettings::getObservaciones).orElse(null);
+        String observations = storeDocumentPrintConfiguration == null
+                ? settings.findById(companyId)
+                        .map(InvoicePrintSettings::getObservaciones).orElse(null)
+                : storeDocumentPrintConfiguration.configuration().invoiceObservations();
         return new Configuration(observations, accounts(companyId, false));
     }
 
     @Transactional
     public Configuration updateObservations(String observations) {
         UUID companyId = organization.currentCompany().getId();
+        if (storeDocumentPrintConfiguration != null) {
+            var current = storeDocumentPrintConfiguration.configuration();
+            var saved = storeDocumentPrintConfiguration.updateObservations(
+                    current.ticketObservations(), observations,
+                    current.deliveryNoteObservations());
+            return new Configuration(saved.invoiceObservations(), accounts(companyId, false));
+        }
         InvoicePrintSettings value = settings.findById(companyId)
                 .orElseGet(() -> new InvoicePrintSettings(companyId));
         value.updateObservations(observations);

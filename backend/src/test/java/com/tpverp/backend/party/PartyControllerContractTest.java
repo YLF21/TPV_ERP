@@ -61,6 +61,7 @@ class PartyControllerContractTest {
                 .map(component -> component.getName()))
                 .containsExactly(
                         "id", "clientId", "fiscalName", "documentNumber",
+                        "active",
                         "activeMember", "memberCategoryName", "memberDiscountPercent",
                         "memberBalance",
                         "creditEnabled", "creditLimit", "paymentTermDays",
