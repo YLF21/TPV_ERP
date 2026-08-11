@@ -7,12 +7,14 @@ import com.tpverp.backend.party.CustomerRepository;
 import com.tpverp.backend.party.Supplier;
 import com.tpverp.backend.party.SupplierRepository;
 import com.tpverp.backend.shared.api.PagedResult;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,6 +47,7 @@ public class DocumentReportService {
     private final SupplierRepository suppliers;
     private final WarehouseRepository warehouses;
     private final DocumentAttributionResolver attributions;
+    private final RefundTenderRepository refundTenders;
 
     public DocumentReportService(
             CommercialDocumentRepository documents,
@@ -52,13 +55,15 @@ public class DocumentReportService {
             CustomerRepository customers,
             SupplierRepository suppliers,
             WarehouseRepository warehouses,
-            DocumentAttributionResolver attributions) {
+            DocumentAttributionResolver attributions,
+            RefundTenderRepository refundTenders) {
         this.documents = documents;
         this.organization = organization;
         this.customers = customers;
         this.suppliers = suppliers;
         this.warehouses = warehouses;
         this.attributions = attributions;
+        this.refundTenders = refundTenders;
     }
 
     @Transactional(readOnly = true)
@@ -166,6 +171,7 @@ public class DocumentReportService {
                         com.tpverp.backend.catalog.Warehouse::getId,
                         com.tpverp.backend.catalog.Warehouse::getName));
         var attributionIndex = attributions.resolve(pageValues);
+        var refundTotalIndex = refundTotals(store.getId(), pageValues);
 
         var items = pageValues.stream()
                 .map(document -> DocumentReportView.from(
@@ -173,9 +179,25 @@ public class DocumentReportService {
                         customerIndex.get(document.getClienteId()),
                         supplierIndex.get(document.getProveedorId()),
                         warehouseIndex.get(document.getAlmacenId()),
-                        attributionIndex.get(document.getId())))
+                        attributionIndex.get(document.getId()),
+                        refundTotalIndex.getOrDefault(document.getId(), BigDecimal.ZERO)))
                 .toList();
         return new PagedResult<>(items, hasMore ? cursorFor(pageValues.get(pageValues.size() - 1)) : null, hasMore);
+    }
+
+    private Map<UUID, BigDecimal> refundTotals(
+            UUID storeId, Collection<CommercialDocument> values) {
+        var rectificationIds = values.stream()
+                .filter(document -> document.getTipo() == CommercialDocumentType.RECTIFICATIVA_VENTA)
+                .map(CommercialDocument::getId)
+                .toList();
+        if (rectificationIds.isEmpty()) {
+            return Map.of();
+        }
+        return refundTenders.sumByRefundDocumentIds(storeId, rectificationIds).stream()
+                .collect(Collectors.toMap(
+                        RefundTenderRepository.RefundDocumentTotal::getRefundDocumentId,
+                        RefundTenderRepository.RefundDocumentTotal::getTotalAmount));
     }
 
     private static EnumSet<CommercialDocumentType> documentTypes(

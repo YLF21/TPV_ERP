@@ -44,7 +44,8 @@ public record DocumentReportView(
             PartySummary customer,
             PartySummary supplier,
             String warehouseName,
-            DocumentAttributionResolver.Attribution attribution) {
+            DocumentAttributionResolver.Attribution attribution,
+            BigDecimal refundedAmount) {
         var resolvedAttribution = attribution == null
                 ? DocumentAttributionResolver.Attribution.empty(document)
                 : attribution;
@@ -59,7 +60,7 @@ public record DocumentReportView(
                 document.getBaseTotal(),
                 document.getImpuestoTotal(),
                 document.getTotal(),
-                document.getPendingTotal(),
+                pendingAmount(document, refundedAmount),
                 document.getDescuentoGlobal(),
                 document.getNumTicket(),
                 document.isOrigenStock(),
@@ -82,6 +83,16 @@ public record DocumentReportView(
                         .map(DocumentView.PaymentView::from)
                         .toList(),
                 document.getComentarioInterno());
+    }
+
+    static BigDecimal pendingAmount(
+            CommercialDocument document, BigDecimal refundedAmount) {
+        if (document.getTipo() != CommercialDocumentType.RECTIFICATIVA_VENTA
+                || document.getTotal().signum() >= 0) {
+            return document.getPendingTotal();
+        }
+        var refunded = refundedAmount == null ? BigDecimal.ZERO : refundedAmount;
+        return Money.euros(document.getTotal().add(Money.euros(refunded)));
     }
 
     record PartySummary(String code, String name) {
