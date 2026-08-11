@@ -164,6 +164,9 @@ const attributeLabelKey: Record<string, string> = {
 };
 
 export function reportAttributeLabelKey(reportKey: string, attribute: string) {
+  if (attribute === "payment" && reportKey === "salesReport.tickets") {
+    return "salesReport.column.paymentOrRefund";
+  }
   if (attribute === "total" && reportKey === "salesReport.warehouseOutputs") {
     return "salesReport.column.saleTotal";
   }
@@ -335,6 +338,9 @@ type DocumentView = {
   clienteId?: string | null;
   clienteCodigo?: string | null;
   clienteNombre?: string | null;
+  customerId?: string | null;
+  customerCode?: string | null;
+  customerName?: string | null;
   proveedorId?: string | null;
   proveedorCodigo?: string | null;
   proveedorNombre?: string | null;
@@ -351,6 +357,10 @@ type DocumentView = {
   terminalOrigenId?: string | null;
   terminalOrigenNombre?: string | null;
   ocurridoEn?: string | null;
+  paymentMethods?: string[];
+  refundMethods?: string[];
+  invoiceNumber?: string | null;
+  lifecycleStatus?: string | null;
 };
 
 type SalesDocumentDetail = {
@@ -499,6 +509,9 @@ export function canConvertSelectedTicketToInvoice(
   return reportKey === "salesReport.tickets"
     && Boolean(row?.__documentId && row.ticket)
     && row?.__documentStatus === "CONFIRMADO"
+    && row?.status === "salesReport.status.confirmed"
+    && !row?.invoiced
+    && parseAmount(row?.total ?? "0") >= 0
     && session.permissions.some((permission) =>
       permission === "ADMIN" || permission === "GESTION_VENTAS" || permission === "VENTA"
     );
@@ -512,6 +525,9 @@ export function canCancelSelectedTicket(
   return reportKey === "salesReport.tickets"
     && Boolean(row?.__documentId && row.ticket)
     && row?.__documentStatus === "CONFIRMADO"
+    && row?.status === "salesReport.status.confirmed"
+    && !row?.invoiced
+    && parseAmount(row?.total ?? "0") >= 0
     && session.permissions.some((permission) =>
       ["ADMIN", "GESTION_VENTAS", "GESTION_CUENTAS", "TICKETS_CANCEL", "VENTA"].includes(permission)
     );
@@ -735,10 +751,10 @@ const reportSamples: Record<string, ReportSample> = {
     totals: { date: "salesReport.total", tickets: "0", invoice: "0", invoicedTicketTotal: "0.00", total: "0.00" }
   },
   "salesReport.tickets": {
-    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "productCount", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
-    defaultVisibleAttributes: ["date", "time", "status", "terminal", "productCount", "customer", "payment", "invoiced", "total"],
+    availableAttributes: ["date", "time", "ticket", "status", "invoiced", "terminal", "user", "customer", "customerName", "payment", "comment", "base", "tax", "discount", "total"],
+    defaultVisibleAttributes: ["date", "time", "status", "terminal", "customer", "payment", "invoiced", "total"],
     rows: [],
-    totals: { date: "salesReport.total", productCount: "0", invoiced: "0", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
+    totals: { date: "salesReport.total", base: "0.00", tax: "0.00", discount: "0.00", total: "0.00" }
   },
   "salesReport.deliveryNotes": {
     availableAttributes: ["date", "time", "deliveryNote", "terminal", "user", "customer", "customerName", "comment", "status", "base", "tax", "discount", "total"],
@@ -958,6 +974,10 @@ function normalizeSearchText(value: string) {
     .toLowerCase();
 }
 
+function translateCompositeReportValue(value: string, translate: (key: string) => string) {
+  return value.split(" + ").map((part) => translate(part)).join(" + ");
+}
+
 function rowMatchesFilters(row: Record<string, string>, filters: ReportFilters) {
   const rowDate = parseReportDate(row.date ?? "");
   const customerNeedle = filters.customer.trim().toLowerCase();
@@ -990,7 +1010,7 @@ function rowMatchesSearch(row: Record<string, string>, search: string, translate
     return true;
   }
   const haystack = Object.values(row)
-    .flatMap((value) => [value, translate(value)])
+    .flatMap((value) => [value, translateCompositeReportValue(value, translate)])
     .map(normalizeSearchText)
     .join(" ");
   return haystack.includes(needle);
@@ -1006,7 +1026,7 @@ function buildFilteredTotals(sample: ReportSample, rows: Array<Record<string, st
       if (["total", "pending", "invoicedTicketTotal", "base", "tax", "discount"].includes(attribute)) {
         return [attribute, formatAmount(rows.reduce((sum, row) => sum + parseAmount(row[attribute] ?? ""), 0))];
       }
-      if (["tickets", "invoice", "productCount", "invoiced"].includes(attribute)) {
+      if (["tickets", "invoice", "productCount"].includes(attribute)) {
         return [attribute, formatWholeNumber(rows.reduce((sum, row) => sum + parseAmount(row[attribute] ?? ""), 0))];
       }
       if (attribute === "status") {
@@ -1033,7 +1053,7 @@ export function sortReportRows(
     const rightValue = right[sort.attribute] ?? "";
     if (
       REPORT_MONETARY_ATTRIBUTES.has(sort.attribute)
-      || ["productCount", "tickets", "invoice", "invoiced"].includes(sort.attribute)
+      || ["productCount", "tickets", "invoice"].includes(sort.attribute)
     ) {
       return (parseAmount(leftValue) - parseAmount(rightValue)) * multiplier;
     }
@@ -1154,8 +1174,36 @@ function isInputMovement(movement: StockMovementView) {
 }
 
 function paymentText(document: DocumentView) {
+  if (document.paymentMethods?.length) {
+    return Array.from(new Set(document.paymentMethods.filter(Boolean))).join(" + ");
+  }
   const names = Array.from(new Set((document.payments ?? []).map((payment) => payment.methodName).filter(Boolean)));
   return names.join(" + ");
+}
+
+function refundPaymentText(document: DocumentView) {
+  const keys: Record<string, string> = {
+    CASH: "salesReport.refundMethod.cash",
+    CARD: "salesReport.refundMethod.card",
+    VOUCHER: "salesReport.refundMethod.voucher",
+    TRANSFER: "salesReport.refundMethod.transfer",
+    EXCHANGE: "salesReport.refundMethod.exchange"
+  };
+  return Array.from(new Set(document.refundMethods ?? []))
+    .map((method) => keys[method] ?? method)
+    .join(" + ");
+}
+
+function ticketLifecycleStatus(document: DocumentView) {
+  const status = String(document.lifecycleStatus ?? "").toUpperCase();
+  if (String(document.estado ?? "").toUpperCase() === "ANULADO") {
+    return "salesReport.status.ticketCancelled";
+  }
+  if (status === "CANCELLED") return "salesReport.status.ticketCancelled";
+  if (status === "INVOICED") return "salesReport.status.invoiced";
+  if (status === "PARTIALLY_RETURNED") return "salesReport.status.partiallyReturned";
+  if (status === "RETURNED") return "salesReport.status.returned";
+  return documentStatus(document);
 }
 
 function paymentDate(payment: DocumentPaymentView) {
@@ -1363,16 +1411,13 @@ export function buildDocumentReports(
     date: formatBackendDate(document.fecha),
     time: formatBackendTime(document.ocurridoEn ?? undefined),
     ticket: document.numTicket || document.numero || "",
-    status: String(document.estado ?? "").toUpperCase() === "ANULADO"
-      ? "salesReport.status.ticketCancelled"
-      : documentStatus(document),
-    invoiced: "",
+    status: ticketLifecycleStatus(document),
+    invoiced: document.invoiceNumber || "",
     terminal: documentTerminal(document, terminal),
     user: documentUser(document, user),
-    productCount: "",
-    customer: "",
-    customerName: "",
-    payment: paymentText(document),
+    customer: document.customerCode || document.clienteCodigo || document.customerId || document.clienteId || "",
+    customerName: document.customerName || document.clienteNombre || "",
+    payment: Number(document.total ?? 0) < 0 ? refundPaymentText(document) : paymentText(document),
     comment: document.comentarioInterno || "",
     base: formatAmount(Number(document.base ?? 0)),
     tax: formatAmount(Number(document.impuesto ?? 0)),
@@ -1524,9 +1569,12 @@ async function loadReportResource<T>(
   }
 }
 
-type ReportPageKey = "invoices" | "deliveryNotes" | "warehouseOutputs" | "warehouseInputs";
+type ReportPageKey = "tickets" | "invoices" | "deliveryNotes" | "warehouseOutputs" | "warehouseInputs";
 
 function reportPageKey(reportKey: string): ReportPageKey | "" {
+  if (reportKey === "salesReport.tickets") {
+    return "tickets";
+  }
   if (reportKey === "salesReport.invoices" || reportKey === "salesReport.inputInvoices") {
     return "invoices";
   }
@@ -1544,6 +1592,7 @@ function reportPageKey(reportKey: string): ReportPageKey | "" {
 
 function reportPagePath(pageKey: ReportPageKey, cursor?: string | null) {
   const paths: Record<ReportPageKey, string> = {
+    tickets: "/document-reports/tickets",
     invoices: "/document-reports/invoices",
     deliveryNotes: "/document-reports/delivery-notes",
     warehouseOutputs: "/warehouse-outputs",
@@ -1601,7 +1650,7 @@ function filterOptionsFromRows(rows: Array<Record<string, string>>, attribute: s
   const values = Array.from(new Set(rows.map((row) => row[attribute]).filter(Boolean)));
   return [
     { value: "", label: translate("salesReport.filter.all") },
-    ...values.map((value) => ({ value, label: translate(value) }))
+    ...values.map((value) => ({ value, label: translateCompositeReportValue(value, translate) }))
   ];
 }
 
@@ -1979,7 +2028,7 @@ export function SalesReportScreen({
       setReportLoadErrors({});
       try {
         const [ticketResource, invoiceResource, deliveryNoteResource, warehouseOutputResource, warehouseInputResource, warehouseResource] = await Promise.all([
-          loadReportResource<DocumentView[]>(request, "/tickets", token, []),
+          loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("tickets"), token, { items: [], nextCursor: null, hasMore: false }),
           loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("invoices"), token, { items: [], nextCursor: null, hasMore: false }),
           loadReportResource<PagedResult<DocumentView>>(request, reportPagePath("deliveryNotes"), token, { items: [], nextCursor: null, hasMore: false }),
           loadReportResource<PagedResult<WarehouseOutputView>>(request, reportPagePath("warehouseOutputs"), token, { items: [], nextCursor: null, hasMore: false }),
@@ -2009,13 +2058,14 @@ export function SalesReportScreen({
             ...(warehouseInputResource.failed ? { "salesReport.inputWarehouse": loadError } : {})
           });
           setReportPages({
+            tickets: { nextCursor: tickets.nextCursor ?? null, hasMore: Boolean(tickets.hasMore) },
             invoices: { nextCursor: invoices.nextCursor ?? null, hasMore: Boolean(invoices.hasMore) },
             deliveryNotes: { nextCursor: deliveryNotes.nextCursor ?? null, hasMore: Boolean(deliveryNotes.hasMore) },
             warehouseOutputs: { nextCursor: warehouseOutputs.nextCursor ?? null, hasMore: Boolean(warehouseOutputs.hasMore) },
             warehouseInputs: { nextCursor: warehouseInputs.nextCursor ?? null, hasMore: Boolean(warehouseInputs.hasMore) }
           });
           setRemoteReports(buildDocumentReports(
-            tickets,
+            tickets.items,
             invoices.items,
             deliveryNotes.items,
             warehouseOutputs.items,
@@ -2494,7 +2544,7 @@ export function SalesReportScreen({
         { token: session.accessToken }
       );
       const partialReports = buildDocumentReports(
-        [],
+        pageKey === "tickets" ? nextPage.items as DocumentView[] : [],
         pageKey === "invoices" ? nextPage.items as DocumentView[] : [],
         pageKey === "deliveryNotes" ? nextPage.items as DocumentView[] : [],
         pageKey === "warehouseOutputs" ? nextPage.items as WarehouseOutputView[] : [],
@@ -2505,6 +2555,7 @@ export function SalesReportScreen({
         reportWarehouses
       );
       const affectedReportsByPageKey: Record<ReportPageKey, string[]> = {
+        tickets: ["salesReport.tickets"],
         invoices: ["salesReport.invoices", "salesReport.inputInvoices"],
         deliveryNotes: ["salesReport.deliveryNotes", "salesReport.inputDeliveryNotes"],
         warehouseOutputs: ["salesReport.warehouseOutputs"],
@@ -3581,11 +3632,11 @@ export function SalesReportScreen({
                               >
                                 {column.key === "status" && isCancelledTicket ? (
                                   <span className="report-status-badge report-status-badge--cancelled">
-                                    {t(row[column.key] ?? "")}
+                                    {translateCompositeReportValue(row[column.key] ?? "", t)}
                                   </span>
                                 ) : REPORT_MONETARY_ATTRIBUTES.has(column.key)
                                   ? formatReportDisplayValue(column.key, row[column.key] ?? "", locale)
-                                  : t(row[column.key] ?? "")}
+                                  : translateCompositeReportValue(row[column.key] ?? "", t)}
                               </td>
                             ))}
                           </tr>
@@ -3660,7 +3711,7 @@ export function SalesReportScreen({
                   <dt>{t(reportAttributeLabelKey(selectedReport, column.key))}</dt>
                   <dd>{REPORT_MONETARY_ATTRIBUTES.has(column.key)
                     ? formatReportDisplayValue(column.key, documentPreviewRow[column.key] ?? "", locale)
-                    : t(documentPreviewRow[column.key] ?? "")}</dd>
+                    : translateCompositeReportValue(documentPreviewRow[column.key] ?? "", t)}</dd>
                 </div>
               ))}
             </dl>

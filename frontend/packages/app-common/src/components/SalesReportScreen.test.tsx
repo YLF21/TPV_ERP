@@ -86,7 +86,10 @@ describe("SalesReportScreen", () => {
     const confirmedTicket = {
       __documentId: "ticket-1",
       __documentStatus: "CONFIRMADO",
-      ticket: "T-001"
+      ticket: "T-001",
+      status: "salesReport.status.confirmed",
+      invoiced: "",
+      total: "10.00"
     };
     expect(canCancelSelectedTicket(
       { permissions: ["GESTION_CUENTAS"] },
@@ -109,7 +112,10 @@ describe("SalesReportScreen", () => {
     const confirmedTicket = {
       __documentId: "ticket-1",
       __documentStatus: "CONFIRMADO",
-      ticket: "T-001"
+      ticket: "T-001",
+      status: "salesReport.status.confirmed",
+      invoiced: "",
+      total: "10.00"
     };
     expect(canConvertSelectedTicketToInvoice(
       { permissions: ["GESTION_VENTAS"] },
@@ -168,8 +174,8 @@ describe("SalesReportScreen", () => {
           }]
         });
       }
-      if (path === "/tickets") {
-        return Promise.resolve([{
+      if (path.startsWith("/document-reports/tickets")) {
+        return Promise.resolve({ items: [{
           id: "ticket-1",
           tipo: "TICKET",
           estado: "CONFIRMADO",
@@ -177,7 +183,7 @@ describe("SalesReportScreen", () => {
           numTicket: "T-001",
           fecha: today,
           total: "12.10"
-        }]);
+        }], nextCursor: null, hasMore: false });
       }
       if (path === "/warehouses") return Promise.resolve([]);
       return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
@@ -523,6 +529,73 @@ describe("SalesReportScreen", () => {
         productCount: "3"
       })
     ]);
+  });
+
+  it("maps ticket customer, invoice lifecycle and real refund methods without product count", () => {
+    const reports = buildDocumentReports(
+      [{
+        id: "ticket-sale",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "001-260810-00005",
+        fecha: "2026-08-10",
+        total: "100.00",
+        customerCode: "C-0005",
+        customerName: "Cliente Cinco",
+        invoiceNumber: "FV-2026-00042",
+        lifecycleStatus: "PARTIALLY_RETURNED",
+        paymentMethods: ["EFECTIVO", "TARJETA"]
+      }, {
+        id: "ticket-return",
+        tipo: "TICKET",
+        estado: "CONFIRMADO",
+        numero: "001-260811-00001",
+        fecha: "2026-08-11",
+        total: "-25.00",
+        lifecycleStatus: "RETURNED",
+        refundMethods: ["CASH", "TRANSFER"]
+      }],
+      [], [], [], [], [], session, terminalContext
+    );
+
+    const report = reports["salesReport.tickets"];
+    expect(report?.availableAttributes).not.toContain("productCount");
+    expect(report?.defaultVisibleAttributes).not.toContain("productCount");
+    expect(report?.rows[0]).toEqual(expect.objectContaining({
+      customer: "C-0005",
+      customerName: "Cliente Cinco",
+      invoiced: "FV-2026-00042",
+      status: "salesReport.status.partiallyReturned",
+      payment: "EFECTIVO + TARJETA"
+    }));
+    expect(report?.rows[1]).toEqual(expect.objectContaining({
+      status: "salesReport.status.returned",
+      payment: "salesReport.refundMethod.cash + salesReport.refundMethod.transfer"
+    }));
+  });
+
+  it("does not offer invoice conversion or cancellation for invoiced and returned tickets", () => {
+    const invoiced = {
+      __documentId: "ticket-invoiced",
+      __documentStatus: "CONFIRMADO",
+      ticket: "T-1",
+      status: "salesReport.status.invoiced",
+      invoiced: "FV-1",
+      total: "100.00"
+    };
+    const returned = {
+      __documentId: "ticket-returned",
+      __documentStatus: "CONFIRMADO",
+      ticket: "T-2",
+      status: "salesReport.status.returned",
+      invoiced: "",
+      total: "-25.00"
+    };
+
+    expect(canConvertSelectedTicketToInvoice(session, "salesReport.tickets", invoiced)).toBe(false);
+    expect(canCancelSelectedTicket(session, "salesReport.tickets", invoiced)).toBe(false);
+    expect(canConvertSelectedTicketToInvoice(session, "salesReport.tickets", returned)).toBe(false);
+    expect(canCancelSelectedTicket(session, "salesReport.tickets", returned)).toBe(false);
   });
 
   it("uses historical document attribution instead of the active session", () => {

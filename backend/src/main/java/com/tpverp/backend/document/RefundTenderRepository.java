@@ -20,6 +20,18 @@ public interface RefundTenderRepository extends JpaRepository<RefundTender, UUID
             from RefundTender tender
             join fetch tender.refundDocument document
             where document.tiendaId = :storeId
+              and document.id in :documentIds
+            order by tender.createdAt asc, tender.id asc
+            """)
+    List<RefundTender> findAllByRefundDocumentIds(
+            @Param("storeId") UUID storeId,
+            @Param("documentIds") Collection<UUID> documentIds);
+
+    @Query("""
+            select tender
+            from RefundTender tender
+            join fetch tender.refundDocument document
+            where document.tiendaId = :storeId
               and tender.createdAt >= :from
               and tender.createdAt < :to
             order by tender.createdAt asc, tender.id asc
