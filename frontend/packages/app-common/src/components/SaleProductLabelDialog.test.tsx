@@ -88,10 +88,11 @@ describe("SaleProductLabelDialog", () => {
 
     fireEvent.click(printButton);
     await waitFor(() => expect(printProductLabel).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(printButton).toBeEnabled());
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("prints several selected products with independent EAN and copies", async () => {
