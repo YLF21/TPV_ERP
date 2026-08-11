@@ -176,6 +176,8 @@ class PosCashIdempotencyPostgreSqlTest {
                     ticket.getId(), storeId, warehouseId, ticket.getNumero(), userId, ticket.getTotal());
             return ticket;
         });
+        when(documents.ticketPrintView(any())).thenAnswer(invocation ->
+                TicketPrintView.from(invocation.getArgument(0)));
 
         var auth = new UsernamePasswordAuthenticationToken(user, "n/a");
         var request = new PosCashController.CashRequest(UUID.randomUUID(),

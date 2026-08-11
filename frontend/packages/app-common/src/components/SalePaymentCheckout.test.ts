@@ -278,8 +278,12 @@ describe("SalePaymentCheckout locking and cancellation",()=>{
 
   const dialog=await screen.findByRole("dialog",{name:/Autorización de la venta/i});
   expect(dialog.parentElement).toHaveClass("sale-mutation-authorization-overlay");
-  fireEvent.change(within(dialog).getByLabelText(/contraseña/i),{target:{value:"secret"}});
-  fireEvent.click(within(dialog).getByRole("button",{name:/Confirmar y continuar/i}));
+  const password=within(dialog).getByLabelText(/contraseña/i);
+  await waitFor(()=>expect(password).toHaveFocus());
+  fireEvent.change(password,{target:{value:"secret"}});
+  const confirm=within(dialog).getByRole("button",{name:/Confirmar y continuar/i});
+  await waitFor(()=>expect(confirm).toBeEnabled());
+  fireEvent.click(confirm);
 
   await waitFor(()=>expect(onFinalized).toHaveBeenCalled());
   expect(allocationCalls).toBe(2);
