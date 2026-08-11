@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import "./SaleProductLabelDialog.css";
 import type { LocaleCode } from "../types";
 import {
   defaultHardwareConfig,
