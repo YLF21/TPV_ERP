@@ -80,6 +80,7 @@ import { SaleProductConsultationDialog } from "./SaleProductConsultationDialog";
 import { SalePriceConsultationDialog } from "./SalePriceConsultationDialog";
 import { SaleProductSalesHistoryDialog } from "./SaleProductSalesHistoryDialog";
 import { SaleCustomerCreateDialog, canCreateSaleCustomer } from "./SaleCustomerCreateDialog";
+import { SaleCustomerReceivablesDialog } from "./SaleCustomerReceivablesDialog";
 import { SaleCashDrawerAuthorizationDialog } from "./SaleCashDrawerAuthorizationDialog";
 import { ProductCreateDialog, type ProductCreateEditProduct } from "./ProductCreateDialog";
 import {
@@ -308,7 +309,7 @@ type PreviousTicketImportBatch = {
   reconciliationAdjustment: number;
 };
 
-type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount";
+type SaleCustomerSortColumn = "code" | "name" | "document" | "member" | "discount" | "debt" | "overdue";
 
 const noCustomerSelectionId = "__NO_CUSTOMER__";
 const previousTicketImportTimeoutMs = 12_000;
@@ -1525,6 +1526,8 @@ export function SaleScreen({
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState(false);
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
+  const [customerEditId, setCustomerEditId] = useState<string | null>(null);
+  const [customerReceivablesOpen, setCustomerReceivablesOpen] = useState<SaleCustomer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<SaleCustomer | null>(null);
   const [selectedCustomerResultId, setSelectedCustomerResultId] = useState("");
   const [customerSort, setCustomerSort] = useState<TableSort<SaleCustomerSortColumn> | null>(null);
@@ -1659,6 +1662,7 @@ export function SaleScreen({
   const shutdownInProgressRef = useRef(false);
   const quoteGenerationRef = useRef(0);
   const previousTicketImportBusyRef = useRef(false);
+  const customerSearchGenerationRef = useRef(0);
   const linesRef = useRef(lines);
   const selectedCustomerRef = useRef(selectedCustomer);
   linesRef.current = lines;
@@ -1668,14 +1672,16 @@ export function SaleScreen({
     [allowInactiveProductSales, products]
   );
   const customerResults = useMemo(() => sortTableRows(
-    filterSaleCustomers(customers, customerQuery, 200),
+    customers,
     customerSort,
     (customer, column) => {
       if (column === "code") return customer.clientId;
       if (column === "name") return customer.fiscalName;
       if (column === "document") return customer.documentNumber;
       if (column === "member") return customer.memberCategoryName ?? customer.activeMember ?? false;
-      return customer.memberDiscountPercent == null ? null : Number(customer.memberDiscountPercent);
+      if (column === "discount") return customer.memberDiscountPercent == null ? null : Number(customer.memberDiscountPercent);
+      if (column === "debt") return Number(customer.outstandingDebt ?? 0);
+      return Number(customer.overdueDebt ?? 0);
     },
     locale
   ), [customerQuery, customerSort, customers, locale]);
@@ -1687,6 +1693,10 @@ export function SaleScreen({
     [customerResults, pendingCustomerContinuation],
   );
   const saleCustomerCreationAllowed = canCreateSaleCustomer(session.permissions);
+  const saleCustomerEditAllowed = hasPermission(session, "CUSTOMERS_WRITE")
+    || hasPermission(session, "GESTION_CLIENTE_PROVEEDOR");
+  const saleCustomerReceivablesAllowed = hasPermission(session, "CUSTOMER_RECEIVABLES_READ")
+    && hasPermission(session, "CUSTOMER_RECEIVABLES_PAY");
   const selectedLine = lines.find((line) => saleCartLineIdentity(line) === selectedLineId);
   useEffect(() => {
     if (previousTicketImportFocusRequest === 0) return;
@@ -3026,18 +3036,12 @@ export function SaleScreen({
     }
     setPendingCustomerContinuation(continuePending);
     setCustomerCreateOpen(false);
-    setActionDialog("customer");
-    setCustomerQuery("");
+    setCustomerEditId(null);
+    setCustomerReceivablesOpen(null);
     setCustomerLoading(true);
     setCustomerError(false);
-    apiRequest<SaleCustomer[]>("/customers/sale-options", { token: session.accessToken })
-      .then((options) => {
-        setCustomers(options);
-        setSelectedCustomerResultId(options[0]?.id
-          ?? (continuePending ? "" : noCustomerSelectionId));
-      })
-      .catch(() => setCustomerError(true))
-      .finally(() => setCustomerLoading(false));
+    setActionDialog("customer");
+    setCustomerQuery("");
   }
 
   function chooseSaleCustomer(customer: SaleCustomer | null) {
@@ -3053,6 +3057,8 @@ export function SaleScreen({
   function closeCustomerDialog() {
     setPendingCustomerContinuation(false);
     setCustomerCreateOpen(false);
+    setCustomerEditId(null);
+    setCustomerReceivablesOpen(null);
     setActionDialog(null);
   }
 
@@ -3061,24 +3067,37 @@ export function SaleScreen({
     return customerResults.find((candidate) => candidate.id === selectedCustomerResultId);
   }
 
-  async function finishCreatedSaleCustomer(customerId: string) {
+  async function finishSavedSaleCustomer(customerId: string, selectForSale: boolean) {
     try {
-      const options = await apiRequest<SaleCustomer[]>("/customers/sale-options", {
+      const saved = await apiRequest<SaleCustomer>(`/customers/sale-options/${customerId}`, {
         token: session.accessToken,
       });
-      const created = options.find((customer) => customer.id === customerId);
-      setCustomers(options);
+      setCustomers((current) => [saved, ...current.filter((customer) => customer.id !== saved.id)]);
       setCustomerCreateOpen(false);
-      if (created) {
-        setSelectedCustomerResultId(created.id);
-        chooseSaleCustomer(created);
+      setCustomerEditId(null);
+      setSelectedCustomerResultId(saved.id);
+      if (selectForSale) {
+        chooseSaleCustomer(saved);
         return;
       }
-      setCustomerError(true);
+      queueMicrotask(() => customerSearchInputRef.current?.focus());
     } catch {
       setCustomerCreateOpen(false);
+      setCustomerEditId(null);
       setCustomerError(true);
     }
+  }
+
+  function openSelectedCustomerEditor() {
+    const customer = selectedCustomerResult();
+    if (!customer || !saleCustomerEditAllowed) return;
+    setCustomerEditId(customer.id);
+  }
+
+  function openSelectedCustomerReceivables() {
+    const customer = selectedCustomerResult();
+    if (!customer || !saleCustomerReceivablesAllowed || Number(customer.outstandingDebt ?? 0) <= 0) return;
+    setCustomerReceivablesOpen(customer);
   }
 
   function handleCustomerDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -3100,6 +3119,25 @@ export function SaleScreen({
       });
       return;
     }
+    if (event.key === "F5" && saleCustomerCreationAllowed) {
+      event.preventDefault();
+      event.stopPropagation();
+      setCustomerCreateOpen(true);
+      setCustomerEditId(null);
+      return;
+    }
+    if (event.ctrlKey && event.key === "F7" && saleCustomerEditAllowed) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSelectedCustomerEditor();
+      return;
+    }
+    if (event.key === "Enter" && saleCustomerReceivablesAllowed) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSelectedCustomerReceivables();
+      return;
+    }
     if (event.key !== "Insert") return;
     event.preventDefault();
     event.stopPropagation();
@@ -3112,6 +3150,28 @@ export function SaleScreen({
     if (customerSelectionIds.includes(selectedCustomerResultId)) return;
     setSelectedCustomerResultId(customerSelectionIds[0] ?? "");
   }, [actionDialog, customerSelectionIds, selectedCustomerResultId]);
+
+  useEffect(() => {
+    if (actionDialog !== "customer" || customerCreateOpen || customerEditId || customerReceivablesOpen) return;
+    const generation = ++customerSearchGenerationRef.current;
+    const timer = globalThis.setTimeout(() => {
+      setCustomerLoading(true);
+      setCustomerError(false);
+      apiRequest<SaleCustomer[]>(`/customers/sale-options/search?q=${encodeURIComponent(customerQuery.trim())}&limit=50`, {
+        token: session.accessToken,
+      })
+        .then((options) => {
+          if (generation !== customerSearchGenerationRef.current) return;
+          setCustomers(options);
+          setSelectedCustomerResultId((current) => options.some((customer) => customer.id === current)
+            ? current : options[0]?.id ?? (pendingCustomerContinuation ? "" : noCustomerSelectionId));
+        })
+        .catch(() => { if (generation === customerSearchGenerationRef.current) setCustomerError(true); })
+        .finally(() => { if (generation === customerSearchGenerationRef.current) setCustomerLoading(false); });
+    }, customerQuery ? 180 : 0);
+    return () => globalThis.clearTimeout(timer);
+  }, [actionDialog, customerCreateOpen, customerEditId, customerQuery, customerReceivablesOpen,
+    pendingCustomerContinuation, session.accessToken]);
 
   async function beginPendingSale(customer: SaleCustomer) {
     if (pendingOpening || paymentActionsDisabled || paymentLocked
@@ -5393,7 +5453,7 @@ export function SaleScreen({
         />
       )}
 
-      {actionDialog === "customer" && !customerCreateOpen && (
+      {actionDialog === "customer" && !customerCreateOpen && !customerEditId && (
         <SaleActionDialog
           title={t("sale.customer.title")}
           closeLabel={t("sale.dialog.close")}
@@ -5403,16 +5463,30 @@ export function SaleScreen({
           className="sale-customer-selection-dialog"
           wide
         >
+          <div className="sale-customer-action-bar" aria-label={t("sale.customer.actions")}>
+            {saleCustomerCreationAllowed && <button type="button" onClick={() => {
+              setCustomerCreateOpen(true);
+              setCustomerEditId(null);
+            }}><span>{t("sale.customer.create")}</span><kbd>F5</kbd></button>}
+            {saleCustomerEditAllowed && <button type="button" disabled={!selectedCustomerResult()} onClick={openSelectedCustomerEditor}>
+              <span>{t("sale.customer.edit")}</span><kbd>Ctrl+F7</kbd>
+            </button>}
+            {saleCustomerReceivablesAllowed && <button
+              type="button"
+              className="debt-action"
+              disabled={!selectedCustomerResult() || Number(selectedCustomerResult()?.outstandingDebt ?? 0) <= 0}
+              onClick={openSelectedCustomerReceivables}
+            ><span>{t("sale.customer.collectDebt")}</span><kbd>Enter</kbd></button>}
+          </div>
           <div className="sale-customer-toolbar">
             <label>
               <span>{t("sale.customer.search")}</span>
               <input ref={customerSearchInputRef} aria-label={t("sale.customer.search")} value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder={t("sale.customer.placeholder")} />
             </label>
-            {saleCustomerCreationAllowed && <button type="button" onClick={() => setCustomerCreateOpen(true)}>{t("sale.customer.create")}</button>}
           </div>
           <div className="sale-customer-table" role="table" aria-label={t("sale.customer.title")}>
             <div className="sale-customer-table-header" role="row">
-              {(["code", "name", "document", "member", "discount"] as const).map((column) => (
+              {(["code", "name", "document", "member", "discount", "debt", "overdue"] as const).map((column) => (
                 <span
                   role="columnheader"
                   aria-sort={customerSort?.column === column
@@ -5444,6 +5518,7 @@ export function SaleScreen({
                 <span role="cell">—</span>
                 <strong role="cell">{t("sale.customer.none")}</strong>
                 <span role="cell"></span><span role="cell"></span><span role="cell"></span>
+                <span role="cell"></span><span role="cell"></span>
               </button>}
               {!customerLoading && !customerError && customerResults.map((customer) => (
                 <button
@@ -5461,6 +5536,12 @@ export function SaleScreen({
                   <span role="cell">{customer.documentNumber ?? ""}</span>
                   <span role="cell">{customer.activeMember ? customer.memberCategoryName || t("common.yes") : ""}</span>
                   <span role="cell">{customer.memberDiscountPercent == null ? "" : `${Number(customer.memberDiscountPercent).toLocaleString(locale, { maximumFractionDigits: 2 })} %`}</span>
+                  <strong role="cell" className={Number(customer.outstandingDebt ?? 0) > 0 ? "debt" : ""}>
+                    {Number(customer.outstandingDebt ?? 0) > 0 ? `${Number(customer.outstandingDebt).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ""}
+                  </strong>
+                  <strong role="cell" className={Number(customer.overdueDebt ?? 0) > 0 ? "overdue-debt" : ""}>
+                    {Number(customer.overdueDebt ?? 0) > 0 ? `${Number(customer.overdueDebt).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ""}
+                  </strong>
                 </button>
               ))}
               {!customerLoading && !customerError && customerResults.length === 0 && pendingCustomerContinuation && <p className="sale-customer-empty">{t("sale.customer.empty")}</p>}
@@ -5487,7 +5568,33 @@ export function SaleScreen({
             setCustomerCreateOpen(false);
             queueMicrotask(() => customerSearchInputRef.current?.focus());
           }}
-          onCreated={(customer) => void finishCreatedSaleCustomer(customer.id)}
+          onCreated={(customer) => void finishSavedSaleCustomer(customer.id, true)}
+        />
+      )}
+
+      {actionDialog === "customer" && customerEditId && (
+        <SaleCustomerCreateDialog
+          locale={locale}
+          session={session}
+          customerId={customerEditId}
+          onCancel={() => {
+            setCustomerEditId(null);
+            queueMicrotask(() => customerSearchInputRef.current?.focus());
+          }}
+          onCreated={(customer) => void finishSavedSaleCustomer(customer.id, false)}
+        />
+      )}
+
+      {actionDialog === "customer" && customerReceivablesOpen && (
+        <SaleCustomerReceivablesDialog
+          locale={locale}
+          session={session}
+          terminalContext={terminalContext}
+          customer={customerReceivablesOpen}
+          onClose={() => {
+            setCustomerReceivablesOpen(null);
+            queueMicrotask(() => customerSearchInputRef.current?.focus());
+          }}
         />
       )}
 

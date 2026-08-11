@@ -78,4 +78,63 @@ describe("SaleCustomerCreateDialog", () => {
     })));
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "customer-created" }));
   });
+
+  it("loads and updates the selected customer through the real customer endpoint", async () => {
+    const existing = {
+      id: "customer-1",
+      clientId: "C-001-000001",
+      fiscalName: "Cliente original",
+      documentType: "NIF",
+      documentNumber: "X5806991C",
+      address: null,
+      phone: null,
+      email: null,
+      notes: null,
+      discount: 0,
+      isMember: true,
+      active: true,
+      creditEnabled: true,
+      creditLimit: null,
+      paymentTermDays: 30,
+      creditBlocked: false,
+      blockOnOverdue: false,
+    };
+    const onCreated = vi.fn();
+    request.mockImplementation(async (path, options) => {
+      if (path === "/commercial-contact-channels") return [] as never;
+      if (path === "/customers/customer-1" && options?.method === "PUT") {
+        return { ...existing, fiscalName: "Cliente actualizado" } as never;
+      }
+      if (path === "/customers/customer-1") return existing as never;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(<SaleCustomerCreateDialog
+      locale="es"
+      session={{ ...session, permissions: ["CUSTOMERS_WRITE"] }}
+      customerId="customer-1"
+      onCancel={vi.fn()}
+      onCreated={onCreated}
+    />);
+
+    expect(await screen.findByRole("dialog", { name: "Modificar cliente" })).toBeVisible();
+    const name = await screen.findByLabelText(/Nombre o razón social/);
+    await waitFor(() => expect(name).toHaveValue("Cliente original"));
+    fireEvent.change(name, { target: { value: "Cliente actualizado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/customers/customer-1", expect.objectContaining({
+      method: "PUT",
+      token: "token",
+      body: expect.objectContaining({
+        fiscalName: "Cliente actualizado",
+        documentNumber: "X5806991C",
+        isMember: true,
+      }),
+    })));
+    expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({
+      id: "customer-1",
+      fiscalName: "Cliente actualizado",
+    }));
+  });
 });

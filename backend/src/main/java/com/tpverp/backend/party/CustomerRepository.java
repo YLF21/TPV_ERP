@@ -92,6 +92,42 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
             @Param("customerId") UUID customerId,
             @Param("businessDate") LocalDate businessDate);
 
+    interface CustomerDebtSummary {
+        UUID getCustomerId();
+        BigDecimal getOutstandingDebt();
+        BigDecimal getOverdueDebt();
+    }
+
+    @Query(value = """
+            select document.cliente_id as customerId,
+                   coalesce(sum(document.total - coalesce(payment.paid, 0)), 0) as outstandingDebt,
+                   coalesce(sum(case
+                       when document.fecha_vencimiento < :businessDate
+                       then document.total - coalesce(payment.paid, 0)
+                       else 0 end), 0) as overdueDebt
+            from documento document
+            left join (
+                select documento_id, sum(importe) as paid
+                from documento_pago
+                group by documento_id
+            ) payment on payment.documento_id = document.id
+            where document.cliente_id in (:customerIds)
+              and (document.tipo in ('ALBARAN_VENTA','FACTURA_VENTA')
+                  or (document.tipo = 'TICKET' and document.cuenta_cobrar = true))
+              and document.estado in ('PENDIENTE','PARCIAL')
+              and not exists (
+                  select 1 from documento_relacion relation
+                  join documento invoice on invoice.id = relation.documento_id
+                  where relation.origen_id = document.id
+                    and relation.tipo = 'FACTURA_DE'
+                    and invoice.estado not in ('BORRADOR','ANULADO')
+              )
+            group by document.cliente_id
+            """, nativeQuery = true)
+    List<CustomerDebtSummary> debtSummaries(
+            @Param("customerIds") Collection<UUID> customerIds,
+            @Param("businessDate") LocalDate businessDate);
+
     @Query(value = "select exists(select 1 from documento where cliente_id = :customerId)",
             nativeQuery = true)
     boolean hasDocumentHistory(UUID customerId);

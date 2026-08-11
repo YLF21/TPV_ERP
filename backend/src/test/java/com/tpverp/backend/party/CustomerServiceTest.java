@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
@@ -264,6 +265,11 @@ class CustomerServiceTest {
                 eq(PartyTestData.id(company)), eq("Cliente"),
                 any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(List.of(active, inactive));
+        var debt = mock(CustomerRepository.CustomerDebtSummary.class);
+        when(debt.getCustomerId()).thenReturn(active.getId());
+        when(debt.getOutstandingDebt()).thenReturn(new BigDecimal("42.50"));
+        when(debt.getOverdueDebt()).thenReturn(new BigDecimal("12.50"));
+        when(customers.debtSummaries(any(), any())).thenReturn(List.of(debt));
 
         var result = service().searchSaleOptions("  Cliente  ", 500);
 
@@ -273,10 +279,16 @@ class CustomerServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("Cliente Activo", true),
                         org.assertj.core.groups.Tuple.tuple("Cliente Desactivado", false));
+        assertThat(result.getFirst().outstandingDebt()).isEqualByComparingTo("42.50");
+        assertThat(result.getFirst().overdueDebt()).isEqualByComparingTo("12.50");
+        assertThat(result.get(1).outstandingDebt()).isEqualByComparingTo("0.00");
         var pageable = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
         verify(customers).searchSaleOptions(
                 eq(PartyTestData.id(company)), eq("Cliente"), pageable.capture());
         assertThat(pageable.getValue().getPageSize()).isEqualTo(50);
+        verify(customers).debtSummaries(eq(List.of(active.getId(), inactive.getId())), any());
+        verify(members).findByCompanyIdAndCustomerIdIn(
+                PartyTestData.id(company), List.of(active.getId(), inactive.getId()));
     }
 
     @Test

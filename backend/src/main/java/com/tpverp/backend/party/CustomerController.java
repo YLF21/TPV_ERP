@@ -64,7 +64,7 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','GESTION_CLIENTE_PROVEEDOR')")
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('CUSTOMERS_READ','CUSTOMERS_WRITE','GESTION_CLIENTE_PROVEEDOR')")
     public CustomerService.CustomerView get(@PathVariable UUID id) {
         return service.get(id);
     }

@@ -2,6 +2,7 @@ package com.tpverp.backend.party;
 
 import java.util.Optional;
 import java.util.List;
+import java.util.Collection;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,9 @@ public interface MemberRepository extends JpaRepository<Member, UUID> {
     Optional<Member> findByCustomerIdAndCompanyId(UUID customerId, UUID companyId);
 
     Optional<Member> findByIdAndCompanyId(UUID id, UUID companyId);
+
+    @EntityGraph(attributePaths = {"memberCategory"})
+    List<Member> findByCompanyIdAndCustomerIdIn(UUID companyId, Collection<UUID> customerIds);
 
     @EntityGraph(attributePaths = {"customer", "memberCategory"})
     List<Member> findByCompanyIdOrderByCustomerFiscalNameAsc(UUID companyId);

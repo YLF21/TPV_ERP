@@ -1321,7 +1321,7 @@ describe("SaleScreen", () => {
     const customersResponse = new Promise<Response>((resolve) => { resolveCustomers = resolve; });
     vi.stubGlobal("fetch", vi.fn((url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/customers/sale-options")) return customersResponse;
+      if (path.includes("/customers/sale-options/search")) return customersResponse;
       return Promise.resolve(new Response(JSON.stringify([products[0]]), {
         status: 200,
         headers: { "Content-Type": "application/json" }
@@ -1554,7 +1554,7 @@ describe("SaleScreen", () => {
     const t = createTranslator(locale);
     vi.stubGlobal("fetch", vi.fn((url: string) => {
       const path = new URL(url, "http://localhost").pathname;
-      if (path.endsWith("/customers/sale-options")) return Promise.reject(new Error("offline"));
+      if (path.includes("/customers/sale-options/search")) return Promise.reject(new Error("offline"));
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } }));
     }));
     renderSaleScreen(vi.fn(), locale, { interfaceMode: "TOUCH" });
@@ -2096,7 +2096,7 @@ describe("SaleScreen", () => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/customers/sale-options")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.includes("/customers/sale-options/search")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       throw new Error(`unexpected request ${path}`);
     }));
     renderSaleScreen();
@@ -2179,7 +2179,7 @@ describe("SaleScreen", () => {
           id: "ticket-1", numero: "T-001", fecha: "2026-08-01", total: "10.00",
         }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
-      if (path.endsWith("/customers/sale-options")) {
+      if (path.includes("/customers/sale-options/search")) {
         return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/vouchers")) {
@@ -2330,7 +2330,7 @@ describe("SaleScreen", () => {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (path.endsWith("/customers/sale-options")) {
+      if (path.includes("/customers/sale-options/search")) {
         return new Response(JSON.stringify([customers[0], customerWithFinancials]), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -2362,6 +2362,81 @@ describe("SaleScreen", () => {
 
     fireEvent.click(customerSummary);
     expect(await screen.findByRole("dialog", { name: "Seleccionar cliente" })).toBeInTheDocument();
+  });
+
+  it("supports F5 creation, Ctrl+F7 editing and Enter debt collection from the customer list", async () => {
+    const customer = {
+      ...customers[0],
+      documentType: "NIF",
+      active: true,
+      activeMember: false,
+      outstandingDebt: "40.00",
+      overdueDebt: "15.00",
+      creditEnabled: true,
+      paymentTermDays: 30,
+      creditBlocked: false,
+      blockOnOverdue: false,
+      isMember: false,
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url, "http://localhost").pathname;
+      if (path.endsWith("/products/sale")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.includes("/customers/sale-options/search")) {
+        return new Response(JSON.stringify([customer]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/commercial-contact-channels")) {
+        return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customers/customer-1")) {
+        return new Response(JSON.stringify(customer), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (path.endsWith("/customer-receivables")) {
+        return new Response(JSON.stringify([{
+          documentId: "debt-1",
+          documentType: "FACTURA_VENTA",
+          documentNumber: "FV-1",
+          customerId: "customer-1",
+          customerName: "Cliente Pruebas SL",
+          issueDate: "2026-07-01",
+          dueDate: "2026-07-31",
+          total: "40.00",
+          paidTotal: "0.00",
+          pendingTotal: "40.00",
+          status: "PENDIENTE",
+          overdue: true,
+        }]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      throw new Error(`unexpected request ${path}`);
+    }));
+
+    renderSaleScreen();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Buscar producto" })).toBeEnabled());
+    fireEvent.keyDown(window, { key: "End" });
+    const dialog = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    expect(within(dialog).getByRole("button", { name: /Nuevo cliente.*F5/ })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: /Modificar cliente.*Ctrl\+F7/ })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: /Cobrar deuda.*Enter/ })).toBeEnabled();
+    expect(within(dialog).getByText("40,00 €")).toHaveClass("debt");
+    expect(within(dialog).getByText("15,00 €")).toHaveClass("overdue-debt");
+
+    fireEvent.keyDown(dialog, { key: "F5" });
+    const create = await screen.findByRole("dialog", { name: "Nuevo cliente" });
+    fireEvent.click(within(create).getByRole("button", { name: "Cerrar" }));
+
+    const customerDialogAfterCreate = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    fireEvent.keyDown(customerDialogAfterCreate, { key: "F7", ctrlKey: true });
+    const edit = await screen.findByRole("dialog", { name: "Modificar cliente" });
+    expect(await within(edit).findByDisplayValue("Cliente Pruebas SL")).toBeVisible();
+    fireEvent.click(within(edit).getByRole("button", { name: "Cerrar" }));
+
+    const customerDialogAfterEdit = await screen.findByRole("dialog", { name: "Seleccionar cliente" });
+    fireEvent.keyDown(customerDialogAfterEdit, { key: "Enter" });
+    const receivables = await screen.findByRole("dialog", { name: "Documentos pendientes del cliente" });
+    expect(receivables).toHaveTextContent("FV-1");
+    expect(receivables).toHaveTextContent("40,00 €");
+    expect(checkoutProps.current?.sale?.customerId).toBeNull();
   });
 
   it("loads the sale catalog from the fiscal sale endpoint", async () => {
@@ -2402,7 +2477,7 @@ describe("SaleScreen", () => {
         const total = body.customerId === "customer-1" ? "9.50" : "10.00";
         return new Response(JSON.stringify(authoritativeQuote(products[0], total)), { status: 200, headers: { "Content-Type": "application/json" } });
       }
-      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([{ ...customers[0], activeMember: true, memberDiscountPercent: 5 }, customers[1]]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.includes("/customers/sale-options/search")) return new Response(JSON.stringify([{ ...customers[0], activeMember: true, memberDiscountPercent: 5 }, customers[1]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/warehouses")) return new Response(JSON.stringify([{ id: "warehouse-1", defaultWarehouse: true, active: true }]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/customer-pending-sales/quote")) {
         const body = JSON.parse(String(options?.body));
@@ -2474,7 +2549,7 @@ describe("SaleScreen", () => {
       if (path.endsWith("/pos/sales/quote")) {
         return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200, headers: { "Content-Type": "application/json" } });
       }
-      if (path.endsWith("/customers/sale-options")) {
+      if (path.includes("/customers/sale-options/search")) {
         return new Response(JSON.stringify([customers[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (path.endsWith("/warehouses")) {
@@ -2631,7 +2706,7 @@ describe("SaleScreen", () => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) return new Response(JSON.stringify([products[0]]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(products[0])), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/customers/sale-options")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.includes("/customers/sale-options/search")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       throw new Error(`unexpected request ${path}`);
     }));
     renderSaleScreen();
@@ -2674,7 +2749,7 @@ describe("SaleScreen", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) return new Response(JSON.stringify(products.slice(0, 2)), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/customers/sale-options")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.includes("/customers/sale-options/search")) return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
       throw new Error(`unexpected request ${path}`);
     }));
     renderSaleScreen();
@@ -4680,7 +4755,7 @@ describe("SaleScreen", () => {
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url, "http://localhost").pathname;
       if (path.endsWith("/products/sale")) return new Response(JSON.stringify([memberDiscountProduct]), { status: 200, headers: { "Content-Type": "application/json" } });
-      if (path.endsWith("/customers/sale-options")) return new Response(JSON.stringify([activeMember]), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path.includes("/customers/sale-options/search")) return new Response(JSON.stringify([activeMember]), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/sales/quote")) return new Response(JSON.stringify(authoritativeQuote(memberDiscountProduct)), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash/quote")) return new Response(JSON.stringify({ total: "10.00" }), { status: 200, headers: { "Content-Type": "application/json" } });
       if (path.endsWith("/pos/cash")) {

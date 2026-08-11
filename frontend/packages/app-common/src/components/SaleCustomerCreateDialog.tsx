@@ -5,6 +5,7 @@ import type { LocaleCode, Permission, UserSession } from "../types";
 import {
   buildPartyRequest,
   emptyPartyForm,
+  partyFormFromView,
   validatePartyForm,
   type CustomerView,
   type PartyForm,
@@ -15,6 +16,7 @@ import { activateModalFocusTrap, type ModalFocusRoot } from "./modalFocusTrap";
 type Props = {
   locale: LocaleCode;
   session: UserSession;
+  customerId?: string;
   onCancel: () => void;
   onCreated: (customer: CustomerView) => void;
 };
@@ -28,13 +30,16 @@ export function canCreateSaleCustomer(permissions: Permission[]): boolean {
   ].includes(permission));
 }
 
-export function SaleCustomerCreateDialog({ locale, session, onCancel, onCreated }: Props) {
+export function SaleCustomerCreateDialog({ locale, session, customerId, onCancel, onCreated }: Props) {
   const t = createTranslator(locale);
   const dialogRef = useRef<HTMLElement>(null);
   const [form, setForm] = useState<PartyForm>({ ...emptyPartyForm });
   const [errors, setErrors] = useState<string[]>([]);
   const [channels, setChannels] = useState<CommercialChannelOption[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(Boolean(customerId));
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [preserveMember, setPreserveMember] = useState(false);
   const [status, setStatus] = useState("");
 
   useEffect(() => dialogRef.current
@@ -48,6 +53,26 @@ export function SaleCustomerCreateDialog({ locale, session, onCancel, onCreated 
       .then((loaded) => setChannels(loaded.filter((channel) => channel.active)))
       .catch(() => setChannels([]));
   }, [session.accessToken]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    let current = true;
+    setLoading(true);
+    setLoadFailed(false);
+    apiRequest<CustomerView>(`/customers/${customerId}`, { token: session.accessToken })
+      .then((customer) => {
+        if (!current) return;
+        setForm(partyFormFromView(customer, false));
+        setPreserveMember(customer.isMember);
+      })
+      .catch((failure) => {
+        if (!current) return;
+        setLoadFailed(true);
+        setStatus(failure instanceof Error ? failure.message : t("party.loadError"));
+      })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [customerId, session.accessToken]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -75,10 +100,10 @@ export function SaleCustomerCreateDialog({ locale, session, onCancel, onCreated 
     setSaving(true);
     setStatus("");
     try {
-      const created = await apiRequest<CustomerView>("/customers", {
-        method: "POST",
+      const created = await apiRequest<CustomerView>(customerId ? `/customers/${customerId}` : "/customers", {
+        method: customerId ? "PUT" : "POST",
         token: session.accessToken,
-        body: buildPartyRequest(form, false),
+        body: buildPartyRequest(form, false, preserveMember),
       });
       onCreated(created);
     } catch (failure) {
@@ -92,13 +117,13 @@ export function SaleCustomerCreateDialog({ locale, session, onCancel, onCreated 
     <section ref={dialogRef} className="filter-dialog product-create-dialog party-create-dialog sale-customer-create-dialog">
       <header className="filter-header">
         <div>
-          <h2 id="sale-customer-create-title">{t("party.customers.new")}</h2>
+          <h2 id="sale-customer-create-title">{customerId ? t("party.customers.edit") : t("party.customers.new")}</h2>
           <span>{t("party.form.subtitle")}</span>
         </div>
         <button type="button" aria-label={t("common.close")} disabled={saving} onClick={onCancel}>{t("common.close")}</button>
       </header>
       <form className="product-create-form party-create-form" onSubmit={submit}>
-        <fieldset disabled={saving}>
+        <fieldset disabled={saving || loading || loadFailed}>
           <PartyFormFields
             form={form}
             errors={errors}
@@ -111,7 +136,7 @@ export function SaleCustomerCreateDialog({ locale, session, onCancel, onCreated 
         {status && <p className="product-create-status" role="alert">{status}</p>}
         <footer className="filter-actions">
           <button type="button" disabled={saving} onClick={onCancel}>{t("common.cancel")}</button>
-          <button type="submit" disabled={saving}>{saving ? t("party.saving") : t("common.save")}</button>
+          <button type="submit" disabled={saving || loading || loadFailed}>{saving ? t("party.saving") : t("common.save")}</button>
         </footer>
       </form>
     </section>

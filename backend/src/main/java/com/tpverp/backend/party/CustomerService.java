@@ -6,6 +6,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,20 +56,22 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public List<SaleCustomerSearchView> searchSaleOptions(String query, int limit) {
         String normalized = query == null ? "" : query.trim();
-        if (normalized.isEmpty()) {
-            return List.of();
-        }
         int safeLimit = Math.max(1, Math.min(limit, 50));
-        return customers.searchSaleOptions(
-                        context.currentCompany().getId(), normalized, PageRequest.of(0, safeLimit))
-                .stream()
-                .map(SaleCustomerSearchView::from)
+        UUID companyId = context.currentCompany().getId();
+        List<Customer> matches = customers.searchSaleOptions(
+                companyId, normalized, PageRequest.of(0, safeLimit));
+        if (matches.isEmpty()) return List.of();
+        List<UUID> ids = matches.stream().map(Customer::getId).toList();
+        Map<UUID, Member> membersByCustomer = members
+                .findByCompanyIdAndCustomerIdIn(companyId, ids).stream()
+                .collect(Collectors.toMap(member -> member.getCustomer().getId(), Function.identity()));
+        Map<UUID, CustomerRepository.CustomerDebtSummary> debtsByCustomer = customers
+                .debtSummaries(ids, LocalDate.now(clock)).stream()
+                .collect(Collectors.toMap(CustomerRepository.CustomerDebtSummary::getCustomerId, Function.identity()));
+        return matches.stream()
+                .map(customer -> SaleCustomerSearchView.from(
+                        customer, membersByCustomer.get(customer.getId()), debtsByCustomer.get(customer.getId())))
                 .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public SaleCustomerSearchView saleOption(UUID id) {
-        return SaleCustomerSearchView.from(customer(id));
     }
 
     @Transactional
@@ -443,12 +448,41 @@ public class CustomerService {
             String clientId,
             String fiscalName,
             String documentNumber,
-            boolean active) {
+            boolean active,
+            boolean activeMember,
+            String memberCategoryName,
+            BigDecimal memberDiscountPercent,
+            BigDecimal memberBalance,
+            boolean creditEnabled,
+            BigDecimal creditLimit,
+            int paymentTermDays,
+            boolean creditBlocked,
+            boolean blockOnOverdue,
+            BigDecimal outstandingDebt,
+            BigDecimal overdueDebt,
+            BigDecimal availableCredit) {
 
-        static SaleCustomerSearchView from(Customer customer) {
+        static SaleCustomerSearchView from(
+                Customer customer,
+                Member member,
+                CustomerRepository.CustomerDebtSummary debt) {
+            boolean activeMember = member != null && member.isActive();
+            MemberCategory category = activeMember ? member.getMemberCategory() : null;
+            BigDecimal categoryDiscount = category != null
+                    && category.isActive() && category.isDiscountEnabled()
+                    ? category.getDiscountPercent() : BigDecimal.ZERO.setScale(2);
+            BigDecimal outstanding = money(debt == null ? null : debt.getOutstandingDebt());
             return new SaleCustomerSearchView(
                     customer.getId(), customer.getClientId(), customer.getFiscalName(),
-                    customer.getDocumentNumber(), customer.isActive());
+                    customer.getDocumentNumber(), customer.isActive(), activeMember,
+                    category == null ? null : category.getName(), categoryDiscount,
+                    member == null ? BigDecimal.ZERO.setScale(2) : member.getMemberBalance(),
+                    customer.isCreditEnabled(), customer.getCreditLimit(),
+                    customer.getPaymentTermDays(), customer.isCreditBlocked(),
+                    customer.isBlockOnOverdue(), outstanding,
+                    money(debt == null ? null : debt.getOverdueDebt()),
+                    customer.getCreditLimit() == null ? null
+                            : money(customer.getCreditLimit().subtract(outstanding)));
         }
     }
 

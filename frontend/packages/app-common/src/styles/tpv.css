@@ -6006,10 +6006,65 @@ textarea {
   font-size: 20px;
 }
 
+.sale-customer-action-bar {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 9px 18px;
+  border-bottom: 1px solid #b8c6d5;
+  background: #f4f7fa;
+}
+
+.sale-customer-action-bar button {
+  min-width: 170px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #7891ab;
+  border-radius: 2px;
+  background: #fff;
+  color: #153653;
+  padding: 0 10px 0 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sale-customer-action-bar button:hover:not(:disabled),
+.sale-customer-action-bar button:focus-visible {
+  border-color: #246ba7;
+  background: #eaf3fb;
+  outline: 2px solid #246ba7;
+  outline-offset: -2px;
+}
+
+.sale-customer-action-bar button.debt-action:not(:disabled) {
+  border-color: #9a3434;
+  color: #982929;
+}
+
+.sale-customer-action-bar button:disabled {
+  opacity: .48;
+  cursor: not-allowed;
+}
+
+.sale-customer-action-bar kbd {
+  min-width: 37px;
+  border: 1px solid #a7b7c7;
+  border-radius: 2px;
+  background: #edf2f6;
+  color: #314b65;
+  padding: 2px 5px;
+  font-size: 10px;
+  text-align: center;
+}
+
 .sale-customer-toolbar {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) auto;
+  grid-template-columns: minmax(320px, 1fr);
   align-items: end;
   gap: 12px;
   padding: 13px 18px;
@@ -6061,9 +6116,9 @@ textarea {
 
 .sale-customer-table-header,
 .sale-customer-table-row {
-  min-width: 860px;
+  min-width: 1180px;
   display: grid;
-  grid-template-columns: 125px minmax(320px, 1fr) 210px 180px 130px;
+  grid-template-columns: 125px minmax(300px, 1fr) 190px 155px 115px 140px 140px;
   align-items: stretch;
 }
 
@@ -6174,6 +6229,193 @@ textarea {
   border-radius: 2px;
 }
 
+.sale-customer-receivables-overlay {
+  z-index: 190;
+  padding: 20px;
+}
+
+.sale-customer-receivables-dialog {
+  width: min(1280px, calc(100vw - 40px));
+  height: min(760px, calc(100vh - 40px));
+  max-height: calc(100vh - 40px);
+  display: grid;
+  grid-template-rows: 58px auto minmax(0, 1fr) 58px;
+  overflow: hidden;
+  border: 1px solid #8298af;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 20px 55px rgb(17 35 58 / 32%);
+}
+
+.sale-customer-receivables-dialog > header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 14px 0 20px;
+  background: #0b2e59;
+  color: #fff;
+}
+
+.sale-customer-receivables-dialog > header h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-customer-receivables-dialog > header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 2px;
+  background: transparent;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.sale-customer-receivables-summary {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.5fr) repeat(2, minmax(145px, .55fr));
+  border-bottom: 1px solid #aebed0;
+  background: #e8eef5;
+}
+
+.sale-customer-receivables-summary > div {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 72px;
+  border-right: 1px solid #bdcad7;
+  padding: 9px 16px;
+}
+
+.sale-customer-receivables-summary > div:last-child { border-right: 0; }
+
+.sale-customer-receivables-summary span {
+  color: #465d75;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.sale-customer-receivables-summary strong {
+  overflow: hidden;
+  color: #102d4d;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sale-customer-receivables-summary .debt,
+.sale-customer-receivables-summary .overdue-debt {
+  color: #b42318;
+}
+
+.sale-customer-receivables-table {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.sale-customer-receivables-table-header,
+.sale-customer-receivables-row {
+  min-width: 980px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) 145px 145px repeat(3, minmax(130px, .8fr));
+  align-items: stretch;
+}
+
+.sale-customer-receivables-table-header {
+  background: #0b2e59;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+
+.sale-customer-receivables-table-header > span,
+.sale-customer-receivables-row > span,
+.sale-customer-receivables-row > strong {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid #c3d0dd;
+  padding: 0 12px;
+}
+
+.sale-customer-receivables-table-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: repeating-linear-gradient(to bottom, #fff 0, #fff 49px, #e1e8f0 49px, #e1e8f0 50px);
+}
+
+.sale-customer-receivables-row {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-bottom: 1px solid #d6e0ea;
+  background: #fff;
+  color: #10253e;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sale-customer-receivables-row:hover { background: #edf4fa; }
+
+.sale-customer-receivables-row.selected,
+.sale-customer-receivables-row:focus-visible {
+  outline: 2px solid #286da9;
+  outline-offset: -2px;
+  background: #dcecf9;
+}
+
+.sale-customer-receivables-row .money {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-customer-receivables-row .debt,
+.sale-customer-receivables-row .overdue-debt {
+  color: #b42318;
+  font-weight: 900;
+}
+
+.sale-customer-receivables-row.overdue { background: #fff7f5; }
+
+.sale-customer-receivables-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid #aebed0;
+  background: #e2e9f0;
+  padding: 8px 18px;
+}
+
+.sale-customer-receivables-footer p {
+  margin: 0;
+  color: #40566e;
+  font-size: 12px;
+}
+
+.sale-customer-receivables-footer .sale-action-buttons button {
+  min-width: 130px;
+  min-height: 36px;
+  border-radius: 2px;
+}
+
 .sale-customer-create-overlay {
   z-index: 180;
 }
@@ -6196,9 +6438,25 @@ textarea {
     max-height: calc(100vh - 16px);
   }
   .sale-customer-toolbar { grid-template-columns: 1fr; gap: 8px; }
-  .sale-customer-toolbar > button { width: 100%; }
+  .sale-customer-action-bar { overflow-x: auto; }
+  .sale-customer-action-bar button { min-width: 155px; }
   .sale-customer-selection-footer .sale-dialog-hint { display: none; }
   .sale-customer-selection-footer { justify-content: flex-end; }
+  .sale-customer-receivables-overlay { padding: 8px; }
+  .sale-customer-receivables-dialog {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    max-height: calc(100vh - 16px);
+  }
+  .sale-customer-receivables-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sale-customer-receivables-summary > div:nth-child(2) { border-right: 0; }
+  .sale-customer-receivables-footer p { display: none; }
+  .sale-customer-receivables-footer { justify-content: flex-end; }
+}
+
+.sale-screen.touch-mode .sale-customer-action-bar button,
+.sale-screen.touch-mode .sale-customer-receivables-footer button {
+  min-height: 48px;
 }
 
 .sale-quick-grid button:hover,
@@ -20520,6 +20778,17 @@ textarea:focus,
   border-left: 4px solid #34845a;
   background: #eaf6ef;
   color: #20583d;
+}
+
+.sale-customer-table-row .debt,
+.sale-customer-table-row .overdue-debt {
+  justify-content: flex-end;
+  color: #b42318;
+  font-variant-numeric: tabular-nums;
+}
+
+.sale-customer-table-row .overdue-debt {
+  background: #fff0ee;
 }
 
 .sales-document-final-actions {

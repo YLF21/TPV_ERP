@@ -33,6 +33,9 @@ class PartyControllerContractTest {
                 "saleOption", java.util.UUID.class)))
                 .contains("CUSTOMERS_READ", "VENTA");
         assertThat(permission(CustomerController.class.getMethod(
+                "get", java.util.UUID.class)))
+                .contains("CUSTOMERS_READ", "CUSTOMERS_WRITE", "GESTION_CLIENTE_PROVEEDOR");
+        assertThat(permission(CustomerController.class.getMethod(
                 "create", CustomerController.CustomerRequest.class)))
                 .contains("CUSTOMERS_WRITE", "GESTION_CLIENTE_PROVEEDOR", "VENTA");
         assertThat(permission(SupplierController.class.getMethod("list")))
@@ -70,10 +73,10 @@ class PartyControllerContractTest {
     }
 
     @Test
-    void saleCustomerSearchViewExposesActiveStateForSelectionRules() {
+    void saleCustomerSearchViewExposesSelectionAndDebtState() {
         assertThat(Arrays.stream(CustomerService.SaleCustomerSearchView.class.getRecordComponents())
                 .map(component -> component.getName()))
-                .containsExactly("id", "clientId", "fiscalName", "documentNumber", "active");
+                .contains("active", "outstandingDebt", "overdueDebt", "availableCredit");
     }
 
     private String path(Class<?> controller) {
